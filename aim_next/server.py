@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import hmac
 import html
+import io
 import json
 import mimetypes
 import secrets
+import re
 import socket
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -29,6 +32,22 @@ def _unique_object(pairs):
 
 def _invalid_constant(value):
     raise ValueError("Non-finite JSON number")
+
+
+class DeadlineInput(io.RawIOBase):
+    """A drip cannot renew the total time allowed for receiving a request."""
+    def __init__(self, connection, deadline):
+        self.connection, self.deadline = connection, deadline
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout("Request input deadline expired")
+        self.connection.settimeout(remaining)
+        return self.connection.recv_into(buffer)
 
 
 class AIMHTTPServer(ThreadingHTTPServer):
@@ -65,12 +84,16 @@ class AIMHTTPServer(ThreadingHTTPServer):
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
+    default_request_version = "HTTP/1.0"
     server_version = "AIMNext"
     sys_version = ""
 
     def setup(self):
         super().setup()
-        self.connection.settimeout(10)
+        self.deadline = time.monotonic() + self.server.request_timeout
+        self.body_consumed = 0
+        self.rfile.close()
+        self.rfile = io.BufferedReader(DeadlineInput(self.connection, self.deadline))
 
     def log_message(self, format, *args):
         # Request paths, bodies and authentication never enter an access log.
@@ -103,19 +126,47 @@ class Handler(BaseHTTPRequestHandler):
     def _error(self, status: int, code: str, message: str):
         self._json_response(status, {"recorded": False, "error": {
             "code": code, "message": message, "retryable": status in (408, 429, 500, 503)}})
+        self._discard_refused_upload()
+
+    def send_error(self, code, message=None, explain=None):
+        # Stdlib parser/method errors have the same unconfirmed JSON boundary.
+        self._error(code, "HTTP_%s" % code, "This HTTP request was refused.")
+
+    def _discard_refused_upload(self):
+        # Deliver the refusal before consuming any more bytes. Read in constant
+        # space up to 64 MiB and the ORIGINAL input deadline. Larger or slower
+        # attempts can still end as transport uncertainty, never a stored result.
+        try:
+            self.connection.shutdown(socket.SHUT_WR)
+            if not hasattr(self, "headers") or self.headers.get("Transfer-Encoding"):
+                return
+            lengths = self.headers.get_all("Content-Length", [])
+            if len(lengths) != 1 or not re.fullmatch(r"[0-9]{1,20}", lengths[0]):
+                return
+            remaining = min(max(0, int(lengths[0]) - self.body_consumed), 64 * 1024 * 1024)
+            while remaining and time.monotonic() < self.deadline:
+                data = self.rfile.read(min(65536, remaining))
+                if not data:
+                    break
+                remaining -= len(data)
+        except (OSError, ValueError):
+            pass
 
     def _host(self):
-        if self.headers.get("Host") != self.server.authority:
+        if self.headers.get_all("Host", []) != [self.server.authority]:
             raise RequestError(403, "HOST_REFUSED", "Use this instance's loopback address.")
 
     def _authorize(self, write=False):
         self._host()
-        authorization = self.headers.get("Authorization", "")
+        authorizations = self.headers.get_all("Authorization", [])
+        if len(authorizations) != 1:
+            raise RequestError(401, "SESSION_REQUIRED", "Use exactly one instance session.")
+        authorization = authorizations[0]
         if not hmac.compare_digest(authorization.encode("utf-8"),
                                    ("Bearer " + self.server.session_token).encode("utf-8")):
             raise RequestError(401, "SESSION_REQUIRED", "Open this instance to establish a session.")
-        origin = self.headers.get("Origin")
-        if (write or origin is not None) and origin != self.server.origin:
+        origins = self.headers.get_all("Origin", [])
+        if (write or origins) and origins != [self.server.origin]:
             raise RequestError(403, "ORIGIN_REFUSED", "This request is not from the instance.")
 
     def _body(self):
@@ -124,18 +175,16 @@ class Handler(BaseHTTPRequestHandler):
         lengths = self.headers.get_all("Content-Length", [])
         if len(lengths) != 1:
             raise RequestError(400, "INVALID_BODY", "One content length is required.")
-        try:
-            length = int(lengths[0])
-        except ValueError:
+        if not re.fullmatch(r"[0-9]{1,20}", lengths[0]):
             raise RequestError(400, "INVALID_BODY", "Invalid content length.")
-        if length < 0:
-            raise RequestError(400, "INVALID_BODY", "Invalid content length.")
+        length = int(lengths[0])
         if length > self.server.max_json_bytes:
             raise RequestError(413, "ENVELOPE_TOO_LARGE", "The request exceeds this instance's limit.")
         if self.headers.get_content_type() != "application/json":
             raise RequestError(415, "JSON_REQUIRED", "Use application/json.")
         try:
             raw = self.rfile.read(length)
+            self.body_consumed = len(raw)
             if len(raw) != length:
                 raise ValueError("Incomplete body")
             value = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_object,
@@ -256,6 +305,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.web_root = Path(web_root).resolve()
     server.session_token = token or secrets.token_urlsafe(32)
     server.max_json_bytes = max_json_bytes
+    server.request_timeout = 10.0
     server.read_slots = threading.BoundedSemaphore(max_reads)
     server.command_slots = threading.BoundedSemaphore(2)
     server.connection_slots = threading.BoundedSemaphore(16)

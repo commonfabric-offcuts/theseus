@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import http.client
 import json
+import socket
 import tempfile
 import threading
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
@@ -181,6 +183,71 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertTrue(json.loads(raw)["recorded"])
             closing.result(timeout=2)
+
+    def raw_request(self, request):
+        with socket.create_connection(self.server.server_address, timeout=2) as sock:
+            sock.sendall(request)
+            response = http.client.HTTPResponse(sock)
+            response.begin()
+            return response.status, response.getheader("Content-Type"), response.read()
+
+    def test_parser_errors_are_unconfirmed_json_and_ambiguous_headers_refused(self):
+        host = self.server.authority.encode()
+        for raw, expected in [
+            (b"BOGUS / HTTP/1.0\r\nHost: " + host + b"\r\n\r\n", 501),
+            (b"GET / too many words\r\n\r\n", 400),
+            (b"GET / HTTP/1.0\r\nX-Large: " + b"x" * 70000 + b"\r\n\r\n", 431),
+            (b"GET / HTTP/1.0\r\nHost: " + host + b"\r\nHost: " + host + b"\r\n\r\n", 403),
+        ]:
+            with self.subTest(expected=expected, prefix=raw[:30]):
+                status, content_type, data = self.raw_request(raw)
+                self.assertEqual(status, expected)
+                self.assertIn("application/json", content_type)
+                self.assertFalse(json.loads(data)["recorded"])
+        for header in (b"Authorization: Bearer test-session", b"Origin: " + self.origin.encode()):
+            raw = (b"POST /api/view HTTP/1.0\r\nHost: " + host + b"\r\nAuthorization: Bearer test-session\r\n"
+                   b"Origin: " + self.origin.encode() + b"\r\n" + header +
+                   b"\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}")
+            self.assertIn(self.raw_request(raw)[0], (401, 403))
+        for length in (b"+2", b"0_2"):
+            raw = (b"POST /api/view HTTP/1.0\r\nHost: " + host + b"\r\nAuthorization: Bearer test-session\r\n"
+                   b"Origin: " + self.origin.encode() + b"\r\nContent-Type: application/json\r\nContent-Length: "
+                   + length + b"\r\n\r\n{}")
+            self.assertEqual(self.raw_request(raw)[0], 400)
+        self.assertEqual(self.store.calls, [])
+
+    def test_oversized_or_stale_session_upload_can_read_unconfirmed_refusal(self):
+        large = {"body": "x" * (3 * 1024 * 1024)}
+        for authenticated, expected in ((True, 413), (False, 401)):
+            with self.subTest(authenticated=authenticated):
+                status, _, raw = self.request("/api/command", large, authenticated=authenticated)
+                self.assertEqual(status, expected)
+                self.assertFalse(json.loads(raw)["recorded"])
+        self.assertEqual(self.store.calls, [])
+
+    def test_dripping_headers_have_one_absolute_deadline(self):
+        self.server.request_timeout = 0.2
+        stopped = threading.Event()
+        with socket.create_connection(self.server.server_address, timeout=0.8) as sock:
+            sock.sendall(b"POST /api/view HTTP/1.0\r\nHost: ")
+
+            def drip():
+                while not stopped.wait(0.03):
+                    try:
+                        sock.sendall(b"x")
+                    except OSError:
+                        return
+
+            writer = threading.Thread(target=drip)
+            writer.start()
+            try:
+                # Every byte is within the old per-recv timeout. Only a total
+                # deadline releases this unauthenticated connection.
+                self.assertEqual(sock.recv(1024), b"")
+            finally:
+                stopped.set()
+                writer.join(1)
+        self.assertEqual(self.store.calls, [])
 
 
 if __name__ == "__main__":

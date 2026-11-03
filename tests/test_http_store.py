@@ -66,6 +66,9 @@ class SharedStoreHTTPTests(unittest.TestCase):
         self.assertEqual(self.request("/api/view", operation), committed)
         self.assertEqual(self.request("/api/command", command), committed)
         self.assertEqual(self.store.view("test-agent", "operation", operation["args"])["status"], "unknown")
+        for spoof in ({"actor": "test-agent"}, {"owner": "test-agent"}, {"actor_id": "test-agent"}):
+            result = self.request("/api/view", {"name": "operation", "args": dict(operation["args"], **spoof)})
+            self.assertEqual(result, committed)
         changed = dict(command, args={"id": "wrong-workspace", "title": "Changed"})
         mismatch = self.request("/api/command", changed)
         self.assertFalse(mismatch["recorded"])
