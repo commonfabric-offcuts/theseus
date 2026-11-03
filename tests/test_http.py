@@ -130,6 +130,7 @@ class HTTPContractTests(unittest.TestCase):
         status, _, raw = self.request("/api/command", self.command(kind="explode"))
         self.assertEqual(status, 500)
         self.assertFalse(json.loads(raw)["recorded"])
+        self.assertFalse(json.loads(raw)["error"]["retryable"])
         self.assertNotIn(b"private database", raw)
         for path in ("/../private.txt", "/%2e%2e/private.txt", "/leak.js", "/private.sqlite3"):
             with self.subTest(path=path):

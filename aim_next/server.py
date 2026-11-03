@@ -125,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def _error(self, status: int, code: str, message: str):
         self._json_response(status, {"recorded": False, "error": {
-            "code": code, "message": message, "retryable": status in (408, 429, 500, 503)}})
+            "code": code, "message": message, "retryable": status in (408, 429, 503)}})
         self._discard_refused_upload()
 
     def send_error(self, code, message=None, explain=None):
