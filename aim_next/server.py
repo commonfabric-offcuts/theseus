@@ -216,7 +216,7 @@ class Handler(BaseHTTPRequestHandler):
             requested = unquote(path).lstrip("/") or "index.html"
             candidate = (self.server.web_root / requested).resolve()
             candidate.relative_to(self.server.web_root)
-            suffixes = {".js", ".css", ".svg", ".png", ".ico", ".woff", ".woff2"}
+            suffixes = {".js", ".mjs", ".css", ".svg", ".png", ".ico", ".woff", ".woff2"}
             if candidate.name != "index.html" and candidate.suffix not in suffixes:
                 raise ValueError("Not a public asset")
             if not candidate.is_file():

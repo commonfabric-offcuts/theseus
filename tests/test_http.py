@@ -43,6 +43,7 @@ class HTTPContractTests(unittest.TestCase):
         self.web.mkdir()
         (self.web / "index.html").write_text('<meta name="aim-next-session" content="__AIM_SESSION_TOKEN__">')
         (self.web / "app.js").write_text("export const ready = true;")
+        (self.web / "editor.mjs").write_text("export const ready = true;")
         (self.root / "private.txt").write_text("private record")
         (self.web / "leak.js").symlink_to(self.root / "private.txt")
         self.store = FakeStore()
@@ -134,6 +135,10 @@ class HTTPContractTests(unittest.TestCase):
         self.assertIn(b'content="test-session"', raw)
         self.assertNotIn(b"__AIM_SESSION_TOKEN__", raw)
         self.assertEqual(headers["Cache-Control"], "no-store")
+        status, headers, raw = self.request("/editor.mjs", method="GET", authenticated=False)
+        self.assertEqual(status, 200)
+        self.assertIn("javascript", headers["Content-Type"])
+        self.assertEqual(raw, b"export const ready = true;")
         status, _, raw = self.request("/api/bootstrap", method="GET")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(raw), {"instance_id": "new-test", "actor": "test-owner",
