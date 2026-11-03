@@ -204,9 +204,13 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/api/bootstrap":
             self._authorize()
-            limits = self._store_call(lambda store: store.view(self.server.actor, "capabilities", {}))
+            capabilities = self._store_call(lambda store: store.view(self.server.actor, "capabilities", {}))
+            if (capabilities.get("instance_id") != self.server.instance_id
+                    or not isinstance(capabilities.get("limits"), dict)
+                    or capabilities.get("error")):
+                raise RequestError(503, "CAPABILITIES_UNAVAILABLE", "The instance binding could not be confirmed.")
             self._json_response(200, {"instance_id": self.server.instance_id,
-                                      "actor": self.server.actor, "limits": limits})
+                                      "actor": self.server.actor, "limits": capabilities["limits"]})
             return
         if path in ("/api/command", "/api/view"):
             raise RequestError(405, "METHOD_REFUSED", "Use POST with the shared API contract.")

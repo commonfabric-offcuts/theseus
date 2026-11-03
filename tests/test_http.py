@@ -28,7 +28,7 @@ class FakeStore:
     def view(self, actor, name, args):
         self.calls.append(("view", actor, name, args))
         if name == "capabilities":
-            return {"body_utf8_bytes": 1048576, "recipients": 32}
+            return {"instance_id": "new-test", "limits": {"body_utf8_bytes": 1048576, "recipients": 32}}
         if name == "blocked":
             self.read_started.set()
             self.release_read.wait(5)
