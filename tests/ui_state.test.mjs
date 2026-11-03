@@ -152,5 +152,30 @@ test('Return never sends, including after deleting all quotes or opening a topic
   assert.equal(keyAction({ key: 'Enter', metaKey: true }, { context: 'note' }), 'save-note');
   assert.equal(keyAction({ key: 'Enter', metaKey: true, isComposing: true }, { context: 'reply' }), 'native');
   assert.equal(keyAction({ key: 'Enter' }, { context: 'reply', menuActive: true, quoteArmed: true }), 'native');
-  assert.equal(keyAction({ key: 'Enter' }, { context: 'reply', quoteArmed: true }), 'quote');
+  // Tony clarified that an inserted composer caret owns Return, even when
+  // the pointer happens to be over source text.
+  assert.equal(keyAction({ key: 'Enter' }, { context: 'reply', quoteArmed: true }), 'newline');
+  assert.equal(keyAction({ key: 'Enter' }, { context: 'reader', quoteArmed: true }), 'quote');
+});
+
+test('holding Cmd-Return after saving a note cannot send the reply underneath', () => {
+  assert.equal(keyAction({ key: 'Enter', metaKey: true }, { context: 'note' }), 'save-note');
+  for (const context of ['reply', 'note', 'opening']) {
+    assert.equal(keyAction({ key: 'Enter', metaKey: true, repeat: true }, { context }), 'native');
+    assert.equal(keyAction({ key: 'Enter', altKey: true, repeat: true }, { context }), 'native');
+  }
+});
+
+test('settled A does not hide B saved later on another device', () => {
+  for (const status of ['committed', 'rejected']) {
+    const editor = fresh();
+    editor.beginPrepare(ids);
+    editor.acceptPreparation(prepared());
+    editor.acceptSend({ ...sent(), status });
+    const remote = { ...draft, body: 'Typed on the phone', generation: 'gB', revision: 9 };
+    const recovered = restoreEditor(context, remote, editor.snapshot());
+    assert.equal(recovered.draft.body, 'Typed on the phone');
+    assert.equal(recovered.conflict, null);
+    assert.ok(recovered.saveTicket('next-save'));
+  }
 });

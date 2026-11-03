@@ -9,10 +9,11 @@ export function editorKey({ instanceId, actor, sourceRef, topicId, kind = 'reply
 
 export function keyAction(event, { context, menuActive = false, quoteArmed = false } = {}) {
   if (event.isComposing || event.keyCode === 229 || menuActive || event.key !== 'Enter') return 'native';
+  if (event.repeat && (event.metaKey || event.altKey)) return 'native';
   if (context === 'note') return event.metaKey ? 'save-note' : 'newline';
   if (event.metaKey) return event.shiftKey ? 'send-stay' : 'send-return';
   if (event.altKey && context === 'reply') return 'send-stay';
-  if (!event.shiftKey && quoteArmed) return 'quote';
+  if (!event.shiftKey && quoteArmed && context === 'reader') return 'quote';
   return context === 'reader' ? 'native' : 'newline';
 }
 
@@ -135,7 +136,9 @@ export function restoreEditor(context, serverDraft, journal) {
   if (!journal) return new Editor(context, serverDraft);
   if (journal.format !== 1 || journal.key !== editorKey(context)) throw new Error('Recovery data belongs to a different editor.');
   const editor = new Editor(context, serverDraft);
-  if (journal.localVersion > journal.ackVersion || journal.submissions.length || journal.conflict) {
+  editor.submissions = copy(journal.submissions);
+  const unsettled = journal.submissions.some(item => ['preparing', 'prepared'].includes(item.status));
+  if (journal.localVersion > journal.ackVersion || unsettled || journal.conflict) {
     for (const field of ['sourceRef', 'draft', 'localVersion', 'ackVersion', 'submissions', 'conflict']) editor[field] = copy(journal[field]);
     // A successor whose prepare reply was lost must first reconcile preparation.
     // A different server revision in a known generation is a visible conflict.
