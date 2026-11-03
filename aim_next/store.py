@@ -9,30 +9,9 @@ import uuid
 from typing import Any
 
 
-LIMITS = {
-    "body_utf8_bytes": 1048576,
-    "recipients": 32,
-    "topic_participants": 32,
-    "page_default": 50,
-    "page_max": 100,
-    "summary_utf8_bytes": 131072,
-    "http_envelope_bytes": 2097152,
-    "image_bytes": 16777216,
-    "attachment_count": 8,
-    "attachment_bytes": 67108864,
-}
-
-
-class StoreError(Exception):
-    """An unusable store or a non-business storage failure."""
-
-
-class Refusal(Exception):
-    def __init__(self, code, message, current_versions=None):
-        self.code = code
-        self.message = message
-        self.current_versions = current_versions
-        super().__init__(message)
+from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body
+from .drafts import Drafts, DRAFT_SCHEMA
+from .conversation import Conversation, CONVERSATION_SCHEMA
 
 
 SCHEMA = [
@@ -49,24 +28,6 @@ SCHEMA = [
     "CREATE TRIGGER immutable_operations_update BEFORE UPDATE ON operations BEGIN SELECT RAISE(ABORT, 'immutable operation'); END",
     "CREATE TRIGGER immutable_operations_delete BEFORE DELETE ON operations BEGIN SELECT RAISE(ABORT, 'immutable operation'); END",
 ]
-
-
-def _json(value):
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
-
-
-def _identifier(value, name="identifier"):
-    if not isinstance(value, str) or not value or len(value) > 200 or any(ord(c) < 32 for c in value):
-        raise Refusal("INVALID_ARGUMENT", "Invalid %s" % name)
-    return value
-
-
-def _body(value):
-    if not isinstance(value, str):
-        raise Refusal("INVALID_ARGUMENT", "Text must be a string")
-    if len(value.encode("utf-8")) > LIMITS["body_utf8_bytes"]:
-        raise Refusal("BODY_TOO_LARGE", "Writing exceeds the body limit; it has not been truncated")
-    return value
 
 
 def _connect(path):
@@ -98,7 +59,7 @@ def initialize(db_path, instance_id, initial_actors):
     try:
         db, _ = _connect(path)
         db.execute("BEGIN IMMEDIATE")
-        for statement in SCHEMA:
+        for statement in SCHEMA + DRAFT_SCHEMA + CONVERSATION_SCHEMA:
             db.execute(statement)
         db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
         db.execute("INSERT INTO metadata VALUES ('schema_version','1')")
@@ -122,7 +83,7 @@ def initialize(db_path, instance_id, initial_actors):
     return {"instance_id": instance_id, "db_path": str(path)}
 
 
-class Store:
+class Store(Drafts, Conversation):
     def __init__(self, db_path, expected_instance_id):
         self.path = Path(db_path).absolute()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -188,6 +149,7 @@ class Store:
                     raise Refusal("OPERATION_PAYLOAD_MISMATCH", "This operation already names different content")
                 db.rollback()
                 return json.loads(previous["outcome"])
+            self._check_send_reservation(db, actor, envelope)
             db.execute("SAVEPOINT effect")
             try:
                 handler = getattr(self, "_command_" + kind.replace(".", "_"), None)
