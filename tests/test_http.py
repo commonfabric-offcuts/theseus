@@ -204,6 +204,8 @@ class HTTPContractTests(unittest.TestCase):
                 self.assertEqual(status, expected)
                 self.assertIn("application/json", content_type)
                 self.assertFalse(json.loads(data)["recorded"])
+                if expected in (400, 431, 501):
+                    self.assertEqual(json.loads(data)["error"]["code"], "HTTP_%s" % expected)
         for header in (b"Authorization: Bearer test-session", b"Origin: " + self.origin.encode()):
             raw = (b"POST /api/view HTTP/1.0\r\nHost: " + host + b"\r\nAuthorization: Bearer test-session\r\n"
                    b"Origin: " + self.origin.encode() + b"\r\n" + header +

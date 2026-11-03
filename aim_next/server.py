@@ -130,7 +130,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_error(self, code, message=None, explain=None):
         # Stdlib parser/method errors have the same unconfirmed JSON boundary.
-        self._error(code, "HTTP_%s" % code, "This HTTP request was refused.")
+        self._error(code, "HTTP_%d" % int(code), "This HTTP request was refused.")
 
     def _discard_refused_upload(self):
         # Deliver the refusal before consuming any more bytes. Read in constant
