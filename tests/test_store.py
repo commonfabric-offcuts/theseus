@@ -25,6 +25,10 @@ class StoreCase(unittest.TestCase):
 
     def command(self, kind, args=None, target=None, expected=None, actor="owner", op=None):
         self.serial += 1
+        if kind == "participation.set" and expected is None and isinstance((target or {}).get("topic_id"), str):
+            current = self.store.view(actor, "topic", {"topic_id": target["topic_id"]})
+            if "topic" in current:
+                expected = {"topic_revision": current["topic"]["version"]}
         return self.store.command(actor, {
             "v": 1, "instance_id": "test-instance", "operation_id": op or "op-%s" % self.serial,
             "kind": kind, "target": target or {}, "expected": expected or {}, "args": args or {},

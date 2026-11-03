@@ -4,7 +4,7 @@ import json
 
 
 LIMITS = {
-    "body_utf8_bytes": 1048576, "recipients": 32, "topic_participants": 32,
+    "body_utf8_bytes": 1048576, "recipients": 32, "topic_participants": 32, "workspace_members": 128,
     "page_default": 50, "page_max": 100, "summary_utf8_bytes": 131072,
     "http_envelope_bytes": 2097152, "image_bytes": 16777216,
     "attachment_count": 8, "attachment_bytes": 67108864,

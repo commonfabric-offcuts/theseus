@@ -12,6 +12,7 @@ from typing import Any
 from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body
 from .drafts import Drafts, DRAFT_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA
+from .validation import COMMANDS, _command_envelope, _view_arguments
 
 
 SCHEMA = [
@@ -102,6 +103,7 @@ class Store(Drafts, Conversation):
             raise Refusal("INSTANCE_MISMATCH", "The selected instance does not match")
 
     def _actor(self, db, actor):
+        _identifier(actor, "actor")
         row = db.execute("SELECT * FROM actors WHERE id=? AND enabled=1", (actor,)).fetchone()
         if row is None:
             raise Refusal("INVALID_ACTOR", "No active actor binding for this instance")
@@ -128,13 +130,8 @@ class Store(Drafts, Conversation):
         try:
             if envelope.get("instance_id") != self.instance_id:
                 raise Refusal("INSTANCE_MISMATCH", "Command belongs to another instance")
-            if envelope.get("v") != 1:
-                raise Refusal("INVALID_ARGUMENT", "Unsupported command version")
-            op_id = _identifier(envelope.get("operation_id"), "operation_id")
-            kind = _identifier(envelope.get("kind"), "kind")
-            for key in ("target", "expected", "args"):
-                if not isinstance(envelope.get(key, {}), dict):
-                    raise Refusal("INVALID_ARGUMENT", "%s must be an object" % key)
+            envelope = _command_envelope(envelope)
+            op_id, kind = envelope["operation_id"], envelope["kind"]
             fingerprint = hashlib.sha256(_json(envelope).encode("utf-8")).hexdigest()
             db, _ = _connect(self.path)
             # All command checks, including the deduplication lookup, share the
@@ -152,15 +149,13 @@ class Store(Drafts, Conversation):
             self._check_send_reservation(db, actor, envelope)
             db.execute("SAVEPOINT effect")
             try:
-                handler = getattr(self, "_command_" + kind.replace(".", "_"), None)
+                handler = getattr(self, COMMANDS[kind]) if kind in COMMANDS else None
                 if handler is None:
                     raise Refusal("UNKNOWN_COMMAND", "Unsupported command kind")
                 result, affected = handler(db, actor, envelope)
                 receipt = self._receipt(envelope, "committed", True, result, affected)
-            except (Refusal, sqlite3.IntegrityError) as exc:
+            except Refusal as exc:
                 db.execute("ROLLBACK TO effect")
-                if not isinstance(exc, Refusal):
-                    exc = Refusal("RECORD_CONFLICT", "The requested record conflicts with existing state")
                 receipt = self._refusal(envelope, exc, recorded=True)
             db.execute("RELEASE effect")
             db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op_id, fingerprint, kind, _json(receipt)))
@@ -168,6 +163,9 @@ class Store(Drafts, Conversation):
             return receipt
         except Refusal as exc:
             return self._refusal(envelope, exc)
+        except sqlite3.IntegrityError:
+            return self._receipt(envelope, "rejected", False, error={
+                "code": "INTERNAL_ERROR", "message": "No outcome was recorded; reconcile before continuing", "retryable": False})
         except sqlite3.OperationalError as exc:
             if "locked" in str(exc).lower() or "busy" in str(exc).lower():
                 return self._receipt(envelope, "retryable", False, error={
@@ -182,6 +180,7 @@ class Store(Drafts, Conversation):
     def view(self, actor, view_name, args):
         db = None
         try:
+            args = _view_arguments(view_name, args)
             db, runtime = _connect(self.path)
             db.execute("BEGIN")
             self._check_instance(db)
@@ -210,6 +209,7 @@ class Store(Drafts, Conversation):
                 db.close()
 
     def _workspace(self, db, actor, workspace_id, owner=False):
+        _identifier(workspace_id, "workspace_id")
         row = db.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
         allowed = row and (row["owner_id"] == actor or (not owner and db.execute(
             "SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace_id, actor)).fetchone()))
@@ -224,18 +224,27 @@ class Store(Drafts, Conversation):
     def _command_workspace_create(self, db, actor, envelope):
         args = envelope.get("args", {})
         workspace_id = _identifier(args.get("id") or "w-" + uuid.uuid4().hex)
+        existing = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
+        expected = envelope.get("expected", {}).get("workspace_revision", 0)
+        if existing is not None:
+            versions = None
+            try:
+                self._workspace(db, actor, workspace_id)
+                versions = {"workspace_revision": existing["version"]}
+            except Refusal:
+                pass
+            raise Refusal("REVISION_CONFLICT", "The workspace already exists", versions)
+        if expected != 0:
+            raise Refusal("REVISION_CONFLICT", "Create requires revision zero", {"workspace_revision": 0})
         title = _body(args.get("title", ""))
         if not title.strip():
             raise Refusal("INVALID_ARGUMENT", "A workspace needs a title")
         team = args.get("team", [])
-        if not isinstance(team, list) or len(team) > LIMITS["topic_participants"]:
+        if not isinstance(team, list):
             raise Refusal("INVALID_ARGUMENT", "Choose a bounded workspace team")
-        team = list(dict.fromkeys([actor] + team))
-        for member in team:
-            try:
-                self._actor(db, _identifier(member))
-            except Refusal:
-                raise Refusal("INVALID_RECIPIENT", "Every team member needs an instance binding")
+        team = self._recipients(db, [actor] + team)
+        if len(team) > LIMITS["workspace_members"]:
+            raise Refusal("TOO_MANY_WORKSPACE_MEMBERS", "Workspace team limit includes its owner")
         coordinator = args.get("coordinator")
         if coordinator is not None and coordinator not in team:
             raise Refusal("INVALID_RECIPIENT", "The coordinator must belong to the chosen team")

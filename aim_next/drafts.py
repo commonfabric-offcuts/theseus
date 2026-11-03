@@ -25,9 +25,13 @@ def _source_key(ref):
 
 class Drafts:
     def _check_send_reservation(self, db, actor, envelope):
-        row = db.execute("SELECT id,topic_id,send_kind FROM submissions WHERE actor_id=? AND send_operation_id=?",
+        row = db.execute("SELECT id,topic_id,send_kind,send_operation_id FROM submissions WHERE actor_id=? AND send_operation_id=?",
                          (actor, envelope["operation_id"])).fetchone()
-        if row and (envelope["kind"] != row["send_kind"] or
+        if not row and envelope["kind"] in ("message.send", "topic.create_and_send"):
+            submission_id = envelope.get("args", {}).get("submission_id")
+            if isinstance(submission_id, str):
+                row = db.execute("SELECT id,topic_id,send_kind,send_operation_id FROM submissions WHERE actor_id=? AND id=?", (actor, submission_id)).fetchone()
+        if row and (envelope["operation_id"] != row["send_operation_id"] or envelope["kind"] != row["send_kind"] or
                     envelope.get("target", {}) != {"topic_id": row["topic_id"]} or
                     envelope.get("args", {}) != {"submission_id": row["id"]} or
                     envelope.get("expected", {}) != {}):
@@ -74,6 +78,10 @@ class Drafts:
             raise Refusal("FORBIDDEN", "This draft belongs to another actor")
         revision = row["revision"] if row else 0
         _revision(envelope.get("expected", {}), "draft_revision", revision)
+        if row is None:
+            occupied = db.execute("SELECT revision FROM drafts WHERE actor_id=? AND source_key=? AND topic_id=?", (actor, source_key, topic_id)).fetchone()
+            if occupied:
+                raise Refusal("REVISION_CONFLICT", "This editor already has a draft; reopen its existing identity", {"draft_revision": occupied["revision"]})
         if row and (row["source_key"] != source_key or row["topic_id"] != topic_id or
                     json.loads(row["payload"])["source_ref"] != ref or row["generation"] != generation):
             raise Refusal("REVISION_CONFLICT", "The draft source or generation has changed")
@@ -98,6 +106,10 @@ class Drafts:
             raise Refusal("FORBIDDEN", "This note belongs to another actor")
         revision = row["revision"] if row else 0
         _revision(envelope.get("expected", {}), "note_revision", revision)
+        if row is None:
+            occupied = db.execute("SELECT revision FROM notes WHERE actor_id=? AND source_key=?", (actor, key)).fetchone()
+            if occupied:
+                raise Refusal("REVISION_CONFLICT", "This source already has a private note", {"note_revision": occupied["revision"]})
         if row and (row["source_key"] != key or json.loads(row["payload"])["source_ref"] != ref):
             raise Refusal("REVISION_CONFLICT", "An existing note retains its source revision")
         payload = {"source_ref": ref, "body": _body(args.get("body", "")), "caret": args.get("caret")}
@@ -110,6 +122,7 @@ class Drafts:
 
     def _command_submission_prepare(self, db, actor, envelope):
         args = envelope.get("args", {})
+        _identifier(args.get("draft_id"), "draft_id")
         row = db.execute("SELECT * FROM drafts WHERE id=? AND actor_id=?", (args.get("draft_id"), actor)).fetchone()
         if not row:
             raise Refusal("FORBIDDEN", "No private draft for this actor")
@@ -125,9 +138,12 @@ class Drafts:
         self._validate_source_ref(db, actor, snapshot["source_ref"])
         submission_id = _identifier(args.get("submission_id"), "submission_id")
         send_op = _identifier(args.get("send_operation_id"), "send_operation_id")
+        if db.execute("SELECT 1 FROM submissions WHERE actor_id=? AND id=?", (actor, submission_id)).fetchone():
+            raise Refusal("REVISION_CONFLICT", "This submission identity already holds another frozen act")
         if send_op == envelope["operation_id"] or db.execute(
-                "SELECT 1 FROM operations WHERE actor_id=? AND id=?", (actor, send_op)).fetchone():
-            raise Refusal("OPERATION_PAYLOAD_MISMATCH", "The future send needs an unused operation identity")
+                "SELECT 1 FROM operations WHERE actor_id=? AND id=?", (actor, send_op)).fetchone() or db.execute(
+                "SELECT 1 FROM submissions WHERE actor_id=? AND send_operation_id=?", (actor, send_op)).fetchone():
+            raise Refusal("SEND_ID_UNAVAILABLE", "The future send needs an unused operation identity")
         snapshot.update(id=submission_id, topic_id=row["topic_id"], draft_id=row["id"],
                         draft_revision=row["revision"], draft_generation=row["generation"],
                         prepare_operation_id=envelope["operation_id"], send_operation_id=send_op)
@@ -148,6 +164,7 @@ class Drafts:
                     {"kind": "submission", "id": submission_id, "version": 1}]
 
     def _submission(self, db, actor, submission_id):
+        _identifier(submission_id, "submission_id")
         row = db.execute("SELECT * FROM submissions WHERE actor_id=? AND id=?", (actor, submission_id)).fetchone()
         if not row:
             raise Refusal("FORBIDDEN", "No private submission for this actor")

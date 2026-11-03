@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size
+from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 
 
 CONVERSATION_SCHEMA = [
@@ -26,6 +26,7 @@ def _preview(value, size=1024):
 
 class Conversation:
     def _topic(self, db, actor, topic_id, manage=False):
+        _identifier(topic_id, "topic_id")
         row = db.execute("SELECT t.*,w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?", (topic_id,)).fetchone()
         allowed = row and (row["owner_id"] == actor or row["creator_id"] == actor)
         if row and not allowed and not manage:
@@ -54,6 +55,7 @@ class Conversation:
 
     def _command_participation_set(self, db, actor, envelope):
         topic = self._topic(db, actor, envelope.get("target", {}).get("topic_id"), manage=True)
+        _revision(envelope.get("expected", {}), "topic_revision", topic["version"])
         args = envelope.get("args", {})
         member = self._recipients(db, [args.get("actor_id")])[0]
         present = args.get("present")
@@ -88,9 +90,16 @@ class Conversation:
             raise Refusal("INVALID_ARGUMENT", "A send accepts only its frozen submission identity")
         _, snapshot = self._submission(db, actor, args.get("submission_id"))
         topic_id = snapshot["topic_id"]
-        if snapshot["send_operation_id"] != envelope["operation_id"] or envelope.get("target", {}).get("topic_id") != topic_id:
-            raise Refusal("OPERATION_PAYLOAD_MISMATCH", "Use the prepared operation and destination unchanged")
         if opening:
+            existing = db.execute("SELECT version FROM topics WHERE id=?", (topic_id,)).fetchone()
+            if existing is not None:
+                versions = None
+                try:
+                    self._topic(db, actor, topic_id)
+                    versions = {"topic_revision": existing["version"]}
+                except Refusal:
+                    pass
+                raise Refusal("REVISION_CONFLICT", "This preallocated topic identity is already in use", versions)
             creation = snapshot.get("opening")
             if not isinstance(creation, dict) or snapshot["source_ref"]["kind"] != "new_topic":
                 raise Refusal("INVALID_ARGUMENT", "This submission is not a topic opening")
