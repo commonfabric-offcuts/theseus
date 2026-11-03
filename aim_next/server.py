@@ -32,7 +32,7 @@ def _invalid_constant(value):
 
 
 class AIMHTTPServer(ThreadingHTTPServer):
-    daemon_threads = True
+    daemon_threads = False
     block_on_close = True
     allow_reuse_address = True
 

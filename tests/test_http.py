@@ -5,7 +5,7 @@ import json
 import tempfile
 import threading
 import unittest
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 
 from aim_next.server import create_server
@@ -16,11 +16,16 @@ class FakeStore:
         self.calls = []
         self.read_started = threading.Event()
         self.release_read = threading.Event()
+        self.command_started = threading.Event()
+        self.release_command = threading.Event()
 
     def command(self, actor, envelope):
         self.calls.append(("command", actor, envelope))
         if envelope["kind"] == "explode":
             raise RuntimeError("private database path and token must not escape")
+        if envelope["kind"] == "blocked-command":
+            self.command_started.set()
+            self.release_command.wait(5)
         return {"instance_id": "new-test", "operation_id": envelope["operation_id"],
                 "kind": envelope["kind"], "status": "committed", "recorded": True,
                 "result": {"message_id": "m-one"}, "affected": []}
@@ -56,6 +61,7 @@ class HTTPContractTests(unittest.TestCase):
 
     def tearDown(self):
         self.store.release_read.set()
+        self.store.release_command.set()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(2)
@@ -159,6 +165,22 @@ class HTTPContractTests(unittest.TestCase):
             finally:
                 self.store.release_read.set()
             self.assertEqual(blocked.result()[0], 200)
+
+    def test_graceful_close_waits_for_an_admitted_command(self):
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            pending = executor.submit(self.request, "/api/command", self.command(kind="blocked-command"))
+            try:
+                self.assertTrue(self.store.command_started.wait(1))
+                self.server.shutdown()
+                closing = executor.submit(self.server.server_close)
+                with self.assertRaises(TimeoutError):
+                    closing.result(timeout=0.1)
+            finally:
+                self.store.release_command.set()
+            status, _, raw = pending.result()
+            self.assertEqual(status, 200)
+            self.assertTrue(json.loads(raw)["recorded"])
+            closing.result(timeout=2)
 
 
 if __name__ == "__main__":
