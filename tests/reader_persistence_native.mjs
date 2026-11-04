@@ -1,6 +1,6 @@
 // Real isolated HTTP/Store and browser IDB/Web Locks. CDP owns only its CFT
 // profile and closes the browser over its socket; no signals, origin sweeps,
-// application hooks, or other member's identity.
+// product debug endpoints, synthetic UI actions, or other member's identity.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -308,6 +308,45 @@ try {
     };
     if (mode === '--correction') {
       const sourceText = p => p.evaluate('document.querySelector("#source-body").textContent');
+      const observeCalls = async p => {
+        const modules = await p.evaluate(`(async()=>{
+          const registryURL=new URL('./app-session.mjs',location.href),apiURL=new URL('./api.mjs',location.href);
+          if(registryURL.search || apiURL.search)throw Error('Observer module identity has a query string');
+          const {EditorRegistry}=await import(registryURL.href),{Api}=await import(apiURL.href);
+          window.fixtureCalls=[];let serial=0;
+          const wrap=(prototype,method,reference)=>{
+            const original=prototype[method];
+            prototype[method]=function(...args){
+              const call={id:++serial,method,source_ref:structuredClone(reference(args)),settled:false};
+              fixtureCalls.push(call);
+              const promise=original.apply(this,args);
+              const reaction=promise.then(()=>{call.outcome='fulfilled'},error=>{call.outcome='rejected';call.error=error.message});
+              call.observed=reaction.then(()=>{call.settled=true});
+              return promise;
+            };
+          };
+          wrap(EditorRegistry.prototype,'open',args=>args[0]);
+          wrap(EditorRegistry.prototype,'neighbors',args=>args[0].source.source_ref);
+          wrap(Api.prototype,'media',args=>args[2]);
+          return {registry:registryURL.href,api:apiURL.href};
+        })()`);
+        observations.push({ observerModules: modules });
+      };
+      const callState = (p, id) => p.evaluate(`(()=>{const c=fixtureCalls.find(c=>c.id===${id});return c?{id:c.id,method:c.method,source_ref:c.source_ref,settled:c.settled,outcome:c.outcome??null,error:c.error??null}:null})()`);
+      const started = async (p, method, source, after = 0) => {
+        const call = await until(() => p.evaluate(`(()=>{const c=fixtureCalls.find(c=>c.id>${after}&&c.method===${JSON.stringify(method)}&&JSON.stringify(c.source_ref)===${JSON.stringify(JSON.stringify(source))});return c?{id:c.id,method:c.method,source_ref:c.source_ref}:null})()`), 'application own ' + method + ' call');
+        assert.equal(call.method, method); assert.deepEqual(call.source_ref, source, 'observer records the native application call and exact source');
+        return call;
+      };
+      const settled = async (p, call) => {
+        const state = await until(async () => { const state = await callState(p, call.id); return state?.settled ? state : null; }, 'exact application ' + call.method + ' settlement');
+        assert.equal(state.id, call.id); assert.equal(state.method, call.method); assert.deepEqual(state.source_ref, call.source_ref);
+        assert.equal(state.outcome, 'fulfilled', 'successful fixture call settles normally');
+        observations.push({ settledApplicationCall: state });
+        return state;
+      };
+      const noticeState = p => p.evaluate("({hidden:document.querySelector('#reader-notice').hidden,text:document.querySelector('#reader-notice').textContent})");
+      const arrowState = p => p.evaluate("({previous:document.querySelector('#previous-message').disabled,next:document.querySelector('#next-message').disabled})");
       const imageLink = '#source-attachments a[download="passive.png"]';
       const openAttachment = async (p, name) => {
         const selector = await p.evaluate(`(()=>{const b=[...document.querySelectorAll('#source-attachments button')].find(e=>e.textContent===${JSON.stringify('Open ' + name)});if(!b)return null;b.id='open-fixture-attachment';return '#open-fixture-attachment'})()`);
@@ -338,14 +377,21 @@ try {
 
       await check('correction source controls survive mode and quote without redrawing the source', async () => {
         const p = await page('mode-controls', null, true);
+        await observeCalls(p);
         p.intercept(payload => payload?.name === 'topic_messages' && payload.args.audience === 'reader');
         await p.open(0); await until(() => p.held.length === 2, 'both neighbor responses held');
+        await settled(p, await started(p, 'open', facts.sources[0]));
+        const neighborCall = await started(p, 'neighbors', facts.sources[0]), xCursor = p.held[0].payload.args.cursor;
+        const xNeighborReads = () => p.calls.filter(call => call.payload?.name === 'topic_messages' && call.payload.args.audience === 'reader' && call.payload.args.cursor === xCursor).length;
         await p.evaluate("(()=>{window.fixtureSourceNode=document.querySelector('#source-body').firstChild;document.querySelector('#source-body').scrollTop=180})()");
         await p.point('#toggle-note'); await p.point('#toggle-note');
+        assert.deepEqual(await noticeState(p), { hidden: true, text: '' }, 'ordinary mode changes report no cancelled navigation');
         const place = await p.evaluate("({scroll:document.querySelector('#source-body').scrollTop,focus:document.activeElement.id,height:document.querySelector('#writing-body').getBoundingClientRect().height})");
         p.intercept(null); for (const held of p.held) await p.release(held);
+        await settled(p, neighborCall);
         assert.deepEqual(await p.evaluate("({previous:document.querySelector('#previous-message').disabled,next:document.querySelector('#next-message').disabled})"), { previous: true, next: false }, 'resolved arrows survive the mode switch');
         await observeURLs(p); await openAttachment(p, 'passive.png');
+        await settled(p, await started(p, 'media', facts.sources[0]));
         await until(() => p.evaluate('fixtureURLs.length === 1'), 'verified image Blob created');
         assert.ok(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(imageLink)}))`), 'named image download survives the mode switch');
         await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth > 0'), 'actual decoded PNG');
@@ -353,6 +399,9 @@ try {
         assert.deepEqual(await p.evaluate("({scroll:document.querySelector('#source-body').scrollTop,focus:document.activeElement.id,height:document.querySelector('#writing-body').getBoundingClientRect().height})"), { ...place, focus: '' }, 'media does not redraw source or writing space');
         await p.point('#next-message');
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'exact next source');
+        await settled(p, await started(p, 'open', facts.sources[1]));
+        assert.equal(xNeighborReads(), 2, 'Next reuses the exact resolved X neighbor pair');
+        observations.push({ xCursor, xNeighborReadCount: xNeighborReads() });
         assert.equal(await field(p), (await privateState()).draft?.body ?? '', 'neighbor has its own draft');
         await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed neighbor');
         await p.open(0); await p.point('#toggle-note');
@@ -369,7 +418,10 @@ try {
       await check('correction newer mode and quote visibly cancel a held step', async () => {
         for (const action of ['mode', 'quote']) {
           const p = await page('cancel-' + action, null, true); await p.open(0);
-          if (action === 'quote') await p.point('#toggle-note');
+          if (action === 'quote') {
+            await p.point('#toggle-note');
+            assert.deepEqual(await noticeState(p), { hidden: true, text: '' }, 'ordinary note mode reports no cancelled navigation');
+          }
           const held = await newHeldStep(p);
           if (action === 'mode') await p.point('#toggle-note');
           else { await p.point('#source-body [data-start="0"]'); await p.key('Enter'); }
@@ -380,6 +432,55 @@ try {
           if (action === 'quote') assert.ok((await field(p)).endsWith('> Source 0 exact passage. \n\n'));
           assert.deepEqual(p.errors, []); await p.close();
         }
+      });
+
+      await check('correction held Y rejects X neighbors and media then mode cancellation restores X', async () => {
+        const p = await page('held-y', null, true); await observeCalls(p);
+        let neighborsHeld = 0, mediaHeld = false;
+        p.intercept((payload, event) => {
+          if (payload?.name === 'topic_messages' && payload.args.audience === 'reader' && neighborsHeld < 2) { ++neighborsHeld; return true; }
+          if (event.request.url.endsWith('/api/media/read') && !mediaHeld) { mediaHeld = true; return true; }
+          return payload?.name === 'source' && payload.args.id === facts.sources[1].id;
+        });
+        await p.open(0); await settled(p, await started(p, 'open', facts.sources[0]));
+        await until(() => p.held.length === 2, 'initial X pair held');
+        const pair = [...p.held], neighbors = await started(p, 'neighbors', facts.sources[0]);
+        await observeURLs(p); await openAttachment(p, 'passive.png');
+        const media = await started(p, 'media', facts.sources[0]);
+        const mediaResponse = await until(() => p.held.find(entry => entry.event.request.url.endsWith('/api/media/read')), 'X media held');
+        await p.point('#source-body'); await p.key('ArrowRight', 4);
+        const heldY = await until(() => p.held.find(entry => entry.payload?.name === 'source'), 'Y source held');
+        const openingY = await started(p, 'open', facts.sources[1]);
+        assert.equal((await callState(p, openingY.id)).settled, false);
+        const visible = () => p.evaluate("({source:document.querySelector('#source-body').textContent,body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})");
+        const before = await visible();
+        for (const entry of pair) await p.release(entry);
+        await settled(p, neighbors);
+        await p.release(mediaResponse); await settled(p, media);
+        assert.equal(await p.evaluate('fixtureURLs.length'), 1, 'media verification reached the real consumer');
+        const rejectedURL = await p.evaluate('fixtureURLs[0].url');
+        const consumers = { arrows: await arrowState(p),
+          images: await p.evaluate('document.querySelectorAll("#source-attachments img").length'),
+          downloads: await p.evaluate('document.querySelectorAll("#source-attachments a").length'),
+          urlReadable: await readable(p, rejectedURL) };
+        observations.push({ heldYConsumers: consumers, heldOpen: await callState(p, openingY.id) });
+        assert.equal((await callState(p, openingY.id)).settled, false, 'Y remains held during both X consumer assertions');
+        assert.deepEqual(consumers, { arrows: { previous: true, next: true }, images: 0, downloads: 0, urlReadable: false }, 'held Y rejects both X consumers');
+        assert.deepEqual(await visible(), before, 'discarded X results leave writing/source/focus/notice intact');
+        await p.point('#toggle-note');
+        observations.push({ postCancellationArrows: await arrowState(p) });
+        assert.match((await noticeState(p)).text, /opening the other message was cancelled/);
+        await openAttachment(p, 'passive.png');
+        const retried = await started(p, 'media', facts.sources[0], media.id); await settled(p, retried);
+        await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth>0'), 'fresh X PNG accepted after cancellation');
+        const acceptedURL = await p.evaluate(`document.querySelector(${JSON.stringify(imageLink)}).href`);
+        assert.equal(await readable(p, acceptedURL), true, 'positive live URL after X restoration');
+        assert.equal(await readable(p, rejectedURL), false, 'earlier rejected URL stays revoked');
+        assert.equal((await callState(p, openingY.id)).settled, false, 'old Y stays held while restored X media is accepted');
+        await p.release(heldY); await settled(p, openingY);
+        assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled Y cannot replace restored X');
+        assert.equal(await p.evaluate('document.querySelector("#writing-title").textContent'), 'Private note');
+        assert.deepEqual(p.errors, []);
       });
 
       await check('correction stale media is discarded and displayed object URLs are revoked', async () => {

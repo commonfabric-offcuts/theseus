@@ -67,8 +67,10 @@ for (const lateFailure of [false, true]) {
   test(`mode cancels a held source read without reviving its error (${lateFailure})`, async t => {
     const f = await fixture(t), x = await f.open(0), held = await holdSource(f, lateFailure);
     t.after(() => held.release.resolve());
+    assert.equal(f.registry.isSourceCurrent(x), false, 'X source results are refused while Y is pending');
     const note = f.registry.setMode('note');
     assert.equal(note.source, x.source); assert.equal(note.mode, 'note');
+    assert.equal(f.registry.isSourceCurrent(x), true, 'mode cancellation deliberately restores X source lifetime');
     assert.equal(f.registry.pendingOpen, null); assert.equal(f.registry.isCurrent(x), false);
     held.release.resolve(); const settled = await held.opening;
     assert.equal(settled.error, undefined, 'cancelled mode navigation cannot report a late error');
