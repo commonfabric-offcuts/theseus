@@ -12,16 +12,24 @@ COMMANDS = {
     "message.send": "_command_message_send",
     "participation.set": "_command_participation_set",
     "delivery.ack": "_command_delivery_ack",
+    "memory.create": "_command_memory_create", "memory.revise": "_command_memory_revise",
+    "media.begin": "_command_media_begin", "media.publish": "_command_media_publish",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
-            "participation.set": {"topic_revision"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set()}
+            "participation.set": {"topic_revision"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
+            "memory.create": {"item_revision"}, "memory.revise": {"item_revision"},
+            "media.begin": {"media_revision"}, "media.publish": {"media_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
-                     "submission.prepare": "draft_revision", "participation.set": "topic_revision"}
+                     "submission.prepare": "draft_revision", "participation.set": "topic_revision",
+                     "memory.create": "item_revision", "memory.revise": "item_revision",
+                     "media.begin": "media_revision", "media.publish": "media_revision"}
 VIEWS = {
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit"}, "topic": {"topic_id"},
-    "topic_messages": {"topic_id", "cursor", "limit"}, "source": {"source_ref", "kind", "id", "revision"},
+    "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction"}, "source": {"source_ref", "kind", "id", "revision"},
+    "memory_items": {"owner_scope", "cursor", "limit"},
+    "media": {"media_id", "source_ref"},
     "editor_state": {"source_ref", "topic_id", "cursor", "limit"},
     "submission": {"submission_id"}, "submissions": {"source_ref", "topic_id", "cursor", "limit"},
     "deliveries": {"cursor", "limit"},
@@ -80,6 +88,9 @@ def _view_arguments(name, args):
     # No public or private view can substitute an actor from a JSON field.
     if set(args) - VIEWS[name]:
         raise Refusal("INVALID_ARGUMENT", "Unsupported view arguments, including actor or owner overrides")
+    if name == "topic_messages" and (args.get("audience", "all") not in ("all", "reader")
+                                      or args.get("direction", "after") not in ("before", "after")):
+        raise Refusal("INVALID_ARGUMENT", "Invalid message audience or direction")
     if (name == "editor_state" and args.get("topic_id") is None
             and isinstance(args.get("source_ref"), dict) and args["source_ref"].get("kind") != "new_topic"):
         # A private note has no reply destination. Normalize only this view;

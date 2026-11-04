@@ -1,0 +1,153 @@
+from __future__ import annotations
+
+import json
+
+from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
+from .conversation import _preview
+
+
+MEMORY_SCHEMA = [
+    "CREATE TABLE memory_items (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, scope_kind TEXT NOT NULL, scope_id TEXT NOT NULL, creator_id TEXT NOT NULL REFERENCES actors(id), current_revision INTEGER NOT NULL)",
+    "CREATE INDEX scoped_memory_items ON memory_items(scope_kind,scope_id,seq)",
+    "CREATE TABLE memory_revisions (item_id TEXT NOT NULL REFERENCES memory_items(id), revision INTEGER NOT NULL, author_id TEXT NOT NULL REFERENCES actors(id), operation_id TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, attachments TEXT NOT NULL, refs TEXT NOT NULL, PRIMARY KEY(item_id,revision), UNIQUE(author_id,operation_id))",
+    "CREATE TABLE memory_notebooks (scope_kind TEXT NOT NULL, scope_id TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(scope_kind,scope_id))",
+    "CREATE TRIGGER immutable_memory_revision_update BEFORE UPDATE ON memory_revisions BEGIN SELECT RAISE(ABORT, 'immutable Notebook revision'); END",
+    "CREATE TRIGGER immutable_memory_revision_delete BEFORE DELETE ON memory_revisions BEGIN SELECT RAISE(ABORT, 'immutable Notebook revision'); END",
+    "CREATE TRIGGER immutable_memory_identity BEFORE UPDATE ON memory_items WHEN NEW.seq!=OLD.seq OR NEW.id!=OLD.id OR NEW.scope_kind!=OLD.scope_kind OR NEW.scope_id!=OLD.scope_id OR NEW.creator_id!=OLD.creator_id BEGIN SELECT RAISE(ABORT, 'immutable Notebook identity'); END",
+    "CREATE TRIGGER immutable_memory_item_delete BEFORE DELETE ON memory_items BEGIN SELECT RAISE(ABORT, 'immutable Notebook identity'); END",
+]
+
+
+class Memory:
+    def _memory_scope(self, db, actor, scope, write=False):
+        if not isinstance(scope, dict) or set(scope) != {"kind", "id"} or scope["kind"] not in ("topic", "workspace"):
+            raise Refusal("INVALID_ARGUMENT", "A topic or workspace Notebook scope is required")
+        scope_id = _identifier(scope["id"], "owner_scope.id")
+        if scope["kind"] == "topic":
+            self._topic(db, actor, scope_id)
+        else:
+            self._workspace(db, actor, scope_id)
+        if write:
+            if self._actor(db, actor)["kind"] != "agent":
+                raise Refusal("FORBIDDEN", "Only participating agents edit this Notebook")
+            if scope["kind"] == "topic":
+                allowed = db.execute("SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1", (scope_id, actor)).fetchone()
+            else:
+                allowed = db.execute("SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (scope_id, actor)).fetchone()
+            if not allowed:
+                raise Refusal("FORBIDDEN", "Current participation is required to edit this Notebook")
+        return {"kind": scope["kind"], "id": scope_id}
+
+    def _memory_identity(self, db, actor, item_id, write=False):
+        row = db.execute("SELECT * FROM memory_items WHERE id=?", (_identifier(item_id, "item_id"),)).fetchone()
+        if row is None:
+            raise Refusal("FORBIDDEN", "No readable Notebook item")
+        self._memory_scope(db, actor, {"kind": row["scope_kind"], "id": row["scope_id"]}, write=write)
+        return row
+
+    def _memory_ref(self, db, actor, ref):
+        if (not isinstance(ref, dict) or set(ref) != {"kind", "id", "revision"}
+                or ref.get("kind") != "memory" or type(ref.get("revision")) is not int
+                or not 1 <= ref["revision"] <= 9223372036854775807):
+            raise Refusal("INVALID_ARGUMENT", "An exact positive Notebook revision is required")
+        identity = self._memory_identity(db, actor, ref["id"])
+        if not db.execute("SELECT 1 FROM memory_revisions WHERE item_id=? AND revision=?", (ref["id"], ref["revision"])).fetchone():
+            raise Refusal("FORBIDDEN", "No readable Notebook revision")
+        return identity
+
+    def _memory_content(self, db, actor, args, retained=()):
+        if set(args) != {"title", "body", "attachments", "references"}:
+            raise Refusal("INVALID_ARGUMENT", "Supply a complete Notebook revision")
+        title, body = _body(args["title"]), _body(args["body"])
+        attachments, refs = args["attachments"], args["references"]
+        if not isinstance(attachments, list) or not isinstance(refs, list):
+            raise Refusal("INVALID_ARGUMENT", "Attachments and references must be lists")
+        if len(refs) > LIMITS["memory_references"]:
+            raise Refusal("INVALID_ARGUMENT", "Too many Notebook evidence references")
+        for ref in refs:
+            if isinstance(ref, dict) and ref.get("kind") == "memory":
+                self._memory_ref(db, actor, ref)
+            elif isinstance(ref, dict) and set(ref) == {"kind", "id"} and ref["kind"] == "message":
+                self._message_access(db, actor, ref["id"])
+            else:
+                raise Refusal("INVALID_ARGUMENT", "Evidence must name an exact message or Notebook revision")
+        attachments = self._attachment_refs(db, actor, attachments, ready=True, retained=retained)
+        return title, body, attachments, refs
+
+    def _command_memory_create(self, db, actor, envelope):
+        return self._write_memory(db, actor, envelope, creating=True)
+
+    def _command_memory_revise(self, db, actor, envelope):
+        return self._write_memory(db, actor, envelope, creating=False)
+
+    def _write_memory(self, db, actor, envelope, creating):
+        target = envelope["target"]
+        if set(target) != ({"item_id", "owner_scope"} if creating else {"item_id"}):
+            raise Refusal("INVALID_ARGUMENT", "Notebook ownership is fixed at creation")
+        item_id = _identifier(target["item_id"], "item_id")
+        if creating:
+            scope = self._memory_scope(db, actor, target["owner_scope"], write=True)
+            old = db.execute("SELECT * FROM memory_items WHERE id=?", (item_id,)).fetchone()
+            if old is not None:
+                self._memory_identity(db, actor, item_id, write=True)
+            revision = old["current_revision"] if old else 0
+            _revision(envelope["expected"], "item_revision", revision)
+            if old is not None:
+                raise Refusal("REVISION_CONFLICT", "This Notebook identity already exists")
+        else:
+            old = self._memory_identity(db, actor, item_id, write=True)
+            scope = {"kind": old["scope_kind"], "id": old["scope_id"]}
+            revision = old["current_revision"]
+            _revision(envelope["expected"], "item_revision", revision)
+        retained = [] if creating else [ref["id"] for ref in json.loads(db.execute(
+            "SELECT attachments FROM memory_revisions WHERE item_id=? AND revision=?", (item_id, revision)).fetchone()[0])]
+        title, body, attachments, refs = self._memory_content(db, actor, envelope["args"], retained=retained)
+        if creating:
+            db.execute("INSERT INTO memory_items(id,scope_kind,scope_id,creator_id,current_revision) VALUES (?,?,?,?,1)",
+                       (item_id, scope["kind"], scope["id"], actor))
+        else:
+            db.execute("UPDATE memory_items SET current_revision=? WHERE id=?", (revision + 1, item_id))
+        db.execute("INSERT INTO memory_revisions VALUES (?,?,?,?,?,?,?,?)", (item_id, revision + 1, actor,
+                   envelope["operation_id"], title, body, _json(attachments), _json(refs)))
+        db.execute("INSERT INTO memory_notebooks VALUES (?,?,1) ON CONFLICT(scope_kind,scope_id) DO UPDATE SET version=version+1", (scope["kind"], scope["id"]))
+        notebook_version = db.execute("SELECT version FROM memory_notebooks WHERE scope_kind=? AND scope_id=?", (scope["kind"], scope["id"])).fetchone()[0]
+        self._change(db, scope["kind"], scope["id"], "memory", item_id, revision + 1)
+        ref = {"kind": "memory", "id": item_id, "revision": revision + 1}
+        return {"item_id": item_id, "owner_scope": scope, "revision": revision + 1,
+                "source_ref": ref, "notebook_version": notebook_version}, [
+                    {"kind": "memory", "id": item_id, "version": revision + 1},
+                    {"kind": "notebook", "id": scope["id"], "scope_kind": scope["kind"], "version": notebook_version}]
+
+    def _memory_source(self, db, actor, ref):
+        item = self._memory_ref(db, actor, ref)
+        row = db.execute("SELECT * FROM memory_revisions WHERE item_id=? AND revision=?", (ref["id"], ref["revision"])).fetchone()
+        return {"instance_id": self.instance_id, "source_ref": dict(ref),
+                "owner_scope": {"kind": item["scope_kind"], "id": item["scope_id"]},
+                "topic_id": item["scope_id"] if item["scope_kind"] == "topic" else None,
+                "author": row["author_id"], "creator": item["creator_id"], "title": row["title"],
+                "body": row["body"], "attachments": json.loads(row["attachments"]),
+                "references": json.loads(row["refs"]), "version": row["revision"],
+                "current_revision": item["current_revision"], "allowed_actions": ["quote", "note.save"]}
+
+    def _view_memory_items(self, db, actor, args):
+        scope = self._memory_scope(db, actor, args.get("owner_scope"))
+        limit = _page_size(args)
+        rows = db.execute("SELECT i.*,r.author_id,substr(r.title,1,256) AS title,substr(r.body,1,1024) AS body,length(CAST(r.body AS BLOB)) AS body_bytes FROM memory_items i JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision WHERE i.scope_kind=? AND i.scope_id=? AND i.seq>? ORDER BY i.seq LIMIT ?",
+                          (scope["kind"], scope["id"], args.get("cursor", 0), limit + 1)).fetchall()
+        items, size = [], 1024
+        for row in rows[:limit]:
+            body = _preview(row["body"])
+            item = {"id": row["id"], "seq": row["seq"], "owner_scope": scope,
+                    "title": _preview(row["title"], 256), "body": body,
+                    "preview": len(body.encode("utf-8")) < row["body_bytes"],
+                    "source_ref": {"kind": "memory", "id": row["id"], "revision": row["current_revision"]},
+                    "revision": row["current_revision"], "author": row["author_id"], "allowed_actions": ["quote", "note.save"]}
+            encoded = len(_json(item).encode("utf-8")) + 1
+            if size + encoded > LIMITS["summary_utf8_bytes"]:
+                break
+            items.append(item)
+            size += encoded
+        version = db.execute("SELECT version FROM memory_notebooks WHERE scope_kind=? AND scope_id=?", (scope["kind"], scope["id"])).fetchone()
+        return {"instance_id": self.instance_id, "items": items,
+                "next_cursor": items[-1]["seq"] if len(rows) > len(items) else None,
+                "relevant_versions": {"notebook": version[0] if version else 0}}

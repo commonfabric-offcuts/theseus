@@ -11,6 +11,8 @@ CONVERSATION_SCHEMA = [
     "CREATE INDEX participant_topics ON topic_participants(actor_id,active,topic_id)",
     "CREATE TABLE messages (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, topic_id TEXT NOT NULL REFERENCES topics(id), author_id TEXT NOT NULL REFERENCES actors(id), body TEXT NOT NULL, attachments TEXT NOT NULL, quotes TEXT NOT NULL, addressees TEXT NOT NULL, reply_to TEXT, exchange_id TEXT, operation_id TEXT NOT NULL, UNIQUE(author_id,operation_id))",
     "CREATE INDEX topic_messages ON messages(topic_id,seq)",
+    "CREATE INDEX unaddressed_messages ON messages(topic_id,seq) WHERE addressees='[]'",
+    "CREATE TABLE message_addressees (topic_id TEXT NOT NULL REFERENCES topics(id), actor_id TEXT NOT NULL REFERENCES actors(id), seq INTEGER NOT NULL REFERENCES messages(seq), PRIMARY KEY(topic_id,actor_id,seq))",
     "CREATE TABLE topic_summaries (topic_id TEXT PRIMARY KEY REFERENCES topics(id), message_count INTEGER NOT NULL, latest_message_id TEXT REFERENCES messages(id))",
     "CREATE TABLE deliveries (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL REFERENCES messages(id), recipient_id TEXT NOT NULL REFERENCES actors(id), group_id INTEGER NOT NULL REFERENCES delivery_groups(id), state TEXT NOT NULL DEFAULT 'pending', UNIQUE(message_id,recipient_id))",
     "CREATE INDEX recipient_deliveries ON deliveries(recipient_id,state,seq)",
@@ -122,11 +124,8 @@ class Conversation:
             db.executemany("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES (?,?,1,1)", [(topic_id, member) for member in participants])
             db.execute("INSERT INTO topic_summaries VALUES (?,0,NULL)", (topic_id,))
         topic = self._topic(db, actor, topic_id)
-        # Attachments remain preserved in the private snapshot until the ready
-        # media publication seam is implemented; no reference is dropped.
-        if snapshot["attachments"]:
-            raise Refusal("ATTACHMENT_NOT_READY", "Attachments must be durably published before this send")
-        if not snapshot["body"].strip():
+        snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
+        if not snapshot["body"].strip() and not snapshot["attachments"]:
             raise Refusal("EMPTY_MESSAGE", "A message needs writing or a ready attachment")
         if snapshot.get("exchange_id"):
             raise Refusal("INVALID_EXCHANGE", "No matching exchange is available")
@@ -155,9 +154,10 @@ class Conversation:
             raise Refusal("TOO_MANY_RECIPIENTS", "Resolved recipients exceed the limit; nobody was sent a partial message")
         self._recipients(db, list(audience))
         message_id = "m-" + uuid.uuid4().hex
-        db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
-                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), envelope["operation_id"]))
+                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), envelope["operation_id"])).lastrowid
+        db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
@@ -181,13 +181,15 @@ class Conversation:
         return row
 
     def _source(self, db, actor, ref):
+        if isinstance(ref, dict) and ref.get("kind") == "memory":
+            return self._memory_source(db, actor, ref)
         if not isinstance(ref, dict) or ref.get("kind") != "message":
             raise Refusal("INVALID_SOURCE", "Unsupported source reference")
         identity = self._message_access(db, actor, ref.get("id"))
         row = db.execute("SELECT * FROM messages WHERE id=?", (identity["id"],)).fetchone()
         return {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
-                "author": row["author_id"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),
+                "author": row["author_id"], "seq": row["seq"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),
                 "quotes": json.loads(row["quotes"]), "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "version": 1, "current_revision": 1,
                 "allowed_actions": ["quote", "note.save"]}
@@ -205,18 +207,30 @@ class Conversation:
     def _view_topic_messages(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
         limit = _page_size(args)
-        rows = db.execute("SELECT seq,id,topic_id,author_id,substr(body,1,1024) AS body,length(CAST(body AS BLOB)) AS body_bytes,reply_to,exchange_id FROM messages WHERE topic_id=? AND seq>? ORDER BY seq LIMIT ?", (topic["id"], args.get("cursor", 0), limit + 1)).fetchall()
+        backwards = args.get("direction", "after") == "before"
+        relation, order = ("<", "DESC") if backwards else (">", "ASC")
+        cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
+        columns = "m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees"
+        if args.get("audience", "all") == "reader":
+            unaddressed = db.execute("SELECT " + columns + " FROM messages m WHERE m.topic_id=? AND m.addressees='[]' AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
+            addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=? AND actor_id=? AND seq" + relation + "? ORDER BY seq " + order + " LIMIT ?) a JOIN messages m ON m.seq=a.seq", (topic["id"], actor, cursor, limit + 1)).fetchall()
+            rows = sorted(unaddressed + addressed, key=lambda row: row["seq"], reverse=backwards)[:limit + 1]
+        else:
+            rows = db.execute("SELECT " + columns + " FROM messages m WHERE m.topic_id=? AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
         items, size, last = [], 1024, None
         for row in rows[:limit]:
             item = dict(row)
+            item["addressees"] = json.loads(item["addressees"])
             item["body"] = _preview(item["body"])
             item["preview"] = len(item["body"].encode("utf-8")) < item.pop("body_bytes")
-            encoded = len(_json(item).encode("utf-8"))
+            encoded = len(_json(item).encode("utf-8")) + 1
             if size + encoded > LIMITS["summary_utf8_bytes"]:
                 break
             items.append(item)
             size += encoded
             last = row["seq"]
+        if backwards:
+            items.reverse()
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
                 "relevant_versions": {"topic": topic["version"]}}
 

@@ -91,6 +91,7 @@ class Drafts:
                     json.loads(row["payload"])["source_ref"] != ref or row["generation"] != generation):
             raise Refusal("REVISION_CONFLICT", "The draft source or generation has changed")
         payload = self._writing(args)
+        payload["attachments"] = self._attachment_refs(db, actor, payload["attachments"])
         payload["source_ref"] = ref
         if row:
             db.execute("UPDATE drafts SET revision=?,payload=? WHERE actor_id=? AND id=?", (revision + 1, _json(payload), actor, draft_id))
@@ -140,13 +141,15 @@ class Drafts:
         for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
+        snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         submission_id = _identifier(args.get("submission_id"), "submission_id")
         send_op = _identifier(args.get("send_operation_id"), "send_operation_id")
         if db.execute("SELECT 1 FROM submissions WHERE actor_id=? AND id=?", (actor, submission_id)).fetchone():
             raise Refusal("REVISION_CONFLICT", "This submission identity already holds another frozen act")
         if send_op == envelope["operation_id"] or db.execute(
                 "SELECT 1 FROM operations WHERE actor_id=? AND id=?", (actor, send_op)).fetchone() or db.execute(
-                "SELECT 1 FROM submissions WHERE actor_id=? AND send_operation_id=?", (actor, send_op)).fetchone():
+                "SELECT 1 FROM submissions WHERE actor_id=? AND send_operation_id=?", (actor, send_op)).fetchone() or db.execute(
+                "SELECT 1 FROM media_intents WHERE actor_id=? AND publish_operation_id=?", (actor, send_op)).fetchone():
             raise Refusal("SEND_ID_UNAVAILABLE", "The future send needs an unused operation identity", recorded=False)
         snapshot.update(id=submission_id, topic_id=row["topic_id"], draft_id=row["id"],
                         draft_revision=row["revision"], draft_generation=row["generation"],

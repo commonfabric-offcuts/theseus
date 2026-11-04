@@ -8,6 +8,8 @@ LIMITS = {
     "page_default": 50, "page_max": 100, "summary_utf8_bytes": 131072,
     "http_envelope_bytes": 2097152, "image_bytes": 16777216,
     "attachment_count": 8, "attachment_bytes": 67108864,
+    "memory_references": 32,
+    "media_file_bytes": 67108864, "media_name_utf8_bytes": 1024,
 }
 
 

@@ -17,9 +17,11 @@ from .authority import Authority, AuthorityError, prepare_authority, publish_ini
 from .delivery import Delivery, DELIVERY_SCHEMA
 from . import initialization
 from .runner import Runner, RUNNER_SCHEMA
+from .memory import Memory, MEMORY_SCHEMA
+from .media import Media, MEDIA_SCHEMA
 
 
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "8"
 
 
 SCHEMA = [
@@ -74,7 +76,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -99,7 +101,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
     return {"instance_id": instance_id, "db_path": str(path), "binding": binding}
 
 
-class Store(Drafts, Delivery, Conversation, Runner):
+class Store(Drafts, Delivery, Conversation, Runner, Memory, Media):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -165,6 +167,11 @@ class Store(Drafts, Delivery, Conversation, Runner):
         return self._receipt(envelope, "rejected", recorded, error=error)
 
     def command(self, actor, envelope):
+        return self._execute_command(actor, envelope)
+
+    def _execute_command(self, actor, envelope, preflight=None, effect=None):
+        # Media streaming uses a short preflight and this same receipt path
+        # for its final metadata write. Neither adapter owns another journal.
         if not isinstance(envelope, dict):
             envelope = {}
         db = None
@@ -180,7 +187,7 @@ class Store(Drafts, Delivery, Conversation, Runner):
             db, _ = _connect(self.path)
             # All command checks, including the deduplication lookup, share the
             # write transaction. Python's implicit DML BEGIN is insufficient.
-            db.execute("BEGIN IMMEDIATE")
+            db.execute("BEGIN" if preflight is not None else "BEGIN IMMEDIATE")
             # Revalidate after SQLite has opened and locked its database. The
             # pathname may have been replaced after the fence's first check.
             fence.verify()
@@ -196,12 +203,17 @@ class Store(Drafts, Delivery, Conversation, Runner):
                 db.rollback()
                 return json.loads(previous["outcome"])
             self._check_send_reservation(db, actor, envelope)
+            self._check_media_reservation(db, actor, envelope)
+            if preflight is not None:
+                value = preflight(db, actor, envelope)
+                db.rollback()
+                return value
             db.execute("SAVEPOINT effect")
             try:
                 handler = getattr(self, COMMANDS[kind]) if kind in COMMANDS else None
                 if handler is None:
                     raise Refusal("UNKNOWN_COMMAND", "Unsupported command kind")
-                result, affected = handler(db, actor, envelope)
+                result, affected = (effect if effect is not None else handler)(db, actor, envelope)
                 receipt = self._receipt(envelope, "committed", True, result, affected)
             except Refusal as exc:
                 db.execute("ROLLBACK TO effect")
