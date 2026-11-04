@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as writing from '../web/writing-helpers.mjs';
 import { readFailure, checkedView, bindingOf } from '../web/freshness.mjs';
+import { currentImages } from '../web/upload-state.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 function fixture() {
   const elements = new Map(), events = [], calls = [], paints = [];
@@ -18,6 +19,8 @@ function fixture() {
     querySelector(selector) { return get(selector.slice(1)); }
     querySelectorAll() { return [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
     setAttribute(name, value) { this[name] = value; }
+    removeAttribute(name) { delete this[name]; }
+    insertBefore(child, before) { child.remove(); const index = before ? this.children.indexOf(before) : this.children.length; this.children.splice(index, 0, child); child.parent = this; }
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
@@ -49,7 +52,7 @@ function fixture() {
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [] };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
-  const scope = { ...writing, readFailure, checkedView, bindingOf, document, URL, structuredClone, console,
+  const scope = { ...writing, readFailure, checkedView, bindingOf, currentImages, document, URL, structuredClone, console,
     window: { addEventListener() {} }, location: { href: 'https://fixture/?topic=t1' },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
@@ -57,6 +60,8 @@ function fixture() {
     TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
     initialViews: async () => ({}), readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '' };
   const context = vm.createContext(scope);
+  const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replaceAll('export class ', 'class ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail}; })())', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { imageInstrumentation, imageChecks } from './reader_images_native.mjs';
 import { freshnessInstrumentation, freshnessChecks, observeUploadProof } from './reader_freshness_native.mjs';
 import { inlineChecks } from './reader_inline_native.mjs';
+import { navigationChecks } from './reader_navigation_native.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -19,11 +20,11 @@ const phases = { started: Date.now(), cases: [] };
 const [chromePath, evidencePath, mode = '--journal', caseFilter] = process.argv.slice(2);
 const baseline = process.env.AIM_FRESHNESS_BASELINE === 'ba4a00e';
 const legacyAdmission = process.env.AIM_FRESHNESS_LEGACY === '1';
-const liveUpdatesFixture = ['--freshness', '--inline'].includes(mode);
+const liveUpdatesFixture = ['--freshness', '--inline', '--navigation'].includes(mode);
 assert.ok(!(baseline && legacyAdmission), 'the shared-two baseline is distinct from single-slot fallback');
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
 assert.ok(evidencePath && path.isAbsolute(evidencePath));
-assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images', '--freshness', '--inline'].includes(mode));
+assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images', '--freshness', '--inline', '--navigation'].includes(mode));
 await mkdir(evidencePath, { recursive: true });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(probe, description, timeout = 8000) {
@@ -48,7 +49,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
+for (const filename of [...(mode === '--navigation' ? ['web/topic-navigation.mjs','tests/reader_navigation_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -110,6 +111,8 @@ try {
     let intercept = null, recordResponses = false;
     listeners.set(sessionId, packet => {
       if (packet.method === 'Page.fileChooserOpened') events.push(packet);
+      if (mode === '--navigation' && packet.method === 'Runtime.consoleAPICalled') events.push(packet);
+      if (mode === '--navigation' && packet.method === 'Page.javascriptDialogOpening') { events.push(packet); send('Page.handleJavaScriptDialog', { accept: false }).catch(error => errors.push({ message: error.message })); }
       if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
       if (packet.method.startsWith('Network.')) network.push({ method: packet.method, params: packet.params, observedAt: Date.now() });
       if (['Network.loadingFinished', 'Network.loadingFailed'].includes(packet.method)) finished.add(packet.params.requestId);
@@ -238,6 +241,7 @@ try {
     if (mode === '--images' && !name.startsWith('images ')) return;
     if (mode === '--freshness' && !name.startsWith('freshness ')) return;
     if (mode === '--inline' && !name.startsWith('inline ')) return;
+    if (mode === '--navigation' && !name.startsWith('navigation ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
     const timing = { name, started: Date.now() };
     // These recovery cases deliberately leave abandoned copies behind. Each
@@ -258,7 +262,7 @@ try {
       results.push({ name, passed: false, error: error.stack });
       for (const [targetId, p] of freshnessPages) {
         let state;
-        try { state = await p.evaluate('({snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,mediaURLs:window.observedMediaURLs?.size})'); }
+        try { state = await p.evaluate('({snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
         catch (error) { state = { diagnosticError: error.message }; }
         observations.push({ name: 'failed case diagnostics', case: name, targetId, state, errors: p.errors, calls: p.calls });
       }
@@ -399,6 +403,8 @@ try {
     };
     if (mode === '--inline') {
       await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});
+    } else if (mode === '--navigation') {
+      await navigationChecks({ check, page, until, root, facts, view, control, replace, field, shot, observations });
     } else if (mode === '--freshness') {
       await freshnessChecks({check,page,until,root,facts,view,control,replace,field,shot,observations,baseline,legacyAdmission});
     } else if (mode === '--images') {

@@ -67,3 +67,52 @@ test('newer topic choice wins, current topic does nothing, and clean editors nee
   const first = f.navigation.open('b'), second = f.navigation.open('c'); gate.resolve();
   assert.equal(await first, false); assert.equal(await second, true); assert.deepEqual(f.visits, ['c']);
 });
+
+test('a current-topic choice cancels an older pending departure', async () => {
+  const f = fixture(), gate = deferred();
+  f.registry.keepLocal = async () => gate.promise;
+  const first = f.navigation.open('b'); await Promise.resolve();
+  assert.equal(await f.navigation.open('a'), false); gate.resolve();
+  assert.equal(await first, false); assert.deepEqual(f.visits, []);
+});
+
+test('durable but unpublished selected images keep active writing here even without dirty text', async () => {
+  const f = fixture(); for (const e of f.editors) e.ackVersion = e.localVersion;
+  const editor = f.editors[0]; editor.clientCycleId = 'cycle'; editor.draft = { attachments: [] };
+  editor.uploadState = { entries: [{ selected: true, owner: { kind: 'cycle', id: 'cycle' }, bytes_state: 'durable' }] };
+  await assert.rejects(f.navigation.open('b'), /image|saved/i); assert.deepEqual(f.visits, []);
+  assert.ok(f.kept.includes(f.registry.inline));
+});
+
+test('canonical attachments, removed selections and prior-submission images allow leaving', async () => {
+  const f = fixture(); for (const e of f.editors) e.ackVersion = e.localVersion;
+  const editor = f.editors[0]; editor.clientCycleId = 'cycle'; editor.draft = { attachments: [{ id: 'ready' }] };
+  editor.uploadState = { entries: [
+    { selected: true, owner: { kind: 'cycle', id: 'cycle' }, ready_descriptor: { media_id: 'ready' }, association: { cycle_id: 'cycle', media_id: 'ready' } },
+    { selected: false, owner: { kind: 'cycle', id: 'cycle' }, bytes_state: 'durable' },
+    { selected: true, owner: { kind: 'submission', id: 'old' }, bytes_state: 'durable' },
+  ] };
+  assert.equal(await f.navigation.open('b'), true); assert.deepEqual(f.visits, ['b']);
+});
+
+test('a new selected image during preservation prevents departure at the final boundary', async () => {
+  const f = fixture(), editor = f.editors[0];
+  f.registry.keepLocal = async () => {
+    editor.clientCycleId = 'cycle'; editor.draft = { attachments: [] };
+    editor.uploadState = { entries: [{ selected: true, owner: { kind: 'cycle', id: 'cycle' }, bytes_state: 'durable' }] };
+  };
+  await assert.rejects(f.navigation.open('b'), /image|saved/i); assert.deepEqual(f.visits, []);
+});
+
+test('a saved version still needs a committed receipt, while an already reconciled null save is allowed', async () => {
+  for (const receipt of [{ recorded: true, status: 'rejected' }, { recorded: false, status: 'committed' }, null]) {
+    const f = fixture(); f.registry.flush = async e => { e.ackVersion = e.localVersion; return receipt; };
+    if (receipt === null) { assert.equal(await f.navigation.open('b'), true); assert.deepEqual(f.visits, ['b']); }
+    else { await assert.rejects(f.navigation.open('b'), /saved/i); assert.deepEqual(f.visits, []); }
+  }
+});
+
+test('failed local preservation stays even after canonical acknowledgement', async () => {
+  const f = fixture(); f.registry.keepLocal = async () => { throw Error('Storage unavailable'); };
+  await assert.rejects(f.navigation.open('b'), /Keep this page open/); assert.deepEqual(f.visits, []);
+});

@@ -7,6 +7,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
+import { TopicPages, TopicNavigation, TopicRail } from './topic-navigation.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -21,6 +22,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
+let topicRail, topicNavigation;
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
@@ -361,7 +363,7 @@ function paintViews(kind) {
     topic = views.topic; $('topic-title').textContent = topic.title;
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
     $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
-    $('topics').firstElementChild.textContent = topic.title;
+    topicRail?.updateCurrent(topic);
     $('participants').replaceChildren(...views.participants.map(p => node('span', p.actor_id, 'chip')));
     for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = false;
     return;
@@ -425,6 +427,7 @@ async function refreshLists() {
   if (authorityReviewPending()) {
     status('The runtime changed. Review your saved writing before reloading this page.'); return;
   }
+  await topicRail?.load();
   if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
   if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
   await listPage('messages'); await listPage('memory');
@@ -462,7 +465,6 @@ async function checkAvailability(read, current, topicDenied = true) {
     topicUnavailable = true; ++listAccessEpoch;
     for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = true;
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
-    $('topics').replaceChildren(node('p', 'Topic unavailable'));
     for (const session of registry.sessions.values()) {
       if (session.editor.context.kind === 'reply' && session.editor.context.topicId === topic.id) {
         session.editor.unavailable = true; registry.cancelSave(session.editor); changed(session.editor);
@@ -643,7 +645,6 @@ async function initialize() {
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
   $('topic-title').textContent = topic.title; $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
-  $('topics').replaceChildren(node('p', topic.title));
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title; $('workspaces').replaceChildren(node('p', workspace.title));
@@ -693,6 +694,31 @@ async function initialize() {
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } } });
+  topicNavigation = new TopicNavigation({ registry, topicId,
+    navigate: id => location.assign('?topic=' + encodeURIComponent(id)) });
+  topicRail = new TopicRail({ pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
+    host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'),
+    denied: error => readFailure(error).kind === 'forbidden',
+    read: async args => {
+      if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
+      const foreground = registry.cleanup.foreground();
+      try {
+        const answer = checkedView(await foreground.read(options => api.view('workspace_topics', args, options)), bootstrap.instance_id);
+        if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
+        return answer;
+      } finally { foreground.release(); }
+    },
+    open: async id => {
+      const notice = $('topic-navigation-status'); notice.hidden = true;
+      const pending = topicNavigation.open(id), serial = topicNavigation.serial;
+      try { await pending; }
+      catch (error) {
+        if (serial !== topicNavigation.serial) return;
+        notice.textContent = error.message; notice.hidden = false; notice.scrollIntoView({ block: 'nearest' });
+      }
+    },
+  });
+  topicRail.load();
   await initializeInlineComposer();
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);

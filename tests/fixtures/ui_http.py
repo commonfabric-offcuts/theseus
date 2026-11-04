@@ -382,6 +382,23 @@ def main():
                                                   http_media_publications=controls.http_media_publications)
                     elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_delay", "read_fault", "admission_events"):
                         answer = controls.control(request, server)
+                    elif freshness and request["method"] == "navigation_topics":
+                        # Isolated fixture setup through real creation commands.
+                        created = []
+                        for item in request["topics"]:
+                            topic_id = item["id"]
+                            prefix = "navigation-" + topic_id
+                            draft_id = prefix + "-draft"
+                            command("draft.save", prefix + "-save", {
+                                "source_ref": {"kind": "new_topic", "id": prefix, "workspace_id": "w1"},
+                                "topic_id": topic_id, "generation": prefix + "-generation", "body": "Fixture conversation " + topic_id,
+                                "opening": {"workspace_id": "w1", "title": item["title"], "participants": []}},
+                                {"draft_id": draft_id}, {"draft_revision": 0})
+                            command("submission.prepare", prefix + "-prepare", {
+                                "draft_id": draft_id, "submission_id": prefix + "-submission", "send_operation_id": prefix + "-send"},
+                                {"topic_id": topic_id}, {"draft_revision": 1})
+                            created.append(command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}))
+                        answer = created
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
                     elif freshness and request["method"] == "memory_revise":

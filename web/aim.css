@@ -29,3 +29,7 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .inline-composer h2{font-size:1rem}.inline-composer textarea{height:10rem;flex:auto;min-height:10rem}
 #inline-save-state{font-size:.78rem;color:var(--muted)}#inline-writing-hint{font-size:.72rem}
 @media(max-width:760px){.inline-composer{padding:.8rem}.inline-composer textarea{font-size:16px}#inline-writing-hint{font-size:.65rem}}
+/* Topic links use the same targets and focus treatment on every screen. */
+#topics a.nav-item{min-height:44px;padding:.55rem .65rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
+#topics a.nav-item:hover{background:var(--soft)}#topics a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:650;border-color:var(--line)}
+@media(max-width:760px){.workspace-layout{grid-template-columns:minmax(0,1fr)}.rail{min-width:0}#topics{padding:.25rem;scroll-padding:.25rem}#topics a.nav-item{flex:0 0 auto;max-width:15rem;width:auto}}
