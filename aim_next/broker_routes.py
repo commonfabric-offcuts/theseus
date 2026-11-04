@@ -110,8 +110,15 @@ def _destination(value):
                  and str(uuid.UUID(value['thread_id'])) == value['thread_id'])
     except (ValueError,TypeError,AttributeError) as error:
         raise BrokerConfigError('invalid_destination') from error
-    root = _path(value['codex_home'])
-    _require(Path(root).is_dir(),'invalid_destination')
+    root = value['codex_home']
+    try:
+        _require(adapter._absolute(root) and 0<len(root.encode('utf-8'))<=4096,
+                 'invalid_destination')
+    except UnicodeError as error:
+        raise BrokerConfigError('invalid_destination') from error
+    # Core resolves the supplied root and compares it with the immutable pin.
+    # Missing/replaced roots must retain its typed pin refusal, not become
+    # ordinary configuration absence before the parent can classify them.
     return dict(value,codex_home=root)
 
 
@@ -194,7 +201,15 @@ def load_route_map(path, runner_profile, *, selected_executable):
         _require(config_path not in configs,'duplicate_config')
         routes.add(route);configs.add(config_path)
         config = preflight_route(route,actor,runner_profile,selected_executable=selected_executable)
-        destination = (config.destination['codex_home'],config.destination['thread_id'])
+        try:
+            root_info = Path(config.destination['codex_home']).stat()
+            if not stat.S_ISDIR(root_info.st_mode):
+                raise BrokerBindingError()
+        except OSError as error:
+            raise BrokerBindingError() from error
+        # Startup map uniqueness is physical identity, including case aliases
+        # and macOS firmlinks. This does not change Core's persistent path pin.
+        destination = (root_info.st_dev,root_info.st_ino,config.destination['thread_id'])
         _require(destination not in destinations,'duplicate_destination')
         destinations.add(destination)
         result[actor] = route

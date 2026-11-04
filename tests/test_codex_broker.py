@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -404,6 +405,44 @@ class CodexBrokerCase(unittest.TestCase):
         self.assertEqual(len(calls),2)
         self.assertEqual(calls[1]['params']['cursor'],'page-two')
         self.assertTrue(all(r['params']['limit']==100 for r in calls))
+
+    def test_client_id_is_deterministic_and_independently_matches_wire(self):
+        ids=[]; expected_ids=[]
+        for generation in (self.claim['wake_generation'],self.claim['wake_generation'],
+                           self.claim['wake_generation']+1):
+            claim=dict(self.claim,wake_generation=generation)
+            result,rows=self.dispatch(claim=claim)
+            self.assertAccepted(result,rows)
+            actual=self.requests(rows,'thread/queue/add')[0]['params']
+            identity=json.dumps(dict(binding=claim['route_binding'],attempt_id=claim['attempt_id']),
+                                sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)
+            expected='theseus-wake-'+hashlib.sha256(identity.encode('utf-8')).hexdigest()
+            ids.append(actual['clientUserMessageId'])
+            expected_ids.append(expected)
+            hint=dict(protocol='theseus-wake',v=1,binding=claim['route_binding'],
+                      destination=self.destination,profile=str(self.profiles['agent-a']),
+                      wake_generation=generation,attempt_id=claim['attempt_id'],instruction=INSTRUCTION)
+            text=json.dumps(hint,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)
+            self.assertEqual(actual['input'],[dict(type='text',text=text,text_elements=[])])
+        self.assertEqual(ids[0],ids[1],'identical claim repeats use identical IDs')
+        self.assertEqual(ids[0],ids[2],'generation is not part of the client identity')
+        self.assertEqual(ids,expected_ids,'independent deterministic ID oracle')
+
+    def test_child_missing_or_replaced_root_refuses_without_rpc(self):
+        moved=self.root/'moved-root'
+        for mode in ('missing','symlink'):
+            with self.subTest(mode=mode):
+                self.home.rename(moved)
+                if mode=='symlink':self.home.symlink_to(moved,target_is_directory=True)
+                try:
+                    result,rows=self.dispatch()
+                    self.assertEqual(result.outcome,'error')
+                    self.assertEqual(result.reason,'broker_exit')
+                    self.assertNotEqual(result.exit_code,0)
+                    self.assertEqual(rows,[],'root refusal must precede any API spawn')
+                finally:
+                    if self.home.is_symlink():self.home.unlink()
+                    moved.rename(self.home)
 
     def test_fresh_attempt_after_queue_consumption_gets_new_client_id(self):
         first,a=self.dispatch()

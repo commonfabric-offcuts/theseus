@@ -124,3 +124,12 @@ ordinary process exit on this host. It did not perform queue RPCs. Real queue
 latency, API-process persistence, desktop consumption and configured-process
 lifecycle remain operational prerequisites; budgets must not be silently
 extended to obtain a pass.
+
+Startup map uniqueness compares the pinned root directory's device and inode
+along with the thread ID, so case variants and macOS firmlink spellings cannot
+map two actors to one destination. This is a startup check, not a persistent
+inode pin or a guarantee against a trusted operator replacing files. Core owns
+root resolution and typed pin refusal; missing or redirected roots do not become
+ordinary missing-configuration results. A root stat failure after pin comparison
+is a visible startup binding refusal. The future effects loop owns durable
+post-claim pause classification; this broker slice does not prove that loop.

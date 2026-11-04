@@ -177,6 +177,88 @@ class BrokerRouteCase(unittest.TestCase):
             api.load_route_map(self.mapping,self.runner_profile,selected_executable=self.executable)
         self.assertEqual(caught.exception.code,'duplicate_destination')
 
+    def test_root_loss_keeps_typed_pin_refusal_at_startup_and_preflight(self):
+        api=self.api()
+        moved=self.root/'moved-root'
+        for mode,code in [('missing','INVALID_ROUTE_DESTINATION'),
+                          ('symlink','ROUTE_PIN_MISMATCH')]:
+            with self.subTest(mode=mode):
+                self.home.rename(moved)
+                if mode=='symlink':self.home.symlink_to(moved,target_is_directory=True)
+                before=self.db.read_bytes()
+                try:
+                    for stage,call in [('startup',lambda:api.load_route_map(self.mapping,
+                            self.runner_profile,selected_executable=self.executable)),
+                            ('parent-preflight',lambda:self.preflight(claim=self.claim))]:
+                        with self.subTest(stage=stage),mock.patch('subprocess.Popen',
+                                side_effect=AssertionError('root refusal cannot spawn')):
+                            error=None
+                            try:call()
+                            except Exception as caught:error=caught
+                            self.assertIs(type(error),RoutePinError,'preserve Core pin refusal type')
+                            self.assertEqual(error.code,code)
+                    self.assertEqual(self.db.read_bytes(),before,'refusal cannot write records')
+                finally:
+                    if self.home.is_symlink():self.home.unlink()
+                    moved.rename(self.home)
+
+    def _physical_alias(self,kind):
+        alias=(self.home.with_name(self.home.name.upper()) if kind=='case'
+               else Path('/System/Volumes/Data'+str(self.home)))
+        self.assertNotEqual(str(alias.resolve(strict=True)),str(self.home))
+        self.assertTrue(os.path.samefile(alias,self.home),'actual alias prerequisite')
+        destination=dict(self.destination,codex_home=str(alias))
+        pin=self.provision('agent-b',destination)['pin']['destination']
+        self.assertNotEqual(pin['codex_home'],self.destination['codex_home'])
+        self.assertEqual((Path(pin['codex_home']).stat().st_dev,Path(pin['codex_home']).stat().st_ino),
+                         (self.home.stat().st_dev,self.home.stat().st_ino))
+        config=self.root/'config-b.json';route=self.root/'route-b.json'
+        self.save(config,dict(self.config_value,profile=str(self.profiles['agent-b']),destination=destination))
+        self.save(route,dict(self.route_value,profile=str(self.profiles['agent-b']),
+                            argv=[self.executable,'--config',str(config)]))
+        self.save(self.mapping,dict(v=1,routes={'agent-a':str(self.route),'agent-b':str(route)}))
+        before=self.db.read_bytes()
+        with self.assertRaises(self.api().BrokerConfigError) as caught:
+            self.api().load_route_map(self.mapping,self.runner_profile,selected_executable=self.executable)
+        self.assertEqual(caught.exception.code,'duplicate_destination')
+        self.assertEqual(self.db.read_bytes(),before)
+
+    def test_case_alias_same_physical_root_is_duplicate(self):
+        self._physical_alias('case')
+
+    def test_firmlink_alias_same_physical_root_is_duplicate(self):
+        self._physical_alias('firmlink')
+
+    def test_distinct_physical_roots_with_same_thread_remain_distinct(self):
+        other=self.root/'other-root';other.mkdir()
+        destination=dict(self.destination,codex_home=str(other))
+        self.provision('agent-b',destination)
+        config=self.root/'config-b.json';route=self.root/'route-b.json'
+        self.save(config,dict(self.config_value,profile=str(self.profiles['agent-b']),destination=destination))
+        self.save(route,dict(self.route_value,profile=str(self.profiles['agent-b']),
+                            argv=[self.executable,'--config',str(config)]))
+        mapping={'agent-a':str(self.route),'agent-b':str(route)}
+        self.save(self.mapping,dict(v=1,routes=mapping))
+        before=self.db.read_bytes()
+        self.assertEqual(self.api().load_route_map(self.mapping,self.runner_profile,
+                         selected_executable=self.executable),mapping)
+        self.assertEqual(self.db.read_bytes(),before)
+
+    def test_root_stat_loss_after_pin_is_visible_startup_binding_refusal(self):
+        api=self.api();original=api.preflight_route
+        def removed(*args,**kwargs):
+            result=original(*args,**kwargs)
+            self.home.rmdir()
+            return result
+        before=self.db.read_bytes()
+        try:
+            with mock.patch.object(api,'preflight_route',side_effect=removed):
+                with self.assertRaises(api.BrokerBindingError) as caught:
+                    api.load_route_map(self.mapping,self.runner_profile,selected_executable=self.executable)
+            self.assertEqual(caught.exception.code,'route_binding_changed')
+            self.assertEqual(self.db.read_bytes(),before)
+        finally:self.home.mkdir(exist_ok=True)
+
     def test_mapping_rejects_duplicate_route_and_config_paths(self):
         api=self.api()
         destination_b=dict(self.destination,thread_id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee')
