@@ -327,6 +327,177 @@ class RunnerCase(DeliveryCase):
         self.assertEqual(self.sql("SELECT * FROM wake_results"), before)
         self.assertEqual(self.sql("SELECT key,value FROM metadata WHERE key IN ('commit_seq','commit_id')"), pair)
 
+    def runner_records(self):
+        return {table: self.sql("SELECT * FROM " + table + " ORDER BY 1") for table in (
+            "runner_state", "wake_attempts", "wake_results", "recipient_schedule", "metadata")}
+
+    def test_first_claim_rejects_token_from_previous_guard_acquisition(self):
+        first = self.guard("loop")
+        token = self.token(first)
+        generation = first.generation
+        first.close()
+        second = self.guard("loop")
+        self.assertNotEqual(second.generation, generation)
+        before = self.runner_records()
+        self.assertEqual(self.store.acquire_runner(second)["status"], "busy")
+        result = self.store.claim_wakes(second, token)
+        self.assertEqual(result["status"], "lost")
+        self.assertEqual(result["claims"], [])
+        self.assertEqual(self.runner_records(), before)
+
+    def transferred_guard(self, reenter=False, paused=False):
+        first = self.guard("loop")
+        token = self.token(first)
+        claim = self.claim(first, token)
+        generation = first.generation
+        if paused:
+            self.store.pause_runner(first, token, "cleanup_failed")
+        first.close()
+        second = first.__enter__() if reenter else self.guard("loop")
+        self.assertNotEqual(second.generation, generation)
+        before = self.runner_records()
+        calls = (
+            ("renew", "lost", lambda: self.store.renew_runner(second, token)),
+            ("claim", "lost", lambda: self.store.claim_wakes(second, token)),
+            ("finish", "stale", lambda: self.store.finish_wake(second, token, claim["claim_token"], "accepted")),
+            ("child", "stale", lambda: self.store.record_runner_child(second, token, claim["claim_token"], os.getpid(), "fixture")),
+            ("pause", "lost", lambda: self.store.pause_runner(second, token, "cleanup_failed")),
+        )
+        for name, expected, call in calls:
+            with self.subTest(call=name):
+                self.assertEqual(call()["status"], expected)
+                self.assertEqual(self.runner_records(), before)
+
+    def test_each_token_bound_call_rejects_a_different_guard_generation(self):
+        self.transferred_guard()
+
+    def test_reentering_same_guard_object_does_not_transfer_token_ownership(self):
+        self.transferred_guard(reenter=True)
+
+    def test_paused_shortcuts_reject_a_different_guard_generation(self):
+        self.transferred_guard(paused=True)
+
+    def test_expired_claim_is_stale_while_singleton_is_still_live(self):
+        guard = self.guard()
+        token = self.token(guard)
+        claim = self.claim(guard, token, lease_ms=1000)
+        self.now = claim["lease_until_ms"]
+        self.assertGreater(self.sql("SELECT lease_until_ms FROM runner_state")[0][0], self.now)
+        before = self.runner_records()
+        self.assertEqual(self.store.finish_wake(guard, token, claim["claim_token"], "accepted")["status"], "stale")
+        self.assertEqual(self.runner_records(), before)
+
+    def test_singleton_coverage_refuses_one_ms_gap_and_accepts_equality(self):
+        guard = self.guard()
+        token = self.token(guard)
+        until = self.sql("SELECT lease_until_ms FROM runner_state")[0][0]
+        self.now = until - 20000 + 1
+        before = self.runner_records()
+        with self.assertRaises(StoreError) as caught:
+            self.store.claim_wakes(guard, token, lease_ms=20000)
+        self.assertEqual(caught.exception.code, "LEASE_TOO_SHORT")
+        self.assertEqual(self.runner_records(), before)
+        # Renew to equality without changing time; a correctly covered claim
+        # must be accepted rather than merely making every near-boundary call fail.
+        self.store.renew_runner(guard, token, lease_ms=20000)
+        claim = self.claim(guard, token, lease_ms=20000)
+        self.assertEqual(claim["lease_until_ms"], self.now + 20000)
+
+    def test_empty_claim_poll_does_not_change_records_or_commit_identity(self):
+        guard = self.guard()
+        token = self.token(guard)
+        self.claim(guard, token)
+        before = self.runner_records()
+        result = self.store.claim_wakes(guard, token)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["claims"], [])
+        self.assertEqual(self.runner_records(), before)
+
+    def test_superseded_token_is_lost_on_every_paused_shortcut(self):
+        guard = self.guard()
+        old = self.token(guard)
+        self.now += 31000
+        token = self.token(guard)
+        paused = self.store.pause_runner(guard, token, "operator_pause")
+        self.assertEqual(paused["status"], "paused")
+        before = self.runner_records()
+        for name, call in (
+            ("pause", lambda: self.store.pause_runner(guard, old, "cleanup_failed")),
+            ("renew", lambda: self.store.renew_runner(guard, old)),
+            ("claim", lambda: self.store.claim_wakes(guard, old)),
+        ):
+            with self.subTest(call=name):
+                self.assertEqual(call()["status"], "lost")
+                self.assertEqual(self.runner_records(), before)
+        self.assertEqual(self.store.pause_runner(guard, token, "operator_pause"), paused)
+        self.assertEqual(self.runner_records(), before)
+
+    def test_lock_replacement_after_action_rolls_back_before_commit(self):
+        guard = self.guard()
+        lock = self.root_anchor().with_name(self.root_anchor().name + ".runner.lock")
+        held = lock.with_name("held-original.lock")
+        replacement = lock.with_name("replacement.lock")
+        shutil.copy2(lock, replacement)
+        original_inode = (lock.stat().st_dev, lock.stat().st_ino)
+        self.assertNotEqual((replacement.stat().st_dev, replacement.stat().st_ino), original_inode)
+        before = self.runner_records()
+        advance = self.store._advance_commit_seq
+        replaced = []
+        def replace_after_action(db):
+            advance(db)
+            lock.rename(held)
+            replacement.rename(lock)
+            replaced.append((lock.stat().st_dev, lock.stat().st_ino))
+        try:
+            with mock.patch.object(self.store, "_advance_commit_seq", replace_after_action):
+                with self.assertRaises(StoreError) as caught:
+                    self.store.acquire_runner(guard)
+                self.assertEqual(caught.exception.code, "AUTHORITY_CHANGED")
+        finally:
+            if replaced:
+                lock.rename(replacement)
+                held.rename(lock)
+        self.assertEqual(len(replaced), 1)
+        self.assertNotEqual(replaced[0], original_inode)
+        self.assertEqual(self.runner_records(), before)
+        self.assertEqual(self.store.acquire_runner(guard)["status"], "acquired")
+
+    def test_expired_holder_is_unknown_with_last_registered_pause_diagnostics(self):
+        guard = self.guard()
+        token = self.token(guard)
+        claim = self.claim(guard, token)
+        self.store.record_runner_child(guard, token, claim["claim_token"], os.getpid(), "fixture-child-start")
+        registered = {"runner_pid": os.getpid(), "runner_started_ms": self.now,
+                      "child_pid": os.getpid(), "child_started_at": "fixture-child-start"}
+        until = self.sql("SELECT lease_until_ms FROM runner_state")[0][0]
+        reads = (("capabilities", lambda: self.store.view("owner", "capabilities", {})["runner"]),
+                 ("status", self.store.runner_status))
+        for name, read in reads:
+            with self.subTest(surface=name, phase="live"):
+                self.assertEqual(read()["holder"], registered)
+        self.now = until
+        before = self.runner_records()
+        for name, read in reads:
+            with self.subTest(surface=name, phase="expired"):
+                facts = read()
+                self.assertIsNone(facts["holder"])
+                self.assertIs(facts["lease_expired"], True)
+                self.assertEqual(facts["last_registered"], registered)
+                self.assertEqual(facts["state"], "running")
+                self.assertEqual(self.runner_records(), before)
+        paused = self.store.pause_runner(guard, token, "cleanup_failed")
+        before = self.runner_records()
+        for name, read in reads:
+            with self.subTest(surface=name, phase="paused_after_expiry"):
+                facts = read()
+                self.assertIsNone(facts["holder"])
+                self.assertIs(facts["lease_expired"], True)
+                self.assertEqual(facts["last_registered"], registered)
+                self.assertEqual(facts["state"], "paused")
+                self.assertEqual(facts["version"], paused["version"])
+                self.assertEqual(facts["reason_code"], "cleanup_failed")
+                self.assertEqual(self.runner_records(), before)
+
 
 for _name in list(DeliveryCase.__dict__):
     if _name.startswith("test_") and _name not in RunnerCase.__dict__:

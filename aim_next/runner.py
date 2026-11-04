@@ -73,15 +73,28 @@ class Runner:
             result["reason_code"] = state["reason_code"]
         if state["lease_until_ms"] is not None:
             result["lease_until_ms"] = state["lease_until_ms"]
+            result["lease_expired"] = state["lease_until_ms"] <= delivery._now_ms()
         if state["runner_pid"] is not None:
-            result["holder"] = {"runner_pid": state["runner_pid"], "runner_started_ms": state["runner_started_ms"]}
+            registered = {"runner_pid": state["runner_pid"], "runner_started_ms": state["runner_started_ms"]}
             if state["child_pid"] is not None:
-                result["holder"].update(child_pid=state["child_pid"], child_started_at=state["child_started_at"])
+                registered.update(child_pid=state["child_pid"], child_started_at=state["child_started_at"])
+            if result.get("lease_expired"):
+                result.update(holder=None, last_registered=registered)
+            else:
+                result["holder"] = registered
         return result
 
-    def _owned(self, state, token, now, allow_expired=False):
-        return (state["state"] == "running" and isinstance(token, str) and token == state["runner_token"]
-                and (allow_expired or state["lease_until_ms"] > now))
+    def _ownership(self, state, guard, token, now, allow_expired=False):
+        # A token belongs to the actual acquisition that created it. Check
+        # identity before paused shortcuts, which must not adopt an old token.
+        if (not isinstance(token, str) or token != state["runner_token"]
+                or state["guard_generation"] != guard.generation):
+            return "lost"
+        if state["state"] == "paused":
+            return "paused"
+        if state["state"] != "running" or (not allow_expired and state["lease_until_ms"] <= now):
+            return "lost"
+        return "running"
 
     def _acquire(self, db, guard, now, lease_ms):
         token = "r-" + uuid.uuid4().hex
@@ -105,10 +118,9 @@ class Runner:
         _bounded(lease_ms, 1000, 120000, "lease_ms")
         def action(db, now):
             state = self._runner_state(db)
-            if state["state"] == "paused":
-                return {"status": "paused"}, False
-            if not self._owned(state, runner_token, now):
-                return {"status": "lost"}, False
+            ownership = self._ownership(state, guard, runner_token, now)
+            if ownership != "running":
+                return {"status": ownership}, False
             until = now + lease_ms
             claim = db.execute("SELECT claim_until_ms FROM recipient_schedule INDEXED BY active_claim_end WHERE claim_token IS NOT NULL ORDER BY claim_until_ms DESC LIMIT 1").fetchone()
             if claim and claim[0] > until:
@@ -126,8 +138,9 @@ class Runner:
         _bounded(lease_ms, 1000, 30000, "lease_ms")
         def action(db, now):
             state = self._runner_state(db)
-            if state["state"] == "paused" or not self._owned(state, runner_token, now):
-                return {"status": "paused" if state["state"] == "paused" else "lost", "claims": [], "scanned": 0, "next_due_ms": None}, False
+            ownership = self._ownership(state, guard, runner_token, now)
+            if ownership != "running":
+                return {"status": ownership, "claims": [], "scanned": 0, "next_due_ms": None}, False
             until = now + lease_ms
             if state["lease_until_ms"] < until:
                 raise RunnerError("LEASE_TOO_SHORT", "Renew the singleton before claiming this full lease", retryable=True)
@@ -158,7 +171,7 @@ class Runner:
         def action(db, now):
             state = self._runner_state(db)
             attempt = db.execute("SELECT * FROM wake_attempts WHERE claim_token=?", (claim_token,)).fetchone()
-            if (not self._owned(state, runner_token, now) or not attempt or attempt["runner_token"] != runner_token
+            if (self._ownership(state, guard, runner_token, now) != "running" or not attempt or attempt["runner_token"] != runner_token
                     or attempt["lease_until_ms"] <= now):
                 return {"status": "stale"}, False
             row = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (attempt["recipient_id"],)).fetchone()
@@ -184,9 +197,10 @@ class Runner:
             raise RunnerError("INVALID_ARGUMENT", "Use a bounded runner pause reason")
         def action(db, now):
             state = self._runner_state(db)
-            if state["state"] == "paused" and state["runner_token"] == runner_token:
+            ownership = self._ownership(state, guard, runner_token, now, allow_expired=True)
+            if ownership == "paused":
                 return {"status": "paused", "version": state["version"]}, False
-            if not self._owned(state, runner_token, now, allow_expired=True):
+            if ownership != "running":
                 return {"status": "lost"}, False
             db.execute("UPDATE runner_state SET state='paused',version=version+1,reason_code=? WHERE id=1", (reason_code,))
             return {"status": "paused", "version": state["version"] + 1}, True
@@ -213,7 +227,7 @@ class Runner:
         def action(db, now):
             state = self._runner_state(db)
             row = db.execute("SELECT a.runner_token,s.claim_token FROM wake_attempts a JOIN recipient_schedule s ON s.recipient_id=a.recipient_id WHERE a.claim_token=?", (claim_token,)).fetchone()
-            if not self._owned(state, runner_token, now, allow_expired=True) or not row or row["runner_token"] != runner_token or row["claim_token"] != claim_token:
+            if self._ownership(state, guard, runner_token, now, allow_expired=True) != "running" or not row or row["runner_token"] != runner_token or row["claim_token"] != claim_token:
                 return {"status": "stale"}, False
             db.execute("UPDATE runner_state SET child_pid=?,child_started_at=?,child_claim_token=? WHERE id=1", (pid, started_at, claim_token))
             return {"status": "recorded"}, True
