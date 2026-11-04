@@ -94,6 +94,11 @@ class ReaderIntegrityCase(MediaCase):
         self.assertEqual(self.records(), before)
         if phase == "commit":
             self.blob_with_bytes(data)  # Retained orphan is not adopted into E2.
+        else:
+            from pathlib import Path
+            root = Path(str(self.path) + '.media')
+            self.assertTrue(root.is_dir())
+            self.assertEqual(list(root.iterdir()), [], 'Old epoch published a file after cutover')
 
     def test_replacement_truncation_and_symlink_refuse_before_returning_any_resource(self):
         for index, action in enumerate(("replacement", "truncation", "symlink")):
