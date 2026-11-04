@@ -56,6 +56,8 @@ class Delivery:
             due, retry = None, 0
         elif old["pending_count"] == 0 or captured_done:
             due, retry = _now_ms(), 0
+        if pending and old["claim_token"] is not None and old["claim_until_ms"] > _now_ms():
+            due = old["claim_until_ms"]
         db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=? WHERE recipient_id=?",
                    (pending, last_seq if last_seq is not None else old["last_seq"], due, retry, actor))
 

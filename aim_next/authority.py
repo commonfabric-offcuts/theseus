@@ -239,6 +239,7 @@ class RunnerGuard(AuthorityFence):
         super().__init__(authority)
         self.runner_id = _identifier(runner_id, "runner_id")
         self._runner_fd = None
+        self._generation = None
 
     def __enter__(self):
         super().__enter__()
@@ -249,6 +250,7 @@ class RunnerGuard(AuthorityFence):
             except BlockingIOError:
                 raise GuardBusy()
             self.authority._verify_lock(self._runner_fd, ".runner.lock", "runner_lock", self.record)
+            self._generation = "g-" + uuid.uuid4().hex
             return self
         except OSError as error:
             self.close()
@@ -265,6 +267,11 @@ class RunnerGuard(AuthorityFence):
     @property
     def binding(self):
         return dict(self.authority.binding, instance_id=self.authority.instance_id, db_path=str(self.authority.db_path))
+
+    @property
+    def generation(self):
+        self.verify()
+        return self._generation
 
     def verify(self):
         if self._fd is None or self._runner_fd is None:
