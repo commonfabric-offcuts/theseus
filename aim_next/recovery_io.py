@@ -234,6 +234,12 @@ def connection(path, *, write=False, code='CANDIDATE_INVALID', require_delete=Tr
 
 def metadata(db, code='CANDIDATE_INVALID'):
     from .store import SCHEMA_VERSION
+    # An unknown layout cannot make its missing/differently typed keys evidence
+    # of lost history. Establish the version first, in the caller's transaction.
+    schema = db.execute('SELECT typeof(value),substr(CAST(value AS BLOB),1,4097) FROM metadata '
+                        'WHERE key=? LIMIT 2', ('schema_version',)).fetchall()
+    require(len(schema) == 1 and schema[0] == ('text', SCHEMA_VERSION.encode('utf-8')),
+            'RECOVERY_UNCONFIRMED' if code == 'ORIGINAL_UNAVAILABLE' else code)
     rows = db.execute('SELECT key,typeof(value),substr(CAST(value AS BLOB),1,4097) FROM metadata '
                       'WHERE key IN (' + ','.join('?' for _ in META) + ')', META).fetchall()
     require(len(rows) == len(META), code)
@@ -242,8 +248,6 @@ def metadata(db, code='CANDIDATE_INVALID'):
         require(kind == 'text' and isinstance(raw, bytes) and len(raw) <= 4096, code)
         result[key] = raw.decode('utf-8')
     seq = result['commit_seq']
-    require(result['schema_version'] == SCHEMA_VERSION,
-            'RECOVERY_UNCONFIRMED' if code == 'ORIGINAL_UNAVAILABLE' else code)
     require(seq.isascii() and seq.isdigit()
             and len(seq) <= 19 and int(seq) < 9223372036854775807
             and re.fullmatch('[0-9a-f]{32}', result['commit_id']) is not None, code)

@@ -1050,6 +1050,62 @@ recovery.activate(request)
                             continue
                         case.assertEqual(case.anchor.read_bytes(), before)
 
+    def test_original_schema_is_checked_before_other_metadata(self):
+        faults = {
+            'newer-missing-commit': ("UPDATE metadata SET value='9' WHERE key='schema_version'",
+                                     "DELETE FROM metadata WHERE key='commit_id'"),
+            'older-missing-commit': ("UPDATE metadata SET value='7' WHERE key='schema_version'",
+                                     "DELETE FROM metadata WHERE key='commit_id'"),
+            'newer-blob-commit': ("UPDATE metadata SET value='9' WHERE key='schema_version'",
+                                  "UPDATE metadata SET value=x'00' WHERE key='commit_id'"),
+            'missing-version': ("DELETE FROM metadata WHERE key='schema_version'",),
+            'blob-version': ("UPDATE metadata SET value=CAST(value AS BLOB) WHERE key='schema_version'",),
+        }
+        for fault, statements in faults.items():
+            for mode in ('normal', 'original_unavailable'):
+                with self.subTest(fault=fault, mode=mode), self.isolated() as case:
+                    request = case.request(mode=mode)
+                    before = case.anchor.read_bytes()
+                    for statement in statements:
+                        case.sql(case.path, statement)
+                    observed = case.sql(case.path, "SELECT key,typeof(value),value FROM metadata "
+                                        "WHERE key IN ('schema_version','commit_id') ORDER BY key")
+                    print('SCHEMA_FAULT', fault, mode, repr(observed), flush=True)
+                    case.refused(lambda: case.api().activate(request), 'RECOVERY_UNCONFIRMED')
+                    case.assertEqual(case.anchor.read_bytes(), before, 'unknown schema cannot publish a gap')
+
+    def test_schema_version_bytes_are_bounded_before_python_validation(self):
+        for kind in ('text', 'blob'):
+            for code in ('ORIGINAL_UNAVAILABLE', 'CANDIDATE_INVALID', 'BUNDLE_INVALID'):
+                with self.subTest(kind=kind, code=code):
+                    payload = '9' * (1024 * 1024)
+                    value = payload if kind == 'text' else sqlite3.Binary(payload.encode('ascii'))
+                    self.sql(self.path, "UPDATE metadata SET value=? WHERE key='schema_version'", (value,))
+                    self.assertEqual(self.sql(self.path, "SELECT typeof(value),length(value) FROM metadata "
+                                              "WHERE key='schema_version'"), [(kind, len(payload))])
+                    returned = []
+                    db = sqlite3.connect(str(self.path))
+                    class ObservedCursor:
+                        def __init__(self, cursor):
+                            self.cursor = cursor
+                        def fetchall(self):
+                            rows = self.cursor.fetchall()
+                            returned.extend(rows)
+                            return rows
+                    class ObservedDatabase:
+                        def execute(self, statement, parameters=()):
+                            return ObservedCursor(db.execute(statement, parameters))
+                    try:
+                        db.execute('BEGIN')
+                        expected = 'RECOVERY_UNCONFIRMED' if code == 'ORIGINAL_UNAVAILABLE' else code
+                        self.refused(lambda: self.io().metadata(ObservedDatabase(), code), expected)
+                        sizes = [len(value) for row in returned for value in row if isinstance(value, (bytes, str))]
+                        self.assertTrue(sizes, 'observe actual SQLite-returned values, not query spelling')
+                        self.assertLessEqual(max(sizes), 4097, 'oversize version must be bounded before Python sees it')
+                        self.assertEqual(db.total_changes, 0)
+                    finally:
+                        db.close()
+
     def test_original_observation_failure_never_authorizes_gap(self):
         for fault in ('mode000', 'owner', 'directory', 'eio', 'eperm', 'schema', 'runtime'):
             for mode in ('normal', 'original_unavailable'):

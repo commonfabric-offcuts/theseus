@@ -70,6 +70,11 @@ corruption or different lineage can establish unavailable history and a gap.
 Access denial (including mode 000), owner/type mismatch, unsupported schema,
 runtime-observation failure, busy, interruption and cleanup uncertainty refuse
 in both modes; inability to observe is not permission to discard history.
+The original's schema version is checked alone before other metadata, in the
+same read transaction. A missing or non-text version, or any older/newer version,
+is uncertainty even when other metadata keys are missing or differently typed.
+The version read returns at most 4097 bytes per value to Python. Once the current
+version is established, the existing commit/lineage metadata checks still apply.
 This intentionally differs from the candidate policy: our candidate must remain
 private, single-link and correctly owned. Later normal recovery preserves an
 earlier gap and carries forward confirmed complete history.
