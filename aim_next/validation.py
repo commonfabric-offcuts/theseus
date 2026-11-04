@@ -93,7 +93,7 @@ def _view_arguments(name, args):
                                       or args.get("direction", "after") not in ("before", "after")):
         raise Refusal("INVALID_ARGUMENT", "Invalid message audience or direction")
     if (name == "editor_state" and args.get("topic_id") is None
-            and isinstance(args.get("source_ref"), dict) and args["source_ref"].get("kind") != "new_topic"):
+            and isinstance(args.get("source_ref"), dict) and args["source_ref"].get("kind") not in ("new_topic", "topic")):
         # A private note has no reply destination. Normalize only this view;
         # commands, opening editors and other ID arguments retain their rules.
         args = dict(args)

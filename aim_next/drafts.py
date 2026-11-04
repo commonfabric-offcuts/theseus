@@ -21,7 +21,18 @@ DRAFT_SCHEMA = [
 def _source_key(ref):
     if not isinstance(ref, dict):
         raise Refusal("INVALID_ARGUMENT", "A source reference is required")
+    if ref.get("kind") == "topic" and set(ref) != {"kind", "id"}:
+        raise Refusal("INVALID_ARGUMENT", "A topic composer reference contains only kind and id")
     return _json([_identifier(ref.get("kind")), _identifier(ref.get("id"))])
+
+
+def _topic_composition(ref, topic_id):
+    # This is a private editor identity, not a quotable content source.
+    if ref["kind"] != "topic":
+        return False
+    if ref["id"] != _identifier(topic_id, "topic_id"):
+        raise Refusal("INVALID_ARGUMENT", "The topic composer must keep its own destination")
+    return True
 
 
 class Drafts:
@@ -44,6 +55,8 @@ class Drafts:
         key = _source_key(ref)
         if ref["kind"] == "new_topic":
             self._workspace(db, actor, ref.get("workspace_id"))
+        elif ref["kind"] == "topic":
+            self._topic(db, actor, ref["id"])
         elif ref["kind"] == "message":
             self._message_access(db, actor, ref.get("id"))
         else:
@@ -75,11 +88,12 @@ class Drafts:
         ref = args.get("source_ref")
         source_key = _source_key(ref)
         topic_id = _identifier(args.get("topic_id"), "topic_id")
+        topic_composition = _topic_composition(ref, topic_id)
         generation = _identifier(args.get("generation"), "generation")
         row = db.execute("SELECT * FROM drafts WHERE actor_id=? AND id=?", (actor, draft_id)).fetchone()
         if row is None:
             self._validate_source_ref(db, actor, ref)
-            if ref["kind"] != "new_topic":
+            if ref["kind"] not in ("new_topic", "topic"):
                 self._topic(db, actor, topic_id)
         revision = row["revision"] if row else 0
         _revision(envelope.get("expected", {}), "draft_revision", revision)
@@ -91,6 +105,8 @@ class Drafts:
                     json.loads(row["payload"])["source_ref"] != ref or row["generation"] != generation):
             raise Refusal("REVISION_CONFLICT", "The draft source or generation has changed")
         payload = self._writing(args)
+        if topic_composition and (any(name in payload for name in ("opening", "reply_to", "exchange_id")) or payload["quotes"]):
+            raise Refusal("INVALID_ARGUMENT", "A topic composer starts a source-free message")
         payload["attachments"] = self._attachment_refs(db, actor, payload["attachments"])
         payload["source_ref"] = ref
         if row:
@@ -107,6 +123,8 @@ class Drafts:
         note_id = _identifier(envelope.get("target", {}).get("note_id"), "note_id")
         ref = args.get("source_ref")
         key = _source_key(ref)
+        if ref["kind"] == "topic":
+            raise Refusal("INVALID_SOURCE", "A topic composer has no source for a private note")
         row = db.execute("SELECT * FROM notes WHERE actor_id=? AND id=?", (actor, note_id)).fetchone()
         if row is None:
             self._validate_source_ref(db, actor, ref)
@@ -188,8 +206,10 @@ class Drafts:
         limit = _page_size(args)
         where, values = "s.actor_id=? AND s.seq>?", [actor, args.get("cursor", 0)]
         if "source_ref" in args:
+            key = _source_key(args["source_ref"])
+            _topic_composition(args["source_ref"], args.get("topic_id"))
             where += " AND s.source_key=? AND s.topic_id=?"
-            values += [_source_key(args["source_ref"]), args.get("topic_id")]
+            values += [key, args.get("topic_id")]
         rows = db.execute("SELECT s.seq,s.metadata,o.outcome FROM submissions s LEFT JOIN operations o ON o.actor_id=s.actor_id AND o.id=s.send_operation_id WHERE " + where + " ORDER BY s.seq LIMIT ?", values + [limit + 1]).fetchall()
         items = []
         for row in rows[:limit]:
@@ -200,10 +220,11 @@ class Drafts:
 
     def _view_editor_state(self, db, actor, args):
         key = _source_key(args.get("source_ref"))
+        topic_composition = _topic_composition(args["source_ref"], args.get("topic_id"))
         note_only = args["source_ref"]["kind"] != "new_topic" and args.get("topic_id") is None
         row = None if note_only else db.execute("SELECT * FROM drafts WHERE actor_id=? AND source_key=? AND topic_id=?", (actor, key, args.get("topic_id"))).fetchone()
         draft = dict(json.loads(row["payload"]), id=row["id"], revision=row["revision"], generation=row["generation"]) if row else None
-        row = db.execute("SELECT * FROM notes WHERE actor_id=? AND source_key=?", (actor, key)).fetchone()
+        row = None if topic_composition else db.execute("SELECT * FROM notes WHERE actor_id=? AND source_key=?", (actor, key)).fetchone()
         note = dict(json.loads(row["payload"]), id=row["id"], revision=row["revision"]) if row else None
         source_available = True
         try:
@@ -213,7 +234,7 @@ class Drafts:
                 raise
             source_available = False
         destination_available = source_available and not note_only
-        if not note_only and args["source_ref"]["kind"] != "new_topic":
+        if not note_only and args["source_ref"]["kind"] not in ("new_topic", "topic"):
             try:
                 self._topic(db, actor, args.get("topic_id"))
             except Refusal as exc:
