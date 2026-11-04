@@ -1,0 +1,11 @@
+#!/usr/bin/python3 -I
+from __future__ import annotations
+
+import time
+started = time.monotonic()
+import sys
+sys.dont_write_bytecode = True
+from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from aim_next.codex_broker import main
+sys.exit(main(started=started))

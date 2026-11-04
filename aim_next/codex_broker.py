@@ -1,0 +1,283 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import select
+import subprocess
+import sys
+import time
+
+from .broker_routes import load_config
+from . import wake_adapter
+
+
+VERSION = '0.163.0-alpha.10.2'
+CLIENT = 'theseus_wake_broker'
+INSTRUCTION = ('Read current durable work through the bound Theseus CLI profile. '
+               'Use paged delivery reads; do not filter by this historical wake generation. '
+               'Reply and acknowledge separately. Stop on a binding mismatch; never rebind.')
+TOTAL_SECONDS = 4.0
+CLEANUP_SECONDS = 0.5
+ADD_SECONDS = 1.0
+MAX_INBOUND = 1048576
+PAGE_LIMIT = 100
+MAX_PAGES = 2
+
+
+class BrokerError(Exception):
+    """A bounded transport refusal; never a delivery acknowledgment."""
+
+
+def _require(condition):
+    if not condition:
+        raise BrokerError('broker_refused')
+
+
+def _remaining(deadline):
+    return max(0.0,deadline-time.monotonic())
+
+
+def _unique(pairs):
+    value = {}
+    for key,item in pairs:
+        _require(key not in value)
+        value[key] = item
+    return value
+
+
+def _constant(unused):
+    raise BrokerError('invalid_json')
+
+
+def _json(raw):
+    try:
+        return json.loads(raw,object_pairs_hook=_unique,parse_constant=_constant)
+    except (ValueError,UnicodeError,RecursionError) as error:
+        raise BrokerError('invalid_json') from error
+
+
+def _canonical(value):
+    return json.dumps(value,sort_keys=True,separators=(',',':'),ensure_ascii=False,allow_nan=False)
+
+
+def _payload(value):
+    _require(type(value) is dict and set(value)=={'v','binding','wake_generation','attempt_id'})
+    _require(type(value['v']) is int and value['v']==1)
+    binding = value['binding']
+    _require(type(binding) is dict and set(binding)==wake_adapter.BINDING_FIELDS)
+    _require(all(wake_adapter._identity(binding[key])
+                 for key in wake_adapter.BINDING_FIELDS-{'db_path'})
+             and wake_adapter._absolute(binding['db_path']))
+    _require(type(value['wake_generation']) is int and 0<=value['wake_generation']<=9223372036854775807
+             and wake_adapter._identity(value['attempt_id']))
+    return value
+
+
+def _stdin(deadline):
+    fd = sys.stdin.fileno()
+    os.set_blocking(fd,False)
+    raw = bytearray()
+    while True:
+        left = _remaining(deadline)
+        _require(left>0 and bool(select.select([fd],[],[],left)[0]))
+        try:
+            block = os.read(fd,wake_adapter.MAX_STDIN_BYTES+1-len(raw))
+        except (BlockingIOError,InterruptedError):
+            continue
+        if not block:
+            return _payload(_json(raw.decode('utf-8')))
+        raw.extend(block)
+        _require(len(raw)<=wake_adapter.MAX_STDIN_BYTES)
+
+
+class _RPC:
+    """One sequential stream, one cumulative byte/deadline budget."""
+
+    def __init__(self,child,deadline):
+        self.child,self.deadline = child,deadline
+        self.buffer = bytearray()
+        self.received = 0
+        self.next_id = 0
+        os.set_blocking(child.stdin.fileno(),False)
+        os.set_blocking(child.stdout.fileno(),False)
+
+    def send(self,value):
+        pending = memoryview((_canonical(value)+'\n').encode('utf-8'))
+        fd = self.child.stdin.fileno()
+        while pending:
+            left = _remaining(self.deadline)
+            _require(left>0 and bool(select.select([],[fd],[],left)[1]))
+            try:
+                count = os.write(fd,pending)
+            except (BlockingIOError,InterruptedError):
+                continue
+            _require(count>0)
+            pending = pending[count:]
+
+    def receive(self):
+        while True:
+            _require(_remaining(self.deadline)>0)
+            newline = self.buffer.find(b'\n')
+            if newline>=0:
+                raw = bytes(self.buffer[:newline])
+                del self.buffer[:newline+1]
+                value = _json(raw.decode('utf-8'))
+                _require(type(value) is dict)
+                return value
+            fd = self.child.stdout.fileno()
+            _require(bool(select.select([fd],[],[],_remaining(self.deadline))[0]))
+            try:
+                block = os.read(fd,min(16384,MAX_INBOUND+1-self.received))
+            except (BlockingIOError,InterruptedError):
+                continue
+            _require(bool(block))
+            self.received += len(block)
+            _require(self.received<=MAX_INBOUND)
+            self.buffer.extend(block)
+
+    def call(self,method,params):
+        self.next_id += 1
+        request_id = self.next_id
+        self.send(dict(id=request_id,method=method,params=params))
+        while True:
+            value = self.receive()
+            if 'method' in value:
+                # Notifications are bounded by the same bytes and time. An
+                # unsolicited request cannot obtain an approval or agent reply.
+                _require('id' not in value and isinstance(value['method'],str)
+                         and bool(value['method']))
+                continue
+            _require(type(value.get('id')) is int and value['id']==request_id
+                     and 'error' not in value and 'result' in value)
+            return value['result']
+
+
+def _initialize(rpc,root):
+    result = rpc.call('initialize',dict(clientInfo=dict(name=CLIENT,version='1'),
+                                     capabilities=dict(experimentalApi=True)))
+    _require(type(result) is dict and isinstance(result.get('userAgent'),str))
+    token,separator,tail = result['userAgent'].partition(' ')
+    _require(token==CLIENT+'/'+VERSION and separator==' ' and bool(tail))
+    effective = result.get('codexHome')
+    _require(isinstance(effective,str) and Path(effective).is_absolute()
+             and str(Path(effective).resolve(strict=True))==root)
+    rpc.send(dict(method='initialized'))
+
+
+def _item(value):
+    _require(type(value) is dict and isinstance(value.get('id'),str) and bool(value['id'])
+             and isinstance(value.get('clientUserMessageId'),str) and bool(value['clientUserMessageId'])
+             and type(value.get('input')) is list)
+    _require(all(type(item) is dict and isinstance(item.get('type'),str)
+                 and bool(item['type']) for item in value['input']))
+    return value
+
+
+def _page(value,seen):
+    _require(type(value) is dict and type(value.get('data')) is list
+             and len(value['data'])<=PAGE_LIMIT)
+    # Validate the complete returned page before allowing an early match.
+    items = [_item(item) for item in value['data']]
+    cursor = value.get('nextCursor')
+    _require(cursor is None or (isinstance(cursor,str) and 0<len(cursor.encode('utf-8'))<=4096
+                               and cursor not in seen))
+    if cursor is not None:
+        seen.add(cursor)
+    return items,cursor
+
+
+def _hint(payload,config):
+    return dict(protocol='theseus-wake',v=1,binding=dict(payload['binding']),
+                destination=dict(config.destination),profile=config.profile_path,
+                wake_generation=payload['wake_generation'],attempt_id=payload['attempt_id'],
+                instruction=INSTRUCTION)
+
+
+def _matches(item,hint):
+    inputs = item['input']
+    if not item['clientUserMessageId'].startswith('theseus-wake-') or len(inputs)!=1:
+        return False
+    text = inputs[0]
+    if (set(text)!={'type','text','text_elements'} or text['type']!='text'
+            or not isinstance(text['text'],str) or text['text_elements']!=[]):
+        return False
+    try:
+        value = _json(text['text'])
+        if type(value) is not dict or set(value)!=set(hint):
+            return False
+        _payload({key:value[key] for key in ('v','binding','wake_generation','attempt_id')})
+        # Only these historical coordinates differ. Everything identifying the
+        # exact instance/recipient/destination/profile and instruction must match.
+        expected = dict(hint,wake_generation=value['wake_generation'],attempt_id=value['attempt_id'])
+        return text['text']==_canonical(expected)
+    except (BrokerError,UnicodeError,ValueError):
+        return False
+
+
+def _queue(rpc,payload,config):
+    hint = _hint(payload,config)
+    thread = config.destination['thread_id']
+    cursor,seen = None,set()
+    for index in range(MAX_PAGES):
+        # Do not spend the add reservation starting another page. A stalled
+        # active RPC is an error, never permission to add concurrently.
+        if index and _remaining(rpc.deadline)<ADD_SECONDS:
+            break
+        params = dict(threadId=thread,limit=PAGE_LIMIT)
+        if cursor is not None:
+            params['cursor'] = cursor
+        items,cursor = _page(rpc.call('thread/queue/list',params),seen)
+        if any(_matches(item,hint) for item in items):
+            return
+        if cursor is None:
+            break
+    _require(_remaining(rpc.deadline)>=ADD_SECONDS)
+    identity = _canonical(dict(binding=payload['binding'],attempt_id=payload['attempt_id']))
+    client_id = 'theseus-wake-'+hashlib.sha256(identity.encode('utf-8')).hexdigest()
+    inputs = [dict(type='text',text=_canonical(hint),text_elements=[])]
+    result = rpc.call('thread/queue/add',dict(threadId=thread,clientUserMessageId=client_id,input=inputs))
+    _require(type(result) is dict and 'queuedSubmission' in result)
+    receipt = _item(result['queuedSubmission'])
+    _require(receipt['clientUserMessageId']==client_id and receipt['input']==inputs)
+
+
+def main(argv=None, *, started=None):
+    # The executable captures this before importing repository modules. The
+    # outer adapter independently bounds interpreter startup and group cleanup.
+    deadline = (time.monotonic() if started is None else started)+TOTAL_SECONDS
+    rpc_deadline = deadline-CLEANUP_SECONDS
+    child = None
+    accepted = False
+    try:
+        argv = sys.argv[1:] if argv is None else argv
+        _require(len(argv)==2 and argv[0]=='--config')
+        payload = _stdin(rpc_deadline)
+        config = load_config(argv[1],expected_binding=payload['binding'])
+        _require(_remaining(rpc_deadline)>0)
+        environment = {key:os.environ[key] for key in ('HOME','LANG','TMPDIR') if key in os.environ}
+        environment['PATH'] = '/usr/bin:/bin'
+        environment['CODEX_HOME'] = config.destination['codex_home']
+        child = subprocess.Popen([config.codex_executable,'app-server','--listen','stdio://'],
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,
+            shell=False,env=environment,start_new_session=False,close_fds=True,bufsize=0)
+        rpc = _RPC(child,rpc_deadline)
+        _initialize(rpc,config.destination['codex_home'])
+        _queue(rpc,payload,config)
+        accepted = True
+    except Exception:
+        # No request, profile, body or credential is logged. A nonzero process
+        # result is not a statement about the durable fate of an attempted add.
+        accepted = False
+    finally:
+        if child is not None:
+            try:
+                child.stdin.close()
+                child.stdout.close()
+                _require(child.wait(timeout=_remaining(deadline))==0 and _remaining(deadline)>0)
+            except Exception:
+                accepted = False
+                # Do not signal or detach. The invocation owner retains the
+                # broker leader until its existing group cleanup is confirmed.
+    return 0 if accepted else 1
