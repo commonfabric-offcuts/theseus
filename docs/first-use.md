@@ -164,5 +164,14 @@ owned processes, entry URL, configured workspace/topic/team, initial backup and
 checks actually performed. It distinguishes implemented components from the
 usable path and names omissions. New topic UI, full management/navigation,
 workspace ownership transfer, remote/mobile access and unattended restart are
-staged. Basic attachments and scoped freshness must be delivered and reviewed
-before this first-use handoff; these instructions alone do not satisfy that gate.
+staged. Basic attachments must be delivered and reviewed before this first-use
+handoff; these instructions alone do not satisfy that gate.
+
+The initial handoff uses the page's explicit **Refresh** button: new replies
+appear after Refresh, which rereads the message and Notebook lists. Automatic
+scoped updates are the next increment on the same retained instance, origin and
+data, and do not gate first use. The implemented [changes query](changes-query.md)
+is the backend foundation; it is not evidence of automatic browser updates.
+Keep the current source revision, selection and writing distinct from list
+freshness, and do not replace the instance or clear browser writing to add
+automatic updates later.
