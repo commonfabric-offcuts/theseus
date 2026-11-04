@@ -13,9 +13,17 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from .authority import AuthorityError
+from .contract import LIMITS, Refusal
+from .media import INLINE_TYPES
+
+
+MEDIA_CHUNK = 65536
+MEDIA_HEADER_BYTES = 8192
+MEDIA_RATE = 256 * 1024
+COMMAND_FIELDS = {"v", "instance_id", "operation_id", "kind", "target", "expected", "args"}
 
 
 class RequestError(Exception):
@@ -50,6 +58,24 @@ class DeadlineInput(io.RawIOBase):
             raise socket.timeout("Request input deadline expired")
         self.connection.settimeout(remaining)
         return self.connection.recv_into(buffer)
+
+
+class UploadInput:
+    """An exact HTTP frame; Core cannot read into a following request."""
+    def __init__(self, handler, length):
+        self.handler, self.length = handler, length
+
+    def read(self, size):
+        if type(size) is not int or not 1 <= size <= MEDIA_CHUNK:
+            raise ValueError("Media reads must be bounded")
+        remaining = self.length - self.handler.body_consumed
+        if remaining <= 0:
+            return b""
+        if time.monotonic() >= self.handler.deadline:
+            raise socket.timeout("Upload deadline expired")
+        data = self.handler.rfile.read1(min(size, remaining))
+        self.handler.body_consumed += len(data)
+        return data
 
 
 class AIMHTTPServer(ThreadingHTTPServer):
@@ -92,8 +118,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def setup(self):
         super().setup()
-        self.deadline = time.monotonic() + self.server.request_timeout
+        self.request_started = time.monotonic()
+        self.deadline = self.request_started + self.server.request_timeout
         self.body_consumed = 0
+        self.binary_headers_started = False
         self.rfile.close()
         self.rfile = io.BufferedReader(DeadlineInput(self.connection, self.deadline))
 
@@ -220,16 +248,31 @@ class Handler(BaseHTTPRequestHandler):
         try:
             action()
         except RequestError as error:
-            self._error(error.status, error.code, error.message)
+            if self.binary_headers_started:
+                self.close_connection = True
+            else:
+                self._error(error.status, error.code, error.message)
+        except Refusal as error:
+            if self.binary_headers_started:
+                self.close_connection = True
+            else:
+                status = 403 if error.code == "FORBIDDEN" else (400 if error.code == "INVALID_ARGUMENT" else 409)
+                self._error(status, error.code, error.message)
         except AuthorityError as error:
             # This attempt did not reach its bound authority. Keep the original
             # operation identity: an earlier attempt may already be recorded.
-            self._error(503 if error.retryable else 409, error.code, error.message)
+            if self.binary_headers_started:
+                self.close_connection = True
+            else:
+                self._error(503 if error.retryable else 409, error.code, error.message)
         except (BrokenPipeError, ConnectionResetError, socket.timeout):
             self.close_connection = True
         except Exception:
             # A failure on this attempt cannot settle a possibly committed act.
-            self._error(500, "REQUEST_UNCONFIRMED", "The request could not be confirmed; reconcile its operation.")
+            if self.binary_headers_started:
+                self.close_connection = True
+            else:
+                self._error(500, "REQUEST_UNCONFIRMED", "The request could not be confirmed; reconcile its operation.")
 
     def do_POST(self):
         self._run(self._post)
@@ -237,12 +280,15 @@ class Handler(BaseHTTPRequestHandler):
     def _post(self):
         self._authorize(write=True)
         path = urlsplit(self.path).path
+        if path == "/api/media/upload":
+            return self._upload_media()
+        if path == "/api/media/read":
+            return self._read_media()
         if path not in ("/api/command", "/api/view"):
             raise RequestError(404, "NOT_FOUND", "No such endpoint.")
         value = self._body()
         if path == "/api/command":
-            required = {"v", "instance_id", "operation_id", "kind", "target", "expected", "args"}
-            if set(value) != required:
+            if set(value) != COMMAND_FIELDS:
                 raise RequestError(400, "INVALID_ENVELOPE", "Use the shared command envelope without an actor override.")
             result = self._store_call(lambda store: store.command(self.server.actor, value), command=True)
         else:
@@ -250,6 +296,114 @@ class Handler(BaseHTTPRequestHandler):
                 raise RequestError(400, "INVALID_VIEW", "A view name and argument object are required.")
             result = self._store_call(lambda store: store.view(self.server.actor, value["name"], value["args"]))
         self._json_response(200, result)
+
+    def _upload_framing(self):
+        lengths = self.headers.get_all("Content-Length", [])
+        if (self.headers.get_all("Transfer-Encoding", []) or len(lengths) != 1
+                or not re.fullmatch(r"[0-9]{1,20}", lengths[0])):
+            raise RequestError(400, "INVALID_BODY", "One bounded content length is required.")
+        length = int(lengths[0])
+        if length > LIMITS["media_file_bytes"]:
+            raise RequestError(413, "MEDIA_TOO_LARGE", "Media exceeds this instance's per-file limit.")
+        if self.headers.get_all("Content-Type", []) != ["application/octet-stream"]:
+            raise RequestError(415, "BINARY_REQUIRED", "Use application/octet-stream.")
+        headers = self.headers.get_all("X-AIM-Command", [])
+        try:
+            if len(headers) != 1 or len(headers[0].encode("ascii")) > MEDIA_HEADER_BYTES:
+                raise ValueError("One bounded command header is required")
+            value = json.loads(headers[0], object_pairs_hook=_unique_object,
+                               parse_constant=_invalid_constant)
+            if not isinstance(value, dict) or set(value) != COMMAND_FIELDS or value["kind"] != "media.publish":
+                raise ValueError("Media publication envelope required")
+        except (ValueError, UnicodeError, RecursionError):
+            raise RequestError(400, "INVALID_ENVELOPE", "Use one bounded ASCII JSON media.publish command header.")
+        # Update the actual buffered input's raw reader, without discarding any
+        # bytes already read alongside the headers. This is not a renewed clock.
+        self.deadline = self.request_started + self.server.request_timeout + length / MEDIA_RATE
+        self.rfile.raw.deadline = self.deadline
+        return length, value
+
+    def _media_call(self, slot, callback):
+        if not slot.acquire(blocking=False):
+            raise RequestError(503, "SERVER_BUSY", "This media lane is busy; retain its operation.")
+        store = None
+        try:
+            store = self.server.store_factory()
+            return callback(store)
+        finally:
+            try:
+                if store is not None:
+                    close = getattr(store, "close", None)
+                    if callable(close):
+                        close()
+            finally:
+                slot.release()
+
+    def _upload_media(self):
+        length, value = self._upload_framing()
+        result = self._media_call(self.server.upload_slots,
+            lambda store: store.publish_media(self.server.actor, value, UploadInput(self, length)))
+        # The slot ends before receipt output or draining an unused retry body.
+        self._json_response(200, result)
+        if self.body_consumed < length:
+            self._discard_refused_upload()
+
+    def _read_media(self):
+        args = self._body()
+        def output(store):
+            with store.open_media(self.server.actor, args) as resource:
+                self._send_media(resource)
+        return self._media_call(self.server.media_read_slots, output)
+
+    def _send_media(self, resource):
+        descriptor = dict(resource.descriptor)
+        try:
+            encoded = json.dumps(descriptor, ensure_ascii=True, allow_nan=False,
+                                 separators=(",", ":"))
+            size = descriptor["size_bytes"]
+            content_type = descriptor["content_type"]
+            name = descriptor["name"]
+            if (len(encoded.encode("ascii")) > MEDIA_HEADER_BYTES or type(size) is not int
+                    or not 0 <= size <= LIMITS["media_file_bytes"]
+                    or not isinstance(name, str) or not isinstance(content_type, str)
+                    or not re.fullmatch(r"[A-Za-z0-9!#$&^_.+\-]+/[A-Za-z0-9!#$&^_.+\-]+", content_type)):
+                raise ValueError("Invalid descriptor")
+        except (KeyError, ValueError, TypeError, UnicodeError):
+            raise RequestError(500, "MEDIA_UNCONFIRMED", "Verified media metadata could not be represented.")
+        inline = descriptor.get("inline") is True and content_type in INLINE_TYPES
+        disposition = "inline" if inline else "attachment"
+        filename = quote(name, safe="", encoding="utf-8", errors="strict")
+        deadline = time.monotonic() + self.server.request_timeout + size / MEDIA_RATE
+
+        def remaining_timeout():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise socket.timeout("Media output deadline expired")
+            self.connection.settimeout(remaining)
+
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(size))
+        self.send_header("X-AIM-Media", encoded)
+        self.send_header("Content-Disposition", disposition + "; filename*=UTF-8''" + filename)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Security-Policy", "default-src 'none'; sandbox; frame-ancestors 'none'; base-uri 'none'")
+        self.send_header("Connection", "close")
+        remaining_timeout()
+        self.binary_headers_started = True
+        self.end_headers()
+        remaining = size
+        while remaining:
+            chunk = resource.read(min(MEDIA_CHUNK, remaining))
+            if not isinstance(chunk, bytes) or not chunk or len(chunk) > min(MEDIA_CHUNK, remaining):
+                raise ValueError("Verified media resource violated its size bound")
+            remaining_timeout()
+            self.wfile.write(chunk)
+            remaining -= len(chunk)
 
     def do_GET(self):
         self._run(self._get)
@@ -280,7 +434,7 @@ class Handler(BaseHTTPRequestHandler):
                                       "actor": self.server.actor, "limits": capabilities["limits"],
                                       "authority": authority})
             return
-        if path in ("/api/command", "/api/view"):
+        if path in ("/api/command", "/api/view", "/api/media/upload", "/api/media/read"):
             raise RequestError(405, "METHOD_REFUSED", "Use POST with the shared API contract.")
         if path.startswith("/api/"):
             raise RequestError(404, "NOT_FOUND", "No such endpoint.")
@@ -327,6 +481,8 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.request_timeout = 10.0
     server.read_slots = threading.BoundedSemaphore(max_reads)
     server.command_slots = threading.BoundedSemaphore(2)
+    server.upload_slots = threading.BoundedSemaphore(1)
+    server.media_read_slots = threading.BoundedSemaphore(1)
     server.connection_slots = threading.BoundedSemaphore(16)
     server.authority = "%s:%s" % server.server_address
     server.origin = "http://" + server.authority
