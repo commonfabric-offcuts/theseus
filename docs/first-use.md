@@ -167,13 +167,10 @@ workspace ownership transfer, remote/mobile access and unattended restart are
 staged. Basic attachments must be delivered and reviewed before this first-use
 handoff; these instructions alone do not satisfy that gate.
 
-The initial handoff uses the page's explicit **Refresh** button: new replies
-appear after Refresh, which rereads the message and Notebook lists. Automatic
-scoped updates are the next increment on the same retained instance, origin and
-data, and do not gate first use. The implemented [changes query](changes-query.md)
-is the backend foundation; it is not evidence of automatic browser updates. The accepted
-[automatic-update plan](scoped-updates-plan.md) specifies the next increment
-and its independent-review conditions.
-Keep the current source revision, selection and writing distinct from list
-freshness, and do not replace the instance or clear browser writing to add
-automatic updates later.
+The initial handoff used the page's explicit **Refresh** button for new replies
+and Notebook changes. The [scoped-update guide](scoped-updates.md) describes the
+matching reader/server increment and its manual fallback. Its rollout retains
+the same instance, origin and data; it does not repeat setup or clear browser
+writing. The [accepted plan](scoped-updates-plan.md) retains the independent-review
+conditions. A local release receipt must identify the installed revision and
+actual runtime readback before automatic updates are reported as live.
