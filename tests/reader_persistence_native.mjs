@@ -1,6 +1,7 @@
 // Real isolated HTTP/Store and browser IDB/Web Locks. CDP owns only its CFT
 // profile and closes the browser over its socket; no signals, origin sweeps,
-// product debug endpoints, synthetic UI actions, or other member's identity.
+// product debug endpoints, or other member's identity. Cases explicitly label
+// injected payload boundaries (such as paste); those do not prove OS ingestion.
 import assert from 'node:assert/strict';
 import { imageInstrumentation, imageChecks } from './reader_images_native.mjs';
 import { freshnessInstrumentation, freshnessChecks, observeUploadProof } from './reader_freshness_native.mjs';

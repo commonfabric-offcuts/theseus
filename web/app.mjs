@@ -343,6 +343,7 @@ function paintViews(kind) {
       const ref = { kind: 'message', id: item.id };
       card = button('', () => openSource(ref, card)); card.className = 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
       card.append(node('span', item.author_id, 'message-author'), node('span', item.body, 'message-preview'));
+      if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
       $('messages').insertBefore(card, following ?? null);
     }

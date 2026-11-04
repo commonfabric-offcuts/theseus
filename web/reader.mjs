@@ -76,9 +76,41 @@ export class Reader {
       this.paintStatus();
     });
     this.field.addEventListener('select', () => { if (this.editor) this.editor.draft.caret = this.caret(); });
+    this.field.addEventListener('paste', event => this.paste(event));
     this.sourceBody.addEventListener('pointerdown', () => this.sourceBody.focus({ preventScroll: true }));
     this.sourceBody.addEventListener('pointermove', event => this.point(event));
     this.dialog.addEventListener('keydown', event => this.key(event));
+  }
+
+  async paste(event) {
+    const items = [...(event.clipboardData?.items ?? [])].filter(item => item.type.startsWith('image/'));
+    if (!items.length) return; // Text-only paste belongs to the native editor.
+    event.preventDefault();
+    try {
+      if (this.mode === 'note') throw Error('Images cannot be pasted into a private note. Switch to Reply to attach an image.');
+      if (this.writingReadOnly()) throw Error('This writing is read-only. Review the saved version before pasting an image.');
+      const editor = this.editor, presentation = this.presentation;
+      if (!editor || editor.authorityRecovery) throw Error('Review the runtime change before pasting an image.');
+      if (editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept; the image was not added.');
+      const uploads = this.callbacks.uploads?.(editor);
+      if (!uploads) throw Error('Images are not available in this reply yet.');
+      // Capture clipboard files and their original editor/cycle before any
+      // asynchronous work. Every image uses the existing admission/byte owner.
+      const files = items.map(item => item.getAsFile());
+      if (files.some(file => !file)) throw Error('Could not read the pasted image. Try Add image to choose the file.');
+      const choices = files.map(file => {
+        try {
+          const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' }[file.type] ?? 'bin';
+          const named = file.name ? file : new File([file], `pasted.${extension}`, { type: file.type, lastModified: file.lastModified });
+          return uploads.choose(uploads.reserve(presentation), named);
+        } catch (error) { return Promise.reject(error); }
+      });
+      const errors = (await Promise.allSettled(choices)).filter(result => result.status === 'rejected');
+      if (errors.length && this.editor === editor && this.presentation === presentation && this.mode === 'reply') {
+        this.notice([...new Set(errors.map(result => result.reason.message))].join(' '));
+      }
+    } catch (error) { this.notice(error.message); }
+    finally { this.paintStatus(); }
   }
 
   show(source, sessions, { opener, topics = [], canPrevious = false, canNext = false, presentation, mode = 'reply' } = {}) {

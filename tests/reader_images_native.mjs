@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 export const imageInstrumentation = `(()=>{
   window.imagePuts=[];
   const bytes=(x,seen=new Set())=>{if(x instanceof Blob)return x.size;if(!x||typeof x!=='object'||seen.has(x))return 0;seen.add(x);return (x instanceof Map?[...x.keys(),...x.values()]:x instanceof Set?[...x]:Object.values(x)).reduce((n,v)=>n+bytes(v,seen),0)};
@@ -10,6 +11,146 @@ export const imageInstrumentation = `(()=>{
 })()`;
 export async function imageChecks({ check, page, until, root, facts, view, replace, field, shot, observations }) {
   const png = (await readFile(path.join(root, 'tests/fixtures/media/screen.png'))).toString('base64');
+  // Page-owned clipboard payload only: never read/write the OS pasteboard or
+  // dispatch Cmd+V. This proves the paste event boundary, not OS ingestion.
+  const pasteImage = p => p.evaluate(`(()=>{
+    const data=new DataTransfer();data.items.add(new File([Uint8Array.from(atob(${JSON.stringify(png)}),c=>c.charCodeAt(0))],'pasted.png',{type:'image/png'}));
+    const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});
+    document.querySelector('#writing-body').dispatchEvent(event);return event.defaultPrevented;
+  })()`);
+  await check('images restoration preview cue opens exact full text and leaves short cards unchanged', async () => {
+    const p = await page('preview-cue', null, true);
+    const selector = `#messages [data-id="${facts.sources[0].id}"]`;
+    assert.match(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent`), /Open to read the rest/, 'long preview must expose the way to the full message');
+    const original = await view('source', facts.sources[0]);
+    await p.open(0);
+    assert.equal(await p.evaluate('document.querySelector("#source-body").textContent'), original.body);
+    await replace(p, 'Short restoration message'); await p.key('Enter', 4);
+    const sent = await until(() => p.calls.find(c => c.payload?.kind === 'message.send'), 'short message send');
+    const receipt = await view('operation', { operation_id: sent.payload.operation_id });
+    assert.equal(receipt.status, 'committed');
+    await until(() => p.evaluate('!document.querySelector("#reader").open'), 'send returns to topic');
+    // Sending invalidates the topic view itself. Wait for that render instead of
+    // racing its scroll-anchor restoration with an unrelated Refresh click.
+    const short = `#messages [data-id="${receipt.result.message_id}"]`;
+    await until(() => p.box(short), 'short card appears');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(short)}+' .message-preview').textContent`), 'Short restoration message');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(short)}).textContent.includes('Open to read the rest')`), false);
+    await shot(p, 'restoration-preview-cue'); assert.deepEqual(p.errors, []);
+  });
+  await check('images restoration paste event preserves source through delayed upload and sends exact bytes once', async () => {
+    const p = await page('paste-event', null, true); await p.open(1);
+    await replace(p, 'Writing beside a pasted image');
+    p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+    assert.equal(await pasteImage(p), true, 'image paste must be handled without native text insertion');
+    const held = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'delayed image confirmation');
+    assert.equal(await field(p), 'Writing beside a pasted image');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0, 'paste sends nothing');
+    assert.equal(await p.evaluate('document.querySelector("#send-reply").disabled'), true, 'unconfirmed image cannot be omitted from Send');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close original source');
+    await p.open(0); const other = await field(p);
+    p.intercept(null); await p.release(held);
+    await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 1, 'original draft receives ready attachment');
+    assert.equal(await field(p), other, 'late upload cannot change the new source writing');
+    assert.equal(await p.evaluate('document.querySelector("#writing-attachments").children.length'), 0, 'late upload cannot attach to the new source');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close second source');
+    await p.open(1);
+    await until(() => p.evaluate('document.querySelector("#writing-attachments").textContent.includes("Ready")'), 'original pasted image is ready');
+    await p.point('#writing-body'); await p.key('e', 2); await p.key('Enter'); await p.send('Input.insertText', { text: 'Second line' });
+    const expected = 'Writing beside a pasted image\nSecond line';
+    assert.equal(await field(p), expected); await p.key('Enter', 12);
+    const sent = await until(() => p.calls.find(c => c.payload?.kind === 'message.send'), 'native send after paste');
+    const receipt = await view('operation', { operation_id: sent.payload.operation_id }); assert.equal(receipt.status, 'committed');
+    const source = await view('source', { kind: 'message', id: receipt.result.message_id });
+    assert.equal(source.body, expected); assert.equal(source.topic_id, 't1'); assert.equal(source.author, facts.actor);
+    assert.equal(source.attachments.length, 1);
+    assert.equal(source.attachments[0].sha256, createHash('sha256').update(Buffer.from(png, 'base64')).digest('hex'));
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 1);
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close sent reader');
+    await p.evaluate('document.querySelector("#memory-items .memory-card").scrollIntoView({block:"center"})'); await p.point('#memory-items .memory-card');
+    await until(() => p.evaluate('document.querySelector("#reader").open && document.querySelector("#reader-title").textContent === "Image Notebook"'), 'Notebook reader');
+    await p.point('#writing-body'); assert.equal(await pasteImage(p), true);
+    await until(() => p.evaluate('document.querySelector("#writing-attachments").textContent.includes("Ready")'), 'Notebook reply image ready');
+    await until(async () => (await view('editor_state', { source_ref: { kind: 'memory', id: 'fixture-notebook', revision: 1 }, topic_id: 't1' })).draft?.attachments.length === 1, 'Notebook draft saves the ready attachment');
+    const captures = p.calls.filter(c => c.payload?.kind === 'media.begin').length;
+    await p.point('#toggle-note'); await replace(p, 'Private note'); assert.equal(await pasteImage(p), true);
+    assert.match(await p.evaluate('document.querySelector("#reader-notice").textContent'), /private note/i);
+    assert.equal(await field(p), 'Private note');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'media.begin').length, captures, 'private-note paste cannot mutate the hidden reply');
+    observations.push({ name: 'restoration paste boundary', injected: 'ClipboardEvent + DataTransfer + real File; no system clipboard access', native: 'focus, typing, source navigation and Send', untested: 'OS clipboard ingestion' });
+    await shot(p, 'restoration-paste-note-boundary'); assert.deepEqual(p.errors, []);
+  });
+  await check('images restoration footer controls stay fixed through real typing and save confirmation', async () => {
+    const p = await page('footer-stability', null, true); await p.open(1);
+    for (const layout of ['stacked', 'wide', 'narrow']) {
+      if (layout === 'wide') await p.point('#reader-layout');
+      if (layout === 'narrow') await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+      await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled layout');
+      p.intercept(payload => payload?.kind === 'draft.save');
+      const previousHeld = p.held.length;
+      await replace(p, `Footer stability ${layout}`);
+      const held = await until(() => p.held.slice(previousHeld).find(x => x.payload?.kind === 'draft.save'), 'delayed save confirmation');
+      await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved on this device — not yet saved to Theseus"'), 'device-saved status');
+      const selectors = ['#add-image', '#send-reply', '#writing-body'];
+      const before = await Promise.all(selectors.map(s => p.box(s)));
+      await shot(p, `restoration-footer-${layout}-pending`);
+      p.intercept(null); await p.release(held);
+      await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved to Theseus"'), 'server-saved status');
+      const after = await Promise.all(selectors.map(s => p.box(s)));
+      observations.push({ name: 'footer geometry', layout, before, after });
+      for (let i = 0; i < selectors.length; i++) for (const axis of ['x', 'y', 'width', 'height']) {
+        assert.ok(Math.abs(before[i][axis] - after[i][axis]) <= 1, `${layout}: ${selectors[i]} ${axis} must stay still across save status changes`);
+      }
+      for (const b of after) assert.ok(b.width > 0 && b.height > 0 && b.x >= 0 && b.y >= 0 && b.x + b.width <= b.viewportWidth && b.y + b.height <= b.viewportHeight, 'writing and controls remain visible');
+      assert.equal(await field(p), `Footer stability ${layout}`);
+      await shot(p, `restoration-footer-${layout}-saved`);
+    }
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0, 'typing and save redraws cannot send');
+    assert.deepEqual(p.errors, []);
+  });
+  await check('images restoration footer touch gap does nothing and deliberate Send works', async () => {
+    const p = await page('footer-touch', null, true); await p.open(1);
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled narrow reader');
+    await replace(p, 'Footer touch narrow');
+    await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved to Theseus"'), 'touch fixture saved');
+    const add = await p.box('#add-image'), send = await p.box('#send-reply');
+    const touch = async (x, y) => {
+      await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
+    const gap = (add.x + add.width + send.x) / 2, y = send.y + send.height / 2;
+    assert.ok(gap > add.x + add.width && gap < send.x, 'a real gap separates the actions');
+    await p.send('Page.setInterceptFileChooserDialog', { enabled: true });
+    const chooserCount = p.events.filter(e => e.method === 'Page.fileChooserOpened').length;
+    await p.evaluate(`(()=>{window.footerContacts=[];for(const type of ['touchstart','pointerdown','click']) document.addEventListener(type,e=>footerContacts.push({type,target:e.target.id,x:e.clientX,y:e.clientY,touches:e.touches?[...e.touches].map(t=>({x:t.clientX,y:t.clientY})):null}),true)})()`);
+    await touch(gap, y);
+    const bodyAfterGap = await field(p);
+    let gapReceipt = null, gapSource = null;
+    if (bodyAfterGap !== 'Footer touch narrow') {
+      const act = await until(() => p.calls.find(c => c.payload?.kind === 'message.send'), 'unexpected gap send receipt');
+      gapReceipt = await view('operation', { operation_id: act.payload.operation_id });
+      if (gapReceipt.status === 'committed') gapSource = await view('source', { kind: 'message', id: gapReceipt.result.message_id });
+    }
+    observations.push({ name: 'footer gap contact', add, send, gap, y, events: await p.evaluate('footerContacts'), sends: p.calls.filter(c => c.payload?.kind === 'message.send').length, gapReceipt, gapSource });
+    assert.equal(bodyAfterGap, 'Footer touch narrow');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0, 'touching the gap does not send');
+    assert.equal(p.events.filter(e => e.method === 'Page.fileChooserOpened').length, chooserCount, 'touching the gap does not choose an image');
+    await touch(add.x + add.width + 2, add.y + add.height / 2);
+    assert.equal(await field(p), 'Footer touch narrow');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0, 'an Add image edge touch cannot send');
+    if (await p.evaluate('!document.querySelector("#cancel-image").hidden')) await p.point('#cancel-image');
+    await shot(p, 'restoration-footer-touch');
+    const sendAfterEdge = await p.box('#send-reply');
+    await touch(sendAfterEdge.x + sendAfterEdge.width / 2, sendAfterEdge.y + sendAfterEdge.height / 2);
+    const sent = await until(() => p.calls.find(c => c.payload?.kind === 'message.send'), 'deliberate touch Send');
+    const receipt = await view('operation', { operation_id: sent.payload.operation_id }); assert.equal(receipt.status, 'committed');
+    const source = await view('source', { kind: 'message', id: receipt.result.message_id });
+    assert.equal(source.body, 'Footer touch narrow'); assert.equal(source.topic_id, 't1');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 1);
+    observations.push({ name: 'narrow touch boundaries', gapNoAction: true, deliberateSend: receipt.result.message_id });
+    assert.deepEqual(p.errors, []);
+  });
   const model = async (p, actual = false) => p.evaluate(`(async()=>{
     const {Api}=await import('/api.mjs'), {EditorRegistry}=await import('/app-session.mjs');
     window.api=new Api(${JSON.stringify(facts.token)});window.boot=await api.bootstrap();
@@ -159,8 +300,12 @@ export async function imageChecks({ check, page, until, root, facts, view, repla
     assert.ok((await p.evaluate('imagePuts')).every(x => !x.bytes || x.kind === 'upload-bytes-v1'));
     await until(async () => !(await p.evaluate('imageRows()')).some(r => r.kind === 'upload-bytes-v1'), 'actual byte-row retirement');
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'sent reader closes');
-    await p.point('#refresh'); await until(() => p.box('#messages [data-id="' + receipt.result.message_id + '"]'), 'sent message is discoverable');
-    await p.point('#messages [data-id="' + receipt.result.message_id + '"]');
+    // The committed send refreshes the list; wait for it before positioning the
+    // real card. Refresh is not this check's action and may be offscreen.
+    const sentCard = '#messages [data-id="' + receipt.result.message_id + '"]';
+    await until(() => p.box(sentCard), 'sent message is discoverable');
+    await p.evaluate(`document.querySelector(${JSON.stringify(sentCard)}).scrollIntoView({block:'center'})`);
+    await p.point(sentCard);
     await until(() => p.evaluate('document.querySelector("#reader").open && Boolean(document.querySelector("#source-attachments button"))'), 'sent image Open action');
     await p.point('#source-attachments button');
     await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth > 0'), 'exact sent bytes rendered');
