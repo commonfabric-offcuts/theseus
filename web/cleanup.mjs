@@ -1,0 +1,237 @@
+import { editorKey } from './editor.mjs';
+
+const copy = value => structuredClone(value);
+export const same = (a, b) => {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && same(a[key], b[key]));
+};
+const pair = a => a && typeof a.authority_id === 'string' && a.authority_id && typeof a.authority_epoch === 'string' && a.authority_epoch
+  ? { authority_id: a.authority_id, authority_epoch: a.authority_epoch } : null;
+const fields = ['body', 'attachments', 'quotes', 'addressees', 'reply_to', 'exchange_id', 'opening', 'caret'];
+const recognizedDraft = (draft, note = false) => {
+  const allowed = note ? ['body', 'caret', 'attachments', 'quotes', 'addressees'] : [...fields, 'generation'];
+  return draft && Object.keys(draft).every(key => [...allowed, 'id', 'revision', 'source_ref'].includes(key)) &&
+    ['attachments', 'quotes', 'addressees'].every(key => !Object.hasOwn(draft, key) ||
+      Array.isArray(draft[key]) && (!note || draft[key].length === 0));
+};
+const writing = (draft, note = false) => Object.fromEntries((note ? ['body', 'caret'] : fields)
+  .filter(key => Object.hasOwn(draft, key)).map(key => [key, copy(draft[key])]));
+const withoutCaret = value => { const result = copy(value); delete result.caret; return result; };
+
+// Only the current caret is a restoration hint. Frozen tickets and attempts
+// remain exact, including their original caret and every authority pin.
+export function meaningfulSnapshot(snapshot) {
+  const result = copy(snapshot); delete result.draft.caret; return result;
+}
+
+export function eligible(row, context) {
+  try {
+    const s = row.snapshot, key = editorKey(context), a = pair(s.activeAuthority);
+    return row.active === 1 && !row.superseded_by && typeof row.writerId === 'string' && Boolean(row.writerId) &&
+      typeof row.stamp === 'string' && Boolean(row.stamp) && row.id === JSON.stringify([key, row.writerId]) &&
+      row.scope === JSON.stringify([context.instanceId, context.actor]) && row.editorKey === key &&
+      s.format === 1 && s.key === key && editorKey(s.context) === key && same(s.context, context) &&
+      same(s.sourceRef, context.sourceRef) && (!s.draft.source_ref || same(s.draft.source_ref, s.sourceRef)) &&
+      ['reply', 'note'].includes(context.kind) && typeof s.draft.id === 'string' && Boolean(s.draft.id) &&
+      Number.isInteger(s.draft.revision) && s.draft.revision > 0 &&
+      recognizedDraft(s.draft, context.kind === 'note') &&
+      typeof s.draft.body === 'string' && ['attachments', 'quotes', 'addressees'].every(key => Array.isArray(s.draft[key])) &&
+      (context.kind === 'note' || typeof s.draft.generation === 'string' && Boolean(s.draft.generation)) &&
+      Number.isInteger(s.localVersion) && s.localVersion >= 0 && s.localVersion === s.ackVersion &&
+      !s.conflict && !s.authorityRecovery && a && ['initial', 'complete', 'incomplete', 'unknown'].includes(s.activeAuthority.continuity) &&
+      Array.isArray(s.attempts) && Array.isArray(s.submissions) &&
+      s.attempts.every(e => !e.detached && !e.error && e.dispatched === true && e.receipt?.status === 'committed' &&
+        same(e.envelope?.expected?.authority, a)) &&
+      s.submissions.every(item => !item.detached && !item.blocked && !item.saveConflict && item.status === 'confirmed' &&
+        item.preparationConfirmed === true && same(item.authority, a) && item.receipt?.status === 'committed');
+  } catch { return false; }
+}
+
+// This read-only coordinator never joins the private-save or public-send queue.
+// Each captured row gets its own bounded confirmation cache and fresh bracket.
+export class RecoveryCleanup {
+  constructor({ api, bootstrap, journal, runtime, changed, stopped = () => false, yieldBatch = () => new Promise(resolve => setTimeout(resolve, 0)) }) {
+    Object.assign(this, { api, bootstrap, journal, runtime, changed, stopped, yieldBatch });
+    this.queues = new Map(); this.requested = new Map();
+    this.readTail = Promise.resolve(); this.activeRead = null; this.foregroundCount = 0;
+  }
+  deferred() { return Object.assign(Error('Foreground reading has priority; the recovery copy is retained.'), { code: 'CLEANUP_DEFERRED' }); }
+  read(operation) {
+    if (this.foregroundCount) return Promise.reject(this.deferred());
+    const next = this.readTail.then(async () => {
+      if (this.foregroundCount || this.stopped()) throw this.deferred();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), this.runtime.readTimeoutMs);
+      const transport = Promise.resolve().then(() => operation({ signal: controller.signal }));
+      this.activeRead = transport;
+      try { return await transport; }
+      finally { clearTimeout(timer); if (this.activeRead === transport) this.activeRead = null; }
+    });
+    // Occupancy follows the actual aborted/settled transport, never a timeout
+    // race that could free a slot while its request is still alive.
+    this.readTail = next.catch(() => {});
+    return next;
+  }
+  foreground() {
+    ++this.foregroundCount;
+    const deadline = Date.now() + this.runtime.readTimeoutMs;
+    let released = false, finished = true, counted = true;
+    const releaseCount = () => { if (released && finished && counted) { counted = false; --this.foregroundCount; } };
+    const bounded = async (promise, controller = null) => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) { controller?.abort(); throw Error('Reader request timed out. Your writing is kept.'); }
+      let timer;
+      try { return await Promise.race([promise, new Promise((_, reject) => {
+        timer = setTimeout(() => { controller?.abort(); reject(Error('Reader request timed out. Your writing is kept.')); }, remaining);
+      })]); } finally { clearTimeout(timer); }
+    };
+    return {
+      read: async operation => {
+        if (this.activeRead) await bounded(this.activeRead.catch(() => {}));
+        if (released || Date.now() >= deadline) throw Error('Reader request timed out. Your writing is kept.');
+        const controller = new AbortController(); finished = false;
+        const transport = Promise.resolve().then(() => operation({ signal: controller.signal }));
+        const done = () => { finished = true; releaseCount(); };
+        transport.then(done, done);
+        return bounded(transport, controller);
+      },
+      release: () => { released = true; releaseCount(); },
+    };
+  }
+  enqueue(key, action) {
+    const task = (this.queues.get(key) ?? Promise.resolve()).catch(() => {}).then(action);
+    this.queues.set(key, task);
+    const done = () => { if (this.queues.get(key) === task) this.queues.delete(key); };
+    task.then(done, done); return task;
+  }
+  async idle(key) { while (this.queues.has(key)) await this.queues.get(key); }
+  request(session) {
+    const key = session.editor.key;
+    if (this.requested.has(key)) { this.requested.set(key, session); return; }
+    this.requested.set(key, session);
+    this.enqueue(key, async () => {
+      while (this.requested.has(key) && !this.stopped()) {
+        const latest = this.requested.get(key); this.requested.delete(key);
+        await this.retireOwn(latest);
+      }
+      this.requested.delete(key);
+    }).catch(() => {});
+  }
+  own(session) { return this.enqueue(session.editor.key, () => this.retireOwn(session)); }
+  report(session, error) {
+    session.editor.cleanupError = error ? 'Saved; recovery-copy cleanup could not finish. Retry from Review versions.' : null;
+    this.changed(session.editor);
+  }
+  async retireOwn(session) {
+    if (this.stopped()) return false;
+    try {
+      const row = await this.journal.own(session.editor.key);
+      if (!row || !same(meaningfulSnapshot(session.snapshot()), meaningfulSnapshot(row.snapshot)) ||
+          !await this.confirm(row, session.editor.context)) return false;
+      const current = () => !this.stopped() && same(pair(session.authority), pair(this.runtime.current)) && same(meaningfulSnapshot(session.snapshot()), meaningfulSnapshot(row.snapshot));
+      const removed = await this.journal.removeExact(session.editor.key, row.stamp, current, () => {
+        if (current()) session.acknowledgedSnapshot = meaningfulSnapshot(row.snapshot);
+      });
+      if (removed) this.report(session, null);
+      return removed;
+    } catch (error) { if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); return false; }
+  }
+  candidates(session, page) {
+    return this.enqueue(session.editor.key, async () => {
+      const retained = [];
+      for (const row of page.items) {
+        if (this.stopped() || row.availability !== 'available' || !row.snapshot || !eligible(row, session.editor.context)) { retained.push(row); continue; }
+        try {
+          const removed = await this.journal.retireAcknowledged(session.editor.key, row,
+            captured => same(captured.snapshot, row.snapshot) && this.confirm(captured, session.editor.context));
+          if (!removed) retained.push(row); else this.report(session, null);
+        } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); }
+      }
+      return { ...page, items: retained };
+    });
+  }
+  async confirm(row, context) {
+    if (this.stopped() || context.instanceId !== this.bootstrap.instance_id || context.actor !== this.bootstrap.actor || !eligible(row, context)) return false;
+    const s = row.snapshot, authority = pair(s.activeAuthority), note = context.kind === 'note';
+    const read = fn => this.read(fn);
+    const validBootstrap = b => !b?.error && b?.actor === context.actor && b.instance_id === context.instanceId &&
+      same(pair(b.authority), authority) && same(pair(this.runtime.current), authority);
+    const first = await read(options => this.api.bootstrap(options));
+    if (!validBootstrap(first)) return false;
+    const state = await read(options => this.api.view('editor_state', { source_ref: s.sourceRef, topic_id: context.topicId ?? null, limit: 1 }, options));
+    const remote = note ? state?.note : state?.draft;
+    const expected = { ...writing(s.draft, note), source_ref: s.sourceRef, id: s.draft.id, revision: s.draft.revision,
+      ...(note ? {} : { generation: s.draft.generation }) };
+    if (state?.error || state?.instance_id !== context.instanceId || !same(state.source_ref, s.sourceRef) ||
+        !same(state.destination, { topic_id: context.topicId ?? null }) || state.source_available !== true ||
+        !note && state.destination_available !== true || !remote || !same(withoutCaret(remote), withoutCaret(expected))) return false;
+    if (note && s.submissions.length) return false;
+    const operations = new Map(), submissions = new Map(); let reads = 0;
+    const exact = async (name, id) => {
+      if (reads && reads % 10 === 0) await this.yieldBatch();
+      if (this.stopped()) throw Error('Cleanup stopped.');
+      ++reads;
+      return read(options => this.api.view(name, name === 'operation' ? { operation_id: id } : { submission_id: id }, options));
+    };
+    for (const entry of s.attempts) {
+      const e = entry.envelope, r = entry.receipt;
+      if (!e?.operation_id || operations.has(e.operation_id) || e.instance_id !== context.instanceId || e.v !== 1 ||
+          !r?.recorded || r.status !== 'committed' || r.error || r.instance_id !== context.instanceId ||
+          r.operation_id !== e.operation_id || r.kind !== e.kind) return false;
+      if (entry.ticket) {
+        const ticket = entry.ticket, kind = note ? 'note.save' : 'draft.save';
+        if (!recognizedDraft(ticket.draft, note)) return false;
+        const envelope = { v: 1, instance_id: context.instanceId, operation_id: ticket.operationId, kind,
+          target: note ? { note_id: ticket.draft.id } : { draft_id: ticket.draft.id },
+          expected: { [note ? 'note_revision' : 'draft_revision']: ticket.draft.revision, authority },
+          args: { source_ref: ticket.sourceRef, ...writing(ticket.draft, note),
+            ...(note ? {} : { topic_id: context.topicId, generation: ticket.draft.generation }) } };
+        const result = note ? { note_id: ticket.draft.id, note_revision: ticket.draft.revision + 1 }
+          : { draft_id: ticket.draft.id, draft_revision: ticket.draft.revision + 1, generation: ticket.draft.generation };
+        if (ticket.key !== s.key || !same(ticket.sourceRef, s.sourceRef) || !same(e, envelope) || !same(r.result, result)) return false;
+      } else if (!s.submissions.some(item => entry.submissionId === item.id &&
+          (e.operation_id === item.prepareOperationId || e.operation_id === item.sendOperationId))) return false;
+      const actual = await exact('operation', e.operation_id);
+      if (!same(actual, r)) return false;
+      operations.set(e.operation_id, entry);
+    }
+    for (const item of s.submissions) {
+      if (!recognizedDraft(item.snapshot)) return false;
+      if (submissions.has(item.id) || !same(item.sourceRef, s.sourceRef) || item.topicId !== context.topicId) return false;
+      const prepare = operations.get(item.prepareOperationId), send = operations.get(item.sendOperationId);
+      const prepareEnvelope = { v: 1, instance_id: context.instanceId, operation_id: item.prepareOperationId, kind: 'submission.prepare',
+        target: { topic_id: context.topicId }, expected: { draft_revision: item.snapshot.revision, authority },
+        args: { draft_id: item.snapshot.id, submission_id: item.id, send_operation_id: item.sendOperationId } };
+      const sendEnvelope = { v: 1, instance_id: context.instanceId, operation_id: item.sendOperationId,
+        kind: item.snapshot.opening ? 'topic.create_and_send' : 'message.send', target: { topic_id: context.topicId },
+        expected: { authority }, args: { submission_id: item.id } };
+      const preparation = item.prepareReceipt?.result;
+      if (!prepare || !send || !same(prepare.envelope, prepareEnvelope) || !same(send.envelope, sendEnvelope) ||
+          !same(prepare.receipt, item.prepareReceipt) || !same(send.receipt, item.receipt) ||
+          preparation?.submission_id !== item.id || preparation.send_operation_id !== item.sendOperationId ||
+          preparation.draft_id !== item.snapshot.id || preparation.draft_revision !== item.snapshot.revision ||
+          preparation.next_draft?.id !== item.snapshot.id || preparation.next_draft.revision !== item.snapshot.revision + 1 ||
+          typeof preparation.next_draft.generation !== 'string' || item.receipt.result?.submission_id !== item.id) return false;
+      const detail = await exact('submission', item.id);
+      const expectedDetail = { ...writing(item.snapshot), source_ref: item.sourceRef, id: item.id, topic_id: item.topicId,
+        draft_id: item.snapshot.id, draft_revision: item.snapshot.revision, draft_generation: item.snapshot.generation,
+        prepare_operation_id: item.prepareOperationId, send_operation_id: item.sendOperationId, authority,
+        instance_id: context.instanceId, send_receipt: item.receipt };
+      if (!same(detail, expectedDetail)) return false;
+      submissions.set(item.id, item);
+    }
+    // A locally allocated empty B is acknowledged only by its exact preparation
+    // receipt, or a later exact save. Equality of version counters is not proof.
+    if (s.attempts.length && !s.attempts.some(({ ticket, receipt }) => ticket && ticket.localVersion === s.ackVersion &&
+        ticket.draft.id === s.draft.id && (note || ticket.draft.generation === s.draft.generation) &&
+        receipt.result?.[note ? 'note_revision' : 'draft_revision'] === s.draft.revision &&
+        same(withoutCaret(writing(ticket.draft, note)), withoutCaret(writing(s.draft, note)))) &&
+        !s.submissions.some(item => same(item.prepareReceipt.result.next_draft,
+          { id: s.draft.id, revision: s.draft.revision, generation: s.draft.generation }) &&
+          same(withoutCaret(writing(s.draft)), { body: '', attachments: [], quotes: [], addressees: [] }))) return false;
+    const last = await read(options => this.api.bootstrap(options));
+    return !this.stopped() && validBootstrap(last) && same(pair(first.authority), pair(last.authority));
+  }
+}

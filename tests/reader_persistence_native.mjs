@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode = '--journal', caseFilter] = process.argv.slice(2);
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
 assert.ok(evidencePath && path.isAbsolute(evidencePath));
-assert.ok(['--journal', '--connected', '--correction'].includes(mode));
+assert.ok(['--journal', '--connected', '--correction', '--cleanup'].includes(mode));
 await mkdir(evidencePath, { recursive: true });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(probe, description, timeout = 8000) {
@@ -39,7 +39,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs']) {
+for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs']) {
   hashes[filename] = createHash('sha256').update(await readFile(path.join(root, filename))).digest('hex');
 }
 const profile = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-persistence-'));
@@ -175,6 +175,7 @@ try {
     return { targetId, send, evaluate, close };
   };
   const check = async (name, action) => {
+    if (mode === '--cleanup' && !name.startsWith('cleanup ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
     try { await action(); results.push({ name, passed: true }); }
     catch (error) { results.push({ name, passed: false, error: error.stack }); }
@@ -306,7 +307,125 @@ try {
       const image = await page.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(path.join(evidencePath, name + '.png'), Buffer.from(image.data, 'base64'));
     };
-    if (mode === '--correction') {
+    if (mode === '--cleanup') {
+      const rows = p => p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors');t.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result);t.oncomplete=()=>d.close()}})`);
+      const scoped = async p => (await rows(p)).filter(row => row.scope === JSON.stringify([facts.instance_id, facts.actor]) && row.snapshot.sourceRef.id === facts.sources[1].id && row.active === 1);
+      await check('cleanup ordinary send click empty field close reload removes only acknowledged recovery', async () => {
+        const p = await page('cleanup-send', null, true); await p.open(1);
+        await replace(p, 'Exact cleanup publication'); await p.key('Enter', 12);
+        const send = await until(() => p.calls.find(call => call.payload?.kind === 'message.send'), 'actual send response');
+        const receipt = await view('operation', { operation_id: send.payload.operation_id });
+        assert.equal(receipt.status, 'committed');
+        await until(async () => { const actual = await scoped(p); return !actual.length || actual.some(row => row.snapshot.attempts.some(a => a.envelope.operation_id === send.payload.operation_id && a.receipt?.status === 'committed')); }, 'application persisted exact send acknowledgement');
+        // Await the actual cleanup effect, never infer it from a hidden control.
+        await until(async () => (await scoped(p)).length === 0, 'acknowledged IDB retirement').catch(() => {});
+        assert.equal((await scoped(p)).length, 0, 'ordinary acknowledged send retires scoped IDB row');
+        const canonical = await privateState();
+        await p.point('#writing-body');
+        const localCaret = await p.evaluate('({start:document.querySelector("#writing-body").selectionStart,end:document.querySelector("#writing-body").selectionEnd})');
+        observations.push({ canonicalSuccessor: canonical.draft, localCaret });
+        assert.equal(canonical.draft.body, ''); assert.deepEqual(localCaret, { start: 0, end: 0 });
+        assert.equal(Object.hasOwn(canonical.draft, 'caret'), false, 'server successor omits only the restoration hint');
+        await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+        assert.equal((await scoped(p)).length, 0, 'caret-only close cannot recreate a retired row');
+        await p.close(); const q = await page('cleanup-reload', null, true); await q.open(1);
+        assert.equal(await field(q), ''); assert.equal((await scoped(q)).length, 0, 'fresh document sees no duplicate recovery row');
+        await replace(q, 'New writing survives after retirement');
+        await until(async () => (await scoped(q)).some(row => row.snapshot.draft.body === 'New writing survives after retirement'), 'fresh local write');
+        await until(async () => (await privateState()).draft.body === 'New writing survives after retirement' && !(await scoped(q)).length, 'new writing acknowledged independently');
+        assert.deepEqual(q.errors, []);
+      });
+
+      await check('cleanup acknowledged autosave preserves native focus caret space and Undo', async () => {
+        const p = await page('cleanup-writing', null, true); await p.open(1);
+        for (const kind of ['reply', 'note']) {
+          if (kind === 'note') await p.point('#toggle-note');
+          const original = await field(p), text = 'Cleanup keeps native writing ' + kind;
+          await replace(p, text); await p.key('ArrowLeft');
+          const visible = () => p.evaluate('({body:document.querySelector("#writing-body").value,focus:document.activeElement.id,caret:[document.querySelector("#writing-body").selectionStart,document.querySelector("#writing-body").selectionEnd],height:document.querySelector("#writing-body").getBoundingClientRect().height,source:document.querySelector("#source-body").textContent})');
+          const before = await visible();
+          await until(async () => (await privateState())[kind === 'reply' ? 'draft' : 'note']?.body === text && !(await scoped(p)).length, 'private acknowledgement and IDB cleanup');
+          assert.deepEqual(await visible(), before, 'cleanup leaves writing, focus, caret and writing space intact');
+          await p.key('z', 4); assert.equal(await field(p), original, 'native Undo survives retirement');
+          await until(async () => (await privateState())[kind === 'reply' ? 'draft' : 'note']?.body === original && !(await scoped(p)).length, 'Undo separately saved');
+        }
+        await p.key('Enter', 4); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'ordinary saved note close');
+        assert.equal((await scoped(p)).length, 0); assert.deepEqual(p.errors, []);
+      });
+
+      await check('cleanup native adoption retires acknowledged descendant without resurrecting sealed source or releasing locks', async () => {
+        const a = await page('cleanup-adopt-a', null, true); await a.open(1);
+        await replace(a, 'Unsaved adopted writing');
+        const original = await until(async () => (await scoped(a)).find(row => row.snapshot.draft.body === 'Unsaved adopted writing'), 'A recovery copy before autosave');
+        await a.close();
+        const b = await page('cleanup-adopt-b', null, true); await b.open(1);
+        await until(() => b.evaluate('!document.querySelector("#review-versions").hidden'), 'recovery action discoverable');
+        await b.point('#review-versions');
+        const selector = await until(() => b.evaluate(`(()=>{const section=[...document.querySelectorAll('#review-content section')].find(e=>e.querySelector('pre')?.textContent==='Unsaved adopted writing'&&[...e.querySelectorAll('button')].some(b=>b.textContent==='Recover this version'));if(!section)return null;section.id='cleanup-adopt';return '#cleanup-adopt button'})()`), 'exact recoverable version');
+        await b.point(selector); await until(() => b.evaluate('!document.querySelector("#version-review").open'), 'explicit adoption');
+        assert.equal(await field(b), 'Unsaved adopted writing');
+        const descendant = (await scoped(b)).find(row => row.writerId !== original.writerId); assert.ok(descendant);
+        await replace(b, 'Explicitly adopted and acknowledged');
+        await until(async () => (await privateState()).draft.body === 'Explicitly adopted and acknowledged' && !(await scoped(b)).length, 'descendant acknowledged and retired');
+        const history = (await rows(b)).find(row => row.id === original.id);
+        assert.equal(history.active, 0); assert.equal(history.superseded_by, descendant.writerId);
+        assert.deepEqual(history.snapshot, original.snapshot, 'original sealed contents remain exact');
+        const locks = await b.evaluate('(await navigator.locks.query()).held.map(l=>l.name)');
+        assert.ok(locks.some(name => name.includes(original.writerId)), 'source lock lasts after descendant cleanup');
+        assert.ok(locks.some(name => name.includes(descendant.writerId)), 'own lock lasts after cleanup');
+        const c = await page('cleanup-adopt-c', null, true); await c.open(1);
+        assert.equal((await scoped(c)).length, 0, 'C sees neither a resurrected A nor the removed B');
+        assert.deepEqual((await rows(c)).find(row => row.id === original.id), history);
+        assert.deepEqual(b.errors, []); assert.deepEqual(c.errors, []);
+      });
+
+      await check('cleanup closed acknowledged candidate retires but live writer is neither disclosed nor deleted', async () => {
+        const a = await page('cleanup-closed-a', null, true); await a.open(1);
+        a.intercept(payload => payload?.name === 'editor_state');
+        await replace(a, 'Closed acknowledged recovery');
+        await until(async () => (await privateState()).draft?.body === 'Closed acknowledged recovery', 'real private save');
+        await until(() => a.held.length, 'cleanup canonical read held');
+        const original = (await scoped(a))[0]; assert.ok(original);
+        const b = await page('cleanup-closed-b', null, true); await b.open(1);
+        await until(() => b.evaluate('!document.querySelector("#review-versions").hidden'), 'live writer review');
+        await b.point('#review-versions');
+        await until(() => b.evaluate('document.querySelector("#review-content").textContent.includes("Open in another tab")'), 'live writer boundary');
+        assert.equal(await b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version")'), false, 'no adoptable live version disclosed');
+        assert.deepEqual((await rows(b)).find(row => row.id === original.id), original);
+        await a.close(); await b.point('#review-retry');
+        await until(async () => !(await rows(b)).some(row => row.id === original.id), 'closed fully acknowledged candidate retired');
+        const locks = await b.evaluate('(await navigator.locks.query()).held.map(l=>l.name)');
+        assert.ok(locks.some(name => name.includes(original.writerId)), 'retired closed writer lock stays held');
+        assert.deepEqual(b.errors, []);
+      });
+
+      await check('cleanup strict IDB retirement refuses changed stamps forged scope sealed rows and aborts atomically', async () => {
+        const a = await page('cleanup-transaction');
+        const oldStamp = await a.evaluate('j.save(snapshot)');
+        const original = await a.evaluate('(async()=>{await j.save(snapshot);return j.own(editor.key)})()');
+        await a.evaluate(`j.removeExact(editor.key,${JSON.stringify(oldStamp)})`);
+        assert.deepEqual(await a.evaluate('j.own(editor.key)'), original, 'old own stamp cannot retire newer row');
+        await a.close(); const b = await page('cleanup-transaction');
+        const candidate = JSON.stringify(original);
+        await b.evaluate(`putRow({...${candidate},scope:JSON.stringify([context.instanceId,'foreign'])})`);
+        assert.equal(await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async()=>true)`), false, 'forged scope cannot retire');
+        await b.evaluate(`putRow({...${candidate},active:0,superseded_by:'descendant'})`);
+        assert.equal(await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async()=>true)`), false, 'sealed source cannot retire');
+        await b.evaluate(`putRow(${candidate})`);
+        assert.equal(await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async row=>{await putRow({...row,stamp:'newer-stamp'});return true})`), false, 'stamp changed during confirmation survives');
+        assert.equal((await b.evaluate(`readRow(${JSON.stringify(original.id)})`)).stamp, 'newer-stamp');
+        await b.evaluate(`putRow(${candidate})`);
+        await b.evaluate('(()=>{window.cleanupDeleteSucceeded=0;window.originalDelete=IDBObjectStore.prototype.delete;IDBObjectStore.prototype.delete=function(...args){const request=originalDelete.apply(this,args),tx=this.transaction;request.addEventListener("success",()=>{++cleanupDeleteSucceeded;tx.abort()});return request}})()');
+        const aborted = await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async()=>true).then(()=>false,()=>true)`);
+        assert.equal(await b.evaluate('cleanupDeleteSucceeded'), 1, 'delete request succeeded before transaction abort');
+        assert.equal(aborted, true); assert.deepEqual(await b.evaluate(`readRow(${JSON.stringify(original.id)})`), original, 'aborted delete preserves exact row');
+        await b.evaluate('IDBObjectStore.prototype.delete=originalDelete');
+        assert.equal(await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async()=>true)`), true, 'positive strict retirement');
+        assert.equal(await b.evaluate(`readRow(${JSON.stringify(original.id)})`), null);
+        assert.ok((await b.evaluate('durability')).every(tx => tx.requested === 'strict' && tx.actual === 'strict'));
+        assert.ok((await b.evaluate('(await navigator.locks.query()).held')).some(lock => lock.name.includes(original.writerId)));
+      });
+    } else if (mode === '--correction') {
       const sourceText = p => p.evaluate('document.querySelector("#source-body").textContent');
       const observeCalls = async p => {
         const modules = await p.evaluate(`(async()=>{

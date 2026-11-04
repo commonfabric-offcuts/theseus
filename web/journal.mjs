@@ -16,17 +16,28 @@ export class RecoveryJournal {
     next.then(() => { if (this.queues.get(editorKey) === next) this.queues.delete(editorKey); }, () => { if (this.queues.get(editorKey) === next) this.queues.delete(editorKey); });
     return next;
   }
-  save(snapshot) {
+  save(snapshot, alreadyAcknowledged = () => false) {
     const stamp = crypto.randomUUID();
     const row = { id: this.id(snapshot.key), editorKey: snapshot.key, writerId: this.writerId,
       scope: JSON.stringify([snapshot.context.instanceId, snapshot.context.actor]), active: 1, stamp, snapshot: structuredClone(snapshot) };
-    return this.enqueue(snapshot.key, async () => { await this.backend.put(row); return stamp; });
+    return this.enqueue(snapshot.key, async () => {
+      if (alreadyAcknowledged()) return null;
+      await this.backend.put(row); return stamp;
+    });
   }
   own(editorKey) { return this.enqueue(editorKey, () => this.backend.get(this.id(editorKey))); }
   candidates(editorKey, options) { return this.backend.forEditor(editorKey, options); }
   history(editorKey, options) { return this.backend.history(editorKey, options); }
   adopt(editorKey, candidate) { return this.enqueue(editorKey, () => this.backend.adopt(editorKey, candidate)); }
-  removeExact(editorKey, stamp) { return this.enqueue(editorKey, () => this.backend.removeExact(this.id(editorKey), stamp)); }
+  removeExact(editorKey, stamp, current = () => true, retired = () => {}) {
+    return this.enqueue(editorKey, async () => {
+      if (!current()) return false;
+      const removed = await this.backend.removeExact(this.id(editorKey), stamp);
+      if (removed) retired();
+      return removed;
+    });
+  }
+  retireAcknowledged(editorKey, candidate, confirm) { return this.backend.retireAcknowledged(editorKey, candidate, confirm); }
   close() { return this.backend.close?.(); }
 }
 
@@ -159,10 +170,23 @@ export async function openJournal({ instanceId, actor } = {}) {
     removeExact: (id, stamp) => transact('readwrite', (store, finish, get) => {
       const [key, writer] = JSON.parse(id); scopedKey(key);
       get(id, row => {
-        if (writer === writerId && valid(row, key) && !row.superseded_by && row.stamp === stamp) { store.delete(id); finish(true); }
+        if (writer === writerId && held.has(writerId) && valid(row, key) && row.active === 1 && !row.superseded_by && row.stamp === stamp) { store.delete(id); finish(true); }
         else finish(false);
       });
     }),
+    retireAcknowledged: async (key, candidate, confirm) => {
+      scopedKey(key);
+      const matches = row => valid(row, key) && row.active === 1 && !row.superseded_by && row.writerId !== writerId &&
+        row.writerId === candidate.writerId && row.id === candidate.id && row.stamp === candidate.stamp;
+      const source = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
+      if (!matches(source) || !await lock(source.writerId, true)) return false;
+      const captured = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
+      if (!matches(captured) || !await confirm(structuredClone(captured))) return false;
+      return transact('readwrite', (store, finish, get) => get(candidate.id, current => {
+        if (matches(current) && held.has(current.writerId)) { store.delete(current.id); finish(true); }
+        else finish(false);
+      }));
+    },
     close: () => { database.close(); release(); },
   }, writerId);
   journal.previousWriter = previousWriter;

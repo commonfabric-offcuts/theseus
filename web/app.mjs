@@ -195,7 +195,7 @@ function changed(editor) {
     reader.paintStatus(); reader.paintPending();
     reader.field.readOnly = Boolean(reader.editor?.adopting);
     const known = candidates.get(reader.editor.key);
-    $('review-versions').hidden = !reader.editor.authorityRecovery && !reader.editor.conflict && !known?.items.length && !known?.nextCursor;
+    $('review-versions').hidden = !reader.editor.authorityRecovery && !reader.editor.conflict && !reader.editor.cleanupError && !known?.items.length && !known?.nextCursor;
   }
   invalidateComparison(editor);
   if (editor.context.kind === 'reply' && pendingCount(editor)) {

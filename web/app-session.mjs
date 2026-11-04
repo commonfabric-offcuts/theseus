@@ -1,5 +1,6 @@
 import { Editor, editorKey, restoreEditor } from './editor.mjs';
 import { EditorSession, RuntimeAuthority } from './session.mjs';
+import { RecoveryCleanup, eligible } from './cleanup.mjs';
 
 const copy = value => structuredClone(value);
 const same = (a, b) => {
@@ -9,6 +10,12 @@ const same = (a, b) => {
   return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && same(a[key], b[key]));
 };
 const realTimers = { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id), now: () => Date.now() };
+const pairedReads = async reads => {
+  const settled = await Promise.allSettled(reads);
+  const failed = settled.find(result => result.status === 'rejected');
+  if (failed) throw failed.reason;
+  return settled.map(result => result.value);
+};
 
 // Composition owns presentations and scheduling; EditorSession remains the only
 // owner of save/prepare/send envelopes and authority recovery.
@@ -22,6 +29,8 @@ export class EditorRegistry {
     this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map();
     this.pendingDetails = new Map(); this.registering = new Map();
     this.current = null; this.generation = 0; this.disposed = false;
+    this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
+      changed: editor => this.changed(editor), stopped: () => this.disposed });
   }
 
   sessionFor(editor) {
@@ -71,6 +80,11 @@ export class EditorRegistry {
     const session = new EditorSession(editor, { api: this.api, journal: this.journal, authority: this.runtime.current,
       runtime: this.runtime, snapshot: row?.snapshot,
       changed: current => this.changed(current),
+      persisted: (saved, snapshot) => {
+        const row = { id: this.journal.id(editor.key), writerId: this.journal.writerId, stamp: 'eligibility',
+          active: 1, scope: JSON.stringify([context.instanceId, context.actor]), editorKey: editor.key, snapshot };
+        if (eligible(row, context)) this.cleanup.request(saved);
+      },
       prepared: (_editor, _item, options) => {
         if (editor.dirty && editor.draft.generation && !editor.conflict && !editor.authorityRecovery) this.schedule(editor);
         if (!options.stay && this.isCurrent(options.presentation)) {
@@ -88,14 +102,15 @@ export class EditorRegistry {
   }
 
   async open(sourceRef, { topicId, opener } = {}) {
+    const foreground = this.cleanup.foreground();
     const token = ++this.generation;
     this.pendingOpen = token;
     try {
     await this.keepLocal(this.current);
-    const [sourceAnswer, state] = await Promise.all([
-      this.api.view('source', sourceRef),
-      this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize }),
-    ]);
+    const [sourceAnswer, state] = await foreground.read(options => pairedReads([
+      this.api.view('source', sourceRef, options),
+      this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize }, options),
+    ]));
     this.validateState(state, sourceRef, topicId);
     const sourceUnavailable = sourceAnswer?.error?.code === 'FORBIDDEN' && state.source_available === false && Boolean(state.draft || state.note);
     if (!sourceUnavailable && (sourceAnswer?.error || sourceAnswer?.instance_id !== this.bootstrap.instance_id ||
@@ -117,7 +132,7 @@ export class EditorRegistry {
     } catch (error) {
       if (token !== this.generation || this.disposed) return null;
       throw error;
-    } finally { if (this.pendingOpen === token) this.pendingOpen = null; }
+    } finally { foreground.release(); if (this.pendingOpen === token) this.pendingOpen = null; }
   }
 
   persistLocal(editor) {
@@ -203,15 +218,18 @@ export class EditorRegistry {
     if (editor.unavailable) return 'Source or destination unavailable — writing kept on this device';
     if (editor.authorityRecovery) return 'Runtime changed — review saved version';
     if (editor.conflict) return 'Not saved — another version needs review';
+    if (editor.cleanupError && !editor.dirty) return editor.cleanupError;
     return editor.dirty ? 'Saved on this device — not yet saved to Theseus' : 'Saved to Theseus';
   }
 
   async neighbors(presentation) {
     const source = presentation.source;
     if (source.source_ref.kind !== 'message' || !Number.isInteger(source.seq) || presentation.sourceUnavailable) return { previous: null, next: null };
-    const reads = await Promise.all(['before', 'after'].map(direction => this.api.view('topic_messages', {
+    const foreground = this.cleanup.foreground();
+    let reads;
+    try { reads = await foreground.read(options => pairedReads(['before', 'after'].map(direction => this.api.view('topic_messages', {
       topic_id: source.topic_id, cursor: source.seq, audience: 'reader', direction, limit: 1,
-    })));
+    }, options)))); } finally { foreground.release(); }
     const refs = reads.map(page => {
       this.validatePage(page);
       if (page.items.length > 1 || page.items.some(item => item.topic_id !== source.topic_id || typeof item.id !== 'string')) throw Error('The neighboring source identity could not be confirmed.');
@@ -221,8 +239,11 @@ export class EditorRegistry {
   }
 
   async recoveryCandidates(editor, options) {
-    const page = await this.journal.candidates(editor.key, options);
-    return Array.isArray(page) ? { items: page, nextCursor: null } : page;
+    const limit = options?.limit ?? 10;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 10) throw Error('Recovery cleanup reads one page of at most ten versions.');
+    await this.cleanup.own(this.sessionFor(editor));
+    const page = await this.journal.candidates(editor.key, { ...options, limit });
+    return this.cleanup.candidates(this.sessionFor(editor), Array.isArray(page) ? { items: page, nextCursor: null } : page);
   }
 
   async adoptCandidate(editor, candidate, presentation) {
