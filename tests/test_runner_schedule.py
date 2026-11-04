@@ -221,17 +221,19 @@ class ScheduleCase(runner_tests.RunnerCase):
 
     def test_setup_and_read_errors_close_and_remain_unconfirmed(self):
         for target in ("PRAGMA synchronous=EXTRA", "SELECT * FROM runner_state WHERE id=1"):
-            with self.subTest(target=target):
-                def fail(db, sql):
-                    if sql == target:
-                        raise sqlite3.DatabaseError("injected storage failure")
-                with observed_connections(before=fail) as observed:
-                    with self.assertRaises(RunnerError) as caught:
-                        self.schedule()
-                    self.assertEqual(caught.exception.code, "RUNNER_STORAGE_ERROR")
-                    self.assertFalse(caught.exception.retryable)
-                    self.closed(observed)
-                self.fence_released()
+            for error in (sqlite3.DatabaseError("injected storage failure"),
+                          sqlite3.OperationalError("disk I/O error")):
+                with self.subTest(target=target, error=type(error).__name__):
+                    def fail(db, sql):
+                        if sql == target:
+                            raise error
+                    with observed_connections(before=fail) as observed:
+                        with self.assertRaises(RunnerError) as caught:
+                            self.schedule()
+                        self.assertEqual(caught.exception.code, "RUNNER_STORAGE_ERROR")
+                        self.assertFalse(caught.exception.retryable)
+                        self.closed(observed)
+                    self.fence_released()
 
     def test_cleanup_failure_cannot_be_classified_as_retryable_busy(self):
         for setup_fails in (False, True):
