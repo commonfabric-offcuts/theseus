@@ -10,6 +10,7 @@ import re
 import stat
 from types import MappingProxyType
 import uuid
+import zlib
 
 from .authority import AuthorityError
 from .contract import LIMITS, Refusal, _identifier, _revision
@@ -24,19 +25,153 @@ MEDIA_SCHEMA = [
 INLINE_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 
-def _verified_inline(content_type, first, last, size):
-    detected = None
-    if size >= 45 and first.startswith(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR") and last.endswith(b"IEND\xaeB`\x82"):
-        detected = "image/png"
-    elif size >= 4 and first.startswith(b"\xff\xd8\xff") and last.endswith(b"\xff\xd9"):
-        detected = "image/jpeg"
-    elif size >= 14 and first[:6] in (b"GIF87a", b"GIF89a") and last.endswith(b";"):
-        detected = "image/gif"
-    elif size >= 20 and first.startswith(b"RIFF") and first[8:12] == b"WEBP" and first[12:16] in (b"VP8 ", b"VP8L", b"VP8X") and int.from_bytes(first[4:8], "little") + 8 == size:
-        detected = "image/webp"
-    if content_type in INLINE_TYPES and detected != content_type:
+def _png_structure(data):
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        return False
+    offset, header, image = 8, False, False
+    depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8), 4: (8, 16), 6: (8, 16)}
+    while offset + 12 <= len(data):
+        size = int.from_bytes(data[offset:offset + 4], 'big')
+        kind = bytes(data[offset + 4:offset + 8])
+        end = offset + 12 + size
+        if end > len(data) or not all(65 <= c <= 90 or 97 <= c <= 122 for c in kind):
+            return False
+        if zlib.crc32(data[offset + 4:end - 4]) & 0xffffffff != int.from_bytes(data[end - 4:end], 'big'):
+            return False
+        payload = data[offset + 8:end - 4]
+        if kind == b'IHDR':
+            if header or offset != 8 or size != 13:
+                return False
+            if (not int.from_bytes(payload[:4], 'big') or not int.from_bytes(payload[4:8], 'big')
+                    or payload[8] not in depths.get(payload[9], ())
+                    or payload[10] != 0 or payload[11] != 0 or payload[12] not in (0, 1)):
+                return False
+            header = True
+        elif not header:
+            return False
+        elif kind == b'IDAT':
+            image = True
+        elif kind == b'IEND':
+            return size == 0 and end == len(data) and image
+        offset = end
+    return False  # A complete, CRC-correct non-IEND chunk is not a terminator.
+
+
+def _jpeg_structure(data):
+    if data[:2] != b'\xff\xd8' or data[-2:] != b'\xff\xd9':
+        return False
+    offset, frame = 2, False
+    while offset < len(data) - 2:
+        if data[offset] != 0xff:
+            return False
+        while offset < len(data) and data[offset] == 0xff:
+            offset += 1
+        if offset >= len(data):
+            return False
+        marker = data[offset]
+        offset += 1
+        if marker == 0x01:  # Standalone TEM; no segment length.
+            continue
+        if marker == 0 or 0xd0 <= marker <= 0xd9 or offset + 2 > len(data) - 2:
+            return False
+        size = int.from_bytes(data[offset:offset + 2], 'big')
+        end = offset + size
+        if size < 2 or end > len(data) - 2:
+            return False
+        payload = data[offset + 2:end]
+        if 0xc0 <= marker <= 0xcf and marker not in (0xc4, 0xc8, 0xcc):
+            if (len(payload) < 6 or not payload[5] or len(payload) != 6 + 3 * payload[5]
+                    or not int.from_bytes(payload[1:3], 'big') or not int.from_bytes(payload[3:5], 'big')):
+                return False
+            frame = True
+        elif marker == 0xda:
+            # Later scans, entropy bytes and appended MPF images remain opaque.
+            return (frame and len(payload) >= 4 and payload[0] > 0
+                    and len(payload) == 4 + 2 * payload[0] and end < len(data) - 2)
+        offset = end
+    return False
+
+
+def _webp_image(kind, payload):
+    if kind == b'VP8 ':
+        return (len(payload) > 10 and payload[0] & 1 == 0 and payload[3:6] == b'\x9d\x01\x2a'
+                and int.from_bytes(payload[6:8], 'little') & 0x3fff != 0
+                and int.from_bytes(payload[8:10], 'little') & 0x3fff != 0)
+    return len(payload) > 5 and payload[0] == 0x2f and payload[4] & 0xe0 == 0
+
+
+def _webp_chunks(data, offset, end):
+    """Yield flat bounded chunks; callers decide which payloads are images."""
+    while offset + 8 <= end:
+        kind = bytes(data[offset:offset + 4])
+        size = int.from_bytes(data[offset + 4:offset + 8], 'little')
+        stop = offset + 8 + size
+        padded = stop + (size & 1)
+        if padded > end or (size & 1 and data[stop] != 0):
+            raise ValueError('Invalid WebP chunk bounds')
+        payload = data[offset + 8:stop]
+        yield offset, kind, payload
+        offset = padded
+    if offset != end:
+        raise ValueError('Incomplete WebP chunk header')
+
+
+def _webp_structure(data):
+    if not (len(data) >= 20 and data[:4] == b'RIFF' and data[8:12] == b'WEBP'
+            and int.from_bytes(data[4:8], 'little') + 8 == len(data)
+            and data[12:16] in (b'VP8 ', b'VP8L', b'VP8X')):
+        return False
+    image = False
+    try:
+        for offset, kind, payload in _webp_chunks(data, 12, len(data)):
+            if kind in (b'VP8 ', b'VP8L'):
+                if not _webp_image(kind, payload):
+                    return False
+                image = True
+            elif kind == b'VP8X':
+                if offset != 12 or len(payload) != 10:
+                    return False
+            elif kind == b'ANMF':
+                # Fixed frame header followed by flat image/alpha subchunks.
+                # No recursion or interpretation of entropy/animation timing.
+                if len(payload) < 16:
+                    return False
+                frame_image = False
+                for _, subkind, encoded in _webp_chunks(payload, 16, len(payload)):
+                    if subkind in (b'VP8X', b'ANMF'):
+                        return False
+                    if subkind in (b'VP8 ', b'VP8L'):
+                        if not _webp_image(subkind, encoded):
+                            return False
+                        frame_image = True
+                if not frame_image:
+                    return False
+                image = True
+    except ValueError:
+        return False
+    return image
+
+
+def _verified_inline(content_type, data):
+    """Publication policy only: bounded structure/header checks, no pixel decode.
+
+    PNG/JPEG/WebP encoded details remain opaque; GIF deliberately retains only
+    its signature/trailer policy. Ready records keep this decision permanently.
+    """
+    if content_type not in INLINE_TYPES:
+        return False
+    data = memoryview(data)
+    if content_type == 'image/png':
+        valid = _png_structure(data)
+    elif content_type == 'image/jpeg':
+        valid = _jpeg_structure(data)
+    elif content_type == 'image/webp':
+        valid = _webp_structure(data)
+    else:
+        valid = len(data) >= 14 and data[:6] in (b'GIF87a', b'GIF89a') and data[-1:] == b';'
+    if not valid:
         raise Refusal("MEDIA_INVALID", "The declared image type does not match its bytes", recorded=False)
-    return content_type in INLINE_TYPES and detected == content_type
+    return True
 
 
 def _identity(info):
@@ -182,10 +317,9 @@ class Media:
                     or (before.st_size, before.st_mtime_ns, before.st_mode, before.st_uid) != (after.st_size, after.st_mtime_ns, after.st_mode, after.st_uid)):
                 raise Refusal("MEDIA_UNAVAILABLE", "Media bytes changed or failed verification", recorded=False)
             data = output.getvalue()
-            try:
-                _verified_inline(row["content_type"], data[:32], data[-12:], len(data))
-            except Refusal as error:
-                raise Refusal("MEDIA_UNAVAILABLE", "Media bytes failed type verification", recorded=False) from error
+            # Integrity binds the exact bytes to the intent. Re-running today's
+            # publication policy would revoke already-ready records and parse
+            # under the retry fence; neither belongs in a capture.
             if sync:
                 os.fsync(fd)
             return data
@@ -198,7 +332,8 @@ class Media:
             fd = os.open(stage, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=root_fd)
             owned = _identity(os.fstat(fd))
             try:
-                total, digest, first, last = 0, hashlib.sha256(), b"", b""
+                total, digest = 0, hashlib.sha256()
+                image = bytearray() if row["content_type"] in INLINE_TYPES else None
                 while total <= row["size_bytes"]:
                     request = min(65536, row["size_bytes"] + 1 - total)
                     chunk = byte_stream.read(request)
@@ -210,7 +345,8 @@ class Media:
                     if total > row["size_bytes"]:
                         raise Refusal("MEDIA_INVALID", "Media length does not match its intent", recorded=False)
                     digest.update(chunk)
-                    first, last = (first + chunk)[:32], (last + chunk)[-12:]
+                    if image is not None:
+                        image.extend(chunk)
                     view = memoryview(chunk)
                     while view:
                         written = os.write(fd, view)
@@ -219,7 +355,7 @@ class Media:
                         view = view[written:]
                 if total != row["size_bytes"] or digest.hexdigest() != row["sha256"]:
                     raise Refusal("MEDIA_INVALID", "Media bytes do not match the declared length and digest", recorded=False)
-                inline = _verified_inline(row["content_type"], first, last, total)
+                inline = _verified_inline(row["content_type"], image)
                 os.fsync(fd)
                 os.close(fd)
                 fd = None
