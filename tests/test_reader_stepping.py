@@ -12,6 +12,7 @@ class ReaderSteppingCase(ReaderCase):
         return result
 
     def test_reader_means_explicit_current_caller_or_unaddressed_in_both_directions(self):
+        self.participation("other-reader", True)
         rows = [self.send("Nobody", []), self.send("Other human", ["other-reader"]),
                 self.send("Agents", ["agent-a"]), self.send("Current reader", ["owner"]),
                 self.send("Current plus other", ["owner", "other-reader"])]
@@ -40,6 +41,7 @@ class ReaderSteppingCase(ReaderCase):
         self.assertFalse(set(item["id"] for item in page["items"]) & set(item["id"] for item in older["items"]))
 
     def test_caller_identity_is_not_inferred_from_kind_body_quote_or_subscription(self):
+        self.participation("other-reader", True)
         plain = self.send("owner and agent-a are just words")
         other = self.send("Explicit agent", ["agent-a"])
         quoted = self.send("Body says owner", ["other-reader"], quotes=[{
@@ -64,7 +66,9 @@ class ReaderSteppingCase(ReaderCase):
         self.assertEqual(self.records(), before)
 
     def test_filter_does_not_grant_topic_access_and_invalid_modes_refuse(self):
+        self.participation("outsider", True)
         sent = self.send("Only delivered source", ["outsider"])
+        self.participation("outsider", False)
         self.assertEqual(self.source({"kind": "message", "id": sent["id"]}, actor="outsider")["body"], "Only delivered source")
         result = self.store.view("outsider", "topic_messages", {"topic_id": "t1", "audience": "reader"})
         self.rejected(result, "FORBIDDEN")

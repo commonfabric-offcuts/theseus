@@ -191,9 +191,11 @@ class MediaCase(ReaderCase):
 
     def test_exact_attached_source_grants_read_but_id_or_unattached_source_does_not(self):
         self.ready()
+        self.participation("outsider", True)
         sent = self.send("Attached", ["outsider"], attachments=[{"id": "media-one"}])
         source = {"kind": "message", "id": sent["id"]}
         unrelated = self.send("Readable but unattached", ["outsider"])
+        self.participation("outsider", False)
         unattached = {"kind": "message", "id": unrelated["id"]}
         self.assertEqual(self.source(unattached, actor="outsider")["attachments"], [])
         for args in ({"media_id": "media-one"}, {"media_id": "media-one", "source_ref": unattached}):

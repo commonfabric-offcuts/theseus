@@ -31,6 +31,10 @@ class ReaderCase(unittest.TestCase):
         self.assertTrue(receipt.get("recorded"), receipt)
         return receipt["result"]
 
+    def participation(self, actor, present):
+        self.committed(self.command("participation.set", {"actor_id": actor, "present": present},
+                                    target={"topic_id": "t1"}))
+
     def rejected(self, receipt, code):
         self.assertEqual(receipt.get("error", {}).get("code"), code, receipt)
         self.assertNotEqual(receipt.get("status"), "committed", receipt)

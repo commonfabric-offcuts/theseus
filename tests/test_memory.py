@@ -51,7 +51,9 @@ class MemoryCase(ReaderCase):
         self.assertEqual(self.store.view("agent-a", "operation", {"operation_id": envelope["operation_id"]}), receipts[0])
 
     def test_write_gate_requires_active_agent_participation_not_readability_or_delivery(self):
+        self.participation("outsider", True)
         self.send("Exactly this source only", ["outsider"])
+        self.participation("outsider", False)
         before = self.public_state()
         for actor in ("owner", "agent-b", "outsider"):
             with self.subTest(actor=actor):

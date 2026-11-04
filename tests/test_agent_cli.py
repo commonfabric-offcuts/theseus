@@ -228,7 +228,10 @@ class AgentCLICase(AgentCLIBase):
         self.assertEqual(self.records(), before)
 
     def test_addressed_source_does_not_grant_topic_history(self):
+        # Historical addressed access survives later loss of reply permission.
+        self.participation("outsider", True)
         sent = self.send("Only this source", addressees=["outsider"])
+        self.participation("outsider", False)
         kwargs = {"actor": "outsider", "binding": self.captured_for("outsider")}
         code, source, _ = self.view_cli("source", {"source_ref": {"kind": "message", "id": sent["id"]}}, **kwargs)
         self.assertEqual(code, 0)

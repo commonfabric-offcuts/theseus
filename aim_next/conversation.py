@@ -148,6 +148,15 @@ class Conversation:
             else:
                 unavailable.append(row["actor_id"])
         for recipient in self._recipients(db, snapshot["addressees"]):
+            # Opening participants already exist in this effect savepoint.
+            # A source-only delivery grant cannot support an ordinary reply.
+            try:
+                self._topic(db, recipient, topic_id)
+            except Refusal as error:
+                if error.code != "FORBIDDEN":
+                    raise
+                raise Refusal("REPLY_PATH_UNAVAILABLE",
+                              "Recipient %s cannot reply in this topic; nobody was sent this message" % recipient)
             audience.setdefault(recipient, {})["addressed"] = None
         audience.pop(actor, None)
         if len(audience) > LIMITS["recipients"]:

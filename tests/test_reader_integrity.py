@@ -158,13 +158,19 @@ class ReaderIntegrityCase(MediaCase):
         self.assertEqual(self.status()["state"], "pending")
 
     def test_failed_send_rolls_back_explicit_address_index_and_message_together(self):
+        self.participation("other-reader", True)
         key = "rollback-send"
         self.committed(self.command("draft.save", {"source_ref": self.opening, "topic_id": "t1",
             "generation": "gA", "body": "No partial indexed message", "addressees": ["owner", "other-reader"]},
             target={"draft_id": key}, expected={"draft_revision": 0}))
         self.committed(self.prepare(key, "t1", submission=key, send_op=key))
         before = self.records()
-        with mock.patch.object(self.store, "_advance_commit_seq", side_effect=StoreError("Inject rollback after indexed send")):
+        def fail_after_indexed_send(db):
+            message = db.execute("SELECT id FROM messages WHERE operation_id=?", (key,)).fetchone()
+            self.assertIsNotNone(message, "Fault must observe an actual send, not a refusal")
+            self.assertEqual(db.execute("SELECT count(*) FROM message_addressees WHERE seq=(SELECT seq FROM messages WHERE id=?)", (message[0],)).fetchone()[0], 2)
+            raise StoreError("Inject rollback after indexed send")
+        with mock.patch.object(self.store, "_advance_commit_seq", side_effect=fail_after_indexed_send):
             with self.assertRaises(StoreError):
                 self.command("message.send", {"submission_id": key}, target={"topic_id": "t1"}, op=key)
         self.assertEqual(self.records(), before)
