@@ -103,10 +103,20 @@ not proof of current process state.
 The [effects runner](effects-runner.md) stops new claims and preserves the
 current invocation's cleanup deadline. Exit `0` is graceful stop; `75` means
 idle ownership was lost and requires a fresh process after bounded backoff.
-Exit `2` requires inspection. A persisted pause is not cleared by restart:
+Exit `2` requires inspection of the final JSON status line; the exit code alone
+does not distinguish a persisted pause from `fatal_unsaved` or another refusal.
+A persisted pause is not cleared by restart:
 resolve its cause, read its current version, then deliberately use
 `--resume-version INTEGER`. `fatal_unsaved` means even the attempted pause
 could not be confirmed; preserve the logs and inspect before any restart.
+
+The lead operator owns noticing and reporting process exits. The activation
+receipt must name the actual exit observer, or explicitly disclose that exit
+status is checked at operator checkpoints with no immediate-alert guarantee.
+No automatic restart follows either arrangement. After runner exit, new agent
+wakes wait for a deliberate restart. If HTTP remains running, Tony can still
+read and commit permitted sends; pending deliveries remain in SQLite, but no
+recipient consumption or timely answer is implied.
 
 A Codex app update can change the broker's guarded version token and stop
 queue operations. Compare the refusal with [the compatibility contract](codex-broker.md)
