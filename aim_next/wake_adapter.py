@@ -13,6 +13,7 @@ import subprocess
 import time
 
 from .authority import AuthorityError, RunnerGuard
+from .contract import StoreError
 from .profile import ProfileError, load_profile
 
 
@@ -204,8 +205,10 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
         started_at = datetime.now(timezone.utc).isoformat()
         deadline = _ticks() + 5000000000
     except RouteUnavailable as error:
+        if error.code in ("binding_mismatch", "guard_mismatch"):
+            raise
         return RouteResult("unavailable", None, error.code)
-    except (AuthorityError, OSError, AttributeError, ValueError):
+    except (OSError, AttributeError, ValueError):
         return RouteResult("unavailable", None, "invocation_unavailable")
 
     child = queue = None
@@ -449,8 +452,10 @@ def prepare_route(route_path, claim, guard):
         guard.verify()
         return PreparedRoute(tuple(argv), encoded, executable)
     except ProfileError as error:
+        # Storage and authority verdicts after a claim belong to the caller's
+        # pause path, never an unavailable settlement or retry decision here.
+        if error.code is not None or isinstance(error.__cause__, StoreError):
+            raise
         raise RouteUnavailable("profile_unavailable") from error
-    except AuthorityError as error:
-        raise RouteUnavailable("authority_unavailable") from error
     except UnicodeError as error:
         raise RouteUnavailable("invalid_route") from error

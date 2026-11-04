@@ -17,6 +17,7 @@ from unittest import mock
 
 from aim_next import Store, initialize
 from aim_next.profile import write_profile
+from aim_next.authority import AuthorityError
 from aim_next import wake_adapter
 
 
@@ -413,11 +414,9 @@ class WakeInvocationTests(unittest.TestCase):
                     # This claim is internally consistent; the profile mismatch
                     # must refuse it, not merely the claim-shape validator.
                     self.claim["recipient_id"] = value
-                try:
-                    result = self.invoke()
-                except wake_adapter.AdapterFault as error:
-                    self.fail("Mismatched binding reached child invocation: " + str(error))
-                self.assertEqual(result.outcome, "unavailable")
+                with self.assertRaises(wake_adapter.RouteUnavailable) as caught:
+                    self.invoke()
+                self.assertEqual(caught.exception.code,"binding_mismatch")
                 self.assert_not_started()
         self.claim = original
 
@@ -450,7 +449,9 @@ class WakeInvocationTests(unittest.TestCase):
     def test_closed_actual_guard_starts_no_child(self):
         self.configure("normal")
         self.guard.close()
-        self.assertEqual(self.invoke().outcome, "unavailable")
+        with self.assertRaises(AuthorityError) as caught:
+            self.invoke()
+        self.assertEqual(caught.exception.code,"INVALID_BINDING")
         self.assert_not_started()
 
     def test_ignored_sigchld_refuses_before_start(self):

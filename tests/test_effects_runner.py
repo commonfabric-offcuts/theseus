@@ -971,3 +971,298 @@ finally:db.close()
                         'a non-SQLite descriptor was closed during a real claim transaction')
         self.assertEqual(result['status'],'stopped')
         self.assertEqual(close_counts,[0]);self.assertFalse(active)
+
+
+    def _postclaim_read_fault(self, stage, mode):
+        """Exercise real profile wrapping/adapter preparation around one injected SQL fault."""
+        import aim_next.store as storage
+        from aim_next.contract import StoreError
+        api=self.api();self.create_topic();self.send_next(addressees=['agent-b'])
+        before=self.sql('SELECT id,state FROM deliveries ORDER BY id')
+        phase=[None];injected=[];handles=[];watches=[];observed=[]
+        original_connect=storage._connect
+        original_preflight=broker_routes.preflight_route
+        original_profile=wake_adapter.load_profile
+        original_view=Store.view
+        clock_start=time.monotonic()
+        class Watch(NativeWatch):
+            def __init__(watch,path):super().__init__(path);watches.append(watch)
+            def wait(watch,timeout):
+                if time.monotonic()-clock_start>0.4:watch.stopped=True
+                return super().wait(min(timeout,0.02))
+        class Connection:
+            def __init__(inner,db):inner.db=db
+            def __getattr__(inner,name):return getattr(inner.db,name)
+            def close(inner):
+                if mode=='close':
+                    # Retain the actual handle, but release the fixture's read
+                    # transaction so the independent pause can be persisted.
+                    inner.db.rollback()
+                    raise sqlite3.OperationalError('fixture unconfirmed close')
+                return inner.db.close()
+            def rollback(inner):
+                inner.db.rollback()
+                if mode=='view-rollback':
+                    raise sqlite3.OperationalError('fixture rollback cleanup failure')
+                if mode=='view-os':
+                    raise OSError('fixture rollback cleanup failure')
+        def connect(path):
+            if phase[0]==stage and not injected:
+                injected.append(dict(stage=stage,mode=mode))
+                if mode=='busy':raise sqlite3.OperationalError('database is locked')
+                if mode=='view-chained-busy':
+                    real_connect=sqlite3.connect
+                    class SetupConnection:
+                        def __init__(inner,db):object.__setattr__(inner,'db',db)
+                        def __getattr__(inner,name):return getattr(inner.db,name)
+                        def __setattr__(inner,name,value):setattr(inner.db,name,value)
+                        def execute(inner,*args):raise ValueError('fixture setup failure')
+                        def close(inner):raise sqlite3.OperationalError('database busy during failed close')
+                    def setup_connect(*args,**kwargs):
+                        db=real_connect(*args,**kwargs);handles.append(db);return SetupConnection(db)
+                    with mock.patch.object(sqlite3,'connect',setup_connect):return original_connect(path)
+                db,settings=original_connect(path);handles.append(db)
+                return Connection(db),settings
+            return original_connect(path)
+        def preflight(*args,**kwargs):
+            previous=phase[0];phase[0]='preflight' if kwargs.get('claim') else None
+            try:return original_preflight(*args,**kwargs)
+            finally:phase[0]=previous
+        def profile(*args,**kwargs):
+            previous=phase[0];phase[0]='adapter'
+            try:return original_profile(*args,**kwargs)
+            except BaseException as error:
+                observed.append(dict(type=type(error).__name__,code=getattr(error,'code',None),
+                    cause=type(error.__cause__).__name__ if error.__cause__ else None))
+                raise
+            finally:phase[0]=previous
+        def view(store,*args,**kwargs):
+            previous=phase[0]
+            if previous=='adapter':phase[0]='adapter-view'
+            try:return original_view(store,*args,**kwargs)
+            finally:phase[0]=previous
+        try:
+            with mock.patch.object(api,'NativeWatch',Watch),mock.patch.object(storage,'_connect',connect), \
+                    mock.patch.object(broker_routes,'preflight_route',preflight), \
+                    mock.patch.object(wake_adapter,'load_profile',profile), \
+                    mock.patch.object(Store,'view',view),mock.patch.object(wake_adapter.subprocess,'Popen',side_effect=OSError('fixture refuses spawn')) as spawn:
+                result=self.foreground()
+            print(json.dumps(dict(postclaim_fault=injected,profile_errors=observed,result=result,
+                                   actual_retained_handles=len(handles),spawn_count=spawn.call_count)))
+            self.assertEqual(len(injected),1,'fault reached the selected real profile read')
+            self.assert_pause('storage_failure')
+            self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(1,)],'no second claim')
+            self.assertEqual(self.sql('SELECT id,state FROM deliveries ORDER BY id'),before)
+            self.assertEqual(spawn.call_count,0,'post-claim storage failure must never spawn')
+            self.assertEqual(result['status'],'paused')
+            if mode=='busy':
+                self.assertEqual(observed,[dict(type='ProfileError',code='DATABASE_BUSY',cause='StoreOpenError')])
+            if mode=='view-chained-busy':
+                self.assertEqual(observed,[dict(type='ProfileError',code='DATABASE_BUSY',cause=None)],
+                                 'actual Core view loses chained-close provenance; runner stays conservative')
+            if mode=='view-os':
+                self.assertEqual(observed,[dict(type='ProfileError',code='STORE_OPEN_UNCONFIRMED',cause='OSError')])
+            self.assertFalse(result['cleanup_confirmed'],'uncertain SQL cleanup cannot be reported clean')
+            self.assertIsInstance(watches[0].fd,int,'uncertain SQL cleanup must retain actual watch fd')
+            self.assertGreaterEqual(fcntl.fcntl(watches[0].fd,fcntl.F_GETFD),0)
+            self.assertIn(watches[0],api._UNCONFIRMED_WATCHES)
+            self.assertEqual(len(handles),0 if mode=='busy' else 1)
+            for handle in handles:
+                self.assertEqual(handle.execute('SELECT 1').fetchone()[0],1,
+                                 'the controlled fault retained an actual SQLite connection')
+        finally:
+            # Only this fixture knows these handles and can finish their cleanup.
+            # Product retains its watch for process exit, never discovers handles.
+            for db in handles:db.close()
+            for watch in watches:
+                if watch in api._UNCONFIRMED_WATCHES:api._UNCONFIRMED_WATCHES.remove(watch)
+                watch.close()
+
+    def test_preflight_store_open_unconfirmed_retains_watch_and_leaves_claim(self):
+        self._postclaim_read_fault('preflight','close')
+
+    def test_adapter_second_profile_busy_pauses_without_settlement(self):
+        self._postclaim_read_fault('adapter','busy')
+
+    def test_adapter_second_profile_open_unconfirmed_retains_watch(self):
+        self._postclaim_read_fault('adapter','close')
+
+    def test_adapter_view_raw_rollback_error_retains_watch(self):
+        self._postclaim_read_fault('adapter-view','view-rollback')
+
+    def test_unknown_exception_with_busy_code_is_not_a_clean_retry(self):
+        api=self.api()
+        class UnknownFailure(Exception):
+            code='DATABASE_BUSY';retryable=True
+        with mock.patch.object(self.store,'runner_schedule',side_effect=UnknownFailure()) as calls:
+            result=self.loop()
+        self.assertFalse(result['cleanup_confirmed'],'an unrecognized class is not a clean Core busy')
+        self.assertEqual(result['status'],'paused')
+        self.assertEqual(calls.call_count,1,'uncertain storage may not be retried')
+        self.assert_pause('storage_failure')
+
+    def test_raw_outer_loop_exception_marks_cleanup_uncertain(self):
+        api=self.api()
+        with mock.patch.object(api.EffectsLoop,'_read',side_effect=sqlite3.Error('fixture unexpected storage path')):
+            result=self.loop()
+        self.assertFalse(result['cleanup_confirmed'],'uncaught raw exceptions cannot assert cleanup')
+        self.assert_pause('storage_failure')
+
+    def test_known_pin_storage_error_is_not_clean(self):
+        self.api();self.create_topic()
+        original=broker_routes.preflight_route
+        def preflight(*args,**kwargs):
+            if kwargs.get('claim'):raise RoutePinError('ROUTE_PIN_STORAGE_ERROR','fixture')
+            return original(*args,**kwargs)
+        with mock.patch.object(broker_routes,'preflight_route',preflight):result=self.loop()
+        self.assertFalse(result['cleanup_confirmed'])
+        self.assert_pause('storage_failure')
+
+    def test_stop_after_successful_preflight_never_invokes(self):
+        self.api();self.create_topic()
+        original=broker_routes.preflight_route
+        def preflight(*args,**kwargs):
+            result=original(*args,**kwargs)
+            if kwargs.get('claim'):self.wait.stopped=True
+            return result
+        with mock.patch.object(broker_routes,'preflight_route',preflight), \
+                mock.patch.object(wake_adapter,'run_route') as invoke:
+            result=self.loop()
+        self.assertEqual(result['status'],'stopped')
+        self.assertEqual(invoke.call_count,0)
+        self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(1,)])
+        self.assertEqual(self.sql('SELECT count(*) FROM wake_results'),[(0,)])
+
+    def test_ordinary_uncoded_profile_refusal_still_settles_unavailable_cleanly(self):
+        self.api();self.create_topic()
+        original=self.store.claim_wakes
+        def claim(*args,**kwargs):
+            result=original(*args,**kwargs)
+            (self.root/'agent-a.profile').chmod(0o644)
+            return result
+        with mock.patch.object(self.store,'claim_wakes',claim):result=self.loop()
+        self.assertEqual(result['status'],'stopped')
+        self.assertTrue(result['cleanup_confirmed'],'ordinary pre-SQL profile refusal is clean')
+        self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('unavailable',)])
+
+
+    def _postclaim_authority_fault(self, verify_at):
+        from aim_next.authority import AuthorityError
+        self.api();self.create_topic();self.send_next(addressees=['agent-b'])
+        original=wake_adapter.run_route;hits=[]
+        def invoke(route,claim,guard,**kwargs):
+            real_verify=guard.verify;count=[0]
+            def verify():
+                count[0]+=1
+                if count[0]==verify_at:
+                    hits.append(verify_at)
+                    raise AuthorityError('AUTHORITY_CHANGED','fixture changed at pre-spawn verification')
+                return real_verify()
+            with mock.patch.object(guard,'verify',verify):return original(route,claim,guard,**kwargs)
+        with mock.patch.object(wake_adapter,'run_route',invoke), \
+                mock.patch.object(wake_adapter.subprocess,'Popen',side_effect=OSError('fixture refuses spawn')) as spawn:
+            result=self.loop()
+        self.assertEqual(result['status'],'paused')
+        self.assert_pause('route_binding_changed')
+        self.assertEqual(hits,[verify_at],'fault reached the exact selected adapter verification')
+        self.assertEqual(spawn.call_count,0)
+        self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(1,)])
+
+    def test_prepare_route_authority_fault_cannot_settle_unavailable(self):
+        self._postclaim_authority_fault(1)
+
+    def test_final_pre_spawn_authority_fault_cannot_settle_unavailable(self):
+        self._postclaim_authority_fault(3)
+
+
+    def test_adapter_view_os_cleanup_failure_keeps_storage_typing(self):
+        self._postclaim_read_fault('adapter-view','view-os')
+
+    def test_adapter_view_chained_busy_close_never_proves_cleanup(self):
+        self._postclaim_read_fault('adapter-view','view-chained-busy')
+
+    def test_ordinary_missing_profile_after_startup_remains_unavailable(self):
+        self.api();self.create_topic()
+        original=self.store.claim_wakes
+        def claim(*args,**kwargs):
+            result=original(*args,**kwargs)
+            (self.root/'agent-a.profile').unlink(missing_ok=True)
+            return result
+        with mock.patch.object(self.store,'claim_wakes',claim):result=self.loop()
+        self.assertEqual(result['status'],'stopped')
+        self.assertTrue(result['cleanup_confirmed'],'ordinary file absence before SQL is clean')
+        self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('unavailable',)])
+
+
+    def test_valid_profile_swap_after_preflight_pauses_without_settlement(self):
+        self.api();self.create_topic()
+        original=broker_routes.preflight_route
+        def preflight(*args,**kwargs):
+            result=original(*args,**kwargs)
+            if kwargs.get('claim'):
+                (self.root/'agent-a.profile').write_bytes((self.root/'agent-b.profile').read_bytes())
+            return result
+        with mock.patch.object(broker_routes,'preflight_route',preflight), \
+                mock.patch.object(wake_adapter.subprocess,'Popen',side_effect=OSError('fixture refuses spawn')) as spawn:
+            result=self.loop()
+        self.assertEqual(result['status'],'paused')
+        self.assert_pause('route_binding_changed')
+        self.assertEqual(spawn.call_count,0)
+        self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(1,)])
+
+    def test_storage_profile_failure_at_startup_still_refuses_before_watch(self):
+        api=self.api()
+        with mock.patch.object(Store,'view',side_effect=OSError('fixture storage-stage failure')), \
+                mock.patch.object(api,'NativeWatch') as watch:
+            result=self.foreground()
+        self.assertEqual(result['status'],'startup_failed')
+        self.assertEqual(result['code'],'STARTUP_REFUSED')
+        self.assertEqual(watch.call_count,0)
+        self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(0,)])
+
+    def test_storage_profile_failure_in_broker_child_exits_nonzero_without_rpc(self):
+        import sys
+        root=str(Path(__file__).resolve().parents[1])
+        report=self.root/'child-profile-failure.json'
+        rpc=self.root/'unexpected-rpc'
+        source="""
+import json,sys
+from pathlib import Path
+from unittest import mock
+sys.path.insert(0,sys.argv[1])
+from aim_next import Store,broker_routes,codex_broker
+original=broker_routes.load_profile
+def observe(*args,**kwargs):
+    try:return original(*args,**kwargs)
+    except BaseException as error:
+        Path(sys.argv[3]).write_text(json.dumps(dict(type=type(error).__name__,code=getattr(error,'code',None))))
+        raise
+def unexpected(*args,**kwargs):
+    Path(sys.argv[4]).write_text('RPC process unexpectedly attempted')
+    raise AssertionError('unexpected RPC')
+with mock.patch.object(Store,'view',side_effect=OSError('fixture storage-stage failure')), \
+        mock.patch.object(broker_routes,'load_profile',observe), \
+        mock.patch.object(codex_broker,'_stdin',return_value={'binding':json.loads(sys.argv[5])}), \
+        mock.patch.object(codex_broker.subprocess,'Popen',unexpected):
+    result=codex_broker.main(['--config',sys.argv[2]])
+sys.exit(result)
+"""
+        expected=dict(broker_routes.profile_binding(self.profile),actor_id='agent-a')
+        completed=subprocess.run(['/usr/bin/python3','-I','-X','pycache_prefix='+sys.pycache_prefix+'/broker-child',
+            '-c',source,root,str(self.root/'agent-a.config'),str(report),str(rpc),json.dumps(expected)],
+            stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=5)
+        self.assertEqual(completed.returncode,1,completed.stderr.decode())
+        self.assertFalse(rpc.exists(),'failed profile must emit no RPC')
+        self.assertEqual(json.loads(report.read_text()),dict(type='ProfileError',code='STORE_OPEN_UNCONFIRMED'))
+
+
+    def test_unknown_exception_with_short_lease_code_is_not_a_clean_retry(self):
+        self.api();self.create_topic()
+        class UnknownFailure(Exception):
+            code='LEASE_TOO_SHORT';retryable=True
+        with mock.patch.object(self.store,'claim_wakes',side_effect=UnknownFailure()) as calls:
+            result=self.loop()
+        self.assertFalse(result['cleanup_confirmed'])
+        self.assertEqual(result['status'],'paused','unknown cleanup cannot enter short-lease retry')
+        self.assertEqual(calls.call_count,1)
+        self.assert_pause('storage_failure')

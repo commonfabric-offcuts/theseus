@@ -77,3 +77,18 @@ on this Mac kept the SQLite writer lock after O_EVTONLY close; it does not
 establish lock loss. The close-order rule is enforced independently rather
 than relying on that OS-specific observation. Fixture brokers are not real
 agent delivery proof, and passing these checks does not activate this runner.
+
+
+Post-claim profile reads in both parent checks preserve typed storage and
+binding faults. Authority changes and profile/guard mismatches pause with the
+claim unsettled; a busy storage read never becomes an unavailable settlement.
+Known-clean refusals are restricted to traced Core exception classes and codes.
+Coded ProfileError wrappers remain conservatively uncertain, including busy:
+the current Core view can flatten a failed setup close into a busy result.
+The runner therefore retains its watch and stops after one pause attempt.
+Ordinary profile file/parse failures remain unavailable; storage-stage failures
+carry STORE_OPEN_UNCONFIRMED at startup, in the parent and in the broker child.
+
+Native signal checks cover arrival after the wait timeout is selected and
+observe the actual signal kevent. Removing the signal filter must fail that
+prompt-wake check; a pre-wait stop flag alone does not establish this property.

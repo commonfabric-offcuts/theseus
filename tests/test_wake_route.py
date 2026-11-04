@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from aim_next import initialize, Store
+from aim_next.authority import AuthorityError
 from aim_next.profile import write_profile
 from aim_next.wake_adapter import RouteUnavailable, prepare_route
 
@@ -146,7 +147,9 @@ class WakeRouteTests(unittest.TestCase):
         self.rejected(claim=claim)
         self.put(self.config)
         self.guard.close()
-        self.rejected()
+        with self.assertRaises(AuthorityError) as caught:
+            prepare_route(self.route,self.claim,self.guard)
+        self.assertEqual(caught.exception.code,"INVALID_BINDING")
         self.rejected(guard=object())
 
     def test_invalid_claim_shape_and_values_are_never_encoded(self):

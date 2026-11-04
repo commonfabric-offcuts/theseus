@@ -85,7 +85,7 @@ def _validated(value):
         raise ProfileError(str(error), code=getattr(error, "code", None),
                            retryable=getattr(error, "retryable", False)) from error
     except (OSError, ValueError) as error:
-        raise ProfileError("The bound instance cannot be opened") from error
+        raise ProfileError("The bound instance cannot be opened", code="STORE_OPEN_UNCONFIRMED") from error
     if capabilities.get("error"):
         error = capabilities["error"]
         raise ProfileError(error.get("message", "The bound instance cannot be opened"),

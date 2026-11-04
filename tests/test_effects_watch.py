@@ -3,6 +3,10 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import os
+import json
+import select
+import threading
+import time
 from pathlib import Path
 import signal
 import tempfile
@@ -90,3 +94,43 @@ class EffectsWatchCase(unittest.TestCase):
                 self.assertEqual(watch.wait(0), dict(dirty=False, stop=False))
                 self.assertEqual(watch.fd, fd)
                 self.assertEqual(os.fstat(fd).st_ino, self.path.stat().st_ino)
+
+
+    def test_signal_arriving_after_wait_selection_interrupts_native_kevent(self):
+        api=self.api()
+        for number in (signal.SIGINT,signal.SIGTERM):
+            with self.subTest(number=number):
+                ready=threading.Event();observed=[];sent=[];markers=[]
+                original=signal.getsignal(number)
+                with api.NativeWatch(self.path) as watch:
+                    queue=watch.queue
+                    class Queue:
+                        def control(inner,changes,count,timeout):
+                            self.assertGreaterEqual(timeout,2,'signal must not precede stopped timeout selection')
+                            markers.append(time.monotonic());ready.set()
+                            events=queue.control(changes,count,timeout)
+                            observed.extend(dict(filter=e.filter,ident=e.ident) for e in events)
+                            return events
+                        def close(inner):queue.close()
+                    watch.queue=Queue()
+                    def send():
+                        if ready.wait(2):
+                            # The marker proves timeout selection already happened;
+                            # the extra gap normally lets the native call block.
+                            time.sleep(0.05);sent.append(time.monotonic());os.kill(os.getpid(),number)
+                    sender=threading.Thread(target=send);sender.start()
+                    try:
+                        event=watch.wait(2)
+                        end=time.monotonic()
+                    finally:sender.join(3)
+                    self.assertFalse(sender.is_alive())
+                    self.assertEqual(len(sent),1)
+                    self.assertGreater(sent[0],markers[0])
+                    delay=end-sent[0]
+                    print(json.dumps(dict(native_blocked_signal=int(number),wait_start=markers[0],
+                        sent=sent[0],wait_end=end,signal_to_return=delay,events=observed)))
+                    self.assertLess(delay,0.75,'native signal filter must wake a blocked wait promptly')
+                    self.assertIn(dict(filter=select.KQ_FILTER_SIGNAL,ident=number),observed,
+                                  'the actual kevent, not only the Python flag, must be observed')
+                    self.assertTrue(event['stop']);self.assertTrue(watch.stopped)
+                self.assertIs(signal.getsignal(number),original)

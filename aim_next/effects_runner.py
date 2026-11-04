@@ -7,6 +7,10 @@ import time
 
 from . import broker_routes, wake_adapter
 from .contract import StoreError
+from .authority import AuthorityError
+from .route_pins import RoutePinError
+from .runner import RunnerError
+from .store import StoreOpenError
 from .effects_watch import NativeWatch
 from .profile import ProfileError, load_profile
 
@@ -84,14 +88,35 @@ class EffectsLoop:
             raise LoopFault()
         return result
 
+    @staticmethod
+    def _cleanup_known(error):
+        # These exact Core paths complete cleanup or override the refusal with
+        # an uncertainty error. A matching string on another class is no proof.
+        clean = {
+            StoreOpenError: {'DATABASE_BUSY'},
+            RunnerError: {'DATABASE_BUSY','INVALID_ARGUMENT','INVALID_GUARD',
+                'LEASE_TOO_SHORT','RUNNER_STATE_INVALID','REVISION_CONFLICT','GUARD_NOT_DRAINED'},
+            RoutePinError: {'DATABASE_BUSY','INVALID_ARGUMENT','INVALID_ROUTE_DESTINATION',
+                'INVALID_ACTOR','ROUTE_PIN_INVALID','ROUTE_PIN_MISMATCH','ROUTE_PIN_MISSING'},
+            AuthorityError: {'AUTHORITY_CHANGED','INVALID_BINDING','AUTHORITY_BUSY'},
+        }
+        if type(error) in clean:
+            return error.code in clean[type(error)]
+        if isinstance(error,wake_adapter.RouteUnavailable):
+            return True
+        if type(error) is ProfileError:
+            # Coded wrappers may come from a Store.view result that flattened
+            # failed setup cleanup into busy. Keep all of them conservative.
+            # Storage-stage OSError/ValueError now has its own uncertainty code;
+            # ordinary file/parse failures remain uncoded.
+            return error.code is None and not isinstance(error.__cause__,StoreError)
+        return False
+
     def _storage(self, operation):
         try:
             return operation()
         except BaseException as error:
-            # Only explicitly known refusals establish ordinary API cleanup.
-            code = getattr(error,'code',None)
-            if (code in ('RUNNER_STORAGE_ERROR','ROUTE_PIN_STORAGE_ERROR')
-                    or code is None):
+            if not self._cleanup_known(error):
                 self.cleanup_uncertain = True
             raise
 
@@ -106,13 +131,14 @@ class EffectsLoop:
             result = self._storage(operation)
         except Exception as error:
             if (self.outstanding is None and getattr(error,'code',None)=='DATABASE_BUSY'
-                    and getattr(error,'retryable',False) is True):
+                    and getattr(error,'retryable',False) is True and self._cleanup_known(error)):
                 count = self.busy_counts[action]
                 self.gates[action] = self.clock.monotonic()+min(2**min(count,6),60)
                 self.busy_counts[action] = min(count+1,7)
                 if not count: self._event('contention',action=action)
                 return None
-            if action in ('claim','renew') and getattr(error,'code',None)=='LEASE_TOO_SHORT':
+            if (action in ('claim','renew') and getattr(error,'code',None)=='LEASE_TOO_SHORT'
+                    and self._cleanup_known(error)):
                 raise ShortLease() from error
             raise LoopFault() from error
         self._success(action)
@@ -219,6 +245,17 @@ class EffectsLoop:
                 except wake_adapter.AdapterFault as error:
                     reason = 'cleanup_failed' if str(error)=='cleanup_unconfirmed' else 'storage_failure'
                     raise LoopFault(reason) from error
+                except wake_adapter.RouteUnavailable as error:
+                    # The adapter propagates these post-validation binding
+                    # verdicts instead of presenting them as ordinary absence.
+                    raise LoopFault('route_binding_changed') from error
+                except (StoreError,ProfileError) as error:
+                    if not self._cleanup_known(error):
+                        self.cleanup_uncertain = True
+                    raise LoopFault(self._pin_reason(error)) from error
+                except (Exception,KeyboardInterrupt) as error:
+                    self.cleanup_uncertain = True
+                    raise LoopFault('storage_failure') from error
         # A normal adapter return means no child started or owned cleanup was
         # confirmed. Stop cannot skip the result of this already finished act.
         if (not isinstance(result,wake_adapter.RouteResult)
@@ -235,7 +272,8 @@ class EffectsLoop:
     @staticmethod
     def _pin_reason(error):
         if getattr(error,'code',None) in ('ROUTE_PIN_MISSING','ROUTE_PIN_MISMATCH','ROUTE_PIN_INVALID',
-                                          'INVALID_ROUTE_DESTINATION','INVALID_ARGUMENT','INVALID_ACTOR'):
+                                          'INVALID_ROUTE_DESTINATION','INVALID_ARGUMENT','INVALID_ACTOR',
+                                          'AUTHORITY_CHANGED','INVALID_BINDING'):
             return 'route_binding_changed'
         return 'storage_failure'
 
@@ -333,6 +371,7 @@ class EffectsLoop:
         except LoopFault as error:
             return self._fault(error.reason)
         except (Exception,KeyboardInterrupt):
+            self.cleanup_uncertain = True
             return self._fault('storage_failure')
 
 
