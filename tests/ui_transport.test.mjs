@@ -2,6 +2,32 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Api, AttemptError } from '../web/api.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
+import { createServer } from 'node:http';
+
+test('cleanup API abort reaches a real stalled HTTP response body for bootstrap and view', async () => {
+  for (const method of ['bootstrap', 'view']) {
+    let entered;
+    const ready = new Promise(resolve => { entered = resolve; });
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { 'Content-Type': 'application/json' }); response.write('{"unfinished":'); entered();
+    });
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    const origin = 'http://127.0.0.1:' + server.address().port;
+    const api = new Api('fixture', (url, options) => fetch(new URL(url, origin), options));
+    const controller = new AbortController();
+    const request = method === 'bootstrap' ? api.bootstrap({ signal: controller.signal }) : api.view('editor_state', {}, { signal: controller.signal });
+    const completed = request.then(value => ({ value }), error => ({ error }));
+    let timer;
+    try {
+      await ready; controller.abort();
+      const result = await Promise.race([completed, new Promise(resolve => { timer = setTimeout(() => resolve({ timeout: true }), 250); })]);
+      assert.equal(result.timeout, undefined, method + ' forwards abort to the real transport');
+      assert.ok(result.error instanceof AttemptError);
+    } finally {
+      clearTimeout(timer); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await completed;
+    }
+  }
+});
 
 test('download Blobs keep exact bytes and descriptor but not an active MIME type', async () => {
   for (const [type, inline, expected] of [

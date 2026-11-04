@@ -1,4 +1,5 @@
 // Private saves are serialized. Public send confirmation never holds that queue.
+import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 const copy = value => structuredClone(value);
 const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'caret', 'reply_to', 'exchange_id', 'opening'];
 const authorityPair = value => value && typeof value.authority_id === 'string' && value.authority_id &&
@@ -51,7 +52,7 @@ export class RuntimeAuthority {
 }
 
 export class EditorSession {
-  constructor(editor, { api, journal, snapshot = null, authority, runtime, id = () => crypto.randomUUID(), changed = () => {}, prepared = () => {} }) {
+  constructor(editor, { api, journal, snapshot = null, authority, runtime, id = () => crypto.randomUUID(), changed = () => {}, prepared = () => {}, persisted = () => {} }) {
     if (!validAuthority(authority)) throw new Error('Establish valid bootstrap authority before opening an editor session.');
     if (!(runtime instanceof RuntimeAuthority) || runtime.instanceId !== editor.context.instanceId) throw new Error('Editors must share their instance runtime authority.');
     if (snapshot && snapshot.key !== editor.key) throw new Error('Recovery belongs to another editor.');
@@ -61,6 +62,8 @@ export class EditorSession {
     this.id = id;
     this.changed = changed;
     this.prepared = prepared;
+    this.persisted = persisted;
+    this.acknowledgedSnapshot = null;
     this.runtime = runtime;
     this.authority = copy(snapshot?.activeAuthority ?? authority);
     this.recovery = copy(snapshot?.authorityRecovery ?? null);
@@ -83,12 +86,19 @@ export class EditorSession {
     return next;
   }
 
-  async persist() {
-    const snapshot = { ...this.editor.snapshot(), attempts: copy(this.attempts),
+  snapshot() {
+    return { ...this.editor.snapshot(), attempts: copy(this.attempts),
       activeAuthority: copy(this.authority), authorityRecovery: copy(this.recovery) };
+  }
+
+  async persist() {
+    const snapshot = this.snapshot(), meaningful = meaningfulSnapshot(snapshot);
+    const sameAuthority = () => same(authorityPair(this.authority), authorityPair(this.runtime.current));
+    if (!sameSnapshot(meaningful, this.acknowledgedSnapshot) || !sameAuthority()) this.acknowledgedSnapshot = null;
     try {
-      const stamp = await this.journal.save(snapshot);
+      const stamp = await this.journal.save(snapshot, () => sameAuthority() && sameSnapshot(meaningful, this.acknowledgedSnapshot));
       this.editor.journalError = null;
+      if (stamp) this.persisted(this, snapshot);
       return stamp;
     } catch (error) {
       this.editor.journalError = error.message;

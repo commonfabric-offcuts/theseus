@@ -213,12 +213,12 @@ async function fixture(t, options = {}) {
     put: async row => { rows.set(row.id, copy(row)); },
     get: async id => copy(rows.get(id)),
     forEditor: async key => [...rows.values()].filter(row => row.editorKey === key).map(copy),
-    removeExact: async (id, stamp) => { if (rows.get(id)?.stamp === stamp) rows.delete(id); },
+    removeExact: async (id, stamp) => rows.get(id)?.stamp === stamp ? rows.delete(id) : false,
   };
   const journal = new RecoveryJournal(backend, 'fixture-document');
   const transport = {
-    bootstrap: () => api.bootstrap(),
-    view: (name, args) => { calls.push({ type: 'view', name, args: copy(args) }); return api.view(name, args); },
+    bootstrap: options => api.bootstrap(options),
+    view: (name, args, options) => { calls.push({ type: 'view', name, args: copy(args) }); return api.view(name, args, options); },
     command: envelope => { calls.push({ type: 'command', envelope: copy(envelope) }); return api.command(envelope); },
   };
   const bootstrap = await api.bootstrap();
@@ -229,6 +229,320 @@ async function fixture(t, options = {}) {
   const state = index => api.view('editor_state', { source_ref: facts.sources[index], topic_id: facts.topic_id });
   return { registry, api, transport, bootstrap, journal, backend, rows, calls, shown, closed, changes, facts, open, state, control };
 }
+
+async function cleanupSettled(f, editor) { await f.registry.cleanup?.idle(editor.key); }
+
+test('cleanup retires exact real private acknowledgements without recreating on close or caret movement', async t => {
+  const f = await fixture(t), p = await f.open(1);
+  for (const editor of Object.values(p.editors)) {
+    editor.edit({ body: 'Canonical ' + editor.context.kind });
+    await f.registry.edited(editor); await f.registry.flush(editor); await cleanupSettled(f, editor);
+    assert.equal(await f.journal.own(editor.key), undefined, 'acknowledged own recovery row retired');
+    const before = copy(editor.snapshot()), commands = f.calls.filter(c => c.type === 'command').length;
+    const put = f.backend.put; let writes = 0;
+    f.backend.put = async row => { ++writes; return put(row); };
+    editor.draft.caret = { start: 3, end: 3 };
+    await f.registry.persistLocal(editor); await f.registry.flush(editor); await cleanupSettled(f, editor);
+    assert.equal(await f.journal.own(editor.key), undefined, 'caret-only close/save does not recreate acknowledged work');
+    assert.equal(writes, 0, 'unchanged acknowledged snapshot never rewrites the IDB row');
+    f.backend.put = put;
+    assert.equal(f.calls.filter(c => c.type === 'command').length, commands, 'cleanup never writes to server');
+    assert.deepEqual(editor.snapshot(), { ...before, draft: { ...before.draft, caret: { start: 3, end: 3 } } });
+    editor.edit({ body: 'New recoverable ' + editor.context.kind }); await f.registry.edited(editor);
+    assert.equal((await f.journal.own(editor.key)).snapshot.draft.body, 'New recoverable ' + editor.context.kind);
+    f.registry.cancelSave(editor);
+  }
+});
+
+test('cleanup exact send successor retires while canonical submission stays discoverable', async t => {
+  const f = await fixture(t), p = await f.open(1), editor = p.editors.reply;
+  editor.edit({ body: 'An immutable real publication' }); await f.registry.edited(editor);
+  const item = await f.registry.send(editor, { stay: true }); await cleanupSettled(f, editor);
+  assert.equal(item.status, 'confirmed');
+  assert.equal(await f.journal.own(editor.key), undefined, 'exact canonical successor and every act acknowledged');
+  editor.draft.caret = { start: 0, end: 0 }; await f.registry.close(p, { explicit: true });
+  assert.equal(await f.journal.own(editor.key), undefined, 'empty successor close does not recreate a row');
+  assert.equal((await f.api.view('submission', { submission_id: item.id })).body, 'An immutable real publication');
+});
+
+async function retainedAcknowledgement(t, kind = 'reply', send = false) {
+  const f = await fixture(t), p = await f.open(1), editor = p.editors[kind], session = f.registry.sessionFor(editor);
+  const read = f.transport.view;
+  f.transport.view = async (name, args) => {
+    const answer = await read(name, args);
+    return name === 'editor_state' ? { ...answer, draft: null, note: null } : answer;
+  };
+  editor.edit({ body: 'Exact retained acknowledgement' }); await f.registry.edited(editor);
+  if (send) await f.registry.send(editor, { stay: true }); else await f.registry.flush(editor);
+  await cleanupSettled(f, editor); f.transport.view = read;
+  const row = await f.journal.own(editor.key); assert.ok(row);
+  return { ...f, editor, session, row, read };
+}
+
+test('cleanup canonical identity payload and authority mismatches retain complete exact rows', async t => {
+  const f = await retainedAcknowledgement(t), { editor, session, row } = f;
+  const corruptions = [
+    a => { a.instance_id = 'foreign'; }, a => { a.source_ref = { ...a.source_ref, revision: 99 }; },
+    a => { a.destination.topic_id = 'elsewhere'; }, a => { a.draft.id = 'other'; },
+    a => { a.draft.generation = 'other'; }, a => { ++a.draft.revision; },
+    a => { a.draft.attachments = [{ id: 'other' }]; }, a => { a.draft.quotes = [{ text: 'other' }]; },
+    a => { a.draft.addressees = ['other']; }, a => { a.draft.body += 'new'; },
+    a => { a.draft.source_ref = { ...a.draft.source_ref, revision: 8 }; },
+  ];
+  for (const corrupt of corruptions) {
+    f.transport.view = async (name, args) => { const answer = await f.read(name, args); if (name === 'editor_state') corrupt(answer); return answer; };
+    await f.registry.cleanup.own(session); assert.deepEqual(await f.journal.own(editor.key), row);
+  }
+  f.transport.view = f.read;
+  const bootstrap = f.transport.bootstrap;
+  for (const change of ['actor', 'pair', 'between']) {
+    let reads = 0;
+    f.transport.bootstrap = async () => {
+      const answer = await bootstrap(); ++reads;
+      if (change === 'actor') answer.actor = 'someone-else';
+      if (change === 'pair' || change === 'between' && reads === 2) answer.authority.authority_epoch = 'E2';
+      return answer;
+    };
+    await f.registry.cleanup.own(session); assert.deepEqual(await f.journal.own(editor.key), row);
+    assert.equal(session.acknowledgedSnapshot ?? null, null, 'no cleanup token across unknown authority');
+  }
+  f.transport.bootstrap = bootstrap;
+  editor.draft.caret = { start: 9, end: 9 };
+  await f.registry.cleanup.own(session);
+  assert.equal(await f.journal.own(editor.key), undefined, 'only current caret differs; original tickets stay exact');
+});
+
+test('cleanup false unknown and mismatched original operation outcomes retain the exact row', async t => {
+  const f = await retainedAcknowledgement(t);
+  for (const mutate of [a => { a.recorded = false; }, a => { a.status = 'unknown'; }, a => { a.operation_id = 'wrong'; }, a => { ++a.result.draft_revision; }]) {
+    f.transport.view = async (name, args) => { const answer = await f.read(name, args); if (name === 'operation') mutate(answer); return answer; };
+    await f.registry.cleanup.own(f.session); assert.deepEqual(await f.journal.own(f.editor.key), f.row);
+  }
+  f.transport.view = f.read; await f.registry.cleanup.own(f.session);
+  assert.equal(await f.journal.own(f.editor.key), undefined);
+});
+
+test('cleanup retains unsupported writing in notes and frozen snapshots', async t => {
+  const note = await retainedAcknowledgement(t, 'note');
+  for (const field of ['reply_to', 'exchange_id', 'opening']) {
+    await t.test('note ' + field, async () => {
+      const row = copy(note.row); row.snapshot.draft[field] = 'unconfirmed';
+      assert.equal(await note.registry.cleanup.confirm(row, note.editor.context), false, 'note metadata stays recoverable: ' + field);
+    });
+  }
+  const reply = await retainedAcknowledgement(t, 'reply', true);
+  for (const kind of ['ticket', 'submission']) {
+    await t.test('frozen ' + kind, async () => {
+      const row = copy(reply.row);
+      const draft = kind === 'ticket' ? row.snapshot.attempts.find(a => a.ticket).ticket.draft : row.snapshot.submissions[0].snapshot;
+      draft.futureWriting = 'unconfirmed';
+      assert.equal(await reply.registry.cleanup.confirm(row, reply.editor.context), false, 'frozen writing stays recoverable: ' + kind);
+    });
+  }
+});
+
+test('cleanup pending refused detached and missing-pin histories retain original envelopes', async t => {
+  const f = await retainedAcknowledgement(t, 'reply', true), snapshot = copy(f.row.snapshot);
+  for (const mutate of [
+    s => { s.attempts[0].receipt = null; }, s => { s.attempts[0].receipt.status = 'rejected'; },
+    s => { s.attempts[0].detached = true; }, s => { delete s.attempts[0].envelope.expected.authority; },
+    s => { s.attempts[0].envelope.expected.authority.authority_epoch = 'historical'; },
+    s => { s.submissions[0].status = 'prepared'; }, s => { s.submissions[0].status = 'refused'; },
+    s => { s.submissions[0].detached = true; }, s => { delete s.submissions[0].authority; },
+    s => { s.submissions[0].snapshot.quotes.push({ text: 'unconfirmed' }); },
+  ]) {
+    const altered = copy(snapshot); mutate(altered);
+    await f.journal.save(altered); const row = await f.journal.own(f.editor.key);
+    assert.equal(await f.registry.cleanup.confirm(row, f.editor.context), false);
+    assert.deepEqual(await f.journal.own(f.editor.key), row, 'whole row and exact retained envelope survive');
+  }
+  await f.journal.save(snapshot); await f.registry.cleanup.own(f.session);
+  assert.equal(await f.journal.own(f.editor.key), undefined);
+});
+
+test('cleanup held canonical read cannot retire newer writing or a newer exact stamp', async t => {
+  const f = await retainedAcknowledgement(t), entered = deferred(), release = deferred();
+  f.transport.view = async (name, args) => { const answer = await f.read(name, args); if (name === 'editor_state') { entered.resolve(); await release.promise; } return answer; };
+  const cleaning = f.registry.cleanup.own(f.session); await entered.promise;
+  f.editor.edit({ body: 'Newer B survives late cleanup' }); await f.registry.edited(f.editor); f.registry.cancelSave(f.editor);
+  const newer = await f.journal.own(f.editor.key); release.resolve(); await cleaning; await cleanupSettled(f, f.editor);
+  assert.deepEqual(await f.journal.own(f.editor.key), newer); assert.equal(f.editor.dirty, true);
+  assert.equal(f.session.acknowledgedSnapshot ?? null, null);
+  f.transport.view = f.read;
+  await f.registry.flush(f.editor); await cleanupSettled(f, f.editor);
+  assert.equal(await f.journal.own(f.editor.key), undefined);
+});
+
+test('cleanup deletion failure preserves acknowledged outcome and reports separate cleanup status', async t => {
+  const f = await retainedAcknowledgement(t);
+  f.backend.removeExact = async () => { throw Error('strict cleanup transaction aborted'); };
+  await f.registry.cleanup.own(f.session);
+  assert.deepEqual(await f.journal.own(f.editor.key), f.row);
+  assert.equal(f.editor.dirty, false); assert.equal(f.editor.journalError, null);
+  assert.match(f.registry.status(f.editor), /cleanup.*could not finish/i);
+  assert.equal(f.session.acknowledgedSnapshot ?? null, null);
+});
+
+test('cleanup newer unpersisted edit and same-snapshot newer stamp each defeat captured retirement', async t => {
+  for (const change of ['edit', 'stamp']) {
+    const f = await retainedAcknowledgement(t), entered = deferred(), release = deferred();
+    f.transport.view = async (name, args) => { const answer = await f.read(name, args); if (name === 'editor_state') { entered.resolve(); await release.promise; } return answer; };
+    const cleaning = f.registry.cleanup.own(f.session); await entered.promise;
+    if (change === 'edit') f.editor.edit({ body: 'Newer version before persistence' });
+    else await f.journal.save(f.row.snapshot);
+    const latest = await f.journal.own(f.editor.key); release.resolve(); await cleaning;
+    assert.deepEqual(await f.journal.own(f.editor.key), latest, change + ' invalidates the captured retirement');
+    assert.equal(f.session.acknowledgedSnapshot ?? null, null);
+  }
+});
+
+test('cleanup row scope source revision and malformed history fail closed before canonical reads', async t => {
+  const f = await retainedAcknowledgement(t), original = f.row;
+  for (const mutate of [
+    r => { r.scope = JSON.stringify(['foreign', f.bootstrap.actor]); },
+    r => { r.snapshot.context.actor = 'foreign'; }, r => { r.snapshot.sourceRef.revision = 23; },
+    r => { r.snapshot.context.topicId = 'wrong'; }, r => { r.active = 0; r.superseded_by = 'descendant'; },
+    r => { r.snapshot.attempts[0].ticket.key = 'wrong'; },
+    r => { r.snapshot.attempts[0].ticket.draft.body = 'changed original ticket'; },
+  ]) {
+    const row = copy(original); mutate(row);
+    assert.equal(await f.registry.cleanup.confirm(row, f.editor.context), false);
+    assert.deepEqual(await f.journal.own(f.editor.key), original);
+  }
+});
+
+test('cleanup confirmations yield every ten exact reads and candidate cleanup considers only the loaded page', async t => {
+  const f = await retainedAcknowledgement(t), { editor, session } = f;
+  f.transport.view = async (name, args) => { const answer = await f.read(name, args); return name === 'editor_state' ? { ...answer, draft: null } : answer; };
+  for (let i = 0; i < 21; ++i) { editor.edit({ body: 'Acknowledged ' + i }); await f.registry.flush(editor); }
+  await cleanupSettled(f, editor);
+  let confirmations = 0, batches = [], commands = 0;
+  f.registry.cleanup.yieldBatch = async () => { batches.push(confirmations); };
+  f.transport.view = async (name, args) => { if (name === 'operation') ++confirmations; return f.read(name, args); };
+  const command = f.transport.command; f.transport.command = (...args) => { ++commands; return command(...args); };
+  const row = await f.journal.own(editor.key);
+  await f.registry.cleanup.own(session);
+  assert.equal(await f.journal.own(editor.key), undefined);
+  assert.equal(confirmations, 22); assert.deepEqual(batches, [10, 20]); assert.equal(commands, 0);
+  const all = Array.from({ length: 12 }, (_, n) => ({ ...copy(row), writerId: 'closed-' + n,
+    id: JSON.stringify([editor.key, 'closed-' + n]), availability: 'available' }));
+  const retired = [], pages = [];
+  f.backend.forEditor = async (key, options) => { pages.push({ key, ...options }); return { items: all.slice(0, 10), nextCursor: 'next-page' }; };
+  f.backend.retireAcknowledged = async (key, candidate, confirm) => { assert.equal(key, editor.key); if (!await confirm(candidate)) return false; retired.push(candidate.id); return true; };
+  const page = await f.registry.recoveryCandidates(editor, { limit: 10 });
+  assert.equal(page.items.length, 0); assert.equal(page.nextCursor, 'next-page');
+  assert.equal(pages.length, 1); assert.deepEqual(retired, all.slice(0, 10).map(r => r.id));
+  assert.equal(commands, 0);
+});
+
+test('cleanup retirement token cannot suppress recovery after another editor learns a new authority', async t => {
+  const f = await fixture(t), p = await f.open(1), editor = p.editors.reply;
+  editor.edit({ body: 'Previously acknowledged in E1' }); await f.registry.flush(editor); await cleanupSettled(f, editor);
+  assert.equal(await f.journal.own(editor.key), undefined);
+  f.registry.runtime.current = { ...f.registry.runtime.current, authority_epoch: 'E2' };
+  await f.registry.persistLocal(editor); await cleanupSettled(f, editor);
+  assert.equal((await f.journal.own(editor.key))?.snapshot.draft.body, 'Previously acknowledged in E1', 'changed shared authority invalidates acknowledgement token');
+});
+
+test('cleanup malformed unrecognized writing cannot be silently omitted from acknowledgement', async t => {
+  const f = await retainedAcknowledgement(t);
+  const row = copy(f.row); row.snapshot.draft.unrecognizedWriting = 'keep exact recovery';
+  assert.equal(await f.registry.cleanup.confirm(row, f.editor.context), false, 'unknown writing is retained');
+});
+
+test('cleanup-first read drains before foreground pair while local persistence stays independent', async t => {
+  const f = await retainedAcknowledgement(t), entered = deferred(), release = deferred();
+  const bootstrap = f.transport.bootstrap; let held = true, overlapped = 0;
+  f.transport.bootstrap = async options => { const answer = await bootstrap(options); entered.resolve(); await release.promise; return answer; };
+  f.transport.view = (...args) => { if (held && ['source', 'editor_state'].includes(args[0])) ++overlapped; return f.read(...args); };
+  const cleaning = f.registry.cleanup.own(f.session); await entered.promise;
+  const opening = f.open(0).then(value => ({ value }), error => ({ error }));
+  f.editor.edit({ body: 'B journals while cleanup is held' }); await f.registry.edited(f.editor); f.registry.cancelSave(f.editor);
+  assert.equal((await f.journal.own(f.editor.key)).snapshot.draft.body, 'B journals while cleanup is held');
+  assert.equal((await f.registry.flush(f.editor)).status, 'committed', 'private command proceeds while cleanup is held');
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const observed = overlapped; held = false; release.resolve(); await cleaning; const result = await opening;
+  assert.equal(observed, 0, 'foreground pair cannot overlap the in-flight cleanup read');
+  assert.equal(result.error, undefined); assert.deepEqual(result.value.source.source_ref, f.facts.sources[0]);
+});
+
+test('foreground-first pair excludes new cleanup reads without retrying or deleting', async t => {
+  const f = await retainedAcknowledgement(t), entered = deferred(), release = deferred();
+  let reads = 0, cleanupReads = 0;
+  const bootstrap = f.transport.bootstrap;
+  f.transport.bootstrap = options => { ++cleanupReads; return bootstrap(options); };
+  f.transport.view = async (name, args, options) => {
+    const answer = await f.read(name, args, options);
+    if ((name === 'source' ? args.id : args.source_ref?.id) === f.facts.sources[0].id) {
+      if (++reads === 2) entered.resolve(); await release.promise;
+    }
+    return answer;
+  };
+  const opening = f.open(0).then(value => ({ value }), error => ({ error })); await entered.promise;
+  await f.registry.cleanup.own(f.session);
+  const observed = cleanupReads; release.resolve(); const result = await opening;
+  assert.equal(observed, 0, 'foreground reservation prevents new cleanup confirmations');
+  assert.equal(result.error, undefined); assert.ok(await f.journal.own(f.editor.key));
+});
+
+test('cleanup busy reply retains exact row and never retries', async t => {
+  const f = await retainedAcknowledgement(t), bootstrap = f.transport.bootstrap; let calls = 0;
+  f.transport.bootstrap = async () => { ++calls; throw Object.assign(Error('busy'), { status: 503, details: { recorded: false, error: { code: 'SERVER_BUSY', retryable: true } } }); };
+  await f.registry.cleanup.own(f.session);
+  assert.equal(calls, 1); assert.deepEqual(await f.journal.own(f.editor.key), f.row);
+  assert.equal(f.session.acknowledgedSnapshot ?? null, null);
+  f.transport.bootstrap = bootstrap; await f.registry.cleanup.own(f.session);
+  assert.equal(await f.journal.own(f.editor.key), undefined);
+});
+
+test('cleanup stalled transport aborts after budget and timed-out foreground never dispatches late', async t => {
+  const f = await retainedAcknowledgement(t), entered = deferred(), bootstrap = f.transport.bootstrap;
+  let aborted = false, sourceReads = 0, rescued = false;
+  f.registry.runtime.readTimeoutMs = 100;
+  f.transport.bootstrap = async options => {
+    const answer = await bootstrap(options); entered.resolve();
+    if (!options?.signal) return answer; // baseline reports the missing abort below rather than hanging its fixture
+    return new Promise((resolve, reject) => {
+      const rescue = setTimeout(() => { rescued = true; resolve(answer); }, 250);
+      options.signal.addEventListener('abort', () => { clearTimeout(rescue); aborted = true; reject(Error('fixture response aborted')); }, { once: true });
+    });
+  };
+  f.transport.view = (...args) => { if (args[0] === 'source') ++sourceReads; return f.read(...args); };
+  const cleaning = f.registry.cleanup.own(f.session); await entered.promise;
+  f.registry.runtime.readTimeoutMs = 20;
+  const result = await f.open(0).then(value => ({ value }), error => ({ error }));
+  const issued = sourceReads;
+  await cleaning;
+  assert.ok(result.error, 'foreground drain has a finite failure result');
+  assert.equal(issued, 0, 'expired drain starts no source request');
+  assert.equal(aborted, true, 'cleanup aborts its own never-arriving response');
+  assert.equal(rescued, false, 'instrument rescue never supplies successful cleanup settlement');
+  assert.equal(sourceReads, 0, 'late settlement cannot dispatch the expired foreground pair');
+  assert.equal((await f.journal.own(f.editor.key)).snapshot.draft.body, f.row.snapshot.draft.body);
+  f.transport.bootstrap = bootstrap; f.registry.runtime.readTimeoutMs = 5000;
+  assert.deepEqual((await f.open(0)).source.source_ref, f.facts.sources[0]);
+});
+
+test('cleanup serializes actual transport across reply and note editors', async t => {
+  const f = await retainedAcknowledgement(t), note = f.registry.current.editors.note;
+  f.transport.view = async (name, args, options) => {
+    const answer = await f.read(name, args, options); return name === 'editor_state' ? { ...answer, note: null } : answer;
+  };
+  note.edit({ body: 'Canonical note for transport isolation' }); await f.registry.flush(note); await cleanupSettled(f, note);
+  f.transport.view = f.read;
+  const bootstrap = f.transport.bootstrap, release = deferred(), entered = deferred();
+  let active = 0, maximum = 0;
+  f.transport.bootstrap = async options => {
+    ++active; maximum = Math.max(maximum, active); entered.resolve();
+    try { const answer = await bootstrap(options); await release.promise; return answer; }
+    finally { --active; }
+  };
+  const a = f.registry.cleanup.own(f.session); await entered.promise;
+  const b = f.registry.cleanup.own(f.registry.sessionFor(note));
+  await new Promise(resolve => setTimeout(resolve, 20)); release.resolve(); await Promise.all([a, b]);
+  assert.equal(maximum, 1, 'only one cleanup transport may be in flight in this registry');
+  assert.equal(await f.journal.own(f.editor.key), undefined); assert.equal(await f.journal.own(note.key), undefined);
+});
 
 test('registry opens full source and separately keyed note/reply with one runtime', async t => {
   const f = await fixture(t), p = await f.open();

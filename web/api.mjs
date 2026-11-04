@@ -14,7 +14,7 @@ export class Api {
     this.fetcher = fetcher;
   }
 
-  async request(path, data) {
+  async request(path, data, { signal } = {}) {
     let response;
     try {
       response = await this.fetcher(path, {
@@ -22,6 +22,7 @@ export class Api {
         credentials: 'same-origin', cache: 'no-store',
         headers: { Authorization: `Bearer ${this.token}`, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) },
         ...(data === undefined ? {} : { body: JSON.stringify(data) }),
+        ...(signal ? { signal } : {}),
       });
     } catch {
       throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
@@ -34,9 +35,9 @@ export class Api {
     return body;
   }
 
-  bootstrap() { return this.request('/api/bootstrap'); }
+  bootstrap(options) { return this.request('/api/bootstrap', undefined, options); }
   command(envelope) { return this.request('/api/command', envelope); }
-  view(name, args = {}) { return this.request('/api/view', { name, args }); }
+  view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
 
   async media(instanceId, attachment, sourceRef) {
     const response = await this.fetcher('/api/media/read', {
