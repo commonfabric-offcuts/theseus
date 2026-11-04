@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import fcntl
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -39,6 +41,25 @@ def main():
 
         command("workspace.create", "fixture-workspace", {
             "id": "w1", "title": "Isolated wiring", "team": []})
+        media = []
+        if "--media" in sys.argv:
+            inputs = [
+                ("passive.png", "image/png", (Path(__file__).parent / "media" / "screen.png").read_bytes()),
+                ("document.html", "text/html", b"<!doctype html><title>Fixture HTML</title><p id='fixture-marker'>Download HTML marker</p>"),
+                ("document.svg", "image/svg+xml", b"<svg xmlns='http://www.w3.org/2000/svg'><title>Fixture SVG</title><text id='fixture-marker' x='10' y='20'>Download SVG marker</text></svg>"),
+            ]
+            for number, (name, content_type, data) in enumerate(inputs):
+                media_id, publish_id = "fixture-media-%d" % number, "fixture-publish-%d" % number
+                command("media.begin", "fixture-media-begin-%d" % number, {
+                    "name": name, "content_type": content_type, "size_bytes": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(), "publish_operation_id": publish_id,
+                }, {"media_id": media_id}, {"media_revision": 0})
+                envelope = {"v": 1, "instance_id": instance, "kind": "media.publish", "operation_id": publish_id,
+                            "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
+                            "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
+                assert store().publish_media(actor, envelope, io.BytesIO(data))["status"] == "committed"
+                media.append({"id": media_id, "name": name, "content_type": content_type,
+                              "sha256": hashlib.sha256(data).hexdigest()})
         sources = []
         for number in range(2):
             draft, generation = "seed-draft-%d" % number, "seed-generation-%d" % number
@@ -46,6 +67,8 @@ def main():
                       if number == 0 else sources[0])
             args = {"source_ref": source, "topic_id": "t1", "generation": generation,
                     "body": ("Source %d exact passage. " % number) * 100}
+            if media and number == 0:
+                args["attachments"] = [{"id": item["id"]} for item in media]
             if number == 0:
                 args["opening"] = {"workspace_id": "w1", "title": "Read here", "participants": []}
             command("draft.save", "seed-save-%d" % number, args,
@@ -69,7 +92,7 @@ def main():
                     if request["method"] == "ready":
                         answer = {"origin": server.origin, "token": server.session_token,
                                   "instance_id": instance, "actor": actor, "topic_id": "t1",
-                                  "sources": sources}
+                                  "sources": sources, "media": media}
                     elif request["method"] == "epoch":
                         # Test-only controlled history boundary. No activation
                         # claim: the real runtime cutover is lead-owned.

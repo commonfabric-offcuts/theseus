@@ -16,6 +16,116 @@ const deferred = () => {
   return { promise, resolve, reject };
 };
 
+test('source lifetime survives modes but rejects a new open, close and disposal', async t => {
+  const f = await fixture(t), x = await f.open(0);
+  assert.equal(typeof f.registry.isSourceCurrent, 'function');
+  for (const mode of ['note', 'reply']) {
+    const current = f.registry.setMode(mode);
+    assert.notEqual(current, x); assert.equal(current.source, x.source);
+    assert.equal(f.registry.isCurrent(x), false);
+    assert.equal(f.registry.isSourceCurrent(x), true);
+  }
+  const y = await f.open(1);
+  assert.equal(f.registry.isSourceCurrent(x), false);
+  await f.registry.close(y, { explicit: true });
+  assert.equal(f.registry.isSourceCurrent(y), false);
+  const reopened = await f.open(0);
+  assert.notEqual(reopened.source, x.source);
+  assert.equal(f.registry.isSourceCurrent(x), false, 'equal source IDs do not share an open lifetime');
+  f.registry.dispose(); assert.equal(f.registry.isSourceCurrent(reopened), false);
+});
+
+async function holdSource(f, lateFailure = false) {
+  const entered = deferred(), release = deferred(), original = f.transport.view;
+  f.transport.view = async (name, args) => {
+    const answer = await original(name, args);
+    if (name === 'source' && args.id === f.facts.sources[1].id) {
+      entered.resolve(); await release.promise;
+      if (lateFailure) throw Error('Late source refusal');
+    }
+    return answer;
+  };
+  const opening = f.open(1).then(value => ({ value }), error => ({ error }));
+  await entered.promise;
+  return { release, opening };
+}
+
+for (const lateFailure of [false, true]) {
+  test(`explicit close cancels a held source read (${lateFailure})`, async t => {
+    const f = await fixture(t), x = await f.open(0), held = await holdSource(f, lateFailure);
+    t.after(() => held.release.resolve());
+    x.editors.reply.edit({ body: 'Newest X while Y reads' });
+    await f.registry.edited(x.editors.reply);
+    assert.equal(await f.registry.close(x, { explicit: true }), true);
+    assert.equal(f.registry.current, null); assert.equal(f.registry.pendingOpen, null);
+    assert.deepEqual(f.closed, [x]);
+    assert.equal((await f.journal.own(x.editors.reply.key)).snapshot.draft.body, 'Newest X while Y reads');
+    held.release.resolve(); const settled = await held.opening;
+    assert.equal(settled.error, undefined, 'cancelled read cannot report a late error');
+    assert.equal(settled.value, null); assert.deepEqual(f.shown, [x]);
+  });
+  test(`mode cancels a held source read without reviving its error (${lateFailure})`, async t => {
+    const f = await fixture(t), x = await f.open(0), held = await holdSource(f, lateFailure);
+    t.after(() => held.release.resolve());
+    const note = f.registry.setMode('note');
+    assert.equal(note.source, x.source); assert.equal(note.mode, 'note');
+    assert.equal(f.registry.pendingOpen, null); assert.equal(f.registry.isCurrent(x), false);
+    held.release.resolve(); const settled = await held.opening;
+    assert.equal(settled.error, undefined, 'cancelled mode navigation cannot report a late error');
+    assert.equal(settled.value, null); assert.equal(f.registry.current, note);
+    assert.deepEqual(f.shown, [x]);
+  });
+}
+
+test('failed explicit close still cancels navigation and permits a fresh step', async t => {
+  const f = await fixture(t), x = await f.open(0), held = await holdSource(f);
+  const put = f.backend.put; t.after(() => { held.release.resolve(); f.backend.put = put; });
+  f.backend.put = async () => { throw Error('Injected recovery quota failure'); };
+  x.editors.reply.edit({ body: 'Unjournaled X' });
+  assert.equal(await f.registry.close(x, { explicit: true }), false);
+  assert.equal(f.registry.current, x); assert.equal(f.registry.pendingOpen, null);
+  assert.match(f.registry.status(x.editors.reply), /Recovery copy unavailable/);
+  x.editors.reply.edit({ body: 'Still editable X' });
+  held.release.resolve(); assert.equal((await held.opening).value, null);
+  assert.deepEqual(f.shown, [x]);
+  f.backend.put = put;
+  const y = await f.open(1); assert.equal(f.registry.current, y);
+  assert.equal((await f.journal.own(x.editors.reply.key)).snapshot.draft.body, 'Still editable X');
+});
+
+test('newer open wins over explicit close awaiting local preservation', async t => {
+  const f = await fixture(t), x = await f.open(0), entered = deferred(), release = deferred(), put = f.backend.put;
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  f.backend.put = async row => { entered.resolve(); await release.promise; return put(row); };
+  x.editors.reply.edit({ body: 'X close local preservation' });
+  const closing = f.registry.close(x, { explicit: true }); await entered.promise;
+  const opening = f.open(1); release.resolve();
+  assert.equal(await closing, false); const y = await opening;
+  assert.equal(f.registry.current, y); assert.deepEqual(f.closed, []);
+});
+
+for (const action of ['note', 'send']) {
+  test(`automatic ${action} completion never cancels a pending user open`, async t => {
+    const f = await fixture(t), x = await f.open(0);
+    if (action === 'note') f.registry.setMode('note');
+    const p = f.registry.current, editor = p.editors[action === 'note' ? 'note' : 'reply'];
+    const entered = deferred(), release = deferred(); t.after(() => release.resolve());
+    f.transport.command = async envelope => {
+      const answer = await f.api.command(envelope);
+      if (envelope.kind === (action === 'note' ? 'note.save' : 'submission.prepare')) { entered.resolve(); await release.promise; }
+      return answer;
+    };
+    editor.edit({ body: 'Automatic completion while navigating' }); await f.registry.edited(editor);
+    const completion = action === 'note' ? f.registry.saveNote(editor, p) : f.registry.send(editor, { stay: false, presentation: p });
+    await entered.promise;
+    const held = await holdSource(f); t.after(() => held.release.resolve());
+    const token = f.registry.pendingOpen; assert.ok(token);
+    release.resolve(); await completion;
+    assert.equal(f.registry.pendingOpen, token); assert.equal(f.registry.current, p); assert.deepEqual(f.closed, []);
+    held.release.resolve(); const y = (await held.opening).value; assert.equal(f.registry.current, y);
+  });
+}
+
 test('stepping uses reader eligibility and enables the final neighbor even without a continuation', async t => {
   const f = await fixture(t), p = await f.open(0);
   assert.equal(typeof f.registry.neighbors, 'function', 'bounded neighbor lookup must be implemented');

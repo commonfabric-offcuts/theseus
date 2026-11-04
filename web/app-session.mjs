@@ -31,6 +31,7 @@ export class EditorRegistry {
   }
 
   isCurrent(presentation) { return Boolean(presentation && this.current === presentation && !this.pendingOpen && !this.disposed); }
+  isSourceCurrent(presentation) { return Boolean(presentation && this.current?.source === presentation.source && !this.pendingOpen && !this.disposed); }
 
   validateState(state, sourceRef, topicId) {
     if (state?.error || state?.instance_id !== this.bootstrap.instance_id || !same(state.source_ref, sourceRef) ||
@@ -113,6 +114,9 @@ export class EditorRegistry {
       editors: { reply, note }, mode: 'reply', opener };
     this.pendingOpen = null;
     this.current = presentation; this.present(presentation); return presentation;
+    } catch (error) {
+      if (token !== this.generation || this.disposed) return null;
+      throw error;
     } finally { if (this.pendingOpen === token) this.pendingOpen = null; }
   }
 
@@ -158,7 +162,12 @@ export class EditorRegistry {
     return this.sessionFor(editor).send({ ...options, presentation: options.presentation ?? this.current });
   }
 
-  async close(presentation) {
+  async close(presentation, { explicit = false } = {}) {
+    if (explicit) {
+      if (!presentation || this.current !== presentation || this.disposed) return false;
+      ++this.generation;
+      this.pendingOpen = null;
+    }
     const requestGeneration = this.generation;
     if (!this.isCurrent(presentation)) return false;
     try { await this.keepLocal(presentation); }

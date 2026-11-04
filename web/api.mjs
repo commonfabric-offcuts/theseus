@@ -64,9 +64,10 @@ export class Api {
         chunks.push(value);
       }
     } catch (error) { await reader.cancel(); throw error; }
-    const blob = new Blob(chunks, { type: descriptor.content_type });
+    const inline = descriptor.inline === true && ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(descriptor.content_type);
+    const blob = new Blob(chunks, { type: inline ? descriptor.content_type : 'application/octet-stream' });
     const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', await blob.arrayBuffer()))].map(byte => byte.toString(16).padStart(2, '0')).join('');
     if (length !== descriptor.size_bytes || digest !== descriptor.sha256) throw Error('Attachment bytes do not match the verified digest.');
-    return { descriptor, blob, inline: descriptor.inline === true && ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(descriptor.content_type) };
+    return { descriptor, blob, inline };
   }
 }

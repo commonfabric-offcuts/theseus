@@ -3,6 +3,27 @@ import assert from 'node:assert/strict';
 import { Api, AttemptError } from '../web/api.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
 
+test('download Blobs keep exact bytes and descriptor but not an active MIME type', async () => {
+  for (const [type, inline, expected] of [
+    ['text/html', false, 'application/octet-stream'],
+    ['image/svg+xml', true, 'application/octet-stream'],
+    ['image/png', false, 'application/octet-stream'],
+    ['image/png', true, 'image/png'],
+  ]) {
+    const bytes = new TextEncoder().encode('exact transport fixture bytes');
+    const sha256 = Buffer.from(await crypto.subtle.digest('SHA-256', bytes)).toString('hex');
+    const attachment = { id: 'mime-fixture', name: 'exact-name', content_type: type, inline, size_bytes: bytes.length, sha256 };
+    const descriptor = { ...attachment, media_id: attachment.id, instance_id: 'new1' }; delete descriptor.id;
+    const api = new Api('fixture-token', async () => new Response(bytes,
+      { status: 200, headers: { 'X-AIM-Media': JSON.stringify(descriptor) } }));
+    const media = await api.media('new1', attachment, { kind: 'message', id: 'm1' });
+    assert.equal(media.blob.type, expected);
+    assert.deepEqual(media.descriptor, descriptor);
+    assert.deepEqual(new Uint8Array(await media.blob.arrayBuffer()), bytes);
+    assert.equal(media.inline, expected === 'image/png');
+  }
+});
+
 test('API sends the unchanged command and bearer token, with no actor override', async () => {
   let captured;
   const receipt = { instance_id: 'new1', recorded: true, status: 'committed' };

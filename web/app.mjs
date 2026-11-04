@@ -213,10 +213,10 @@ async function present(presentation) {
     registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); }).catch(error => { if (registry.isCurrent(presentation)) reader.notice(error.message); });
   }
   registry.neighbors(presentation).then(neighbors => {
-    if (!registry.isCurrent(presentation)) return;
-    presentation.neighbors = neighbors;
+    if (!registry.isSourceCurrent(presentation)) return;
+    registry.current.neighbors = neighbors;
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
-  }).catch(error => { if (registry.isCurrent(presentation)) reader.notice(error.message); });
+  }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   for (const attachment of presentation.source.attachments ?? []) {
     const host = node('span', undefined, 'attachment-label'); $('source-attachments').append(host);
     const show = button(`Open ${attachment.name ?? 'attachment'}`, async () => {
@@ -224,11 +224,11 @@ async function present(presentation) {
       try {
         const media = await api.media(bootstrap.instance_id, attachment, presentation.source.source_ref);
         const url = URL.createObjectURL(media.blob);
-        if (!registry.isCurrent(presentation)) { URL.revokeObjectURL(url); return; }
+        if (!registry.isSourceCurrent(presentation)) { URL.revokeObjectURL(url); return; }
         mediaURLs.add(url); host.replaceChildren();
         if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
         const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
-      } catch (error) { if (registry.isCurrent(presentation)) reader.notice(error.message); }
+      } catch (error) { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); }
       finally { if (show.isConnected) show.disabled = false; }
     }); host.append(show);
   }
@@ -289,10 +289,14 @@ async function start() {
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
   reader = new Reader({
     edit: editor => run(() => registry.edited(editor)), status: editor => registry.status(editor),
-    mode: mode => { reader.presentation = registry.setMode(mode); changed(reader.editor); },
+    mode: mode => {
+      const cancelled = Boolean(registry.pendingOpen);
+      reader.presentation = registry.setMode(mode); changed(reader.editor);
+      if (cancelled) reader.notice('Stayed on this message; opening the other message was cancelled.');
+    },
     saveNote: editor => run(() => registry.saveNote(editor)),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
-    close: () => registry.close(reader.presentation),
+    close: () => registry.close(reader.presentation, { explicit: true }),
     step: async direction => {
       const presentation = registry.current, neighbors = presentation.neighbors ?? await registry.neighbors(presentation);
       if (!registry.isCurrent(presentation)) return;

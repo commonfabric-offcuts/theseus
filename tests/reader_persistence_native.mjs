@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode = '--journal', caseFilter] = process.argv.slice(2);
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
 assert.ok(evidencePath && path.isAbsolute(evidencePath));
-assert.ok(['--journal', '--connected'].includes(mode));
+assert.ok(['--journal', '--connected', '--correction'].includes(mode));
 await mkdir(evidencePath, { recursive: true });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(probe, description, timeout = 8000) {
@@ -22,7 +22,7 @@ async function until(probe, description, timeout = 8000) {
   while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
   throw Error(`Timed out: ${description}`);
 }
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py'], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(mode === '--correction' ? ['--media'] : [])], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
@@ -38,11 +38,12 @@ const control = data => new Promise((resolve, reject) => {
   const id = ++fixtureSerial; requests.set(id, { resolve, reject });
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
-const results = [], hashes = {};
-for (const filename of ['web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs']) {
+const results = [], hashes = {}, observations = [];
+for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs']) {
   hashes[filename] = createHash('sha256').update(await readFile(path.join(root, filename))).digest('hex');
 }
 const profile = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-persistence-'));
+const downloadPath = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-download-'));
 let chrome, chromeExit, socket, cdp, facts;
 const pages = new Set();
 try {
@@ -56,9 +57,14 @@ try {
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
   let serial = 0;
   const waiting = new Map(), listeners = new Map();
+  const browserEvents = [];
   socket.addEventListener('message', event => {
     const packet = JSON.parse(event.data);
-    if (!packet.id) { listeners.get(packet.sessionId)?.(packet); return; }
+    if (!packet.id) {
+      if (!packet.sessionId) browserEvents.push(packet);
+      if (packet.method === 'Target.targetDestroyed') pages.delete(packet.params.targetId);
+      listeners.get(packet.sessionId)?.(packet); return;
+    }
     const waiter = waiting.get(packet.id); waiting.delete(packet.id);
     if (!waiter) return;
     clearTimeout(waiter.timer);
@@ -79,10 +85,11 @@ try {
       if (answer.exceptionDetails) throw Error(JSON.stringify(answer.exceptionDetails));
       return answer.result.value;
     };
-    const errors = [], calls = [], held = [];
+    const errors = [], calls = [], held = [], finished = new Set();
     let intercept = null;
     listeners.set(sessionId, packet => {
       if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
+      if (['Network.loadingFinished', 'Network.loadingFailed'].includes(packet.method)) finished.add(packet.params.requestId);
       if (packet.method === 'Fetch.requestPaused') {
         const event = packet.params;
         const handle = async () => {
@@ -93,7 +100,7 @@ try {
         }; handle().catch(error => errors.push({ message: error.message }));
       }
     });
-    await send('Page.enable'); await send('Runtime.enable');
+    await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
     await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     const box = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}})()`);
     const point = async (selector, kind = 'click') => {
@@ -121,7 +128,11 @@ try {
       await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
       return { targetId, send, evaluate, close, box, point, key, calls, held, errors,
         intercept: handler => { intercept = handler; },
-        release: entry => send('Fetch.continueResponse', { requestId: entry.event.requestId }),
+        release: async entry => {
+          await send('Fetch.continueResponse', { requestId: entry.event.requestId });
+          await until(() => finished.has(entry.event.networkId), 'released response finished');
+          await evaluate('new Promise(resolve=>setTimeout(resolve,0))');
+        },
         fail: entry => send('Fetch.failRequest', { requestId: entry.event.requestId, errorReason: 'ConnectionClosed' }),
         open: async index => {
           await point(`#messages [data-id="${facts.sources[index].id}"]`);
@@ -295,6 +306,178 @@ try {
       const image = await page.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(path.join(evidencePath, name + '.png'), Buffer.from(image.data, 'base64'));
     };
+    if (mode === '--correction') {
+      const sourceText = p => p.evaluate('document.querySelector("#source-body").textContent');
+      const imageLink = '#source-attachments a[download="passive.png"]';
+      const openAttachment = async (p, name) => {
+        const selector = await p.evaluate(`(()=>{const b=[...document.querySelectorAll('#source-attachments button')].find(e=>e.textContent===${JSON.stringify('Open ' + name)});if(!b)return null;b.id='open-fixture-attachment';return '#open-fixture-attachment'})()`);
+        assert.ok(selector, 'named attachment discoverable'); await p.point(selector);
+      };
+      const observeURLs = p => p.evaluate(`(()=>{window.fixtureURLs=[];const create=URL.createObjectURL;URL.createObjectURL=function(blob){const url=create.call(this,blob);fixtureURLs.push({url,type:blob.type});return url}})()`);
+      const readable = async (p, url) => {
+        // A separate same-origin probe document bypasses CSP before navigation.
+        // The application and the download-navigation proof keep their CSP.
+        const { targetId } = await cdp('Target.createTarget', { url: 'about:blank' }); pages.add(targetId);
+        const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true });
+        const inspect = async expression => (await cdp('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }, sessionId)).result.value;
+        try {
+          await cdp('Page.enable', {}, sessionId); await cdp('Page.setBypassCSP', { enabled: true }, sessionId);
+          await cdp('Page.navigate', { url: facts.origin + '/journal.mjs' }, sessionId);
+          await until(() => inspect(`location.href===${JSON.stringify(facts.origin + '/journal.mjs')} && document.readyState==='complete'`), 'same-origin URL probe loaded');
+          return await inspect(`fetch(${JSON.stringify(url)}).then(r=>r.ok,()=>false)`);
+        } finally { await cdp('Target.closeTarget', { targetId }); pages.delete(targetId); }
+      };
+      const arrowReady = p => until(() => p.evaluate('!document.querySelector("#next-message").disabled'), 'neighbor arrow ready');
+      const newHeldStep = async p => {
+        await arrowReady(p);
+        const before = p.held.length;
+        p.intercept(payload => payload?.name === 'source' && payload.args.id === facts.sources[1].id);
+        await p.point('#next-message');
+        return until(() => p.held[before], 'held neighboring source');
+      };
+
+      await check('correction source controls survive mode and quote without redrawing the source', async () => {
+        const p = await page('mode-controls', null, true);
+        p.intercept(payload => payload?.name === 'topic_messages' && payload.args.audience === 'reader');
+        await p.open(0); await until(() => p.held.length === 2, 'both neighbor responses held');
+        await p.evaluate("(()=>{window.fixtureSourceNode=document.querySelector('#source-body').firstChild;document.querySelector('#source-body').scrollTop=180})()");
+        await p.point('#toggle-note'); await p.point('#toggle-note');
+        const place = await p.evaluate("({scroll:document.querySelector('#source-body').scrollTop,focus:document.activeElement.id,height:document.querySelector('#writing-body').getBoundingClientRect().height})");
+        p.intercept(null); for (const held of p.held) await p.release(held);
+        assert.deepEqual(await p.evaluate("({previous:document.querySelector('#previous-message').disabled,next:document.querySelector('#next-message').disabled})"), { previous: true, next: false }, 'resolved arrows survive the mode switch');
+        await observeURLs(p); await openAttachment(p, 'passive.png');
+        await until(() => p.evaluate('fixtureURLs.length === 1'), 'verified image Blob created');
+        assert.ok(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(imageLink)}))`), 'named image download survives the mode switch');
+        await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth > 0'), 'actual decoded PNG');
+        assert.equal(await p.evaluate("document.querySelector('#source-body').firstChild===fixtureSourceNode"), true);
+        assert.deepEqual(await p.evaluate("({scroll:document.querySelector('#source-body').scrollTop,focus:document.activeElement.id,height:document.querySelector('#writing-body').getBoundingClientRect().height})"), { ...place, focus: '' }, 'media does not redraw source or writing space');
+        await p.point('#next-message');
+        await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'exact next source');
+        assert.equal(await field(p), (await privateState()).draft?.body ?? '', 'neighbor has its own draft');
+        await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed neighbor');
+        await p.open(0); await p.point('#toggle-note');
+        await p.evaluate("document.querySelector('#source-body').scrollTop=0");
+        await p.point('#source-body [data-start="0"]'); await p.key('Enter');
+        assert.ok((await field(p)).endsWith('> Source 0 exact passage. \n\n'), 'note quote enters this source reply');
+        await openAttachment(p, 'passive.png');
+        await until(() => p.evaluate('fixtureURLs.length === 2'), 'quoted source image Blob created');
+        assert.ok(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(imageLink)}))`), 'named download after quote from note');
+        await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth > 0'), 'decoded PNG after quote');
+        assert.deepEqual(p.errors, []);
+      });
+
+      await check('correction newer mode and quote visibly cancel a held step', async () => {
+        for (const action of ['mode', 'quote']) {
+          const p = await page('cancel-' + action, null, true); await p.open(0);
+          if (action === 'quote') await p.point('#toggle-note');
+          const held = await newHeldStep(p);
+          if (action === 'mode') await p.point('#toggle-note');
+          else { await p.point('#source-body [data-start="0"]'); await p.key('Enter'); }
+          assert.match(await p.evaluate('document.querySelector("#reader-notice").textContent'), /opening the other message was cancelled/, 'newer mode choice visibly cancels navigation');
+          await p.release(held);
+          assert.ok((await sourceText(p)).startsWith('Source 0 '));
+          assert.equal(await p.evaluate('document.querySelector("#writing-title").textContent'), action === 'mode' ? 'Private note' : 'Reply');
+          if (action === 'quote') assert.ok((await field(p)).endsWith('> Source 0 exact passage. \n\n'));
+          assert.deepEqual(p.errors, []); await p.close();
+        }
+      });
+
+      await check('correction stale media is discarded and displayed object URLs are revoked', async () => {
+        const p = await page('media-lifetime', null, true); await p.open(0); await observeURLs(p); await arrowReady(p);
+        p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
+        await openAttachment(p, 'passive.png'); const held = await until(() => p.held[0], 'held media bytes');
+        await p.point('#next-message'); await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'new source before old media');
+        const before = await p.evaluate("({body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})");
+        await p.release(held); await until(() => p.evaluate('fixtureURLs.length===1'), 'stale verified Blob observed');
+        const discarded = await p.evaluate('fixtureURLs[0].url');
+        assert.equal(await readable(p, discarded), false, 'discarded source URL is revoked');
+        assert.equal(await p.evaluate('document.querySelectorAll("#source-attachments img").length'), 0);
+        assert.deepEqual(await p.evaluate("({body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})"), before);
+        await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close Y');
+        p.intercept(null); await p.open(0); await openAttachment(p, 'passive.png');
+        await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(imageLink)}))`), 'current download link');
+        const displayed = await p.evaluate(`document.querySelector(${JSON.stringify(imageLink)}).href`);
+        assert.equal(await readable(p, displayed), true, 'positive current URL control');
+        await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close displayed media');
+        assert.equal(await readable(p, displayed), false, 'closed source URL is revoked'); assert.deepEqual(p.errors, []);
+      });
+
+      await check('correction explicit Close Escape and Topic cancel pending navigation with preserved writing', async () => {
+        for (const action of ['Close', 'Escape', 'Topic']) {
+          const p = await page('close-' + action, null, true); await p.open(0);
+          const held = await newHeldStep(p), body = 'Writing while navigation waits: ' + action;
+          await replace(p, body);
+          if (action === 'Escape') await p.key('Escape'); else await p.point(action === 'Topic' ? '#reader-parent' : '#reader-close');
+          await until(() => p.evaluate('!document.querySelector("#reader").open'), 'explicit close completes before network');
+          assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[0].id, 'connected opener restored');
+          const rows = await p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,tx=db.transaction('editors');tx.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result);tx.oncomplete=()=>db.close()}})`);
+          assert.ok(rows.some(row => row.snapshot.draft.body === body && row.snapshot.context.sourceRef.id === facts.sources[0].id), 'newest exact X writing is durable locally');
+          await p.release(held);
+          assert.equal(await p.evaluate('document.querySelector("#reader").open'), false, 'cancelled Y cannot reappear');
+          assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[0].id);
+          observations.push({ action, body, localPreserved: true }); assert.deepEqual(p.errors, []); await p.close();
+        }
+      });
+
+      await check('correction refused local close cancels old navigation and allows a fresh step', async () => {
+        const p = await page('failed-close', null, true); await p.open(0);
+        const held = await newHeldStep(p);
+        await p.evaluate(`(()=>{window.fixtureTransaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Fixture quota failure','QuotaExceededError');return fixtureTransaction.apply(this,args)}})()`);
+        await replace(p, 'Failed close remains editable'); await p.point('#reader-close');
+        await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Recovery copy unavailable")'), 'visible local preservation failure');
+        assert.equal(await p.evaluate('document.querySelector("#reader").open'), true);
+        await p.release(held);
+        assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled navigation stays cancelled after failed close');
+        assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false);
+        await p.evaluate('IDBDatabase.prototype.transaction=fixtureTransaction'); p.intercept(null);
+        await replace(p, 'Recovered local persistence'); await p.point('#next-message');
+        await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'fresh step after restored persistence'); assert.deepEqual(p.errors, []);
+      });
+
+      await check('correction download navigation completes exact HTML and SVG downloads', async () => {
+        const p = await page('downloads', null, true); await p.open(0);
+        await cdp('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath, eventsEnabled: true });
+        await cdp('Target.setDiscoverTargets', { discover: true });
+        for (const item of facts.media.filter(item => item.content_type !== 'image/png')) {
+          await openAttachment(p, item.name);
+          const selector = `#source-attachments a[download="${item.name}"]`;
+          await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(selector)}))`), 'verified named download');
+          const url = await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).href`), start = browserEvents.length;
+          await p.evaluate(`window.open(${JSON.stringify(url)},'_blank') !== null`);
+          const observed = await until(() => {
+            const events = browserEvents.slice(start);
+            const download = events.find(e => e.method === 'Browser.downloadWillBegin' && e.params.url === url);
+            const target = events.find(e => ['Target.targetCreated', 'Target.targetInfoChanged'].includes(e.method) && e.params.targetInfo.type === 'page' && e.params.targetInfo.url === url);
+            return download ? { download } : target ? { target } : null;
+          }, 'download or new target');
+          // A new target can precede downloadWillBegin. If it renders instead,
+          // retain a positive wrong-MIME control with the actual fixture DOM.
+          let begin = observed.download;
+          if (!begin) {
+            const targetId = observed.target.params.targetInfo.targetId; pages.add(targetId);
+            const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true });
+            await cdp('Page.enable', {}, sessionId);
+            const state = await until(async () => {
+              begin = browserEvents.slice(start).find(e => e.method === 'Browser.downloadWillBegin' && e.params.url === url);
+              if (begin) return { download: true };
+              const r = await cdp('Runtime.evaluate', { expression: `document.readyState==='complete' && document.URL===${JSON.stringify(url)} ? ({url:document.URL,type:document.contentType,title:document.title,root:document.documentElement.localName,marker:document.querySelector('#fixture-marker')?.textContent}) : null`, returnByValue: true }, sessionId);
+              return r.result.value;
+            }, 'new target finished loading or began download');
+            if (!state.download) {
+              observations.push({ wrongMimeRendered: state, attachment: item.name });
+              assert.equal(state.marker, item.name.endsWith('.html') ? 'Download HTML marker' : 'Download SVG marker', 'wrong-MIME positive rendering control');
+              assert.fail('Download-only URL rendered participant markup');
+            }
+          }
+          const done = await until(() => browserEvents.slice(start).find(e => e.method === 'Browser.downloadProgress' && e.params.guid === begin.params.guid && ['completed', 'canceled'].includes(e.params.state)), 'download completion');
+          assert.equal(done.params.state, 'completed');
+          const bytes = await readFile(path.join(downloadPath, begin.params.guid)), digest = createHash('sha256').update(bytes).digest('hex');
+          assert.equal(digest, item.sha256, 'downloaded exact canonical bytes');
+          observations.push({ attachment: item.name, begin: begin.params, done: done.params, sha256: digest });
+        }
+        assert.deepEqual(p.errors, []);
+      });
+    }
     await check('connected quote, newline, private note, focus, autosave geometry and touch boundary', async () => {
       const p = await page('connected', null, true); await p.open(1);
       assert.ok((await p.evaluate('document.querySelector("#source-body").textContent')).length > 1024);
@@ -409,8 +592,8 @@ try {
       assert.equal(await p.evaluate('document.activeElement.id'), 'review-title', 'comparison never focuses its write action');
       await p.point('#review-keep'); await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'Keep both closes comparison');
       assert.equal(await field(p), 'Keep this after epoch');
-      assert.equal((await p.box('#writing-body')).height, geometry.height);
       assert.equal((await privateState()).draft, null, 'Keep both makes no private write');
+      assert.equal((await p.box('#writing-body')).height, geometry.height);
       await p.point('#review-versions');
       let heldOnce = false;
       p.intercept(payload => payload?.name === 'editor_state' && !heldOnce && (heldOnce = true));
@@ -461,7 +644,10 @@ try {
   assert.equal(await fixtureExit, 0, fixtureErrors);
   // Every origin/key here belongs to this unique disposable profile; no keys
   // or prefixes are ever removed from a person's browser.
-  if (!chrome || chrome.exitCode !== null) await rm(profile, { recursive: true, force: true });
-  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, hashes, results, fixtureErrors, browserClosed: chrome?.exitCode !== null }, null, 2));
+  if (!chrome || chrome.exitCode !== null) {
+    await rm(profile, { recursive: true, force: true });
+    await rm(downloadPath, { recursive: true, force: true });
+  }
+  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, hashes, results, observations, fixtureErrors, browserClosed: chrome?.exitCode !== null }, null, 2));
 }
 assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');
