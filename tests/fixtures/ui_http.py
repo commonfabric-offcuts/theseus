@@ -26,6 +26,7 @@ class FreshnessControls:
         self.events = []
         self.holds = {}
         self.faults = []
+        self.delay = None
         self.http_commands = 0
         self.http_delivery_acks = 0
         self.http_media_publications = 0
@@ -97,6 +98,7 @@ class FreshnessControls:
                 self.name = "bootstrap" if name == "capabilities" else name
                 controls.event("callback-enter", self.name)
                 try:
+                    controls.wait_delay(self.name)
                     controls.wait_hold(self.name, "callback")
                     fault = controls.take_fault(self.name)
                     if fault is not None:
@@ -169,8 +171,27 @@ class FreshnessControls:
                     return dict(rule)
         return None
 
+    def wait_delay(self, name):
+        with self.lock:
+            rule = dict(self.delay) if self.delay else None
+        ticket = getattr(self.local, "ticket", None)
+        if (rule is None or rule["ms"] == 0 or rule.get("name") not in (None, name) or
+                rule.get("read_class") is not None and
+                (ticket is None or ticket.read_class != rule["read_class"])):
+            return
+        self.event("delay-enter", name, delay_ms=rule["ms"])
+        time.sleep(rule["ms"] / 1000.0)
+        self.event("delay-exit", name, delay_ms=rule["ms"])
+
     def control(self, request, server):
         method = request["method"]
+        if method == "read_delay":
+            assert type(request.get("ms")) is int and 0 <= request["ms"] <= 500
+            assert request.get("name") is None or isinstance(request["name"], str) and request["name"]
+            assert request.get("read_class") in (None, "foreground", "background")
+            with self.lock:
+                self.delay = {key: request.get(key) for key in ("ms", "name", "read_class")}
+                return dict(self.delay)
         if method == "read_hold":
             hold_id = request["hold_id"]  # request.id belongs to stdin correlation.
             assert request["phase"] in ("callback", "close")
@@ -358,7 +379,7 @@ def main():
                                     answer.update(http_commands=controls.http_commands,
                                                   http_delivery_acks=controls.http_delivery_acks,
                                                   http_media_publications=controls.http_media_publications)
-                    elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_fault", "admission_events"):
+                    elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_delay", "read_fault", "admission_events"):
                         answer = controls.control(request, server)
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)

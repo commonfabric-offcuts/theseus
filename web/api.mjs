@@ -14,13 +14,14 @@ export class Api {
     this.fetcher = fetcher;
   }
 
-  async request(path, data, { signal } = {}) {
+  async request(path, data, { signal, readClass } = {}) {
     let response;
     try {
       response = await this.fetcher(path, {
         method: data === undefined ? 'GET' : 'POST',
         credentials: 'same-origin', cache: 'no-store',
-        headers: { Authorization: `Bearer ${this.token}`, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        headers: { Authorization: `Bearer ${this.token}`, ...(data === undefined ? {} : { 'Content-Type': 'application/json' }),
+          ...((path === '/api/view' || path === '/api/bootstrap') && readClass ? { 'X-AIM-Read-Class': readClass } : {}) },
         ...(data === undefined ? {} : { body: JSON.stringify(data) }),
         ...(signal ? { signal } : {}),
       });

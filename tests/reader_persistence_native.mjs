@@ -3,6 +3,7 @@
 // product debug endpoints, synthetic UI actions, or other member's identity.
 import assert from 'node:assert/strict';
 import { imageInstrumentation, imageChecks } from './reader_images_native.mjs';
+import { freshnessInstrumentation, freshnessChecks, observeUploadProof } from './reader_freshness_native.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -12,10 +13,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
+const phases = { started: Date.now(), cases: [] };
 const [chromePath, evidencePath, mode = '--journal', caseFilter] = process.argv.slice(2);
+const baseline = process.env.AIM_FRESHNESS_BASELINE === 'ba4a00e';
+const legacyAdmission = process.env.AIM_FRESHNESS_LEGACY === '1';
+assert.ok(!(baseline && legacyAdmission), 'the shared-two baseline is distinct from single-slot fallback');
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
 assert.ok(evidencePath && path.isAbsolute(evidencePath));
-assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images'].includes(mode));
+assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images', '--freshness'].includes(mode));
 await mkdir(evidencePath, { recursive: true });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(probe, description, timeout = 8000) {
@@ -23,7 +28,7 @@ async function until(probe, description, timeout = 8000) {
   while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
   throw Error(`Timed out: ${description}`);
 }
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(mode === '--freshness' ? ['--freshness', '--images', '--media', ...(legacyAdmission ? ['--legacy-read-admission'] : []), ...(baseline ? ['--baseline-read-admission'] : [])] : mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
@@ -40,18 +45,25 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : [])]) {
-  const source = await readFile(path.join(root, filename));
+for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(mode === '--freshness' ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', 'tests/reader_freshness_native.mjs'] : [])]) {
+  let source;
+  try { source = await readFile(path.join(root, filename)); }
+  catch (error) {
+    if (baseline && error.code === 'ENOENT' && ['web/freshness.mjs', 'web/topic-views.mjs'].includes(filename)) { hashes[filename] = null; continue; }
+    throw error;
+  }
   hashes[filename] = createHash('sha256').update(source).digest('hex');
   await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
   await writeFile(path.join(evidencePath, 'source', filename), source);
 }
 const profile = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-persistence-'));
 const downloadPath = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-download-'));
-let chrome, chromeExit, socket, cdp, facts;
+let chrome, chromeExit, socket, cdp, facts, finalHealth, fixtureExitCode;
 const pages = new Set();
+const freshnessPages = new Map();
 try {
   facts = await control({ method: 'ready' });
+  phases.fixtureReady = Date.now();
   chrome = spawn(chromePath, ['--headless=new', '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
     '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
   chromeExit = new Promise(resolve => chrome.once('exit', resolve));
@@ -59,6 +71,7 @@ try {
   const [port, endpoint] = active.trim().split('\n');
   socket = new WebSocket(`ws://127.0.0.1:${port}${endpoint}`);
   await new Promise((resolve, reject) => { socket.addEventListener('open', resolve, { once: true }); socket.addEventListener('error', reject, { once: true }); });
+  phases.browserReady = Date.now();
   let serial = 0;
   const waiting = new Map(), listeners = new Map();
   const browserEvents = [];
@@ -81,8 +94,8 @@ try {
     socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
   let recoveryContext;
-  const page = async (suffix, hint, connected = false) => {
-    const { targetId } = await cdp('Target.createTarget', { url: 'about:blank', ...(recoveryContext ? { browserContextId: recoveryContext } : {}) }); pages.add(targetId);
+  const page = async (suffix, hint, connected = false, setup = {}) => {
+    const { targetId } = await cdp('Target.createTarget', { url: 'about:blank', ...(setup.newWindow ? { newWindow: true } : {}), ...(recoveryContext ? { browserContextId: recoveryContext } : {}) }); pages.add(targetId);
     const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true });
     const send = (method, params) => cdp(method, params, sessionId);
     const evaluate = async expression => {
@@ -90,28 +103,43 @@ try {
       if (answer.exceptionDetails) throw Error(JSON.stringify(answer.exceptionDetails));
       return answer.result.value;
     };
-    const errors = [], calls = [], held = [], events = [], finished = new Set();
-    let intercept = null;
+    const errors = [], calls = [], held = [], events = [], network = [], responses = [], finished = new Set();
+    let intercept = null, recordResponses = false;
     listeners.set(sessionId, packet => {
       if (packet.method === 'Page.fileChooserOpened') events.push(packet);
       if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
+      if (packet.method.startsWith('Network.')) network.push({ method: packet.method, params: packet.params, observedAt: Date.now() });
       if (['Network.loadingFinished', 'Network.loadingFailed'].includes(packet.method)) finished.add(packet.params.requestId);
       if (packet.method === 'Fetch.requestPaused') {
         const event = packet.params;
         const handle = async () => {
           let payload; try { payload = JSON.parse(event.request.postData); } catch { payload = null; }
-          calls.push({ url: event.request.url, payload });
-          if (intercept?.(payload, event)) { held.push({ event, payload }); return; }
+          calls.push({ url: event.request.url, payload, headers: event.request.headers, at: Date.now() });
+          if (mode === '--freshness' && [facts.origin + '/app.mjs', facts.origin + '/upload-cleanup.mjs'].includes(event.request.url)) {
+            const response = await send('Fetch.getResponseBody', { requestId: event.requestId });
+            const source = response.base64Encoded ? Buffer.from(response.body, 'base64').toString() : response.body;
+            await send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 200,
+              responseHeaders: [{ name: 'Content-Type', value: 'text/javascript; charset=utf-8' }],
+              body: Buffer.from(event.request.url.endsWith('/app.mjs') ? freshnessInstrumentation + '\n' + source : observeUploadProof(source)).toString('base64') });
+            return;
+          }
+          if (recordResponses && (payload?.name || event.request.url.endsWith('/api/bootstrap'))) {
+            const response = await send('Fetch.getResponseBody', { requestId: event.requestId });
+            const body = JSON.parse(response.base64Encoded ? Buffer.from(response.body, 'base64').toString() : response.body);
+            responses.push({ payload, url: event.request.url, status: event.responseStatusCode, body, at: Date.now() });
+          }
+          if (await intercept?.(payload, event)) { held.push({ event, payload }); return; }
           await send('Fetch.continueResponse', { requestId: event.requestId });
         }; handle().catch(error => errors.push({ message: error.message }));
       }
     });
     await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
     await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
-    const box = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}})()`);
+    const box = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height,viewportWidth:innerWidth,viewportHeight:innerHeight}})()`);
     const point = async (selector, kind = 'click') => {
       const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
       const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);
+      assert.ok(x >= 0 && y >= 0 && x < bounds.viewportWidth && y < bounds.viewportHeight, `target ${selector} is inside the viewport before a native pointer action`);
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       if (kind === 'click') {
         await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
@@ -129,11 +157,12 @@ try {
     const close = async () => { if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); };
     if (connected) {
       if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
-      await send('Page.navigate', { url: facts.origin + '/?topic=t1' });
-      await until(() => evaluate('document.body?.dataset.ready === "true" || Boolean(document.querySelector("#app-status") && !document.querySelector("#app-status").hidden)'), 'application bootstrap');
-      assert.equal(await evaluate('document.body.dataset.ready'), 'true', await evaluate('document.querySelector("#app-status").textContent'));
-      await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
-      return { targetId, send, evaluate, close, box, point, key, calls, held, errors, events,
+      const connectedPage = { targetId, send, evaluate, close, box, point, key, calls, held, errors, events, network, responses,
+        recordResponses: () => { recordResponses = true; },
+        response: async event => {
+          const result = await send('Fetch.getResponseBody', { requestId: event.requestId });
+          return JSON.parse(result.base64Encoded ? Buffer.from(result.body, 'base64').toString() : result.body);
+        },
         intercept: handler => { intercept = handler; },
         release: async entry => {
           await send('Fetch.continueResponse', { requestId: entry.event.requestId });
@@ -142,11 +171,31 @@ try {
         },
         fail: entry => send('Fetch.failRequest', { requestId: entry.event.requestId, errorReason: 'ConnectionClosed' }),
         open: async index => {
+          if (mode === '--freshness') {
+            for (let more = 0; more < 20 && !await evaluate(`Boolean(document.querySelector('#messages [data-id="${facts.sources[index].id}"]'))`); ++more) {
+              const count = await evaluate('document.querySelectorAll("#messages [data-id]").length');
+              assert.equal(await evaluate('document.querySelector("#more-messages").hidden'), false, 'source exists in remaining older history');
+              await evaluate('document.querySelector("#more-messages").scrollIntoView({block:"center"})');
+              await point('#more-messages');
+              await until(() => evaluate(`document.querySelectorAll('#messages [data-id]').length > ${count}`), 'older history loaded');
+            }
+            await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
+          }
           await point(`#messages [data-id="${facts.sources[index].id}"]`);
           await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
           await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
         },
       };
+      if (mode === '--freshness') {
+        freshnessPages.set(targetId, connectedPage);
+        await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, { urlPattern: facts.origin + '/app.mjs', requestStage: 'Response' }, { urlPattern: facts.origin + '/upload-cleanup.mjs', requestStage: 'Response' }] });
+        await setup.beforeNavigate?.(connectedPage);
+      }
+      await send('Page.navigate', { url: facts.origin + '/?topic=t1' });
+      await until(() => evaluate('document.body?.dataset.ready === "true" || Boolean(document.querySelector("#app-status") && !document.querySelector("#app-status").hidden)'), 'application bootstrap');
+      assert.equal(await evaluate('document.body.dataset.ready'), 'true', await evaluate('document.querySelector("#app-status").textContent'));
+      if (mode !== '--freshness') await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
+      return connectedPage;
     }
     // A text document at this origin permits testing the real imported journal
     // without silently starting app.mjs. This is not a connected-UI claim.
@@ -184,15 +233,38 @@ try {
   const check = async (name, action) => {
     if (mode === '--cleanup' && !name.startsWith('cleanup ')) return;
     if (mode === '--images' && !name.startsWith('images ')) return;
+    if (mode === '--freshness' && !name.startsWith('freshness ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
+    const timing = { name, started: Date.now() };
     // These recovery cases deliberately leave abandoned copies behind. Each
     // gets a fresh owned storage context, shared only by that case's tabs.
-    if (/^images X[1234] /.test(name)) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
-    try { await action(); results.push({ name, passed: true }); }
-    catch (error) { results.push({ name, passed: false, error: error.stack }); }
+    if (/^images X[1234] /.test(name) || mode === '--freshness') recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
+    try {
+      timing.actionStarted = Date.now();
+      await action();
+      if (mode === '--freshness') {
+        const health = await control({ method: 'admission_events' });
+        observations.push({ name: 'fixture health', case: name, fatal: health.fatal, next: health.next });
+        assert.deepEqual(health.fatal, [], 'a fixture hold timeout is an instrument failure');
+        for (const p of freshnessPages.values()) if (p.responses.length) observations.push({ name: 'observed HTTP fault schedule', case: name, responses: p.responses });
+      }
+      results.push({ name, passed: true });
+    }
+    catch (error) {
+      results.push({ name, passed: false, error: error.stack });
+      for (const [targetId, p] of freshnessPages) {
+        let state;
+        try { state = await p.evaluate('({snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,mediaURLs:window.observedMediaURLs?.size})'); }
+        catch (error) { state = { diagnosticError: error.message }; }
+        observations.push({ name: 'failed case diagnostics', case: name, targetId, state, errors: p.errors, calls: p.calls });
+      }
+    }
     finally {
+      timing.actionEnded = Date.now();
       for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear();
+      freshnessPages.clear();
       if (recoveryContext) { await cdp('Target.disposeBrowserContext', { browserContextId: recoveryContext }); recoveryContext = null; }
+      timing.cleanupEnded = Date.now(); phases.cases.push(timing);
     }
     process.stdout.write(JSON.stringify(results.at(-1)) + '\n');
   };
@@ -321,7 +393,9 @@ try {
       const image = await page.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(path.join(evidencePath, name + '.png'), Buffer.from(image.data, 'base64'));
     };
-    if (mode === '--images') {
+    if (mode === '--freshness') {
+      await freshnessChecks({check,page,until,root,facts,view,control,replace,field,shot,observations,baseline,legacyAdmission});
+    } else if (mode === '--images') {
       await imageChecks({check,page,until,root,facts,view,replace,field,shot,observations});
     } else if (mode === '--cleanup') {
       const rows = p => p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors');t.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result);t.oncomplete=()=>d.close()}})`);
@@ -876,14 +950,20 @@ try {
   }
 } finally {
   if (cdp && socket?.readyState === WebSocket.OPEN) { await cdp('Browser.close'); await chromeExit; socket.close(); }
+  if (mode === '--freshness' && fixture.exitCode === null) finalHealth = await control({ method: 'admission_events' });
   fixture.stdin.end();
-  assert.equal(await fixtureExit, 0, fixtureErrors);
+  fixtureExitCode = await fixtureExit;
   // Every origin/key here belongs to this unique disposable profile; no keys
   // or prefixes are ever removed from a person's browser.
   if (!chrome || chrome.exitCode !== null) {
     await rm(profile, { recursive: true, force: true });
     await rm(downloadPath, { recursive: true, force: true });
   }
-  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, hashes, results, observations, fixtureErrors, browserClosed: chrome?.exitCode !== null }, null, 2));
+  phases.reportingStarted = Date.now();
+  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, baseline, legacyAdmission, hashes, results, observations, finalHealth, fixtureExitCode, fixtureErrors, browserClosed: chrome?.exitCode !== null }, null, 2));
+  phases.reportingEnded = Date.now();
+  await writeFile(path.join(evidencePath, 'phases.json'), JSON.stringify(phases, null, 2));
+  assert.equal(fixtureExitCode, 0, fixtureErrors);
+  if (mode === '--freshness') { assert.deepEqual(finalHealth?.fatal, []); assert.equal(fixtureErrors, '', 'owned fixture stderr is clean'); }
 }
 assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');

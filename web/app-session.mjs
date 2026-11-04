@@ -31,6 +31,7 @@ export class EditorRegistry {
     this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map();
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
     this.current = null; this.generation = 0; this.disposed = false;
+    this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
       changed: editor => this.changed(editor), stopped: () => this.disposed });
   }
@@ -234,20 +235,34 @@ export class EditorRegistry {
     return editor.dirty ? 'Saved on this device — not yet saved to Theseus' : 'Saved to Theseus';
   }
 
-  async neighbors(presentation) {
+  async neighbors(presentation, { read } = {}) {
     const source = presentation.source;
     if (source.source_ref.kind !== 'message' || !Number.isInteger(source.seq) || presentation.sourceUnavailable) return { previous: null, next: null };
-    const foreground = this.cleanup.foreground();
+    const generation = ++this.neighborGeneration;
+    const args = direction => ({ topic_id: source.topic_id, cursor: source.seq, audience: 'reader', direction, limit: 1 });
     let reads;
-    try { reads = await foreground.read(options => pairedReads(['before', 'after'].map(direction => this.api.view('topic_messages', {
-      topic_id: source.topic_id, cursor: source.seq, audience: 'reader', direction, limit: 1,
-    }, options)))); } finally { foreground.release(); }
+    if (read) reads = [await read('topic_messages', args('before')), await read('topic_messages', args('after'))];
+    else {
+      const foreground = this.cleanup.foreground();
+      try { reads = await foreground.read(options => pairedReads(['before', 'after'].map(direction => this.api.view('topic_messages', args(direction), options)))); }
+      finally { foreground.release(); }
+    }
+    if (generation !== this.neighborGeneration || read && !this.isSourceCurrent(presentation)) return null;
     const refs = reads.map(page => {
       this.validatePage(page);
       if (page.items.length > 1 || page.items.some(item => item.topic_id !== source.topic_id || typeof item.id !== 'string')) throw Error('The neighboring source identity could not be confirmed.');
       return page.items.length ? { kind: 'message', id: page.items[0].id } : null;
     });
     return { previous: refs[0], next: refs[1] };
+  }
+
+  parkAuthority(binding, code) {
+    if (binding.instance_id !== this.bootstrap.instance_id || binding.actor_id !== this.bootstrap.actor) return Promise.resolve();
+    const pair = { authority_id: binding.authority_id, authority_epoch: binding.authority_epoch };
+    // Each call closes its write gate synchronously, before waiting on any IDB.
+    return Promise.all([...this.sessions.values()].map(session => {
+      this.cancelSave(session.editor); return session.parkAuthority(pair, code);
+    }));
   }
 
   async recoveryCandidates(editor, options) {

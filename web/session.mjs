@@ -186,6 +186,15 @@ export class EditorSession {
     }
   }
 
+  parkAuthority(failedPair, code = 'AUTHORITY_CHANGED') {
+    if (!['AUTHORITY_CHANGED', 'INVALID_BINDING', 'RESYNC_REQUIRED'].includes(code) ||
+        !same(authorityPair(failedPair), authorityPair(this.authority)) || this.recovery) return Promise.resolve(this.recovery);
+    this.recovery = { id: this.id(), failedPair: copy(authorityPair(failedPair)), phase: 'parked', authority: null,
+      remote: null, error: code, message: 'The runtime changed. Your writing is kept. Review versions and Retry when ready.' };
+    // The gate is synchronous. Persist does not probe or manufacture an attempt.
+    return this.persist().then(() => this.recovery);
+  }
+
   retryAuthority() {
     if (this.recovery?.phase === 'loading') return Promise.reject(new Error('The current recovery read is still in progress.'));
     return this.enqueue(() => {

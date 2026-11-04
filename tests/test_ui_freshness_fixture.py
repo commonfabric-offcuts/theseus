@@ -86,6 +86,33 @@ class FixtureCase(unittest.TestCase):
 
 
 class FreshnessFixtureTests(FixtureCase):
+    def test_timed_read_delay_holds_the_actual_admitted_permit(self):
+        self.control("read_delay", name="topic", read_class="foreground", ms=120)
+        pending = self.pool.submit(self.view, "topic", {"topic_id": "t1"})
+        entered = self.events_until(lambda r: any(e["event"] == "delay-enter" for e in r["events"]))
+        delay = next(e for e in entered["events"] if e["event"] == "delay-enter")
+        self.assertIsNotNone(delay["request_id"])
+        self.assertEqual(delay["read_class"], "foreground")
+        held = entered["lanes"]["foreground"]["active"]
+        was_pending = not pending.done()
+        self.assertEqual(self.view("topic", {"topic_id": "t1"}, "background")[0], 200)
+        self.assertEqual(pending.result(timeout=1)[0], 200)
+        finished = self.events_until(lambda r: r["lanes"]["foreground"]["active"] == 0)
+        events = [e for e in finished["events"] if e.get("request_id") == delay["request_id"]]
+        start = next(e for e in events if e["event"] == "delay-enter")
+        end = next(e for e in events if e["event"] == "delay-exit")
+        self.assertGreaterEqual(end["at"] - start["at"], 0.110, "the delay actually runs inside the permit")
+        self.assertEqual(held, 1)
+        self.assertTrue(was_pending)
+        order = [e["event"] for e in events]
+        sequence = ["granted", "callback-enter", "delay-enter", "delay-exit", "callback-exit", "close-enter", "close-exit", "released"]
+        self.assertEqual(sorted(sequence, key=order.index), sequence)
+        self.assertFalse(any(e["event"] == "delay-enter" and e["read_class"] == "background" for e in finished["events"]))
+        self.control("read_delay", ms=0)
+        after = finished["next"]
+        self.assertEqual(self.view("topic", {"topic_id": "t1"})[0], 200)
+        self.assertFalse(any(e["event"] == "delay-enter" for e in self.control("admission_events", after=after)["events"]))
+
     def test_fixture_agent_commits_are_attributed_and_reads_do_not_ack(self):
         before = self.control("counts")
         receipt = self.control("agent_message", operation_id="fixture-new-message", body="Incoming exact body",
