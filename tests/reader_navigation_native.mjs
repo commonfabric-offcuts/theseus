@@ -10,6 +10,59 @@ export async function navigationChecks({ check, page, until, root, facts, view, 
   const noPrompt = p => assert.equal(p.events.some(e => e.method === 'Page.javascriptDialogOpening'), false, 'normal navigation never relies on beforeunload confirmation');
   const state = () => view('editor_state', { source_ref: { kind: 'topic', id: 't1' }, topic_id: 't1' });
 
+  await check('navigation placeholder absent during pending startup and error recovery', async () => {
+    await control({ method: 'navigation_topics', topics });
+    const p = await page('placeholder-transition', null, true);
+    const header = () => p.evaluate(`({title:document.querySelector('#topic-title').textContent,
+      description:document.querySelector('#topic-description').textContent,
+      generic:document.body.textContent.includes('A place to work together') || document.body.textContent.includes('Choose a workspace and topic to begin.')})`);
+    const emptyHeader = async phase => {
+      const value=await header(); observations.push({name:'pending topic header',phase,...value});
+      assert.equal(value.title,'',phase+' must not introduce a generic topic title');
+      assert.equal(value.description,'',phase+' must not introduce generic guidance');
+      assert.equal(value.generic,false);
+    };
+    const heldTransition = async (mobile=false) => {
+      const start=p.held.length;
+      p.intercept((_payload,event)=>event.request.url.endsWith('/api/bootstrap'));
+      if (mobile) {
+        await p.evaluate(`document.querySelector(${JSON.stringify(link('t2'))}).scrollIntoView({block:'center',inline:'center'})`);
+        const b=await p.box(link('t2'));assert.equal(b.viewportWidth,390);
+        await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2}]});
+        await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      } else await click(p,'t2');
+      const held=await until(()=>p.held.slice(start).find(h=>h.event.request.url.endsWith('/api/bootstrap')),'actual new-document bootstrap held');
+      await until(()=>p.evaluate('Boolean(document.querySelector("#topic-title"))'),'static header rendered');
+      assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t2');
+      assert.notEqual(await p.evaluate('document.body.dataset.ready'),'true');
+      await shot(p,mobile?'placeholder-mobile-pending':'placeholder-desktop-pending');
+      await emptyHeader(mobile?'mobile pending':'desktop pending');
+      p.intercept(null);await p.release(held);await ready(p,'t2');
+      assert.equal((await header()).title,topics[0].title);
+      assert.equal((await header()).description,'Open a message to read, quote, reply, or keep a private note.');
+      await shot(p,mobile?'placeholder-mobile-ready':'placeholder-desktop-ready');
+    };
+    await heldTransition();
+    p.recordResponses();
+    await control({method:'read_fault',name:'topic',status:503,body:{error:{code:'DATABASE_BUSY',message:'Topic read delayed',retryable:true}},count:1});
+    await click(p,'t1');
+    // Api's non-2xx AttemptError preserves the human message, not the code.
+    await until(()=>p.evaluate('!document.querySelector("#app-status").hidden && document.querySelector("#app-status").textContent==="Topic read delayed"'),'startup refusal remains visible');
+    assert.ok(p.responses.some(r=>r.payload?.name==='topic' && r.status===503 && r.body.error?.code==='DATABASE_BUSY'),'typed refusal was actually received');
+    observations.push({name:'startup refusal feedback',text:await p.evaluate('document.querySelector("#app-status").textContent')});
+    await emptyHeader('startup refusal');
+    await p.point('#refresh');await ready(p,'t1');
+    assert.equal((await header()).title,'Read here');
+    await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+    await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
+    await heldTransition(true);
+    // A person can still open a bare URL and find the existing explicit guidance.
+    await p.send('Page.navigate',{url:facts.origin+'/'});
+    await until(()=>p.evaluate('!document.querySelector("#app-status").hidden && document.querySelector("#app-status").textContent.includes("Open a Theseus topic link to choose the conversation.")'),'bare-root guidance retained');
+    await emptyHeader('bare root');
+    noActs(p);noPrompt(p);assert.deepEqual(p.errors,[]);
+  });
+
   await check('navigation native keyboard same-tab draft preservation failure and selected-image boundaries', async () => {
     await control({ method: 'navigation_topics', topics });
     const p = await page('topic-navigation', null, true);
