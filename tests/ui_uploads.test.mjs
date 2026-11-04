@@ -353,6 +353,36 @@ test('picker reservation, late chooser and held adoption respect presentation ow
   assert.equal(f.puts.length, before); assert.equal(f.editor.adopting, false);
 });
 
+for (const surface of ['inline', 'modal']) test(`late chooser refuses new capture after access loss in ${surface}`, async t => {
+  const f = await fixture(t);
+  let p = f.registry.current;
+  if (surface === 'inline') {
+    const topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+    await f.registry.initializeInline(topic); await f.registry.close(p, { explicit: true }); p = f.registry.inline;
+  }
+  const editor = p.editors.reply, uploads = f.registry.sessionFor(editor).uploads;
+  editor.edit({ body: 'Writing remains through access loss', caret: { start: 7, end: 7 } });
+  const before = copy(editor.draft), token = uploads.reserve(p), putCount = f.puts.length;
+  const writes = () => f.calls.filter(c => ['/api/command', '/api/media/upload'].includes(c.url)).length;
+  const commands = writes(); editor.unavailable = true;
+  await assert.rejects(uploads.choose(token, f.image), /unavailable/i);
+  assert.equal(f.puts.length, putCount, 'the returned chooser file never enters byte or metadata capture');
+  assert.equal(writes(), commands, 'the refused choice dispatches no command');
+  assert.deepEqual(editor.draft, before); assert.equal(editor.imageReservation, null);
+  editor.unavailable = false;
+  assert.equal(f.puts.length, putCount); assert.equal(writes(), commands, 'regrant does not replay the choice');
+  if (surface !== 'inline') return;
+  // Positive boundary: bytes accepted before denial may finish on that owner.
+  const entered = deferred(), release = deferred(), upload = f.api.upload.bind(f.api);
+  t.after(() => release.resolve());
+  f.api.upload = async (...args) => { const answer = await upload(...args); entered.resolve(); await release.promise; return answer; };
+  const admitted = uploads.choose(uploads.reserve(p), f.image); await entered.promise;
+  editor.unavailable = true; release.resolve(); const id = await admitted;
+  assert.equal(uploads.valid(), true); assert.equal(uploads.status(id), 'Ready');
+  assert.equal(editor.draft.body, before.body); assert.deepEqual(editor.draft.caret, before.caret);
+  assert.equal(editor.draft.attachments.length, 1, 'already-admitted completion keeps its original draft association');
+});
+
 test('queued old-session persistence cannot write after its registration is replaced', async t => {
   const f = await fixture(t); await f.u.add(f.image, { start: false });
   const release = deferred(), entered = deferred();

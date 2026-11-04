@@ -59,6 +59,7 @@ export class Uploads {
     return file ? this.add(file) : null;
   }
   admit(file) {
+    if (this.editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept; the image was not added.');
     if (!this.valid() || this.editor.adopting || this.editor.recoveryDiscovery) throw Error('Review the current image copies first.');
     if (!(file instanceof Blob) || !Number.isInteger(file.size) || file.size < 1) throw Error('An empty image cannot be attached.');
     const l = this.registry.bootstrap.limits;
