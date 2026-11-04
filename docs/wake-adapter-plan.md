@@ -1,12 +1,15 @@
 # Wake adapter: bounded first implementation
 
 Status: initial adapter boundary confirmed by Fable in `m-b3888405` at
-`4b6a437` / SHA256 `99bcf9beb99b`; not implemented or enabled. Core's subsequent
-held-process guard and authority interfaces are under bounded critique before
-integration; their exact API is still pending.
+`4b6a437` / SHA256 `99bcf9beb99b`; not implemented or enabled. The subsequent
+held-process guard and authority interfaces are confirmed by Fable in
+`m-d8c0ae60` and lead in `m-caac4621`: wake contract SHA256 `a30aff1efbd5`,
+authority contract `12214d25fb77`. Exact snapshots are retained in
+`work/evidence/runtime-contracts-final`. Implementation and integration remain.
 Lead owns the adapter. Core owns delivery eligibility, runner ownership,
 attempt claims, acknowledgement and durable retry scheduling. This complements
-the canonical first-build plan; it does not change product scope or resume UX.
+the canonical first-build plan; it does not change product scope. Tony separately
+resumed UX with the preserved message/Notebook modal as the first checkpoint.
 
 ## Current code and missing seam
 
@@ -22,7 +25,7 @@ Core proposed acquire/renew singleton ownership, claim_wakes and finish_wake
 in AIM `m-3f597ba3`. Lead's timing refinement is `m-d6be30d6`. Fable's critique
 `m-c5c8edc3` and lead's disposition `m-8419f7b1` replace per-delivery wakes with
 one coalesced wake per recipient. The revised exact claim/status/resume shapes
-and concrete restore-authority seam are still pending. This first implementation is a small
+and restore-authority seam are now fixed in the reviewed contracts. This implementation is a small
 route adapter tested against isolated bindings and child commands. Runner
 integration and activation wait for Core's actual claim/authority contract.
 Do not install a service or register a real agent route for these tests.
@@ -40,7 +43,18 @@ The isolated Mac probes in `work/evidence/wake-guard-probe-01` and
 `work/evidence/wake-guard-probe-02` demonstrate that distinction and actual parent
 exit with a surviving child. They are mechanism evidence, not the future
 adapter/guardian or restore integration proof. This dependency must be resolved
-before enabling the otherwise reviewed adapter boundary below.
+before enabling the otherwise reviewed adapter boundary below. That contract
+dependency is resolved; actual Core/adapter integration is still required.
+
+Profile v2 pins authority_path, authority_id and authority_epoch in addition to
+instance/actor/database. Store takes expected_binding explicitly. The actual
+RunnerGuard owns authority-SH then runner-EX descriptors; all runner mutators
+take it, and the child/guardian inherits guard.pass_fds. Guard close never calls
+LOCK_UN. Claims, stdin and queued hints retain the captured authority epoch;
+reloading a profile cannot upgrade an old hint after cutover. Guard binding also
+contains instance_id and db_path. Neither a lease token nor diagnostic PID is a
+substitute for this held guard. The caller validates the same live guard before
+launch and settlement; startup never discovers an alternate binding.
 
 ## What a route means
 
@@ -61,7 +75,7 @@ permissions and O_NOFOLLOW on its final component. Reject duplicate fields,
 unknown fields, invalid versions, non-absolute profile/executable paths, empty
 argv, NULs, more than 32 arguments or more than 16 KiB of UTF-8 argument bytes.
 The protected profile is loaded through the existing profile API. Compare its
-actor, canonical instance and resolved database path with the claimed binding;
+actor, canonical instance, resolved database path, authority ID and epoch with the claimed binding;
 any mismatch returns unavailable and starts nothing. No config directory scan,
 recipient-name path construction, actor override or route discovery is added.
 The caller supplies the exact route path, or none when no route is configured.
