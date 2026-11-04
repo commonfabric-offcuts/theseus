@@ -7,6 +7,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -129,6 +130,40 @@ initialize(sys.argv[1],"new-instance",[{"id":"owner","kind":"human"}],authority_
             authority_module._read_anchor(marker)
         with self.assertRaises(StoreError):
             Store(self.path, "new-instance", expected_binding=dict(info["binding"], authority_path=str(marker)))
+
+    def test_initializer_that_loses_exclusive_creation_reports_occupied_and_preserves_winner(self):
+        from aim_next import initialization
+        checked, release = threading.Event(), threading.Event()
+        original = initialization.preflight
+        failures = []
+        def held_preflight(*args):
+            result = original(*args)
+            if threading.current_thread().name == "losing-initializer":
+                checked.set()
+                if not release.wait(5):
+                    raise RuntimeError("Fixture did not release the losing initializer")
+            return result
+        def loser():
+            try:
+                self.initialize()
+            except Exception as error:
+                failures.append(error)
+        with mock.patch.object(initialization, "preflight", held_preflight):
+            thread = threading.Thread(target=loser, name="losing-initializer")
+            thread.start()
+            try:
+                self.assertTrue(checked.wait(5), "Losing initializer did not reach preflight boundary")
+                info = self.initialize()
+                snapshot = {p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+            finally:
+                release.set()
+                thread.join(5)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(len(failures), 1)
+        self.assertIsInstance(failures[0], StoreError)
+        self.assertEqual(failures[0].code, "INITIALIZATION_PATH_OCCUPIED")
+        self.assertEqual({p: p.read_bytes() for p in self.root.rglob("*") if p.is_file()}, snapshot)
+        self.assertNotIn("error", Store(self.path, "new-instance", expected_binding=info["binding"]).view("owner", "capabilities", {}))
 
 
 class CommitIdentityCase(fixture.AuthorityCase):

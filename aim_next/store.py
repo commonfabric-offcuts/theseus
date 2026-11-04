@@ -58,9 +58,14 @@ def _connect(path):
 def initialize(db_path, instance_id, initial_actors, *, authority_path):
     """Create a new isolated authority. Existing paths are never overwritten."""
     path, authority_path, actors = initialization.preflight(db_path, instance_id, initial_actors, authority_path)
-    publication_attempted = False
     try:
         attempt = initialization.begin(authority_path, path, instance_id)
+    except FileExistsError as error:
+        raise AuthorityError("INITIALIZATION_PATH_OCCUPIED", "Another initialization claimed these paths; this attempt will not adopt or replace them") from error
+    except Exception as error:
+        raise initialization.incomplete() from error
+    publication_attempted = False
+    try:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
         os.close(fd)
