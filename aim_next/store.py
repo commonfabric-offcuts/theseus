@@ -9,7 +9,7 @@ import uuid
 from typing import Any
 
 
-from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body
+from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body, _page_size
 from .drafts import Drafts, DRAFT_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA
 from .validation import COMMANDS, _command_envelope, _view_arguments
@@ -370,6 +370,33 @@ class Store(Drafts, Delivery, Conversation, Runner, Memory, Media, RoutePins, Ch
     def _view_workspace(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))
         return {"instance_id": self.instance_id, "workspace": dict(workspace), "relevant_versions": {"workspace": workspace["version"]}}
+
+    def _view_workspaces(self, db, actor, args):
+        limit = _page_size(args)
+        # Creation always includes the owner in this indexed membership set.
+        # BLOB substr bounds bytes, including titles containing embedded NUL.
+        rows = db.execute("SELECT w.id,w.owner_id,substr(CAST(w.title AS BLOB),1,1025) AS title_prefix,w.version "
+                          "FROM workspace_members AS m JOIN workspaces AS w ON w.id=m.workspace_id "
+                          "WHERE m.actor_id=? AND m.workspace_id>? ORDER BY m.workspace_id LIMIT ?",
+                          (actor, args.get("cursor", ""), limit + 1)).fetchall()
+        items = []
+
+        def response():
+            return {"instance_id": self.instance_id, "items": list(items),
+                    "next_cursor": items[-1]["id"] if items and len(rows) > len(items) else None}
+
+        for row in rows[:limit]:
+            prefix = bytes(row["title_prefix"])
+            title = prefix[:1024].decode("utf-8", errors="ignore")
+            items.append({"id": row["id"], "owner_id": row["owner_id"], "title": title,
+                          "title_truncated": len(prefix) > len(title.encode("utf-8")), "version": row["version"]})
+            candidate = response()
+            if len(_json(candidate).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
+                items.pop()
+                if not items:
+                    raise Refusal("VIEW_TOO_LARGE", "A workspace preview cannot fit in the bounded response")
+                break
+        return response()
 
     def _view_workspace_topics(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))

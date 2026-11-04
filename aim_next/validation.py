@@ -27,6 +27,7 @@ REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
+    "workspaces": {"cursor", "limit"},
     "workspace_topics": {"workspace_id", "cursor", "limit"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction"}, "source": {"source_ref", "kind", "id", "revision"},
     "memory_items": {"owner_scope", "cursor", "limit"},
@@ -111,7 +112,7 @@ def _view_arguments(name, args):
             if cursor is None:
                 raise Refusal("INVALID_ARGUMENT", "Invalid delivery page cursor")
             _position(cursor)
-        elif name == "workspace_topics":
+        elif name in ("workspaces", "workspace_topics"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):
