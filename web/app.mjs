@@ -18,6 +18,7 @@ const run = action => { try { return Promise.resolve(action()).catch(error => { 
 let api, bootstrap, journal, registry, reader, topic, opening = 0, freshness, views, updateState;
 let localEffectVersion = 0;
 let availabilitySerial = 0;
+let topicUnavailable = false, listAccessEpoch = 0;
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
@@ -326,6 +327,8 @@ function keepListAnchor(paint) {
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
   if (kind === 'topic') {
+    if (authorityReviewPending()) return;
+    topicUnavailable = false;
     topic = views.topic; $('topic-title').textContent = topic.title;
     $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
     $('topics').firstElementChild.textContent = topic.title;
@@ -360,8 +363,19 @@ function paintViews(kind) {
   $('more-messages').hidden = views.olderCursor === null;
   $('more-memory').hidden = views.memoryCursor === null;
 }
+function authorityReviewPending() {
+  return updateState?.kind === 'authority' ||
+    [...registry.sessions.values()].some(session => session.editor.authorityRecovery) ||
+    registry.runtime.current.authority_id !== bootstrap.authority.authority_id ||
+    registry.runtime.current.authority_epoch !== bootstrap.authority.authority_epoch;
+}
 function listPage(kind, more = false) {
+  if (authorityReviewPending()) {
+    status('The runtime changed. Review your saved writing before reloading this page.');
+    return Promise.resolve();
+  }
   if (listLoads.has(kind)) return listLoads.get(kind);
+  const accessEpoch = listAccessEpoch, mayPaint = !topicUnavailable;
   const cursor = kind === 'messages' ? views.olderCursor : views.memoryCursor;
   if (more && cursor === null) return Promise.resolve();
   const foreground = registry.cleanup.foreground();
@@ -369,10 +383,20 @@ function listPage(kind, more = false) {
     : { owner_scope: views.scope, limit: 20 };
   if (more) args.cursor = cursor;
   const run = foreground.read(options => api.view(kind === 'messages' ? 'topic_messages' : 'memory_items', args, options)).then(page => {
+    checkedView(page, bootstrap.instance_id);
+    if (!mayPaint || accessEpoch !== listAccessEpoch || authorityReviewPending()) return;
     if (kind === 'messages') views.messagesPage(page, { initial: !more, cursor });
     else views.memoryPage(page, { initial: !more, cursor });
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
+}
+async function refreshLists() {
+  if (authorityReviewPending()) {
+    status('The runtime changed. Review your saved writing before reloading this page.'); return;
+  }
+  if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
+  if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
+  await listPage('messages'); await listPage('memory');
 }
 function retainRevisionTargets(presentation = registry?.current) {
   const source = presentation?.source;
@@ -391,6 +415,7 @@ function revisionOffer(presentation) {
   } };
 }
 function updateStatus(state) {
+  if (state.kind === 'authority') ++listAccessEpoch;
   updateState = state;
   const quiet = state.kind === 'current' || state.kind === 'defer';
   $('updates-status').hidden = quiet;
@@ -403,6 +428,7 @@ function updateStatus(state) {
 }
 async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
+    topicUnavailable = true; ++listAccessEpoch;
     for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = true;
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     $('topics').replaceChildren(node('p', 'Topic unavailable'));
@@ -531,8 +557,8 @@ async function initialize() {
   $('participants').replaceChildren(...result.participants.map(participant => node('span', participant.actor_id, 'chip')));
   // Keep startup retry read-only: no editor or clickable source exists until
   // both initial list bodies have arrived after the captured feed baseline.
-  const messageAnswer = await api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 });
-  const memoryAnswer = await api.view('memory_items', { owner_scope: views.scope, limit: 20 });
+  const messageAnswer = checkedView(await api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }), bootstrap.instance_id);
+  const memoryAnswer = checkedView(await api.view('memory_items', { owner_scope: views.scope, limit: 20 }), bootstrap.instance_id);
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
   reader = new Reader({
     revisionOffer,
@@ -562,10 +588,7 @@ async function initialize() {
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } } });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor));
-  $('refresh').onclick = () => run(async () => {
-    if (freshness) return freshness.request({ refresh: true });
-    await listPage('messages'); await listPage('memory');
-  });
+  $('refresh').onclick = () => run(refreshLists);
   $('updates-retry').onclick = () => run(async () => {
     if (updateState?.kind === 'reconnect') { location.reload(); return; }
     if (updateState?.kind === 'authority') { if (reader.editor) await showVersions(reader.editor); else location.reload(); return; }

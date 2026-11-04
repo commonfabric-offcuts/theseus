@@ -120,7 +120,7 @@ try {
             const source = response.base64Encoded ? Buffer.from(response.body, 'base64').toString() : response.body;
             await send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 200,
               responseHeaders: [{ name: 'Content-Type', value: 'text/javascript; charset=utf-8' }],
-              body: Buffer.from(event.request.url.endsWith('/app.mjs') ? freshnessInstrumentation + '\n' + source : observeUploadProof(source)).toString('base64') });
+              body: Buffer.from(event.request.url.endsWith('/app.mjs') ? freshnessInstrumentation + '\n' + source + '\nwindow.appReadState=()=>({journal:Boolean(journal),registry:Boolean(registry),reader:Boolean(reader),startup:Boolean(startup),loads:listLoads.size});' : observeUploadProof(source)).toString('base64') });
             return;
           }
           if (recordResponses && (payload?.name || event.request.url.endsWith('/api/bootstrap'))) {
@@ -193,7 +193,7 @@ try {
       }
       await send('Page.navigate', { url: facts.origin + '/?topic=t1' });
       await until(() => evaluate('document.body?.dataset.ready === "true" || Boolean(document.querySelector("#app-status") && !document.querySelector("#app-status").hidden)'), 'application bootstrap');
-      assert.equal(await evaluate('document.body.dataset.ready'), 'true', await evaluate('document.querySelector("#app-status").textContent'));
+      if (!setup.allowStartupError) assert.equal(await evaluate('document.body.dataset.ready'), 'true', await evaluate('document.querySelector("#app-status").textContent'));
       if (mode !== '--freshness') await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
       return connectedPage;
     }
