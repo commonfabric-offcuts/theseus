@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import fcntl
+import errno
 from contextlib import contextmanager
 import hashlib
 import importlib
@@ -1024,6 +1025,425 @@ recovery.activate(request)
             fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
         finally:
             os.close(fd)
+
+
+    def test_readable_original_operator_changes_never_authorize_gap(self):
+        for change in ('mode0400', 'hardlink'):
+            for newer in (False, True):
+                for mode in ('normal', 'original_unavailable'):
+                    with self.subTest(change=change, newer=newer, mode=mode), self.isolated() as case:
+                        request = case.request(mode=mode)
+                        if newer:
+                            case.create(case.store, 'newer-than-snapshot')
+                        if change == 'mode0400':
+                            case.path.chmod(0o400)
+                        else:
+                            os.link(case.path, case.root/'original-hardlink')
+                        before = case.anchor.read_bytes()
+                        if mode == 'original_unavailable':
+                            case.refused(lambda: case.api().activate(request), 'ORIGINAL_AVAILABLE')
+                        elif newer:
+                            case.refused(lambda: case.api().activate(request), 'HISTORY_MISMATCH')
+                        else:
+                            result = case.accepted(lambda: case.api().activate(request))
+                            case.assertTrue(result['history_complete'])
+                            continue
+                        case.assertEqual(case.anchor.read_bytes(), before)
+
+    def test_original_observation_failure_never_authorizes_gap(self):
+        for fault in ('mode000', 'owner', 'directory', 'eio', 'eperm', 'schema', 'runtime'):
+            for mode in ('normal', 'original_unavailable'):
+                with self.subTest(fault=fault, mode=mode), self.isolated() as case:
+                    request = case.request(mode=mode)
+                    before = case.anchor.read_bytes()
+                    inode = case.path.stat().st_ino
+                    real_lstat, real_connect = Path.lstat, sqlite3.connect
+                    if fault == 'mode000':
+                        case.assertNotEqual(os.getuid(), 0, 'actual permission fixture requires non-root')
+                        case.path.chmod(0)
+                    elif fault == 'directory':
+                        case.path.rename(case.path.with_suffix('.saved'))
+                        case.path.mkdir(mode=0o700)
+                    elif fault == 'schema':
+                        case.sql(case.path, "UPDATE metadata SET value='999' WHERE key='schema_version'")
+                    def lstat(path, *args, **kwargs):
+                        if path == case.path and fault == 'eio':
+                            raise OSError(errno.EIO, 'uncertain read')
+                        info = real_lstat(path, *args, **kwargs)
+                        if fault == 'owner' and info.st_ino == inode:
+                            class OtherOwner:
+                                st_uid = os.getuid()+1
+                                def __getattr__(self, key):
+                                    return getattr(info, key)
+                            return OtherOwner()
+                        return info
+                    def connect(path, *args, **kwargs):
+                        if fault == 'eperm' and str(path).startswith(case.path.as_uri()+'?'):
+                            raise PermissionError(errno.EPERM, 'uncertain permission')
+                        db = real_connect(path, *args, **kwargs)
+                        if fault == 'runtime' and str(path).startswith(case.path.as_uri()+'?'):
+                            class RuntimeObservation:
+                                def __getattr__(self, key):
+                                    return getattr(db,key)
+                                def execute(self, statement, *args):
+                                    if statement == 'PRAGMA fullfsync':
+                                        return mock.Mock(fetchone=lambda: (0,))
+                                    return db.execute(statement,*args)
+                            return RuntimeObservation()
+                        return db
+                    with mock.patch.object(Path, 'lstat', lstat), mock.patch.object(sqlite3, 'connect', connect):
+                        case.refused(lambda: case.api().activate(request), 'RECOVERY_UNCONFIRMED')
+                    case.assertEqual(case.anchor.read_bytes(), before, 'observation failure cannot publish a gap')
+                    if fault == 'owner':
+                        print('OWNER_CONTROL exact-inode Path.lstat interposition; no chown', inode, flush=True)
+
+    def test_original_positive_gap_observations_remain_distinct(self):
+        for observation in ('different-inode', 'corrupt', 'different-lineage'):
+            with self.subTest(observation=observation), self.isolated() as case:
+                request = case.request(mode='original_unavailable')
+                if observation == 'different-inode':
+                    case.path.rename(case.path.with_suffix('.saved'))
+                    shutil.copy2(case.path.with_suffix('.saved'), case.path)
+                elif observation == 'corrupt':
+                    case.path.write_bytes(b'confirmed non-SQLite bytes')
+                else:
+                    case.sql(case.path, "UPDATE metadata SET value='another-instance' WHERE key='instance_id'")
+                result = case.accepted(lambda: case.api().activate(request))
+                case.assertFalse(result['history_complete'])
+
+    def filesystem_aliases(self, path):
+        value = str(path)
+        choices = [value.replace('/Users/', '/USERS/', 1), '/System/Volumes/Data'+value]
+        for alias in choices:
+            other = Path(alias)
+            actual = other.exists() and other != path and (other.stat().st_dev, other.stat().st_ino) == (path.stat().st_dev, path.stat().st_ino)
+            print('FILESYSTEM_ALIAS', json.dumps(dict(path=value, alias=alias, actual=actual,
+                  resolved=str(other.resolve()), identity=[path.stat().st_dev,path.stat().st_ino])), flush=True)
+            if actual:
+                yield alias
+
+    def test_authority_alias_refuses_before_control_and_exact_request_still_works(self):
+        for index in (0, 1):
+            with self.subTest(alias=index), self.isolated() as case:
+                request = case.request()
+                aliases = list(case.filesystem_aliases(case.anchor))
+                case.assertTrue(aliases, 'this allocated volume must demonstrate an actual alias')
+                if index >= len(aliases):
+                    continue
+                alias = aliases[index]
+                case.assertEqual(str(case.io().canonical(alias)), alias)
+                case.refused(lambda: case.api().activate(dict(request, authority_path=alias)), 'BUNDLE_INVALID')
+                case.assertFalse(case.control().exists(), 'pinned spelling checked before permanent control creation')
+                case.assertFalse(Path(request['candidate_path']).parent.exists())
+                case.assertTrue(case.api().activate(request)['durability_confirmed'])
+
+    def test_control_header_alias_names_same_directory_not_a_copy(self):
+        request = self.request()
+        self.prepared(request)
+        header_path = self.control()/'header.json'
+        header = json.loads(header_path.read_text())
+        aliases = list(self.filesystem_aliases(self.control()))
+        self.assertTrue(aliases)
+        header['path'] = aliases[0]
+        header_path.write_text(json.dumps(header)+'\n')
+        self.assertEqual(self.api().activation_readback(request)['status'], 'prepared')
+        copied = self.root/'copied-control'
+        shutil.copytree(self.control(), copied)
+        header['path'] = str(copied)
+        header_path.write_text(json.dumps(header)+'\n')
+        self.assertEqual(self.api().activation_readback(request)['status'], 'unconfirmed', 'header must name the same inode')
+
+    def test_typed_publication_failures_after_attempt_are_unconfirmed(self):
+        for site in ('attempt-fails', 'replace', 'directory', 'identity', 'fence', 'close', 'before-attempt'):
+            with self.subTest(site=site), self.isolated() as case:
+                request = case.request()
+                api, io = case.api(), case.io()
+                fault = io.RecoveryError('CONTROL_INVALID')
+                real_replace, real_flush, real_checked = os.replace, io.flush_path, io.checked
+                real_verify, real_encode = api.RecoveryFence.verify, io.encode
+                real_fdopen = os.fdopen
+                fired = []
+                def published():
+                    return json.loads(case.anchor.read_text()).get('activation_id') == request['activation_id']
+                def fail():
+                    fired.append(site)
+                    raise fault
+                def replace(source, dest):
+                    if site == 'attempt-fails' and Path(dest) == case.anchor:
+                        fail()
+                    result = real_replace(source, dest)
+                    if site == 'replace' and Path(dest) == case.anchor:
+                        fail()
+                    return result
+                def flush(path, directory=False):
+                    if site == 'directory' and Path(path) == case.anchor.parent and published():
+                        fail()
+                    return real_flush(path, directory)
+                def checked(path, *args, **kwargs):
+                    if site == 'identity' and Path(path) == case.anchor and published():
+                        fail()
+                    return real_checked(path, *args, **kwargs)
+                def verify(fence):
+                    if site == 'fence' and published():
+                        fail()
+                    return real_verify(fence)
+                def encode(value):
+                    if site == 'before-attempt' and isinstance(value, dict) and value.get('activation_id') == request['activation_id'] and 'db_inode' in value:
+                        fail()
+                    return real_encode(value)
+                def fdopen(fd, *args, **kwargs):
+                    stream = real_fdopen(fd, *args, **kwargs)
+                    if site != 'close' or not args or args[0] != 'wb':
+                        return stream
+                    class ClosingStream:
+                        def __getattr__(self, name):
+                            return getattr(stream,name)
+                        def __enter__(self):
+                            return self
+                        def __exit__(self, *unused):
+                            anchor_stream = published() and io.identity(os.fstat(stream.fileno())) == io.identity(case.anchor.stat())
+                            stream.close()
+                            if anchor_stream:
+                                fail()
+                    return ClosingStream()
+                with mock.patch.object(os,'replace',replace), mock.patch.object(io,'flush_path',flush), \
+                        mock.patch.object(io,'checked',checked), mock.patch.object(api.RecoveryFence,'verify',verify), \
+                        mock.patch.object(io,'encode',encode), mock.patch.object(os,'fdopen',fdopen):
+                    error = case.refused(lambda: api.activate(request), 'CONTROL_INVALID' if site == 'before-attempt' else 'RECOVERY_UNCONFIRMED')
+                case.assertEqual(fired, [site])
+                if site == 'before-attempt':
+                    case.assertFalse(published())
+                else:
+                    case.assertIs(error.__cause__, fault, 'publication uncertainty preserves original typed cause')
+                    case.assertEqual(api.activation_readback(request)['status'], 'prepared' if site == 'attempt-fails' else 'published_observed')
+                    case.assertTrue(api.activate(request)['durability_confirmed'])
+
+    def test_published_observation_tolerates_actual_commit_inside_open(self):
+        request = self.request()
+        result = self.api().activate(request)
+        current = self.opened(result)
+        path = Path(request['candidate_path'])
+        with current.runner_guard('active-writer'):
+            for operation in ('readback','retry'):
+                before = dict(self.sql(path,'SELECT key,value FROM metadata'))
+                real_connect = sqlite3.connect
+                committed = []
+                def connect(value, *args, **kwargs):
+                    db = real_connect(value, *args, **kwargs)
+                    if str(value).startswith(path.as_uri()+'?') and not committed:
+                        committed.append(operation)
+                        self.create(current, 'inside-open-'+operation)
+                    return db
+                with self.subTest(operation=operation), mock.patch.object(sqlite3,'connect',connect):
+                    outcome = self.accepted(lambda: self.api().activate(request)) if operation == 'retry' else self.api().activation_readback(request)
+                    self.assertEqual(outcome['status'], 'published' if operation == 'retry' else 'published_observed')
+                after = dict(self.sql(path,'SELECT key,value FROM metadata'))
+                self.assertEqual(committed, [operation])
+                self.assertEqual(int(after['commit_seq']),int(before['commit_seq'])+1)
+                self.assertNotEqual(after['commit_id'],before['commit_id'])
+                print('LIVE_COMMIT', json.dumps(dict(operation=operation,before=before['commit_id'],after=after['commit_id'])),flush=True)
+
+    def test_backup_tolerates_actual_source_commit_inside_open(self):
+        real_connect = sqlite3.connect
+        committed = []
+        before = dict(self.sql(self.path,'SELECT key,value FROM metadata'))
+        def connect(value, *args, **kwargs):
+            db = real_connect(value, *args, **kwargs)
+            if str(value).startswith(self.path.as_uri()+'?') and not committed:
+                committed.append(True)
+                self.create(self.store,'inside-backup-open')
+            return db
+        with mock.patch.object(sqlite3,'connect',connect):
+            bundle = self.accepted(self.backup)
+        manifest = self.api().inspect(bundle['bundle_path'])
+        after = dict(self.sql(self.path,'SELECT key,value FROM metadata'))
+        self.assertEqual(committed,[True])
+        self.assertEqual(int(after['commit_seq']),int(before['commit_seq'])+1)
+        self.assertEqual(manifest['metadata']['commit_id'],after['commit_id'])
+        self.assertEqual(self.records(Path(bundle['bundle_path'])/'data.sqlite3'),self.records(self.path))
+
+    def test_published_live_database_busy_withholds_binding(self):
+        request = self.request()
+        self.api().activate(request)
+        writer = sqlite3.connect(request['candidate_path'],isolation_level=None)
+        writer.execute('BEGIN EXCLUSIVE')
+        try:
+            started = time.perf_counter()
+            error = self.refused(lambda:self.api().activate(request),'DATABASE_BUSY')
+            self.assertTrue(error.retryable)
+            self.assertLess(time.perf_counter()-started,2.0)
+            result = self.api().activation_readback(request)
+            self.assertEqual(result['status'],'unconfirmed')
+            self.assertNotIn('binding',result)
+            self.assertNotIn('observed_binding',result)
+        finally:
+            writer.rollback()
+            writer.close()
+        self.assertTrue(self.api().activate(request)['durability_confirmed'])
+
+    def test_readback_cancellation_propagates_and_releases_ownership(self):
+        request = self.request()
+        self.prepared(request)
+        api = self.api()
+        with mock.patch.object(api,'_candidate_fixed',side_effect=KeyboardInterrupt('cancel observation')):
+            with self.assertRaises(KeyboardInterrupt):
+                api.activation_readback(request)
+        with api._claim(request) as claim:
+            self.assertIsNotNone(claim.fd)
+            with api._fence(request,'exclusive',self.io().Timings()):
+                pass
+        self.assertEqual(api.activation_readback(request)['status'],'prepared')
+
+    def test_exclusive_recovery_fence_requires_both_independent_locks(self):
+        api = self.api()
+        request = self.request()
+        for suffix, operation in (('.lock',fcntl.LOCK_SH),('.runner.lock',fcntl.LOCK_EX)):
+            fd = os.open(str(self.anchor)+suffix,os.O_RDWR)
+            try:
+                fcntl.flock(fd,operation|fcntl.LOCK_NB)
+                def acquire():
+                    with api._fence(request,'exclusive',self.io().Timings()):
+                        pass
+                with self.subTest(held=suffix):
+                    self.refused(acquire,'AUTHORITY_BUSY')
+            finally:
+                os.close(fd)
+
+    def test_request_digest_pin_rejects_other_valid_same_lineage_bundle(self):
+        first = self.backup(name='first-bundle')
+        self.create(self.store,'second-snapshot')
+        second = self.backup(name='second-bundle')
+        self.assertNotEqual(first['bundle_digest'],second['bundle_digest'])
+        request = self.request(second)
+        request['bundle_digest'] = first['bundle_digest']
+        self.refused(lambda:self.api().activate(request),'BUNDLE_INVALID')
+        self.assertFalse(self.control().exists())
+
+    def test_normal_recovery_carries_complete_history_forward(self):
+        first = self.api().activate(self.request())
+        self.assertTrue(first['history_complete'],'initial complete history must remain complete')
+        current = self.opened(first)
+        second = self.api().activate(self.request(self.backup(current,'bundle2'),current,name='candidate2'))
+        self.assertTrue(second['history_complete'],'normal recovery must carry true forward')
+
+    def test_original_identity_swap_refuses_normal_recovery(self):
+        for moment in ('before','during','after-read'):
+            with self.subTest(moment=moment), self.isolated() as case:
+                request = case.request()
+                before = case.anchor.read_bytes()
+                saved = case.path.with_suffix('.saved')
+                swapped = []
+                def swap():
+                    case.path.rename(saved)
+                    shutil.copy2(saved,case.path)
+                    swapped.append([saved.stat().st_ino,case.path.stat().st_ino])
+                if moment == 'before':
+                    swap()
+                real_connect = sqlite3.connect
+                real_read = case.io().read_metadata
+                def connect(value,*args,**kwargs):
+                    db=real_connect(value,*args,**kwargs)
+                    if moment == 'during' and str(value).startswith(case.path.as_uri()+'?') and not swapped:
+                        swap()
+                    return db
+                def read(path,*args,**kwargs):
+                    result=real_read(path,*args,**kwargs)
+                    if moment == 'after-read' and Path(path)==case.path and not swapped:
+                        swap()
+                    return result
+                with mock.patch.object(sqlite3,'connect',connect),mock.patch.object(case.io(),'read_metadata',read):
+                    case.refused(lambda:case.api().activate(request),'ORIGINAL_UNAVAILABLE')
+                case.assertEqual(len(swapped),1)
+                case.assertNotEqual(*swapped[0])
+                case.assertEqual(case.anchor.read_bytes(),before)
+
+    def test_published_identity_swap_is_checked_before_metadata(self):
+        request=self.request()
+        self.api().activate(request)
+        path=Path(request['candidate_path'])
+        saved=path.with_suffix('.saved')
+        real_connect=sqlite3.connect
+        queries=[]
+        def connect(value,*args,**kwargs):
+            db=real_connect(value,*args,**kwargs)
+            if str(value).startswith(path.as_uri()+'?'):
+                db.set_trace_callback(queries.append)
+                path.rename(saved)
+                shutil.copy2(saved,path)
+            return db
+        with mock.patch.object(sqlite3,'connect',connect):
+            self.assertEqual(self.api().activation_readback(request)['status'],'unconfirmed')
+        self.assertFalse(any('FROM metadata' in statement for statement in queries),
+                         'live inode mismatch must refuse before metadata SQL: '+repr(queries))
+
+    def test_prepared_media_reverified_by_fresh_retry_process(self):
+        blob = self.ready_media()
+        request = self.request()
+        self.prepared(request)
+        candidate = Path(request['candidate_path']+'.media')/blob.name
+        candidate.write_bytes(b'!'*candidate.stat().st_size)
+        before = self.anchor.read_bytes()
+        cache = self.root/'retry-pycache'
+        script = ('import sys,json;sys.path.insert(0,sys.argv[2]);from aim_next.recovery import activate,RecoveryError\n'
+                  'try:\n r=activate(json.loads(sys.argv[1]));r={"status":r["status"]}\n'
+                  'except RecoveryError as e:\n r={"code":e.code}\n'
+                  'r["cache"]=sys.pycache_prefix;print(json.dumps(r))\n')
+        result = subprocess.run(['/usr/bin/python3','-I','-X','pycache_prefix='+str(cache),'-c',script,
+                                 json.dumps(request),str(Path(__file__).resolve().parents[1])],
+                                capture_output=True,text=True,timeout=15)
+        self.assertEqual(result.returncode,0,result.stderr)
+        observed=json.loads(result.stdout)
+        self.assertEqual(observed['cache'],str(cache))
+        self.assertEqual(observed.get('code'),'CANDIDATE_INVALID','fresh retry must hash staged media')
+        self.assertEqual(self.anchor.read_bytes(),before)
+
+    def test_ordered_candidate_and_control_flushes_precede_publication(self):
+        for retry in (False,True):
+            with self.subTest(retry=retry), self.isolated() as case:
+                blob=case.ready_media()
+                request=case.request()
+                if retry:
+                    case.prepared(request)
+                api,io=case.api(),case.io()
+                events=[]
+                violations=[]
+                real_stage,real_flush,real_replace=api._stage_epoch,io.full_flush,os.replace
+                def stage(*args,**kwargs):
+                    result=real_stage(*args,**kwargs)
+                    events.append(('epoch-written',None))
+                    return result
+                def flush(fd):
+                    result=real_flush(fd)
+                    events.append(('flushed',io.identity(os.fstat(fd))))
+                    return result
+                def required(staged_marker=False):
+                    path=Path(request['candidate_path'])
+                    media=Path(str(path)+'.media')
+                    claim=case.claim(request)
+                    paths=[path,media/blob.name,media,path.parent,path.parent.parent,claim/'lock',
+                           claim/'request.complete.json',claim,case.control()/'header.json',case.control(),case.control().parent]
+                    if staged_marker:
+                        paths.append(claim/'staged.json')
+                    start=next((i for i,e in enumerate(events) if e[0]=='epoch-written'),-1)
+                    successful=[e[1] for e in events[start+1:] if e[0]=='flushed']
+                    for target in paths:
+                        if io.identity(target.stat()) not in successful:
+                            violations.append('missing successful post-stage prerequisite '+str(target))
+                def replace(source,dest):
+                    if Path(dest)==case.claim(request)/'staged.json':
+                        required()
+                    if Path(dest)==case.anchor:
+                        required(True)
+                        if io.identity(Path(source).stat()) not in [e[1] for e in events if e[0]=='flushed']:
+                            violations.append('missing temporary-anchor flush')
+                    result=real_replace(source,dest)
+                    events.append(('replace',str(dest)))
+                    return result
+                with mock.patch.object(api,'_stage_epoch',stage),mock.patch.object(io,'full_flush',flush), \
+                        mock.patch.object(os,'replace',replace):
+                    case.assertTrue(api.activate(request)['durability_confirmed'])
+                case.assertFalse(violations,'flush ordering violations: '+repr(violations))
+                print('ORDERED_FLUSH_EVENTS',json.dumps(dict(retry=retry,events=events)),flush=True)
 
 
 if __name__ == '__main__':

@@ -73,7 +73,7 @@ def _backup(db_path, instance_id, expected_binding, bundle_path, timings):
         fd = os.open(str(target), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         os.close(fd)
         with authority.shared() as fence:
-            with io.connection(path, code='ORIGINAL_UNAVAILABLE') as source:
+            with io.connection(path, code='ORIGINAL_UNAVAILABLE', policy='live') as source:
                 snapshot = sqlite3.connect(str(target), isolation_level=None)
                 try:
                     # A persistently locked source is a failed bounded attempt,

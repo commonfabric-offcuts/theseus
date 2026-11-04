@@ -69,6 +69,18 @@ def checked(path, directory=False, code='CONTROL_INVALID'):
         raise RecoveryError(code) from error
 
 
+def original_checked(path):
+    """Availability is not private-candidate acceptance or failed observation."""
+    try:
+        info = Path(path).lstat()
+    except FileNotFoundError as error:
+        raise RecoveryError('ORIGINAL_UNAVAILABLE') from error
+    except OSError as error:
+        raise RecoveryError('RECOVERY_UNCONFIRMED') from error
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid(), 'RECOVERY_UNCONFIRMED')
+    return info
+
+
 @contextmanager
 def opened(path, directory=False, write=False, code='CONTROL_INVALID'):
     flags = (os.O_RDWR if write else os.O_RDONLY) | os.O_NOFOLLOW | os.O_NONBLOCK
@@ -189,8 +201,11 @@ META = ('instance_id', 'schema_version', 'authority_id', 'authority_path', 'auth
 
 
 @contextmanager
-def connection(path, *, write=False, code='CANDIDATE_INVALID', require_delete=True):
-    before = facts(checked(path, code=code))
+def connection(path, *, write=False, code='CANDIDATE_INVALID', require_delete=True, policy='immutable'):
+    require(policy in ('immutable', 'live', 'original') and (not write or policy == 'immutable'))
+    def observe():
+        return original_checked(path) if policy == 'original' else checked(path, code=code)
+    before = observe()
     db = sqlite3.connect(Path(path).as_uri() + ('?mode=rw' if write else '?mode=ro'),
                          uri=True, isolation_level=None, timeout=0.25)
     try:
@@ -202,11 +217,14 @@ def connection(path, *, write=False, code='CANDIDATE_INVALID', require_delete=Tr
         # Availability is a read-only history observation, not candidate
         # acceptance. A readable WAL original still forbids choosing a gap.
         compared = actual if require_delete else dict(actual, journal_mode='delete')
-        require(compared == RUNTIME, code)
-        require(facts(checked(path, code=code)) == before, code)
+        require(compared == RUNTIME, 'RECOVERY_UNCONFIRMED' if policy == 'original' else code)
+        after = observe()
+        require(identity(after) == identity(before), code)
+        if policy == 'immutable':
+            require(facts(after) == facts(before), code)
         yield db
-        after = checked(path, code=code)
-        require(identity(after) == [before['device'], before['inode']], code)
+        after = observe()
+        require(identity(after) == identity(before), code)
     finally:
         try:
             db.close()
@@ -224,7 +242,9 @@ def metadata(db, code='CANDIDATE_INVALID'):
         require(kind == 'text' and isinstance(raw, bytes) and len(raw) <= 4096, code)
         result[key] = raw.decode('utf-8')
     seq = result['commit_seq']
-    require(result['schema_version'] == SCHEMA_VERSION and seq.isascii() and seq.isdigit()
+    require(result['schema_version'] == SCHEMA_VERSION,
+            'RECOVERY_UNCONFIRMED' if code == 'ORIGINAL_UNAVAILABLE' else code)
+    require(seq.isascii() and seq.isdigit()
             and len(seq) <= 19 and int(seq) < 9223372036854775807
             and re.fullmatch('[0-9a-f]{32}', result['commit_id']) is not None, code)
     require(all(identifier(result[key]) for key in ('instance_id', 'authority_id', 'authority_epoch')), code)
@@ -232,8 +252,8 @@ def metadata(db, code='CANDIDATE_INVALID'):
     return result
 
 
-def read_metadata(path, code='CANDIDATE_INVALID', *, require_delete=True):
-    with connection(path, code=code, require_delete=require_delete) as db:
+def read_metadata(path, code='CANDIDATE_INVALID', *, require_delete=True, policy='immutable'):
+    with connection(path, code=code, require_delete=require_delete, policy=policy) as db:
         db.execute('BEGIN')
         return metadata(db, code)
 

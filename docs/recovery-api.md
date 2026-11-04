@@ -32,6 +32,12 @@ owned by the current user at mode 0700. The candidate's own media directory is
 `<candidate_path>.media`. Files are exclusive, no-follow, regular, single-link,
 current-user-owned mode 0600. Control stays outside bundle/candidate roots at
 `<authority_path>.activations`. No destination is adopted because it looks empty.
+The inspected bundle's recorded authority spelling is the path pin. Case or
+firmlink aliases of the same inode are not silently normalized: a differently
+spelled request refuses before a new control root or claim is created. A bundle
+itself recorded under an alias therefore needs that exact spelling. An existing
+root header may name the same directory by another canonical spelling, but must
+still identify the same inode and stable locks; a copy is never accepted.
 
 A completed bundle has `data.sqlite3`, `media/`, and a final `manifest.json`.
 The manifest records exact database bytes, fixed runtime/commit metadata and all
@@ -58,18 +64,30 @@ The per-ID lock spans preparation and cutover. Long copy/hash work holds no
 authority EX or runner lock. The exclusive cutover does fixed metadata/identity
 reads and checked publication only. Normal mode compares both commit sequence
 and commit ID. Explicit unavailable mode still refuses a readable valid original,
-even if its pair differs. Missing/changed/unreadable original history is recorded
-as incomplete; busy, interruption and cleanup uncertainty cannot establish that
-history is unavailable. Later normal recovery preserves any earlier history gap.
+even if its pair differs or its mode/link count was changed by an operator.
+Only positively observed absence, a different owned regular inode, confirmed
+corruption or different lineage can establish unavailable history and a gap.
+Access denial (including mode 000), owner/type mismatch, unsupported schema,
+runtime-observation failure, busy, interruption and cleanup uncertainty refuse
+in both modes; inability to observe is not permission to discard history.
+This intentionally differs from the candidate policy: our candidate must remain
+private, single-link and correctly owned. Later normal recovery preserves an
+earlier gap and carries forward confirmed complete history.
 
 Only `activate` can return `durability_confirmed: true` with `binding` containing
 `instance_id`, `db_path`, `authority_path`, `authority_id`, and `authority_epoch`.
 The workflow may save/use that confirmed binding. A fresh cutover flushes every
 candidate/control prerequisite and the temporary anchor before replacement,
 then flushes the anchor directory and revalidates. Failure is never repaired by
-republishing the predecessor. A matching current retry confirms the anchor and
+republishing the predecessor. Every failure after anchor replacement is attempted,
+including a typed identity check or close failure, is RECOVERY_UNCONFIRMED with
+its cause retained. A matching current retry confirms the anchor and
 parent with fresh full flush under SH, even with an active runner or absent old
 DB/bundle; it does not enter EX bootstrap or compare to the old staged hash.
+Live source/published-candidate observations permit size/time changes from normal
+commits while retaining identity, private-file and binding/runtime checks. SQLite
+online backup supplies a consistent snapshot. Immutable bundles and unpublished
+candidates retain their stronger unchanged-facts and content-hash checks.
 
 Readback never writes or flushes and never returns `binding`. Its statuses are
 `not_started`, `preparation_incomplete`, `prepared`, `published_observed`, `stale`,
@@ -79,6 +97,9 @@ save a profile or start dispatch. Partial staging refuses; the operator preserve
 the artifacts and selects a fresh UUID and path. No root/claim/candidate/bundle
 garbage collection or automatic repair is included. A completed matching retry
 after a later activation is stale; changed inputs under the old ID refuse.
+KeyboardInterrupt during readback propagates after owned-lock cleanup, rather
+than becoming an ordinary observation. Mutating operations retain uncertainty
+semantics; cancellation does not imply that nothing was written.
 
 `RecoveryError` has `code`, `retryable`, and `evidence` (exact selected paths and
 phase timings where available). Busy outcomes are bounded, not evidence of a

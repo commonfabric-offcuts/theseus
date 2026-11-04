@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-import errno
 import fcntl
 import os
 from pathlib import Path
@@ -158,7 +157,8 @@ def _control(request, record, *, missing=False):
     header, _ = io.read_record(root/'header.json')
     require(set(header) == {'v','path','authority_id','instance_id','initial_epoch','root_identity',
                             'lock_identity','runner_lock_identity'} and type(header['v']) is int and header['v'] == 1)
-    require(header['path'] == str(root) and header['authority_id'] == request['authority_id']
+    require(io.identity(io.checked(io.canonical(header['path']), True)) == io.identity(root_info)
+            and header['authority_id'] == request['authority_id']
             and header['instance_id'] == request['instance_id'] and header['root_identity'] == io.identity(root_info)
             and header['lock_identity'] == [record['lock_device'],record['lock_inode']]
             and header['runner_lock_identity'] == [record['runner_lock_device'],record['runner_lock_inode']])
@@ -303,9 +303,12 @@ def _candidate_fixed(request, record=None, staged=None):
     if staged is not None:
         require(io.facts(before) == staged['database_stat'] and io.identity(directory_info) == staged['directory_identity']
                 and io.identity(media_info) == staged['media_identity'], 'CANDIDATE_INVALID')
-    metadata = io.read_metadata(path)
+    metadata = io.read_metadata(path, policy='live' if record is not None else 'immutable')
     require(_metadata_matches(metadata, request, _epoch(request)), 'CANDIDATE_INVALID')
-    require(io.facts(io.checked(path, code='CANDIDATE_INVALID')) == io.facts(before), 'CANDIDATE_INVALID')
+    after = io.checked(path, code='CANDIDATE_INVALID')
+    require(io.identity(after) == io.identity(before), 'CANDIDATE_INVALID')
+    if record is None:
+        require(io.facts(after) == io.facts(before), 'CANDIDATE_INVALID')
     require(io.identity(io.checked(directory, True, 'CANDIDATE_INVALID')) == io.identity(directory_info)
             and io.identity(io.checked(media, True, 'CANDIDATE_INVALID')) == io.identity(media_info), 'CANDIDATE_INVALID')
     if staged is not None:
@@ -376,12 +379,16 @@ def _stage_epoch(path, request, manifest):
         db.commit()
 
 
-def _prepare(request, claim, timings):
+def _inspect_request(request, timings):
+    with timings.phase('verification'):
+        manifest = inspect(request['bundle_path'], expected_digest=request['bundle_digest'])
+        require(_metadata_matches(manifest['metadata'], request, request['expected_epoch']), 'BUNDLE_INVALID')
+        return manifest
+
+
+def _prepare(request, claim, timings, manifest):
     bundle = Path(request['bundle_path'])
     candidate = Path(request['candidate_path'])
-    with timings.phase('verification'):
-        manifest = inspect(str(bundle), expected_digest=request['bundle_digest'])
-        require(_metadata_matches(manifest['metadata'], request, request['expected_epoch']), 'BUNDLE_INVALID')
     io.checked(candidate.parent.parent, True, 'INVALID_REQUEST')
     try:
         candidate.parent.mkdir(mode=0o700)
@@ -457,21 +464,20 @@ def _original(request, record, staged):
     """One fixed read-only observation; busy/interruption never means missing."""
     try:
         path = Path(record['db_path'])
-        before = io.checked(path, code='ORIGINAL_UNAVAILABLE')
+        before = io.original_checked(path)
         require(io.identity(before) == [record['db_device'], record['db_inode']], 'ORIGINAL_UNAVAILABLE')
-        metadata = io.read_metadata(path, 'ORIGINAL_UNAVAILABLE', require_delete=False)
+        metadata = io.read_metadata(path, 'ORIGINAL_UNAVAILABLE', require_delete=False, policy='original')
         require(_metadata_matches(metadata, request, record['epoch']), 'ORIGINAL_UNAVAILABLE')
-        require(io.identity(io.checked(path, code='ORIGINAL_UNAVAILABLE')) == io.identity(before), 'ORIGINAL_UNAVAILABLE')
+        require(io.identity(io.original_checked(path)) == io.identity(before), 'ORIGINAL_UNAVAILABLE')
     except (RecoveryError, OSError, sqlite3.Error) as error:
         if io.busy(error):
             raise RecoveryError('DATABASE_BUSY', retryable=True) from error
-        if (isinstance(error, InterruptedError) or error.__cause__ is not None and not isinstance(error, RecoveryError)
-                or isinstance(error, sqlite3.OperationalError)
-                or isinstance(error, OSError) and error.errno not in (errno.ENOENT, errno.EIO, errno.EACCES)):
+        known_unavailable = (isinstance(error, RecoveryError) and error.code == 'ORIGINAL_UNAVAILABLE'
+                             or type(error) is sqlite3.DatabaseError and error.__cause__ is None
+                             and str(error) in ('file is not a database', 'database disk image is malformed'))
+        if not known_unavailable:
             raise RecoveryError('RECOVERY_UNCONFIRMED') from error
-        # Only known unavailable/identity/corruption observations justify a gap.
-        if isinstance(error, RecoveryError) and error.code != 'ORIGINAL_UNAVAILABLE':
-            raise
+        # Only positively observed absence/identity/corruption/lineage warrants a gap.
         if request['mode'] == 'normal':
             raise RecoveryError('ORIGINAL_UNAVAILABLE') from error
         return False, 'missing_changed_or_unreadable'
@@ -488,17 +494,24 @@ def _publish_anchor(request, fence, record):
     path = Path(request['authority_path'])
     temporary = path.parent/('.'+path.name+'.activation-'+uuid.uuid4().hex)
     fd = os.open(str(temporary), os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, 'wb') as stream:
-        io.check_info(os.fstat(stream.fileno()))
-        raw = io.encode(record)
-        require(len(raw) <= 65536)
-        stream.write(raw)
-        stream.flush()
-        io.full_flush(stream.fileno())
-        os.replace(str(temporary), str(path))
-        io.flush_path(path.parent, True)
-        require(io.identity(io.checked(path)) == io.identity(os.fstat(stream.fileno())))
-        require(fence.verify() == record)
+    attempted = False
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            io.check_info(os.fstat(stream.fileno()))
+            raw = io.encode(record)
+            require(len(raw) <= 65536)
+            stream.write(raw)
+            stream.flush()
+            io.full_flush(stream.fileno())
+            attempted = True
+            os.replace(str(temporary), str(path))
+            io.flush_path(path.parent, True)
+            require(io.identity(io.checked(path)) == io.identity(os.fstat(stream.fileno())))
+            require(fence.verify() == record)
+    except BaseException as error:
+        if attempted:
+            raise RecoveryError('RECOVERY_UNCONFIRMED') from error
+        raise
 
 
 def _activate(request, timings):
@@ -512,6 +525,9 @@ def _activate(request, timings):
         if claim.record is not None:
             require(state['status'] == 'prepared', 'PREPARATION_INCOMPLETE')
             return _cutover(request, claim, timings)
+    # A verified bundle pins the authority spelling before permanent control
+    # creation. Published retries above never need the original or bundle.
+    manifest = _inspect_request(request, timings)
     _bootstrap_control(request, timings)
     with _claim(request, create=True) as claim:
         with _fence(request, 'readback', timings) as fence:
@@ -520,7 +536,7 @@ def _activate(request, timings):
             return state
         require(state['status'] != 'stale', 'STALE')
         if claim.fresh:
-            _prepare(request, claim, timings)
+            _prepare(request, claim, timings, manifest)
         else:
             require(state['status'] == 'prepared', 'PREPARATION_INCOMPLETE')
         return _cutover(request, claim, timings)
@@ -585,5 +601,5 @@ def activation_readback(request):
         status = {'REQUEST_MISMATCH':'request_mismatch', 'PREPARATION_INCOMPLETE':'preparation_incomplete',
                   'CLAIM_BUSY':'busy', 'AUTHORITY_BUSY':'busy'}.get(error.code, 'unconfirmed')
         return dict(status=status, durability_confirmed=False, error=error.code, timings_seconds=timings.seconds)
-    except (OSError, sqlite3.Error, ValueError, TypeError, KeyError, UnicodeError, RecursionError, KeyboardInterrupt):
+    except (OSError, sqlite3.Error, ValueError, TypeError, KeyError, UnicodeError, RecursionError):
         return dict(status='unconfirmed', durability_confirmed=False, error='RECOVERY_UNCONFIRMED', timings_seconds=timings.seconds)
