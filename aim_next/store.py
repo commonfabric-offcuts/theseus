@@ -20,6 +20,7 @@ from .runner import Runner, RUNNER_SCHEMA
 from .memory import Memory, MEMORY_SCHEMA
 from .media import Media, MEDIA_SCHEMA
 from .route_pins import RoutePins
+from .changes import Changes
 
 
 SCHEMA_VERSION = "8"
@@ -118,7 +119,7 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(Drafts, Delivery, Conversation, Runner, Memory, Media, RoutePins):
+class Store(Drafts, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")

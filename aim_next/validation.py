@@ -25,6 +25,7 @@ REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision
                      "memory.create": "item_revision", "memory.revise": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision"}
 VIEWS = {
+    "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction"}, "source": {"source_ref", "kind", "id", "revision"},
@@ -102,7 +103,10 @@ def _view_arguments(name, args):
             _identifier(args[key], key)
     if "cursor" in args:
         cursor = args["cursor"]
-        if name == "deliveries":
+        if name == "changes":
+            from .changes import _cursor
+            _cursor(cursor)
+        elif name == "deliveries":
             from .delivery import _position
             if cursor is None:
                 raise Refusal("INVALID_ARGUMENT", "Invalid delivery page cursor")
