@@ -87,8 +87,10 @@ selected entrypoint path; it is not a sandbox or proof about arbitrary scripts,
 plugins or files that an explicitly configured interpreter might load. The real
 selected broker and its loaded code need their own source/review binding.
 
-The executable and fixed arguments run as an argument array with shell=False.
-No message text is appended to argv or interpolated. One bounded JSON object
+Preserve the configured argv array literally, including argv[0]. Carry the
+validated resolved executable separately to Popen(executable=...), so symlink or
+multi-call entrypoint naming keeps its configured meaning. The executable and
+fixed arguments run with shell=False. No message text is appended to argv or interpolated. One bounded JSON object
 on stdin carries schema 1, the validated binding, the captured wake generation
 and attempt_id. The generation represents due recipient work and is not an
 acknowledgement cursor. It does not carry message bodies or an unbounded delivery
@@ -146,16 +148,20 @@ delivery requires a separately tested broker with durable acceptance/dedup.
   Core's proposed claim duration is 20 seconds and singleton lease 30 seconds.
   Claiming checks that the singleton lease extends through the entire claim.
   Late renewal must not leave an in-flight claim beyond its owner's lease.
-  Encode at most 8 KiB of stdin metadata and use communicate(timeout), not an
-  unbounded synchronous pipe write. The deadline covers input even when the
-  child never reads it; a small payload alone is not the proof of boundedness.
+  Encode at most 8 KiB of stdin metadata and write through a nonblocking pipe
+  under the original deadline. Do not use communicate, poll or wait on the
+  broker before group cleanup: these can reap its leader. The deadline covers
+  registration and input even when the child never reads it; a small payload
+  alone is not the proof of boundedness.
 - Start the child in its own process group. On timeout terminate that owned
   group, then kill it if necessary and reap the child. Never signal a user's
   browser, a discovered process or another runner. Stopping a broker does not
   recall a hint it already accepted or prove external work stopped; retries
-  retain the same captured wake identity. After reap, killpg(pgid, 0) reporting
-  ESRCH confirms that the owned group no longer exists. This does not prove that
-  a deliberately detached descendant or durable broker queue was recalled.
+  retain the same captured wake identity. Observe exit without reaping and keep
+  the zombie leader until group cleanup is confirmed, so its PID/PGID cannot be
+  reused before a signal. The concrete Mac mechanism and its limits are below.
+  This does not prove that a deliberately detached descendant or durable broker
+  queue was recalled.
   If cleanup cannot be confirmed within the cleanup budget, pause the
   runner rather than starting a second child. Broker contracts forbid escaping
   the owned process group except for an explicitly accepted durable queue.
@@ -178,7 +184,7 @@ around a fake implementation of delivery storage.
 
 ## Evidence before integration
 
-### Concrete invocation seam (lead follow-up, pending bounded critique)
+### Concrete invocation seam (revised after Core/Fable critique; final readback pending)
 
 Core confirmed the actual calling sequence in `m-43e1d4ff`: renew ownership,
 claim due work, invoke the adapter, register the child after spawn, then settle
@@ -199,27 +205,73 @@ the singleton covers the whole claim. An old receipt after Mac sleep is not
 permission to launch. A prepared route is ephemeral data, not cached dispatch
 authority. Final runner integration must prove the real sequence.
 
+One five-second elapsed deadline begins immediately before Popen, with no
+reset for registration or stdin. Use Python 3.9's clock_gettime_ns with
+CLOCK_MONOTONIC_RAW on this Mac, which advances through sleep; refuse invocation
+if this required clock is unavailable. Python time.monotonic uses
+mach_absolute_time here and excludes sleep. Wall time separately checks the
+absolute Core leases before spawn and during the loop. A forward wall-clock
+jump or elapsed expiry causes cleanup; a backward wall-clock jump cannot extend
+the elapsed deadline. This is a cooperative bound around OS process creation
+and the actual Core callback, not a promise to preempt arbitrary hanging Python
+callbacks or blocked process creation.
+
 `record_child(pid, started_at)` calls Core's token-bound diagnostic registration
-and must return its `status:recorded` result. It runs just after spawn, inside
-the same five-second invocation deadline; missing registration never releases
-the inherited guard. A failed/exceptional registration cleans up the owned group
-and raises a bounded adapter fault for the caller to pause/report, rather than
-inventing an accepted wake. No extra durable lifecycle is introduced here.
+and must return `status:recorded` for the exact expected instance. It runs just
+after spawn, inside that same original deadline. Core's actual callback has a
+250ms SQLite busy bound; a delayed-callback control proves its elapsed time is
+charged. Stale status, wrong instance, exception or deadline exhaustion triggers
+owned cleanup and a fixed fault requiring persistent pause. Missing registration
+never releases the inherited guard or invents acceptance. No extra durable
+lifecycle is introduced here.
 
 The bounded adapter result contains only outcome, exit code and a fixed reason
-code. No route/profile payload, token or child output is returned. A normal exit
-is classified only after the direct child is reaped and the owned process group
-is absent. A surviving group is cleaned up within the one-second budget; it is
-an error even if the direct child said zero. Unconfirmed cleanup raises a fault
-requiring the existing persistent pause. Unexpected internal exceptions also
-clean up the owned child, then propagate a fixed fault; they do not enter a hot
-retry loop. Guard/lease/settlement and delivery acknowledgement stay Core-owned.
+code. No route/profile payload, token or child output is returned. On this
+CPython 3.9.6 Mac os.waitid is unavailable. Use select.kqueue with KQ_FILTER_PROC
+and KQ_NOTE_EXIT to observe the owned leader without reaping it. Retain the
+Popen object and never call its poll/wait/communicate before group cleanup.
+Registration can race a fast exit: an ESRCH/missing exit event is not permission
+to signal a remembered PGID or infer successful cleanup. A bounded process-list
+observation must still show the unreaped owned leader, and only its Z state
+establishes the fast-exit fallback; ambiguous/missing leader causes a fixed fault.
+A focused control must exercise exit before watcher registration.
+
+Use a bounded `/bin/ps -A -o pid=,pgid=,stat=` observation, filter numeric PGID in
+Python, and exclude zombie rows when finding live members. The helper has a
+bounded output cap and runs only within the remaining cleanup/invocation budget;
+malformed, truncated, timed-out or otherwise ambiguous observations fail closed.
+This is a diagnostic helper, not a second broker. Do not use killpg(pgid, 0) as
+an absence oracle: Fable's actual Mac probe returns PermissionError for a
+zombie-only group. If descendants survive leader exit, terminate the owned group
+while the unreaped leader still reserves its identity, escalate within the
+one-second cleanup budget, confirm no live group members, then reap the leader.
+A surviving descendant makes the invocation an error even when the leader exits
+zero. Reap only after cleanup, and never signal that PGID after reap. Unconfirmed
+cleanup raises a fault requiring the existing persistent pause. Unexpected
+internal exceptions follow the same owned cleanup, then return a fixed fault;
+they do not enter a hot retry loop. Guard/lease/settlement and acknowledgement
+stay Core-owned.
+
+The concrete mechanism evidence is Fable m-2ff52a7f: one zombie-only group and
+one zombie leader with a live descendant, NOTE_EXIT observed before reap. Lead
+read the raw probe and log; it is not the adapter implementation or a measured
+sleep test. Fable m-b93f45e4/m-3c00952a and Core m-09115ed1 supply the critique.
+An escaped setsid descendant is a trusted-broker contract violation, not a
+claimed detectable live condition. Its inherited guard must independently block
+a new acquire/cutover after the parent closes/exits; guard.verify in the parent
+cannot establish absence. Tests may prove that blocking limit, not detection of
+arbitrary escaped processes. A real broker's durable queue must still be reviewed
+and proven separately.
 
 Named adapter checks: exact literal argv/stdin and allowlisted parent environment;
 real inherited guard descriptors; no child on missing/mismatched route or spent
-lease; exit 0/75/other; a broker that never reads stdin hits the actual deadline;
-owned descendant cleanup; failed registration; and independent process/group
-absence. Applied mutants cover binding, captured identity, literal invocation,
+lease; exit 0/75/other and exit before watcher registration; a broker that never
+reads stdin; delayed/stale/wrong-instance registration; finite 1MiB child output
+going to DEVNULL; single original deadline; owned descendant cleanup before reap;
+and independent process/group observations. Process-list failure must pause,
+not infer absence. An order-control catches reap-before-signal without claiming
+a forced PID reuse that was not observed. The escaped-child case checks only
+independent guard blocking after parent exit. Applied mutants cover binding, captured identity, literal invocation,
 descriptor inheritance and launch budget. No service, real agent route, browser
 or old AIM record is touched. These are adapter proofs, not a real broker's
 durable queue acceptance or the unfinished runner integration.
