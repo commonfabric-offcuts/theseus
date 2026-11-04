@@ -57,6 +57,7 @@ class HTTPContractTests(unittest.TestCase):
         (self.root / "private.txt").write_text("private record")
         (self.web / "leak.js").symlink_to(self.root / "private.txt")
         self.store = FakeStore()
+        self.command_pin = {key: self.store.authority[key] for key in ("authority_id", "authority_epoch")}
         self.server = create_server(lambda: self.store, "new-test", "test-owner", self.web,
                                     port=0, token="test-session", max_json_bytes=2048, max_reads=1)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -90,7 +91,7 @@ class HTTPContractTests(unittest.TestCase):
     def command(self, **changes):
         command = {"v": 1, "instance_id": "new-test", "operation_id": "send-A",
                    "kind": "message.send", "target": {"topic_id": "t1"},
-                   "expected": {}, "args": {"submission_id": "s1"}}
+                   "expected": {"authority": dict(self.command_pin)}, "args": {"submission_id": "s1"}}
         command.update(changes)
         return command
 

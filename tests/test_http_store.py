@@ -22,6 +22,7 @@ class SharedStoreHTTPTests(unittest.TestCase):
         self.binding = initialize(self.db, "isolated-test", [{"id": "test-human", "kind": "human"},
                                              {"id": "test-agent", "kind": "agent"}],
                                   authority_path=self.root / "authority.json")["binding"]
+        self.command_pin = {key: self.binding[key] for key in ("authority_id", "authority_epoch")}
         self.store = Store(self.db, "isolated-test", expected_binding=self.binding)
         self.server = create_server(lambda: Store(self.db, "isolated-test", expected_binding=self.binding),
                                     "isolated-test", "test-human", self.root,
@@ -51,7 +52,8 @@ class SharedStoreHTTPTests(unittest.TestCase):
 
     def workspace_command(self):
         return {"v": 1, "instance_id": "isolated-test", "operation_id": "workspace-once",
-                "kind": "workspace.create", "target": {}, "expected": {"workspace_revision": 0},
+                "kind": "workspace.create", "target": {},
+                "expected": {"authority": dict(self.command_pin), "workspace_revision": 0},
                 "args": {"id": "w-test", "title": "Isolated test", "team": []}}
 
     def test_bootstrap_exposes_backend_limits_once(self):
@@ -61,6 +63,43 @@ class SharedStoreHTTPTests(unittest.TestCase):
         self.assertEqual(bootstrap["actor"], "test-human")
         self.assertEqual(bootstrap["limits"], capabilities["limits"])
         self.assertEqual(bootstrap["authority"], capabilities["authority"])
+
+    def test_http_does_not_supply_a_missing_command_authority(self):
+        command = self.workspace_command()
+        command["expected"].pop("authority", None)
+        before = self.db.read_bytes()
+        result = self.request("/api/command", command)
+        self.assertFalse(result["recorded"], result)
+        self.assertEqual(result["error"]["code"], "INVALID_ARGUMENT")
+        self.assertEqual(self.db.read_bytes(), before)
+        operation = self.request("/api/view", {"name": "operation", "args": {
+            "operation_id": command["operation_id"]}})
+        self.assertEqual(operation["status"], "unknown")
+
+    def test_http_keeps_stale_command_pins_and_uses_view_for_recorded_receipts(self):
+        original = self.workspace_command()
+        committed = self.committed(original)
+        before = self.db.read_bytes()
+        stale = json.loads(json.dumps(original))
+        stale["expected"]["authority"]["authority_epoch"] = "earlier-captured-epoch"
+        new_stale = json.loads(json.dumps(stale))
+        new_stale["operation_id"] = "stale-new-act"
+        new_stale["args"]["id"] = "must-not-exist"
+        for command in (stale, new_stale):
+            with self.subTest(operation=command["operation_id"]):
+                result = self.request("/api/command", command)
+                self.assertFalse(result["recorded"], result)
+                self.assertEqual(result["error"]["code"], "AUTHORITY_CHANGED")
+                self.assertFalse(result["error"]["retryable"])
+                self.assertEqual(self.db.read_bytes(), before)
+        found = self.request("/api/view", {"name": "operation", "args": {
+            "operation_id": original["operation_id"]}})
+        self.assertEqual(found, committed)
+        unknown = self.request("/api/view", {"name": "operation", "args": {
+            "operation_id": new_stale["operation_id"]}})
+        self.assertEqual(unknown["status"], "unknown")
+        self.assertEqual(self.request("/api/command", original), committed)
+        self.assertEqual(self.db.read_bytes(), before)
 
     def test_database_binding_mismatch_preserves_authority_refusal(self):
         # Deliberate isolated corruption: external anchor and inode still match,
@@ -162,7 +201,8 @@ class SharedStoreHTTPTests(unittest.TestCase):
 
     def command(self, kind, op, args, target=None, expected=None):
         return {"v": 1, "instance_id": "isolated-test", "operation_id": op,
-                "kind": kind, "target": target or {}, "expected": expected or {}, "args": args}
+                "kind": kind, "target": target or {},
+                "expected": dict({"authority": dict(self.command_pin)}, **(expected or {})), "args": args}
 
     def committed(self, command):
         receipt = self.request("/api/command", command)
