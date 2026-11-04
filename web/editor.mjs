@@ -98,8 +98,10 @@ export class Editor {
     // A stays visible in submissions. New keystrokes have a separate local home
     // immediately, even before the server assigns the successor generation.
     this.draft = { ...emptyWriting(), id: this.draft.id, revision: null, generation: null };
-    this.localVersion = 0;
-    this.ackVersion = 0;
+    // Keep versions monotonic across writing cycles. A refused preparation
+    // retains the server slot: a late A save can share B's generation, but
+    // must never acknowledge edits made after this boundary.
+    this.ackVersion = this.localVersion;
     return submission;
   }
 

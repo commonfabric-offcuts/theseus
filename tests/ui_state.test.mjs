@@ -178,6 +178,33 @@ test('an A autosave arriving after rotation cannot replace B revision or generat
   assert.equal(editor.draft.revision, 8);
 });
 
+test('late A save after refused preparation cannot acknowledge B edits', () => {
+  const editor = fresh();
+  for (let i = 1; i <= 5; i++) editor.edit({ body: `A edit ${i}` });
+  const ticket = editor.saveTicket('save-A-8');
+  editor.beginPrepare(ids);
+  editor.edit({ body: 'B first edit' });
+  editor.edit({ body: 'B typed after send', caret: { start: 18, end: 18 } });
+  editor.acceptPreparation({ ...prepared(), status: 'rejected', result: {},
+    error: { code: 'REVISION_CONFLICT', message: 'Another version exists.' } });
+  const beforeB = structuredClone(editor.draft);
+  assert.equal(editor.acceptSave(ticket, { instance_id: 'new1', operation_id: 'save-A-8',
+    kind: 'draft.save', status: 'committed', recorded: true,
+    result: { draft_id: 'd1', draft_revision: 8, generation: 'gA' } }), true);
+  assert.equal(editor.dirty, true, 'A acknowledgement cannot suppress saving B');
+  assert.equal(editor.draft.body, beforeB.body);
+  assert.deepEqual(editor.draft.caret, beforeB.caret);
+  assert.equal(editor.submissions[0].snapshot.body, 'A edit 5');
+  const recovered = restoreEditor(context, { ...draft, body: 'A edit 5', revision: 8 }, editor.snapshot());
+  assert.equal(recovered.draft.body, 'B typed after send');
+  assert.equal(recovered.dirty, true, 'B must also remain unsaved after reopening');
+  const next = recovered.saveTicket('save-B');
+  assert.equal(recovered.acceptSave(next, { instance_id: 'new1', operation_id: 'save-B',
+    kind: 'draft.save', status: 'committed', recorded: true,
+    result: { draft_id: 'd1', draft_revision: 9, generation: 'gA' } }), true);
+  assert.equal(recovered.dirty, false, 'only B own acknowledgement settles B');
+});
+
 test('reload keeps unacknowledged text, caret, attachments and private note separation', () => {
   const editor = fresh();
   editor.edit({ body: 'Unsaved paragraph', caret: { start: 4, end: 9 } });
