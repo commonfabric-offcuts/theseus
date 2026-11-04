@@ -7,6 +7,7 @@ import json
 import mimetypes
 import secrets
 import re
+import select
 import socket
 import threading
 import time
@@ -29,6 +30,120 @@ COMMAND_FIELDS = {"v", "instance_id", "operation_id", "kind", "target", "expecte
 class RequestError(Exception):
     def __init__(self, status: int, code: str, message: str):
         self.status, self.code, self.message = status, code, message
+
+
+class ReadTicket:
+    def __init__(self, number, read_class, deadline, disconnected, event):
+        self.number, self.read_class, self.deadline = number, read_class, deadline
+        self.disconnected, self.event = disconnected, event
+        self.state = "new"
+
+
+class ReadAdmission:
+    """Two fixed lanes; a grant belongs to its ticket until callback AND close finish."""
+    def __init__(self, clock=time.monotonic):
+        self.clock = clock
+        self.event_factory = threading.Event
+        self.lock = threading.Lock()
+        self.number = 0
+        self.observer = None  # Private fixture observation only; no retained request log.
+        self.lanes = {
+            "foreground": {"max_waiters": 8, "queue_timeout_ms": 5000, "active": None, "queue": []},
+            "background": {"max_waiters": 2, "queue_timeout_ms": 500, "active": None, "queue": []},
+        }
+
+    def capability(self):
+        return dict({"version": 1, "header": "X-AIM-Read-Class"}, **{
+            name: {"slots": 1, "max_waiters": lane["max_waiters"],
+                   "queue_timeout_ms": lane["queue_timeout_ms"]}
+            for name, lane in self.lanes.items()})
+
+    def _snapshot(self):
+        return {name: {"active": int(lane["active"] is not None), "waiting": len(lane["queue"])}
+                for name, lane in self.lanes.items()}
+
+    def snapshot(self):
+        with self.lock:
+            return self._snapshot()
+
+    def _emit(self, kind, ticket):
+        if self.observer is not None:
+            self.observer({"event": kind, "request_id": ticket.number,
+                           "read_class": ticket.read_class, "state": ticket.state,
+                           "at": self.clock(), "lanes": self._snapshot()})
+
+    def _settle(self, ticket, state):
+        ticket.state = state
+        self._emit(state, ticket)
+        ticket.event.set()
+
+    def _grant(self, lane, ticket):
+        lane["active"] = ticket
+        self._settle(ticket, "granted")
+
+    def _refuse(self, ticket):
+        if ticket.state == "withdrawn":
+            raise ConnectionResetError("Queued read disconnected")
+        raise RequestError(503, "SERVER_BUSY", "This read could not enter its bounded lane.")
+
+    def _advance(self, lane):
+        # Expiry, withdrawal and grants share this lock. No timed-out waiter can
+        # be granted later, and a granted waiter cannot lose ownership on waking.
+        for ticket in list(lane["queue"]):
+            state = ("withdrawn" if ticket.disconnected() else
+                     "expired" if self.clock() >= ticket.deadline else None)
+            if state:
+                lane["queue"].remove(ticket)
+                self._settle(ticket, state)
+        if lane["active"] is None and lane["queue"]:
+            self._grant(lane, lane["queue"].pop(0))
+
+    def acquire(self, read_class, request_deadline, disconnected=lambda: False):
+        with self.lock:
+            lane = self.lanes[read_class]
+            now = self.clock()
+            self.number += 1
+            ticket = ReadTicket(self.number, read_class,
+                                min(request_deadline, now + lane["queue_timeout_ms"] / 1000.0),
+                                disconnected, self.event_factory())
+            self._advance(lane)
+            if disconnected():
+                self._settle(ticket, "withdrawn")
+            elif self.clock() >= ticket.deadline:
+                self._settle(ticket, "expired")
+            elif lane["active"] is None:
+                self._grant(lane, ticket)
+            elif len(lane["queue"]) >= lane["max_waiters"]:
+                self._settle(ticket, "full")
+            else:
+                ticket.state = "waiting"
+                lane["queue"].append(ticket)
+                self._emit("queued", ticket)
+        while True:
+            with self.lock:
+                # A grant already owns the permit, even after its queue deadline.
+                if ticket.state == "granted":
+                    return ticket
+                if ticket.state != "waiting":
+                    self._refuse(ticket)
+                self._advance(lane)
+                if ticket.state == "granted":
+                    return ticket
+                if ticket.state != "waiting":
+                    self._refuse(ticket)
+                remaining = ticket.deadline - self.clock()
+            # The ticket's own event wakes the head promptly. Periodic observation
+            # permits withdrawal on an observed socket reset without a monitor thread.
+            ticket.event.wait(min(0.05, max(0.0, remaining)))
+
+    def release(self, ticket):
+        with self.lock:
+            lane = self.lanes[ticket.read_class]
+            if lane["active"] is not ticket or ticket.state != "granted":
+                raise RuntimeError("Read permit is not owned by this ticket")
+            lane["active"] = None
+            self._settle(ticket, "released")
+            self._advance(lane)
 
 
 def _unique_object(pairs):
@@ -227,9 +342,38 @@ class Handler(BaseHTTPRequestHandler):
         except socket.timeout:
             raise RequestError(408, "INCOMPLETE_BODY", "The request body did not finish.")
 
+    def _read_class(self):
+        values = self.headers.get_all("X-AIM-Read-Class", [])
+        if not values:
+            return "foreground"
+        if len(values) != 1 or values[0] not in ("foreground", "background"):
+            raise RequestError(400, "INVALID_READ_CLASS", "Use one foreground or background read class.")
+        return values[0]
+
+    def _read_disconnected(self):
+        # A TCP read EOF alone is only a half-close: the peer may still read our
+        # response. Observe a reset/error, otherwise let the original queue bound
+        # expire. Never equate client cancellation with release of an active read.
+        try:
+            if self.connection.fileno() < 0 or self.connection.getsockopt(socket.SOL_SOCKET, socket.SO_ERROR):
+                return True
+            readable, _, _ = select.select([self.connection], [], [], 0)
+            if readable:
+                self.connection.recv(1, socket.MSG_PEEK | socket.MSG_DONTWAIT)
+        except BlockingIOError:
+            return False
+        except OSError:
+            return True
+        return False
+
     def _store_call(self, callback: Callable, command=False):
+        admission = None if command else self.server.read_admission
+        ticket = None
         slots = self.server.command_slots if command else self.server.read_slots
-        if not slots.acquire(blocking=False):
+        read_class = None if command else self._read_class()
+        if admission is not None:
+            ticket = admission.acquire(read_class, self.deadline, self._read_disconnected)
+        elif not slots.acquire(blocking=False):
             raise RequestError(503, "SERVER_BUSY", "This request lane is busy; retain its operation.")
         store = None
         try:
@@ -242,7 +386,10 @@ class Handler(BaseHTTPRequestHandler):
                     if callable(close):
                         close()
             finally:
-                slots.release()
+                if ticket is not None:
+                    admission.release(ticket)
+                else:
+                    slots.release()
 
     def _run(self, action):
         try:
@@ -430,9 +577,11 @@ class Handler(BaseHTTPRequestHandler):
                            for key in ("authority_id", "authority_epoch"))
                     or authority["continuity"] not in ("initial", "complete", "incomplete", "unknown")):
                 raise RequestError(503, "CAPABILITIES_UNAVAILABLE", "The instance authority facts could not be confirmed.")
-            self._json_response(200, {"instance_id": self.server.instance_id,
-                                      "actor": self.server.actor, "limits": capabilities["limits"],
-                                      "authority": authority})
+            result = {"instance_id": self.server.instance_id, "actor": self.server.actor,
+                      "limits": capabilities["limits"], "authority": authority}
+            if self.server.read_admission is not None:
+                result["transport"] = {"read_admission": self.server.read_admission.capability()}
+            self._json_response(200, result)
             return
         if path in ("/api/command", "/api/view", "/api/media/upload", "/api/media/read"):
             raise RequestError(405, "METHOD_REFUSED", "Use POST with the shared API contract.")
@@ -480,6 +629,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.max_json_bytes = max_json_bytes
     server.request_timeout = 10.0
     server.read_slots = threading.BoundedSemaphore(max_reads)
+    server.read_admission = ReadAdmission() if max_reads == 2 else None
     server.command_slots = threading.BoundedSemaphore(2)
     server.upload_slots = threading.BoundedSemaphore(1)
     server.media_read_slots = threading.BoundedSemaphore(1)
