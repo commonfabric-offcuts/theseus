@@ -43,7 +43,15 @@ class Runner:
         guard.verify()
         db = None
         try:
-            db, _ = _connect(self.path)
+            try:
+                db, _ = _connect(self.path)
+            except (OSError, KeyboardInterrupt) as error:
+                # _connect explicitly chains a failed setup close. It still
+                # owns that unreturned handle; an ordinary interruption keeps
+                # its identity when setup cleanup succeeded.
+                if error.__cause__ is not None:
+                    raise RunnerError("RUNNER_STORAGE_ERROR", "Runner state could not be confirmed") from error
+                raise
             db.execute("BEGIN IMMEDIATE")
             guard.verify()
             self._check_instance(db)
@@ -54,14 +62,22 @@ class Runner:
                 db.commit()
             return dict(result, instance_id=self.instance_id)
         except sqlite3.Error as error:
-            if isinstance(error, sqlite3.OperationalError) and ("locked" in str(error).lower() or "busy" in str(error).lower()):
+            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
+                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
                 raise RunnerError("DATABASE_BUSY", "Runner state is busy; no change was confirmed", retryable=True) from error
             raise RunnerError("RUNNER_STORAGE_ERROR", "Runner state could not be confirmed") from error
         finally:
             if db is not None:
-                if db.in_transaction:
-                    db.rollback()
-                db.close()
+                try:
+                    try:
+                        if db.in_transaction:
+                            db.rollback()
+                    finally:
+                        db.close()
+                except (sqlite3.Error, OSError, KeyboardInterrupt) as error:
+                    # A failed rollback must not skip close. A failed close
+                    # after COMMIT cannot establish that the act was undone.
+                    raise RunnerError("RUNNER_STORAGE_ERROR", "Runner state could not be confirmed") from error
 
     def _runner_state(self, db):
         return db.execute("SELECT * FROM runner_state WHERE id=1").fetchone()
