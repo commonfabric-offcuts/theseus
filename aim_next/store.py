@@ -13,6 +13,10 @@ from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body
 from .drafts import Drafts, DRAFT_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA
 from .validation import COMMANDS, _command_envelope, _view_arguments
+from .authority import Authority, AuthorityError, prepare_authority, publish_initial
+
+
+SCHEMA_VERSION = "2"
 
 
 SCHEMA = [
@@ -49,13 +53,14 @@ def _connect(path):
     return db, actual
 
 
-def initialize(db_path, instance_id, initial_actors):
+def initialize(db_path, instance_id, initial_actors, *, authority_path):
     """Create a new isolated authority. Existing paths are never overwritten."""
     _identifier(instance_id, "instance_id")
     path = Path(db_path).absolute()
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     os.close(fd)
+    binding, anchor = prepare_authority(authority_path, path, instance_id)
     db = None
     try:
         db, _ = _connect(path)
@@ -63,7 +68,9 @@ def initialize(db_path, instance_id, initial_actors):
         for statement in SCHEMA + DRAFT_SCHEMA + CONVERSATION_SCHEMA:
             db.execute(statement)
         db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
-        db.execute("INSERT INTO metadata VALUES ('schema_version','1')")
+        db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
+        db.execute("INSERT INTO metadata VALUES ('commit_seq','0')")
+        db.executemany("INSERT INTO metadata VALUES (?,?)", list(binding.items()))
         for actor in initial_actors:
             actor_id = _identifier(actor["id"], "actor_id")
             kind = actor.get("kind", "agent")
@@ -81,26 +88,48 @@ def initialize(db_path, instance_id, initial_actors):
     finally:
         if db is not None:
             db.close()
-    return {"instance_id": instance_id, "db_path": str(path)}
+    publish_initial(binding, anchor)
+    return {"instance_id": instance_id, "db_path": str(path.resolve()), "binding": binding}
 
 
 class Store(Drafts, Conversation):
-    def __init__(self, db_path, expected_instance_id):
-        self.path = Path(db_path).absolute()
+    def __init__(self, db_path, expected_instance_id, *, expected_binding):
+        self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
+        self._authority = Authority(self.path, self.instance_id, expected_binding)
         try:
-            db, _ = _connect(self.path)
-            try:
-                self._check_instance(db)
-            finally:
-                db.close()
+            with self._authority.shared():
+                db, _ = _connect(self.path)
+                try:
+                    self._check_instance(db)
+                finally:
+                    db.close()
         except (sqlite3.Error, Refusal) as exc:
             raise StoreError("Cannot open the selected AIM Next instance") from exc
+
+    @property
+    def binding(self):
+        return dict(self._authority.binding)
+
+    def runner_guard(self, runner_id):
+        return self._authority.runner_guard(runner_id)
 
     def _check_instance(self, db):
         row = db.execute("SELECT value FROM metadata WHERE key='instance_id'").fetchone()
         if row is None or row[0] != self.instance_id:
             raise Refusal("INSTANCE_MISMATCH", "The selected instance does not match")
+        metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('schema_version','commit_seq','authority_id','authority_path','authority_epoch')"))
+        sequence = metadata.get("commit_seq", "")
+        if (metadata.get("schema_version") != SCHEMA_VERSION or not sequence.isascii() or not sequence.isdigit()
+                or len(sequence) > 19 or int(sequence) >= 9223372036854775807):
+            raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
+        if any(metadata.get(key) != value for key, value in self.binding.items()):
+            raise Refusal("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
+
+    def _advance_commit_seq(self, db):
+        changed = db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='commit_seq'").rowcount
+        if changed != 1:
+            raise StoreError("The durable commit sequence is unavailable")
 
     def _actor(self, db, actor):
         _identifier(actor, "actor")
@@ -127,12 +156,15 @@ class Store(Drafts, Conversation):
         if not isinstance(envelope, dict):
             envelope = {}
         db = None
+        fence = None
         try:
             if envelope.get("instance_id") != self.instance_id:
                 raise Refusal("INSTANCE_MISMATCH", "Command belongs to another instance")
             envelope = _command_envelope(envelope)
             op_id, kind = envelope["operation_id"], envelope["kind"]
             fingerprint = hashlib.sha256(_json(envelope).encode("utf-8")).hexdigest()
+            fence = self._authority.shared()
+            fence.__enter__()
             db, _ = _connect(self.path)
             # All command checks, including the deduplication lookup, share the
             # write transaction. Python's implicit DML BEGIN is insufficient.
@@ -161,10 +193,14 @@ class Store(Drafts, Conversation):
                 receipt = self._refusal(envelope, exc, recorded=True)
             db.execute("RELEASE effect")
             db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op_id, fingerprint, kind, _json(receipt)))
+            self._advance_commit_seq(db)
             db.commit()
             return receipt
         except Refusal as exc:
             return self._refusal(envelope, exc)
+        except AuthorityError as exc:
+            return self._receipt(envelope, "retryable" if exc.retryable else "rejected", False,
+                                 error={"code": exc.code, "message": exc.message, "retryable": exc.retryable})
         except sqlite3.IntegrityError:
             return self._receipt(envelope, "rejected", False, error={
                 "code": "INTERNAL_ERROR", "message": "No outcome was recorded; reconcile before continuing", "retryable": False})
@@ -178,11 +214,16 @@ class Store(Drafts, Conversation):
                 if db.in_transaction:
                     db.rollback()
                 db.close()
+            if fence is not None:
+                fence.close()
 
     def view(self, actor, view_name, args):
         db = None
+        fence = None
         try:
             args = _view_arguments(view_name, args)
+            fence = self._authority.shared()
+            fence.__enter__()
             db, runtime = _connect(self.path)
             db.execute("BEGIN")
             self._check_instance(db)
@@ -200,6 +241,8 @@ class Store(Drafts, Conversation):
             return handler(db, actor, args)
         except Refusal as exc:
             return {"instance_id": self.instance_id, "error": {"code": exc.code, "message": exc.message, "retryable": False}}
+        except AuthorityError as exc:
+            return {"instance_id": self.instance_id, "error": {"code": exc.code, "message": exc.message, "retryable": exc.retryable}}
         except sqlite3.OperationalError as exc:
             if "locked" in str(exc).lower() or "busy" in str(exc).lower():
                 return {"instance_id": self.instance_id, "error": {"code": "DATABASE_BUSY", "message": "Read is temporarily unavailable", "retryable": True}}
@@ -209,6 +252,8 @@ class Store(Drafts, Conversation):
                 if db.in_transaction:
                     db.rollback()
                 db.close()
+            if fence is not None:
+                fence.close()
 
     def _workspace(self, db, actor, workspace_id, owner=False):
         _identifier(workspace_id, "workspace_id")

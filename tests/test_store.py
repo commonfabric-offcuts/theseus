@@ -15,12 +15,13 @@ class StoreCase(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="aim-next-core-")
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "instance.sqlite3"
-        initialize(self.path, "test-instance", [
+        initialized = initialize(self.path, "test-instance", [
             {"id": "owner", "kind": "human"},
             {"id": "agent-a", "kind": "agent"},
             {"id": "agent-b", "kind": "agent"},
-        ])
-        self.store = Store(self.path, "test-instance")
+        ], authority_path=Path(self.temp.name).resolve() / "control" / "authority.json")
+        self.binding = initialized["binding"]
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.serial = 0
 
     def command(self, kind, args=None, target=None, expected=None, actor="owner", op=None):
@@ -99,10 +100,10 @@ class StoreCase(unittest.TestCase):
         self.assertEqual(unknown["status"], "unknown")
         self.assertFalse(unknown["recorded"])
         with self.assertRaises(StoreError):
-            Store(self.path, "other")
+            Store(self.path, "other", expected_binding=self.binding)
         missing = self.path.parent / "not-created.sqlite3"
         with self.assertRaises(StoreError):
-            Store(missing, "test-instance")
+            Store(missing, "test-instance", expected_binding=self.binding)
         self.assertFalse(missing.exists())
 
     def test_contended_attempt_is_not_a_recorded_refusal(self):
