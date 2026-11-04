@@ -171,7 +171,9 @@ The initial handoff uses the page's explicit **Refresh** button: new replies
 appear after Refresh, which rereads the message and Notebook lists. Automatic
 scoped updates are the next increment on the same retained instance, origin and
 data, and do not gate first use. The implemented [changes query](changes-query.md)
-is the backend foundation; it is not evidence of automatic browser updates.
+is the backend foundation; it is not evidence of automatic browser updates. The accepted
+[automatic-update plan](scoped-updates-plan.md) specifies the next increment
+and its independent-review conditions.
 Keep the current source revision, selection and writing distinct from list
 freshness, and do not replace the instance or clear browser writing to add
 automatic updates later.
