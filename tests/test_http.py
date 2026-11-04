@@ -260,6 +260,7 @@ class HTTPContractTests(unittest.TestCase):
         self.server.request_timeout = 0.2
         stopped = threading.Event()
         with socket.create_connection(self.server.server_address, timeout=0.8) as sock:
+            started = time.monotonic()
             sock.sendall(b"POST /api/view HTTP/1.0\r\nHost: ")
 
             def drip():
@@ -274,7 +275,17 @@ class HTTPContractTests(unittest.TestCase):
             try:
                 # Every byte is within the old per-recv timeout. Only a total
                 # deadline releases this unauthenticated connection.
-                self.assertEqual(sock.recv(1024), b"")
+                try:
+                    received = sock.recv(1024)
+                except ConnectionResetError:
+                    # Closing with unread drip bytes can produce RST rather
+                    # than EOF. Other socket errors and timeouts still fail.
+                    received = b""
+                elapsed = time.monotonic() - started
+                self.assertEqual(received, b"")
+                self.assertGreaterEqual(elapsed, self.server.request_timeout - 0.05)
+                self.assertLess(elapsed, 0.8)
+                self.assertEqual(self.store.calls, [])
             finally:
                 stopped.set()
                 writer.join(1)
