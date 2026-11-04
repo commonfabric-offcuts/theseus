@@ -269,8 +269,16 @@ class Handler(BaseHTTPRequestHandler):
                     or not isinstance(capabilities.get("limits"), dict)
                     or capabilities.get("error")):
                 raise RequestError(503, "CAPABILITIES_UNAVAILABLE", "The instance binding could not be confirmed.")
+            authority = capabilities.get("authority")
+            if (not isinstance(authority, dict)
+                    or set(authority) != {"authority_id", "authority_epoch", "continuity"}
+                    or any(not isinstance(authority[key], str) or not authority[key]
+                           for key in ("authority_id", "authority_epoch"))
+                    or authority["continuity"] not in ("initial", "complete", "incomplete", "unknown")):
+                raise RequestError(503, "CAPABILITIES_UNAVAILABLE", "The instance authority facts could not be confirmed.")
             self._json_response(200, {"instance_id": self.server.instance_id,
-                                      "actor": self.server.actor, "limits": capabilities["limits"]})
+                                      "actor": self.server.actor, "limits": capabilities["limits"],
+                                      "authority": authority})
             return
         if path in ("/api/command", "/api/view"):
             raise RequestError(405, "METHOD_REFUSED", "Use POST with the shared API contract.")

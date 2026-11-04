@@ -4,6 +4,7 @@ import http.client
 import fcntl
 import json
 import os
+import sqlite3
 from pathlib import Path
 import tempfile
 import threading
@@ -59,6 +60,21 @@ class SharedStoreHTTPTests(unittest.TestCase):
         self.assertEqual(bootstrap["instance_id"], capabilities["instance_id"])
         self.assertEqual(bootstrap["actor"], "test-human")
         self.assertEqual(bootstrap["limits"], capabilities["limits"])
+        self.assertEqual(bootstrap["authority"], capabilities["authority"])
+
+    def test_database_binding_mismatch_preserves_authority_refusal(self):
+        # Deliberate isolated corruption: external anchor and inode still match,
+        # but the database's own binding does not. Opening cannot rebind it.
+        with sqlite3.connect(str(self.db)) as connection:
+            connection.execute("UPDATE metadata SET value='other-epoch' WHERE key='authority_epoch'")
+        before = self.db.read_bytes()
+        for path, value in (("/api/command", self.workspace_command()), ("/api/bootstrap", None)):
+            with self.subTest(path=path):
+                result = self.request(path, value, expected_status=409)
+                self.assertEqual(result["error"]["code"], "AUTHORITY_CHANGED")
+                self.assertFalse(result["error"]["retryable"])
+                self.assertFalse(result["recorded"])
+        self.assertEqual(self.db.read_bytes(), before)
 
     def test_authority_contention_remains_an_unrecorded_retryable_http_attempt(self):
         command = self.workspace_command()

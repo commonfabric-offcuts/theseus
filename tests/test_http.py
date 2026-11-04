@@ -20,6 +20,8 @@ class FakeStore:
         self.release_read = threading.Event()
         self.command_started = threading.Event()
         self.release_command = threading.Event()
+        self.authority = {"authority_id": "authority-test", "authority_epoch": "epoch-test",
+                          "continuity": "initial"}
 
     def command(self, actor, envelope):
         self.calls.append(("command", actor, envelope))
@@ -35,7 +37,8 @@ class FakeStore:
     def view(self, actor, name, args):
         self.calls.append(("view", actor, name, args))
         if name == "capabilities":
-            return {"instance_id": "new-test", "limits": {"body_utf8_bytes": 1048576, "recipients": 32}}
+            return {"instance_id": "new-test", "limits": {"body_utf8_bytes": 1048576, "recipients": 32},
+                    "authority": self.authority}
         if name == "blocked":
             self.read_started.set()
             self.release_read.wait(5)
@@ -151,7 +154,32 @@ class HTTPContractTests(unittest.TestCase):
         status, _, raw = self.request("/api/bootstrap", method="GET")
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(raw), {"instance_id": "new-test", "actor": "test-owner",
-                                         "limits": {"body_utf8_bytes": 1048576, "recipients": 32}})
+                                         "limits": {"body_utf8_bytes": 1048576, "recipients": 32},
+                                         "authority": self.store.authority})
+
+    def test_bootstrap_forwards_authority_facts_without_inventing_continuity(self):
+        for continuity in ("initial", "complete", "incomplete", "unknown"):
+            with self.subTest(continuity=continuity):
+                self.store.authority = {"authority_id": "test-current-authority",
+                                        "authority_epoch": "test-current-epoch",
+                                        "continuity": continuity}
+                status, _, raw = self.request("/api/bootstrap", method="GET")
+                self.assertEqual(status, 200)
+                self.assertEqual(json.loads(raw).get("authority"), self.store.authority)
+
+    def test_bootstrap_refuses_missing_or_malformed_authority_facts(self):
+        valid = dict(self.store.authority)
+        for value in (None, {}, dict(valid, authority_epoch=""),
+                      dict(valid, continuity=True), dict(valid, continuity="assumed"),
+                      dict(valid, authority_path="/private/control/authority.json")):
+            with self.subTest(value=value):
+                self.store.authority = value
+                status, _, raw = self.request("/api/bootstrap", method="GET")
+                self.assertEqual(status, 503)
+                result = json.loads(raw)
+                self.assertFalse(result["recorded"])
+                self.assertNotIn("authority", result)
+                self.assertNotIn(b"/private/control", raw)
 
     def test_blocked_background_read_does_not_hold_foreground_command_lane(self):
         with ThreadPoolExecutor(max_workers=1) as executor:
