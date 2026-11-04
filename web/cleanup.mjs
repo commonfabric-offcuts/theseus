@@ -1,4 +1,5 @@
 import { editorKey } from './editor.mjs';
+import { uploadProof } from './upload-cleanup.mjs';
 
 const copy = value => structuredClone(value);
 export const same = (a, b) => {
@@ -127,9 +128,30 @@ export class RecoveryCleanup {
   async retireOwn(session) {
     if (this.stopped()) return false;
     try {
-      const row = await this.journal.own(session.editor.key);
+      let row = await this.journal.own(session.editor.key), projected;
+      if (row?.snapshot.format === 2) {
+        if (session.editor.imageBusy || session.editor.imageReservation || session.uploads?.running.size || session.registered?.() === false ||
+            !same(meaningfulSnapshot(session.snapshot()), meaningfulSnapshot(row.snapshot))) return false;
+        const proof = await uploadProof(row, session.editor.context, { api: this.api, read: fn => this.read(fn), authority: this.runtime.current });
+        if (!proof) return false;
+        if (proof.release.length) {
+          const original = row, next = this.releasedRow(row, proof.release);
+          const current = () => !this.stopped() && session.registered?.() !== false && !session.editor.imageBusy && !session.uploads?.running.size &&
+            same(meaningfulSnapshot(session.snapshot()), meaningfulSnapshot(original.snapshot));
+          if (!await this.journal.releaseExact(original, next, proof.release, current, () => {
+            for (const changed of next.snapshot.uploadState.entries) {
+              const live = session.editor.uploadState.entries.find(e => e.selection_id === changed.selection_id);
+              if (proof.release.includes(live.bytes_ref)) { live.bytes_ref = null; live.bytes_state = 'released'; live.version = changed.version; }
+            }
+            session.editor.uploadState.revision = next.snapshot.uploadState.revision;
+          })) return false;
+          row = next;
+        }
+        projected = proof.projected;
+        if (!projected) return false;
+      }
       if (!row || !same(meaningfulSnapshot(session.snapshot()), meaningfulSnapshot(row.snapshot)) ||
-          !await this.confirm(row, session.editor.context)) return false;
+          !await this.confirm(projected ?? row, session.editor.context)) return false;
       const current = () => !this.stopped() && same(pair(session.authority), pair(this.runtime.current)) && same(meaningfulSnapshot(session.snapshot()), meaningfulSnapshot(row.snapshot));
       const removed = await this.journal.removeExact(session.editor.key, row.stamp, current, () => {
         if (current()) session.acknowledgedSnapshot = meaningfulSnapshot(row.snapshot);
@@ -138,10 +160,29 @@ export class RecoveryCleanup {
       return removed;
     } catch (error) { if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); return false; }
   }
+  releasedRow(row, ids) {
+    const next = copy(row); next.stamp = crypto.randomUUID();
+    for (const e of next.snapshot.uploadState.entries) if (ids.includes(e.bytes_ref)) { e.bytes_ref = null; e.bytes_state = 'released'; e.version++; }
+    next.snapshot.uploadState.revision++;
+    return next;
+  }
   candidates(session, page) {
     return this.enqueue(session.editor.key, async () => {
       const retained = [];
       for (const row of page.items) {
+        if (row.availability === 'available' && row.snapshot?.format === 2 && this.journal.retireImageCandidate) {
+          try {
+            const result = await this.journal.retireImageCandidate(session.editor.key, row, async captured => {
+              const proof = await uploadProof(captured, session.editor.context, { api: this.api, read: fn => this.read(fn), authority: this.runtime.current });
+              if (!proof) return null;
+              const next = proof.release.length ? this.releasedRow(captured, proof.release) : captured;
+              const retire = proof.projected && await this.confirm(proof.projected, session.editor.context);
+              return { next, ids: proof.release, retire };
+            });
+            if (!result?.retired) retained.push(result?.row ? { ...result.row, availability: 'available' } : row);
+          } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); }
+          continue;
+        }
         if (this.stopped() || row.availability !== 'available' || !row.snapshot || !eligible(row, session.editor.context)) { retained.push(row); continue; }
         try {
           const removed = await this.journal.retireAcknowledged(session.editor.key, row,

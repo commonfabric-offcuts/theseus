@@ -23,19 +23,23 @@ def main():
         root = Path(directory).resolve()
         path = root / "instance.sqlite3"
         instance, actor = "ux-http-fixture", "fixture-person"
-        binding = initialize(path, instance, [{"id": actor, "kind": "human"}],
+        actors = [{"id": actor, "kind": "human"}]
+        if "--images" in sys.argv:
+            actors.append({"id": "fixture-notebook-agent", "kind": "agent"})
+            actors.append({"id": "fixture-outside-agent", "kind": "agent"})
+        binding = initialize(path, instance, actors,
                              authority_path=root / "control" / "authority.json")["binding"]
 
         def store():
             return Store(path, instance, expected_binding=dict(binding))
 
-        def command(kind, operation, args, target=None, expected=None):
+        def command(kind, operation, args, target=None, expected=None, sender=None):
             envelope = {"v": 1, "instance_id": instance, "kind": kind,
                         "operation_id": operation, "target": target or {},
                         "expected": dict(expected or {}, authority={
                             key: binding[key] for key in ("authority_id", "authority_epoch")}),
                         "args": args}
-            answer = store().command(actor, envelope)
+            answer = store().command(sender or actor, envelope)
             assert answer["status"] == "committed", answer
             return answer
 
@@ -82,6 +86,11 @@ def main():
                              {"submission_id": "seed-submission-%d" % number}, {"topic_id": "t1"})
             sources.append({"kind": "message", "id": result["result"]["message_id"]})
 
+        if "--images" in sys.argv:
+            topic_revision = store().view(actor, "topic", {"topic_id": "t1"})["topic"]["version"]
+            command("participation.set", "fixture-notebook-participant", {"actor_id": "fixture-notebook-agent", "present": True}, {"topic_id": "t1"}, {"topic_revision": topic_revision})
+            command("memory.create", "fixture-notebook", {"title": "Image Notebook", "body": "Notebook passage to quote.", "attachments": [], "references": []},
+                    {"item_id": "fixture-notebook", "owner_scope": {"kind": "topic", "id": "t1"}}, {"item_revision": 0}, sender="fixture-notebook-agent")
         server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web")
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -93,6 +102,9 @@ def main():
                         answer = {"origin": server.origin, "token": server.session_token,
                                   "instance_id": instance, "actor": actor, "topic_id": "t1",
                                   "sources": sources, "media": media}
+                    elif request["method"] == "counts":
+                        with sqlite3.connect(str(path)) as db:
+                            answer = {"media": db.execute("SELECT count(*) FROM media_intents").fetchone()[0]}
                     elif request["method"] == "epoch":
                         # Test-only controlled history boundary. No activation
                         # claim: the real runtime cutover is lead-owned.

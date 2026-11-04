@@ -3,6 +3,7 @@ import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
+import { readableUploads, uploadWork, recoveryReadOnly } from './upload-state.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -42,6 +43,10 @@ function version(label, writing, detail = '') {
   if (detail) section.append(node('p', detail, 'muted'));
   section.append(node('pre', writing ?? 'No saved version here')); return section;
 }
+function imageSummary(editor, refs = editor.draft.attachments) {
+  const names = refs.map(r => r.name ?? editor.uploadState?.entries.find(e => e.ready_descriptor?.media_id === r.id)?.file?.name ?? r.id);
+  return names.length ? `${names.length} attachment${names.length === 1 ? '' : 's'}: ${names.join(', ')}` : 'No attachments';
+}
 function invalidateComparison(editor) {
   if (!comparison || comparison.editor !== editor) return;
   if (comparison.localVersion !== editor.localVersion || comparison.authority !== JSON.stringify(editor.authorityRecovery)) {
@@ -57,6 +62,24 @@ async function showVersions(editor, opener = $('review-versions')) {
   const localVersion = editor.localVersion, recovery = structuredClone(editor.authorityRecovery);
   const destination = editor.context.kind === 'note' ? 'Private note · only you' : `Reply to ${editor.context.topicId}`;
   $('review-content').append(version('Your current writing', editor.draft.body, destination));
+  if (editor.context.kind === 'reply') {
+    $('review-content').append(node('p', imageSummary(editor), 'muted'));
+    const uploads = session.uploads;
+    if (editor.imageStorageError) $('review-content').append(button('Retry saving image change', async () => { await uploads.transition(() => {}); if (current()) await showVersions(editor, opener); }));
+    const retained = editor.uploadState?.entries.filter(e => !e.selected || e.owner.kind === 'submission') ?? [];
+    if (retained.length) $('review-content').append(node('h3', 'Removed images and earlier replies'));
+    for (const entry of retained) {
+      const section = node('section');
+      section.append(node('p', `${entry.file?.name ?? entry.ready_descriptor?.name ?? 'Attachment'} · ${uploads.status(entry.selection_id)}`));
+      if (entry.owner.kind === 'submission') section.append(node('p', 'Included in the earlier reply. Discarding the local file does not remove it from that reply.', 'muted'));
+      if (entry.attempts.length) section.append(button('Check confirmation', async () => { await uploads.check(entry.selection_id); if (current()) await showVersions(editor, opener); }));
+      if (entry.bytes_ref && !uploads.running.has(entry.selection_id)) {
+        section.append(node('p', 'An upload may still finish. Discard only the retained file on this device; its upload history and earlier reply stay.', 'muted'));
+        section.append(button('Discard retained file', async () => { await uploads.discard(entry.selection_id); if (current()) await showVersions(editor, opener); }));
+      }
+      $('review-content').append(section);
+    }
+  }
   let remote = recovery?.remote ?? editor.conflict?.remote;
   if (!recovery && editor.conflict && remote === undefined) {
     try {
@@ -92,15 +115,36 @@ async function showVersions(editor, opener = $('review-versions')) {
       const section = version(candidate.availability === 'open-in-another-tab' ? 'Open in another tab' : 'Writing kept on this device',
         candidate.snapshot?.draft.body ?? 'Close the other tab, then Retry to review its writing.',
         candidate.snapshot ? `Writer ${candidate.writerId} · ${destination}` : 'Ownership is still held by another document.');
-      if (candidate.snapshot) {
+      if (candidate.snapshot && (candidate.snapshot.format === 1 || readableUploads(candidate.snapshot))) {
+        if (candidate.snapshot.format === 2) section.append(node('p', 'This version includes saved image selections. Recover it to check or remove them before sending.', 'muted'));
         const adopt = button('Recover this version', async () => {
           adopt.disabled = true;
           try { await registry.adoptCandidate(editor, candidate, presentation); if (current()) { closeReview(); reader.field.focus({ preventScroll: true }); } }
           catch (error) { if (current()) reviewStatus(error.message); }
           finally { if (adopt.isConnected) adopt.disabled = false; }
         });
-        adopt.disabled = editor.localVersion > 0 || session.attempts.length > 0;
+        adopt.disabled = editor.localVersion > 0 || session.attempts.length > 0 || uploadWork(editor);
         section.append(adopt);
+        if (candidate.snapshot.format === 2 && candidate.snapshot.uploadState.entries.some(e => e.selected && e.owner.kind === 'cycle')) {
+          section.append(button('Remove saved image selections', async () => { await registry.removeCandidateImages(editor, candidate); if (current()) await showVersions(editor, opener); }));
+        }
+        for (const e of candidate.snapshot.uploadState?.entries ?? []) if (!e.selected || e.owner.kind === 'submission') {
+          const label = node('p', e.file?.name ?? e.ready_descriptor?.name ?? 'Earlier image'); section.append(label);
+          const a = e.attempts[e.choice];
+          if (a) section.append(button('Check image confirmation', async () => {
+            const r = await api.view('operation', { operation_id: a.publish_operation_id });
+            if (r?.instance_id !== editor.context.instanceId || r.operation_id !== a.publish_operation_id ||
+                r.recorded === true && r.kind !== 'media.publish') throw Error('Image confirmation identity does not match.');
+            if (current()) label.textContent = `${e.file?.name ?? 'Earlier image'} · ${r.recorded === true ? r.status : 'Confirmation unknown'}`;
+          }));
+          if (e.bytes_ref) section.append(button('Discard retained file', async () => {
+            await journal.changeCandidateImages(editor.key, candidate, { kind: 'discard', selectionId: e.selection_id });
+            if (current()) await showVersions(editor, opener);
+          }));
+        }
+      } else if (candidate.availability !== 'open-in-another-tab') {
+        section.append(node('p', 'This saved copy cannot be interpreted. It will remain on this device.', 'muted'));
+        section.append(button('Continue without this copy', async () => { await registry.waiveUnreadable(editor, candidate); reviewStatus('This copy is kept. The choice applies only to this writing cycle and this exact saved version.'); }));
       }
       list.append(section);
     }
@@ -127,7 +171,7 @@ async function showVersions(editor, opener = $('review-versions')) {
 async function showCorrection(editor, item, opener) {
   const serial = beginReview('Review this reply before preparing again', opener), localVersion = editor.localVersion;
   const current = () => serial === reviewSerial && review.open;
-  $('review-content').append(version('Earlier reply', item.snapshot.body, `To ${item.topicId}`), version('Your current writing', editor.draft.body));
+  $('review-content').append(version('Earlier reply', item.snapshot.body, `To ${item.topicId} · Addressed to ${(item.snapshot.addressees ?? []).join(', ') || 'the topic'} · ${imageSummary(editor, item.snapshot.attachments)}`), version('Your current writing', editor.draft.body, imageSummary(editor)));
   const state = validate(await api.view('editor_state', { source_ref: item.sourceRef, topic_id: item.topicId }));
   if (!current()) return;
   registry.validateState(state, item.sourceRef, item.topicId);
@@ -170,10 +214,12 @@ async function showPending(editor, opener) {
       if (!card) {
         card = node('section', undefined, 'pending-card'); card.dataset.id = item.id;
         card.append(node('h3'), node('p', `To ${item.topicId ?? item.topic_id}`, 'muted')); host.append(card);
-        if (local.has(item.id)) card.append(node('pre', item.snapshot.body));
+        if (local.has(item.id)) { card.append(node('pre', item.snapshot.body));
+          if (item.snapshot.attachments.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, item.snapshot.attachments), 'muted')); }
         else card.append(button('Read submitted writing', async () => {
           const detail = await registry.inspectPending(editor, item.id);
           if (current() && !card.querySelector('pre')) card.append(node('pre', detail.body));
+          draw();
         }));
         card.append(button('Check confirmation', async () => { await registry.checkPending(editor, item.id); draw(); }));
         if (local.has(item.id) && statusKey !== 'confirmed' && (item.detached || item.receipt?.kind === 'submission.prepare')) {
@@ -181,6 +227,10 @@ async function showPending(editor, opener) {
         }
       }
       card.querySelector('h3').textContent = (item.detached ? 'Earlier runtime · ' : '') + (names[statusKey] ?? 'Confirmation unknown');
+      const reason = registry.pendingReason(editor, item);
+      let explanation = card.querySelector('[data-refusal]');
+      if (reason && !explanation) { explanation = node('p', '', 'muted'); explanation.dataset.refusal = ''; card.append(explanation); }
+      if (explanation) { explanation.textContent = reason ?? ''; explanation.hidden = !reason; }
     }
     host.querySelector('[data-more]')?.remove();
     if (registry.pending(editor).next_cursor !== null) {
@@ -193,9 +243,9 @@ async function showPending(editor, opener) {
 function changed(editor) {
   if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
     reader.paintStatus(); reader.paintPending();
-    reader.field.readOnly = Boolean(reader.editor?.adopting);
+    reader.field.readOnly = Boolean(reader.editor?.adopting || recoveryReadOnly(reader.editor));
     const known = candidates.get(reader.editor.key);
-    $('review-versions').hidden = !reader.editor.authorityRecovery && !reader.editor.conflict && !reader.editor.cleanupError && !known?.items.length && !known?.nextCursor;
+    $('review-versions').hidden = !reader.editor.uploadState && !reader.editor.recoveryDiscovery && !reader.editor.authorityRecovery && !reader.editor.conflict && !reader.editor.cleanupError && !known?.items.length && !known?.nextCursor;
   }
   invalidateComparison(editor);
   if (editor.context.kind === 'reply' && pendingCount(editor)) {
@@ -288,6 +338,7 @@ async function start() {
   for (const participant of result.participants) $('participants').append(node('span', participant.actor_id, 'chip'));
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
   reader = new Reader({
+    uploads: editor => registry?.sessionFor(editor).uploads,
     edit: editor => run(() => registry.edited(editor)), status: editor => registry.status(editor),
     mode: mode => {
       const cancelled = Boolean(registry.pendingOpen);

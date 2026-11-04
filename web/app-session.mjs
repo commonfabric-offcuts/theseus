@@ -1,6 +1,8 @@
 import { Editor, editorKey, restoreEditor } from './editor.mjs';
 import { EditorSession, RuntimeAuthority } from './session.mjs';
 import { RecoveryCleanup, eligible } from './cleanup.mjs';
+import { Uploads } from './uploads.mjs';
+import { uploadWork, readableUploads, copyNeedsImageReview } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
 const same = (a, b) => {
@@ -27,7 +29,7 @@ export class EditorRegistry {
     Object.assign(this, { api, bootstrap: copy(bootstrap), journal, present, closed, changed, saveDelayMs, maxSaveDelayMs, pendingPageSize, timers });
     this.runtime = new RuntimeAuthority({ api, instanceId: bootstrap.instance_id, authority: bootstrap.authority });
     this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map();
-    this.pendingDetails = new Map(); this.registering = new Map();
+    this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
     this.current = null; this.generation = 0; this.disposed = false;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
       changed: editor => this.changed(editor), stopped: () => this.disposed });
@@ -83,7 +85,7 @@ export class EditorRegistry {
       persisted: (saved, snapshot) => {
         const row = { id: this.journal.id(editor.key), writerId: this.journal.writerId, stamp: 'eligibility',
           active: 1, scope: JSON.stringify([context.instanceId, context.actor]), editorKey: editor.key, snapshot };
-        if (eligible(row, context)) this.cleanup.request(saved);
+        if (eligible(row, context) || snapshot.format === 2) this.cleanup.request(saved);
       },
       prepared: (_editor, _item, options) => {
         if (editor.dirty && editor.draft.generation && !editor.conflict && !editor.authorityRecovery) this.schedule(editor);
@@ -92,13 +94,22 @@ export class EditorRegistry {
         }
       } });
     this.sessions.set(key, session);
+    session.registered = () => this.sessions.get(key) === session && !this.disposed;
+    if (context.kind === 'reply') {
+      editor.recoveryDiscovery = true;
+      session.uploads = new Uploads(session, this);
+      await this.recoveryCandidates(editor);
+      if (!editor.recoveryDiscovery) await session.uploads.importRetained();
+    }
     return editor;
   }
 
   async keepLocal(presentation) {
     if (!presentation) return;
-    await Promise.all(Object.values(presentation.editors).filter(editor => editor.localVersion > 0 ||
+    await Promise.all(Object.values(presentation.editors).filter(editor => uploadWork(editor) || editor.localVersion > 0 ||
       editor.submissions.length || this.sessionFor(editor).attempts.length).map(editor => this.persistLocal(editor)));
+    if (Object.values(presentation.editors).some(editor => editor.imageBusy || editor.imageReservation ||
+        editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw Error('Keep this page open until the selected image is saved or removed.');
   }
 
   async open(sourceRef, { topicId, opener } = {}) {
@@ -243,18 +254,54 @@ export class EditorRegistry {
     if (!Number.isInteger(limit) || limit < 1 || limit > 10) throw Error('Recovery cleanup reads one page of at most ten versions.');
     await this.cleanup.own(this.sessionFor(editor));
     const page = await this.journal.candidates(editor.key, { ...options, limit });
-    return this.cleanup.candidates(this.sessionFor(editor), Array.isArray(page) ? { items: page, nextCursor: null } : page);
+    const result = await this.cleanup.candidates(this.sessionFor(editor), Array.isArray(page) ? { items: page, nextCursor: null } : page);
+    if (editor.context.kind === 'reply') {
+      if (!options?.cursor) editor.imageCopies = new Map();
+      for (const item of result.items) {
+        if (item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable') editor.imageCopies.set(item.id, item);
+      }
+      editor.imageCopiesNext = result.nextCursor;
+      this.updateImageBarrier(editor);
+    }
+    return result;
+  }
+
+  updateImageBarrier(editor) {
+    editor.recoveryDiscovery = Boolean(editor.imageCopiesNext || [...(editor.imageCopies?.values() ?? [])].some(row => copyNeedsImageReview(row) &&
+      !editor.imageWaivers?.has(JSON.stringify([editor.key, editor.clientCycleId, row.id, row.stamp]))));
+    this.changed(editor);
+  }
+
+  async removeCandidateImages(editor, candidate) {
+    const row = await this.journal.changeCandidateImages(editor.key, candidate, { kind: 'remove' });
+    editor.imageCopies.set(row.id, { ...row, availability: 'available' });
+    this.updateImageBarrier(editor);
+    return row;
+  }
+
+  async waiveUnreadable(editor, candidate) {
+    const row = editor.imageCopies?.get(candidate.id);
+    if (!row || row.stamp !== candidate.stamp || row.availability === 'open-in-another-tab' ||
+        (row.snapshot && readableUploads(row.snapshot))) throw Error('Recover or resolve this image copy before sending.');
+    const cycle = editor.clientCycleId;
+    await this.journal.inspectCandidate(editor.key, candidate);
+    if (editor.clientCycleId !== cycle || this.sessions.get(editor.key)?.editor !== editor) throw Error('This writing changed. Review the saved copy again.');
+    (editor.imageWaivers ??= new Set()).add(JSON.stringify([editor.key, editor.clientCycleId, row.id, row.stamp]));
+    this.updateImageBarrier(editor);
   }
 
   async adoptCandidate(editor, candidate, presentation) {
     const previous = this.sessionFor(editor);
-    if (!this.isCurrent(presentation) || editor.localVersion || previous.attempts.length || editor.submissions.length) throw Error('This page has current writing. Keep both versions and copy deliberately.');
+    if (!this.isCurrent(presentation) || editor.localVersion || previous.attempts.length || editor.submissions.length || uploadWork(editor)) throw Error('This page has current writing. Keep both versions and copy deliberately.');
+    const revision = editor.uploadState?.revision;
+    const current = () => this.sessions.get(editor.key) === previous && this.isCurrent(presentation) && !editor.localVersion &&
+      editor.uploadState?.revision === revision && !editor.imageReservation && !editor.imageBusy;
     editor.adopting = true; this.changed(editor);
     try {
       const state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
       this.validateState(state, editor.context.sourceRef, editor.context.topicId);
-      if (!this.isCurrent(presentation) || editor.localVersion) throw Error('The current writing changed. Review both versions again.');
-      await this.journal.adopt(editor.key, { id: candidate.id, stamp: candidate.stamp });
+      if (!current()) throw Error('The current writing changed. Review both versions again.');
+      await this.journal.adopt(editor.key, { id: candidate.id, stamp: candidate.stamp }, current);
       this.sessions.delete(editor.key);
       const restored = await this.register(editor.context, editor.context.kind === 'note' ? state.note : state.draft);
       presentation.editors[editor.context.kind] = restored;
@@ -272,7 +319,9 @@ export class EditorRegistry {
         detail.source_ref?.kind !== editor.sourceRef.kind || detail.source_ref?.id !== editor.sourceRef.id ||
         detail.send_operation_id !== item.send_operation_id || detail.prepare_operation_id !== item.prepare_operation_id ||
         !same(detail.authority, item.authority)) throw Error('The pending source identity could not be confirmed.');
-    this.pendingDetails.set(id, copy(detail)); return detail;
+    this.pendingDetails.set(id, copy(detail));
+    this.rememberPendingReceipt(editor, item, detail.send_receipt);
+    return detail;
   }
 
   async checkPending(editor, id) {
@@ -285,8 +334,25 @@ export class EditorRegistry {
         (receipt.status !== 'unknown' && (!receipt.recorded || !['message.send', 'topic.create_and_send'].includes(receipt.kind))) ||
         (receipt.status === 'committed' && receipt.result?.submission_id !== id)) throw Error('The confirmation identity could not be established.');
     const page = this.pending(editor);
+    this.rememberPendingReceipt(editor, item, receipt);
     this.pages.set(editor.key, { ...page, items: page.items.map(entry => entry.id === id ? { ...entry, send_status: receipt.status } : entry) });
     this.changed(editor); return receipt;
+  }
+
+  rememberPendingReceipt(editor, item, receipt) {
+    const operation = item.send_operation_id;
+    if (receipt?.recorded === true && receipt.instance_id === editor.context.instanceId && receipt.operation_id === operation &&
+        receipt.kind === 'message.send' && receipt.status === 'rejected' && typeof receipt.error?.message === 'string' && receipt.error.message.trim()) {
+      this.pendingReceipts.set(JSON.stringify([editor.key, item.id, operation]), copy(receipt));
+    }
+  }
+
+  pendingReason(editor, item) {
+    const receipt = item.receipt ?? this.pendingReceipts.get(JSON.stringify([editor.key, item.id, item.send_operation_id]));
+    const correct = receipt?.kind === 'submission.prepare' ? receipt.operation_id === item.prepareOperationId
+      : receipt?.kind === (item.snapshot?.opening ? 'topic.create_and_send' : 'message.send') && receipt.operation_id === (item.sendOperationId ?? item.send_operation_id);
+    return receipt?.recorded === true && correct && receipt.instance_id === editor.context.instanceId && receipt.status === 'rejected' &&
+      typeof receipt.error?.message === 'string' && receipt.error.message.trim() ? receipt.error.message : null;
   }
 
   pending(editor) { return this.pages.get(editor.key) ?? { instance_id: this.bootstrap.instance_id, items: [], next_cursor: null }; }
@@ -304,7 +370,8 @@ export class EditorRegistry {
 
   get hasUnprotectedWriting() {
     return [...this.sessions.values()].some(({ editor }) => this.localWrites.get(editor.key)?.pending ||
-      (editor.journalError && (editor.dirty || editor.submissions.some(item => item.status !== 'confirmed'))));
+      editor.imageBusy || editor.imageReservation || editor.imageStorageError || editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)) ||
+      (editor.journalError && (uploadWork(editor) || editor.dirty || editor.submissions.some(item => item.status !== 'confirmed'))));
   }
   dispose() {
     this.disposed = true; ++this.generation;
