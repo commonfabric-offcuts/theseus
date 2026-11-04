@@ -108,6 +108,92 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     return;
   }
 
+  await check('freshness Notebook card top alignment and native activation', async () => {
+    const seeded = await control({ method: 'seed', memory_items: 2 });
+    const ids = ['fixture-notebook', ...seeded.item_ids];
+    const title = 'A taller Notebook entry';
+    const body = 'This deliberately longer entry gives shorter neighboring cards real empty space. '.repeat(8);
+    const revision = await control({ method: 'memory_revise', operation_id: operation('alignment-tall'),
+      item_id: ids[0], expected_revision: 1, title, body });
+    assert.equal(revision.status, 'committed');
+    const p = await page('notebook-top-alignment', null, true);
+    const card = id => `#memory-items [data-id="${id}"]`;
+    const scroll = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+    const geometry = () => p.evaluate(`Array.from(document.querySelectorAll('#memory-items .memory-card'),e=>{
+      const b=e.getBoundingClientRect(),t=e.querySelector('strong').getBoundingClientRect(),s=e.querySelector('span').getBoundingClientRect(),c=getComputedStyle(e);
+      return {id:e.dataset.id,x:b.x,y:b.y,width:b.width,height:b.height,titleTop:t.top,titleHeight:t.height,bodyBottom:s.bottom,
+        expectedTop:b.top+parseFloat(c.borderTopWidth)+parseFloat(c.paddingTop)};
+    })`);
+    const aligned = boxes => {
+      assert.equal(boxes.length, 3, 'all three real Notebook cards rendered');
+      for (const b of boxes) {
+        assert.ok(b.width > 0 && b.height > 0 && b.titleHeight > 0, 'rendered nonzero card and title');
+        assert.ok(Math.abs(b.titleTop - b.expectedTop) <= 1, `${b.id}: title must start at top border plus padding; offset ${b.titleTop-b.expectedTop}`);
+      }
+    };
+    await until(() => p.evaluate('document.querySelectorAll("#memory-items .memory-card").length===3'), 'unequal Notebook entries');
+    await scroll('#memory-items');
+    const before = await geometry(); observations.push({ name: 'Notebook desktop geometry', boxes: before });
+    await shot(p, 'notebook-desktop');
+    assert.ok(before.every(b => Math.abs(b.y-before[0].y) <= 1 && Math.abs(b.height-before[0].height) <= 1), 'equal-height cards share one desktop row');
+    assert.ok(before[0].bodyBottom-before[0].titleTop > before[1].bodyBottom-before[1].titleTop+150, 'substantially unequal intrinsic contents expose centering');
+    aligned(before);
+    const click = async (x,y) => {
+      assert.ok(await p.evaluate(`${x}>=0 && ${y}>=0 && ${x}<innerWidth && ${y}<innerHeight`), 'native point is inside viewport');
+      await p.send('Input.dispatchMouseEvent', { type:'mousePressed',x,y,button:'left',clickCount:1 });
+      await p.send('Input.dispatchMouseEvent', { type:'mouseReleased',x,y,button:'left',clickCount:1 });
+    };
+    const open = async (expectedTitle,expectedBody) => {
+      await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent===${JSON.stringify(expectedTitle)}`), 'native activation opens exact Notebook title');
+      assert.equal(await p.evaluate('document.querySelector("#source-body").textContent'), expectedBody);
+      await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled Reader');
+    };
+    const close = async id => {
+      await p.point('#reader-close');
+      await until(() => p.evaluate('!document.querySelector("#reader").open'), 'Reader closed');
+      assert.equal(await p.evaluate('document.activeElement.dataset.id'), id, 'opener focus restored');
+    };
+    const gapX=(before[0].x+before[0].width+before[1].x)/2, gapY=before[1].y+before[1].height/2;
+    assert.equal(await p.evaluate(`document.elementFromPoint(${gapX},${gapY}).id`), 'memory-items', 'point is truly the card gap');
+    await click(gapX,gapY); assert.equal(await p.evaluate('document.querySelector("#reader").open'), false);
+    const lower={x:before[1].x+before[1].width/2,y:before[1].y+before[1].height*.93};
+    assert.ok(lower.y>before[1].bodyBottom+20, 'bottom 7% point is in empty lower card space');
+    await click(lower.x,lower.y); await open('Fixture item 0','Fixture Notebook body 0'); await close(ids[1]);
+    await p.key('Tab');
+    assert.equal(await p.evaluate('document.activeElement.dataset.id'),ids[2]);
+    assert.equal(await p.evaluate('document.activeElement.matches(":focus-visible") && getComputedStyle(document.activeElement).outlineStyle!=="none"'),true);
+    await p.key('Enter'); await open('Fixture item 1','Fixture Notebook body 1'); await close(ids[2]);
+    for (const type of ['keyDown','keyUp']) await p.send('Input.dispatchKeyEvent', {type,key:' ',code:'Space',windowsVirtualKeyCode:32,...(type==='keyDown'?{text:' '}: {})});
+    await open('Fixture item 1','Fixture Notebook body 1'); await close(ids[2]);
+    await p.evaluate(`window.alignmentCard=document.querySelector(${JSON.stringify(card(ids[2]))})`);
+    const revisedBody='A revised short preview, still aligned at the top.';
+    assert.equal((await control({method:'memory_revise',operation_id:operation('alignment-redraw'),item_id:ids[2],expected_revision:1,title:'Revised short item',body:revisedBody})).status,'committed');
+    await until(() => hasText(p,card(ids[2]),revisedBody),'actual Notebook revision paints');
+    assert.equal(await p.evaluate('document.activeElement===alignmentCard && alignmentCard.isConnected'),true,'revision preserves focused card identity');
+    const redrawn=await geometry(); aligned(redrawn); observations.push({name:'Notebook redrawn geometry',boxes:redrawn,lowerClick:lower});
+    await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+    await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
+    await scroll(card(ids[1]));
+    const mobile=await geometry(); aligned(mobile);
+    assert.ok(mobile.every(b=>b.x>=0 && b.x+b.width<=390 && b.height>=44),'mobile cards fit and retain touch height');
+    assert.equal(await p.evaluate('document.documentElement.scrollWidth'),390,'no horizontal overflow');
+    observations.push({name:'Notebook mobile pre-input geometry',boxes:mobile});
+    await shot(p,'notebook-mobile-before-touch');
+    await p.evaluate(`(()=>{window.notebookTouches=[];for(const type of ['touchstart','touchend','click'])document.addEventListener(type,e=>{
+      const point=e.changedTouches?.[0]??e;notebookTouches.push({type,id:e.target.closest('.memory-card')?.dataset.id??e.target.id,x:point.clientX,y:point.clientY});
+    },true)})()`);
+    // Chrome adjusts a gap touch to a neighboring button in both the baseline
+    // and fixed layout. The retained diagnostic is not an inert-gap guarantee.
+    // Here the touch is deliberately in the card's own area.
+    await tap(p,card(ids[1])); await open('Fixture item 0','Fixture Notebook body 0');
+    const touchEvents=await p.evaluate('notebookTouches');
+    assert.ok(touchEvents.some(e=>e.type==='click' && e.id===ids[1]),'native touch activates the intended card');
+    await tap(p,'#reader-close'); await until(()=>p.evaluate('!document.querySelector("#reader").open'),'touch close');
+    assert.equal(p.calls.some(c=>['message.send','submission.prepare','memory.create','memory.revise'].includes(c.payload?.kind)),false,'native card actions publish nothing');
+    observations.push({name:'Notebook mobile geometry',boxes:mobile,touchEvents}); await shot(p,'notebook-mobile');
+    assert.deepEqual(p.errors,[]);
+  });
+
   await check('freshness C2 identical paired open and neighbor latency workload', async () => {
     const a = await page('latency-a', null, true, { newWindow: true });
     const b = await page('latency-b', null, true, { newWindow: true });
