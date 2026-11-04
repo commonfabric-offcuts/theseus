@@ -42,7 +42,7 @@ validation. The accepted correction specification is revision 04, reviewed in
   the topic page. Automatic arrival does not yet guarantee that every new card
   is visible without scrolling.
 - The fixed foreground/background read partition does not preempt an active
-  Store callback, solve image-proof producer admission, or guarantee latency
+  Store callback or guarantee latency
   under slow storage or overload. See [measured costs](scoped-updates.md).
 
 ## Evidence qualifications
