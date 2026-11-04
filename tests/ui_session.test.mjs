@@ -5,6 +5,8 @@ import { createInterface } from 'node:readline';
 import { Editor, restoreEditor } from '../web/editor.mjs';
 import { EditorSession, RuntimeAuthority, PRIOR_PUBLICATION_NOTICE } from '../web/session.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
+import { EditorRegistry } from '../web/app-session.mjs';
+import { TopicNavigation } from '../web/topic-navigation.mjs';
 
 const copy = value => structuredClone(value);
 const deferred = () => {
@@ -301,6 +303,77 @@ test('corrected prepare requires explicit matching remote review, uses fresh ope
   const messages = await f.api.view('topic_messages', { topic_id: 't1' });
   assert.equal(messages.items.length, 2);
   assert.equal(messages.items[1].body, 'A to deliberately recover');
+});
+
+async function correctionDepartureFixture(t) {
+  const f = await fixture(t); let conflict = true;
+  f.transport.command = async envelope => {
+    f.calls.push(copy(envelope));
+    if (envelope.kind === 'submission.prepare' && conflict) {
+      conflict = false; const draft = (await f.state()).draft;
+      const receipt = await f.api.command(f.command('draft.save', 'correction-other-writer',
+        { ...draft, topic_id: 't1', body: 'Other reviewed writing' }, { draft_id: draft.id }, { draft_revision: draft.revision }));
+      assert.equal(receipt.status, 'committed');
+    }
+    return f.api.command(envelope);
+  };
+  f.editor.edit({ body: 'Exact correction original' }); await f.session.send();
+  const refused = f.editor.submissions[0]; assert.equal(refused.status, 'refused');
+  assert.equal(refused.receipt.error.code, 'REVISION_CONFLICT');
+  const registry = Object.create(EditorRegistry.prototype);
+  Object.assign(registry, { sessions: new Map([[f.editor.key, f.session]]), localWrites: new Map(),
+    inline: { editors: { reply: f.editor } }, current: null, disposed: false,
+    flush: () => f.session.save(), keepEditorsLocal: () => f.session.persist() });
+  const visits = [], navigation = new TopicNavigation({ registry, topicId: 't1', navigate: id => visits.push(id) });
+  return { ...f, registry, visits, navigation, refused, reviewed: (await f.state()).draft };
+}
+
+test('correction departure protects synchronous validation prepare and publication then removes only its marker', async t => {
+  const f = await correctionDepartureFixture(t), validation = deferred(), prepare = deferred(), publication = deferred();
+  const releaseValidation = deferred(), releasePrepare = deferred(), releasePublication = deferred();
+  const originalReceipt = copy(f.refused.receipt), bootstrap = f.transport.bootstrap;
+  f.transport.bootstrap = async () => { validation.resolve(); await releaseValidation.promise; return bootstrap(); };
+  f.transport.command = async envelope => {
+    f.calls.push(copy(envelope));
+    if (envelope.kind === 'submission.prepare') { prepare.resolve(); await releasePrepare.promise; }
+    if (envelope.kind === 'message.send') { publication.resolve(); await releasePublication.promise; }
+    return f.api.command(envelope);
+  };
+  const correction = f.session.correctPreparation(f.refused, f.reviewed, f.editor.localVersion);
+  try {
+    assert.ok([...f.session.sends.values()].includes(correction), 'whole returned chain is registered synchronously');
+    for (const [stage, release] of [[validation,releaseValidation],[prepare,releasePrepare],[publication,releasePublication]]) {
+      await stage.promise;
+      assert.equal(f.registry.hasInFlightSend, true); assert.equal(f.registry.hasUnprotectedWriting, true);
+      await assert.rejects(f.navigation.open('t2'), /Wait for the send/); assert.deepEqual(f.visits, []);
+      if (stage !== publication) release.resolve();
+    }
+    const unrelated = Promise.resolve('another send'); f.session.sends.set(f.refused.id, unrelated);
+    releasePublication.resolve(); const result = await correction;
+    assert.equal(result.status, 'confirmed'); assert.deepEqual(f.refused.receipt, originalReceipt);
+    assert.deepEqual([...f.session.sends], [[f.refused.id, unrelated]], 'only the correction marker is removed');
+    f.session.sends.delete(f.refused.id); assert.equal(f.registry.hasUnprotectedWriting, false);
+    assert.equal(await f.navigation.open('t2'), true); assert.deepEqual(f.visits, ['t2']);
+    const messages = await f.api.view('topic_messages', { topic_id: 't1' });
+    assert.equal(messages.items.filter(m => m.body === 'Exact correction original').length, 1);
+    assert.equal(f.calls.filter(c => c.kind === 'message.send').length, 1);
+  } finally {
+    releaseValidation.resolve(); releasePrepare.resolve(); releasePublication.resolve();
+    await correction.catch(() => {});
+  }
+});
+
+test('correction departure rejection preserves original error and unrelated send marker', async t => {
+  const f = await correctionDepartureFixture(t), unrelated = Promise.resolve('unrelated');
+  f.session.sends.set(f.refused.id, unrelated);
+  const count = f.calls.length, receipt = copy(f.refused.receipt);
+  const correction = f.session.correctPreparation(f.refused, { ...f.reviewed, revision: -1 }, f.editor.localVersion);
+  const rejection = assert.rejects(correction, /Writing changed since it was reviewed/);
+  try {
+    assert.equal(f.session.sends.size, 2, 'correction is distinct from the original item id');
+  } finally { await rejection; }
+  assert.deepEqual([...f.session.sends], [[f.refused.id, unrelated]]);
+  assert.equal(f.calls.length, count); assert.deepEqual(f.refused.receipt, receipt);
 });
 
 test('wrong instance or operation receipt cannot acknowledge a save or authorize preparation', async t => {

@@ -81,6 +81,55 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     observations.push({name:'retained blocked original',original,retained});await shot(p,'departure-retained-pending');assert.deepEqual(p.errors,[]);
   });
 
+  await check('navigation correction retry chain protects prepare publication and preserves original refusal',async()=>{
+    await setup();const p=await page('departure-correction-chain',null,true),body='One exact deliberately corrected publication';
+    p.intercept(payload=>payload?.kind==='draft.save'&&payload.args.source_ref?.kind==='topic');
+    await write(p,body);await p.key('Enter',4);
+    const saved=await until(()=>p.held.find(h=>h.payload?.kind==='draft.save'),'original save held before preparation');
+    const draft=(await view('editor_state',{source_ref:{kind:'topic',id:'t1'},topic_id:'t1'})).draft;
+    // An isolated second writer advances the real canonical draft before the
+    // browser can prepare A. This yields an actual retained CAS refusal.
+    const other={...saved.payload,operation_id:'departure-correction-other-writer',
+      expected:{...saved.payload.expected,draft_revision:draft.revision},
+      args:{...saved.payload.args,body:'Other writer version reviewed before correction'}};
+    const otherReceipt=await (await fetch(facts.origin+'/api/command',{method:'POST',headers:{
+      Authorization:`Bearer ${facts.token}`,Origin:facts.origin,'Content-Type':'application/json'},body:JSON.stringify(other)})).json();
+    assert.equal(otherReceipt.status,'committed');p.intercept(null);await p.release(saved);
+    const original=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.status==='refused'&&i.snapshot.body===body);},'original refused preparation retained');
+    const originalReceipt=await view('operation',{operation_id:original.prepareOperationId});
+    assert.equal(originalReceipt.status,'rejected');assert.equal(originalReceipt.error.code,'REVISION_CONFLICT');
+    const reviewButton=async text=>{
+      await until(()=>p.evaluate(`(()=>{const b=[...document.querySelectorAll('#review-content button')].find(b=>b.textContent===${JSON.stringify(text)});if(!b||b.disabled)return false;b.dataset.nativeCorrection='';return true;})()`),'available '+text);
+      await point(p,'[data-native-correction]');
+    };
+    await point(p,'#inline-pending button');await reviewButton('Prepare this reply again');
+    await until(()=>p.evaluate('Boolean(document.querySelector("#review-content input[type=checkbox]"))'),'explicit correction review');
+    await point(p,'#review-content input[type=checkbox]');
+    p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
+    await reviewButton('Prepare this reply again');
+    const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held corrected preparation');
+    await point(p,'#review-close');
+    const stay=async stage=>{
+      await choose(p);await until(async()=>/Wait for the send/.test(await notice(p)),stage+' uses active send guidance');
+      assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
+      const before=p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length;
+      const origin=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');
+      await until(()=>p.events.filter(e=>e.method==='Page.javascriptDialogOpening'&&e.params.type==='beforeunload').length>before,stage+' reload protection');
+      assert.equal(await p.evaluate('performance.timeOrigin'),origin,'CDP immediately dismissed correction reload');
+    };
+    await stay('correction prepare');await p.release(preparing);
+    const sending=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'),'held corrected publication');
+    await stay('correction publication');p.intercept(null);await p.release(sending);await exact(p,sending,body);
+    await point(p,'#inline-pending button');
+    await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${sending.payload.args.submission_id}"] h3')?.textContent==='Sent to Theseus'`),'corrected publication visibly confirmed');
+    assert.equal(await p.evaluate(`document.querySelector('#review-content [data-id="${original.id}"] h3').textContent`),'Not sent — writing kept');
+    assert.deepEqual(await view('operation',{operation_id:original.prepareOperationId}),originalReceipt,'original refusal is immutable');
+    assert.equal(p.calls.filter(c=>c.payload?.kind==='message.send').length,1,'one correction publication, no original replay');
+    await point(p,'#review-close');await choose(p);await ready(p,'t2');
+    assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,2,'only the two deliberate reloads prompted');
+    assert.deepEqual(p.errors,[]);observations.push({name:'native correction original refusal',originalReceipt,otherReceipt});
+  });
+
   await check('navigation correction just closed Reader reply and note save inside debounce',async()=>{
     await setup();const p=await page('departure-closed-reader',null,true);
     for(const [index,note] of [[0,false],[1,true]]) {

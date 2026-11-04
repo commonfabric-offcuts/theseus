@@ -464,7 +464,8 @@ export class EditorSession {
   }
 
   correctPreparation(refused, reviewedRemote, reviewedLocalVersion, options = {}) {
-    return this.enqueue(async () => {
+    const marker = Symbol('correction');
+    const sending = this.enqueue(async () => {
       const requireUnpublished = () => {
         const published = refused.status === 'confirmed' || (refused.receipt?.status === 'committed' &&
           ['message.send', 'topic.create_and_send'].includes(refused.receipt.kind));
@@ -531,6 +532,12 @@ export class EditorSession {
       }
       return item;
     });
+    // Track the entire act, including queued validation, without colliding with
+    // start()'s submission keys or changing the promise returned to its caller.
+    this.sends.set(marker, sending);
+    const settled = () => this.sends.delete(marker);
+    sending.then(settled, settled);
+    return sending;
   }
 
   reconcile() {
