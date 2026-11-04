@@ -16,8 +16,11 @@ An open source stays on the revision you chose. A newer Notebook revision offers
 writing, quotes, image selection, focus and selection. Incoming changes do not
 send, acknowledge a delivery, or silently choose a replacement source for you.
 
-**Refresh** remains available and joins the same coalesced update work. Hidden
-pages stop scheduling checks and catch up when visible again. The healthy
+While automatic updates are running, **Refresh** joins the same coalesced work.
+If updates are disabled or stopped by a diagnostic, it rereads the lists without
+restarting automatic checks. A refused topic stays hidden until **Retry updates**
+restores access; writing parked for authority review cannot be replaced by a
+Refresh. Hidden pages stop scheduling checks and catch up when visible again. The healthy
 visible cadence starts at 500 ms; slower reads and retries reduce the rate.
 This cadence is not a promise that every update arrives within 500 ms.
 
@@ -39,6 +42,12 @@ A server without the supported read-admission capability keeps automatic updates
 off and says that they need the updated server. Manual Refresh remains available.
 An unexplained read failure stops with a diagnostic rather than silently showing
 an empty, apparently current topic.
+
+After reviewing saved writing following a runtime authority change, use the
+browser's Reload to reconnect. The update controls are outside the modal
+reader; close the reader to inspect them. Further recovery, long-history
+painting and evidence limits are recorded in
+[review follow-ups](scoped-updates-followups.md).
 
 ## Work bounds and rollout
 
