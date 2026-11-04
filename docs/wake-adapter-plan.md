@@ -1,7 +1,9 @@
 # Wake adapter: bounded first implementation
 
 Status: initial adapter boundary confirmed by Fable in `m-b3888405` at
-`4b6a437` / SHA256 `99bcf9beb99b`; not implemented or enabled. The subsequent
+`4b6a437` / SHA256 `99bcf9beb99b`. Route preparation is implemented at
+`48b6e95`, with the literal-argv correction `e344852` independently bound in
+`m-64d61d0d`; invocation is not implemented or enabled. The subsequent
 held-process guard and authority interfaces are confirmed by Fable in
 `m-d8c0ae60` and lead in `m-caac4621`: wake contract SHA256 `a30aff1efbd5`,
 authority contract `12214d25fb77`. Exact snapshots are retained in
@@ -190,15 +192,23 @@ Core confirmed the actual calling sequence in `m-43e1d4ff`: renew ownership,
 claim due work, invoke the adapter, register the child after spawn, then settle
 only after owned cleanup. No additional claim-validation method is planned.
 The sole real guard holder owns internal token/claim changes; none of these
-methods is in public command dispatch. Core's runner implementation is still
+methods is in public command dispatch. Each token-bound call must match the
+exact guard acquisition generation that created its token. Closing/reacquiring
+a guard does not transfer the old token. The runner candidate `686ae92` violates
+this boundary and is blocked by review `m-3bf4c85d`; its correction and review
+are required before integration. Core's runner implementation is still
 awaiting its own reviewed handoff. The route/encoding layer uses the already
 integrated real `RunnerGuard` and v2 profile, not a replacement guard fixture.
 
 Lead's intended Python seam is
 `run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child)`.
 The caller must have just obtained Core's current successful acquire/renew and
-claim results. `owner_lease_until_ms` is that returned singleton lease, not a
-configuration setting. The adapter validates the exact claim shape/binding and
+claim results. The sequential adapter requests `limit=1`: after owned cleanup
+and settlement, renew ownership and claim the next due recipient. Never hold a
+batch of expiring claims while processing earlier children. Core's maximum-32
+selection proof remains a storage API bound, not a sequential launch claim.
+This disposition follows Fable `m-3bf4c85d` and lead `m-ea3ed541`.
+`owner_lease_until_ms` is the returned singleton lease, not a configuration setting. The adapter validates the exact claim shape/binding and
 route, obtains the actual guard's verified `pass_fds`, and checks current time
 immediately before spawn: both leases have at least seven seconds remaining and
 the singleton covers the whole claim. An old receipt after Mac sleep is not
