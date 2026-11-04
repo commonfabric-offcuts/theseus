@@ -55,7 +55,8 @@ class WakeRouteTests(unittest.TestCase):
     def test_bound_route_preserves_literal_argv_and_captured_hint(self):
         before = self.db.read_bytes()
         prepared = prepare_route(self.route, self.claim, self.guard)
-        self.assertEqual(prepared.argv, tuple([str(Path("/bin/cat").resolve())] + self.argv[1:]))
+        self.assertEqual(prepared.argv, tuple(self.argv))
+        self.assertEqual(prepared.executable, str(Path("/bin/cat").resolve()))
         self.assertEqual(json.loads(prepared.stdin), {
             "v": 1, "binding": self.claim["route_binding"],
             "wake_generation": 7, "attempt_id": "attempt-1"})
@@ -75,6 +76,15 @@ class WakeRouteTests(unittest.TestCase):
         self.assertEqual(first.pop("attempt_id"), "attempt-1")
         self.assertEqual(second.pop("attempt_id"), "attempt-2")
         self.assertEqual(first, second)
+
+    def test_symlink_entrypoint_keeps_argv_zero_and_separates_checked_executable(self):
+        alias = self.root / "named-broker"
+        alias.symlink_to("/bin/cat")
+        argv = [str(alias), "one literal argument"]
+        self.put(dict(self.config, argv=argv))
+        prepared = prepare_route(self.route, self.claim, self.guard)
+        self.assertEqual(prepared.argv, tuple(argv))
+        self.assertEqual(prepared.executable, str(Path("/bin/cat").resolve()))
 
     def test_route_file_is_private_regular_bounded_and_not_a_symlink(self):
         self.rejected(route=self.root / "missing")

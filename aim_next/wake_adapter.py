@@ -31,6 +31,7 @@ class PreparedRoute:
     # Internal, ephemeral data, not a receipt or authorization to dispatch later.
     argv: tuple
     stdin: bytes
+    executable: str
 
 
 def _identity(value):
@@ -149,7 +150,7 @@ def prepare_route(route_path, claim, guard):
         if len(encoded) > MAX_STDIN_BYTES:
             raise RouteUnavailable("invalid_claim")
         guard.verify()
-        return PreparedRoute(tuple([executable] + argv[1:]), encoded)
+        return PreparedRoute(tuple(argv), encoded, executable)
     except ProfileError as error:
         raise RouteUnavailable("profile_unavailable") from error
     except AuthorityError as error:
