@@ -10,6 +10,7 @@ import signal
 import select
 import subprocess
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -36,7 +37,8 @@ def fixture_watchdog():
 if mode != "cleanup-owned":
     threading.Thread(target=fixture_watchdog, daemon=True).start()
     assert watching.wait(2), "fixture shutdown reader did not start"
-record = {"pid": os.getpid(), "pgid": os.getpgrp(), "argv": sys.argv[1:]}
+record = {"pid": os.getpid(), "pgid": os.getpgrp(), "argv": sys.argv[1:],
+          "blocked_signals": sorted(int(n) for n in signal.pthread_sigmask(signal.SIG_BLOCK, []))}
 if mode in ("descendant", "cleanup-family"):
     code = "import os,select,sys; fd=os.open(sys.argv[1],os.O_RDONLY|os.O_NONBLOCK); os.write(1,b'R'); select.select([fd],[],[],30); os._exit(97)"
     child = subprocess.Popen([sys.executable, "-c", code, stop], stdout=subprocess.PIPE)
@@ -50,7 +52,12 @@ if mode == "guard":
 with open(report, "w") as target:
     json.dump(record, target)
 os.write(1, b"R")  # fixture-only readiness; the actual adapter discards stdout
-if mode == "exit-before-registration":
+if mode in ("exit-before-registration", "closed-stdin"):
+    if mode == "closed-stdin":
+        os.close(0)
+        ready = os.open(os.path.join(os.path.dirname(report), "fixture-ready"), os.O_WRONLY)
+        os.write(ready, b"R")
+        os.close(ready)
     gate = os.open(os.path.join(os.path.dirname(report), "fixture-exit"), os.O_RDONLY | os.O_NONBLOCK)
     select.select([gate], [], [], 10)
     os.read(gate, 1)
@@ -103,7 +110,7 @@ class WakeInvocationTests(unittest.TestCase):
         self.actual_killpg = os.killpg
         self.group_signals = []
         self.controls = {}
-        for name in ("fixture-stop", "fixture-exit"):
+        for name in ("fixture-stop", "fixture-exit", "fixture-ready"):
             control = self.root / name
             os.mkfifo(control, 0o600)
             self.controls[name] = os.open(control, os.O_RDWR | os.O_NONBLOCK)
@@ -721,6 +728,505 @@ class WakeInvocationTests(unittest.TestCase):
         self.assertEqual([row["signal"] for row in self.group_signals], [signal.SIGTERM, signal.SIGKILL])
         self.assert_reaped(self.spawned[-1]["child"].pid)
         self.assert_no_live_group(self.spawned[-1]["child"].pid)
+
+    def save_observations(self, value):
+        (self.root / "observations.json").write_text(json.dumps(value, indent=2) + "\n")
+
+    def release_owned_exit(self, child):
+        """Actual NOTE_EXIT and zombie evidence, without reaping our leader."""
+        queue = select.kqueue()
+        try:
+            queue.control([select.kevent(child.pid, filter=select.KQ_FILTER_PROC,
+                flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_ONESHOT,
+                fflags=select.KQ_NOTE_EXIT)], 0, 0)
+            os.write(self.controls["fixture-exit"], b"x")
+            events = queue.control(None, 1, 1.5)
+            self.assertTrue(any(e.ident == child.pid and e.fflags & select.KQ_NOTE_EXIT
+                                for e in events), "Owned exit precondition was not observed")
+        finally:
+            queue.close()
+        state = self.process_state(child.pid)
+        self.assertIsNotNone(state)
+        self.assertEqual(state[0], child.pid)
+        self.assertTrue(state[1].startswith("Z"))
+        self.assertIsNone(child.returncode)
+        return state
+
+    def test_real_exit_between_snapshot_and_signal_is_reobserved(self):
+        child, report = self.start_fixture_broker("exit-before-registration")
+        observed = []
+        actual = self.actual_killpg
+        def signal_after_exit(group, sig):
+            self.assertEqual(group, child.pid)
+            state = self.release_owned_exit(child)
+            row = {"signal": int(sig), "state_before_signal": state, "errno": None}
+            observed.append(row)
+            try:
+                return actual(group, sig)
+            except OSError as error:
+                row["errno"] = error.errno
+                raise
+        failure = None
+        try:
+            with mock.patch.object(os, "killpg", side_effect=signal_after_exit):
+                try:
+                    result = wake_adapter._cleanup_child(child)
+                except (OSError, wake_adapter.AdapterFault) as error:
+                    failure = str(error)
+        finally:
+            self.save_observations(observed)
+        self.assertIsNone(failure, "A real zombie-only killpg race was not reobserved: " + str(failure))
+        self.assertEqual(result, (0, False))
+        self.assertEqual(len(observed), 1)
+        self.assertEqual(observed[0]["signal"], signal.SIGTERM)
+        self.assertIn(observed[0]["errno"], (errno.EPERM, errno.ESRCH))
+        self.assert_reaped(child.pid)
+        self.assert_no_live_group(child.pid)
+
+    def test_signal_errno_reobservation_advances_term_phase_and_keeps_deadline(self):
+        rows = []
+        # Synthetic errno controls supplement the actual OS race above. Actual
+        # child stays live; an inaccessible group must still fail by its deadline.
+        for code in (errno.EPERM, errno.ESRCH):
+            with self.subTest(errno=code):
+                child, report = self.start_fixture_broker("cleanup-owned")
+                signals = []
+                start = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+                def refused(group, sig):
+                    self.assertEqual(group, child.pid)
+                    signals.append({"signal": int(sig), "elapsed":
+                        (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - start) / 1e9})
+                    raise OSError(code, "fixture signal refusal")
+                caught = None
+                with mock.patch.object(os, "killpg", side_effect=refused):
+                    try:
+                        wake_adapter._cleanup_child(child)
+                    except (OSError, wake_adapter.AdapterFault) as error:
+                        caught = error
+                elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - start) / 1e9
+                rows.append({"errno": code, "signals": signals, "elapsed": elapsed,
+                             "fault": str(caught)})
+                self.assertIsInstance(caught, wake_adapter.AdapterFault,
+                                      "Signal errno escaped instead of bounded reobservation")
+                # A last observation can consume the remaining cleanup budget.
+                # run_route wraps either internal fault as cleanup_unconfirmed.
+                self.assertIn(str(caught), ("cleanup_unconfirmed", "process_observation_failed"))
+                self.assertEqual([s["signal"] for s in signals], [signal.SIGTERM, signal.SIGKILL])
+                self.assertGreaterEqual(signals[1]["elapsed"], .39)
+                self.assertLess(signals[1]["elapsed"], .85)
+                self.assertGreaterEqual(elapsed, .95)
+                self.assertLess(elapsed, 1.5)
+                self.assertIsNone(child.returncode)
+                self.actual_killpg(child.pid, signal.SIGKILL)
+                child.wait(timeout=2)
+        self.save_observations(rows)
+
+    def test_one_omitted_live_descendant_cannot_authorize_reap(self):
+        child, report = self.start_fixture_broker("descendant")
+        # wait for Z without using wait/poll, preserving our owned PGID.
+        queue = select.kqueue()
+        try:
+            try:
+                queue.control([select.kevent(child.pid, filter=select.KQ_FILTER_PROC,
+                    flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_ONESHOT,
+                    fflags=select.KQ_NOTE_EXIT)], 0, 0)
+                queue.control(None, 1, 1)
+            except OSError as error:
+                self.assertEqual(error.errno, errno.ESRCH)
+        finally:
+            queue.close()
+        self.assertTrue(self.process_state(child.pid)[1].startswith("Z"))
+        original = wake_adapter._process_group
+        snapshots = []
+        def partial_then_real(pid, deadline):
+            actual = original(pid, deadline)
+            returned = dict(actual)
+            if not snapshots:
+                self.assertIn(report["descendant"], actual)
+                self.assertFalse(actual[report["descendant"]].startswith("Z"))
+                returned = {pid: actual[pid]}
+            snapshots.append({"actual": actual, "returned": returned})
+            return returned
+        with mock.patch.object(wake_adapter, "_process_group", side_effect=partial_then_real):
+            result = wake_adapter._cleanup_child(child)
+        self.save_observations(snapshots)
+        self.assertEqual(result, (0, True), "One partial snapshot falsely accepted a live descendant")
+        self.assertGreaterEqual(len(snapshots), 4)
+        self.assertTrue(any(any(not state.startswith("Z") for state in row["returned"].values())
+                            for row in snapshots[1:-2]))
+        self.assertTrue(all(all(state.startswith("Z") for state in row["returned"].values())
+                            for row in snapshots[-2:]), "Live observation must reset empty confirmation")
+        self.assert_reaped(child.pid)
+        self.assert_no_live_group(child.pid)
+
+    def test_unexpected_signal_errno_is_not_treated_as_an_exit_race(self):
+        child, report = self.start_fixture_broker("cleanup-owned")
+        caught = None
+        started = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+        with mock.patch.object(os, "killpg", side_effect=OSError(errno.EBADF, "fixture bad descriptor")):
+            try:
+                wake_adapter._cleanup_child(child)
+            except (OSError, wake_adapter.AdapterFault) as error:
+                caught = error
+        elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - started) / 1e9
+        self.save_observations({"error_type": type(caught).__name__, "elapsed": elapsed})
+        self.assertIsInstance(caught, OSError, "An unrelated signal failure was swallowed as an exit race")
+        self.assertEqual(caught.errno, errno.EBADF)
+        self.assertLess(elapsed, .5)
+        self.assertIsNone(child.returncode)
+
+    def test_sigint_inside_popen_return_is_deferred_until_owned_cleanup(self):
+        self.configure("never-read")
+        original_spawn = self.observe_spawn
+        previous = signal.signal(signal.SIGINT, signal.default_int_handler)
+        returned = []
+        handlers = []
+        def interrupt_after_construct(args, *a, **kw):
+            child = original_spawn(args, *a, **kw)
+            if str(self.script) in args:
+                handlers.append(signal.getsignal(signal.SIGINT) is signal.default_int_handler)
+                os.kill(os.getpid(), signal.SIGINT)
+                returned.append(child.pid)
+            return child
+        caught = None
+        try:
+            with mock.patch.object(self, "observe_spawn", side_effect=interrupt_after_construct):
+                try:
+                    self.invoke()
+                except (KeyboardInterrupt, wake_adapter.AdapterFault) as error:
+                    caught = error
+            self.assertIs(signal.getsignal(signal.SIGINT), signal.default_int_handler)
+        finally:
+            signal.signal(signal.SIGINT, previous)
+        self.save_observations({"returned": returned, "original_handler_at_launch": handlers,
+                                "caught": type(caught).__name__})
+        self.assertIsInstance(caught, wake_adapter.AdapterFault,
+                              "SIGINT escaped before Popen ownership was established")
+        self.assertEqual(str(caught), "invocation_fault")
+        self.assertEqual(handlers, [False])
+        self.assertEqual(returned, [self.spawned[0]["child"].pid])
+        self.assert_reaped(returned[0])
+        self.assert_no_live_group(returned[0])
+
+    def test_sigterm_deferral_restores_handlers_before_delivery_without_child_mask(self):
+        self.configure("normal")
+        returned, delivered = [], []
+        def original_handler(number, frame):
+            delivered.append({"signal": number, "owned": bool(returned),
+                              "restored": signal.getsignal(signal.SIGTERM) is original_handler})
+        previous = signal.signal(signal.SIGTERM, original_handler)
+        original_spawn = self.observe_spawn
+        def stop_after_construct(args, *a, **kw):
+            child = original_spawn(args, *a, **kw)
+            if str(self.script) in args:
+                os.kill(os.getpid(), signal.SIGTERM)
+                os.kill(os.getpid(), signal.SIGTERM)  # bounded one pending delivery
+                returned.append(child.pid)
+            return child
+        try:
+            with mock.patch.object(self, "observe_spawn", side_effect=stop_after_construct):
+                result = self.invoke()
+            self.assertIs(signal.getsignal(signal.SIGTERM), original_handler)
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+        self.save_observations(delivered)
+        self.assertEqual(delivered, [{"signal": signal.SIGTERM, "owned": True, "restored": True}])
+        self.assertEqual(result.outcome, "accepted")
+        report = json.loads(self.report.read_text())
+        self.assertNotIn(signal.SIGTERM, report["blocked_signals"])
+        self.assertNotIn(signal.SIGINT, report["blocked_signals"])
+        self.assert_reaped(returned[0])
+
+    def test_non_main_thread_refuses_before_popen(self):
+        self.configure("normal")
+        results, errors = [], []
+        original = {n: signal.getsignal(n) for n in (signal.SIGINT, signal.SIGTERM)}
+        def run():
+            try:
+                results.append(self.invoke())
+            except BaseException as error:
+                errors.append(type(error).__name__)
+        thread = threading.Thread(target=run)
+        thread.start()
+        thread.join(8)
+        self.assertFalse(thread.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].outcome, "unavailable")
+        self.assert_not_started()
+        self.assertEqual({n: signal.getsignal(n) for n in original}, original)
+
+    def test_default_term_during_launch_becomes_fixed_fault_after_cleanup(self):
+        self.configure("never-read")
+        previous = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        original_spawn = self.observe_spawn
+        def stop_after_construct(args, *a, **kw):
+            child = original_spawn(args, *a, **kw)
+            if str(self.script) in args:
+                self.assertTrue(callable(signal.getsignal(signal.SIGTERM)),
+                                "Refuse to send actual TERM without verified deferral")
+                os.kill(os.getpid(), signal.SIGTERM)
+            return child
+        try:
+            with mock.patch.object(self, "observe_spawn", side_effect=stop_after_construct):
+                with self.assertRaises(wake_adapter.AdapterFault) as caught:
+                    self.invoke()
+            self.assertEqual(str(caught.exception), "invocation_interrupted")
+            self.assertEqual(signal.getsignal(signal.SIGTERM), signal.SIG_DFL)
+        finally:
+            signal.signal(signal.SIGTERM, previous)
+        self.assert_reaped(self.spawned[0]["child"].pid)
+        self.assert_no_live_group(self.spawned[0]["child"].pid)
+
+    def test_ignored_signal_remains_ignored_during_launch(self):
+        self.configure("normal")
+        previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+        original_spawn = self.observe_spawn
+        observed = []
+        def ignored_after_construct(args, *a, **kw):
+            child = original_spawn(args, *a, **kw)
+            if str(self.script) in args:
+                observed.append(signal.getsignal(signal.SIGINT))
+                os.kill(os.getpid(), signal.SIGINT)
+            return child
+        try:
+            with mock.patch.object(self, "observe_spawn", side_effect=ignored_after_construct):
+                result = self.invoke()
+            self.assertEqual(signal.getsignal(signal.SIGINT), signal.SIG_IGN)
+        finally:
+            signal.signal(signal.SIGINT, previous)
+        self.assertEqual(observed, [signal.SIG_IGN])
+        self.assertEqual(result.outcome, "accepted")
+        self.assert_reaped(self.spawned[0]["child"].pid)
+
+    def test_constructor_failure_restores_both_original_handlers(self):
+        self.configure("normal")
+        original = {n: signal.getsignal(n) for n in (signal.SIGINT, signal.SIGTERM)}
+        def failed_spawn(args, *a, **kw):
+            self.assertIn(str(self.script), args)
+            self.assertTrue(callable(signal.getsignal(signal.SIGTERM)))
+            raise OSError(errno.ENOENT, "fixture launch failure")
+        try:
+            with mock.patch.object(self, "observe_spawn", side_effect=failed_spawn):
+                result = self.invoke()
+            self.assertEqual({n: signal.getsignal(n) for n in original}, original)
+        finally:
+            for number, handler in original.items():
+                signal.signal(number, handler)
+        self.assertEqual(result.outcome, "unavailable")
+        self.assert_not_started()
+
+    def test_constructor_failure_still_delivers_deferred_stop_and_preserves_context(self):
+        self.configure("normal")
+        for mode in ("flag", "raising", "default"):
+            with self.subTest(mode=mode):
+                delivered = []
+                def handler(number, frame):
+                    delivered.append({"signal": number,
+                        "restored": signal.getsignal(signal.SIGTERM) is handler})
+                    if mode == "raising":
+                        raise RuntimeError("fixture stop")
+                original = {n: signal.getsignal(n) for n in (signal.SIGINT, signal.SIGTERM)}
+                expected = signal.SIG_DFL if mode == "default" else handler
+                signal.signal(signal.SIGTERM, expected)
+                constructor_error = OSError(errno.ENOENT, "fixture constructor failure")
+                def failing(args, *a, **kw):
+                    self.assertIn(str(self.script), args)
+                    current = signal.getsignal(signal.SIGTERM)
+                    self.assertTrue(callable(current) and current is not handler,
+                                    "Never send actual TERM without verified deferral")
+                    os.kill(os.getpid(), signal.SIGTERM)
+                    raise constructor_error
+                caught = None
+                try:
+                    with mock.patch.object(self, "observe_spawn", side_effect=failing):
+                        try:
+                            result = self.invoke()
+                        except wake_adapter.AdapterFault as error:
+                            caught = error
+                    self.assertEqual(signal.getsignal(signal.SIGINT), original[signal.SIGINT])
+                    self.assertEqual(signal.getsignal(signal.SIGTERM), expected)
+                finally:
+                    for number, value in original.items():
+                        signal.signal(number, value)
+                if mode == "flag":
+                    self.assertIsNone(caught)
+                    self.assertEqual((result.outcome, result.reason), ("unavailable", "invocation_unavailable"))
+                else:
+                    self.assertIsInstance(caught, wake_adapter.AdapterFault,
+                                          "Deferred interruption was swallowed into unavailable")
+                    self.assertEqual(str(caught), "invocation_interrupted" if mode == "default" else "invocation_fault")
+                    self.assertIs(caught.__cause__, constructor_error)
+                self.assertEqual(delivered, [] if mode == "default" else
+                                 [{"signal": signal.SIGTERM, "restored": True}])
+                self.assert_not_started()
+
+    def test_both_deferred_signals_are_delivered_once_in_fixed_order_after_restore(self):
+        self.configure("never-read")
+        original = {n: signal.getsignal(n) for n in (signal.SIGINT, signal.SIGTERM)}
+        delivered = []
+        def handler(number, frame):
+            delivered.append({"signal": number, "restored":
+                all(signal.getsignal(n) is handler for n in original)})
+            if number == signal.SIGINT:
+                raise RuntimeError("fixture stop")
+        original_spawn = self.observe_spawn
+        def stopped(args, *a, **kw):
+            child = original_spawn(args, *a, **kw)
+            if str(self.script) in args:
+                os.kill(os.getpid(), signal.SIGTERM)
+                os.kill(os.getpid(), signal.SIGINT)
+            return child
+        try:
+            for number in original:
+                signal.signal(number, handler)
+            with mock.patch.object(self, "observe_spawn", side_effect=stopped):
+                with self.assertRaises(wake_adapter.AdapterFault):
+                    self.invoke()
+            self.assertTrue(all(signal.getsignal(n) is handler for n in original))
+        finally:
+            for number, value in original.items():
+                signal.signal(number, value)
+        self.save_observations(delivered)
+        self.assertEqual(delivered, [{"signal": signal.SIGINT, "restored": True},
+                                     {"signal": signal.SIGTERM, "restored": True}])
+        self.assert_reaped(self.spawned[0]["child"].pid)
+
+    def test_constructor_failure_drains_both_signals_when_first_handler_raises(self):
+        self.configure("normal")
+        original = {n: signal.getsignal(n) for n in (signal.SIGINT, signal.SIGTERM)}
+        delivered = []
+        constructor_error = OSError(errno.ENOENT, "fixture constructor failure")
+        def handler(number, frame):
+            delivered.append({"signal": number, "restored":
+                all(signal.getsignal(n) is handler for n in original)})
+            if number == signal.SIGINT:
+                raise RuntimeError("fixture stop")
+        def stopped(args, *a, **kw):
+            self.assertIn(str(self.script), args)
+            self.assertTrue(all(callable(signal.getsignal(n)) and signal.getsignal(n) is not handler
+                                for n in original))
+            os.kill(os.getpid(), signal.SIGTERM)
+            os.kill(os.getpid(), signal.SIGINT)
+            raise constructor_error
+        try:
+            for number in original:
+                signal.signal(number, handler)
+            with mock.patch.object(self, "observe_spawn", side_effect=stopped):
+                with self.assertRaises(wake_adapter.AdapterFault) as caught:
+                    self.invoke()
+            self.assertIs(caught.exception.__cause__, constructor_error)
+            self.assertTrue(all(signal.getsignal(n) is handler for n in original))
+        finally:
+            for number, value in original.items():
+                signal.signal(number, value)
+        self.save_observations(delivered)
+        self.assertEqual(delivered, [{"signal": signal.SIGINT, "restored": True},
+                                     {"signal": signal.SIGTERM, "restored": True}])
+        self.assert_not_started()
+
+    def test_partial_signal_install_failure_restores_handlers_without_spawn(self):
+        self.configure("normal")
+        original = {n: signal.getsignal(n) for n in (signal.SIGINT, signal.SIGTERM)}
+        actual = signal.signal
+        installed = []
+        def fail_second(number, handler):
+            if number == signal.SIGTERM and handler is not original[number]:
+                raise ValueError("fixture install refusal")
+            installed.append(number)
+            return actual(number, handler)
+        try:
+            with mock.patch.object(signal, "signal", side_effect=fail_second):
+                result = self.invoke()
+            self.assertEqual({n: signal.getsignal(n) for n in original}, original)
+        finally:
+            for number, handler in original.items():
+                actual(number, handler)
+        self.assertEqual(result.outcome, "unavailable")
+        self.assert_not_started()
+        self.assertEqual(installed, [signal.SIGINT, signal.SIGINT])
+
+    def test_wall_clock_expiry_after_spawn_cuts_off_before_elapsed_deadline(self):
+        self.configure("never-read")
+        actual_time = time.time
+        def now():
+            return (self.claim["lease_until_ms"] + 1) / 1000 if self.registered else actual_time()
+        started = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+        with mock.patch.object(time, "time", side_effect=now):
+            result = self.invoke()
+        elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - started) / 1e9
+        self.save_observations({"elapsed": elapsed, "reason": result.reason})
+        self.assertEqual((result.outcome, result.reason), ("error", "deadline"))
+        self.assertLess(elapsed, 1.5, "Wall lease expiry waited for the five-second elapsed deadline")
+        self.assert_reaped(self.spawned[0]["child"].pid)
+        self.assert_no_live_group(self.spawned[0]["child"].pid)
+
+    def test_real_epipe_then_gated_zero_exit_remains_accepted(self):
+        self.configure("closed-stdin")
+        writes = []
+        actual = os.write
+        def registration(pid, started_at):
+            ready = self.controls["fixture-ready"]
+            self.assertTrue(select.select([ready], [], [], 1.5)[0])
+            self.assertEqual(os.read(ready, 1), b"R")
+            return self.registration(pid, started_at)
+        def observe_write(fd, data):
+            child = self.spawned[0]["child"] if self.spawned else None
+            if child is None or child.stdin.closed or fd != child.stdin.fileno():
+                return actual(fd, data)
+            try:
+                return actual(fd, data)
+            except BrokenPipeError as error:
+                writes.append(error.errno)
+                actual(self.controls["fixture-exit"], b"x")
+                raise
+        caught = None
+        with mock.patch.object(os, "write", side_effect=observe_write):
+            try:
+                result = self.invoke(registration)
+            except wake_adapter.AdapterFault as error:
+                caught = str(error)
+        self.save_observations({"errno": writes, "fault": caught})
+        self.assertIsNone(caught, "EPIPE must still await the owned child's actual exit")
+        self.assertEqual(writes, [errno.EPIPE])
+        self.assertEqual((result.outcome, result.exit_code), ("accepted", 0))
+        self.assert_reaped(self.spawned[0]["child"].pid)
+
+    def test_process_helper_rejects_duplicate_garbled_nonzero_and_valid_cap_plus_one(self):
+        child, report = self.start_fixture_broker("cleanup-owned")
+        row = "%d %d S\n" % (child.pid, child.pid)
+        # Exactly cap+one bytes, still valid and unique process rows. Without
+        # the guard, the next zero-length os.read looks like EOF and accepts it.
+        payload = row.encode()
+        padded = b"1 0 S" + b" " * (wake_adapter._PS_LIMIT + 1 - len(payload) - 6) + b"\n"
+        payload += padded
+        self.assertEqual(len(payload), wake_adapter._PS_LIMIT + 1)
+        self.assertEqual(len(payload.splitlines()), 2)
+        data_path = self.root / "ps-output"
+        data_path.write_bytes(payload)
+        programs = ["print(" + repr(row + row) + ", end='')",
+                    "print(" + repr(row.replace(" S", " !")) + ", end='')",
+                    "import sys; print(" + repr(row) + ", end=''); sys.exit(3)",
+                    "import sys; sys.stdout.buffer.write(open(" + repr(str(data_path)) + ",'rb').read())"]
+        observations = []
+        for code in programs:
+            with self.subTest(program=code):
+                helpers = []
+                def substitute(args, *a, **kw):
+                    self.assertEqual(args, ["/bin/ps", "-A", "-o", "pid=,pgid=,stat="])
+                    helper = self.actual_popen(["/usr/bin/python3", "-c", code], *a, **kw)
+                    helpers.append(helper)
+                    return helper
+                with mock.patch.object(subprocess, "Popen", side_effect=substitute):
+                    with self.assertRaises(wake_adapter.AdapterFault):
+                        wake_adapter._process_group(child.pid,
+                            time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) + 1000000000)
+                self.assertEqual(len(helpers), 1)
+                self.assertIsNotNone(helpers[0].returncode)
+                self.assertTrue(helpers[0].stdout.closed)
+                self.assert_reaped(helpers[0].pid)
+                observations.append({"program": code, "returncode": helpers[0].returncode})
+        self.save_observations(observations)
 
 
 if __name__ == "__main__":

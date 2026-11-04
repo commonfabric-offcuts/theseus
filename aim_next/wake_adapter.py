@@ -126,18 +126,33 @@ def _cleanup_child(child):
     escalate = _ticks() + 400000000
     sent_term = sent_kill = False
     saw_descendant = False
+    empty_observations = 0
     while _remaining(deadline):
         members = _process_group(child.pid, deadline)
         live = [pid for pid, state in members.items() if not state.startswith("Z")]
         saw_descendant = saw_descendant or any(pid != child.pid for pid in live)
         if not live:
-            return child.wait(timeout=_remaining(deadline)), saw_descendant
-        if not sent_term:
-            os.killpg(child.pid, signal.SIGTERM)
-            sent_term = True
-        elif not sent_kill and _ticks() >= escalate:
-            os.killpg(child.pid, signal.SIGKILL)
-            sent_kill = True
+            empty_observations += 1
+            if empty_observations >= 2:
+                return child.wait(timeout=_remaining(deadline)), saw_descendant
+        else:
+            empty_observations = 0
+            next_signal = None
+            if not sent_term:
+                sent_term = True
+                next_signal = signal.SIGTERM
+            elif not sent_kill and _ticks() >= escalate:
+                sent_kill = True
+                next_signal = signal.SIGKILL
+            if next_signal is not None:
+                try:
+                    os.killpg(child.pid, next_signal)
+                except OSError as error:
+                    # The retained leader still reserves this group. A member
+                    # can exit between observation and signal; only a later
+                    # observation may confirm cleanup. Do not reset escalation.
+                    if error.errno not in (errno.EPERM, errno.ESRCH):
+                        raise
         time.sleep(min(0.01, _remaining(deadline)))
     raise AdapterFault("cleanup_unconfirmed")
 
@@ -188,18 +203,61 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
             return RouteResult("unavailable", None, "insufficient_lease")
         started_at = datetime.now(timezone.utc).isoformat()
         deadline = _ticks() + 5000000000
-        child = subprocess.Popen(prepared.argv, executable=prepared.executable,
-            shell=False, start_new_session=True, pass_fds=pass_fds, env=environment,
-            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except RouteUnavailable as error:
         return RouteResult("unavailable", None, error.code)
     except (AuthorityError, OSError, AttributeError, ValueError):
         return RouteResult("unavailable", None, "invocation_unavailable")
 
-    queue = None
+    child = queue = None
     fault = None
     timed_out = False
+    unavailable = False
+    launch_error = None
+    originals = {}
+    installed = []
+    pending_signals = {}
+
+    def defer_signal(number, frame):
+        pending_signals.setdefault(number, frame)
+
+    def restore_signals():
+        for number in list(installed):
+            signal.signal(number, originals[number])
+            installed.remove(number)
+
+    def drain_signals():
+        restore_signals()
+        first_error = None
+        for number in (signal.SIGINT, signal.SIGTERM):
+            if number not in pending_signals:
+                continue
+            frame = pending_signals.pop(number)
+            handler = originals[number]
+            try:
+                if callable(handler):
+                    handler(number, frame)
+                elif handler != signal.SIG_IGN:
+                    raise AdapterFault("invocation_interrupted")
+            except BaseException as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
+
     try:
+        # Custom caught dispositions reset on child exec. Unlike blocking the
+        # parent's signal mask, this leaves the child's TERM deliverable. The
+        # dedicated caller already uses graceful stop flags after launch.
+        originals = {number: signal.getsignal(number) for number in (signal.SIGINT, signal.SIGTERM)}
+        for number, handler in originals.items():
+            if handler != signal.SIG_IGN:
+                signal.signal(number, defer_signal)
+                installed.append(number)
+        child = subprocess.Popen(prepared.argv, executable=prepared.executable,
+            shell=False, start_new_session=True, pass_fds=pass_fds, env=environment,
+            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Deliver only after ownership and restoration, within the managed try.
+        drain_signals()
         registered = record_child(child.pid, started_at)
         if (not isinstance(registered, dict) or registered.get("status") != "recorded"
                 or registered.get("instance_id") != claim["route_binding"]["instance_id"]
@@ -233,15 +291,28 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
                 if event.ident == child.pid and event.fflags & select.KQ_NOTE_EXIT:
                     exited = True
     except BaseException as error:
-        fault = error if isinstance(error, AdapterFault) else AdapterFault("invocation_fault")
+        if child is None:
+            launch_error = error
+        if child is None and isinstance(error, (OSError, AttributeError, ValueError)):
+            unavailable = True
+        else:
+            fault = error if isinstance(error, AdapterFault) else AdapterFault("invocation_fault")
     finally:
-        for resource in (child.stdin, queue):
+        try:
+            drain_signals()
+        except BaseException as error:
+            fault = error if isinstance(error, AdapterFault) else AdapterFault("invocation_fault")
+        for resource in (child.stdin if child is not None else None, queue):
             if resource is not None:
                 try:
                     resource.close()
                 except BaseException:
                     fault = AdapterFault("invocation_fault")
 
+    if child is None:
+        if unavailable and fault is None:
+            return RouteResult("unavailable", None, "invocation_unavailable")
+        raise (fault or AdapterFault("invocation_fault")) from launch_error
     try:
         exit_code, descendants = _cleanup_child(child)
     except BaseException as error:

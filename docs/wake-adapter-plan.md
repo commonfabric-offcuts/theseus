@@ -263,6 +263,28 @@ observation must still show the unreaped owned leader, and only its Z state
 establishes the fast-exit fallback; ambiguous/missing leader causes a fixed fault.
 A focused control must exercise exit before watcher registration.
 
+The ownership try begins before Popen. Temporarily defer SIGINT and SIGTERM
+using caught Python handlers, keeping at most one pending occurrence of each.
+Preserve SIG_IGN. Handler installation must succeed before launch (off the main
+thread, signal.signal refuses); partial installation or constructor failure
+restores the originals. After assigning the owned child, restore the original
+handlers before delivering pending signals, still inside the managed try.
+The same drain runs on constructor failure: a deferred stop is not lost.
+Pop each pending occurrence before calling its handler; deliver SIGINT then
+SIGTERM, both once even if the first raises, then propagate the first fault.
+If launch failed, retain that constructor exception as the fixed fault's cause;
+a returning stop-flag handler preserves the unavailable result. Fault reason
+strings stay fixed; exception context is internal, not a receipt payload.
+A raised KeyboardInterrupt then receives owned cleanup and a fixed fault.
+Deferred default termination becomes invocation_interrupted after cleanup:
+the dedicated caller must pause and exit, never silently continue. Its normal
+post-launch handlers set graceful-stop flags. No blocked signal mask is used:
+that mask would survive child exec and prevent normal TERM cleanup. Caught
+dispositions reset on exec; the child's inherited mask is unchanged.
+This does not promise recovery from SIGKILL, process crashes, arbitrary Python
+exceptions injected inside the subprocess constructor after fork, or a foreign
+reaper. It establishes the ordinary signal boundary with the owned child.
+
 Use a bounded `/bin/ps -A -o pid=,pgid=,stat=` observation, filter numeric PGID in
 Python, and exclude zombie rows when finding live members. The helper has a
 bounded output cap and runs only within the remaining cleanup/invocation budget;
@@ -271,7 +293,11 @@ This is a diagnostic helper, not a second broker. Do not use killpg(pgid, 0) as
 an absence oracle: Fable's actual Mac probe returns PermissionError for a
 zombie-only group. If descendants survive leader exit, terminate the owned group
 while the unreaped leader still reserves its identity, escalate within the
-one-second cleanup budget, confirm no live group members, then reap the leader.
+one-second cleanup budget, confirm two consecutive observations with no live
+group members, then reap the leader. Any observed live member resets that
+confirmation. EPERM or ESRCH from TERM/KILL can mean the group became zombie-only
+after observation: re-observe under the original deadline, counting the signal
+phase as attempted so escalation is unchanged. Other signal errors fail closed.
 A surviving descendant makes the invocation an error even when the leader exits
 zero. Reap only after cleanup, and never signal that PGID after reap. Unconfirmed
 cleanup raises a fault requiring the existing persistent pause. Unexpected
@@ -289,6 +315,16 @@ a new acquire/cutover after the parent closes/exits; guard.verify in the parent
 cannot establish absence. Tests may prove that blocking limit, not detection of
 arbitrary escaped processes. A real broker's durable queue must still be reviewed
 and proven separately.
+
+Process listings are not atomic. Two observations catch one transient omission
+and the ordinary fork-then-exit handoff; they cannot prove quiescence against an
+arbitrary rapidly forking/exiting chain. The trusted broker must confirm its own
+children have exited before returning zero and must not daemonize or double-fork
+descendants. Inherited guard fencing remains independent of these observations.
+Invocation currently checks exit/lease at most every 25ms and cleanup reobserves
+after a 10ms wait. Those bounded polling costs remain named limits, not an
+event-driven efficiency claim. A wall-clock jump can expire a lease immediately;
+owned cleanup can then extend up to its one-second budget beyond that wall time.
 
 Named adapter checks: exact literal argv/stdin and allowlisted parent environment;
 real inherited guard descriptors; no child on missing/mismatched route or spent
