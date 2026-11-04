@@ -338,3 +338,76 @@ test('superseded resync bootstrap refusal cannot stop or report against the newe
   assert.equal(parks, 0); assert.equal(f.stopped, false);
   await f.request(); assert.equal(states.at(-1).kind, 'current'); f.dispose();
 });
+
+for (const where of ['baseline', 'rebuild']) test(`correction A ${where} denial during resync runs the source check before stopping`, async () => {
+  const seen = []; let changes = 0, denials = 0;
+  const { f, states, times } = fixture({ api: {
+    bootstrap: async () => { seen.push('bootstrap'); return bootstrap; },
+    view: async name => {
+      seen.push(name);
+      if (name !== 'changes') return { instance_id: 'i1' };
+      if (++changes === 1) return { error: { code: 'RESYNC_REQUIRED' } };
+      return where === 'baseline' ? { error: { code: 'FORBIDDEN' } } : page(4, [], { baseline: true });
+    },
+  }, rebuild: async () => { throw Object.assign(Error('refused rebuild'), { code: 'FORBIDDEN' }); },
+  denied: async (read, current) => { denials++; assert.ok(current()); await read('source', { id: 'm1' }); await read('editor_state', {}); } });
+  await f.request();
+  assert.equal(denials, 1); assert.deepEqual(seen, ['changes', 'bootstrap', 'changes', 'source', 'editor_state']);
+  assert.deepEqual(f.checkpoint, cursor(0)); assert.equal(states.at(-1).kind, 'forbidden');
+  assert.equal(f.stopped, true); assert.equal(times.jobs.size, 0); f.dispose();
+});
+
+for (const resync of [false, true]) test(`correction A transient source check retains confirmed denial resync=${resync}`, async () => {
+  let count = 0, rechecks = 0;
+  const { f, states, times } = fixture({ api: { bootstrap: async () => bootstrap,
+    view: async () => ({ error: { code: resync && count++ === 0 ? 'RESYNC_REQUIRED' : 'FORBIDDEN' } }) },
+    denied: async () => { rechecks++; throw new AttemptError('temporary source failure', 503, { error: { code: 'DATABASE_BUSY' } }); } });
+  await f.request(); assert.equal(rechecks, 1); assert.equal(states.at(-1).kind, 'forbidden'); assert.equal(states.at(-1).code, 'FORBIDDEN');
+  assert.equal(f.stopped, true); assert.equal(times.jobs.size, 0); f.dispose();
+});
+
+for (const during of [false, true]) test(`correction C changed shared binding parks visibly once duringRead=${during}`, async () => {
+  const gate = deferred(), entered = deferred(), parks = []; let binding = bootstrap, reads = 0;
+  const { f, paints, states, times } = fixture({ binding: () => binding,
+    api: { view: async () => { reads++; entered.resolve(); await gate.promise; return page(1, [{ seq: 1, resource_kind: 'topic', resource_id: 't1', version: 1 }]); } },
+    authorityLost: async (...args) => parks.push(args) });
+  const change = () => { binding = { ...bootstrap, authority: { ...authority, authority_epoch: 'e2' } }; };
+  if (!during) change();
+  const run = f.request();
+  if (during) { await entered.promise; change(); }
+  gate.resolve(); await run;
+  assert.equal(f.stopped, true); assert.equal(times.jobs.size, 0); assert.equal(reads, during ? 1 : 0);
+  assert.deepEqual(paints, []); assert.deepEqual(f.checkpoint, cursor(0));
+  assert.equal(states.at(-1).kind, 'authority'); assert.equal(parks.length, 1);
+  assert.deepEqual(parks[0][0], fresh.bindingOf(bootstrap));
+  await f.request(); assert.equal(parks.length, 1); f.dispose();
+});
+
+test('correction C ordinary epoch cancellation is quiet and does not park', async () => {
+  for (const action of ['interrupt', 'hide', 'dispose']) {
+    const gate = deferred(), entered = deferred(); let parks = 0;
+    const { f, states } = fixture({ api: { view: async () => { entered.resolve(); await gate.promise; return page(0); } }, authorityLost: async () => { parks++; } });
+    const run = f.request(); await entered.promise;
+    if (action === 'hide') f.setVisible(false); else f[action]();
+    gate.resolve(); await run;
+    assert.equal(parks, 0); assert.deepEqual(states, []); f.dispose();
+  }
+});
+
+for (const status of [502, 503, 504, 200, 400, 418]) test(`correction D actual unreadable HTTP ${status} has bounded classification`, async () => {
+  const api = new Api('fixture', async () => new Response('not JSON', { status }));
+  const { f, states, times } = fixture({ api });
+  await f.request(); await f.request();
+  const retry = status >= 500;
+  assert.equal(states.at(-1).kind, retry ? 'retry' : 'diagnostic'); assert.equal(f.stopped, !retry);
+  assert.equal(times.jobs.size, retry ? 1 : 0);
+  if (retry) assert.equal([...times.jobs.values()][0].ms, 1000);
+  f.dispose();
+});
+
+test('correction D uncoded 5xx retries but explicit code precedence remains intact', () => {
+  assert.equal(fresh.readFailure(new AttemptError('uncoded', 503, { error: { message: 'busy' } })).kind, 'retry');
+  for (const [code, kind] of [['INVALID_BINDING','authority'], ['FORBIDDEN','forbidden'], ['SESSION_REQUIRED','reconnect'], ['INVALID_ARGUMENT','diagnostic'], ['UNKNOWN_NONRETRYABLE','diagnostic']]) {
+    assert.equal(fresh.readFailure(new AttemptError('refused', 503, { error: { code, retryable: false } })).kind, kind);
+  }
+});

@@ -26,6 +26,7 @@ export function readFailure(value) {
   if (['VIEW_TOO_LARGE', 'INVALID_ARGUMENT', 'INVALID_READ_CLASS', 'INVALID_FRESHNESS_VIEW'].includes(code)) return result('diagnostic');
   if (['SERVER_BUSY', 'AUTHORITY_BUSY', 'DATABASE_BUSY', 'RESOURCE_NOT_CURRENT'].includes(code) || error?.retryable === true ||
       status >= 500 && ['REQUEST_UNCONFIRMED', 'CAPABILITIES_UNAVAILABLE'].includes(code)) return result('retry');
+  if (!code && status >= 500 && status < 600) return result('retry');
   if (!code && (value?.name === 'AbortError' || value?.name === 'AttemptError' && status === 0 || value instanceof TypeError)) return result('retry');
   return result('diagnostic');
 }
@@ -123,7 +124,27 @@ export class Freshness {
   setVisible(visible) { this.visible = visible; this.clearTimer(); if (!visible) this.interrupt(); else return this.request(); }
   interrupt() { ++this.epoch; }
   dispose() { this.disposed = true; this.interrupt(); this.clearTimer(); }
-  current(epoch) { return !this.disposed && !this.stopped && epoch === this.epoch && sameBinding(bindingOf(this.bootstrap), bindingOf(this.binding())); }
+  bindingMatches() { return sameBinding(bindingOf(this.bootstrap), bindingOf(this.binding())); }
+  current(epoch) { return !this.disposed && !this.stopped && epoch === this.epoch && this.bindingMatches(); }
+  async stopAuthority(failure) {
+    this.stopped = true; this.interrupt(); this.clearTimer();
+    const parked = this.authorityLost(bindingOf(this.bootstrap), failure);
+    this.status(failure); await parked;
+  }
+  async stopDenied(failure, read, current) {
+    this.clearTimer();
+    let result = failure;
+    try { await this.denied(read, current); if (!current()) return; }
+    catch (error) {
+      if (!current()) return;
+      const recheck = readFailure(error);
+      // The topic denial is confirmed even when source access cannot yet be
+      // checked. A stopped controller must not promise an automatic retry.
+      result = ['retry', 'defer'].includes(recheck.kind) ? { ...failure, cause: recheck } : { ...recheck, cause: failure };
+      if (result.kind === 'authority') { await this.stopAuthority(result); return; }
+    }
+    this.stopped = true; this.status(result);
+  }
   async readAt(epoch, name, args) {
     if (!this.current(epoch)) throw Object.assign(Error('Freshness read was superseded.'), { code: 'CLEANUP_DEFERRED' });
     let answer;
@@ -183,15 +204,12 @@ export class Freshness {
       if (!current()) return;
       const failure = readFailure(error);
       if (failure.kind === 'authority') {
-        this.stopped = true; this.interrupt(); this.clearTimer();
-        // park through existing owners before any further asynchronous reads.
-        const parked = this.authorityLost(bindingOf(this.bootstrap), failure);
-        this.status(failure); await parked;
+        await this.stopAuthority(failure);
       } else if (failure.kind === 'resync') {
         try {
           const b = await read('bootstrap');
           if (!sameBinding(bindingOf(b), bindingOf(this.bootstrap))) {
-            this.stopped = true; this.interrupt(); await this.authorityLost(bindingOf(this.bootstrap), failure); this.status({ ...failure, kind: 'authority' }); return;
+            await this.stopAuthority({ ...failure, kind: 'authority' }); return;
           }
           if (!supportsAdmission(b)) { this.stopped = true; this.status({ kind: 'diagnostic', message: 'Automatic updates need the updated server. Use Refresh.' }); return; }
           const baseline = changesPage(await read('changes', { scope: { kind: 'topic', id: this.topicId }, limit: 50 }), this.bootstrap, this.topicId);
@@ -202,24 +220,23 @@ export class Freshness {
         } catch (resyncError) {
           if (!current()) return;
           const result = readFailure(resyncError);
-          if (result.kind === 'authority') { this.stopped = true; this.interrupt(); await this.authorityLost(bindingOf(this.bootstrap), result); }
+          if (result.kind === 'forbidden') { await this.stopDenied(result, read, current); return; }
+          if (result.kind === 'authority') { await this.stopAuthority(result); return; }
           else if (!['retry', 'defer'].includes(result.kind)) this.stopped = true;
           this.status(result);
         }
       } else if (failure.kind === 'forbidden') {
-        this.clearTimer();
-        let result = failure;
-        try { await this.denied(read, current); if (!current()) return; }
-        catch (availabilityError) {
-          if (!current()) return;
-          result = readFailure(availabilityError);
-          if (result.kind === 'authority') { this.interrupt(); await this.authorityLost(bindingOf(this.bootstrap), result); }
-        }
-        this.stopped = true; this.status(result);
+        await this.stopDenied(failure, read, current);
       } else if (['retry', 'defer'].includes(failure.kind)) {
         this.delay = failure.kind === 'defer' ? 500 : Math.min(5000, 500 * 2 ** Math.min(this.failures++, 4) + Math.floor(this.random() * 100));
         this.status(failure);
       } else { this.stopped = true; this.clearTimer(); this.status(failure); }
+    } finally {
+      // A command/recovery probe may have learned the new authority first.
+      // Epoch cancellation stays quiet; an actual changed binding does not.
+      if (!this.disposed && !this.stopped && !this.bindingMatches()) {
+        await this.stopAuthority({ kind: 'authority', code: 'AUTHORITY_CHANGED', message: 'The runtime authority changed.' });
+      }
     }
   }
 }

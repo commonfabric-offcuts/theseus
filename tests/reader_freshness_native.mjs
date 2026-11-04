@@ -751,6 +751,139 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     });
   }
 
+  for (const sourceDenied of [false, true]) await check(`freshness correction A resync topic refusal checks source denied=${sourceDenied}`, async () => {
+    const p = await page('correction-a', null, true); await p.open(1);
+    await replace(p, 'Keep exact resync-denial writing');
+    await until(() => p.evaluate('observedRegistry.current.editors.reply.localVersion===observedRegistry.current.editors.reply.ackVersion'), 'private save settled');
+    await p.evaluate('observedRegistry.cleanup.idle(observedRegistry.current.editors.reply.key)');
+    await idleRead(p); p.recordResponses();
+    const before = await p.evaluate('freshSnapshot()');
+    if (sourceDenied) await fault('source', 'FORBIDDEN');
+    else {
+      const state = await view('editor_state', { source_ref: before.source, topic_id: 't1' }); state.destination_available = false;
+      await control({ method:'read_fault', name:'editor_state', read_class:'background', status:200, body:state, count:1 });
+    }
+    await fault('changes', 'RESYNC_REQUIRED'); await fault('changes', 'FORBIDDEN');
+    await until(() => p.evaluate('observedFreshness.stopped'), 'resync denied');
+    assert.ok(p.responses.some(r=>r.payload?.name==='changes' && !r.payload.args.cursor && r.body.error?.code==='FORBIDDEN'), 'the replacement baseline was refused');
+    assert.equal(await p.evaluate('document.querySelector("#messages").hidden'), true, 'resync denial hides topic content');
+    await until(() => p.evaluate('!observedRegistry.current.availabilityChecking'), 'independent source check complete');
+    const after = await p.evaluate('freshSnapshot()');
+    for (const key of ['presentation','editorObject','key','cycle','body','quotes','editorSource']) assert.deepEqual(after[key], before[key], key);
+    assert.equal(after.sourceText, sourceDenied ? '' : before.sourceText);
+    assert.equal(await p.evaluate('document.querySelector("#quote-selection").disabled'), sourceDenied);
+    assert.equal(await p.evaluate('document.querySelector("#send-reply").disabled'), true);
+    assert.ok(p.responses.some(r=>r.payload?.name==='source'));
+    observations.push({name:'correction A',sourceDenied,before,after}); assert.deepEqual(p.errors, []);
+  });
+
+  await check('freshness correction B diagnostic stop keeps native Refresh usable without restarting updates', async () => {
+    const p = await page('correction-b-refresh', null, true); await p.open(1);
+    await replace(p, 'Private writing across manual Refresh');
+    const before = await p.evaluate('freshSnapshot()');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'header available after reader close');
+    await fault('changes', 'INVALID_ARGUMENT'); await until(() => p.evaluate('observedFreshness.stopped'), 'diagnostic stop');
+    const incoming = await message('New message while updates are stopped'), checkpoint = await p.evaluate('observedFreshness.checkpoint');
+    const calls = p.calls.length;
+    await p.evaluate('document.querySelector("#refresh").scrollIntoView({block:"center"})'); await p.point('#refresh');
+    await until(() => hasText(p, '#messages', 'New message while updates are stopped'), 'manual Refresh paints the new message', 2500);
+    assert.equal(await p.evaluate('observedFreshness.stopped'), true);
+    assert.deepEqual(await p.evaluate('observedFreshness.checkpoint'), checkpoint);
+    assert.ok(await hasText(p, '#updates-message', 'INVALID_ARGUMENT'));
+    assert.equal(p.calls.slice(calls).some(c=>c.payload?.name==='changes'), false);
+    await p.open(1); const after = await p.evaluate('freshSnapshot()');
+    for (const key of ['editorObject','key','cycle','body','quotes','source','editorSource']) assert.deepEqual(after[key], before[key], key);
+    observations.push({name:'correction B diagnostic Refresh',incoming,before,after}); assert.deepEqual(p.errors, []);
+  });
+
+  await check('freshness correction B denied Refresh explains Retry and never repaints cached content', async () => {
+    const p = await page('correction-b-denied', null, true); await p.open(1);
+    await replace(p, 'Kept through refused manual refresh'); await p.point('#reader-close');
+    await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader closed');
+    await fault('changes','FORBIDDEN'); await until(() => p.evaluate('observedFreshness.stopped'), 'topic refused');
+    const oldCards = await p.evaluate('document.querySelector("#messages").innerHTML');
+    await message('Must not paint after topic denial');
+    await p.evaluate('document.querySelector("#refresh").scrollIntoView({block:"center"})');
+    await p.point('#refresh');
+    await until(() => hasText(p,'#app-status','Topic unavailable. Use Retry updates.'), 'explicit denied Refresh guidance',2500);
+    await until(() => p.evaluate('appReadState().loads===0'), 'manual reads settled');
+    assert.equal(await p.evaluate('document.querySelector("#messages").hidden'),true);
+    assert.equal(await p.evaluate('document.querySelector("#messages").innerHTML'),oldCards);
+    await fault('topic_messages','FORBIDDEN'); await p.point('#refresh');
+    await until(() => hasText(p,'#app-status','Fixture FORBIDDEN'), 'manual refusal visible');
+    assert.equal(await p.evaluate('document.querySelector("#messages").hidden'),true);
+    assert.deepEqual(p.errors, []);
+  });
+
+  for (const transition of ['denial','authority']) await check(`freshness correction B late manual read cannot paint after ${transition}`, async () => {
+    const p = await page('correction-b-late', null, true); await p.open(1);
+    await replace(p,'Retained while a manual list is held'); await p.point('#reader-close');
+    await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader closed');
+    await fault('changes','INVALID_ARGUMENT'); await until(() => p.evaluate('observedFreshness.stopped'), 'diagnostic stopped');
+    const oldCards=await p.evaluate('document.querySelector("#messages").innerHTML');
+    await message('Held manual response '+transition);
+    p.intercept(payload=>payload?.name==='topic_messages' && payload.args.limit===30);
+    await p.evaluate('document.querySelector("#refresh").scrollIntoView({block:"center"})'); await p.point('#refresh');
+    const held=await until(()=>p.held[0], 'manual list answer held',2500);
+    // The foreground manual read intentionally defers background dispatch.
+    // Inject the app's real access transition callbacks while that response
+    // is held; this is a paint-race proof, not a claim of a native denial act.
+    await p.evaluate(transition==='denial'
+      ? '(async()=>{await observedFreshness.denied(()=>{throw Error("no source is open")},()=>true);observedFreshness.status({kind:"forbidden",code:"FORBIDDEN"})})()'
+      : '(async()=>{const b=observedFreshness.bootstrap;await observedFreshness.authorityLost({instance_id:b.instance_id,actor_id:b.actor,...b.authority},{code:"INVALID_BINDING"});observedFreshness.status({kind:"authority",code:"INVALID_BINDING"})})()');
+    await until(()=>hasText(p,'#updates-message',transition==='denial'?'topic is unavailable':'runtime changed'),'access transition before late manual answer');
+    p.intercept(null); await p.release(held);
+    await until(()=>p.evaluate('appReadState().loads===0'),'late manual operation settled');
+    assert.equal(await p.evaluate('document.querySelector("#messages").innerHTML'),oldCards,'late answer cannot paint through a newer access gate');
+    const calls=p.calls.length; await p.point('#refresh');
+    await until(()=>hasText(p,'#app-status',transition==='denial'?'Topic unavailable. Use Retry updates.':'Review'),'manual refresh explains current gate');
+    if(transition==='authority') assert.equal(p.calls.slice(calls).some(c=>c.payload?.name==='topic_messages'||c.payload?.name==='memory_items'),false);
+    observations.push({name:'correction B late paint',transition,qualification:'Native Refresh and real held HTTP response; access transition injected through actual app callbacks because the foreground reservation intentionally defers background dispatch.'});
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('freshness correction C command recovery changes binding before held freshness settles', async () => {
+    const p=await page('correction-c',null,true); await p.open(1); await replace(p,'Writing before epoch');
+    await until(()=>p.evaluate('observedRegistry.current.editors.reply.localVersion===observedRegistry.current.editors.reply.ackVersion'),'private writing saved');
+    await p.evaluate('observedRegistry.cleanup.idle(observedRegistry.current.editors.reply.key)');
+    let heldOnce=false;
+    p.intercept(payload=>payload?.name==='changes' && !heldOnce && (heldOnce=true));
+    const held=await until(()=>p.held[0],'old changes response held');
+    const checkpoint=await p.evaluate('observedFreshness.checkpoint');
+    const nextEpoch=operation('epoch'); await control({method:'epoch',epoch:nextEpoch,complete:false,drop_private:true});
+    await replace(p,'Exact writing after command-first epoch');
+    await until(()=>p.evaluate(`observedRegistry.runtime.current.authority_epoch===${JSON.stringify(nextEpoch)}`),'actual command recovery bootstrap wins');
+    const before=await p.evaluate('({snapshot:freshSnapshot(),recovery:observedRegistry.current.editors.reply.authorityRecovery,attempts:observedRegistry.sessionFor(observedRegistry.current.editors.reply).attempts})');
+    assert.ok(p.calls.some(c=>c.payload?.kind==='draft.save' && c.payload.expected.authority.authority_epoch!==nextEpoch));
+    p.intercept(null); await p.release(held);
+    await until(()=>p.evaluate('observedFreshness.stopped'),'binding mismatch stops freshness',2500);
+    assert.ok(await hasText(p,'#updates-message','runtime changed'));
+    const after=await p.evaluate('({snapshot:freshSnapshot(),recovery:observedRegistry.current.editors.reply.authorityRecovery,attempts:observedRegistry.sessionFor(observedRegistry.current.editors.reply).attempts})');
+    for(const key of ['editorObject','key','cycle','body','quotes','source','editorSource']) assert.deepEqual(after.snapshot[key],before.snapshot[key],key);
+    assert.deepEqual(after.recovery,before.recovery,'newer recovery review remains intact'); assert.deepEqual(after.attempts,before.attempts);
+    assert.deepEqual(await p.evaluate('observedFreshness.checkpoint'),checkpoint);
+    assert.equal(await p.evaluate('observedFreshness.timer'),null);
+    assert.equal(p.calls.some(c=>['submission.prepare','message.send'].includes(c.payload?.kind)),false);
+    observations.push({name:'correction C command-first',before,after,checkpoint}); assert.deepEqual(p.errors, []);
+  });
+
+  for(const name of ['topic_messages','memory_items']) await check(`freshness correction E typed startup ${name} refusal leaves startup retry intact`, async () => {
+    await fault(name,'DATABASE_BUSY');
+    const p=await page('correction-e-'+name,null,true,{allowStartupError:true});
+    await until(()=>p.evaluate('window.appReadState && !appReadState().startup'),'actual initialization rejected');
+    assert.ok(await hasText(p,'#app-status','DATABASE_BUSY'));
+    assert.notEqual(await p.evaluate('document.body.dataset.ready'),'true');
+    assert.deepEqual(await p.evaluate('appReadState()'),{journal:false,registry:false,reader:false,startup:false,loads:0},'typed startup refusal precedes all editor and journal setup');
+    assert.equal(await p.evaluate('document.querySelectorAll(".message-card,.memory-card").length'),0);
+    assert.equal(p.calls.some(c=>c.payload?.kind),false);
+    const calls=p.calls.length; await p.point('#refresh');
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" && Boolean(window.observedFreshness)'),'native Refresh restarts complete initialization');
+    const names=p.calls.slice(calls).filter(c=>c.payload?.name).map(c=>c.payload.name);
+    assert.ok(names.indexOf('changes')>=0 && names.indexOf('changes')<names.indexOf('topic_messages') && names.indexOf('changes')<names.indexOf('memory_items'));
+    assert.equal(p.calls.some(c=>c.payload?.kind),false); assert.deepEqual(p.errors, []);
+    observations.push({name:'correction E startup',list:name,readOrder:names});
+  });
+
   await check('freshness F5 transient reads back off and explicit diagnostic retry resumes', async () => {
     await control({ method: 'seed', messages: 35, memory_items: 0 });
     const p = await page('freshness-errors', null, true);
