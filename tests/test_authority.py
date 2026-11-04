@@ -173,6 +173,20 @@ class AuthorityCase(unittest.TestCase):
         self.assertEqual(result["error"]["code"], "SCHEMA_MISMATCH")
         self.assertEqual(self.sql("SELECT count(*) FROM operations"), [(0,)])
 
+    def test_database_binding_mismatch_preserves_typed_refusal_at_every_entry(self):
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE metadata SET value='other-epoch' WHERE key='authority_epoch'")
+        with self.assertRaises(StoreError) as caught:
+            Store(self.path, "authority-test", expected_binding=self.binding)
+        self.assertEqual(getattr(caught.exception, "code", None), "AUTHORITY_CHANGED")
+        self.assertFalse(caught.exception.retryable)
+        self.assertIn("activate a recovery copy at a new path", str(caught.exception))
+        for result in (self.create(), self.store.view("owner", "capabilities", {})):
+            self.assertEqual(result["error"]["code"], "AUTHORITY_CHANGED")
+            self.assertFalse(result["error"]["retryable"])
+        self.assertEqual(self.sql("SELECT count(*) FROM operations"), [(0,)])
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='commit_seq'"), [("0",)])
+
     def test_file_replacement_and_replaced_lock_fail_closed_with_recovery_direction(self):
         replacement = self.root / "replacement.sqlite3"
         shutil.copy2(self.path, replacement)

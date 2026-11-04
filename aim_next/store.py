@@ -125,7 +125,7 @@ class Store(Drafts, Delivery, Conversation):
                 or len(sequence) > 19 or int(sequence) >= 9223372036854775807):
             raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
         if any(metadata.get(key) != value for key, value in self.binding.items()):
-            raise Refusal("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
+            raise AuthorityError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
 
     def _advance_commit_seq(self, db):
         changed = db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='commit_seq'").rowcount
