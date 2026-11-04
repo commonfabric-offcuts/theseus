@@ -230,6 +230,11 @@ code. No route/profile payload, token or child output is returned. On this
 CPython 3.9.6 Mac os.waitid is unavailable. Use select.kqueue with KQ_FILTER_PROC
 and KQ_NOTE_EXIT to observe the owned leader without reaping it. Retain the
 Popen object and never call its poll/wait/communicate before group cleanup.
+Before any launch require SIGCHLD's default disposition, returning a fixed
+unavailable reason otherwise. The dedicated runner must not install another
+child reaper or call waitpid(-1): it owns only its explicit children. Default
+SIGCHLD alone cannot prove the absence of an unrelated reaper; that is a reviewed
+runtime ownership requirement. A SIG_IGN control starts no broker.
 Registration can race a fast exit: an ESRCH/missing exit event is not permission
 to signal a remembered PGID or infer successful cleanup. A bounded process-list
 observation must still show the unreaped owned leader, and only its Z state
@@ -266,7 +271,9 @@ and proven separately.
 Named adapter checks: exact literal argv/stdin and allowlisted parent environment;
 real inherited guard descriptors; no child on missing/mismatched route or spent
 lease; exit 0/75/other and exit before watcher registration; a broker that never
-reads stdin; delayed/stale/wrong-instance registration; finite 1MiB child output
+reads stdin, with the actual nonblocking write returning within the original
+budget independently of the timeout verdict; nondefault SIGCHLD refusal;
+delayed/stale/wrong-instance registration; finite 1MiB child output
 going to DEVNULL; single original deadline; owned descendant cleanup before reap;
 and independent process/group observations. Process-list failure must pause,
 not infer absence. An order-control catches reap-before-signal without claiming
