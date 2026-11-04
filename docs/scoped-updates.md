@@ -57,9 +57,13 @@ start that server with the same profile and loopback port in a new private run
 record. Preserve its database, authority, profiles, effects runner and browser
 journal. Do not repeat initialization, copy session tokens or clear writing.
 
-After the owned server restarts, use one deliberate reload of the same URL to
-receive its new in-memory session and reader files. Verify process/log state and
-scoped views through the operator's own profile; do not fetch the human's HTML
-as an agent probe. The handoff names the exact published revision, observed
-runtime and measured limits. Automatic process restart and remote access remain
-outside this increment.
+Coordinate the restart with Tony at a pause between sends, outside an in-flight
+Send. After the owned server restarts, the handoff asks Tony to reload the same
+URL once to receive its new in-memory session and reader files. A connected
+reader with automatic updates shows **Reload to reconnect** until he does.
+Locally saved unsent writing survives the reload; preserve the journal and honor
+the page's unload protection for writing not yet durable. The agent verifies
+process/log state and scoped views through its own profile, without fetching
+Tony's HTML or reloading his page as a probe. The handoff names the exact
+published revision, observed runtime and measured limits. Automatic process
+restart and remote access remain outside this increment.
