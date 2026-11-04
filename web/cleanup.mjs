@@ -13,7 +13,8 @@ const fields = ['body', 'attachments', 'quotes', 'addressees', 'reply_to', 'exch
 const recognizedDraft = (draft, note = false) => {
   const allowed = note ? ['body', 'caret', 'attachments', 'quotes', 'addressees'] : [...fields, 'generation'];
   return draft && Object.keys(draft).every(key => [...allowed, 'id', 'revision', 'source_ref'].includes(key)) &&
-    (!note || ['attachments', 'quotes', 'addressees'].every(key => !draft[key]?.length));
+    ['attachments', 'quotes', 'addressees'].every(key => !Object.hasOwn(draft, key) ||
+      Array.isArray(draft[key]) && (!note || draft[key].length === 0));
 };
 const writing = (draft, note = false) => Object.fromEntries((note ? ['body', 'caret'] : fields)
   .filter(key => Object.hasOwn(draft, key)).map(key => [key, copy(draft[key])]));

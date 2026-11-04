@@ -341,6 +341,51 @@ test('cleanup retains unsupported writing in notes and frozen snapshots', async 
   }
 });
 
+test('cleanup correction keeps stored wrong-typed frozen collections whole before projection', async t => {
+  const install = async (f, mutate) => {
+    const snapshot = copy(f.row.snapshot); mutate(snapshot);
+    f.session.attempts = copy(snapshot.attempts);
+    f.editor.submissions = copy(snapshot.submissions);
+    f.session.acknowledgedSnapshot = null;
+    await f.journal.save(snapshot);
+    return f.journal.own(f.editor.key);
+  };
+  const note = await retainedAcknowledgement(t, 'note');
+  for (const field of ['attachments', 'quotes', 'addressees']) {
+    for (const value of [{ kept: 'x' }, { length: 0 }, null, 7]) {
+      await t.test(`note ${field} ${JSON.stringify(value)}`, async () => {
+        const row = await install(note, s => { s.attempts.find(a => a.ticket).ticket.draft[field] = copy(value); });
+        await note.registry.cleanup.own(note.session);
+        assert.deepEqual(await note.journal.own(note.editor.key), row, 'wrong-typed note ticket keeps the entire stored row');
+        assert.equal(note.session.acknowledgedSnapshot, null);
+      });
+    }
+  }
+  const reply = await retainedAcknowledgement(t, 'reply', true);
+  for (const kind of ['ticket', 'submission']) {
+    await t.test('reply ' + kind, async () => {
+      const row = await install(reply, s => {
+        if (kind === 'ticket') {
+          const attempt = s.attempts.find(a => a.ticket);
+          attempt.ticket.draft.quotes = { kept: 'x' };
+          attempt.envelope.args.quotes = { kept: 'x' };
+        } else s.submissions[0].snapshot.quotes = { kept: 'x' };
+      });
+      const before = reply.calls.filter(c => c.name === 'submission').length;
+      await reply.registry.cleanup.own(reply.session);
+      assert.deepEqual(await reply.journal.own(reply.editor.key), row, 'wrong-typed reply history keeps the entire stored row');
+      assert.equal(reply.session.acknowledgedSnapshot, null);
+      if (kind === 'submission') assert.equal(reply.calls.filter(c => c.name === 'submission').length, before,
+        'malformed frozen submission refuses before projection and canonical lookup');
+    });
+  }
+  for (const f of [note, reply]) {
+    assert.equal(f.row.snapshot.attempts.find(a => a.ticket).ticket.draft.revision, 0, 'first-save ticket remains revision zero');
+    await install(f, () => {}); await f.registry.cleanup.own(f.session);
+    assert.equal(await f.journal.own(f.editor.key), undefined, 'original valid history still retires');
+  }
+});
+
 test('cleanup pending refused detached and missing-pin histories retain original envelopes', async t => {
   const f = await retainedAcknowledgement(t, 'reply', true), snapshot = copy(f.row.snapshot);
   for (const mutate of [
@@ -542,6 +587,103 @@ test('cleanup serializes actual transport across reply and note editors', async 
   await new Promise(resolve => setTimeout(resolve, 20)); release.resolve(); await Promise.all([a, b]);
   assert.equal(maximum, 1, 'only one cleanup transport may be in flight in this registry');
   assert.equal(await f.journal.own(f.editor.key), undefined); assert.equal(await f.journal.own(note.key), undefined);
+});
+
+test('cleanup correction resumes after a foreground response settles beyond its deadline', async t => {
+  const f = await retainedAcknowledgement(t), entered = deferred(), release = deferred(), settled = deferred();
+  t.after(() => release.resolve());
+  const bootstrap = f.transport.bootstrap; let dispatched = 0;
+  f.transport.bootstrap = options => { ++dispatched; return bootstrap(options); };
+  f.registry.runtime.readTimeoutMs = 50;
+  // This is a client-side hold after Store/HTTP completion, not held server work.
+  f.transport.view = async (name, args, options) => {
+    if (name !== 'source') return f.read(name, args, options);
+    const answer = await f.read(name, args); // deliberately ignores AbortSignal
+    entered.resolve(); await release.promise; settled.resolve(); return answer;
+  };
+  const opening = f.open(0).then(value => ({ value }), error => ({ error }));
+  await entered.promise; const result = await opening;
+  assert.match(result.error?.message ?? '', /timed out/);
+  await cleanupSettled(f, f.editor);
+  await f.registry.cleanup.own(f.session);
+  assert.equal(dispatched, 0, 'unsettled foreground response still excludes cleanup dispatch');
+  t.diagnostic('reservation before late settlement: ' + f.registry.cleanup.foregroundCount);
+  release.resolve(); await settled.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  t.diagnostic('reservation after late settlement: ' + f.registry.cleanup.foregroundCount);
+  f.transport.view = f.read; f.registry.runtime.readTimeoutMs = 5000;
+  await f.registry.cleanup.own(f.session);
+  assert.equal(await f.journal.own(f.editor.key), undefined, 'cleanup retires acknowledged writing after late foreground settlement');
+});
+
+test('cleanup correction resumes after a foreground drain times out without dispatching', async t => {
+  const f = await retainedAcknowledgement(t), entered = deferred(), release = deferred();
+  t.after(() => release.resolve());
+  const bootstrap = f.transport.bootstrap;
+  f.transport.bootstrap = async options => {
+    const answer = await bootstrap(options); entered.resolve(); await release.promise; return answer;
+  };
+  let sourceReads = 0;
+  f.transport.view = (...args) => { if (args[0] === 'source') ++sourceReads; return f.read(...args); };
+  const cleaning = f.registry.cleanup.own(f.session); await entered.promise;
+  f.registry.runtime.readTimeoutMs = 50;
+  const result = await f.open(0).then(value => ({ value }), error => ({ error }));
+  assert.match(result.error?.message ?? '', /timed out/);
+  assert.equal(sourceReads, 0, 'expired foreground drain dispatches no source pair');
+  t.diagnostic('reservation after drain timeout: ' + f.registry.cleanup.foregroundCount);
+  f.registry.runtime.readTimeoutMs = 5000; release.resolve(); await cleaning;
+  await cleanupSettled(f, f.editor);
+  assert.equal(sourceReads, 0, 'late cleanup settlement never dispatches the expired foreground');
+  assert.equal(await f.journal.own(f.editor.key), undefined, 'cleanup retires acknowledged writing after foreground drain timeout');
+});
+
+test('cleanup correction rechecks a queued read when foreground reserves after enqueue', async t => {
+  const f = await retainedAcknowledgement(t), note = f.registry.current.editors.note;
+  f.transport.view = async (...args) => {
+    const answer = await f.read(...args); return args[0] === 'editor_state' ? { ...answer, note: null } : answer;
+  };
+  note.edit({ body: 'Acknowledged note queued behind reply' });
+  await f.registry.flush(note); await cleanupSettled(f, note); f.transport.view = f.read;
+  const entered = deferred(), queued = deferred(), release = deferred(), foreground = deferred(), finish = deferred();
+  t.after(() => { release.resolve(); finish.resolve(); });
+  const bootstrap = f.transport.bootstrap; let bootstraps = 0;
+  f.transport.bootstrap = async options => {
+    ++bootstraps; const answer = await bootstrap(options);
+    if (bootstraps === 1) { entered.resolve(); await release.promise; }
+    return answer;
+  };
+  const read = f.registry.cleanup.read.bind(f.registry.cleanup); let requests = 0;
+  f.registry.cleanup.read = operation => {
+    const promise = read(operation); if (++requests === 2) queued.resolve(); return promise;
+  };
+  let pairReads = 0;
+  f.transport.view = async (name, args, options) => {
+    const answer = await f.read(name, args, options);
+    if ((name === 'source' ? args.id : args.source_ref?.id) === f.facts.sources[0].id) {
+      if (++pairReads === 2) foreground.resolve(); await finish.promise;
+    }
+    return answer;
+  };
+  const a = f.registry.cleanup.own(f.session); await entered.promise;
+  const b = f.registry.cleanup.own(f.registry.sessionFor(note)); await queued.promise;
+  const opening = f.open(0).then(value => ({ value }), error => ({ error }));
+  release.resolve(); await foreground.promise; await Promise.all([a, b]);
+  assert.equal(bootstraps, 1, 'already queued cleanup cannot dispatch after foreground reserves');
+  assert.ok(await f.journal.own(note.key));
+  finish.resolve(); assert.equal((await opening).error, undefined);
+  await f.registry.cleanup.own(f.registry.sessionFor(note));
+  assert.equal(await f.journal.own(note.key), undefined, 'deferred acknowledged note retires on explicit later cleanup');
+});
+
+test('cleanup correction keeps the row when authority changes after confirmation before deletion', async t => {
+  const f = await retainedAcknowledgement(t), remove = f.journal.removeExact.bind(f.journal);
+  f.journal.removeExact = (...args) => {
+    f.registry.runtime.current = { ...f.registry.runtime.current, authority_epoch: 'E2-at-deletion' };
+    return remove(...args);
+  };
+  await f.registry.cleanup.own(f.session);
+  assert.deepEqual(await f.journal.own(f.editor.key), f.row, 'post-confirm authority change keeps the exact stored row');
+  assert.equal(f.session.acknowledgedSnapshot, null, 'post-confirm authority change issues no retirement token');
 });
 
 test('registry opens full source and separately keyed note/reply with one runtime', async t => {
