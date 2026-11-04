@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import json
+import io
 from pathlib import Path
 import socket
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from aim_next import initialize
 from aim_next.profile import write_profile, ProfileError
-from aim_next.serve import server_for_profile
+from aim_next.serve import main, server_for_profile
 
 
 class InstanceLauncherTests(unittest.TestCase):
@@ -47,6 +48,32 @@ class InstanceLauncherTests(unittest.TestCase):
         self.profile_path.write_text(json.dumps(profile))
         with self.assertRaises(ProfileError):
             server_for_profile(self.profile_path, 0, self.web)
+
+    def test_tailnet_origin_passes_through_launcher_without_widening_bind(self):
+        origin = 'https://fixture.example.ts.net:5192'
+        server = server_for_profile(self.profile_path, 0, self.web, tailnet_origin=origin)
+        try:
+            self.assertEqual(server.server_address[0], '127.0.0.1')
+            self.assertEqual(server.origins_by_authority['fixture.example.ts.net:5192'], origin)
+            self.assertEqual(server.origins_by_authority[server.authority], server.origin)
+        finally:
+            server.server_close()
+
+    def test_cli_forwards_tailnet_origin_and_reports_both_addresses(self):
+        origin = 'https://fixture.example.ts.net:5192'
+        server = Mock(origin='http://127.0.0.1:5192', tailnet_origin=origin,
+                      instance_id='launcher-test', actor='test-human')
+        server.serve_forever.side_effect = KeyboardInterrupt
+        output = io.StringIO()
+        with patch('aim_next.serve.server_for_profile', return_value=server) as launch, \
+                patch('aim_next.serve.signal.signal'), patch('sys.stdout', output):
+            self.assertEqual(main(['--profile', str(self.profile_path), '--port', '5192',
+                                   '--tailnet-origin', origin]), 0)
+        launch.assert_called_once_with(str(self.profile_path), 5192, tailnet_origin=origin)
+        self.assertEqual(json.loads(output.getvalue()), {
+            'status': 'ready', 'url': 'http://127.0.0.1:5192', 'tailnet_url': origin,
+            'instance_id': 'launcher-test', 'actor': 'test-human'})
+        server.server_close.assert_called_once()
 
     def test_stale_authority_profile_refuses_before_creating_a_listener(self):
         profile = json.loads(self.profile_path.read_text())

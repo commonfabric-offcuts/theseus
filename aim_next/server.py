@@ -298,11 +298,13 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def _host(self):
-        if self.headers.get_all("Host", []) != [self.server.authority]:
-            raise RequestError(403, "HOST_REFUSED", "Use this instance's loopback address.")
+        hosts = self.headers.get_all("Host", [])
+        if len(hosts) != 1 or hosts[0] not in self.server.origins_by_authority:
+            raise RequestError(403, "HOST_REFUSED", "Use an explicitly configured instance address.")
+        return self.server.origins_by_authority[hosts[0]]
 
     def _authorize(self, write=False):
-        self._host()
+        origin = self._host()
         authorizations = self.headers.get_all("Authorization", [])
         if len(authorizations) != 1:
             raise RequestError(401, "SESSION_REQUIRED", "Use exactly one instance session.")
@@ -311,7 +313,7 @@ class Handler(BaseHTTPRequestHandler):
                                    ("Bearer " + self.server.session_token).encode("utf-8")):
             raise RequestError(401, "SESSION_REQUIRED", "Open this instance to establish a session.")
         origins = self.headers.get_all("Origin", [])
-        if (write or origins) and origins != [self.server.origin]:
+        if (write or origins) and origins != [origin]:
             raise RequestError(403, "ORIGIN_REFUSED", "This request is not from the instance.")
 
     def _body(self):
@@ -612,8 +614,21 @@ class Handler(BaseHTTPRequestHandler):
     do_HEAD = do_OPTIONS
 
 
+def tailnet_authority(origin):
+    """Validate one explicit HTTPS address, never an inferred forwarded host."""
+    if origin is None:
+        return None
+    label = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    match = re.fullmatch(r"https://((?:" + label + r"\.)+ts\.net)(?::([1-9][0-9]{0,4}))?",
+                         origin) if isinstance(origin, str) else None
+    if not match or len(match[1]) > 253 or (match[2] and (int(match[2]) > 65535 or int(match[2]) == 443)):
+        raise ValueError("Use one canonical HTTPS .ts.net origin, without a path or credentials")
+    return origin[len("https://"):]
+
+
 def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.1", port=0,
-                  token=None, max_json_bytes=2 * 1024 * 1024, max_reads=2):
+                  token=None, max_json_bytes=2 * 1024 * 1024, max_reads=2, tailnet_origin=None):
+    external_authority = tailnet_authority(tailnet_origin)
     if host != "127.0.0.1":
         raise ValueError("The first instance binds explicit IPv4 loopback only")
     if not instance_id or not actor:
@@ -636,4 +651,8 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.connection_slots = threading.BoundedSemaphore(16)
     server.authority = "%s:%s" % server.server_address
     server.origin = "http://" + server.authority
+    server.origins_by_authority = {server.authority: server.origin}
+    server.tailnet_origin = tailnet_origin
+    if external_authority is not None:
+        server.origins_by_authority[external_authority] = tailnet_origin
     return server

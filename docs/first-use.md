@@ -57,8 +57,9 @@ bin/aim-next-runner --profile /absolute/lead-profile.json \
 The operator selects a free loopback port and retains that origin across
 restarts. Port `0` is useful for isolated trials, but a retained browser journal
 needs a stable origin. An occupied explicit port refuses startup; do not stop
-its existing owner. This initial path is local to the Mac; remote/mobile access
-is staged. Do not widen the bind to make the URL reachable elsewhere.
+its existing owner. Remote/mobile access uses the explicit HTTPS address and
+Tailscale Serve configuration in [tailnet access](tailnet-access.md). The
+server still binds loopback; do not widen its bind.
 
 For the retained instance, launch each entry in its own detached session with
 closed input and private retained stdout/stderr logs. A foreground process
