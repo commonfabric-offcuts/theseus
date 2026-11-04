@@ -53,21 +53,32 @@ export class Editor {
   }
 
   acceptSave(ticket, receipt) {
-    if (!ticket || ticket.key !== this.key || ticket.draft.generation !== this.draft.generation) return false;
+    if (!ticket || ticket.key !== this.key) return false;
     const kind = this.context.kind === 'note' ? 'note.save' : 'draft.save';
     if (!this.matches(receipt, ticket.operationId, kind)) return false;
+    // Send may have opened local B while A's earlier autosave was in flight.
+    // Only a still-preparing A may absorb that acknowledgement. Once its
+    // preparation is recorded, its source revision is fixed and B owns saves.
+    const pending = kind === 'draft.save' && this.submissions.find(item =>
+      item.status === 'preparing' && item.snapshot.id === ticket.draft.id &&
+      item.snapshot.generation === ticket.draft.generation);
+    const target = pending ? pending.snapshot : this.draft;
+    if (ticket.draft.id !== target.id || ticket.draft.generation !== target.generation) return false;
     if (receipt.status === 'rejected') {
-      this.conflict = { error: copy(receipt.error), attempted: copy(ticket.draft) };
+      const conflict = { error: copy(receipt.error), attempted: copy(ticket.draft) };
+      if (pending) pending.saveConflict = conflict;
+      else this.conflict = conflict;
       return false;
     }
     if (receipt.status !== 'committed') return false;
     const result = receipt.result ?? {};
     const revision = kind === 'note.save' ? result.note_revision : result.draft_revision;
-    if (!Number.isInteger(revision) || revision < (this.draft.revision ?? 0)) return false;
-    if (kind === 'draft.save' && (result.draft_id !== this.draft.id || result.generation !== this.draft.generation)) return false;
-    if (kind === 'note.save' && result.note_id !== this.draft.id) return false;
-    this.draft.revision = revision;
-    this.ackVersion = Math.max(this.ackVersion, ticket.localVersion);
+    if (!Number.isInteger(revision) || revision < (target.revision ?? 0)) return false;
+    if (kind === 'draft.save' && (result.draft_id !== target.id || result.generation !== target.generation)) return false;
+    if (kind === 'note.save' && result.note_id !== target.id) return false;
+    target.revision = revision;
+    if (pending) pending.savedVersion = Math.max(pending.savedVersion ?? -1, ticket.localVersion);
+    else this.ackVersion = Math.max(this.ackVersion, ticket.localVersion);
     return true;
   }
 
@@ -80,6 +91,7 @@ export class Editor {
       id: submissionId, prepareOperationId, sendOperationId,
       sourceRef: copy(this.sourceRef), topicId: this.context.topicId,
       snapshot: copy(this.draft), localVersion: this.localVersion,
+      savedVersion: this.ackVersion, saveConflict: null,
       status: 'preparing', preparationConfirmed: false, receipt: null,
     };
     this.submissions.push(submission);

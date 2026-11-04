@@ -89,6 +89,73 @@ test('an old autosave acknowledgement does not mark newer writing as saved', () 
   assert.equal(editor.draft.revision, 8);
 });
 
+test('an in-flight save acknowledges frozen A before prepare without touching live B', () => {
+  const editor = fresh();
+  editor.edit({ body: 'Reply A ready' });
+  const ticket = editor.saveTicket('save-A-8');
+  const a = editor.beginPrepare(ids);
+  editor.edit({ body: 'New B while A saves', attachments: [{ id: 'image-b' }] });
+  const beforeB = structuredClone(editor.draft);
+  const receipt = { instance_id: 'new1', operation_id: 'save-A-8', kind: 'draft.save',
+    status: 'committed', recorded: true,
+    result: { draft_id: 'd1', draft_revision: 8, generation: 'gA' } };
+  assert.equal(editor.acceptSave(ticket, receipt), true);
+  assert.equal(a.snapshot.revision, 8);
+  assert.equal(a.savedVersion, a.localVersion);
+  assert.equal(a.snapshot.body, 'Reply A ready');
+  assert.deepEqual(a.snapshot.attachments, [{ id: 'image-a' }]);
+  assert.deepEqual(editor.draft, beforeB);
+  assert.equal(editor.dirty, true);
+  // The controller must persist this updated revision before it prepares A.
+  const recovered = restoreEditor(context, { ...draft, revision: 8 }, editor.snapshot());
+  assert.equal(recovered.submissions[0].snapshot.revision, 8);
+  assert.equal(recovered.submissions[0].savedVersion, a.localVersion);
+  assert.equal(recovered.draft.body, 'New B while A saves');
+});
+
+test('an earlier save advances frozen A revision but cannot claim its later text was saved', () => {
+  const editor = fresh();
+  editor.edit({ body: 'Earlier A' });
+  const ticket = editor.saveTicket('save-earlier');
+  editor.edit({ body: 'A as deliberately sent', addressees: ['second-fixture-agent'] });
+  const a = editor.beginPrepare(ids);
+  const receipt = { instance_id: 'new1', operation_id: 'save-earlier', kind: 'draft.save',
+    status: 'committed', recorded: true,
+    result: { draft_id: 'd1', draft_revision: 8, generation: 'gA' } };
+  for (const wrong of [
+    { ...receipt, recorded: false },
+    { ...receipt, operation_id: 'another-save' },
+    { ...receipt, result: { ...receipt.result, generation: 'elsewhere' } },
+    { ...receipt, result: { ...receipt.result, draft_id: 'another-draft' } },
+  ]) assert.equal(editor.acceptSave(ticket, wrong), false);
+  assert.equal(a.snapshot.revision, 7);
+  assert.equal(editor.acceptSave(ticket, receipt), true);
+  assert.equal(a.snapshot.revision, 8);
+  assert.equal(a.snapshot.body, 'A as deliberately sent');
+  assert.deepEqual(a.snapshot.addressees, ['second-fixture-agent']);
+  assert.equal(a.savedVersion, ticket.localVersion);
+  assert.ok(a.savedVersion < a.localVersion, 'exact frozen A still needs its own save');
+  assert.equal(editor.draft.generation, null);
+});
+
+test('a refused frozen-A save records its conflict without replacing or blocking B', () => {
+  const editor = fresh();
+  editor.edit({ body: 'Attempted A' });
+  const ticket = editor.saveTicket('refused-A');
+  const a = editor.beginPrepare(ids);
+  editor.edit({ body: 'B stays here' });
+  const error = { code: 'REVISION_CONFLICT', message: 'Another version exists.' };
+  assert.equal(editor.acceptSave(ticket, { instance_id: 'new1', operation_id: 'refused-A', kind: 'draft.save',
+    status: 'rejected', recorded: true, error }), false);
+  assert.deepEqual(a.saveConflict.error, error);
+  assert.equal(a.snapshot.body, 'Attempted A');
+  assert.equal(a.snapshot.revision, 7);
+  assert.equal(a.savedVersion, 0);
+  assert.equal(editor.conflict, null);
+  assert.equal(editor.draft.body, 'B stays here');
+  assert.equal(editor.dirty, true);
+});
+
 test('saving a private note uses its own revision without a reply generation or send', () => {
   const note = new Editor({ ...context, kind: 'note' }, { id: 'note1', revision: 2, body: 'Private thought' });
   note.edit({ body: 'Private thought continued' });
