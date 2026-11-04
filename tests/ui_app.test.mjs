@@ -139,6 +139,49 @@ test('stepping uses reader eligibility and enables the final neighbor even witho
   assert.equal((await f.api.view('topic_messages', reads.find(call => call.args.direction === 'after').args)).next_cursor, null);
 });
 
+test('freshness neighbors read sequentially and discard an older answer after a newer request', async t => {
+  const f = await fixture(t), p = await f.open(0), entered = deferred(), release = deferred(), calls = [];
+  t.after(() => release.resolve());
+  const read = async (name, args) => {
+    calls.push(args.direction);
+    const answer = await f.api.view(name, args);
+    if (args.direction === 'before') { entered.resolve(); await release.promise; }
+    return answer;
+  };
+  const old = f.registry.neighbors(p, { read }); await entered.promise;
+  assert.deepEqual(calls, ['before'], 'a background pair occupies only one read at a time');
+  const current = await f.registry.neighbors(p);
+  release.resolve(); assert.equal(await old, null);
+  assert.deepEqual(current.next, f.facts.sources[1]);
+  assert.equal(f.registry.current, p); assert.deepEqual(f.shown, [p]);
+});
+
+test('freshness authority park gates all existing editors before local persistence settles', async t => {
+  const f = await fixture(t), p = await f.open(0), entered = deferred(), release = deferred();
+  const put = f.backend.put; t.after(() => { release.resolve(); f.backend.put = put; });
+  for (const editor of Object.values(p.editors)) {
+    editor.edit({ body: 'Exact private ' + editor.context.kind }); await f.registry.edited(editor);
+  }
+  f.backend.put = async row => { entered.resolve(); await release.promise; return put(row); };
+  const commands = f.calls.filter(c => c.type === 'command').length, reads = f.calls.length;
+  const parking = f.registry.parkAuthority({ instance_id: f.bootstrap.instance_id, actor_id: f.bootstrap.actor,
+    authority_id: f.bootstrap.authority.authority_id, authority_epoch: f.bootstrap.authority.authority_epoch }, 'INVALID_BINDING');
+  for (const editor of Object.values(p.editors)) {
+    assert.equal(editor.authorityRecovery.phase, 'parked');
+    assert.equal(f.registry.scheduled.has(editor.key), false);
+  }
+  await entered.promise;
+  assert.equal(f.calls.length, reads, 'parking does not probe, read a new private state, or send');
+  release.resolve(); await parking;
+  for (const editor of Object.values(p.editors)) {
+    const row = await f.journal.own(editor.key);
+    assert.equal(row.snapshot.draft.body, 'Exact private ' + editor.context.kind);
+    assert.equal(row.snapshot.authorityRecovery.phase, 'parked');
+  }
+  assert.equal(f.calls.filter(c => c.type === 'command').length, commands);
+  assert.equal(f.registry.current, p);
+});
+
 test('server-only pending details are fetched explicitly and confirmation performs no command', async t => {
   const f = await fixture(t), p = await f.open(0), editor = p.editors.reply;
   const item = f.registry.pending(editor).items[0];
@@ -182,6 +225,7 @@ test('explicit note close recognizes an already confirmed current autosave', asy
 });
 
 async function fixture(t, options = {}) {
+  const { noReadAdmission = false, ...registryOptions } = options;
   const child = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py'], { cwd: new URL('..', import.meta.url) });
   let serial = 0, errors = '';
   const pending = new Map(), rows = new Map(), calls = [], shown = [], closed = [], changes = [];
@@ -217,14 +261,20 @@ async function fixture(t, options = {}) {
   };
   const journal = new RecoveryJournal(backend, 'fixture-document');
   const transport = {
-    bootstrap: options => api.bootstrap(options),
+    bootstrap: async options => {
+      const answer = await api.bootstrap(options);
+      // Local old-capability arbitration, over the real HTTP fixture. This
+      // does not claim to measure the historical server's transport budget.
+      if (noReadAdmission) delete answer.transport.read_admission;
+      return answer;
+    },
     view: (name, args, options) => { calls.push({ type: 'view', name, args: copy(args) }); return api.view(name, args, options); },
     command: envelope => { calls.push({ type: 'command', envelope: copy(envelope) }); return api.command(envelope); },
   };
-  const bootstrap = await api.bootstrap();
+  const bootstrap = await transport.bootstrap();
   registry = new EditorRegistry({ api: transport, bootstrap, journal,
     present: presentation => shown.push(presentation), closed: presentation => closed.push(presentation),
-    changed: editor => changes.push(editor.key), saveDelayMs: 30000, maxSaveDelayMs: 60000, ...options });
+    changed: editor => changes.push(editor.key), saveDelayMs: 30000, maxSaveDelayMs: 60000, ...registryOptions });
   const open = (index = 0) => registry.open(facts.sources[index], { topicId: facts.topic_id });
   const state = index => api.view('editor_state', { source_ref: facts.sources[index], topic_id: facts.topic_id });
   return { registry, api, transport, bootstrap, journal, backend, rows, calls, shown, closed, changes, facts, open, state, control };
@@ -265,8 +315,8 @@ test('cleanup exact send successor retires while canonical submission stays disc
   assert.equal((await f.api.view('submission', { submission_id: item.id })).body, 'An immutable real publication');
 });
 
-async function retainedAcknowledgement(t, kind = 'reply', send = false) {
-  const f = await fixture(t), p = await f.open(1), editor = p.editors[kind], session = f.registry.sessionFor(editor);
+async function retainedAcknowledgement(t, kind = 'reply', send = false, options = {}) {
+  const f = await fixture(t, options), p = await f.open(1), editor = p.editors[kind], session = f.registry.sessionFor(editor);
   const read = f.transport.view;
   f.transport.view = async (name, args) => {
     const answer = await read(name, args);
@@ -495,8 +545,8 @@ test('cleanup malformed unrecognized writing cannot be silently omitted from ack
   assert.equal(await f.registry.cleanup.confirm(row, f.editor.context), false, 'unknown writing is retained');
 });
 
-test('cleanup-first read drains before foreground pair while local persistence stays independent', async t => {
-  const f = await retainedAcknowledgement(t), entered = deferred(), release = deferred();
+test('without admission capability cleanup-first read drains before foreground pair while local persistence stays independent', async t => {
+  const f = await retainedAcknowledgement(t, 'reply', false, { noReadAdmission: true }), entered = deferred(), release = deferred();
   const bootstrap = f.transport.bootstrap; let held = true, overlapped = 0;
   f.transport.bootstrap = async options => { const answer = await bootstrap(options); entered.resolve(); await release.promise; return answer; };
   f.transport.view = (...args) => { if (held && ['source', 'editor_state'].includes(args[0])) ++overlapped; return f.read(...args); };
@@ -540,8 +590,8 @@ test('cleanup busy reply retains exact row and never retries', async t => {
   assert.equal(await f.journal.own(f.editor.key), undefined);
 });
 
-test('cleanup stalled transport aborts after budget and timed-out foreground never dispatches late', async t => {
-  const f = await retainedAcknowledgement(t), entered = deferred(), bootstrap = f.transport.bootstrap;
+test('without admission capability cleanup stalled transport aborts after budget and timed-out foreground never dispatches late', async t => {
+  const f = await retainedAcknowledgement(t, 'reply', false, { noReadAdmission: true }), entered = deferred(), bootstrap = f.transport.bootstrap;
   let aborted = false, sourceReads = 0, rescued = false;
   f.registry.runtime.readTimeoutMs = 100;
   f.transport.bootstrap = async options => {
@@ -616,8 +666,8 @@ test('cleanup correction resumes after a foreground response settles beyond its 
   assert.equal(await f.journal.own(f.editor.key), undefined, 'cleanup retires acknowledged writing after late foreground settlement');
 });
 
-test('cleanup correction resumes after a foreground drain times out without dispatching', async t => {
-  const f = await retainedAcknowledgement(t), entered = deferred(), release = deferred();
+test('without admission capability cleanup correction resumes after a foreground drain times out without dispatching', async t => {
+  const f = await retainedAcknowledgement(t, 'reply', false, { noReadAdmission: true }), entered = deferred(), release = deferred();
   t.after(() => release.resolve());
   const bootstrap = f.transport.bootstrap;
   f.transport.bootstrap = async options => {

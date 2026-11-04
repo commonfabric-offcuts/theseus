@@ -226,6 +226,7 @@ export class Reader {
   }
 
   quote() {
+    if (this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed) { this.notice('Source availability needs to be checked before quoting.'); return; }
     const excerpt = this.selectedPassage();
     if (!excerpt || !this.sessions) return;
     if (this.mode === 'note') this.switchMode('reply');
@@ -366,9 +367,39 @@ export class Reader {
     this.field.readOnly = Boolean(editor.adopting || recoveryReadOnly(editor));
     this.$('recipient-input').disabled = this.field.readOnly;
     this.$('add-recipient').disabled = this.field.readOnly;
-    this.$('quote-selection').disabled = Boolean(this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
+    this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
     if (barrier) this.$('save-state').textContent = barrier;
     this.paintImages();
+    this.paintOffer();
+    this.paintAccess();
+  }
+
+  paintAccess() {
+    const status = this.$('source-access-status'), retry = this.$('retry-source'), p = this.presentation;
+    if (!status || !retry) return;
+    const blocked = p?.sourceUnavailable || p?.availabilityUnconfirmed;
+    retry.hidden = !blocked;
+    retry.disabled = Boolean(p?.availabilityChecking || this.sessions.reply.authorityRecovery);
+    retry.onclick = () => this.callbacks.retrySource?.();
+    status.textContent = p?.accessMessage || (p?.sourceUnavailable ? 'The source is unavailable. Your private writing is kept.'
+      : p?.availabilityUnconfirmed ? 'Source access is unconfirmed. Your private writing is kept.' : '');
+    if (p?.topicUpdatesPaused) status.textContent += blocked ? ' Topic updates are paused. Retry access checks only this source.' : 'This source is available. Topic updates remain paused.';
+    status.hidden = !status.textContent;
+  }
+
+  paintOffer() {
+    const host = this.$('revision-offer'), control = this.$('open-revision');
+    if (!host || !control) return; // renderer-only fixtures may omit this increment
+    const offer = this.callbacks.revisionOffer?.(this.presentation);
+    host.hidden = !offer;
+    if (offer) { control.textContent = `Open revision ${offer.revision}`; control.onclick = () => offer.open(); }
+    else control.onclick = null;
+  }
+
+  hideUnavailableSource() {
+    this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
+    this.$('reader-origin').textContent = 'Source unavailable';
+    this.paintStatus();
   }
 
   paintPending() {

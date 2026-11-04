@@ -1,5 +1,6 @@
 import { editorKey } from './editor.mjs';
 import { uploadProof } from './upload-cleanup.mjs';
+import { supportsAdmission } from './freshness.mjs';
 
 const copy = value => structuredClone(value);
 export const same = (a, b) => {
@@ -57,18 +58,33 @@ export class RecoveryCleanup {
     Object.assign(this, { api, bootstrap, journal, runtime, changed, stopped, yieldBatch });
     this.queues = new Map(); this.requested = new Map();
     this.readTail = Promise.resolve(); this.activeRead = null; this.foregroundCount = 0;
+    this.partitioned = supportsAdmission(bootstrap); this.readEpoch = 0; this.readController = null;
+    this.foregroundListeners = new Set();
   }
-  deferred() { return Object.assign(Error('Foreground reading has priority; the recovery copy is retained.'), { code: 'CLEANUP_DEFERRED' }); }
+  deferred(cause) { return Object.assign(Error('Background reading is deferred; the recovery copy is retained.'), { code: 'CLEANUP_DEFERRED', ...(cause ? { cause } : {}) }); }
   read(operation) {
     if (this.foregroundCount) return Promise.reject(this.deferred());
+    const epoch = this.readEpoch;
     const next = this.readTail.then(async () => {
-      if (this.foregroundCount || this.stopped()) throw this.deferred();
+      if (this.foregroundCount || this.stopped() || epoch !== this.readEpoch) throw this.deferred();
       const controller = new AbortController();
+      this.readController = controller;
       const timer = setTimeout(() => controller.abort(), this.runtime.readTimeoutMs);
-      const transport = Promise.resolve().then(() => operation({ signal: controller.signal }));
+      const transport = Promise.resolve().then(() => operation({ signal: controller.signal, ...(this.partitioned ? { readClass: 'background' } : {}) }));
       this.activeRead = transport;
-      try { return await transport; }
-      finally { clearTimeout(timer); if (this.activeRead === transport) this.activeRead = null; }
+      try {
+        const answer = await transport;
+        if (epoch !== this.readEpoch) throw this.deferred();
+        if (answer?.error?.code === 'SERVER_BUSY') throw this.deferred(Object.assign(Error(answer.error.message ?? 'Server busy'), { details: answer }));
+        return answer;
+      } catch (error) {
+        if (epoch !== this.readEpoch) throw this.deferred();
+        if (error.status === 503) throw this.deferred(error);
+        throw error;
+      } finally {
+        clearTimeout(timer);
+        if (this.activeRead === transport) { this.activeRead = null; this.readController = null; }
+      }
     });
     // Occupancy follows the actual aborted/settled transport, never a timeout
     // race that could free a slot while its request is still alive.
@@ -77,6 +93,10 @@ export class RecoveryCleanup {
   }
   foreground() {
     ++this.foregroundCount;
+    if (this.partitioned) {
+      ++this.readEpoch; this.readController?.abort();
+      for (const listener of this.foregroundListeners) listener();
+    }
     const deadline = Date.now() + this.runtime.readTimeoutMs;
     let released = false, finished = true, counted = true;
     const releaseCount = () => { if (released && finished && counted) { counted = false; --this.foregroundCount; } };
@@ -90,7 +110,7 @@ export class RecoveryCleanup {
     };
     return {
       read: async operation => {
-        if (this.activeRead) await bounded(this.activeRead.catch(() => {}));
+        if (!this.partitioned && this.activeRead) await bounded(this.activeRead.catch(() => {}));
         if (released || Date.now() >= deadline) throw Error('Reader request timed out. Your writing is kept.');
         const controller = new AbortController(); finished = false;
         const transport = Promise.resolve().then(() => operation({ signal: controller.signal }));

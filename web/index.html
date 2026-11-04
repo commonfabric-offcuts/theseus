@@ -16,6 +16,7 @@
     <button id="refresh" type="button">Refresh</button>
   </header>
   <div id="app-status" class="notice" role="status" hidden></div>
+  <div id="updates-status" class="notice" hidden><span id="updates-message" role="status"></span><button id="updates-retry" type="button">Retry updates</button></div>
   <div class="workspace-layout">
     <nav class="rail" aria-label="Workspaces and topics">
       <div class="rail-heading"><h1>Workspaces</h1></div>
@@ -43,11 +44,14 @@
       <button id="reader-close" type="button" aria-label="Close reader">✕</button>
     </header>
       <section class="reading-pane" aria-label="Source text">
+        <div id="source-access-status" class="notice" role="status" hidden></div>
         <div id="source-update" class="notice" hidden></div>
+        <div id="revision-offer" class="notice" hidden><span>A newer Notebook revision is available. </span><button id="open-revision" type="button">Open revision</button></div>
         <article id="source-body" tabindex="0" aria-label="Read and select source text"></article>
         <div id="source-attachments" class="attachments"></div>
         <footer class="source-actions">
           <button id="quote-selection" type="button">Quote selection</button>
+          <button id="retry-source" type="button" hidden>Retry access</button>
           <span class="muted">Select a passage, then Return</span>
           <div id="reader-stepping"><button id="previous-message" type="button" aria-label="Previous eligible message">←</button><button id="next-message" type="button" aria-label="Next eligible message">→</button></div>
         </footer>
