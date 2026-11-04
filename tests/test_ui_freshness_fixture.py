@@ -16,11 +16,13 @@ from urllib.parse import urlsplit
 from types import SimpleNamespace
 
 
-class FreshnessFixtureTests(unittest.TestCase):
+class FixtureCase(unittest.TestCase):
+    fixture_flags = ()
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.stderr = open(Path(self.tmp.name) / "stderr.log", "w+")
-        self.process = subprocess.Popen([sys.executable, "tests/fixtures/ui_http.py", "--freshness", "--images"],
+        self.process = subprocess.Popen([sys.executable, "tests/fixtures/ui_http.py", "--freshness", "--images"] + list(self.fixture_flags),
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr,
                                         text=True, bufsize=1)
         self.counter = 0
@@ -39,7 +41,7 @@ class FreshnessFixtureTests(unittest.TestCase):
         errors = self.stderr.read()
         self.stderr.close()
         if self.expected_exit:
-            self.assertIn("Private fixture hold timeout", errors)
+            self.assertIn("Private fixture hold", errors)
         else:
             self.assertEqual(errors, "")
         self.tmp.cleanup()
@@ -63,7 +65,9 @@ class FreshnessFixtureTests(unittest.TestCase):
         try:
             headers = {
                 "Authorization": "Bearer " + self.ready["token"], "Origin": self.ready["origin"],
-                "Content-Type": "application/json", "X-AIM-Read-Class": read_class}
+                "Content-Type": "application/json"}
+            if read_class is not None:
+                headers["X-AIM-Read-Class"] = read_class
             headers.update(extra or {})
             conn.request(method, path, payload if isinstance(payload, bytes) else json.dumps(payload), headers)
             response = conn.getresponse()
@@ -80,6 +84,8 @@ class FreshnessFixtureTests(unittest.TestCase):
             time.sleep(0.005)
         self.fail("Expected fixture event did not arrive")
 
+
+class FreshnessFixtureTests(FixtureCase):
     def test_fixture_agent_commits_are_attributed_and_reads_do_not_ack(self):
         before = self.control("counts")
         receipt = self.control("agent_message", operation_id="fixture-new-message", body="Incoming exact body",
@@ -195,9 +201,82 @@ class FreshnessFixtureTests(unittest.TestCase):
         self.assertTrue(any(e["event"] == "hold-timeout" and e["hold_id"] == "fatal-hold" for e in result["events"]))
         self.expected_exit = 1
 
+    def test_unconsumed_hold_is_fatal_even_when_released(self):
+        self.control("read_hold", hold_id="never-engaged", phase="callback", name="topic", read_class="background")
+        self.control("read_release", hold_id="never-engaged")
+        self.expected_exit = 1
+
+    def test_unclassified_hold_engages_both_actual_classes(self):
+        self.assertEqual((self.ready["admission_mode"], self.ready["max_reads"]), ("partitioned", 2))
+        self.control("read_hold", hold_id="any-class", phase="callback", name="topic", count=2)
+        pending = [self.pool.submit(self.view, "topic", {"topic_id": "t1"}, read_class)
+                   for read_class in ("foreground", "background")]
+        result = self.events_until(lambda r: sum(e["event"] == "hold-enter" and e.get("hold_id") == "any-class" for e in r["events"]) == 2)
+        held = [e for e in result["events"] if e["event"] == "hold-enter" and e.get("hold_id") == "any-class"]
+        self.assertEqual({e["read_class"] for e in held}, {"foreground", "background"})
+        self.assertEqual(len({e["request_id"] for e in held}), 2)
+        self.assertTrue(all(not future.done() for future in pending))
+        self.control("read_release", hold_id="any-class")
+        self.assertTrue(all(future.result(timeout=1)[0] == 200 for future in pending))
+
+    def test_explicit_cancel_withdraws_only_unconsumed_hold_count(self):
+        self.control("read_hold", hold_id="partial", phase="callback", name="topic", read_class="foreground", count=2)
+        pending = self.pool.submit(self.view, "topic", {"topic_id": "t1"})
+        self.events_until(lambda r: any(e["event"] == "hold-enter" and e.get("hold_id") == "partial" for e in r["events"]))
+        cancelled = self.control("read_cancel", hold_id="partial")
+        self.assertEqual(cancelled["cancelled"], 1)
+        self.assertFalse(pending.done(), "Canceling future matches must not release the active hold")
+        self.control("read_release", hold_id="partial")
+        self.assertEqual(pending.result(timeout=1)[0], 200)
+        result = self.control("admission_events", after=0)
+        self.assertTrue(any(e["event"] == "hold-cancel" and e.get("hold_id") == "partial" and e["cancelled"] == 1 for e in result["events"]))
+        self.assertEqual(result["fatal"], [])
+
+
+class LegacyObservationTests(FixtureCase):
+    fixture_flags = ("--legacy-read-admission",)
+
+    def test_legacy_http_observation_keeps_actual_single_slot_and_identity(self):
+        self.assertEqual((self.ready["admission_mode"], self.ready["max_reads"]), ("legacy-observation", 1))
+        status, bootstrap = self.http_request("/api/bootstrap", {}, method="GET", read_class=None)
+        self.assertEqual(status, 200)
+        self.assertNotIn("read_admission", bootstrap.get("transport", {}))
+        self.control("read_hold", hold_id="old-client", phase="callback", name="topic")
+        pending = self.pool.submit(self.view, "topic", {"topic_id": "t1"}, None)
+        result = self.events_until(lambda r: any(e["event"] == "hold-enter" and e.get("hold_id") == "old-client" for e in r["events"]))
+        event = next(e for e in result["events"] if e["event"] == "hold-enter" and e.get("hold_id") == "old-client")
+        self.assertEqual((event["read_class"], event["admission_mode"]), ("foreground", "legacy-observation"))
+        self.assertRegex(event["request_id"], r"^legacy-[1-9][0-9]*$")
+        self.assertIsNone(result["lanes"])
+        self.assertFalse(pending.done())
+        self.assertEqual(self.view("topic", {"topic_id": "t1"}, None)[0], 503)
+        self.control("read_release", hold_id="old-client")
+        self.assertEqual(pending.result(timeout=1)[0], 200)
 
 
 class FixtureFinalizerTests(unittest.TestCase):
+    def test_cancel_does_not_set_the_active_hold_release_event(self):
+        spec = importlib.util.spec_from_file_location("cancel_fixture", Path(__file__).parent / "fixtures/ui_http.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        controls = module.FreshnessControls()
+        server = SimpleNamespace()
+        controls.control({"method": "read_hold", "hold_id": "partial", "phase": "callback", "name": "topic", "count": 2}, server)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            active = pool.submit(controls.wait_hold, "topic", "callback")
+            try:
+                deadline = time.monotonic() + 1
+                while not any(e["event"] == "hold-enter" for e in controls.events):
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(0.001)
+                self.assertEqual(controls.control({"method": "read_cancel", "hold_id": "partial"}, server)["cancelled"], 1)
+                self.assertFalse(controls.holds["partial"]["release"].is_set())
+            finally:
+                controls.control({"method": "read_release", "hold_id": "partial"}, server)
+                active.result(timeout=1)
+        controls.close()
+        controls.assert_healthy()
+
     def test_close_hold_timeout_still_closes_the_underlying_store(self):
         from aim_next.server import Handler
         spec = importlib.util.spec_from_file_location("freshness_fixture", Path(__file__).parent / "fixtures/ui_http.py")

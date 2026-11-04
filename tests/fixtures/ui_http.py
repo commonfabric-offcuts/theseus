@@ -174,7 +174,7 @@ class FreshnessControls:
         if method == "read_hold":
             hold_id = request["hold_id"]  # request.id belongs to stdin correlation.
             assert request["phase"] in ("callback", "close")
-            assert request["read_class"] in ("foreground", "background")
+            assert request.get("read_class") in (None, "foreground", "background")
             assert type(request.get("count", 1)) is int and request.get("count", 1) > 0
             assert type(request.get("timeout_ms", 15000)) is int and 0 < request.get("timeout_ms", 15000) <= 15000
             with self.lock:
@@ -185,6 +185,16 @@ class FreshnessControls:
             with self.lock:
                 self.holds[request["hold_id"]]["release"].set()
             return {"hold_id": request["hold_id"], "released": True}
+        if method == "read_cancel":
+            with self.lock:
+                hold = self.holds[request["hold_id"]]
+                cancelled = hold["count"]
+                assert cancelled > 0, "No unconsumed hold remains to cancel"
+                hold["count"] = 0
+            # Withdraw future matches only. An active callback still requires
+            # its separate read_release; cancellation cannot fake that release.
+            self.event("hold-cancel", hold["name"], hold_id=request["hold_id"], cancelled=cancelled)
+            return {"hold_id": request["hold_id"], "cancelled": cancelled}
         if method == "read_fault":
             assert request["status"] in (200, 400, 401, 403, 409, 500, 503)
             assert type(request.get("count", 1)) is int and request.get("count", 1) > 0
@@ -211,12 +221,14 @@ class FreshnessControls:
 
     def close(self):
         with self.lock:
-            for hold in self.holds.values():
+            for hold_id, hold in self.holds.items():
+                if hold["count"] > 0:
+                    self.fatal.append("unconsumed:" + hold_id)
                 hold["release"].set()
 
     def assert_healthy(self):
         with self.lock:
-            assert not self.fatal, "Private fixture hold timeout: " + ", ".join(self.fatal)
+            assert not self.fatal, "Private fixture hold failure: " + ", ".join(self.fatal)
 
 
 # Isolated wiring fixture. Actual Store and HTTP; stdin is a private fixture
@@ -295,8 +307,9 @@ def main():
             command("participation.set", "fixture-notebook-participant", {"actor_id": "fixture-notebook-agent", "present": True}, {"topic_id": "t1"}, {"topic_revision": topic_revision})
             command("memory.create", "fixture-notebook", {"title": "Image Notebook", "body": "Notebook passage to quote.", "attachments": [], "references": []},
                     {"item_id": "fixture-notebook", "owner_scope": {"kind": "topic", "id": "t1"}}, {"item_revision": 0}, sender="fixture-notebook-agent")
+        max_reads = 1 if "--legacy-read-admission" in sys.argv else 2
         server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web",
-                               max_reads=1 if "--legacy-read-admission" in sys.argv else 2)
+                               max_reads=max_reads)
         if "--baseline-read-admission" in sys.argv:
             assert "--legacy-read-admission" not in sys.argv, "Baseline uses default shared2, never single-slot legacy"
             assert getattr(server, "read_admission", None) is None, "Baseline flag requires the actual old server"
@@ -331,7 +344,8 @@ def main():
                     if request["method"] == "ready":
                         answer = {"origin": server.origin, "token": server.session_token,
                                   "instance_id": instance, "actor": actor, "topic_id": "t1",
-                                  "sources": sources, "media": media,
+                                  "sources": sources, "media": media, "max_reads": max_reads,
+                                  "admission_mode": "partitioned" if getattr(server, "read_admission", None) else "legacy-observation",
                                   "freshness": freshness, "agent": "fixture-notebook-agent" if freshness else None}
                     elif request["method"] == "counts":
                         with sqlite3.connect(str(path)) as db:
@@ -344,7 +358,7 @@ def main():
                                     answer.update(http_commands=controls.http_commands,
                                                   http_delivery_acks=controls.http_delivery_acks,
                                                   http_media_publications=controls.http_media_publications)
-                    elif freshness and request["method"] in ("read_hold", "read_release", "read_fault", "admission_events"):
+                    elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_fault", "admission_events"):
                         answer = controls.control(request, server)
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
