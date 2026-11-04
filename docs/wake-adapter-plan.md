@@ -178,6 +178,52 @@ around a fake implementation of delivery storage.
 
 ## Evidence before integration
 
+### Concrete invocation seam (lead follow-up, pending bounded critique)
+
+Core confirmed the actual calling sequence in `m-43e1d4ff`: renew ownership,
+claim due work, invoke the adapter, register the child after spawn, then settle
+only after owned cleanup. No additional claim-validation method is planned.
+The sole real guard holder owns internal token/claim changes; none of these
+methods is in public command dispatch. Core's runner implementation is still
+awaiting its own reviewed handoff. The route/encoding layer uses the already
+integrated real `RunnerGuard` and v2 profile, not a replacement guard fixture.
+
+Lead's intended Python seam is
+`run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child)`.
+The caller must have just obtained Core's current successful acquire/renew and
+claim results. `owner_lease_until_ms` is that returned singleton lease, not a
+configuration setting. The adapter validates the exact claim shape/binding and
+route, obtains the actual guard's verified `pass_fds`, and checks current time
+immediately before spawn: both leases have at least seven seconds remaining and
+the singleton covers the whole claim. An old receipt after Mac sleep is not
+permission to launch. A prepared route is ephemeral data, not cached dispatch
+authority. Final runner integration must prove the real sequence.
+
+`record_child(pid, started_at)` calls Core's token-bound diagnostic registration
+and must return its `status:recorded` result. It runs just after spawn, inside
+the same five-second invocation deadline; missing registration never releases
+the inherited guard. A failed/exceptional registration cleans up the owned group
+and raises a bounded adapter fault for the caller to pause/report, rather than
+inventing an accepted wake. No extra durable lifecycle is introduced here.
+
+The bounded adapter result contains only outcome, exit code and a fixed reason
+code. No route/profile payload, token or child output is returned. A normal exit
+is classified only after the direct child is reaped and the owned process group
+is absent. A surviving group is cleaned up within the one-second budget; it is
+an error even if the direct child said zero. Unconfirmed cleanup raises a fault
+requiring the existing persistent pause. Unexpected internal exceptions also
+clean up the owned child, then propagate a fixed fault; they do not enter a hot
+retry loop. Guard/lease/settlement and delivery acknowledgement stay Core-owned.
+
+Named adapter checks: exact literal argv/stdin and allowlisted parent environment;
+real inherited guard descriptors; no child on missing/mismatched route or spent
+lease; exit 0/75/other; a broker that never reads stdin hits the actual deadline;
+owned descendant cleanup; failed registration; and independent process/group
+absence. Applied mutants cover binding, captured identity, literal invocation,
+descriptor inheritance and launch budget. No service, real agent route, browser
+or old AIM record is touched. These are adapter proofs, not a real broker's
+durable queue acceptance or the unfinished runner integration.
+
 1. Red first: missing route adapter fails the focused contract checks before
    implementation. Use isolated real Store/profile files and temporary broker
    scripts; no live agent identity, old route, browser or application data.
