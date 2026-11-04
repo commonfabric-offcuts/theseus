@@ -37,11 +37,13 @@ def _destination(value, *, resolve_root):
         raise ValueError("invalid destination")
     root = _path_string(value["codex_home"])
     if resolve_root:
+        if not os.path.isdir(root):
+            raise ValueError("supplied root is not a directory")
         path = Path(root).resolve(strict=True)
         if not path.is_dir():
             raise ValueError("root is not a directory")
         root = str(path)
-    elif os.path.normpath(root) != root or str(Path(root)) != root:
+    elif root.startswith("//") or os.path.normpath(root) != root or str(Path(root)) != root:
         raise ValueError("stored root is not canonical")
     return dict(value, codex_home=root)
 
@@ -98,7 +100,7 @@ def _stored(db, key, expected):
         for field in BINDING_FIELDS - {"db_path"}:
             _identifier(pin["binding"][field], field).encode("utf-8")
         path = _path_string(pin["binding"]["db_path"])
-        if os.path.normpath(path) != path or str(Path(path)) != path:
+        if path.startswith("//") or os.path.normpath(path) != path or str(Path(path)) != path:
             raise ValueError("invalid stored database path")
         _destination(pin["destination"], resolve_root=False)
     except (ValueError, TypeError, Refusal, RecursionError) as error:
@@ -142,6 +144,8 @@ class RoutePins:
             with self._authority.shared() as fence:
                 try:
                     db, _ = _connect(self.path)
+                except StoreError as error:
+                    raise RoutePinError("ROUTE_PIN_STORAGE_ERROR", "Route pin setup could not be confirmed") from error
                 except KeyboardInterrupt as error:
                     if error.__cause__ is not None:
                         raise RoutePinError("ROUTE_PIN_STORAGE_ERROR", "Route pin read could not be confirmed") from error

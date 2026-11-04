@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -12,7 +13,10 @@ import unittest
 from unittest import mock
 
 from aim_next import Store, StoreError, initialize
-from aim_next.authority import GuardBusy
+from aim_next import store as store_module
+from aim_next.authority import AuthorityError, GuardBusy
+from aim_next.contract import Refusal
+from aim_next.route_pins import RoutePinError
 import test_runner_effect_cleanup as effects
 from test_runner_schedule import observed_connections
 
@@ -153,7 +157,7 @@ class RoutePinCase(effects.EffectCleanupCase):
             "kind": ["owner-socket", None], "protocol_version": [True, 0, 2, 1.0],
             "codex_home": ["relative", "", str(self.path), str(self.root / "missing"), "\x00", "\ud800", None],
             "thread_id": [self.destination["thread_id"].upper(), "{12345678-1234-4234-8234-123456789abc}",
-                          "12345678123442348234123456789abc", "bad", None],
+                          "12345678123442348234123456789abc", "bad", None, 1],
         }.items():
             invalid.extend(dict(self.destination, **{key: value}) for value in values)
         invalid.extend({key: value for key, value in self.destination.items() if key != omitted}
@@ -213,8 +217,13 @@ class RoutePinCase(effects.EffectCleanupCase):
         invalid = ["not JSON", "[]", "null", encoded(good).replace('"v":1', '"v":1,"v":1'),
                    encoded(good).replace('"v":1', '"v":NaN'), encoded(dict(good, v=True)),
                    encoded(dict(good, extra=1)), encoded(dict(good, binding={})),
+                   encoded(good).encode("utf-8"), "[" * 4096 + "]" * 4096,
+                   encoded(dict(good, binding=dict(good["binding"], instance_id=""))),
+                   encoded(dict(good, binding=dict(good["binding"], instance_id=5))),
+                   encoded(dict(good, binding=dict(good["binding"], db_path=str(self.root) + "/./instance.sqlite3"))),
                    encoded(dict(good, destination=dict(self.destination, protocol_version=True))),
                    encoded(dict(good, destination=dict(self.destination, codex_home=str(self.home) + "/."))),
+                   encoded(dict(good, destination=dict(self.destination, thread_id=1))),
                    encoded(dict(good, destination=dict(self.destination, thread_id="NOT-A-UUID")))]
         for raw in invalid:
             with self.subTest(raw=raw[:60]):
@@ -431,6 +440,184 @@ class RoutePinCase(effects.EffectCleanupCase):
         self.assertEqual(self.provision(guard)["status"], "existing")
         self.assertEqual(self.read(), self.expected_pin())
         self.assertEqual(self.snapshot(), baseline)
+
+    def test_supplied_root_cannot_traverse_a_regular_file(self):
+        guard = self.guard()
+        self.provision(guard)
+        regular = self.home / "regular-file"
+        regular.write_text("fixture")
+        supplied = str(regular) + "/.."
+        self.assertFalse(os.path.isdir(supplied), "fixture must fail the kernel directory lookup")
+        destination = dict(self.destination, codex_home=supplied)
+        baseline = self.snapshot()
+        for action in (lambda: self.read(destination=destination), lambda: self.provision(guard, destination=destination)):
+            with self.subTest(action=action):
+                with effects.effect_connections() as seen:
+                    self.rejected(action, "INVALID_ROUTE_DESTINATION")
+                    self.assertEqual(seen["handles"], [], "invalid supplied path must refuse before SQLite")
+        self.assertEqual(self.snapshot(), baseline)
+
+    def test_stored_double_leading_slashes_are_invalid(self):
+        guard = self.guard()
+        self.provision(guard)
+        for section, field in (("destination", "codex_home"), ("binding", "db_path")):
+            pin = self.expected_pin()
+            pin[section][field] = "/" + pin[section][field]
+            self.write("UPDATE metadata SET value=? WHERE key=?", (encoded(pin), self.key()))
+            baseline = self.snapshot()
+            for action in (self.read, lambda: self.provision(guard)):
+                with self.subTest(field=field, action=action):
+                    self.rejected(action, "ROUTE_PIN_INVALID")
+            self.assertEqual(self.snapshot(), baseline)
+
+    def test_read_durability_refusal_is_typed_after_cleanup(self):
+        self.ready()
+        baseline = self.snapshot()
+        connect, originals = store_module._connect, []
+
+        def capture(path):
+            try:
+                return connect(path)
+            except StoreError as error:
+                originals.append(error)
+                raise
+
+        db = sqlite3.connect(str(self.path), isolation_level=None)
+        try:
+            self.assertEqual(db.execute("PRAGMA journal_mode=WAL").fetchone()[0], "wal")
+        finally:
+            db.close()
+        try:
+            with effects.effect_connections() as seen:
+                with mock.patch.object(store_module, "_connect", capture):
+                    error = self.failure(self.read)
+                self.closed(seen)
+                self.fence_released()
+                self.assertEqual(len(originals), 1)
+                self.assertIsInstance(error, RoutePinError, "setup durability refusal must have the pin error contract")
+                self.assertEqual(error.code, "ROUTE_PIN_STORAGE_ERROR")
+                self.assertIs(error.retryable, False)
+                self.assertIs(error.__cause__, originals[0])
+        finally:
+            db = sqlite3.connect(str(self.path), isolation_level=None)
+            try:
+                self.assertEqual(db.execute("PRAGMA journal_mode=DELETE").fetchone()[0], "delete")
+            finally:
+                db.close()
+        self.assertEqual(self.snapshot(), baseline)
+        self.assertEqual(self.read(), self.expected_pin())
+
+    def test_surrogate_actor_refuses_before_open(self):
+        guard = self.guard()
+        baseline = self.snapshot()
+        for action in (lambda: self.read("\ud800"), lambda: self.provision(guard, "\ud800")):
+            with self.subTest(action=action):
+                with effects.effect_connections() as seen:
+                    self.rejected(action, "INVALID_ARGUMENT")
+                    self.assertEqual(seen["handles"], [])
+        self.assertEqual(self.snapshot(), baseline)
+
+    def test_read_rechecks_instance_schema_and_binding_in_place(self):
+        self.ready()
+        for key, value, code, error_type in (
+                ("instance_id", "foreign-instance", "INSTANCE_MISMATCH", Refusal),
+                ("schema_version", "-1", "SCHEMA_MISMATCH", Refusal),
+                ("authority_epoch", "foreign-epoch", "AUTHORITY_CHANGED", AuthorityError)):
+            with self.subTest(key=key):
+                previous = self.sql("SELECT value FROM metadata WHERE key=?", (key,))[0][0]
+                self.write("UPDATE metadata SET value=? WHERE key=?", (value, key))
+                baseline = self.snapshot()
+                try:
+                    with effects.effect_connections() as seen:
+                        error = self.failure(self.read)
+                        self.closed(seen)
+                        self.fence_released()
+                        self.assertIsInstance(error, error_type)
+                        self.assertEqual(error.code, code)
+                    self.assertEqual(self.snapshot(), baseline)
+                finally:
+                    self.write("UPDATE metadata SET value=? WHERE key=?", (previous, key))
+
+    def test_read_post_open_fence_detects_replaced_database(self):
+        self.ready()
+        baseline = self.snapshot()
+        original = self.path.with_name("original.sqlite3")
+        replacement = self.path.with_name("replacement.sqlite3")
+        shutil.copy2(self.path, replacement)
+        swapped = []
+
+        def swap(db, sql):
+            if sql == "BEGIN":
+                self.path.rename(original)
+                replacement.rename(self.path)
+                swapped.append(True)
+
+        try:
+            with observed_connections(after=swap) as seen:
+                error = self.failure(self.read)
+                self.assertEqual(len(seen["handles"]), 1)
+                self.assertEqual(seen["handles"][0].close_calls, 1)
+                with self.assertRaises(sqlite3.ProgrammingError):
+                    sqlite3.Connection.execute(seen["handles"][0], "SELECT 1")
+                self.fence_released()
+                self.assertIsInstance(error, AuthorityError)
+                self.assertEqual(error.code, "AUTHORITY_CHANGED")
+            self.assertEqual(swapped, [True])
+        finally:
+            if swapped:
+                self.path.rename(replacement)
+                original.rename(self.path)
+        self.assertEqual(self.snapshot(), baseline)
+        self.assertEqual(self.read(), self.expected_pin())
+
+    def test_single_snapshot_blocks_actor_disable_between_checks(self):
+        self.ready()
+        expected = self.expected_pin()
+        writer = sqlite3.connect(str(self.path), isolation_level=None, timeout=0)
+        attempts, trace = [], []
+        writer.set_trace_callback(trace.append)
+
+        def interleave(db, sql):
+            if sql.startswith("SELECT typeof(value)"):
+                writer.execute("BEGIN IMMEDIATE")
+                writer.execute("UPDATE actors SET enabled=0 WHERE id='agent-a'")
+                try:
+                    writer.commit()
+                except sqlite3.OperationalError as error:
+                    attempts.append(dict(outcome="blocked", error=str(error)))
+                else:
+                    attempts.append(dict(outcome="committed"))
+
+        try:
+            with effects.effect_connections(before=interleave) as seen:
+                result = self.read()
+                self.closed(seen)
+                self.fence_released()
+            # A failed COMMIT retains PENDING, which blocks a new inspection
+            # reader too. Release that attempt before observing committed state.
+            if writer.in_transaction:
+                writer.rollback()
+            enabled = self.sql("SELECT enabled FROM actors WHERE id='agent-a'")[0][0]
+            print(json.dumps(dict(probe="route_pin_snapshot", attempts=attempts,
+                                  read_returned_expected_pin=result == expected,
+                                  actor_enabled_after_read=enabled, writer_sql=trace)), flush=True)
+            self.assertEqual(result, expected)
+            self.assertEqual(len(attempts), 1)
+            self.assertIn("COMMIT", trace)
+            self.assertEqual(attempts[0]["outcome"], "blocked", "actor disable must not commit between snapshot queries")
+            self.assertIn("locked", attempts[0]["error"])
+            self.assertEqual(enabled, 1)
+            writer.execute("BEGIN IMMEDIATE")
+            writer.execute("UPDATE actors SET enabled=0 WHERE id='agent-a'")
+            writer.commit()
+            self.assertEqual(self.sql("SELECT enabled FROM actors WHERE id='agent-a'"), [(0,)])
+            self.rejected(self.read, "INVALID_ACTOR")
+        finally:
+            try:
+                if writer.in_transaction:
+                    writer.rollback()
+            finally:
+                writer.close()
 
 
 for _base in effects.EffectCleanupCase.__mro__:
