@@ -405,10 +405,23 @@ export class EditorSession {
     const receipt = await this.dispatch(entry, { resumePreparation: resume });
     if (!receipt) return this.block(item, entry);
     if (receipt?.status === 'rejected' && receipt.error?.code === 'REVISION_CONFLICT') {
-      const state = await this.api.view('editor_state', { source_ref: item.sourceRef, topic_id: item.topicId });
-      // Preserve other-device writing for explicit review; never clear a CAS
-      // refusal by autosaving B over the server version we just learned about.
-      this.editor.conflict = { attempted: copy(this.editor.draft), remote: copy(state.draft ?? null), error: copy(receipt.error) };
+      // The refusal is already a fact. Persist the block before reading so a
+      // crash or busy lane cannot restart B's autosave over unknown writing.
+      const conflict = { attempted: copy(this.editor.draft), error: copy(receipt.error) };
+      this.editor.conflict = conflict;
+      await this.persist(); this.changed(this.editor);
+      try {
+        const state = await this.api.view('editor_state', { source_ref: item.sourceRef, topic_id: item.topicId });
+        if (state?.error) throw Object.assign(Error(state.error.message), { details: state });
+        const d = state?.draft;
+        if (state?.instance_id !== this.editor.context.instanceId || !same(state.source_ref, item.sourceRef) ||
+            !same(state.destination, { topic_id: item.topicId ?? null }) ||
+            !(d === null || d && typeof d.id === 'string' && Number.isInteger(d.revision) && d.revision > 0 &&
+              typeof d.generation === 'string' && d.generation && same(d.source_ref, item.sourceRef))) throw Error('The saved writing identity could not be confirmed.');
+        conflict.remote = copy(d);
+      } catch (error) {
+        conflict.readError = copy(error.details?.error ?? { code: 'READ_UNKNOWN', message: error.message });
+      }
       await this.persist();
     }
     return item.preparationConfirmed;

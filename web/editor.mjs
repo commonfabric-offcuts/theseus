@@ -1,4 +1,4 @@
-import { imageBarrier, freezeImages, readableUploads } from './upload-state.mjs';
+import { imageBarrier, freezeImages, readableUploads, refusedAtDraft } from './upload-state.mjs';
 
 // Private writing state. DOM, transport and persistence are separate owners.
 const copy = value => structuredClone(value);
@@ -177,10 +177,9 @@ export function restoreEditor(context, serverDraft, journal) {
     for (const field of ['sourceRef', 'draft', 'localVersion', 'ackVersion', 'submissions', 'conflict']) editor[field] = copy(journal[field]);
     // A successor whose prepare reply was lost must first reconcile preparation.
     // A different server revision in a known generation is a visible conflict.
-    if (serverDraft && editor.draft.generation &&
+    if (serverDraft && editor.draft.generation && !(journal.conflict && !Object.hasOwn(journal.conflict, 'remote')) &&
         (serverDraft.generation !== editor.draft.generation || serverDraft.revision !== editor.draft.revision ||
-         journal.format === 2 && editor.submissions.some(item => item.status === 'refused' && item.receipt?.kind === 'submission.prepare' &&
-           item.snapshot.id === serverDraft.id && item.snapshot.generation === serverDraft.generation))) {
+         journal.format === 2 && editor.submissions.some(item => refusedAtDraft(item, serverDraft)))) {
       editor.conflict = { remote: copy(serverDraft), attempted: copy(editor.draft) };
     }
   }

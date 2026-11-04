@@ -5,7 +5,19 @@ import { Editor, editorKey, restoreEditor, keyAction } from '../web/editor.mjs';
 const source = { kind: 'memory', id: 'n1', revision: 3 };
 const context = { instanceId: 'new1', actor: 'ux-fixture', sourceRef: source, topicId: 't1', kind: 'reply' };
 const draft = { id: 'd1', revision: 7, generation: 'gA', body: 'Reply A', attachments: [{ id: 'image-a' }], quotes: [{ source, excerpt: 'selected passage' }], addressees: ['fixture-agent'], caret: { start: 7, end: 7 } };
-const fresh = () => new Editor(context, draft);
+// These state tests start after the image controller has validated image-a.
+// A bare ref is no longer a sendable fixture (X1); retain every A/B assertion.
+const fresh = () => {
+  const editor = new Editor(context, draft);
+  editor.uploadState = { format: 2, revision: 1, client_cycle_id: editor.clientCycleId, submission_links: {}, entries: [{
+    selection_id: 'validated-image-a', origin: 'retained-ref', retained_ref: { id: 'image-a' },
+    binding: {}, owner: { kind: 'cycle', id: editor.clientCycleId }, selected: true, version: 1,
+    bytes_ref: null, bytes_state: 'released', attempts: [],
+    ready_descriptor: { media_id: 'image-a', state: 'ready', media_revision: 2 },
+    association: { cycle_id: editor.clientCycleId, media_id: 'image-a' },
+  }] };
+  return editor;
+};
 const ids = { prepareOperationId: 'prepare-A', sendOperationId: 'send-A', submissionId: 's1' };
 const prepared = () => ({ instance_id: 'new1', operation_id: 'prepare-A', kind: 'submission.prepare', status: 'committed', recorded: true, result: { submission_id: 's1', send_operation_id: 'send-A', next_draft: { id: 'd1', revision: 8, generation: 'gB' } } });
 const sent = () => ({ instance_id: 'new1', operation_id: 'send-A', kind: 'message.send', status: 'committed', recorded: true, result: { submission_id: 's1', message_id: 'm2' } });
@@ -274,7 +286,9 @@ test('empty Shift-Cmd-Return returns to the gallery without changing other send 
 
 test('settled A does not hide B saved later on another device', () => {
   for (const status of ['committed', 'rejected']) {
-    const editor = fresh();
+    // This is the ordinary format-1 text recovery contract. Image-owned
+    // history deliberately needs comparison; ui_uploads covers that path.
+    const editor = new Editor(context, { ...draft, attachments: [] });
     editor.beginPrepare(ids);
     editor.acceptPreparation(prepared());
     editor.acceptSend({ ...sent(), status });

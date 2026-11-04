@@ -35,6 +35,7 @@ export class Uploads {
   }
   async transition(mutate) {
     if (!this.valid()) throw Error('This image editor was replaced.');
+    this.editor.passiveImages = false;
     this.editor.imageBusy = (this.editor.imageBusy ?? 0) + 1; this.notify();
     try {
       const result = await this.journal.transition(this.editor.key, () => this.session.snapshot(), () => {
@@ -73,6 +74,7 @@ export class Uploads {
   }
   async add(file, { start = true } = {}) {
     this.admit(file);
+    this.editor.passiveImages = false;
     const editor = this.editor, state = this.initialize(), selection_id = crypto.randomUUID();
     const entry = { selection_id, origin: 'file', binding: { instance_id: editor.context.instanceId, actor_id: editor.context.actor,
       editor_key: editor.key, source_ref: copy(editor.sourceRef), topic_id: editor.context.topicId, captured_cycle_id: editor.clientCycleId,
@@ -244,8 +246,9 @@ export class Uploads {
       e.bytes_ref = null; e.bytes_state = 'released'; e.discarded = true; e.version++; this.editor.uploadState.revision++; this.notify();
     });
   }
-  async importRetained() {
-    if (!this.editor.draft.attachments.length) return;
+  importRetained() {
+    if (this.editor.uploadOpaque || !this.editor.draft.attachments.length) return;
+    if (!this.editor.uploadState) this.editor.passiveImages = true;
     const state = this.initialize();
     for (const ref of this.editor.draft.attachments) {
       if (this.current().some(e => e.association?.media_id === ref.id || e.retained_ref?.id === ref.id)) continue;
@@ -255,19 +258,30 @@ export class Uploads {
         owner: { kind: 'cycle', id: this.editor.clientCycleId }, selected: true, version: 1, bytes_ref: null, bytes_state: 'released', attempts: [],
         ready_descriptor: null, association: null });
     }
-    for (const e of this.current().filter(e => e.origin === 'retained-ref')) await this.checkRetained(e);
   }
-  async checkRetained(e) {
-    const result = await this.api.view('media', { media_id: e.retained_ref.id });
+  async validateRetained() {
+    if (this.editor.recoveryDiscovery || this.editor.uploadOpaque) return;
+    this.importRetained();
+    for (const e of this.current().filter(e => e.origin === 'retained-ref' && !e.ready_descriptor && !e.local_error)) await this.checkRetained(e, { passive: true });
+  }
+  async checkRetained(e, { passive = false } = {}) {
+    const version = e.version;
+    let result;
+    try { result = await this.api.view('media', { media_id: e.retained_ref.id }); }
+    catch (error) { if (!passive) throw error; }
     const valid = result?.instance_id === this.editor.context.instanceId && result.media_id === e.retained_ref.id &&
       result.state === 'ready' && result.media_revision === 2 && typeof result.name === 'string' && typeof result.content_type === 'string' &&
       Number.isInteger(result.size_bytes) && result.size_bytes > 0 && /^[a-f0-9]{64}$/.test(result.sha256 ?? '') && typeof result.inline === 'boolean' &&
       Object.entries(e.retained_ref).every(([k, v]) => k === 'id' || result[k] === v);
-    await this.transition(() => {
+    const accept = () => {
+      if (!this.selected(e) || e.version !== version) return;
       if (!valid || !this.pinned(e)) { e.local_error = 'Retained attachment is unavailable — check or remove it'; return; }
       e.local_error = null; e.ready_descriptor = copy(result);
       if (this.selected(e)) e.association = { cycle_id: this.editor.clientCycleId, media_id: result.media_id };
-    });
+    };
+    // A read of an already-saved ref is derived state, not a new recovery copy.
+    if (passive) { accept(); this.notify(); }
+    else await this.transition(accept);
   }
   async validateCorrection(item) {
     for (const ref of item.snapshot.attachments) {

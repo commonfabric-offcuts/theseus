@@ -80,8 +80,9 @@ try {
     waiting.set(id, { resolve, reject, timer });
     socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
+  let recoveryContext;
   const page = async (suffix, hint, connected = false) => {
-    const { targetId } = await cdp('Target.createTarget', { url: 'about:blank' }); pages.add(targetId);
+    const { targetId } = await cdp('Target.createTarget', { url: 'about:blank', ...(recoveryContext ? { browserContextId: recoveryContext } : {}) }); pages.add(targetId);
     const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true });
     const send = (method, params) => cdp(method, params, sessionId);
     const evaluate = async expression => {
@@ -184,9 +185,15 @@ try {
     if (mode === '--cleanup' && !name.startsWith('cleanup ')) return;
     if (mode === '--images' && !name.startsWith('images ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
+    // These recovery cases deliberately leave abandoned copies behind. Each
+    // gets a fresh owned storage context, shared only by that case's tabs.
+    if (/^images X[1234] /.test(name)) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
     try { await action(); results.push({ name, passed: true }); }
     catch (error) { results.push({ name, passed: false, error: error.stack }); }
-    finally { for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear(); }
+    finally {
+      for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear();
+      if (recoveryContext) { await cdp('Target.disposeBrowserContext', { browserContextId: recoveryContext }); recoveryContext = null; }
+    }
     process.stdout.write(JSON.stringify(results.at(-1)) + '\n');
   };
 

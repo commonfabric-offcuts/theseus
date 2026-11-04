@@ -407,3 +407,139 @@ test('private runtime recovery requires explicit image removal and creates a new
   assert.deepEqual(f.u.find(id).binding.authority, original.binding.authority);
   assert.equal((await f.control({ method: 'counts' })).media, 1);
 });
+
+// Independent review X1-X3: recovery must preserve both the act and its escape.
+test('X1 canonical refs without a manifest cannot prepare', () => {
+  const e = new Editor(context, { ...draft(), attachments: [{ id: 'unreviewed' }] });
+  assert.throws(() => prepare(e), /attachment|image/i);
+});
+test('X1 discovery removal exposes and validates canonical refs without a passive journal write', async t => {
+  const f = await fixture(t); await f.u.add(f.image); await f.registry.flush(f.editor);
+  const remote = (await f.api.view('editor_state', { source_ref: f.editor.sourceRef, topic_id: f.editor.context.topicId })).draft;
+  const old = new Editor(f.editor.context, remote); old.uploadState = { format: 2, revision: 1, client_cycle_id: old.clientCycleId, entries: [entry(old)], submission_links: {} };
+  const row = { ...f.journal.row(old.snapshot()), id: 'old-copy', writerId: 'old-writer', stamp: 'copy-one', availability: 'available' };
+  f.backend.forEditor = async () => ({ items: [copy(row)], nextCursor: null });
+  f.backend.changeCandidateImages = async () => { row.snapshot.uploadState.entries[0].selected = false; row.stamp = 'copy-two'; return copy(row); };
+  f.rows.delete(f.journal.id(f.editor.key)); f.registry.cancelSave(f.editor); f.registry.sessions.delete(f.editor.key);
+  const e = await f.registry.register(f.editor.context, remote), u = f.registry.sessionFor(e).uploads;
+  assert.equal(e.recoveryDiscovery, true);
+  assert.equal(u.current().length, 1, 'canonical image is visible even behind the saved-copy barrier');
+  assert.equal(u.current()[0].retained_ref.id, remote.attachments[0].id);
+  const original = f.api.view.bind(f.api), entered = deferred(), release = deferred(); t.after(() => release.resolve());
+  f.api.view = async (name, args) => { if (name === 'media') { entered.resolve(); await release.promise; } return original(name, args); };
+  const removing = f.registry.removeCandidateImages(e, row); await entered.promise;
+  assert.throws(() => prepare(e), /image|attachment/i, 'the clear discovery flag cannot bypass validation');
+  release.resolve(); await removing;
+  assert.equal(u.pending(), false); assert.equal(await f.journal.own(e.key), undefined, 'validation is not user writing');
+  await u.remove(u.current()[0].selection_id); assert.deepEqual(e.draft.attachments, []);
+});
+test('X1 passive retained validation permits untouched ordinary-copy adoption', async t => {
+  const f = await fixture(t); await f.u.add(f.image); await f.registry.flush(f.editor);
+  const remote = (await f.api.view('editor_state', { source_ref: f.editor.sourceRef, topic_id: f.editor.context.topicId })).draft;
+  f.rows.delete(f.journal.id(f.editor.key)); f.registry.cancelSave(f.editor); f.registry.sessions.delete(f.editor.key);
+  const e = await f.registry.register(f.editor.context, remote); f.registry.current.editors.reply = e;
+  assert.equal(await f.journal.own(e.key), undefined, 'automatic Check cannot occupy the adoption target');
+  const ordinary = new Editor(e.context, remote); ordinary.edit({ body: 'Ordinary abandoned text copy' });
+  const row = { ...f.journal.row(ordinary.snapshot()), id: 'ordinary', stamp: 'ordinary-v1' };
+  f.backend.adopt = async (key, candidate, guard) => { assert.ok(guard()); assert.equal(f.rows.has(f.journal.id(key)), false); f.rows.set(f.journal.id(key), { ...row, id: f.journal.id(key) }); };
+  const restored = await f.registry.adoptCandidate(e, row, f.registry.current);
+  assert.equal(restored.draft.body, ordinary.draft.body);
+});
+function refusedCopy(e, server = e.draft) {
+  const snapshot = e.snapshot(); snapshot.format = 2; snapshot.clientCycleId = e.clientCycleId;
+  snapshot.uploadState = { format: 2, revision: 1, client_cycle_id: e.clientCycleId, entries: [], submission_links: {} };
+  snapshot.submissions = [{ id: 'refused-a', status: 'refused', snapshot: copy(server), receipt: { kind: 'submission.prepare' } }];
+  return { id: 'refused-copy', stamp: 'refused-v1', editorKey: e.key, availability: 'available', snapshot };
+}
+test('X2 corrected and superseded refused preparations do not block current writing', async t => {
+  const f = await fixture(t); f.editor.recoveryServerDraft = copy(f.editor.draft);
+  const row = refusedCopy(f.editor); row.snapshot.submissions[0].correctedBy = 'corrected-a';
+  f.editor.imageCopies = new Map([[row.id, row]]); f.registry.updateImageBarrier(f.editor);
+  assert.equal(f.u.pending(), false, 'corrected refusal is history');
+  delete row.snapshot.submissions[0].correctedBy; row.snapshot.submissions[0].snapshot.revision--;
+  f.registry.updateImageBarrier(f.editor); assert.equal(f.u.pending(), false, 'older revision is not the current server slot');
+});
+test('X2 Keep current writing preserves refused history and is scoped to stamp cycle and selected images', async t => {
+  const f = await fixture(t); f.editor.recoveryServerDraft = copy(f.editor.draft); f.editor.edit({ body: 'Current B only' });
+  const row = refusedCopy(f.editor, f.editor.recoveryServerDraft); f.rows.set(row.id, copy(row));
+  f.editor.imageCopies = new Map([[row.id, row]]); f.registry.updateImageBarrier(f.editor);
+  assert.equal(f.u.pending(), true);
+  await f.registry.keepCurrentWriting(f.editor, row);
+  assert.equal(f.u.pending(), false); assert.deepEqual(f.rows.get(row.id), row); assert.equal(f.editor.draft.body, 'Current B only');
+  row.stamp = 'refused-v2'; f.rows.set(row.id, copy(row)); f.registry.updateImageBarrier(f.editor);
+  assert.equal(f.u.pending(), true); await assert.rejects(f.registry.keepCurrentWriting(f.editor, { ...row, stamp: 'refused-v1' }), /changed|review/i);
+  await f.registry.keepCurrentWriting(f.editor, row); f.editor.clientCycleId = 'next-cycle'; f.registry.updateImageBarrier(f.editor);
+  assert.equal(f.u.pending(), true);
+  row.snapshot.uploadState.entries.push(entry(f.editor));
+  await f.registry.keepCurrentWriting(f.editor, row); assert.equal(f.u.pending(), true, 'refusal choice cannot waive selected image work');
+});
+test('X2 B saved in a later revision does not restore a false refused-A conflict', () => {
+  const e = withImage({ ready: true }); e.draft.attachments = [{ id: 'media' }]; prepare(e);
+  e.acceptPreparation({ recorded: true, instance_id: context.instanceId, operation_id: 'prepare', kind: 'submission.prepare', status: 'rejected', error: { code: 'REFUSED' } });
+  e.edit({ body: 'Saved B' }); e.draft.revision++; e.ackVersion = e.localVersion;
+  assert.equal(restoreEditor(context, e.draft, e.snapshot()).conflict, null);
+});
+test('X1 late passive validation cannot attach after removal or session replacement', async t => {
+  const f = await fixture(t); f.editor.draft.attachments = [{ id: 'retained' }]; f.u.importRetained();
+  const e = f.u.current()[0], entered = deferred(), release = deferred(); t.after(() => release.resolve());
+  f.api.view = async () => { entered.resolve(); await release.promise; return { instance_id: f.editor.context.instanceId, media_id: 'retained', state: 'ready', media_revision: 2, name: 'retained.png', content_type: 'image/png', size_bytes: 8, sha256: 'a'.repeat(64), inline: true }; };
+  const checking = f.u.validateRetained(); await entered.promise;
+  e.selected = false; e.version++; f.editor.draft.attachments = [];
+  f.registry.sessions.delete(f.editor.key); release.resolve(); await checking;
+  assert.equal(e.ready_descriptor, null); assert.equal(e.association, null); assert.deepEqual(f.editor.draft.attachments, []);
+  assert.equal(f.puts.length, 0);
+});
+test('X2 Keep current writing rereads the durable candidate and rejects changes during inspection', async t => {
+  const f = await fixture(t); f.editor.recoveryServerDraft = copy(f.editor.draft); const row = refusedCopy(f.editor);
+  f.editor.imageCopies = new Map([[row.id, row]]); f.rows.set(row.id, { ...copy(row), stamp: 'durably-changed' });
+  await assert.rejects(f.registry.keepCurrentWriting(f.editor, row), /changed|review/i);
+  f.rows.set(row.id, copy(row)); const entered = deferred(), release = deferred(); t.after(() => release.resolve());
+  const inspect = f.journal.inspectCandidate.bind(f.journal);
+  f.journal.inspectCandidate = async (...args) => { const result = await inspect(...args); entered.resolve(); await release.promise; return result; };
+  const choosing = f.registry.keepCurrentWriting(f.editor, row); await entered.promise; f.editor.clientCycleId = 'changed-during-inspection'; release.resolve();
+  await assert.rejects(choosing, /changed|review/i); assert.equal(f.editor.refusedCopyChoices?.size ?? 0, 0);
+});
+for (const failure of ['transport', 'typed-error', 'wrong-scope', 'success', 'confirmed-none']) test(`X4 refused prepare keeps a durable blocking comparison through ${failure} follow-up read`, async t => {
+  const f = await fixture(t); f.editor.edit({ body: 'Frozen A' }); await f.registry.flush(f.editor);
+  const d = copy(f.editor.draft);
+  await f.api.command(f.session.envelope('draft.save', crypto.randomUUID(), { draft_id: d.id }, { draft_revision: d.revision },
+    { source_ref: f.editor.sourceRef, topic_id: f.editor.context.topicId, generation: d.generation, body: 'Other device writing' }));
+  await f.registry.cleanup.idle(f.editor.key); const reservation = f.registry.cleanup.foreground(); t.after(() => reservation.release());
+  const original = f.api.view.bind(f.api), entered = deferred(), release = deferred(); t.after(() => release.resolve());
+  f.api.view = async (name, args) => {
+    if (name !== 'editor_state') return original(name, args);
+    entered.resolve(); await release.promise;
+    if (failure === 'transport') throw Object.assign(Error('This request lane is busy'), { details: { error: { code: 'SERVER_BUSY', message: 'This request lane is busy' } } });
+    if (failure === 'typed-error') return { error: { code: 'SERVER_BUSY', message: 'Typed busy read' } };
+    const state = await original(name, args); return failure === 'wrong-scope' ? { ...state, destination: { topic_id: 'wrong' } } : failure === 'confirmed-none' ? { ...state, draft: null } : state;
+  };
+  const sending = f.registry.send(f.editor, { stay: true }).then(value => ({ value }), error => ({ error }));
+  f.editor.edit({ body: 'Current B stays private' }); await entered.promise;
+  const midread = (await f.journal.own(f.editor.key)).snapshot;
+  try {
+    assert.ok(midread.conflict, 'block is durable before the read starts');
+    assert.equal(midread.conflict.attempted.body, 'Current B stays private');
+    assert.equal(Object.hasOwn(midread.conflict, 'remote'), false, 'unknown is key-absent');
+    for (const format of [1, 2]) {
+      const saved = copy(midread);
+      if (format === 2) { saved.format = 2; saved.clientCycleId = 'restored-cycle'; saved.uploadState = { format: 2, revision: 0, client_cycle_id: saved.clientCycleId, entries: [], submission_links: {} }; }
+      const restored = restoreEditor(f.editor.context, d, saved);
+      assert.equal(Object.hasOwn(restored.conflict, 'remote'), false); assert.equal(restored.saveTicket('must-not-autosave'), null);
+    }
+  } finally { release.resolve(); }
+  const result = await sending; assert.equal(result.error, undefined); assert.equal(result.value.status, 'refused');
+  const kept = (await f.journal.own(f.editor.key)).snapshot;
+  assert.equal(kept.draft.body, 'Current B stays private');
+  if (failure === 'success') assert.equal(kept.conflict.remote.body, 'Other device writing');
+  else if (failure === 'confirmed-none') { assert.equal(Object.hasOwn(kept.conflict, 'remote'), true); assert.equal(kept.conflict.remote, null); }
+  else { assert.equal(Object.hasOwn(kept.conflict, 'remote'), false); assert.ok(kept.conflict.readError); }
+  assert.equal(f.editor.saveTicket('blocked-save'), null);
+  assert.equal(f.calls.filter(c => c.body && JSON.parse(c.body).kind === 'message.send').length, 0);
+});
+test('X2 a failed current-slot read keeps newly discovered refused history blocking', async t => {
+  const f = await fixture(t); const row = refusedCopy(f.editor); row.snapshot.submissions[0].snapshot.revision++;
+  f.backend.forEditor = async () => ({ items: [copy(row)], nextCursor: null });
+  f.api.view = async () => { throw Error('Current slot unavailable'); };
+  await assert.rejects(f.registry.recoveryCandidates(f.editor), /unavailable/);
+  assert.equal(f.u.pending(), true, 'a stale cached slot cannot clear a newly discovered refusal');
+});

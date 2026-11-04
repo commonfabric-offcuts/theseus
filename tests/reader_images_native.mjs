@@ -17,6 +17,108 @@ export async function imageChecks({ check, page, until, root, facts, view, repla
     window.e=${actual ? ` (await r.open(${JSON.stringify(facts.sources[1])},{topicId:'t1'})).editors.reply` : `await r.register(context,{id:'capture-model',revision:0,generation:'g'})`};
     window.u=r.sessionFor(e).uploads;window.file=new File([Uint8Array.from(atob(${JSON.stringify(png)}),c=>c.charCodeAt(0))],'retained.png',{type:'image/png'});
   })()`);
+  await check('images X1 passive canonical refs remain visible and allow ordinary IDB recovery', async () => {
+    const a = await page('passive-ref-writer'); await model(a, true);
+    await a.evaluate("(async()=>{e.edit({body:'Canonical image draft'});await u.add(file);await r.flush(e);await r.cleanup.own(r.sessionFor(e));r.cancelSave(e)})()");
+    const remote = await view('editor_state', {source_ref:facts.sources[1],topic_id:'t1'});
+    assert.equal(remote.draft.attachments.length, 1);
+    // Keep an ordinary text-only manifest (format 1) through the real journal.
+    await a.evaluate("(async()=>{const {Editor}=await import('/editor.mjs');const other=new Editor(e.context,e.draft);other.edit({body:'Recovered ordinary writing'});await j.save(other.snapshot());r.dispose()})()");
+    await a.close();
+    const b = await page('passive-ref-reader', null, true); await b.open(1);
+    assert.match(await b.evaluate('document.querySelector("#writing-attachments").textContent'), /retained.png.*Ready/);
+    assert.equal(await b.evaluate('[...document.querySelectorAll("#writing-attachments button")].some(b=>b.textContent==="Remove")'), true);
+    const rows = await b.evaluate('imageRows()');
+    assert.equal(rows.filter(row => row.active === 1 && row.editorKey?.includes('"reply"')).length, 1, 'passive reading creates no new adoption target');
+    await b.point('#review-versions');
+    await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version")'), 'ordinary copy action');
+    await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Recover this version").id="ordinary-recover"');
+    assert.equal(await b.evaluate('document.querySelector("#ordinary-recover").disabled'), false);
+    await b.point('#ordinary-recover');
+    await until(() => b.evaluate('!document.querySelector("#version-review").open'), 'actual IDB adoption commits');
+    assert.equal(await field(b), 'Recovered ordinary writing');
+    await shot(b, 'passive-canonical-adoption'); await b.close();
+  });
+  await check('images X2 two tabs can keep current writing without publishing refused A', async () => {
+    const a = await page('refused-a-writer'); await model(a, true);
+    await a.evaluate("(async()=>{e.edit({body:'Frozen A never publish'});await u.add(file);await r.flush(e);await r.cleanup.own(r.sessionFor(e));r.cancelSave(e)})()");
+    const b = await page('current-b-reader', null, true); await b.open(1);
+    // Hold the typing deadline, not the server slot: the explicit Send still
+    // performs its real save. This pins discovery before B autosaves over A.
+    await b.evaluate('(()=>{const timer=window.setTimeout;window.setTimeout=(fn,ms,...args)=>timer(fn,ms===450?30000:ms===2000?60000:ms,...args)})()');
+    await until(() => b.evaluate('!document.querySelector("#previous-message").disabled'), 'neighbor reads complete');
+    const refused = await a.evaluate("(async()=>{const command=api.command.bind(api);api.command=envelope=>command(envelope.kind==='submission.prepare'?{...envelope,args:{...envelope.args,body:'different echoed body'}}:envelope);const foreground=r.cleanup.foreground();try{const item=await r.send(e,{stay:true});r.cancelSave(e);return item}finally{foreground.release()}})()");
+    assert.equal(refused.status, 'refused'); assert.equal(refused.receipt.recorded, true);
+    assert.equal(refused.receipt.error.code, 'REVISION_CONFLICT');
+    await a.close();
+    await replace(b, 'Current B goes alone');
+    await b.point('#review-versions');
+    await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Keep current writing")'), 'explicit keep-current choice');
+    assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), true);
+    await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Keep current writing").id="keep-current-refusal"');
+    await b.point('#keep-current-refusal');
+    await until(() => b.evaluate('document.querySelector("#review-status").textContent.includes("Current writing kept")'), 'keep-current inspection committed');
+    await b.point('#review-close');
+    assert.equal(await field(b), 'Current B goes alone');
+    assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), false);
+    await b.point('#writing-body'); await b.key('Enter', 12);
+    const sent = await until(() => b.calls.find(c=>c.payload?.kind==='message.send'), 'current B sent');
+    const receipt = await view('operation',{operation_id:sent.payload.operation_id}); assert.equal(receipt.status,'committed');
+    const source = await view('source',{kind:'message',id:receipt.result.message_id}); assert.equal(source.body,'Current B goes alone');
+    const neverSent = await view('operation',{operation_id:refused.sendOperationId}); assert.equal(neverSent.recorded,false);
+    assert.ok((await b.evaluate('imageRows()')).some(row=>row.snapshot?.submissions.some(item=>item.id===refused.id && item.status==='refused')), 'old refused snapshot stays recoverable');
+    observations.push({name:'X2 schedule', setup:'real Store refusal via mismatching echoed body; own cleanup reserved during refusal; B autosave timer held to pin exact A revision', interaction:'native typing, Review versions, Keep current writing, Cmd-Shift-Return'});
+    await shot(b, 'current-writing-sent'); await b.close();
+  });
+  await check('images X4 mid-read reload keeps unknown remote and explicit Review Retry', async () => {
+    const a = await page('unknown-remote-writer'); await model(a, true);
+    await a.evaluate("(async()=>{e.edit({body:'Refused A image reply'});await u.add(file);await r.flush(e);await r.cleanup.own(r.sessionFor(e));r.cancelSave(e);window.foreground=r.cleanup.foreground();const command=api.command.bind(api),view=api.view.bind(api);api.command=envelope=>command(envelope.kind==='submission.prepare'?{...envelope,args:{...envelope.args,body:'different echoed body'}}:envelope);api.view=(name,args)=>name==='editor_state'?(window.conflictReadStarted=true,new Promise(()=>{})):view(name,args);window.sending=r.send(e,{stay:true});e.edit({body:'Current B survives reload'})})()");
+    await until(() => a.evaluate('window.conflictReadStarted===true'), 'conflict read held after refusal');
+    const stored = await a.evaluate('(await j.own(e.key)).snapshot');
+    assert.equal(stored.conflict.attempted.body, 'Current B survives reload');
+    assert.equal(Object.hasOwn(stored.conflict, 'remote'), false);
+    await a.close();
+    const b = await page('unknown-remote-reader', null, true); await b.open(1); await b.point('#review-versions');
+    await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version")'), 'unknown copy recovery');
+    await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Recover this version").id="unknown-recover"');
+    await b.point('#unknown-recover'); await until(() => b.evaluate('!document.querySelector("#version-review").open'), 'unknown comparison restored');
+    assert.equal(await field(b), 'Current B survives reload');
+    assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), true);
+    b.intercept(payload => payload?.name==='editor_state');
+    await b.point('#review-versions'); const held = await until(() => b.held[0], 'unknown remote reread');
+    await b.send('Fetch.fulfillRequest', {requestId:held.event.requestId,responseCode:200,responseHeaders:[{name:'Content-Type',value:'application/json'}],body:Buffer.from(JSON.stringify({error:{code:'SERVER_BUSY',message:'Typed busy read'}})).toString('base64')});
+    await until(() => b.evaluate('!document.querySelector("#review-retry").hidden'), 'unknown read finished with Retry');
+    assert.equal(await b.evaluate('document.querySelector("#review-content").textContent.includes("Saved version unavailable")'), true, 'unknown must not be painted as confirmed none');
+    assert.equal(await b.evaluate('document.querySelector("#review-content").textContent.includes("No saved version here")'), false);
+    await shot(b, 'unknown-remote-comparison'); b.intercept(null); await b.point('#review-retry');
+    await until(() => b.evaluate('document.querySelector("#review-content").textContent.includes("Refused A image reply")'), 'explicit retry reads saved remote');
+    assert.equal(await field(b), 'Current B survives reload');
+    assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), true);
+    assert.equal(b.calls.filter(c=>c.payload?.kind==='message.send').length,0);
+    observations.push({name:'X4 interruption', setup:'real recorded refusal; close owning tab mid read after durable block; typed HTTP200 error injected only for explicit Review', proof:'native recovery and Retry preserve B; Send stays blocked; no publication'});
+    await b.close();
+  });
+  await check('images X3 readonly recovery rejects native terminal edits and synthetic fallback input', async () => {
+    const a = await page('readonly-writer'); await model(a, true);
+    await a.evaluate("(async()=>{e.edit({body:'Saved writing stays intact'});await r.flush(e);await u.add(file,{start:false});r.cancelSave(e)})()");
+    await a.close();
+    const b = await page('readonly-reader', null, true); await b.open(1);
+    assert.equal(await b.evaluate('document.querySelector("#writing-body").readOnly'), true);
+    const original = await field(b);
+    await b.point('#writing-body'); await b.key('ArrowRight', 4); await b.key('u', 2);
+    assert.equal(await field(b), original, 'native Ctrl-U must not alter a read-only recovery draft');
+    await b.key('w', 2); await b.key('k', 2); assert.equal(await field(b), original);
+    await b.evaluate('(()=>{const f=document.querySelector("#writing-body");f.setRangeText("injected",0,f.value.length,"end");f.dispatchEvent(new Event("input",{bubbles:true}))})()');
+    assert.equal(await field(b), original, 'injected fallback input also cannot change read-only writing');
+    await b.key('Tab'); assert.notEqual(await b.evaluate('document.activeElement.id'), 'writing-body');
+    await b.point('#toggle-note'); await replace(b, 'Private note remains editable');
+    await b.point('#toggle-note'); assert.equal(await field(b), original);
+    await b.point('#review-versions');
+    await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version")'), 'recovery choice');
+    assert.equal(await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Recover this version").disabled'), false);
+    observations.push({name:'X3 input boundary', native:'Ctrl-U/W/K, Tab, private-note typing', injected:'setRangeText + input exercises fallback boundary, not a native gesture'});
+    await shot(b, 'readonly-recovery'); await b.close();
+  });
   await check('images keyboard chooser file assignment and exact send retain the Reader', async () => {
     const p = await page('images-main', null, true); await p.open(1);
     assert.ok(await p.box('#add-image'), 'Add image must be visible and discoverable');
@@ -181,6 +283,8 @@ export async function imageChecks({ check, page, until, root, facts, view, repla
     // Initial open gives foreground source reads priority. The existing
     // Review versions refresh performs the deferred canonical proof.
     assert.equal(await b.evaluate('e.recoveryDiscovery'), true);
+    assert.equal(await b.evaluate('u.current().length'), 1, 'canonical ref is represented before retirement clears discovery');
+    assert.equal(await b.evaluate('u.pending()'), true);
     await b.evaluate('r.recoveryCandidates(e)');
     assert.equal(await b.evaluate(`readRow(${JSON.stringify(row.id)})`), null);
     assert.equal(await b.evaluate(`readRow(${JSON.stringify(bytesId)})`), null);
@@ -188,6 +292,9 @@ export async function imageChecks({ check, page, until, root, facts, view, repla
     assert.equal(await b.evaluate('imagePuts.filter(x=>x.bytes).length'), 0, 'retirement/import never copies the old bytes');
     assert.equal(await b.evaluate('e.draft.body'), 'Canonical image copy');
     assert.equal(await b.evaluate('e.draft.attachments.length'), 1);
+    assert.equal(await b.evaluate('u.current()[0].ready_descriptor.media_id === e.draft.attachments[0].id'), true);
+    assert.equal(await b.evaluate('u.pending()'), false);
+    assert.equal(await b.evaluate('(await j.own(e.key)) ?? null'), null, 'retirement validation creates no passive journal target');
     await b.evaluate('r.dispose()');
   });
 
@@ -249,9 +356,14 @@ export async function imageChecks({ check, page, until, root, facts, view, repla
     assert.equal(await field(p), 'New Notebook writing survives Remove');
     await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Attach as download").dataset.imageFallback=""');
     await p.point('[data-image-fallback]');
-    await until(() => p.evaluate('document.querySelector("#writing-attachments").textContent.includes("Ready")'), 'explicit download ready');
+    // "Ready to continue upload" is not a completed attachment. The old
+    // substring probe sent while Uploading; native-12 records the disabled gate.
+    await until(() => p.evaluate('document.querySelector("#writing-attachments .image-choice span")?.textContent.endsWith(" · Ready") && !document.querySelector("#send-reply").disabled'), 'explicit download ready and Send enabled');
+    observations.push({name:'Notebook before send readiness',status:await p.evaluate('({attachments:document.querySelector("#writing-attachments").textContent,disabled:document.querySelector("#send-reply").disabled,save:document.querySelector("#save-state").textContent})')});
     await p.point('#writing-body'); await p.key('Enter', 12);
-    const firstSend = await until(() => p.calls.find(c => c.payload?.kind === 'message.send'), 'Notebook attachment send');
+    let firstSend;
+    try { firstSend = await until(() => p.calls.find(c => c.payload?.kind === 'message.send'), 'Notebook attachment send'); }
+    catch (error) { observations.push({name:'Notebook send timeout',text:await p.evaluate('document.querySelector("#reader").innerText'),rows:await p.evaluate('imageRows()'),calls:p.calls,errors:p.errors}); await shot(p,'notebook-send-timeout'); throw error; }
     const receipt = await view('operation', { operation_id: firstSend.payload.operation_id });
     const sent = await view('source', { kind: 'message', id: receipt.result.message_id });
     assert.equal(sent.attachments.length, 1); assert.equal(sent.attachments[0].content_type, 'application/octet-stream');

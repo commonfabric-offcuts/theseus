@@ -69,6 +69,7 @@ export class Reader {
     });
     this.$('reply-destination').onchange = event => this.callbacks.destination(event.target.value);
     this.field.addEventListener('input', () => {
+      if (this.writingReadOnly()) { this.field.value = this.editor.draft.body; return; }
       this.disarm();
       this.editor.edit({ body: this.field.value, caret: this.caret() });
       this.callbacks.edit(this.editor);
@@ -439,7 +440,10 @@ export class Reader {
     this.close();
   }
 
+  writingReadOnly() { return Boolean(this.field.readOnly || this.editor?.adopting || recoveryReadOnly(this.editor)); }
+
   insertText(text) {
+    if (this.writingReadOnly()) return;
     // execCommand keeps a native undo item for textarea text edits. The actual
     // keyboard/undo contract is checked in the native-browser lane.
     if (!document.execCommand('insertText', false, text)) {
@@ -449,6 +453,7 @@ export class Reader {
   }
 
   terminalKey(event) {
+    if (this.writingReadOnly()) return false;
     if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !['w', 'u', 'k', 'a', 'e'].includes(event.key)) return false;
     const value = this.field.value, start = this.field.selectionStart, end = this.field.selectionEnd;
     const lineStart = value.lastIndexOf('\n', start - 1) + 1;
@@ -471,6 +476,7 @@ export class Reader {
       else if (!event.shiftKey && target === stops.at(-1)) { event.preventDefault(); stops[0]?.focus(); }
       return;
     }
+    if (target === this.field && this.writingReadOnly()) return;
     if (target === this.field && this.terminalKey(event)) return;
     if (target !== this.field && target.closest('button,a,input,select,summary,[role="separator"]')) {
       if (event.key === 'Enter' && event.repeat) event.preventDefault();

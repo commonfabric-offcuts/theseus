@@ -3,15 +3,21 @@ export const imageTypes = new Set(['image/png', 'image/jpeg', 'image/gif', 'imag
 export const pair = a => ({ authority_id: a?.authority_id, authority_epoch: a?.authority_epoch });
 export const samePin = (a, b) => Boolean(a?.authority_id && a?.authority_epoch && a.authority_id === b?.authority_id && a.authority_epoch === b?.authority_epoch);
 export const ownsBytes = snapshot => snapshot?.uploadState?.entries?.some(e => e.bytes_ref) === true;
-export const uploadWork = editor => Boolean(editor.uploadState || editor.imageReservation || editor.imageBusy);
-export const recoveryReadOnly = editor => Boolean(editor?.recoveryDiscovery && !editor.localVersion && !editor.uploadState && !editor.submissions.length);
+export const uploadWork = editor => Boolean(editor.uploadOpaque || editor.uploadState && !editor.passiveImages || editor.imageReservation || editor.imageBusy);
+export const recoveryReadOnly = editor => Boolean(editor?.recoveryDiscovery && !editor.localVersion && !uploadWork(editor) && !editor.submissions.length);
+export const copyChoiceKey = (editor, row) => JSON.stringify([editor.key, editor.clientCycleId, row.id, row.stamp]);
+export const refusedAtDraft = (item, draft) => !item.detached && !item.correctedBy && item.status === 'refused' &&
+  item.receipt?.kind === 'submission.prepare' && (draft === undefined || Boolean(draft &&
+    item.snapshot.id === draft.id && item.snapshot.generation === draft.generation && item.snapshot.revision === draft.revision));
+export const refusedCopyAtDraft = (row, draft) => row.availability === 'available' && readableUploads(row.snapshot) &&
+  row.snapshot.submissions.some(item => refusedAtDraft(item, draft));
 const known = (object, keys) => object && Object.keys(object).every(k => keys.includes(k));
-export function copyNeedsImageReview(row) {
+export function copyNeedsImageReview(row, editor) {
   if (row.availability !== 'available') return Boolean(row.uploadPresent || row.availability === 'unreadable');
   if (row.snapshot?.format !== 2) return false;
   if (!readableUploads(row.snapshot)) return true;
   return row.snapshot.uploadState.entries.some(e => e.selected && e.owner.kind === 'cycle') ||
-    row.snapshot.submissions.some(s => !s.detached && s.status === 'refused' && s.receipt?.kind === 'submission.prepare');
+    refusedCopyAtDraft(row, editor?.recoveryServerDraft) && !editor?.refusedCopyChoices?.has(copyChoiceKey(editor, row));
 }
 export function currentImages(editor) {
   return (Array.isArray(editor.uploadState?.entries) ? editor.uploadState.entries : []).filter(e => e?.owner?.kind === 'cycle' && e.owner.id === editor.clientCycleId && e.selected);
@@ -35,12 +41,12 @@ export function readableUploads(snapshot) {
 }
 export function imageBarrier(editor) {
   if (editor.context.kind === 'note') return null;
-  if (editor.recoveryDiscovery || editor.imageCopiesNext || [...(editor.imageCopies?.values() ?? [])].some(row => copyNeedsImageReview(row) &&
+  if (editor.recoveryDiscovery || editor.imageCopiesNext || [...(editor.imageCopies?.values() ?? [])].some(row => copyNeedsImageReview(row, editor) &&
     !editor.imageWaivers?.has(JSON.stringify([editor.key, editor.clientCycleId, row.id, row.stamp])))) return 'Check saved image copies in Review versions before sending.';
   if (editor.imageStorageError) return 'The image change is not saved on this device. Retry before sending.';
   if (editor.adopting || editor.imageReservation || editor.imageBusy) return 'Finish or cancel the image action before sending.';
   if (editor.uploadOpaque) return 'The saved image state needs review.';
-  if (!editor.uploadState) return null;
+  if (!editor.uploadState) return editor.draft.attachments?.length ? 'The attachment list needs review before sending.' : null;
   if (!readableUploads({ format: 2, uploadState: editor.uploadState, clientCycleId: editor.clientCycleId })) return 'The saved image state needs review.';
   const selected = currentImages(editor), refs = editor.draft.attachments ?? [];
   for (const e of selected) {

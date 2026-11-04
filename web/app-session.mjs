@@ -2,7 +2,7 @@ import { Editor, editorKey, restoreEditor } from './editor.mjs';
 import { EditorSession, RuntimeAuthority } from './session.mjs';
 import { RecoveryCleanup, eligible } from './cleanup.mjs';
 import { Uploads } from './uploads.mjs';
-import { uploadWork, readableUploads, copyNeedsImageReview } from './upload-state.mjs';
+import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
 const same = (a, b) => {
@@ -97,9 +97,10 @@ export class EditorRegistry {
     session.registered = () => this.sessions.get(key) === session && !this.disposed;
     if (context.kind === 'reply') {
       editor.recoveryDiscovery = true;
+      editor.recoveryServerDraft = copy(remote ?? null);
       session.uploads = new Uploads(session, this);
+      session.uploads.importRetained();
       await this.recoveryCandidates(editor);
-      if (!editor.recoveryDiscovery) await session.uploads.importRetained();
     }
     return editor;
   }
@@ -261,13 +262,23 @@ export class EditorRegistry {
         if (item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable') editor.imageCopies.set(item.id, item);
       }
       editor.imageCopiesNext = result.nextCursor;
+      if ([...editor.imageCopies.values()].some(row => refusedCopyAtDraft(row, undefined))) {
+        // Until this scoped read succeeds the old slot cannot dismiss a newly
+        // discovered refusal. Retry can establish the exact revision later.
+        editor.recoveryServerDraft = undefined;
+        editor.recoveryDiscovery = true; this.changed(editor);
+        const state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
+        this.validateState(state, editor.context.sourceRef, editor.context.topicId);
+        editor.recoveryServerDraft = copy(state.draft ?? null);
+      }
       this.updateImageBarrier(editor);
+      await this.sessionFor(editor).uploads.validateRetained();
     }
     return result;
   }
 
   updateImageBarrier(editor) {
-    editor.recoveryDiscovery = Boolean(editor.imageCopiesNext || [...(editor.imageCopies?.values() ?? [])].some(row => copyNeedsImageReview(row) &&
+    editor.recoveryDiscovery = Boolean(editor.imageCopiesNext || [...(editor.imageCopies?.values() ?? [])].some(row => copyNeedsImageReview(row, editor) &&
       !editor.imageWaivers?.has(JSON.stringify([editor.key, editor.clientCycleId, row.id, row.stamp]))));
     this.changed(editor);
   }
@@ -276,6 +287,7 @@ export class EditorRegistry {
     const row = await this.journal.changeCandidateImages(editor.key, candidate, { kind: 'remove' });
     editor.imageCopies.set(row.id, { ...row, availability: 'available' });
     this.updateImageBarrier(editor);
+    await this.sessionFor(editor).uploads.validateRetained();
     return row;
   }
 
@@ -288,6 +300,18 @@ export class EditorRegistry {
     if (editor.clientCycleId !== cycle || this.sessions.get(editor.key)?.editor !== editor) throw Error('This writing changed. Review the saved copy again.');
     (editor.imageWaivers ??= new Set()).add(JSON.stringify([editor.key, editor.clientCycleId, row.id, row.stamp]));
     this.updateImageBarrier(editor);
+    await this.sessionFor(editor).uploads.validateRetained();
+  }
+
+  async keepCurrentWriting(editor, candidate) {
+    const session = this.sessionFor(editor), cycle = editor.clientCycleId;
+    const row = editor.imageCopies?.get(candidate.id);
+    if (!row || row.stamp !== candidate.stamp || !refusedCopyAtDraft(row, editor.recoveryServerDraft)) throw Error('This saved refusal changed. Review it again.');
+    await this.journal.inspectCandidate(editor.key, candidate);
+    if (this.sessions.get(editor.key) !== session || editor.clientCycleId !== cycle || editor.imageCopies?.get(row.id)?.stamp !== row.stamp) throw Error('This writing changed. Review the saved copy again.');
+    (editor.refusedCopyChoices ??= new Set()).add(copyChoiceKey(editor, row));
+    this.updateImageBarrier(editor);
+    await session.uploads.validateRetained();
   }
 
   async adoptCandidate(editor, candidate, presentation) {

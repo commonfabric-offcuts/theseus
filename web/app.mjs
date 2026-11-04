@@ -3,7 +3,7 @@ import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
-import { readableUploads, uploadWork, recoveryReadOnly } from './upload-state.mjs';
+import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -89,7 +89,7 @@ async function showVersions(editor, opener = $('review-versions')) {
     } catch (error) { if (current()) reviewStatus(error.message); }
   }
   if (!current()) return;
-  if (recovery || editor.conflict) $('review-content').append(version('Saved private version', remote?.body ?? null,
+  if (recovery || editor.conflict) $('review-content').append(version('Saved private version', remote === undefined ? 'Saved version unavailable. Retry to read it; your writing is kept.' : remote?.body ?? null,
     remote ? `Revision ${remote.revision} · ${destination}` : destination));
   if (recovery) {
     reviewStatus(recovery.message);
@@ -104,7 +104,7 @@ async function showVersions(editor, opener = $('review-versions')) {
         if (current() && result?.status === 'committed') closeReview();
       } catch (error) { if (current()) { reviewStatus(error.message); $('review-retry').hidden = false; } }
     });
-  } else if (editor.conflict) reviewStatus('Both versions are kept. Copy what you need; this comparison does not overwrite either version.');
+  } else if (editor.conflict) reviewStatus(remote === undefined ? 'The saved version could not be read. Retry; sending remains blocked and your writing is kept.' : 'Both versions are kept. Copy what you need; this comparison does not overwrite either version.');
   comparison = { editor, localVersion, authority: JSON.stringify(editor.authorityRecovery) };
   const list = node('div'); $('review-content').append(list);
   const appendCandidates = async cursor => {
@@ -125,6 +125,15 @@ async function showVersions(editor, opener = $('review-versions')) {
         });
         adopt.disabled = editor.localVersion > 0 || session.attempts.length > 0 || uploadWork(editor);
         section.append(adopt);
+        if (refusedCopyAtDraft(candidate, editor.recoveryServerDraft)) {
+          for (const item of candidate.snapshot.submissions.filter(item => refusedAtDraft(item, editor.recoveryServerDraft))) {
+            section.append(node('p', 'Earlier reply was not prepared. Keeping current writing leaves this earlier reply saved here.', 'muted'), node('pre', item.snapshot.body));
+          }
+          section.append(button('Keep current writing', async () => {
+            await registry.keepCurrentWriting(editor, candidate);
+            if (current()) { reviewStatus('Current writing kept. The earlier reply remains saved and will not be sent.'); changed(editor); }
+          }));
+        }
         if (candidate.snapshot.format === 2 && candidate.snapshot.uploadState.entries.some(e => e.selected && e.owner.kind === 'cycle')) {
           section.append(button('Remove saved image selections', async () => { await registry.removeCandidateImages(editor, candidate); if (current()) await showVersions(editor, opener); }));
         }
