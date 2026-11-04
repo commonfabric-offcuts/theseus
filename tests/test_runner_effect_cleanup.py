@@ -291,6 +291,19 @@ class EffectCleanupCase(runner_tests.RunnerCase):
                 self.assertEqual(self.snapshot(), baseline)
                 self.held(guard)
 
+    def test_setup_exception_identity_survives_successful_cleanup(self):
+        guard = self.guard()
+        baseline = self.snapshot()
+        for original in (OSError("setup I/O"), KeyboardInterrupt("setup interrupted")):
+            with self.subTest(error=type(original).__name__):
+                with effect_connections(before=fail_at("PRAGMA synchronous=EXTRA", original)) as seen:
+                    error = self.failure(lambda: self.store.acquire_runner(guard))
+                    self.assertEqual(seen["events"], ["close"])
+                    self.closed(seen)
+                    self.assertIs(error, original, "clean setup close must preserve the original exception")
+                self.assertEqual(self.snapshot(), baseline)
+                self.held(guard)
+
     def test_action_interruption_is_preserved_when_cleanup_also_fails(self):
         guard = self.guard()
         original = KeyboardInterrupt("action interrupted")
