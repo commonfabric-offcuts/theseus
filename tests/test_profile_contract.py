@@ -90,6 +90,24 @@ class ProfileAuthorityContractTests(unittest.TestCase):
                               self.value["instance_id"], self.value["actor_id"], binding=binding)
         self.assertFalse((self.root / "refused.json").exists())
 
+    def test_noncanonical_authority_paths_are_refused_without_rebinding(self):
+        anchor = Path(self.binding["authority_path"])
+        anchor.write_text("fixture authority, not opened by this boundary test")
+        alias = self.root / "alias.json"
+        alias.symlink_to(anchor)
+        child = self.root / "child"
+        child.mkdir()
+        for candidate in (str(alias), str(child / ".." / anchor.name),
+                          str(self.root) + "/./" + anchor.name):
+            with self.subTest(path=candidate):
+                self.store.reset_mock()
+                self.put(dict(self.value, authority_path=candidate))
+                before = self.path.read_bytes()
+                with self.assertRaises(ProfileError):
+                    load_profile(self.path)
+                self.store.assert_not_called()
+                self.assertEqual(self.path.read_bytes(), before)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -58,6 +58,16 @@ def _absolute_path(value):
     return isinstance(value, str) and "\x00" not in value and Path(value).is_absolute()
 
 
+def _canonical_authority_path(value):
+    try:
+        canonical = Path(value).resolve()
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ProfileError("Use the explicit canonical authority path without symlink traversal") from error
+    if str(canonical) != value:
+        raise ProfileError("Use the explicit canonical authority path without symlink traversal")
+    return canonical
+
+
 def _validated(value):
     if (not isinstance(value, dict)
             or set(value) != {"v", "instance_id", "actor_id", "db_path"} | BINDING_FIELDS
@@ -67,7 +77,8 @@ def _validated(value):
             or not _absolute_path(value.get("db_path")) or not _absolute_path(value.get("authority_path"))):
         raise ProfileError("Use an explicit v2 profile with instance, actor, database and authority binding")
     profile = Profile(value["instance_id"], value["actor_id"], Path(value["db_path"]).resolve(),
-                      Path(value["authority_path"]), value["authority_id"], value["authority_epoch"])
+                      _canonical_authority_path(value["authority_path"]),
+                      value["authority_id"], value["authority_epoch"])
     try:
         capabilities = profile.store().view(profile.actor_id, "capabilities", {})
     except StoreError as error:
