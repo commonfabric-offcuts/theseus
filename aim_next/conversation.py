@@ -12,8 +12,9 @@ CONVERSATION_SCHEMA = [
     "CREATE TABLE messages (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, topic_id TEXT NOT NULL REFERENCES topics(id), author_id TEXT NOT NULL REFERENCES actors(id), body TEXT NOT NULL, attachments TEXT NOT NULL, quotes TEXT NOT NULL, addressees TEXT NOT NULL, reply_to TEXT, exchange_id TEXT, operation_id TEXT NOT NULL, UNIQUE(author_id,operation_id))",
     "CREATE INDEX topic_messages ON messages(topic_id,seq)",
     "CREATE TABLE topic_summaries (topic_id TEXT PRIMARY KEY REFERENCES topics(id), message_count INTEGER NOT NULL, latest_message_id TEXT REFERENCES messages(id))",
-    "CREATE TABLE deliveries (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL REFERENCES messages(id), recipient_id TEXT NOT NULL REFERENCES actors(id), state TEXT NOT NULL DEFAULT 'pending', UNIQUE(message_id,recipient_id))",
+    "CREATE TABLE deliveries (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, message_id TEXT NOT NULL REFERENCES messages(id), recipient_id TEXT NOT NULL REFERENCES actors(id), group_id INTEGER NOT NULL REFERENCES delivery_groups(id), state TEXT NOT NULL DEFAULT 'pending', UNIQUE(message_id,recipient_id))",
     "CREATE INDEX recipient_deliveries ON deliveries(recipient_id,state,seq)",
+    "CREATE INDEX pending_group_deliveries ON deliveries(group_id,seq) WHERE state='pending'",
     "CREATE TABLE delivery_reasons (delivery_id TEXT NOT NULL REFERENCES deliveries(id), reason TEXT NOT NULL, topic_id TEXT NOT NULL REFERENCES topics(id), participant_epoch INTEGER, PRIMARY KEY(delivery_id,reason))",
     "CREATE TRIGGER immutable_messages_update BEFORE UPDATE ON messages BEGIN SELECT RAISE(ABORT, 'immutable message'); END",
     "CREATE TRIGGER immutable_messages_delete BEFORE DELETE ON messages BEGIN SELECT RAISE(ABORT, 'immutable message'); END",
@@ -71,6 +72,8 @@ class Conversation:
         epoch = old["epoch"] if old else 0
         if old is None or bool(old["active"]) != present:
             epoch += 1
+            if old is not None and old["active"]:
+                self._cancel_subscription(db, member, topic["id"], old["epoch"])
         responsibility = _body(args.get("responsibility", old["responsibility"] if old else ""))
         db.execute("INSERT INTO topic_participants VALUES (?,?,?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET active=excluded.active,epoch=excluded.epoch,responsibility=excluded.responsibility",
                    (topic["id"], member, int(present), epoch, responsibility))
@@ -156,9 +159,7 @@ class Conversation:
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), envelope["operation_id"]))
         for recipient, reasons in audience.items():
-            delivery_id = "d-" + uuid.uuid4().hex
-            db.execute("INSERT INTO deliveries(id,message_id,recipient_id) VALUES (?,?,?)", (delivery_id, message_id, recipient))
-            db.executemany("INSERT INTO delivery_reasons VALUES (?,?,?,?)", [(delivery_id, reason, topic_id, epoch) for reason, epoch in reasons.items()])
+            delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         db.execute("UPDATE topic_summaries SET message_count=message_count+1,latest_message_id=? WHERE topic_id=?", (message_id, topic_id))
         version = self._touch_topic(db, topic)
@@ -222,21 +223,3 @@ class Conversation:
     def _effective_reasons(self, db, delivery):
         rows = db.execute("SELECT r.reason,r.participant_epoch,p.active,p.epoch FROM delivery_reasons r LEFT JOIN topic_participants p ON p.topic_id=r.topic_id AND p.actor_id=? WHERE r.delivery_id=? ORDER BY r.reason", (delivery["recipient_id"], delivery["id"])).fetchall()
         return [r["reason"] for r in rows if r["reason"] != "subscription" or delivery["state"] != "pending" or (r["active"] and r["epoch"] == r["participant_epoch"])]
-
-    def _view_deliveries(self, db, actor, args):
-        limit = _page_size(args)
-        rows = db.execute("SELECT * FROM deliveries WHERE recipient_id=? AND state='pending' AND seq>? ORDER BY seq LIMIT ?", (actor, args.get("cursor", 0), limit + 1)).fetchall()
-        items = []
-        for row in rows[:limit]:
-            reasons = self._effective_reasons(db, row)
-            if not reasons:
-                continue
-            message = dict(db.execute("SELECT id,topic_id,author_id,substr(body,1,256) AS body,length(body)>256 AS preview FROM messages WHERE id=?", (row["message_id"],)).fetchone())
-            message["preview"] = bool(message["preview"])
-            item = dict(row)
-            item.update(reasons=reasons, message=message, source_ref={"kind": "message", "id": row["message_id"]})
-            items.append(item)
-        # Cursor advances over examined canceled entries too. A caller must
-        # continue while next_cursor exists, even if this bounded page is empty.
-        return {"instance_id": self.instance_id, "items": items,
-                "next_cursor": rows[limit - 1]["seq"] if len(rows) > limit else None}

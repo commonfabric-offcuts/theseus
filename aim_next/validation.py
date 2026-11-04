@@ -11,10 +11,11 @@ COMMANDS = {
     "topic.create_and_send": "_command_topic_create_and_send",
     "message.send": "_command_message_send",
     "participation.set": "_command_participation_set",
+    "delivery.ack": "_command_delivery_ack",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
-            "participation.set": {"topic_revision"}, "message.send": set(), "topic.create_and_send": set()}
+            "participation.set": {"topic_revision"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set()}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision"}
 VIEWS = {
@@ -77,7 +78,12 @@ def _view_arguments(name, args):
             _identifier(args[key], key)
     if "cursor" in args:
         cursor = args["cursor"]
-        if name == "workspace_topics":
+        if name == "deliveries":
+            from .delivery import _position
+            if cursor is None:
+                raise Refusal("INVALID_ARGUMENT", "Invalid delivery page cursor")
+            _position(cursor)
+        elif name == "workspace_topics":
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):
