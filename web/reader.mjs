@@ -1,5 +1,6 @@
 import { keyAction } from './editor.mjs';
 import { ReaderLayout } from './layout.mjs';
+import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 
 const node = (tag, text, className) => {
   const el = document.createElement(tag);
@@ -42,6 +43,24 @@ export class Reader {
     this.$('quote-selection').onpointerdown = event => event.preventDefault();
     this.$('quote-selection').onclick = () => this.quote();
     this.$('send-reply').onclick = () => this.mode === 'note' ? this.callbacks.saveNote(this.editor) : this.send(false);
+    this.$('add-image').onclick = () => {
+      try {
+        const uploads = this.callbacks.uploads?.(this.editor);
+        if (!uploads) return;
+        const token = uploads.reserve(this.presentation);
+        this.imagePicker = { uploads, token }; this.$('image-file').value = '';
+        this.paintStatus(); this.$('image-file').click();
+      } catch (error) { this.notice(error.message); }
+    };
+    this.$('cancel-image').onclick = () => { this.cancelImagePicker(); this.$('add-image').focus(); };
+    this.$('image-file').addEventListener('cancel', () => this.cancelImagePicker());
+    this.$('image-file').onchange = async event => {
+      const picker = this.imagePicker, file = event.target.files?.[0]; this.imagePicker = null;
+      if (!picker) { if (file) this.notice('That image selection expired. Choose it again.'); return; }
+      try { await picker.uploads.choose(picker.token, file); }
+      catch (error) { this.notice(error.message); }
+      finally { this.paintStatus(); }
+    };
     this.$('previous-message').onclick = () => this.step(-1);
     this.$('next-message').onclick = () => this.step(1);
     this.$('add-recipient').onclick = () => this.addRecipient();
@@ -50,6 +69,7 @@ export class Reader {
     });
     this.$('reply-destination').onchange = event => this.callbacks.destination(event.target.value);
     this.field.addEventListener('input', () => {
+      if (this.writingReadOnly()) { this.field.value = this.editor.draft.body; return; }
       this.disarm();
       this.editor.edit({ body: this.field.value, caret: this.caret() });
       this.callbacks.edit(this.editor);
@@ -210,6 +230,7 @@ export class Reader {
     if (!excerpt || !this.sessions) return;
     if (this.mode === 'note') this.switchMode('reply');
     const editor = this.sessions.reply;
+    if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
     editor.draft.quotes.push({ source: structuredClone(this.source.source_ref), excerpt });
@@ -226,7 +247,8 @@ export class Reader {
 
   switchMode(next = this.mode === 'reply' ? 'note' : 'reply') {
     if (!this.sessions) return;
-    if (this.editor) { this.editor.draft.caret = this.caret(); this.callbacks.edit(this.editor); }
+    this.cancelImagePicker();
+    if (this.editor && !recoveryReadOnly(this.editor) && !this.editor.adopting) { this.editor.draft.caret = this.caret(); this.callbacks.edit(this.editor); }
     this.mode = next;
     ++this.viewToken;
     this.callbacks.mode?.(next);
@@ -249,7 +271,7 @@ export class Reader {
     this.$('send-reply').textContent = note ? 'Save note' : 'Send ⌘↵';
     this.field.placeholder = note ? 'Your private note…' : 'Write a reply…';
     this.field.value = this.editor.draft.body;
-    this.drawAttachments(this.$('writing-attachments'), this.editor.draft.attachments);
+    this.paintImages();
     this.paintRecipients();
     this.paintStatus();
   }
@@ -262,6 +284,7 @@ export class Reader {
       const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', `Remove ${name}`);
       remove.onclick = () => {
         const editor = this.sessions.reply;
+        if (editor.adopting || recoveryReadOnly(editor)) return;
         editor.edit({ addressees: editor.draft.addressees.filter(item => item !== name) });
         this.callbacks.edit(editor); this.paintRecipients();
       };
@@ -274,6 +297,7 @@ export class Reader {
     const name = input.value.trim().replace(/^@/, '');
     if (!name || !this.sessions) return;
     const editor = this.sessions.reply;
+    if (editor.adopting || recoveryReadOnly(editor)) return;
     if (!editor.draft.addressees.includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name] });
       this.callbacks.edit(editor); this.paintRecipients();
@@ -287,18 +311,64 @@ export class Reader {
     for (const attachment of attachments ?? []) host.append(node('span', attachment.name ?? attachment.id ?? 'Attached image', 'attachment-label'));
   }
 
+  cancelImagePicker() {
+    const picker = this.imagePicker; this.imagePicker = null;
+    picker?.uploads.cancel(picker.token); this.$('image-file').value = '';
+    this.paintStatus();
+  }
+
+  paintImages() {
+    const host = this.$('writing-attachments'), editor = this.editor;
+    const uploads = editor?.context.kind === 'reply' ? this.callbacks.uploads?.(editor) : null;
+    if (!uploads) { this.drawAttachments(host, editor?.draft.attachments); return; }
+    const entries = uploads.current(), ids = new Set(entries.map(e => e.selection_id));
+    for (const row of [...host.children]) if (!ids.has(row.dataset.selection)) row.remove();
+    for (const e of entries) {
+      let row = [...host.children].find(r => r.dataset.selection === e.selection_id);
+      if (!row) { row = node('div', undefined, 'image-choice'); row.dataset.selection = e.selection_id; host.append(row); }
+      const a = e.attempts[e.choice], state = uploads.status(e.selection_id);
+      const view = JSON.stringify([state, e.version, a?.phase, a?.retry_allowed, uploads.running.has(e.selection_id)]);
+      if (row.dataset.view === view) continue;
+      row.dataset.view = view; row.replaceChildren(node('span', `${e.file?.name ?? e.ready_descriptor?.name ?? 'Attachment'} · ${state}`));
+      const action = (label, act) => {
+        const b = node('button', label); b.type = 'button';
+        b.onclick = async () => { b.disabled = true; try { await act(); } catch (error) { this.notice(error.message); } finally { if (b.isConnected) b.disabled = false; this.paintStatus(); } };
+        row.append(b);
+      };
+      if (!uploads.running.has(e.selection_id)) {
+        if (e.bytes_state === 'memory-only') action('Retry device save', () => uploads.retry(e.selection_id));
+        else if (e.origin === 'retained-ref' || a && !['captured', 'prepared'].includes(a.phase)) action('Check confirmation', () => uploads.check(e.selection_id));
+        if (a && (a.retry_allowed || ['captured', 'prepared', 'begun'].includes(a.phase))) action(a.phase === 'begun' || a.phase === 'captured' || a.phase === 'prepared' ? 'Continue upload' : 'Retry upload', () => uploads.retry(e.selection_id));
+        if ((!a || a.publish_response?.error?.code === 'MEDIA_INVALID') && e.bytes_state === 'durable' && !e.local_error) action('Attach as download', () => uploads.asDownload(e.selection_id));
+      }
+      action('Remove', async () => { await uploads.remove(e.selection_id); this.$('add-image').focus(); });
+    }
+  }
+
   paintStatus() {
     if (!this.editor) return;
     const editor = this.editor;
+    const barrier = imageBarrier(editor);
     this.$('save-state').textContent = this.callbacks.status ? this.callbacks.status(editor) : editor.journalError ? 'Recovery copy unavailable — keep this page open'
       : editor.conflict ? 'Not saved — another version needs review'
       : editor.dirty ? 'Not yet saved to AIM' : 'Saved to AIM';
     const preparing = this.sessions.reply.submissions.some(item => item.status === 'preparing' && !item.detached);
-    this.$('send-reply').disabled = Boolean(editor.adopting || editor.unavailable || editor.authorityRecovery || editor.conflict ||
+    this.$('send-reply').disabled = Boolean(barrier || editor.adopting || editor.unavailable || editor.authorityRecovery || editor.conflict ||
       (this.mode === 'reply' && (preparing || !editor.context.topicId || (!editor.draft.body.trim() && !editor.draft.attachments.length))));
     const pinned = editor.sourceRef?.kind === 'memory' && editor.sourceRef.revision !== this.source.source_ref.revision;
     this.$('source-update').textContent = pinned ? `This writing refers to Notebook revision ${editor.sourceRef.revision}. You are reading revision ${this.source.source_ref.revision}.` : '';
     this.$('source-update').hidden = !pinned;
+    const note = this.mode === 'note';
+    this.$('add-image').hidden = note || Boolean(editor.imageReservation);
+    this.$('add-image').disabled = Boolean(editor.adopting || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||
+      editor.uploadState?.entries.some(e => e.selected && e.owner.id === editor.clientCycleId && e.origin === 'retained-ref' && !e.ready_descriptor));
+    this.$('cancel-image').hidden = note || !editor.imageReservation;
+    this.field.readOnly = Boolean(editor.adopting || recoveryReadOnly(editor));
+    this.$('recipient-input').disabled = this.field.readOnly;
+    this.$('add-recipient').disabled = this.field.readOnly;
+    this.$('quote-selection').disabled = Boolean(this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
+    if (barrier) this.$('save-state').textContent = barrier;
+    this.paintImages();
   }
 
   paintPending() {
@@ -370,7 +440,10 @@ export class Reader {
     this.close();
   }
 
+  writingReadOnly() { return Boolean(this.field.readOnly || this.editor?.adopting || recoveryReadOnly(this.editor)); }
+
   insertText(text) {
+    if (this.writingReadOnly()) return;
     // execCommand keeps a native undo item for textarea text edits. The actual
     // keyboard/undo contract is checked in the native-browser lane.
     if (!document.execCommand('insertText', false, text)) {
@@ -380,6 +453,7 @@ export class Reader {
   }
 
   terminalKey(event) {
+    if (this.writingReadOnly()) return false;
     if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !['w', 'u', 'k', 'a', 'e'].includes(event.key)) return false;
     const value = this.field.value, start = this.field.selectionStart, end = this.field.selectionEnd;
     const lineStart = value.lastIndexOf('\n', start - 1) + 1;
@@ -402,6 +476,7 @@ export class Reader {
       else if (!event.shiftKey && target === stops.at(-1)) { event.preventDefault(); stops[0]?.focus(); }
       return;
     }
+    if (target === this.field && this.writingReadOnly()) return;
     if (target === this.field && this.terminalKey(event)) return;
     if (target !== this.field && target.closest('button,a,input,select,summary,[role="separator"]')) {
       if (event.key === 'Enter' && event.repeat) event.preventDefault();

@@ -2,6 +2,7 @@
 // profile and closes the browser over its socket; no signals, origin sweeps,
 // product debug endpoints, synthetic UI actions, or other member's identity.
 import assert from 'node:assert/strict';
+import { imageInstrumentation, imageChecks } from './reader_images_native.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -14,7 +15,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode = '--journal', caseFilter] = process.argv.slice(2);
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
 assert.ok(evidencePath && path.isAbsolute(evidencePath));
-assert.ok(['--journal', '--connected', '--correction', '--cleanup'].includes(mode));
+assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images'].includes(mode));
 await mkdir(evidencePath, { recursive: true });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(probe, description, timeout = 8000) {
@@ -22,7 +23,7 @@ async function until(probe, description, timeout = 8000) {
   while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
   throw Error(`Timed out: ${description}`);
 }
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(mode === '--correction' ? ['--media'] : [])], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
@@ -39,8 +40,11 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs']) {
-  hashes[filename] = createHash('sha256').update(await readFile(path.join(root, filename))).digest('hex');
+for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : [])]) {
+  const source = await readFile(path.join(root, filename));
+  hashes[filename] = createHash('sha256').update(source).digest('hex');
+  await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
+  await writeFile(path.join(evidencePath, 'source', filename), source);
 }
 const profile = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-persistence-'));
 const downloadPath = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-download-'));
@@ -76,8 +80,9 @@ try {
     waiting.set(id, { resolve, reject, timer });
     socket.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
   });
+  let recoveryContext;
   const page = async (suffix, hint, connected = false) => {
-    const { targetId } = await cdp('Target.createTarget', { url: 'about:blank' }); pages.add(targetId);
+    const { targetId } = await cdp('Target.createTarget', { url: 'about:blank', ...(recoveryContext ? { browserContextId: recoveryContext } : {}) }); pages.add(targetId);
     const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true });
     const send = (method, params) => cdp(method, params, sessionId);
     const evaluate = async expression => {
@@ -85,9 +90,10 @@ try {
       if (answer.exceptionDetails) throw Error(JSON.stringify(answer.exceptionDetails));
       return answer.result.value;
     };
-    const errors = [], calls = [], held = [], finished = new Set();
+    const errors = [], calls = [], held = [], events = [], finished = new Set();
     let intercept = null;
     listeners.set(sessionId, packet => {
+      if (packet.method === 'Page.fileChooserOpened') events.push(packet);
       if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
       if (['Network.loadingFinished', 'Network.loadingFailed'].includes(packet.method)) finished.add(packet.params.requestId);
       if (packet.method === 'Fetch.requestPaused') {
@@ -122,11 +128,12 @@ try {
     };
     const close = async () => { if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); };
     if (connected) {
+      if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
       await send('Page.navigate', { url: facts.origin + '/?topic=t1' });
       await until(() => evaluate('document.body?.dataset.ready === "true" || Boolean(document.querySelector("#app-status") && !document.querySelector("#app-status").hidden)'), 'application bootstrap');
       assert.equal(await evaluate('document.body.dataset.ready'), 'true', await evaluate('document.querySelector("#app-status").textContent'));
       await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
-      return { targetId, send, evaluate, close, box, point, key, calls, held, errors,
+      return { targetId, send, evaluate, close, box, point, key, calls, held, errors, events,
         intercept: handler => { intercept = handler; },
         release: async entry => {
           await send('Fetch.continueResponse', { requestId: entry.event.requestId });
@@ -176,10 +183,17 @@ try {
   };
   const check = async (name, action) => {
     if (mode === '--cleanup' && !name.startsWith('cleanup ')) return;
+    if (mode === '--images' && !name.startsWith('images ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
+    // These recovery cases deliberately leave abandoned copies behind. Each
+    // gets a fresh owned storage context, shared only by that case's tabs.
+    if (/^images X[1234] /.test(name)) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
     try { await action(); results.push({ name, passed: true }); }
     catch (error) { results.push({ name, passed: false, error: error.stack }); }
-    finally { for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear(); }
+    finally {
+      for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear();
+      if (recoveryContext) { await cdp('Target.disposeBrowserContext', { browserContextId: recoveryContext }); recoveryContext = null; }
+    }
     process.stdout.write(JSON.stringify(results.at(-1)) + '\n');
   };
 
@@ -307,7 +321,9 @@ try {
       const image = await page.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(path.join(evidencePath, name + '.png'), Buffer.from(image.data, 'base64'));
     };
-    if (mode === '--cleanup') {
+    if (mode === '--images') {
+      await imageChecks({check,page,until,root,facts,view,replace,field,shot,observations});
+    } else if (mode === '--cleanup') {
       const rows = p => p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors');t.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result);t.oncomplete=()=>d.close()}})`);
       const scoped = async p => (await rows(p)).filter(row => row.scope === JSON.stringify([facts.instance_id, facts.actor]) && row.snapshot.sourceRef.id === facts.sources[1].id && row.active === 1);
       await check('cleanup ordinary send click empty field close reload removes only acknowledged recovery', async () => {

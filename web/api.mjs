@@ -39,6 +39,23 @@ export class Api {
   command(envelope) { return this.request('/api/command', envelope); }
   view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
 
+  async upload(envelope, blob, { signal } = {}) {
+    const command = JSON.stringify(envelope).replace(/[\u007f-\uffff]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
+    let response;
+    try {
+      response = await this.fetcher('/api/media/upload', {
+        method: 'POST', credentials: 'same-origin', cache: 'no-store',
+        headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/octet-stream', 'X-AIM-Command': command },
+        body: blob, ...(signal ? { signal } : {}),
+      });
+    } catch { throw new AttemptError('Connection interrupted. Image confirmation is unknown.'); }
+    let body;
+    try { body = await response.json(); }
+    catch { throw new AttemptError('Image confirmation is unreadable.', response.status); }
+    if (!response.ok) throw new AttemptError(body.error?.message ?? 'Image upload was refused.', response.status, body);
+    return body;
+  }
+
   async media(instanceId, attachment, sourceRef) {
     const response = await this.fetcher('/api/media/read', {
       method: 'POST', credentials: 'same-origin', cache: 'no-store',

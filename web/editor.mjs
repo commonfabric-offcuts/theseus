@@ -1,3 +1,5 @@
+import { imageBarrier, freezeImages, readableUploads, refusedAtDraft } from './upload-state.mjs';
+
 // Private writing state. DOM, transport and persistence are separate owners.
 const copy = value => structuredClone(value);
 const emptyWriting = () => ({ body: '', attachments: [], quotes: [], addressees: [], caret: { start: 0, end: 0 } });
@@ -24,6 +26,7 @@ export class Editor {
     this.key = editorKey(context);
     this.sourceRef = copy(draft?.source_ref ?? context.sourceRef);
     this.draft = { ...emptyWriting(), ...copy(draft ?? {}) };
+    this.clientCycleId = crypto.randomUUID();
     this.localVersion = 0;
     this.ackVersion = 0;
     this.submissions = [];
@@ -88,6 +91,8 @@ export class Editor {
     if (this.context.kind === 'note') throw new Error('A private note cannot be sent.');
     const active = this.submissions.find(item => item.status === 'preparing' && !item.detached);
     if (active) return active;
+    const barrier = imageBarrier(this);
+    if (barrier) throw new Error(barrier);
     if (!this.draft.generation || this.conflict) throw new Error('Resolve the draft before preparing a send.');
     const submission = {
       id: submissionId, prepareOperationId, sendOperationId,
@@ -96,6 +101,7 @@ export class Editor {
       savedVersion: this.ackVersion, saveConflict: null,
       status: 'preparing', preparationConfirmed: false, receipt: null,
     };
+    freezeImages(this, submission);
     this.submissions.push(submission);
     // A stays visible in submissions. New keystrokes have a separate local home
     // immediately, even before the server assigns the successor generation.
@@ -148,23 +154,32 @@ export class Editor {
   }
 
   snapshot() {
-    return copy({ format: 1, key: this.key, context: this.context, sourceRef: this.sourceRef, draft: this.draft,
+    return copy({ ...this.journalExtras, format: this.uploadState || this.uploadOpaque ? 2 : 1,
+      ...(this.uploadState || this.uploadOpaque ? { clientCycleId: this.clientCycleId, uploadState: this.uploadState } : {}), key: this.key, context: this.context, sourceRef: this.sourceRef, draft: this.draft,
       localVersion: this.localVersion, ackVersion: this.ackVersion, submissions: this.submissions, conflict: this.conflict });
   }
 }
 
 export function restoreEditor(context, serverDraft, journal) {
   if (!journal) return new Editor(context, serverDraft);
-  if (journal.format !== 1 || journal.key !== editorKey(context)) throw new Error('Recovery data belongs to a different editor.');
+  if (![1, 2].includes(journal.format) || journal.key !== editorKey(context)) throw new Error('Recovery data belongs to a different editor.');
   const editor = new Editor(context, serverDraft);
   editor.submissions = copy(journal.submissions);
+  if (journal.format === 2) {
+    editor.uploadOpaque = !readableUploads(journal);
+    editor.clientCycleId = journal.clientCycleId;
+    editor.uploadState = copy(journal.uploadState);
+    editor.journalExtras = copy(journal);
+    for (const field of ['format', 'key', 'context', 'sourceRef', 'draft', 'localVersion', 'ackVersion', 'submissions', 'conflict', 'clientCycleId', 'uploadState', 'attempts', 'activeAuthority', 'authorityRecovery']) delete editor.journalExtras[field];
+  }
   const unsettled = journal.submissions.some(item => ['preparing', 'prepared'].includes(item.status) && !item.detached);
-  if (journal.localVersion > journal.ackVersion || unsettled || journal.conflict) {
+  if (journal.format === 2 || journal.localVersion > journal.ackVersion || unsettled || journal.conflict) {
     for (const field of ['sourceRef', 'draft', 'localVersion', 'ackVersion', 'submissions', 'conflict']) editor[field] = copy(journal[field]);
     // A successor whose prepare reply was lost must first reconcile preparation.
     // A different server revision in a known generation is a visible conflict.
-    if (serverDraft && editor.draft.generation &&
-        (serverDraft.generation !== editor.draft.generation || serverDraft.revision !== editor.draft.revision)) {
+    if (serverDraft && editor.draft.generation && !(journal.conflict && !Object.hasOwn(journal.conflict, 'remote')) &&
+        (serverDraft.generation !== editor.draft.generation || serverDraft.revision !== editor.draft.revision ||
+         journal.format === 2 && editor.submissions.some(item => refusedAtDraft(item, serverDraft)))) {
       editor.conflict = { remote: copy(serverDraft), attempted: copy(editor.draft) };
     }
   }

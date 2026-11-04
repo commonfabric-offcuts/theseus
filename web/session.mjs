@@ -96,7 +96,10 @@ export class EditorSession {
     const sameAuthority = () => same(authorityPair(this.authority), authorityPair(this.runtime.current));
     if (!sameSnapshot(meaningful, this.acknowledgedSnapshot) || !sameAuthority()) this.acknowledgedSnapshot = null;
     try {
-      const stamp = await this.journal.save(snapshot, () => sameAuthority() && sameSnapshot(meaningful, this.acknowledgedSnapshot));
+      const stamp = this.editor.uploadState
+        ? await this.journal.saveLatest(this.editor.key, () => this.snapshot(), () => this.registered?.() !== false,
+          () => sameAuthority() && sameSnapshot(meaningfulSnapshot(this.snapshot()), this.acknowledgedSnapshot))
+        : await this.journal.save(snapshot, () => sameAuthority() && sameSnapshot(meaningful, this.acknowledgedSnapshot));
       this.editor.journalError = null;
       if (stamp) this.persisted(this, snapshot);
       return stamp;
@@ -198,6 +201,7 @@ export class EditorSession {
       if (!review || review.phase !== 'ready' || !same(review, this.recovery) || this.editor.localVersion !== localVersion) {
         throw new Error('Review the current versions before saving.');
       }
+      if (this.uploads?.current().length) throw new Error('Remove the selected images from the current reply before resuming private writing in this runtime. Their earlier history is kept.');
       // Read a fresh pair AND its remote snapshot together; never attach a new
       // authority to a revision that belonged to the earlier review.
       const refreshed = await this.refreshRecovery(review.failedPair, true);
@@ -212,6 +216,8 @@ export class EditorSession {
       this.editor.conflict = null;
       this.editor.ackVersion = Math.min(this.editor.ackVersion, this.editor.localVersion - 1);
       this.recovery = null;
+      this.editor.clientCycleId = this.id();
+      if (this.editor.uploadState) { this.editor.uploadState.client_cycle_id = this.editor.clientCycleId; this.editor.uploadState.revision++; }
       const ticket = this.editor.saveTicket(this.id());
       await this.persist();
       return this.dispatch(this.attempt(this.saveEnvelope(ticket), { ticket }));
@@ -344,6 +350,7 @@ export class EditorSession {
   send(options = {}) {
     if (this.editor.context.kind === 'note') throw new Error('A private note cannot be sent.');
     if (this.recovery) throw new Error('Review the runtime change before sending. Your writing is kept.');
+    if (this.uploads?.current().some(e => !this.uploads.pinned(e))) throw new Error('Review the runtime change before sending these images.');
     const previous = this.editor.submissions.find(item => item.status === 'preparing' && !item.detached);
     if (previous) return this.sends.get(previous.id) ?? this.start(previous, options, true);
     const item = this.editor.beginPrepare({ prepareOperationId: this.id(), sendOperationId: this.id(), submissionId: this.id() });
@@ -398,10 +405,23 @@ export class EditorSession {
     const receipt = await this.dispatch(entry, { resumePreparation: resume });
     if (!receipt) return this.block(item, entry);
     if (receipt?.status === 'rejected' && receipt.error?.code === 'REVISION_CONFLICT') {
-      const state = await this.api.view('editor_state', { source_ref: item.sourceRef, topic_id: item.topicId });
-      // Preserve other-device writing for explicit review; never clear a CAS
-      // refusal by autosaving B over the server version we just learned about.
-      this.editor.conflict = { attempted: copy(this.editor.draft), remote: copy(state.draft ?? null), error: copy(receipt.error) };
+      // The refusal is already a fact. Persist the block before reading so a
+      // crash or busy lane cannot restart B's autosave over unknown writing.
+      const conflict = { attempted: copy(this.editor.draft), error: copy(receipt.error) };
+      this.editor.conflict = conflict;
+      await this.persist(); this.changed(this.editor);
+      try {
+        const state = await this.api.view('editor_state', { source_ref: item.sourceRef, topic_id: item.topicId });
+        if (state?.error) throw Object.assign(Error(state.error.message), { details: state });
+        const d = state?.draft;
+        if (state?.instance_id !== this.editor.context.instanceId || !same(state.source_ref, item.sourceRef) ||
+            !same(state.destination, { topic_id: item.topicId ?? null }) ||
+            !(d === null || d && typeof d.id === 'string' && Number.isInteger(d.revision) && d.revision > 0 &&
+              typeof d.generation === 'string' && d.generation && same(d.source_ref, item.sourceRef))) throw Error('The saved writing identity could not be confirmed.');
+        conflict.remote = copy(d);
+      } catch (error) {
+        conflict.readError = copy(error.details?.error ?? { code: 'READ_UNKNOWN', message: error.message });
+      }
       await this.persist();
     }
     return item.preparationConfirmed;
@@ -470,6 +490,8 @@ export class EditorSession {
       }
       // This is an explicit correction after reviewing the remote draft, never
       // an automatic CAS retry. Keep the original refusal and current B intact.
+      await this.uploads?.validateCorrection(refused);
+      if (this.editor.localVersion !== reviewedLocalVersion) throw new Error('Writing changed while checking the earlier images. Review again.');
       const item = { ...copy(refused), id: this.id(), prepareOperationId: this.id(), sendOperationId: this.id(),
         authority: authorityPair(this.authority),
         snapshot: { ...copy(refused.snapshot), id: state.draft.id, revision: state.draft.revision, generation: state.draft.generation },
@@ -478,6 +500,11 @@ export class EditorSession {
       delete item.detached;
       refused.correctedBy = item.id;
       this.editor.submissions.push(item);
+      if (this.editor.uploadState) {
+        const link = this.editor.uploadState.submission_links[refused.id];
+        if (link) this.editor.uploadState.submission_links[item.id] = copy(link);
+        this.editor.uploadState.revision++;
+      }
       this.editor.conflict = null;
       this.editor.draft.id = state.draft.id;
       this.editor.draft.revision = null;
