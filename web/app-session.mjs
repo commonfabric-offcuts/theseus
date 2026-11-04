@@ -139,9 +139,13 @@ export class EditorRegistry {
 
   async keepLocal(presentation) {
     if (!presentation) return;
-    await Promise.all(Object.values(presentation.editors).filter(editor => uploadWork(editor) || editor.localVersion > 0 ||
+    return this.keepEditorsLocal(Object.values(presentation.editors));
+  }
+
+  async keepEditorsLocal(editors) {
+    await Promise.all(editors.filter(editor => uploadWork(editor) || editor.localVersion > 0 ||
       editor.submissions.length || this.sessionFor(editor).attempts.length).map(editor => this.persistLocal(editor)));
-    if (Object.values(presentation.editors).some(editor => editor.imageBusy || editor.imageReservation ||
+    if (editors.some(editor => editor.imageBusy || editor.imageReservation ||
         editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw Error('Keep this page open until the selected image is saved or removed.');
   }
 
@@ -442,8 +446,14 @@ export class EditorRegistry {
     this.pages.set(editor.key, result); this.changed(editor); return result;
   }
 
+  get hasInFlightSend() { return [...this.sessions.values()].some(session => session.sends.size > 0); }
+  get unconfirmedSends() {
+    return [...this.sessions.values()].flatMap(session => session.editor.submissions
+      .filter(item => !item.detached && ['preparing', 'prepared'].includes(item.status))
+      .map(item => ({ session, editor: session.editor, item })));
+  }
   get hasUnprotectedWriting() {
-    return [...this.sessions.values()].some(({ editor }) => this.localWrites.get(editor.key)?.pending ||
+    return this.hasInFlightSend || [...this.sessions.values()].some(({ editor }) => this.localWrites.get(editor.key)?.pending ||
       editor.imageBusy || editor.imageReservation || editor.imageStorageError || editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)) ||
       (editor.journalError && (uploadWork(editor) || editor.dirty || editor.submissions.some(item => item.status !== 'confirmed'))));
   }

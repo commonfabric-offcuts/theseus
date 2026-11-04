@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TopicPages, TopicNavigation } from '../web/topic-navigation.mjs';
+import { EditorRegistry } from '../web/app-session.mjs';
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const topic = (id, title = id) => ({ id, title, workspace_id: 'w1' });
@@ -25,13 +26,18 @@ test('topic pages reject foreign identity, repeated cursor and malformed rows wi
 });
 function fixture() {
   const editors = ['inline', 'reply', 'note'].map((key, i) => ({ key, localVersion: i + 1, ackVersion: 0,
-    context: { kind: i === 2 ? 'note' : 'reply' }, get dirty() { return this.localVersion > this.ackVersion; } }));
+    submissions: [], context: { kind: i === 2 ? 'note' : 'reply' }, get dirty() { return this.localVersion > this.ackVersion; } }));
   const inline = { editors: { reply: editors[0] } }, current = { editors: { reply: editors[1], note: editors[2] } };
-  const sessions = new Map(editors.map(e => [e.key, { editor: e }])), saved = [], kept = [], visits = [];
+  const sessions = new Map(editors.map(e => [e.key, { editor: e, sends: new Map() }])), saved = [], kept = [], visits = [], keptEditors = [];
   const registry = { inline, current, sessions, disposed: false, hasUnprotectedWriting: false,
     flush: async e => { saved.push(e.key); e.ackVersion = e.localVersion; return { recorded: true, status: 'committed' }; },
     keepLocal: async p => { kept.push(p); } };
-  return { registry, editors, saved, kept, visits, navigation: new TopicNavigation({ registry, topicId: 'a', navigate: id => visits.push(id) }) };
+  registry.keepEditorsLocal = async editors => {
+    keptEditors.push(...editors);
+    for (const p of [inline,current]) if (Object.values(p.editors).some(e=>editors.includes(e))) await registry.keepLocal(p);
+  };
+  for (const name of ['hasInFlightSend','unconfirmedSends']) Object.defineProperty(registry,name,{get(){return Object.getOwnPropertyDescriptor(EditorRegistry.prototype,name)?.get.call(this);}});
+  return { registry, editors, saved, kept, keptEditors, visits, navigation: new TopicNavigation({ registry, topicId: 'a', navigate: id => visits.push(id) }) };
 }
 test('topic navigation waits for inline and Reader saves before leaving inside the debounce window', async () => {
   const f = fixture(), gate = deferred(), save = f.registry.flush;
@@ -52,7 +58,9 @@ for (const failure of ['rejected', 'unknown', 'transport', 'unavailable']) test(
   assert.deepEqual(f.visits, []); assert.ok(f.kept.includes(f.registry.inline)); assert.equal(f.editors[0].localVersion, 1);
 });
 test('topic navigation rejects new typing, replaced owners and unrelated unprotected work while saving', async () => {
-  for (const change of [f => f.editors[0].localVersion++, f => f.registry.sessions.delete('inline'), f => { f.registry.hasUnprotectedWriting = true; }]) {
+  for (const change of [f => f.editors[0].localVersion++, f => f.registry.sessions.delete('inline'),
+    f => f.registry.sessions.set('inline', { editor: f.editors[0], sends: new Map() }),
+    f => { f.registry.hasUnprotectedWriting = true; }]) {
     const f = fixture(), gate = deferred(), save = f.registry.flush;
     f.registry.flush = async e => { const receipt = await save(e); if (e === f.editors[0]) await gate.promise; return receipt; };
     const pending = f.navigation.open('b'); await Promise.resolve(); change(f); gate.resolve();
@@ -115,4 +123,68 @@ test('a saved version still needs a committed receipt, while an already reconcil
 test('failed local preservation stays even after canonical acknowledgement', async () => {
   const f = fixture(); f.registry.keepLocal = async () => { throw Error('Storage unavailable'); };
   await assert.rejects(f.navigation.open('b'), /Keep this page open/); assert.deepEqual(f.visits, []);
+});
+
+const pendingItem = (id='pending') => ({ id, status:'preparing', prepareOperationId:id+'-prepare', sendOperationId:id+'-send', detached:false });
+test('active sends and a send started during preservation block departure', async () => {
+  for (const late of [false,true]) {
+    const f=fixture(), session=f.registry.sessions.get('inline');
+    const start=()=>session.sends.set('active',Promise.resolve());
+    if(late) f.registry.keepLocal=async()=>start(); else start();
+    await assert.rejects(f.navigation.open('b','Design'),/send/i);assert.deepEqual(f.visits,[]);
+  }
+});
+test('closed registered editors are flushed and preserved too', async () => {
+  const f=fixture();f.registry.current=null;
+  assert.equal(await f.navigation.open('b'),true);
+  assert.deepEqual(f.saved.sort(),['inline','note','reply']);
+  assert.ok(f.keptEditors.includes(f.editors[1]) && f.keptEditors.includes(f.editors[2]));
+});
+test('new registered session during preservation invalidates departure', async () => {
+  const f=fixture();f.registry.keepLocal=async()=>f.registry.sessions.set('new',{editor:{key:'new',submissions:[],localVersion:0},sends:new Map()});
+  await assert.rejects(f.navigation.open('b'));assert.deepEqual(f.visits,[]);
+});
+test('settled unconfirmed send requires a named informed second choice and no replay', async () => {
+  const f=fixture();f.editors[0].submissions.push(pendingItem());
+  await assert.rejects(f.navigation.open('b','Design'),/unconfirmed.*device.*Design/is);assert.deepEqual(f.visits,[]);
+  assert.ok(f.keptEditors.includes(f.editors[0]));
+  assert.equal(await f.navigation.open('b','Design'),true);assert.deepEqual(f.visits,['b']);
+});
+test('informed departure choice invalidates on destination, writing, owner, session, item or operation changes', async () => {
+  for (const change of [
+    f=>{f.destination='c';},f=>f.editors[0].localVersion++,
+    f=>f.registry.sessions.set('inline',{editor:f.editors[0],sends:new Map()}),
+    f=>f.registry.sessions.set('new',{editor:{key:'new',submissions:[],localVersion:0},sends:new Map()}),
+    f=>f.editors[0].submissions.push(pendingItem('new')),
+    f=>f.editors[0].submissions.push({...pendingItem('new-confirmed'),status:'confirmed'}),
+    f=>{f.editors[0].submissions[0].status='prepared';},
+    f=>{f.editors[0].submissions[0].sendOperationId='changed';},
+    f=>{f.editors[0].submissions[0].prepareOperationId='changed';},
+    async f=>{await f.navigation.open('a');},
+  ]) {
+    const f=fixture();f.editors[0].submissions.push(pendingItem());
+    await assert.rejects(f.navigation.open('b','Design'),/unconfirmed/i);await change(f);
+    await assert.rejects(f.navigation.open(f.destination??'b','Design'),/unconfirmed/i);assert.deepEqual(f.visits,[]);
+  }
+});
+test('confirmed refused and detached history permit departure; resolution releases a prior choice', async () => {
+  for(const item of [{...pendingItem(),status:'confirmed'},{...pendingItem(),status:'refused'},{...pendingItem(),detached:true}]) {
+    const f=fixture();f.editors[0].submissions.push(item);assert.equal(await f.navigation.open('b'),true);
+  }
+  const f=fixture(),item=pendingItem();f.editors[0].submissions.push(item);
+  await assert.rejects(f.navigation.open('b'),/unconfirmed/i);item.status='confirmed';assert.equal(await f.navigation.open('b'),true);
+});
+test('settled-send consent never bypasses a required unavailable draft save', async () => {
+  const f=fixture();f.editors[0].submissions.push(pendingItem());
+  await assert.rejects(f.navigation.open('b'),/unconfirmed/i);
+  f.editors[0].localVersion++;f.editors[0].unavailable=true;f.registry.flush=async()=>null;
+  await assert.rejects(f.navigation.open('b'),/saved/i);assert.deepEqual(f.visits,[]);
+});
+test('departure choice is not armed before the warning can be shown', async () => {
+  const f=fixture(),gate=deferred();let calls=0;f.editors[0].submissions.push(pendingItem());
+  f.registry.keepEditorsLocal=async()=>{if(++calls===2)await gate.promise;};
+  const first=f.navigation.open('b');
+  for(let n=0;n<20&&calls<2;n++)await Promise.resolve();assert.equal(calls,2);
+  const second=f.navigation.open('b');await assert.rejects(second,/unconfirmed/i);
+  gate.resolve();await first;assert.deepEqual(f.visits,[]);
 });

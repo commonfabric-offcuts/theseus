@@ -30,20 +30,35 @@ export class TopicPages {
 
 export class TopicNavigation {
   constructor({ registry, topicId, navigate }) { Object.assign(this, { registry, topicId, navigate }); this.serial = 0; }
-  async open(topicId) {
+  async open(topicId, title = topicId) {
     const request = ++this.serial;
+    const previousChoice = this.departureChoice; this.departureChoice = null;
     if (topicId === this.topicId) return false;
     const registry = this.registry;
     const inline = registry.inline, current = registry.current;
-    const presentations = [...new Set([inline, current].filter(Boolean))];
-    const editors = [...new Set(presentations.flatMap(p => Object.values(p.editors)))];
-    const snapshots = editors.map(editor => ({ editor, version: editor.localVersion, owner: registry.sessions.get(editor.key), needsSave: editor.dirty }));
+    const snapshots = [...registry.sessions.values()].map(owner => ({ owner, editor: owner.editor, version: owner.editor.localVersion,
+      sendIds: JSON.stringify(owner.editor.submissions.map(item => item.id)), needsSave: owner.editor.dirty }));
+    const editors = snapshots.map(s => s.editor);
     const same = () => !registry.disposed && registry.inline === inline && registry.current === current &&
-      snapshots.every(s => registry.sessions.get(s.editor.key) === s.owner && s.owner?.editor === s.editor && s.editor.localVersion === s.version);
+      registry.sessions.size === snapshots.length &&
+      snapshots.every(s => registry.sessions.get(s.editor.key) === s.owner && s.owner?.editor === s.editor && s.editor.localVersion === s.version &&
+        JSON.stringify(s.editor.submissions.map(item => item.id)) === s.sendIds);
+    const sendGuard = () => {
+      if (registry.hasInFlightSend) throw Error('Wait for the send to finish before changing topics. Open the pending reply’s Review button to Check confirmation.');
+    };
+    const pendingSnapshot = () => registry.unconfirmedSends.map(({ session, editor, item }) => ({
+      session, editor, item, identity: JSON.stringify([item.id, item.status, item.prepareOperationId, item.sendOperationId, item.authority]),
+    }));
+    const samePending = (a, b) => a.length === b.length && a.every((entry, index) => {
+      const other = b[index];
+      return entry.session === other.session && entry.editor === other.editor && entry.item === other.item && entry.identity === other.identity;
+    });
     const imagesAttached = () => editors.every(editor => currentImages(editor).every(image =>
       image.ready_descriptor && image.association?.cycle_id === editor.clientCycleId &&
       editor.draft.attachments.some(ref => ref.id === image.association.media_id)));
+    let nextChoice = null;
     try {
+      sendGuard();
       if (!imagesAttached()) throw Error('Stayed here: finish, retry, or remove the selected image before changing topics.');
       const results = await Promise.allSettled(snapshots.map(s => s.needsSave ? registry.flush(s.editor) : null));
       if (request !== this.serial) return false;
@@ -55,15 +70,24 @@ export class TopicNavigation {
           throw Error('Your writing is not confirmed saved to Theseus. Stayed here; check the saved-writing status and retry the topic when it is saved.');
         }
       }
-      await Promise.all(presentations.map(p => registry.keepLocal(p)));
+      await registry.keepEditorsLocal(editors);
       if (request !== this.serial) return false;
+      sendGuard();
       if (!same() || !imagesAttached() || registry.hasUnprotectedWriting) throw Error('Keep this page open until your writing and selected images are safely saved, then choose the topic again.');
+      const pending = pendingSnapshot();
+      if (pending.length && !(previousChoice?.topicId === topicId && previousChoice.same() && samePending(previousChoice.pending, pending))) {
+        nextChoice = { topicId, same, pending };
+        throw Error(`A send is unconfirmed; its pending copy is kept on this device. Choose “${title}” again to leave without resolving it. Use the pending reply’s Review button to Check confirmation; after returning, use Review versions for a local copy.`);
+      }
       this.navigate(topicId); return true;
     } catch (error) {
       // Preserve through the same registry even after a refused or offline save.
-      const kept = await Promise.allSettled(presentations.map(p => registry.keepLocal(p)));
+      const kept = await Promise.allSettled([registry.keepEditorsLocal(editors)]);
       if (request !== this.serial) return false;
-      if (kept.some(r => r.status === 'rejected')) throw Error('Keep this page open: some writing or image bytes could not be saved on this device.');
+      if (kept.some(r => r.status === 'rejected')) { this.departureChoice = null; throw Error('Keep this page open: some writing or image bytes could not be saved on this device.'); }
+      // Arm only as the rejection reaches the app's visible notice. A second
+      // click while preservation is pending has not seen an informed choice.
+      this.departureChoice = nextChoice;
       throw error;
     }
   }

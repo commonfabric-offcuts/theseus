@@ -710,7 +710,7 @@ async function initialize() {
     },
     open: async id => {
       const notice = $('topic-navigation-status'); notice.hidden = true;
-      const pending = topicNavigation.open(id), serial = topicNavigation.serial;
+      const pending = topicNavigation.open(id, topicRail.pages.items.find(item => item.id === id)?.title ?? id), serial = topicNavigation.serial;
       try { await pending; }
       catch (error) {
         if (serial !== topicNavigation.serial) return;
