@@ -44,18 +44,26 @@ def _connect(path):
     # Explicit rw prevents a typo from silently creating a second authority.
     db = sqlite3.connect(Path(path).absolute().as_uri() + "?mode=rw", uri=True,
                          isolation_level=None, timeout=0.25)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA synchronous=EXTRA")
-    db.execute("PRAGMA fullfsync=ON")
-    db.execute("PRAGMA foreign_keys=ON")
-    db.execute("PRAGMA busy_timeout=250")
-    actual = {key: db.execute("PRAGMA " + key).fetchone()[0] for key in (
-        "journal_mode", "synchronous", "fullfsync", "foreign_keys", "busy_timeout")}
-    if actual != {"journal_mode": "delete", "synchronous": 3, "fullfsync": 1,
-                  "foreign_keys": 1, "busy_timeout": 250}:
-        db.close()
-        raise StoreError("The selected durability settings are not active")
-    return db, actual
+    try:
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA synchronous=EXTRA")
+        db.execute("PRAGMA fullfsync=ON")
+        db.execute("PRAGMA foreign_keys=ON")
+        db.execute("PRAGMA busy_timeout=250")
+        actual = {key: db.execute("PRAGMA " + key).fetchone()[0] for key in (
+            "journal_mode", "synchronous", "fullfsync", "foreign_keys", "busy_timeout")}
+        if actual != {"journal_mode": "delete", "synchronous": 3, "fullfsync": 1,
+                      "foreign_keys": 1, "busy_timeout": 250}:
+            raise StoreError("The selected durability settings are not active")
+        return db, actual
+    except BaseException as error:
+        # The caller never received this handle. Close it even on interruption;
+        # a failed close explicitly preserves both failures, not a closed claim.
+        try:
+            db.close()
+        except BaseException as cleanup_error:
+            raise cleanup_error from error
+        raise
 
 
 def initialize(db_path, instance_id, initial_actors, *, authority_path):
