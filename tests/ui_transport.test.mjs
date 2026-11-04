@@ -25,6 +25,36 @@ test('HTTP refusal and lost transport do not manufacture an operation outcome', 
   await assert.rejects(lost.command({ operation_id: 'same-send' }), error => error instanceof AttemptError && error.recorded === false);
 });
 
+test('media keeps JSON-looking file bytes and binds the verified descriptor to source and instance', async () => {
+  const bytes = new TextEncoder().encode('{"error":"this is a file"}');
+  const sha256 = Buffer.from(await crypto.subtle.digest('SHA-256', bytes)).toString('hex');
+  const attachment = { id: 'media-1', name: 'readme.json', content_type: 'application/json', size_bytes: bytes.length, sha256, inline: false };
+  const descriptor = { ...attachment, media_id: attachment.id, instance_id: 'new1' }; delete descriptor.id;
+  let request;
+  const api = new Api('token', async (url, options) => {
+    request = { url, options };
+    return new Response(bytes, { status: 200, headers: { 'X-AIM-Media': JSON.stringify(descriptor) } });
+  });
+  assert.equal(typeof api.media, 'function');
+  const media = await api.media('new1', attachment, { kind: 'message', id: 'm1' });
+  assert.equal(await media.blob.text(), '{"error":"this is a file"}');
+  assert.deepEqual(JSON.parse(request.options.body), { media_id: 'media-1', source_ref: { kind: 'message', id: 'm1' } });
+  descriptor.instance_id = 'other';
+  await assert.rejects(api.media('new1', attachment, { kind: 'message', id: 'm1' }), /identity|descriptor|match/i);
+});
+
+test('media cannot trust an inline flag for active content or mismatched bytes', async () => {
+  const bytes = new TextEncoder().encode('<svg onload="oops"/>');
+  const sha256 = Buffer.from(await crypto.subtle.digest('SHA-256', bytes)).toString('hex');
+  const attachment = { id: 'media-2', name: 'image.svg', content_type: 'image/svg+xml', size_bytes: bytes.length, sha256, inline: true };
+  const descriptor = { ...attachment, media_id: attachment.id, instance_id: 'new1' }; delete descriptor.id;
+  const api = new Api('token', async () => new Response(bytes, { headers: { 'X-AIM-Media': JSON.stringify(descriptor) } }));
+  assert.equal(typeof api.media, 'function');
+  assert.equal((await api.media('new1', attachment)).inline, false);
+  descriptor.sha256 = attachment.sha256 = '0'.repeat(64);
+  await assert.rejects(api.media('new1', attachment), /bytes|digest|match/i);
+});
+
 const memory = () => {
   const rows = new Map();
   return {

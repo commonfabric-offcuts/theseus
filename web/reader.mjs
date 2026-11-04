@@ -21,6 +21,7 @@ export class Reader {
     this.pointer = null;
     this.source = null;
     this.sessions = null;
+    this.viewToken = 0;
     this.narrow = window.matchMedia('(max-width: 760px)');
     this.narrow.addEventListener('change', () => { if (this.dialog.open) this.applyLayout(); });
     this.bind();
@@ -60,7 +61,9 @@ export class Reader {
     this.dialog.addEventListener('keydown', event => this.key(event));
   }
 
-  show(source, sessions, { opener, topics = [], canPrevious = false, canNext = false } = {}) {
+  show(source, sessions, { opener, topics = [], canPrevious = false, canNext = false, presentation, mode = 'reply' } = {}) {
+    ++this.viewToken;
+    this.presentation = presentation;
     if (this.source) this.rememberPlace();
     this.source = source;
     this.sessions = sessions;
@@ -70,7 +73,9 @@ export class Reader {
       try { storage = window.localStorage; } catch { /* no persisted preference */ }
       this.layout = new ReaderLayout(this.layoutInstance, storage);
     }
-    this.mode = 'reply';
+    this.mode = mode;
+    this.notice('');
+    this.$('source-update').hidden = true;
     this.opener = opener ?? this.opener ?? document.activeElement;
     this.disarm();
     this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
@@ -223,6 +228,8 @@ export class Reader {
     if (!this.sessions) return;
     if (this.editor) { this.editor.draft.caret = this.caret(); this.callbacks.edit(this.editor); }
     this.mode = next;
+    ++this.viewToken;
+    this.callbacks.mode?.(next);
     this.disarm();
     this.drawEditor();
     this.field.focus();
@@ -283,15 +290,20 @@ export class Reader {
   paintStatus() {
     if (!this.editor) return;
     const editor = this.editor;
-    this.$('save-state').textContent = editor.journalError ? 'Recovery copy unavailable — keep this page open'
+    this.$('save-state').textContent = this.callbacks.status ? this.callbacks.status(editor) : editor.journalError ? 'Recovery copy unavailable — keep this page open'
       : editor.conflict ? 'Not saved — another version needs review'
       : editor.dirty ? 'Not yet saved to AIM' : 'Saved to AIM';
-    const preparing = this.sessions.reply.submissions.some(item => item.status === 'preparing');
-    this.$('send-reply').disabled = this.mode === 'reply' && (preparing || !editor.context.topicId || (!editor.draft.body.trim() && !editor.draft.attachments.length));
+    const preparing = this.sessions.reply.submissions.some(item => item.status === 'preparing' && !item.detached);
+    this.$('send-reply').disabled = Boolean(editor.adopting || editor.unavailable || editor.authorityRecovery || editor.conflict ||
+      (this.mode === 'reply' && (preparing || !editor.context.topicId || (!editor.draft.body.trim() && !editor.draft.attachments.length))));
+    const pinned = editor.sourceRef?.kind === 'memory' && editor.sourceRef.revision !== this.source.source_ref.revision;
+    this.$('source-update').textContent = pinned ? `This writing refers to Notebook revision ${editor.sourceRef.revision}. You are reading revision ${this.source.source_ref.revision}.` : '';
+    this.$('source-update').hidden = !pinned;
   }
 
   paintPending() {
     const host = this.$('pending-submissions');
+    if (this.callbacks.renderPending) { this.callbacks.renderPending(host, this.sessions.reply); this.paintStatus(); return; }
     host.replaceChildren();
     const names = { preparing: 'Preparing — writing kept here', prepared: 'Confirmation unknown', confirmed: 'Sent to AIM', refused: 'Not sent — writing kept' };
     for (const item of this.sessions.reply.submissions) {
@@ -320,16 +332,33 @@ export class Reader {
   async send(stay) {
     this.disarm();
     const editor = this.sessions.reply;
-    if (editor.submissions.some(item => item.status === 'preparing')) {
+    if (editor.submissions.some(item => item.status === 'preparing' && !item.detached)) {
       this.notice('The earlier reply is still being prepared. Your next reply is kept separately.'); return;
     }
-    await this.callbacks.send(editor, { stay });
+    if (editor.authorityRecovery || editor.conflict || (!editor.draft.body.trim() && !editor.draft.attachments.length)) {
+      this.notice(editor.authorityRecovery || editor.conflict ? 'Review the saved versions before sending.' : 'Write a reply before sending.'); return;
+    }
+    const draft = editor.draft;
+    try {
+      // The controller freezes A synchronously. Reflect that deliberate act
+      // before awaiting its journal or network; later receipts only paint status.
+      const sending = this.callbacks.send(editor, { stay });
+      if (this.editor === editor && editor.draft !== draft) { this.drawEditor(); this.field.focus(); }
+      await sending;
+    } catch (error) { this.callbacks.error?.(error); }
   }
 
   async close(reason = 'close') {
+    const token = this.viewToken;
     this.rememberPlace();
     if (this.editor) this.editor.draft.caret = this.caret();
     if (await this.callbacks.close(this.sessions, reason) === false) return;
+    if (this.viewToken !== token || !this.dialog.open) return;
+    this.finishClose();
+  }
+
+  finishClose() {
+    ++this.viewToken;
     this.dialog.close();
     this.disarm();
     if (this.opener?.isConnected) this.opener.focus({ preventScroll: true });
