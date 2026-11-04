@@ -6,6 +6,7 @@ import socket
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from aim_next import initialize
 from aim_next.profile import write_profile, ProfileError
@@ -15,14 +16,15 @@ from aim_next.serve import server_for_profile
 class InstanceLauncherTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.db = self.root / "records.sqlite3"
         self.profile_path = self.root / "profile.json"
         self.web = self.root / "web"
         self.web.mkdir()
         (self.web / "index.html").write_text('<meta name="aim-next-session" content="__AIM_SESSION_TOKEN__">')
-        initialize(self.db, "launcher-test", [{"id": "test-human", "kind": "human"}])
-        write_profile(self.profile_path, self.db, "launcher-test", "test-human")
+        self.binding = initialize(self.db, "launcher-test", [{"id": "test-human", "kind": "human"}],
+                                  authority_path=self.root / "authority.json")["binding"]
+        write_profile(self.profile_path, self.db, "launcher-test", "test-human", binding=self.binding)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -34,6 +36,7 @@ class InstanceLauncherTests(unittest.TestCase):
             self.assertEqual(server.actor, "test-human")
             self.assertEqual(server.instance_id, "launcher-test")
             capabilities = server.store_factory().view(server.actor, "capabilities", {})
+            self.assertEqual(server.store_factory().binding, self.binding)
             self.assertEqual(server.max_json_bytes, capabilities["limits"]["http_envelope_bytes"])
         finally:
             server.server_close()
@@ -44,6 +47,15 @@ class InstanceLauncherTests(unittest.TestCase):
         self.profile_path.write_text(json.dumps(profile))
         with self.assertRaises(ProfileError):
             server_for_profile(self.profile_path, 0, self.web)
+
+    def test_stale_authority_profile_refuses_before_creating_a_listener(self):
+        profile = json.loads(self.profile_path.read_text())
+        profile["authority_epoch"] = "stale-epoch"
+        self.profile_path.write_text(json.dumps(profile))
+        with patch("aim_next.serve.create_server") as create:
+            with self.assertRaises(ProfileError):
+                server_for_profile(self.profile_path, 0, self.web)
+            create.assert_not_called()
 
     def test_occupied_port_stays_owned_by_existing_listener(self):
         with socket.socket() as listener:

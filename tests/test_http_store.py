@@ -14,12 +14,13 @@ from aim_next.server import create_server
 class SharedStoreHTTPTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.db = self.root / "records.sqlite3"
-        initialize(self.db, "isolated-test", [{"id": "test-human", "kind": "human"},
-                                             {"id": "test-agent", "kind": "agent"}])
-        self.store = Store(self.db, "isolated-test")
-        self.server = create_server(lambda: Store(self.db, "isolated-test"),
+        self.binding = initialize(self.db, "isolated-test", [{"id": "test-human", "kind": "human"},
+                                             {"id": "test-agent", "kind": "agent"}],
+                                  authority_path=self.root / "authority.json")["binding"]
+        self.store = Store(self.db, "isolated-test", expected_binding=self.binding)
+        self.server = create_server(lambda: Store(self.db, "isolated-test", expected_binding=self.binding),
                                     "isolated-test", "test-human", self.root,
                                     token="integration-session")
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
@@ -78,7 +79,7 @@ class SharedStoreHTTPTests(unittest.TestCase):
         result = self.request("/api/command", command)
         self.assertEqual(result["status"], "committed")
         self.server.shutdown()
-        found = Store(self.db, "isolated-test").view("test-human", "workspace", {"workspace_id": "w-test"})
+        found = Store(self.db, "isolated-test", expected_binding=self.binding).view("test-human", "workspace", {"workspace_id": "w-test"})
         self.assertEqual(found["workspace"]["owner_id"], "test-human")
         self.assertEqual(found["workspace"]["title"], "Isolated test")
 
@@ -143,7 +144,7 @@ class SharedStoreHTTPTests(unittest.TestCase):
         finally:
             connection.close()
             release_ack.set()
-            self.server.store_factory = lambda: Store(self.db, "isolated-test")
+            self.server.store_factory = lambda: Store(self.db, "isolated-test", expected_binding=self.binding)
         original = self.request("/api/view", {"name": "operation", "args": {"operation_id": "send-A"}})
         self.assertEqual(original["status"], "committed")
         self.assertEqual(self.committed(send), original)
