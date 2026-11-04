@@ -44,18 +44,26 @@ def _connect(path):
     # Explicit rw prevents a typo from silently creating a second authority.
     db = sqlite3.connect(Path(path).absolute().as_uri() + "?mode=rw", uri=True,
                          isolation_level=None, timeout=0.25)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA synchronous=EXTRA")
-    db.execute("PRAGMA fullfsync=ON")
-    db.execute("PRAGMA foreign_keys=ON")
-    db.execute("PRAGMA busy_timeout=250")
-    actual = {key: db.execute("PRAGMA " + key).fetchone()[0] for key in (
-        "journal_mode", "synchronous", "fullfsync", "foreign_keys", "busy_timeout")}
-    if actual != {"journal_mode": "delete", "synchronous": 3, "fullfsync": 1,
-                  "foreign_keys": 1, "busy_timeout": 250}:
-        db.close()
-        raise StoreError("The selected durability settings are not active")
-    return db, actual
+    try:
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA synchronous=EXTRA")
+        db.execute("PRAGMA fullfsync=ON")
+        db.execute("PRAGMA foreign_keys=ON")
+        db.execute("PRAGMA busy_timeout=250")
+        actual = {key: db.execute("PRAGMA " + key).fetchone()[0] for key in (
+            "journal_mode", "synchronous", "fullfsync", "foreign_keys", "busy_timeout")}
+        if actual != {"journal_mode": "delete", "synchronous": 3, "fullfsync": 1,
+                      "foreign_keys": 1, "busy_timeout": 250}:
+            raise StoreError("The selected durability settings are not active")
+        return db, actual
+    except BaseException as error:
+        # The caller never received this handle. Close it even on interruption;
+        # a failed close explicitly preserves both failures, not a closed claim.
+        try:
+            db.close()
+        except BaseException as cleanup_error:
+            raise cleanup_error from error
+        raise
 
 
 def initialize(db_path, instance_id, initial_actors, *, authority_path):
@@ -101,22 +109,46 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
     return {"instance_id": instance_id, "db_path": str(path), "binding": binding}
 
 
+class StoreOpenError(StoreError):
+    """A pre-dispatch opening failed, without dispatching any command."""
+
+    def __init__(self, code, message, retryable=False):
+        self.code, self.retryable = code, retryable
+        super().__init__(message)
+
+
 class Store(Drafts, Delivery, Conversation, Runner, Memory, Media):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
         self._authority = Authority(self.path, self.instance_id, expected_binding)
+        opening_error = None
         try:
             with self._authority.shared() as fence:
-                db, _ = _connect(self.path)
                 try:
-                    db.execute("BEGIN")
-                    fence.verify()
-                    self._check_instance(db)
-                finally:
-                    db.close()
-        except (sqlite3.Error, Refusal) as exc:
+                    db, _ = _connect(self.path)
+                    try:
+                        db.execute("BEGIN")
+                        fence.verify()
+                        self._check_instance(db)
+                    finally:
+                        try:
+                            db.close()
+                        except (sqlite3.Error, OSError) as error:
+                            raise StoreOpenError("STORE_OPEN_UNCONFIRMED", "Opening connection cleanup could not be confirmed") from error
+                except (sqlite3.Error, OSError) as error:
+                    # Decide retryability only after the fence also closes.
+                    opening_error = error
+        except (sqlite3.Error, OSError) as error:
+            raise StoreOpenError("STORE_OPEN_UNCONFIRMED", "Opening authority cleanup could not be confirmed") from error
+        except Refusal as exc:
             raise StoreError("Cannot open the selected AIM Next instance") from exc
+        if opening_error is not None:
+            # _connect chains failed setup cleanup from the original error.
+            if (isinstance(opening_error, sqlite3.OperationalError) and opening_error.__cause__ is None
+                    and ("locked" in str(opening_error).lower() or "busy" in str(opening_error).lower())):
+                raise StoreOpenError("DATABASE_BUSY", "The selected instance is busy", retryable=True) from opening_error
+            raise StoreOpenError("STORE_OPEN_UNCONFIRMED", "The selected instance could not be opened") from opening_error
 
     @property
     def binding(self):

@@ -233,6 +233,36 @@ class Runner:
             return {"status": "recorded"}, True
         return self._effect(guard, action)
 
+    def runner_schedule(self):
+        """Bounded scheduling facts, not evidence of runner ownership."""
+        from .store import _connect
+        try:
+            with self._authority.shared() as fence:
+                db, _ = _connect(self.path)
+                try:
+                    db.execute("BEGIN")
+                    fence.verify()
+                    self._check_instance(db)
+                    state = self._runner_state(db)
+                    result = {"instance_id": self.instance_id, "state": state["state"],
+                              "version": state["version"], "lease_until_ms": state["lease_until_ms"],
+                              "next_due_ms": self._next_due(db)}
+                    if state["reason_code"] is not None:
+                        result["reason_code"] = state["reason_code"]
+                    return result
+                finally:
+                    try:
+                        db.close()
+                    except (sqlite3.Error, OSError) as error:
+                        raise RunnerError("RUNNER_STORAGE_ERROR", "Scheduling connection cleanup could not be confirmed") from error
+        except (sqlite3.Error, OSError) as error:
+            # _connect chains a failed close from the setup error. Such a
+            # failure is uncertain even if the close itself says 'busy'.
+            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
+                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+                raise RunnerError("DATABASE_BUSY", "Runner schedule is busy; retry the read", retryable=True) from error
+            raise RunnerError("RUNNER_STORAGE_ERROR", "Runner schedule could not be confirmed") from error
+
     def runner_status(self):
         from .store import _connect
         with self._authority.shared() as fence:
