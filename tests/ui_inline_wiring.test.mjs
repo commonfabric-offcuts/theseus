@@ -1,0 +1,169 @@
+// Exercises actual app/inline-adapter functions below the native browser. Only
+// imports and auto-start are replaced; no product function body is copied.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import * as writing from '../web/writing-helpers.mjs';
+import { readFailure, checkedView, bindingOf } from '../web/freshness.mjs';
+const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
+function fixture() {
+  const elements = new Map(), events = [], calls = [], paints = [];
+  class Element {
+    constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
+    addEventListener(name, fn) { this.handlers[name] = fn; }
+    append(...items) { for (const item of items) { item.parent = this; this.children.push(item); } }
+    replaceChildren(...items) { this.children = []; this.append(...items); }
+    get firstElementChild() { return this.children[0]; }
+    querySelector(selector) { return get(selector.slice(1)); }
+    querySelectorAll() { return [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
+    setAttribute(name, value) { this[name] = value; }
+    setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
+    focus() { document.activeElement = this; }
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
+  }
+  const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
+  const document = { body: get('body'), activeElement: null, visibilityState: 'visible', getElementById: get,
+    createElement: () => new Element(), querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)), addEventListener() {} };
+  const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', authority: { id: 'a', epoch: 'e' } };
+  const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
+  const api = { bootstrap: async () => bootstrap, view: async (name, args) => {
+    calls.push({ name, args });
+    if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
+    if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
+    return { instance_id: 'fixture', items: [], next_cursor: null };
+  } };
+  const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
+  const p = { surface: 'inline', initialized: true, topic, mode: 'reply', editors: { reply: editor } };
+  const uploads = { current: () => [], running: new Map(), status: () => 'Ready' };
+  const registry = { inline: p, current: null, sessions: new Map([[editor.key, { editor }]]), disposed: false,
+    get interactive() { return this.current ?? this.inline; },
+    isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
+    cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); },
+    validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
+    pending() { return { items: [], next_cursor: null }; },
+    sessionFor() { return { uploads }; }, status() { return 'Saved'; },
+    cleanup: { foregroundListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; } },
+    runtime: { current: bootstrap.authority },
+  };
+  const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
+  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [] };
+  const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
+  const scope = { ...writing, readFailure, checkedView, bindingOf, document, URL, structuredClone, console,
+    window: { addEventListener() {} }, location: { href: 'https://fixture/?topic=t1' },
+    Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
+    EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
+    Reader: class { constructor() { return reader; } },
+    TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
+    initialViews: async () => ({}), readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '' };
+  const context = vm.createContext(scope);
+  const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
+  vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
+  let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
+  assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, openSource, retrySource, checkInlineAvailability, changed,
+    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
+    inline(callbacks) { return new InlineComposer(callbacks); },
+    get() { return {registry,inline,freshness}; } };`, context);
+  const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
+    needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
+  // Initialize the real adapter; empty upload list is a deliberate fixture.
+  inline.show(p);
+  context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh });
+  const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
+  return { ...context.wiring, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap };
+}
+
+test('inline startup failure disables ownerless input but paints lists, enables freshness and keeps one registry on Refresh', async () => {
+  const f = fixture(); f.registry.inline = null;
+  f.registry.initializeInline = async () => { throw Object.assign(Error('Read deadline expired'), { code: 'READ_TIMEOUT' }); };
+  await f.initialize();
+  assert.deepEqual(f.paints, ['messages','memory']); assert.equal(f.get('body').dataset.ready, 'true');
+  assert.ok(f.events.some(e => e[0] === 'freshness-enabled'));
+  assert.equal(f.get('inline-composer').hidden, false); assert.equal(f.get('inline-writing-body').disabled, true);
+  assert.match(f.get('inline-notice').textContent, /Read deadline/); assert.equal(f.registry.inline, null);
+  assert.equal(f.get('inline-send').disabled, true); assert.equal(f.get('inline-retry').hidden, false);
+  await f.get('refresh').onclick();
+  assert.equal(f.events.filter(e => e[0] === 'registry').length, 1); assert.equal(f.events.filter(e => e[0] === 'journal').length, 1);
+  assert.equal(f.calls.some(c => c.kind), false);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.get('inline-retry').onclick();
+  assert.equal(f.get('inline-writing-body').disabled, false); assert.equal(f.get('inline-writing-body').value, 'kept');
+  assert.equal(f.get('inline-retry').hidden, true);
+  assert.equal(f.events.filter(e => e[0] === 'registry').length, 1); assert.equal(f.events.filter(e => e[0] === 'journal').length, 1);
+});
+
+test('failed inline-origin open is global; failed Reader step remains in its Reader notice', async () => {
+  const f = fixture(); f.registry.open = async () => { throw Error('Source could not open'); };
+  await f.openSource({ kind: 'message', id: 'm1' });
+  assert.equal(f.get('app-status').textContent, 'Source could not open');
+  assert.equal(f.get('app-status').hidden, false);
+  f.registry.current = { source: {}, editors: {}, mode: 'reply' };
+  await f.openSource({ kind: 'message', id: 'm2' });
+  assert.ok(f.events.some(e => e[0] === 'reader-notice' && e[1] === 'Source could not open'));
+  assert.equal(f.get('app-status').hidden, true);
+});
+
+test('Reader Retry updates source access without touching inline flags/save, also when closed mid-read', async () => {
+  for (const close of [false, true]) {
+    const f = fixture(), read = defer();
+    const source = { source_ref: { kind: 'message', id: 'm1' }, body: 'Original source' };
+    const modal = { source, sourceUnavailable: false, availabilityUnconfirmed: true, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+    f.registry.current = modal;
+    f.api.view = async (name, args) => { f.calls.push({ name, args }); if (name === 'source') { await read.promise; return { ...source, instance_id: 'fixture' }; } return f.state(args.source_ref); };
+    const running = f.retrySource();
+    if (close) f.registry.current = null;
+    read.resolve(); await running;
+    assert.equal(f.p.availabilityUnconfirmed, undefined); assert.equal(f.p.availabilityChecking, undefined);
+    assert.equal(f.events.some(e => e[0] === 'cancel' && e[1] === 'inline'), false);
+    assert.equal(f.calls.some(c => c.args?.source_ref?.kind === 'topic'), false);
+    if (!close) { assert.equal(modal.availabilityUnconfirmed, false); assert.equal(modal.editors.reply.unavailable, false); }
+  }
+});
+
+test('confirmed inline access resumes dirty save only after confirmation; no send or recovery replay', async () => {
+  for (const recovery of [false, true]) {
+    const f = fixture(), gate = defer(); f.editor.authorityRecovery = recovery;
+    const read = async name => { await gate.promise; return name === 'topic' ? { topic: f.topic } : f.state(); };
+    const running = f.checkInlineAvailability(read, () => true);
+    assert.equal(f.editor.unavailable, true); assert.equal(f.events.some(e => e[0] === 'schedule'), false);
+    gate.resolve(); await running;
+    assert.equal(f.editor.unavailable, false); assert.equal(f.p.availabilityUnconfirmed, false);
+    assert.equal(f.events.filter(e => e[0] === 'schedule').length, recovery ? 0 : 1);
+    assert.equal(f.calls.some(c => c.kind), false);
+  }
+});
+
+test('interrupted inline availability keeps access unconfirmed, releases checking and queues one fenced recheck', async () => {
+  const f = fixture(), gate = defer(); let epoch = true;
+  const running = f.checkInlineAvailability(async name => { await gate.promise; return name === 'topic' ? { topic: f.topic } : f.state(); }, () => epoch);
+  epoch = false; gate.resolve(); await running;
+  assert.equal(f.p.availabilityUnconfirmed, true); assert.equal(f.editor.unavailable, true);
+  assert.equal(f.p.availabilityChecking, false); assert.equal(f.get('inline-retry').hidden, false);
+  assert.equal(f.events.filter(e => e[0] === 'invalidate' && e[1] === 'availability').length, 1);
+  assert.equal(f.events.some(e => e[0] === 'schedule'), false);
+  await f.checkInlineAvailability(async name => name === 'topic' ? { topic: f.topic } : f.state(), () => true);
+  assert.equal(f.p.availabilityUnconfirmed, false); assert.equal(f.editor.unavailable, false);
+  assert.equal(f.events.filter(e => e[0] === 'schedule').length, 1); assert.equal(f.calls.some(c => c.kind), false);
+});
+
+test('superseded inline check cannot clear a newer check or accept for a replacement registered editor', async () => {
+  const f = fixture(), old = defer(), next = defer();
+  const read = gate => async name => { await gate.promise; return name === 'topic' ? { topic: f.topic } : f.state(); };
+  const first = f.checkInlineAvailability(read(old), () => true), second = f.checkInlineAvailability(read(next), () => true);
+  old.resolve(); await first; assert.equal(f.p.availabilityChecking, true); assert.equal(f.editor.unavailable, true);
+  f.registry.sessions.set(f.editor.key, { editor: { ...f.editor } });
+  next.resolve(); await second; assert.equal(f.editor.unavailable, true); assert.equal(f.p.availabilityUnconfirmed, true);
+  assert.equal(f.events.some(e => ['schedule','invalidate'].includes(e[0])), false);
+});
+
+test('inline pending stays beside inline only; modal pending remains in the topic summary', () => {
+  const f = fixture(); f.editor.submissions.push({ id: 'inline-submission' });
+  f.registry.inline = null; f.changed(f.editor);
+  assert.equal(f.get('topic-pending').children.length, 0, 'restoring a topic editor before its presentation is installed must not create the duplicate');
+  f.registry.inline = f.p; f.changed(f.editor);
+  assert.equal(f.get('inline-pending').children.length, 1); assert.equal(f.get('topic-pending').children.length, 0);
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [{ id: 'modal-submission' }] };
+  f.registry.current = { editors: { reply: modal } }; f.changed(modal);
+  assert.equal(f.get('topic-pending').children.length, 1); assert.equal(f.get('topic-pending').children[0].dataset.key, 'modal');
+});

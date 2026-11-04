@@ -7,6 +7,49 @@ import { createHash } from 'node:crypto';
 // selection uses a native Add image click and a fixture file supplied through
 // CDP; it does not establish interaction with the operating system's picker.
 export async function inlineChecks({ check, page, until, root, facts, view, control, replace, field, shot, observations }) {
+  await check('inline correction unavailable startup remains readable and Retry restores its composer', async () => {
+    await control({ method: 'read_fault', name: 'editor_state', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'Composer is temporarily unavailable', retryable: true } }, count: 1 });
+    const p = await page('inline-startup-refusal', null, true);
+    assert.ok(await p.evaluate('document.querySelectorAll("#messages .message-card").length>0'));
+    assert.equal(await p.evaluate('document.querySelector("#inline-writing-body").disabled'), true);
+    await p.evaluate('document.querySelector("#inline-composer").scrollIntoView({block:"center"})');
+    await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'must not enter ownerless writing' });
+    assert.equal(await p.evaluate('document.querySelector("#inline-writing-body").value'), '');
+    assert.equal(p.calls.some(c => c.payload?.kind), false, 'failed startup and disabled typing create no draft/command');
+    assert.equal(await p.evaluate('document.querySelector("#inline-retry").textContent'), 'Retry composer');
+    await p.point('#inline-retry');
+    await until(() => p.evaluate('!document.querySelector("#inline-writing-body").disabled && document.querySelector("#inline-retry").hidden'), 'same document retries confirmed composer');
+    assert.equal(p.calls.some(c => c.payload?.kind), false, 'retrying the read does not manufacture a draft');
+    await p.evaluate('window.scrollTo(0,0)');
+    await control({ method: 'read_fault', name: 'source', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'This source could not be opened', retryable: true } }, count: 1 });
+    await p.point('#messages .message-card');
+    await until(() => p.evaluate('!document.querySelector("#app-status").hidden'), 'failed inline-origin open is explained globally');
+    assert.match(await p.evaluate('document.querySelector("#app-status").textContent'), /source could not be opened/);
+    const notice = await p.box('#app-status'); assert.ok(notice.y >= 0 && notice.y+notice.height<=notice.viewportHeight, 'failed visible-card open has a visible explanation');
+    assert.equal(await p.evaluate('document.querySelector("#reader").open'), false);
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('inline correction moved Reader mode recipient and image controls retain their owner', async () => {
+    const p = await page('reader-moved-controls', null, true); await p.open(1);
+    await replace(p, 'Reply remains separate from its private note');
+    await p.point('#recipient-input'); await p.send('Input.insertText', { text: 'fixture-agent' }); await p.key('Enter');
+    assert.ok(await p.evaluate('document.querySelector("#recipient-chips").textContent.includes("fixture-agent")'));
+    await p.point('#toggle-note'); await replace(p, 'Private note remains private');
+    await p.point('#toggle-note'); assert.equal(await field(p), 'Reply remains separate from its private note');
+    await p.point('#recipient-chips button'); assert.equal(await p.evaluate('document.querySelector("#recipient-chips").children.length'), 0);
+    await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
+    const chooser = await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'Reader native image chooser');
+    await p.send('DOM.setFileInputFiles', { backendNodeId: chooser.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
+    await until(() => p.evaluate('document.querySelector("#writing-attachments").textContent.includes("Ready")'), 'Reader image ready');
+    await p.evaluate('(()=>{const b=[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove");b.id="reader-remove-fixture-image"})()');
+    await p.point('#reader-remove-fixture-image');
+    await until(() => p.evaluate('document.querySelector("#writing-attachments").children.length===0'), 'native image-row removal');
+    await until(async () => { const state=await view('editor_state', { source_ref: facts.sources[1], topic_id: facts.topic_id }); return state.draft?.body==='Reply remains separate from its private note' && state.draft.attachments.length===0 && state.draft.addressees.length===0 && state.note?.body==='Private note remains private'; }, 'separate exact reply/note saved with recipient and image removed');
+    assert.equal(p.calls.some(c => ['message.send','submission.prepare'].includes(c.payload?.kind)), false);
+    assert.deepEqual(p.errors, []);
+  });
+
   await check('inline find restore owner switch arrival and exact source-free send', async () => {
     const p = await page('inline-composer', null, true);
     const inlineBody = () => p.evaluate('document.querySelector("#inline-writing-body").value');

@@ -86,6 +86,18 @@ class FixtureCase(unittest.TestCase):
 
 
 class FreshnessFixtureTests(FixtureCase):
+    def test_editor_state_fault_targets_only_the_selected_source(self):
+        modal = {"kind": "message", "id": self.ready["sources"][0]["id"]}
+        body = {"error": {"code": "FORBIDDEN", "retryable": False}}
+        self.control("read_fault", name="editor_state", source_ref=modal,
+                     read_class="background", status=200, body=body, count=1)
+        _, inline = self.view("editor_state", {"source_ref": {"kind": "topic", "id": "t1"}, "topic_id": "t1"}, "background")
+        self.assertNotIn("error", inline, "a source-specific fault must not be consumed by the inline editor")
+        _, refused = self.view("editor_state", {"source_ref": modal, "topic_id": "t1"}, "background")
+        self.assertEqual(refused["error"]["code"], "FORBIDDEN")
+        _, restored = self.view("editor_state", {"source_ref": modal, "topic_id": "t1"}, "background")
+        self.assertNotIn("error", restored, "the selected fault is consumed exactly once")
+
     def test_timed_read_delay_holds_the_actual_admitted_permit(self):
         self.control("read_delay", name="topic", read_class="foreground", ms=120)
         pending = self.pool.submit(self.view, "topic", {"topic_id": "t1"})

@@ -620,6 +620,34 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     assert.deepEqual(p.errors, []);
   });
 
+  await check('freshness inline interrupted availability rechecks and resumes dirty autosave without sending', async () => {
+    const p = await page('inline-interrupted-access', null, true); await p.open(1);
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'Reader closed');
+    await idleRead(p);
+    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})');
+    await p.point('#inline-writing-body'); await p.send('Input.insertText', { text: 'Dirty writing survives an interrupted access check' });
+    const id = 'inline-interrupted-availability';
+    await control({ method: 'read_hold', hold_id: id, name: 'editor_state', read_class: 'background', phase: 'callback', count: 1 });
+    await p.evaluate('(()=>{observedFreshness.invalidate("availability",0,true);observedFreshness.request();})()');
+    await until(async () => (await control({ method: 'admission_events' })).events.some(e => e.event === 'hold-enter' && e.hold_id === id), 'inline availability read actually held');
+    assert.equal(await p.evaluate('observedRegistry.inline.availabilityUnconfirmed'), true);
+    // The actual message-card open starts a foreground read and interrupts the
+    // freshness epoch; no direct call to the availability handler or interrupt.
+    await p.open(1);
+    await until(() => p.evaluate('!observedRegistry.inline.availabilityChecking'), 'canceled inline check releases checking');
+    assert.equal(await p.evaluate('observedRegistry.inline.availabilityUnconfirmed'), true, 'cancellation is not proof of restored access');
+    assert.equal(await p.evaluate('observedRegistry.inline.editors.reply.unavailable'), true);
+    assert.equal(await p.evaluate('document.querySelector("#inline-retry").hidden'), false, 'Retry exists once the check ends');
+    assert.equal(await p.evaluate('observedFreshness.dirty.has("availability")'), true, 'one existing dirty-key queue retains the recheck');
+    await control({ method: 'read_release', hold_id: id });
+    await until(() => p.evaluate('!observedRegistry.inline.availabilityUnconfirmed && !observedRegistry.inline.editors.reply.unavailable'), 'automatic fenced recheck confirms access');
+    await until(async () => (await view('editor_state', { source_ref: { kind: 'topic', id: 't1' }, topic_id: 't1' })).draft?.body === 'Dirty writing survives an interrupted access check', 'dirty inline save resumes after access confirmation');
+    assert.equal(p.calls.some(c => ['message.send','submission.prepare'].includes(c.payload?.kind)), false);
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'Reader closes with inline writing retained');
+    assert.equal(await p.evaluate('document.querySelector("#inline-writing-body").value'), 'Dirty writing survives an interrupted access check');
+    observations.push({ name: 'inline interrupted access recheck', calls: p.calls }); assert.deepEqual(p.errors, []);
+  });
+
   await check('freshness F5 topic denial preserves a directly readable source and disables its destination', async () => {
     const p = await page('freshness-topic-access', null, true); await p.open(1);
     p.recordResponses();
@@ -632,7 +660,9 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     const before = await p.evaluate('freshSnapshot()');
     const state = await view('editor_state', { source_ref: before.source, topic_id: 't1' });
     assert.equal(state.source_available, true); state.destination_available = false;
-    await control({ method: 'read_fault', name: 'editor_state', read_class: 'background', status: 200, body: state, count: 1 });
+    // Inline and modal now both read editor_state. The old unscoped fault
+    // could feed this modal identity to inline; target the source under test.
+    await control({ method: 'read_fault', name: 'editor_state', source_ref: before.source, read_class: 'background', status: 200, body: state, count: 1 });
     await fault('changes', 'FORBIDDEN');
     await until(() => p.evaluate('observedFreshness.stopped && observedRegistry.current.destinationAvailable===false && !observedRegistry.current.availabilityUnconfirmed'), 'readable source with refused topic destination');
     const after = await p.evaluate('freshSnapshot()');

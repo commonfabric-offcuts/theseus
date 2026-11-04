@@ -100,7 +100,7 @@ class FreshnessControls:
                 try:
                     controls.wait_delay(self.name)
                     controls.wait_hold(self.name, "callback")
-                    fault = controls.take_fault(self.name)
+                    fault = controls.take_fault(self.name, args)
                     if fault is not None:
                         controls.event("fault-applied", self.name, status=fault["status"], body=fault["body"])
                         if fault["status"] == 200:
@@ -163,10 +163,11 @@ class FreshnessControls:
                 raise AssertionError("Private fixture hold timed out: " + hold_id)
             self.event("hold-exit", name, hold_id=hold_id, phase=phase)
 
-    def take_fault(self, name):
+    def take_fault(self, name, args=None):
         with self.lock:
             for rule in self.faults:
-                if self.matches(rule, name):
+                if self.matches(rule, name) and ("source_ref" not in rule or
+                        rule["source_ref"] == (args or {}).get("source_ref")):
                     rule["count"] -= 1
                     return dict(rule)
         return None

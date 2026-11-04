@@ -280,7 +280,7 @@ function changed(editor) {
   }
   if (inline?.editor === editor) inline.paintStatus();
   invalidateComparison(editor);
-  if (editor.context.kind === 'reply' && pendingCount(editor)) {
+  if (editor.context.kind === 'reply' && editor.context.sourceRef.kind !== 'topic' && pendingCount(editor)) {
     let host = [...$('topic-pending').children].find(child => child.dataset.key === editor.key);
     if (!host) { host = node('div'); host.dataset.key = editor.key; $('topic-pending').append(host); }
     pendingButton(host, editor);
@@ -340,7 +340,7 @@ async function openSource(ref, opener) {
   try { await registry.open(ref, { topicId: topic.id, opener }); }
   catch (error) {
     if (request === opening) {
-      if (registry.isCurrent(from)) writingSurface(from).notice(error.message);
+      if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error.message);
       else status(error.message);
     }
   }
@@ -479,7 +479,8 @@ async function checkInlineAvailability(read, current) {
   const p = registry.inline;
   if (!p) return;
   const editor = p.editors.reply, serial = ++inlineAvailabilitySerial;
-  const owns = () => serial === inlineAvailabilitySerial && current() && !registry.disposed && registry.inline === p && registry.sessions.get(editor.key)?.editor === editor;
+  const sameInline = () => serial === inlineAvailabilitySerial && !registry.disposed && registry.inline === p && registry.sessions.get(editor.key)?.editor === editor;
+  const owns = () => sameInline() && current();
   p.availabilityChecking = true; p.availabilityUnconfirmed = true;
   editor.unavailable = true; registry.cancelSave(editor); inline.paintStatus();
   try {
@@ -495,10 +496,40 @@ async function checkInlineAvailability(read, current) {
     registry.validateState(state, editor.context.sourceRef, p.topic.id);
     p.availabilityUnconfirmed = false; p.destinationAvailable = state.source_available && state.destination_available;
     editor.unavailable = !p.destinationAvailable;
+    if (!editor.unavailable && editor.dirty && !editor.authorityRecovery && !editor.conflict) registry.schedule(editor);
   } catch (error) {
     if (owns() && readFailure(error).kind === 'forbidden') p.availabilityUnconfirmed = false;
     throw error;
-  } finally { if (owns()) { p.availabilityChecking = false; inline.paintStatus(); } }
+  } finally {
+    if (sameInline()) {
+      p.availabilityChecking = false;
+      // Cancellation cannot confirm access. It can release this check's UI
+      // and leave one recheck in the existing, epoch-fenced freshness queue.
+      if (!current()) freshness?.invalidate('availability', 0, true);
+      inline.paintStatus();
+    }
+  }
+}
+async function initializeInlineComposer() {
+  try { await registry.initializeInline(topic); }
+  catch (error) { inline.fail(error.message); }
+}
+async function retryInline() {
+  const p = registry.inline;
+  if (!p) return initializeInlineComposer();
+  if (p.availabilityChecking || p.editors.reply.authorityRecovery) return;
+  const editor = p.editors.reply, foreground = registry.cleanup.foreground();
+  const current = () => !registry.disposed && registry.inline === p && registry.sessions.get(editor.key)?.editor === editor;
+  try {
+    await checkInlineAvailability(async (name, args) => checkedView(await foreground.read(options => api.view(name, args, options)), bootstrap.instance_id), current);
+    if (current()) inline.notice('');
+  } catch (error) {
+    if (current()) {
+      const failure = readFailure(error);
+      if (failure.kind === 'authority') { await registry.parkAuthority(bindingOf(bootstrap), failure.code); updateStatus(failure); }
+      inline.notice('Could not confirm topic access. Your writing is kept. ' + failure.message);
+    }
+  } finally { foreground.release(); }
 }
 async function checkSourceAvailability(read, current, topicDenied) {
   let p = registry.current;
@@ -553,7 +584,7 @@ async function retrySource() {
   if (!p || p.availabilityChecking || p.editors.reply.authorityRecovery) return;
   const foreground = registry.cleanup.foreground(), current = () => registry.isSourceCurrent(p);
   try {
-    await checkAvailability(async (name, args) => checkedView(await foreground.read(options => api.view(name, args, options)), bootstrap.instance_id), current, false);
+    await checkSourceAvailability(async (name, args) => checkedView(await foreground.read(options => api.view(name, args, options)), bootstrap.instance_id), current, false);
   } catch (error) {
     if (current()) {
       const failure = readFailure(error);
@@ -631,6 +662,7 @@ async function initialize() {
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: (host, editor, p) => pendingButton(host, editor, p),
+    retry: () => run(retryInline),
   });
   reader = new Reader({
     admits: (p, editor) => registry?.isCurrent(p, editor),
@@ -661,7 +693,7 @@ async function initialize() {
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } } });
-  await registry.initializeInline(topic);
+  await initializeInlineComposer();
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);
   $('updates-retry').onclick = () => run(async () => {

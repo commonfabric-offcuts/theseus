@@ -50,6 +50,10 @@ export class InlineComposer {
       finally { this.paintStatus(); }
     };
     this.$('review-versions').onclick = () => { if (this.admits()) this.callbacks.review(this.editor, this.presentation, this.$('review-versions')); };
+    this.$('retry').onclick = async () => {
+      this.$('retry').disabled = true;
+      try { await this.callbacks.retry(); } finally { this.$('retry').disabled = false; }
+    };
   }
   $(name) { return this.root.querySelector(`#inline-${name}`); }
   get editor() { return this.presentation?.editors.reply; }
@@ -58,8 +62,18 @@ export class InlineComposer {
   caret() { return { start: this.field.selectionStart, end: this.field.selectionEnd }; }
   show(p) {
     this.presentation = p; this.root.hidden = false;
+    this.field.disabled = false; this.$('notice').hidden = true;
     this.$('destination').textContent = `To ${p.topic.title}`;
     this.drawEditor(); this.paintRecipients(); this.paintStatus();
+  }
+  fail(message) {
+    this.root.hidden = false;
+    this.field.disabled = true;
+    for (const name of ['recipient-input', 'add-recipient', 'add-image', 'send']) this.$(name).disabled = true;
+    this.$('notice').textContent = 'New message is unavailable. ' + message;
+    this.$('notice').hidden = false;
+    this.$('save-state').textContent = 'Writing is disabled until this composer can load.';
+    this.$('retry').textContent = 'Retry composer'; this.$('retry').hidden = false;
   }
   drawEditor() {
     this.field.value = this.editor.draft.body;
@@ -120,6 +134,8 @@ export class InlineComposer {
     const state = this.state(), editor = this.editor, active = this.admits();
     this.root.inert = !active; this.field.readOnly = state.readOnly;
     this.$('save-state').textContent = this.presentation.availabilityUnconfirmed ? 'Topic access unconfirmed — writing kept on this device' : state.message;
+    this.$('retry').textContent = 'Retry access';
+    this.$('retry').hidden = Boolean(editor.authorityRecovery || this.presentation.availabilityChecking || !(this.presentation.availabilityUnconfirmed || editor.unavailable));
     this.$('send').disabled = state.sendDisabled;
     this.$('recipient-input').disabled = state.readOnly; this.$('add-recipient').disabled = state.readOnly;
     this.$('add-image').hidden = Boolean(editor.imageReservation); this.$('add-image').disabled = state.addDisabled;
