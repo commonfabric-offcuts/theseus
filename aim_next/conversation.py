@@ -43,7 +43,7 @@ class Conversation:
             _identifier(member, "recipient")
             row = db.execute("SELECT enabled FROM actors WHERE id=?", (member,)).fetchone()
             if not row or (require_enabled and not row["enabled"]):
-                raise Refusal("INVALID_RECIPIENT", "Every recipient needs an active instance binding")
+                raise Refusal("INVALID_RECIPIENT", "Recipient %s is unavailable in this instance" % member)
         return list(dict.fromkeys(recipients))
 
     def _touch_topic(self, db, topic):
@@ -176,7 +176,7 @@ class Conversation:
             # An addressed recipient can read precisely the delivered source;
             # this does not enroll them or grant all of the topic's history.
             if not db.execute("SELECT 1 FROM deliveries d JOIN delivery_reasons r ON r.delivery_id=d.id WHERE d.message_id=? AND d.recipient_id=? AND r.reason='addressed'", (row["id"], actor)).fetchone():
-                raise
+                raise Refusal("FORBIDDEN", "No readable source")
         return row
 
     def _source(self, db, actor, ref):
@@ -196,7 +196,7 @@ class Conversation:
 
     def _view_topic(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
-        participants = [dict(row) for row in db.execute("SELECT actor_id,active,epoch,substr(responsibility,1,256) AS responsibility FROM topic_participants WHERE topic_id=? AND active=1 ORDER BY actor_id LIMIT ?", (topic["id"], LIMITS["topic_participants"]))]
+        participants = [dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"])) for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(p.responsibility,1,256) AS responsibility,a.enabled FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?", (topic["id"], LIMITS["topic_participants"]))]
         summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
         return {"instance_id": self.instance_id, "topic": dict(topic), "participants": participants, "summary": summary,
                 "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}

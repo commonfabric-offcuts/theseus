@@ -57,7 +57,36 @@ class RecoveryCase(StoreCase):
         sent = self.command("message.send", {"submission_id": "s1"}, target={"topic_id": "t1"}, op="send-1")
         self.assertEqual(sent["status"], "rejected")
         self.assertEqual(sent["error"]["code"], "INVALID_RECIPIENT")
+        self.assertIn("agent-a", sent["error"]["message"])
         self.assertEqual(self.sql("SELECT count(*) FROM messages"), [(1,)])
+
+    def test_topic_participant_facts_distinguish_membership_from_receiving(self):
+        self.create_topic()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE actors SET enabled=0 WHERE id='agent-a'")
+        topic = self.store.view("owner", "topic", {"topic_id": "t1"})
+        member = next(p for p in topic["participants"] if p["actor_id"] == "agent-a")
+        self.assertTrue(member["active"])
+        self.assertFalse(member["enabled"])
+        self.assertFalse(member["receiving"])
+        owner = next(p for p in topic["participants"] if p["actor_id"] == "owner")
+        self.assertTrue(owner["receiving"])
+
+    def test_inaccessible_and_absent_message_errors_are_indistinguishable(self):
+        self.command("workspace.create", {"id": "w1", "title": "Private"})
+        source = {"kind": "new_topic", "id": "opening", "workspace_id": "w1"}
+        self.save_draft("opening", source, "t1", "Not available to outsider",
+                        opening={"workspace_id": "w1", "title": "Private topic", "participants": []})
+        self.prepare("opening", "t1", submission="opening", send_op="open")
+        created = self.command("topic.create_and_send", {"submission_id": "opening"}, target={"topic_id": "t1"}, op="open")
+        refs = [{"kind": "message", "id": created["result"]["message_id"]}, {"kind": "message", "id": "absent"}]
+        source_errors = [self.store.view("agent-a", "source", ref)["error"] for ref in refs]
+        self.assertEqual(source_errors[0], source_errors[1])
+        for kind, target, expected in [("note.save", {"note_id": "n1"}, {"note_revision": 0}),
+                                       ("draft.save", {"draft_id": "d1"}, {"draft_revision": 0})]:
+            errors = [self.command(kind, {"source_ref": ref, "body": "Private", "topic_id": "t1", "generation": "gA"},
+                                   target=target, expected=expected, actor="agent-a")["error"] for ref in refs]
+            self.assertEqual(errors[0], errors[1])
 
     def test_private_ids_are_local_to_actor_and_rotation_changes_only_its_owner(self):
         source = self.create_topic()

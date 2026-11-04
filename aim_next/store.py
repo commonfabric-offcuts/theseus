@@ -171,7 +171,7 @@ class Store(Drafts, Conversation):
         except sqlite3.OperationalError as exc:
             if "locked" in str(exc).lower() or "busy" in str(exc).lower():
                 return self._receipt(envelope, "retryable", False, error={
-                    "code": "DATABASE_BUSY", "message": "The same operation remains pending; retry it unchanged", "retryable": True})
+                    "code": "DATABASE_BUSY", "message": "This attempt is busy; reconcile the original operation before retrying", "retryable": True})
             raise StoreError("Storage operation could not be completed") from exc
         finally:
             if db is not None:
