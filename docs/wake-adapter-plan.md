@@ -3,7 +3,8 @@
 Status: initial adapter boundary confirmed by Fable in `m-b3888405` at
 `4b6a437` / SHA256 `99bcf9beb99b`. Route preparation is implemented at
 `48b6e95`, with the literal-argv correction `e344852` independently bound in
-`m-64d61d0d`; invocation is not implemented or enabled. The subsequent
+`m-64d61d0d`; invocation is now implemented in this slice, with independent
+review pending, and is not enabled. The subsequent
 held-process guard and authority interfaces are confirmed by Fable in
 `m-d8c0ae60` and lead in `m-caac4621`: wake contract SHA256 `a30aff1efbd5`,
 authority contract `12214d25fb77`. Exact snapshots are retained in
@@ -96,8 +97,9 @@ fixed arguments run with shell=False. No message text is appended to argv or int
 on stdin carries schema 1, the validated binding, the captured wake generation
 and attempt_id. The generation represents due recipient work and is not an
 acknowledgement cursor. It does not carry message bodies or an unbounded delivery
-list. The selected broker reads the recipient's durable, paged inbox. Core must
-publish the precise generation/token shape before adapter code. Reject malformed
+list. The selected Codex broker only queues a bounded hint; the recipient then
+reads its durable, paged inbox through the bound CLI. The reviewed broker02
+contract supersedes the earlier broker-reads-inbox sketch here. Reject malformed
 claim IDs/shape before launch. The child environment is an explicit allowlist:
 PATH=/usr/bin:/bin plus HOME, LANG and TMPDIR from the launcher if present. No
 arbitrary inherited variables or per-route environment expansion in this first
@@ -107,8 +109,9 @@ must require the stdin binding and must not resolve a default instance. Standard
 and error go to DEVNULL; the adapter's result contains only the classification
 and exit code/timeout reason, never child output, profile contents or tokens.
 
-The selected broker must coalesce (instance_id, actor_id, captured wake generation)
-only while that hint remains in its own durable queue. attempt_id distinguishes
+The selected Codex broker coalesces the full captured binding and exact pinned
+destination while a hint remains queued, across generations and attempts
+(broker02, SHA256 186a3ef56772). attempt_id distinguishes
 invocations and is not a new work identity. Once a hint is drained/handed off,
 the same key can enqueue a fresh hint: permanent seen-key suppression would
 strand an agent that crashed after taking the first hint. These are at-least-once
@@ -186,7 +189,7 @@ around a fake implementation of delivery storage.
 
 ## Evidence before integration
 
-### Concrete invocation seam (revised after Core/Fable critique; final readback pending)
+### Concrete invocation seam (accepted Core/Fable critique)
 
 Core confirmed the actual calling sequence in `m-43e1d4ff`: renew ownership,
 claim due work, invoke the adapter, register the child after spawn, then settle
@@ -194,10 +197,19 @@ only after owned cleanup. No additional claim-validation method is planned.
 The sole real guard holder owns internal token/claim changes; none of these
 methods is in public command dispatch. Each token-bound call must match the
 exact guard acquisition generation that created its token. Closing/reacquiring
-a guard does not transfer the old token. The runner candidate `686ae92` violates
-this boundary and is blocked by review `m-3bf4c85d`; its correction and review
-are required before integration. Core's runner implementation is still
-awaiting its own reviewed handoff. The route/encoding layer uses the already
+a guard does not transfer the old token. The original runner candidate
+`686ae92` violated this boundary in review `m-3bf4c85d`. Core corrected it at
+`c4cd05e`, independently cleared by Fable in `m-ff1e7067`; lead audited its
+original-source red, eight applied/restored controls and 116 small checks.
+The exact six-file union was staged at `d2e1baf` and is now integrated in
+`3b7a122a`, together with the reviewed note-destination and UX components.
+The selected combined checks passed 173 Python and 144 Node cases; Fable read
+the raw receipts in `m-e14e7e46`. This does not implement invocation. Keep one
+actual guard acquisition for the runner's lifetime: do not
+close/re-enter it around individual claims or invocations. Even re-entering
+the same object creates a different generation and invalidates the old token.
+Lost/paused ownership requires the explicit acquisition/resume path, never
+token reuse under the new guard. The route/encoding layer uses the already
 integrated real `RunnerGuard` and v2 profile, not a replacement guard fixture.
 
 Lead's intended Python seam is
@@ -251,6 +263,28 @@ observation must still show the unreaped owned leader, and only its Z state
 establishes the fast-exit fallback; ambiguous/missing leader causes a fixed fault.
 A focused control must exercise exit before watcher registration.
 
+The ownership try begins before Popen. Temporarily defer SIGINT and SIGTERM
+using caught Python handlers, keeping at most one pending occurrence of each.
+Preserve SIG_IGN. Handler installation must succeed before launch (off the main
+thread, signal.signal refuses); partial installation or constructor failure
+restores the originals. After assigning the owned child, restore the original
+handlers before delivering pending signals, still inside the managed try.
+The same drain runs on constructor failure: a deferred stop is not lost.
+Pop each pending occurrence before calling its handler; deliver SIGINT then
+SIGTERM, both once even if the first raises, then propagate the first fault.
+If launch failed, retain that constructor exception as the fixed fault's cause;
+a returning stop-flag handler preserves the unavailable result. Fault reason
+strings stay fixed; exception context is internal, not a receipt payload.
+A raised KeyboardInterrupt then receives owned cleanup and a fixed fault.
+Deferred default termination becomes invocation_interrupted after cleanup:
+the dedicated caller must pause and exit, never silently continue. Its normal
+post-launch handlers set graceful-stop flags. No blocked signal mask is used:
+that mask would survive child exec and prevent normal TERM cleanup. Caught
+dispositions reset on exec; the child's inherited mask is unchanged.
+This does not promise recovery from SIGKILL, process crashes, arbitrary Python
+exceptions injected inside the subprocess constructor after fork, or a foreign
+reaper. It establishes the ordinary signal boundary with the owned child.
+
 Use a bounded `/bin/ps -A -o pid=,pgid=,stat=` observation, filter numeric PGID in
 Python, and exclude zombie rows when finding live members. The helper has a
 bounded output cap and runs only within the remaining cleanup/invocation budget;
@@ -259,7 +293,11 @@ This is a diagnostic helper, not a second broker. Do not use killpg(pgid, 0) as
 an absence oracle: Fable's actual Mac probe returns PermissionError for a
 zombie-only group. If descendants survive leader exit, terminate the owned group
 while the unreaped leader still reserves its identity, escalate within the
-one-second cleanup budget, confirm no live group members, then reap the leader.
+one-second cleanup budget, confirm two consecutive observations with no live
+group members, then reap the leader. Any observed live member resets that
+confirmation. EPERM or ESRCH from TERM/KILL can mean the group became zombie-only
+after observation: re-observe under the original deadline, counting the signal
+phase as attempted so escalation is unchanged. Other signal errors fail closed.
 A surviving descendant makes the invocation an error even when the leader exits
 zero. Reap only after cleanup, and never signal that PGID after reap. Unconfirmed
 cleanup raises a fault requiring the existing persistent pause. Unexpected
@@ -277,6 +315,16 @@ a new acquire/cutover after the parent closes/exits; guard.verify in the parent
 cannot establish absence. Tests may prove that blocking limit, not detection of
 arbitrary escaped processes. A real broker's durable queue must still be reviewed
 and proven separately.
+
+Process listings are not atomic. Two observations catch one transient omission
+and the ordinary fork-then-exit handoff; they cannot prove quiescence against an
+arbitrary rapidly forking/exiting chain. The trusted broker must confirm its own
+children have exited before returning zero and must not daemonize or double-fork
+descendants. Inherited guard fencing remains independent of these observations.
+Invocation currently checks exit/lease at most every 25ms and cleanup reobserves
+after a 10ms wait. Those bounded polling costs remain named limits, not an
+event-driven efficiency claim. A wall-clock jump can expire a lease immediately;
+owned cleanup can then extend up to its one-second budget beyond that wall time.
 
 Named adapter checks: exact literal argv/stdin and allowlisted parent environment;
 real inherited guard descriptors; no child on missing/mismatched route or spent
@@ -301,9 +349,8 @@ durable queue acceptance or the unfinished runner integration.
    distinct instances and actors so a wrong binding cannot pass vacuously.
 3. A real child records exact argv, stdin and sanitized environment; shell
    metacharacters stay literal. Two attempts carry the same captured wake identity
-   and different attempt IDs. The fake broker's durable queue coalesces the key
-   while queued, then accepts it again after drain. This proves only the fixture
-   broker, not Codex or any external sink.
+   and different attempt IDs. Queue acceptance/coalescing belongs to the separate
+   broker02 slice; these invocation checks do not claim durable queue acceptance.
 4. Real children cover accepted, busy, other exit, absent executable and timeout.
    Child cleanup and the refusal to start with insufficient claim budget are
    independently observed. No source or content is emitted in the result.
@@ -322,3 +369,20 @@ durable queue acceptance or the unfinished runner integration.
 Not claimed here: external exactly-once notification, durable broker acceptance
 from an arbitrary exit-0 program, child effect recall, restore activation safety,
 agent exchange completion or a shipped application.
+
+## Invocation implementation scope
+
+`run_route` now implements this boundary in the assigned lead worktree. The
+caller still owns durable registration, pause and settlement. If identity or
+cleanup cannot be confirmed, the adapter retains its Popen object and refuses
+another invocation in that process. The runner must persist the pause and exit.
+The process-list helper is a separate direct child with 1 MiB output and a 250ms
+observation bound inside the remaining budget; it is never mistaken for the
+broker. No real broker, queue RPC, service or instance is enabled by this slice.
+
+The instrument first failed a fixture shutdown-readiness race. The preserved
+original report is in lead evidence wake-invocation-01/fixture-01; both the
+leader watchdog and descendant now acknowledge their pipe reader before the
+fixture advertises readiness. Three independent cleanup controls then passed.
+The missing invocation API failed its assertion before implementation. Focused
+results and exact mutations are reported separately with the final source.
