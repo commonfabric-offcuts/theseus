@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import http.client
+import fcntl
 import json
+import os
 from pathlib import Path
 import tempfile
 import threading
@@ -32,7 +34,7 @@ class SharedStoreHTTPTests(unittest.TestCase):
         self.thread.join(2)
         self.tmp.cleanup()
 
-    def request(self, path, value=None):
+    def request(self, path, value=None, expected_status=200):
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=3)
         try:
             connection.request("GET" if value is None else "POST", path,
@@ -41,7 +43,7 @@ class SharedStoreHTTPTests(unittest.TestCase):
                                         "Origin": self.server.origin,
                                         "Content-Type": "application/json"})
             response = connection.getresponse()
-            self.assertEqual(response.status, 200)
+            self.assertEqual(response.status, expected_status)
             return json.loads(response.read())
         finally:
             connection.close()
@@ -57,6 +59,65 @@ class SharedStoreHTTPTests(unittest.TestCase):
         self.assertEqual(bootstrap["instance_id"], capabilities["instance_id"])
         self.assertEqual(bootstrap["actor"], "test-human")
         self.assertEqual(bootstrap["limits"], capabilities["limits"])
+
+    def test_authority_contention_remains_an_unrecorded_retryable_http_attempt(self):
+        command = self.workspace_command()
+        fd = os.open(self.binding["authority_path"] + ".lock", os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = self.request("/api/command", command, expected_status=503)
+            self.assertFalse(result["recorded"])
+            self.assertEqual(result["error"]["code"], "AUTHORITY_BUSY")
+            self.assertTrue(result["error"]["retryable"])
+        finally:
+            os.close(fd)
+        operation = self.store.view("test-human", "operation", {"operation_id": command["operation_id"]})
+        self.assertEqual(operation["status"], "unknown")
+        committed = self.committed(command)
+        self.assertEqual(self.request("/api/command", command), committed)
+
+    def test_stale_http_factory_binding_refuses_usefully_without_retry_or_rebinding(self):
+        self.server.store_factory = lambda: Store(self.db, "isolated-test", expected_binding=dict(
+            self.binding, authority_epoch="stale-epoch"))
+        before = self.db.read_bytes()
+        for path, value in (("/api/command", self.workspace_command()), ("/api/bootstrap", None)):
+            with self.subTest(path=path):
+                result = self.request(path, value, expected_status=409)
+                self.assertFalse(result["recorded"])
+                self.assertEqual(result["error"]["code"], "AUTHORITY_CHANGED")
+                self.assertFalse(result["error"]["retryable"])
+                self.assertIn("activate a recovery copy at a new path", result["error"]["message"])
+        self.assertEqual(self.db.read_bytes(), before)
+
+    def test_bootstrap_preserves_authority_error_after_successful_store_construction(self):
+        # Reuse an already constructed real Store to exercise the later fence
+        # inside view(), rather than the constructor's earlier fence.
+        self.server.store_factory = lambda: self.store
+        fd = os.open(self.binding["authority_path"] + ".lock", os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            result = self.request("/api/bootstrap", expected_status=503)
+            self.assertFalse(result["recorded"])
+            self.assertEqual(result["error"]["code"], "AUTHORITY_BUSY")
+            self.assertTrue(result["error"]["retryable"])
+        finally:
+            os.close(fd)
+
+    def test_bootstrap_preserves_nonretryable_epoch_change_after_construction(self):
+        self.server.store_factory = lambda: self.store
+        anchor = Path(self.binding["authority_path"])
+        record = json.loads(anchor.read_text())
+        record["epoch"] = "isolated-changed-epoch"
+        # Only this isolated fixture's anchor changes. This exercises the
+        # adapter's declared-error boundary, not the future recovery mechanism.
+        anchor.write_text(json.dumps(record))
+        before = self.db.read_bytes()
+        result = self.request("/api/bootstrap", expected_status=409)
+        self.assertFalse(result["recorded"])
+        self.assertEqual(result["error"]["code"], "AUTHORITY_CHANGED")
+        self.assertFalse(result["error"]["retryable"])
+        self.assertIn("activate a recovery copy at a new path", result["error"]["message"])
+        self.assertEqual(self.db.read_bytes(), before)
 
     def test_direct_commit_reconciles_over_http_and_retry_preserves_receipt(self):
         command = self.workspace_command()

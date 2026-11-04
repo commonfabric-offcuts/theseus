@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import unquote, urlsplit
 
+from .authority import AuthorityError
+
 
 class RequestError(Exception):
     def __init__(self, status: int, code: str, message: str):
@@ -219,6 +221,10 @@ class Handler(BaseHTTPRequestHandler):
             action()
         except RequestError as error:
             self._error(error.status, error.code, error.message)
+        except AuthorityError as error:
+            # This attempt did not reach its bound authority. Keep the original
+            # operation identity: an earlier attempt may already be recorded.
+            self._error(503 if error.retryable else 409, error.code, error.message)
         except (BrokenPipeError, ConnectionResetError, socket.timeout):
             self.close_connection = True
         except Exception:
@@ -254,6 +260,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/bootstrap":
             self._authorize()
             capabilities = self._store_call(lambda store: store.view(self.server.actor, "capabilities", {}))
+            error = capabilities.get("error")
+            if isinstance(error, dict) and error.get("code") in (
+                    "AUTHORITY_BUSY", "AUTHORITY_CHANGED", "INVALID_BINDING"):
+                raise AuthorityError(error["code"], error["message"],
+                                     retryable=error.get("retryable") is True)
             if (capabilities.get("instance_id") != self.server.instance_id
                     or not isinstance(capabilities.get("limits"), dict)
                     or capabilities.get("error")):
