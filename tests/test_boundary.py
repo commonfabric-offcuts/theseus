@@ -21,7 +21,7 @@ class BoundaryCase(StoreCase):
         for i, fields in enumerate(envelopes):
             with self.subTest(fields=fields):
                 envelope = {"v": 1, "instance_id": "test-instance", "operation_id": "bad-%s" % i,
-                            "kind": "workspace.create", "target": {}, "expected": {}, "args": {}}
+                            "kind": "workspace.create", "target": {}, "expected": {"authority": self.pin}, "args": {}}
                 envelope.update(fields)
                 result = self.store.command("owner", envelope)
                 self.assertEqual(result["status"], "rejected", result)
@@ -56,9 +56,10 @@ class BoundaryCase(StoreCase):
 
     def test_normalized_envelope_retry_is_the_same_operation(self):
         payload = {"v": 1, "instance_id": "test-instance", "operation_id": "normalized", "kind": "workspace.create",
-                   "args": {"id": "w1", "title": "Normalized"}}
+                   "expected": {"authority": self.pin}, "args": {"id": "w1", "title": "Normalized"}}
         first = self.store.command("owner", payload)
-        second = self.store.command("owner", dict(payload, target={}, expected={}))
+        self.assertEqual(first["status"], "committed", first)
+        second = self.store.command("owner", dict(payload, target={}))
         self.assertEqual(first, second)
 
     def test_workspace_create_conflicts_are_explicit_revisions(self):
@@ -135,7 +136,7 @@ class BoundaryCase(StoreCase):
     def test_participant_update_requires_expected_topic_revision(self):
         self.create_topic()
         result = self.store.command("owner", {"v": 1, "instance_id": "test-instance", "operation_id": "unsafe-update",
-                                  "kind": "participation.set", "target": {"topic_id": "t1"}, "expected": {},
+                                  "kind": "participation.set", "target": {"topic_id": "t1"}, "expected": {"authority": self.pin},
                                   "args": {"actor_id": "agent-a", "present": False}})
         self.assertEqual(result["error"]["code"], "INVALID_ARGUMENT")
         self.assertFalse(result["recorded"])

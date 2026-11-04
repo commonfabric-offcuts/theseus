@@ -52,12 +52,19 @@ def _command_envelope(envelope):
     for key in ("instance_id", "operation_id", "kind"):
         _identifier(normalized.get(key), key)
     kind, expected = normalized["kind"], normalized["expected"]
-    if kind in EXPECTED and set(expected) - EXPECTED[kind]:
+    authority = expected.get("authority")
+    if not isinstance(authority, dict) or set(authority) != {"authority_id", "authority_epoch"}:
+        raise Refusal("INVALID_ARGUMENT", "An exact captured authority pair is required")
+    for key in ("authority_id", "authority_epoch"):
+        _identifier(authority[key], key)
+    if kind in EXPECTED and set(expected) - EXPECTED[kind] - {"authority"}:
         raise Refusal("INVALID_ARGUMENT", "Unsupported expected revision fields")
     required = REQUIRED_EXPECTED.get(kind)
     if required is not None and required not in expected:
         raise Refusal("INVALID_ARGUMENT", "An explicit %s is required" % required)
-    for value in expected.values():
+    for key, value in expected.items():
+        if key == "authority":
+            continue
         if type(value) is not int or value < 0 or value > 9223372036854775807:
             raise Refusal("INVALID_ARGUMENT", "Expected revisions must be nonnegative integers")
     return normalized

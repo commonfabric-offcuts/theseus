@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from .authority import AuthorityError
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 
@@ -9,7 +10,7 @@ from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _r
 DRAFT_SCHEMA = [
     "CREATE TABLE drafts (id TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, topic_id TEXT NOT NULL, revision INTEGER NOT NULL, generation TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(actor_id,id), UNIQUE(actor_id,source_key,topic_id))",
     "CREATE TABLE notes (id TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(actor_id,id), UNIQUE(actor_id,source_key))",
-    "CREATE TABLE submissions (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, topic_id TEXT NOT NULL, prepare_operation_id TEXT NOT NULL, send_operation_id TEXT NOT NULL, send_kind TEXT NOT NULL, metadata TEXT NOT NULL, snapshot TEXT NOT NULL, UNIQUE(actor_id,id), UNIQUE(actor_id,send_operation_id))",
+    "CREATE TABLE submissions (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, topic_id TEXT NOT NULL, prepare_operation_id TEXT NOT NULL, send_operation_id TEXT NOT NULL, send_kind TEXT NOT NULL, authority_id TEXT NOT NULL, authority_epoch TEXT NOT NULL, metadata TEXT NOT NULL, snapshot TEXT NOT NULL, UNIQUE(actor_id,id), UNIQUE(actor_id,send_operation_id))",
     "CREATE INDEX actor_submissions ON submissions(actor_id,seq)",
     "CREATE INDEX editor_submissions ON submissions(actor_id,source_key,topic_id,seq)",
     "CREATE TRIGGER immutable_submissions_update BEFORE UPDATE ON submissions BEGIN SELECT RAISE(ABORT, 'immutable submission'); END",
@@ -25,16 +26,18 @@ def _source_key(ref):
 
 class Drafts:
     def _check_send_reservation(self, db, actor, envelope):
-        row = db.execute("SELECT id,topic_id,send_kind,send_operation_id FROM submissions WHERE actor_id=? AND send_operation_id=?",
+        row = db.execute("SELECT id,topic_id,send_kind,send_operation_id,authority_id,authority_epoch FROM submissions WHERE actor_id=? AND send_operation_id=?",
                          (actor, envelope["operation_id"])).fetchone()
         if not row and envelope["kind"] in ("message.send", "topic.create_and_send"):
             submission_id = envelope.get("args", {}).get("submission_id")
             if isinstance(submission_id, str):
-                row = db.execute("SELECT id,topic_id,send_kind,send_operation_id FROM submissions WHERE actor_id=? AND id=?", (actor, submission_id)).fetchone()
+                row = db.execute("SELECT id,topic_id,send_kind,send_operation_id,authority_id,authority_epoch FROM submissions WHERE actor_id=? AND id=?", (actor, submission_id)).fetchone()
+        if row and envelope["expected"]["authority"] != {"authority_id": row["authority_id"], "authority_epoch": row["authority_epoch"]}:
+            raise AuthorityError("AUTHORITY_CHANGED", "This prepared act belongs to an earlier authority epoch; reconcile its original operation")
         if row and (envelope["operation_id"] != row["send_operation_id"] or envelope["kind"] != row["send_kind"] or
                     envelope.get("target", {}) != {"topic_id": row["topic_id"]} or
                     envelope.get("args", {}) != {"submission_id": row["id"]} or
-                    envelope.get("expected", {}) != {}):
+                    set(envelope["expected"]) != {"authority"}):
             raise Refusal("OPERATION_PAYLOAD_MISMATCH", "This operation is reserved for its exact prepared send")
 
     def _validate_source_ref(self, db, actor, ref):
@@ -147,11 +150,13 @@ class Drafts:
             raise Refusal("SEND_ID_UNAVAILABLE", "The future send needs an unused operation identity", recorded=False)
         snapshot.update(id=submission_id, topic_id=row["topic_id"], draft_id=row["id"],
                         draft_revision=row["revision"], draft_generation=row["generation"],
-                        prepare_operation_id=envelope["operation_id"], send_operation_id=send_op)
-        metadata = {k: snapshot[k] for k in ("id", "source_ref", "topic_id", "draft_id", "draft_revision", "draft_generation", "prepare_operation_id", "send_operation_id")}
+                        prepare_operation_id=envelope["operation_id"], send_operation_id=send_op,
+                        authority=dict(envelope["expected"]["authority"]))
+        metadata = {k: snapshot[k] for k in ("id", "source_ref", "topic_id", "draft_id", "draft_revision", "draft_generation", "prepare_operation_id", "send_operation_id", "authority")}
         send_kind = "topic.create_and_send" if "opening" in snapshot else "message.send"
-        db.execute("INSERT INTO submissions(id,actor_id,source_key,topic_id,prepare_operation_id,send_operation_id,send_kind,metadata,snapshot) VALUES (?,?,?,?,?,?,?,?,?)",
-                   (submission_id, actor, row["source_key"], row["topic_id"], envelope["operation_id"], send_op, send_kind, _json(metadata), _json(snapshot)))
+        db.execute("INSERT INTO submissions(id,actor_id,source_key,topic_id,prepare_operation_id,send_operation_id,send_kind,authority_id,authority_epoch,metadata,snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                   (submission_id, actor, row["source_key"], row["topic_id"], envelope["operation_id"], send_op, send_kind,
+                    snapshot["authority"]["authority_id"], snapshot["authority"]["authority_epoch"], _json(metadata), _json(snapshot)))
         generation = "g-" + uuid.uuid4().hex
         successor = {"source_ref": snapshot["source_ref"], "body": "", "attachments": [], "quotes": [], "addressees": []}
         db.execute("UPDATE drafts SET revision=?,generation=?,payload=? WHERE actor_id=? AND id=?",

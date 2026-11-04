@@ -21,6 +21,7 @@ class StoreCase(unittest.TestCase):
             {"id": "agent-b", "kind": "agent"},
         ], authority_path=Path(self.temp.name).resolve() / "control" / "authority.json")
         self.binding = initialized["binding"]
+        self.pin = {key: self.binding[key] for key in ("authority_id", "authority_epoch")}
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.serial = 0
 
@@ -32,7 +33,7 @@ class StoreCase(unittest.TestCase):
                 expected = {"topic_revision": current["topic"]["version"]}
         return self.store.command(actor, {
             "v": 1, "instance_id": "test-instance", "operation_id": op or "op-%s" % self.serial,
-            "kind": kind, "target": target or {}, "expected": expected or {}, "args": args or {},
+            "kind": kind, "target": target or {}, "expected": dict(expected or {}, authority=dict(self.pin)), "args": args or {},
         })
 
     def workspace(self):
@@ -61,7 +62,7 @@ class StoreCase(unittest.TestCase):
 
     def test_workspace_and_outcome_commit_once_across_concurrent_callers(self):
         envelope = {"v": 1, "instance_id": "test-instance", "operation_id": "once",
-                    "kind": "workspace.create", "target": {}, "expected": {},
+                    "kind": "workspace.create", "target": {}, "expected": {"authority": self.pin},
                     "args": {"id": "w1", "title": "One", "team": ["agent-a"]}}
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             receipts = list(pool.map(lambda _: self.store.command("owner", envelope), range(2)))
@@ -178,7 +179,7 @@ class StoreCase(unittest.TestCase):
         source = self.create_topic()
         self.save_draft("d1", source, "t1", "A")
         payload = {"v": 1, "instance_id": "test-instance", "operation_id": "prepare-A", "kind": "submission.prepare",
-                   "target": {"topic_id": "t1"}, "expected": {"draft_revision": 1},
+                   "target": {"topic_id": "t1"}, "expected": {"draft_revision": 1, "authority": self.pin},
                    "args": {"draft_id": "d1", "submission_id": "s1", "send_operation_id": "send-A"}}
         prepared = self.store.command("owner", payload)
         self.assertEqual(prepared["status"], "committed", prepared)
@@ -226,7 +227,7 @@ class StoreCase(unittest.TestCase):
         self.save_draft("d1", source, "t1", "Once")
         self.prepare("d1", "t1")
         command = {"v": 1, "instance_id": "test-instance", "operation_id": "send-1", "kind": "message.send",
-                   "target": {"topic_id": "t1"}, "expected": {}, "args": {"submission_id": "s1"}}
+                   "target": {"topic_id": "t1"}, "expected": {"authority": self.pin}, "args": {"submission_id": "s1"}}
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(lambda _: self.store.command("owner", command), range(2)))
         self.assertEqual(results[0]["status"], "committed", results)

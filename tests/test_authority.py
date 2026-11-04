@@ -26,11 +26,12 @@ class AuthorityCase(unittest.TestCase):
         self.anchor = self.root / "external-control" / "authority.json"
         self.info = initialize(self.path, "authority-test", [{"id": "owner", "kind": "human"}], authority_path=self.anchor)
         self.binding = self.info["binding"]
+        self.pin = {key: self.binding[key] for key in ("authority_id", "authority_epoch")}
         self.store = Store(self.path, "authority-test", expected_binding=self.binding)
 
     def create(self, op="once", **args):
         return self.store.command("owner", {"v": 1, "instance_id": "authority-test", "operation_id": op,
-                                 "kind": "workspace.create", "target": {}, "expected": {},
+                                 "kind": "workspace.create", "target": {}, "expected": {"authority": self.pin},
                                  "args": dict(id="w1", title="One", **args)})
 
     def sql(self, statement, params=()):
@@ -63,7 +64,7 @@ class AuthorityCase(unittest.TestCase):
         self.assertTrue(rejected["recorded"])
         self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='commit_seq'"), [("2",)])
         private = self.store.command("owner", {"v": 1, "instance_id": "authority-test", "operation_id": "private",
-            "kind": "draft.save", "target": {"draft_id": "d1"}, "expected": {"draft_revision": 0},
+            "kind": "draft.save", "target": {"draft_id": "d1"}, "expected": {"draft_revision": 0, "authority": self.pin},
             "args": {"source_ref": {"kind": "new_topic", "id": "opening", "workspace_id": "w1"},
                      "topic_id": "t1", "body": "Private writing", "generation": "gA"}})
         self.assertEqual(private["status"], "committed", private)

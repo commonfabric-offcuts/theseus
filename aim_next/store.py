@@ -17,7 +17,7 @@ from .authority import Authority, AuthorityError, prepare_authority, publish_ini
 from .delivery import Delivery, DELIVERY_SCHEMA
 
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 
 
 SCHEMA = [
@@ -177,6 +177,8 @@ class Store(Drafts, Delivery, Conversation):
             fence.verify()
             self._check_instance(db)
             self._actor(db, actor)
+            if envelope["expected"]["authority"] != {"authority_id": fence.record["authority_id"], "authority_epoch": fence.record["epoch"]}:
+                raise AuthorityError("AUTHORITY_CHANGED", "This act belongs to another authority epoch; reconcile it without changing its captured binding")
             previous = db.execute("SELECT fingerprint,outcome FROM operations WHERE actor_id=? AND id=?",
                                   (actor, op_id)).fetchone()
             if previous is not None:

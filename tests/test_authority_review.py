@@ -19,7 +19,7 @@ import test_authority as fixture
 class AuthorityReviewCase(fixture.AuthorityCase):
     def another_workspace(self, operation):
         return self.store.command("owner", {"v": 1, "instance_id": "authority-test", "operation_id": operation,
-            "kind": "workspace.create", "target": {}, "expected": {}, "args": {"id": "w2", "title": "Second"}})
+            "kind": "workspace.create", "target": {}, "expected": {"authority": self.pin}, "args": {"id": "w2", "title": "Second"}})
 
     def test_replacement_between_validation_and_open_never_records_in_the_copy(self):
         self.create()
