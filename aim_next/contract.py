@@ -16,10 +16,11 @@ class StoreError(Exception):
 
 
 class Refusal(Exception):
-    def __init__(self, code, message, current_versions=None):
+    def __init__(self, code, message, current_versions=None, recorded=None):
         self.code = code
         self.message = message
         self.current_versions = current_versions
+        self.recorded = (code != "INVALID_ARGUMENT") if recorded is None else recorded
         super().__init__(message)
 
 

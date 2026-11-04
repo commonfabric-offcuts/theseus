@@ -36,13 +36,13 @@ class Conversation:
             raise Refusal("FORBIDDEN", "No permission for this topic")
         return row
 
-    def _recipients(self, db, recipients):
+    def _recipients(self, db, recipients, require_enabled=True):
         if not isinstance(recipients, list):
             raise Refusal("INVALID_ARGUMENT", "Recipients must be a list")
         for member in recipients:
-            try:
-                self._actor(db, _identifier(member))
-            except Refusal:
+            _identifier(member, "recipient")
+            row = db.execute("SELECT enabled FROM actors WHERE id=?", (member,)).fetchone()
+            if not row or (require_enabled and not row["enabled"]):
                 raise Refusal("INVALID_RECIPIENT", "Every recipient needs an active instance binding")
         return list(dict.fromkeys(recipients))
 
@@ -57,10 +57,10 @@ class Conversation:
         topic = self._topic(db, actor, envelope.get("target", {}).get("topic_id"), manage=True)
         _revision(envelope.get("expected", {}), "topic_revision", topic["version"])
         args = envelope.get("args", {})
-        member = self._recipients(db, [args.get("actor_id")])[0]
         present = args.get("present")
         if not isinstance(present, bool):
             raise Refusal("INVALID_ARGUMENT", "Participation must be explicitly true or false")
+        member = self._recipients(db, [args.get("actor_id")], require_enabled=present)[0]
         old = db.execute("SELECT * FROM topic_participants WHERE topic_id=? AND actor_id=?", (topic["id"], member)).fetchone()
         if present and (not old or not old["active"]):
             count = db.execute("SELECT count(*) FROM topic_participants WHERE topic_id=? AND active=1", (topic["id"],)).fetchone()[0]
@@ -75,6 +75,7 @@ class Conversation:
         db.execute("INSERT INTO topic_participants VALUES (?,?,?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET active=excluded.active,epoch=excluded.epoch,responsibility=excluded.responsibility",
                    (topic["id"], member, int(present), epoch, responsibility))
         version = self._touch_topic(db, topic)
+        self._change(db, "actor", member, "participation", topic["id"], version)
         return {"topic_id": topic["id"], "actor_id": member, "present": present, "epoch": epoch,
                 "responsibility": responsibility, "version": version}, [{"kind": "topic", "id": topic["id"], "version": version}]
 
@@ -88,7 +89,7 @@ class Conversation:
         args = envelope.get("args", {})
         if set(args) != {"submission_id"}:
             raise Refusal("INVALID_ARGUMENT", "A send accepts only its frozen submission identity")
-        _, snapshot = self._submission(db, actor, args.get("submission_id"))
+        _, snapshot = self._submission(db, actor, args.get("submission_id"), unconfirmed=True)
         topic_id = snapshot["topic_id"]
         if opening:
             existing = db.execute("SELECT version FROM topics WHERE id=?", (topic_id,)).fetchone()
@@ -138,8 +139,12 @@ class Conversation:
             if not excerpt or excerpt not in source["body"]:
                 raise Refusal("INVALID_QUOTE", "The excerpt must preserve the referenced source's words")
         audience = {}
-        for row in db.execute("SELECT actor_id,epoch FROM topic_participants WHERE topic_id=? AND active=1", (topic_id,)):
-            audience[row["actor_id"]] = {"subscription": row["epoch"]}
+        unavailable = []
+        for row in db.execute("SELECT p.actor_id,p.epoch,a.enabled FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1", (topic_id,)):
+            if row["enabled"]:
+                audience[row["actor_id"]] = {"subscription": row["epoch"]}
+            else:
+                unavailable.append(row["actor_id"])
         for recipient in self._recipients(db, snapshot["addressees"]):
             audience.setdefault(recipient, {})["addressed"] = None
         audience.pop(actor, None)
@@ -159,22 +164,26 @@ class Conversation:
         version = self._touch_topic(db, topic)
         self._change(db, "actor", actor, "submission", snapshot["id"], 2)
         return {"message_id": message_id, "submission_id": snapshot["id"], "topic": {"id": topic_id, "version": version},
-                "delivery": {"queued": len(audience)}}, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
+                "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
 
-    def _source(self, db, actor, ref):
-        if not isinstance(ref, dict) or ref.get("kind") != "message":
-            raise Refusal("INVALID_SOURCE", "Unsupported source reference")
-        row = db.execute("SELECT * FROM messages WHERE id=?", (_identifier(ref.get("id")),)).fetchone()
+    def _message_access(self, db, actor, message_id):
+        row = db.execute("SELECT id,topic_id,author_id FROM messages WHERE id=?", (_identifier(message_id),)).fetchone()
         if not row:
             raise Refusal("FORBIDDEN", "No readable source")
         try:
-            topic = self._topic(db, actor, row["topic_id"])
+            self._topic(db, actor, row["topic_id"])
         except Refusal:
             # An addressed recipient can read precisely the delivered source;
             # this does not enroll them or grant all of the topic's history.
             if not db.execute("SELECT 1 FROM deliveries d JOIN delivery_reasons r ON r.delivery_id=d.id WHERE d.message_id=? AND d.recipient_id=? AND r.reason='addressed'", (row["id"], actor)).fetchone():
                 raise
-            topic = {"workspace_id": None}
+        return row
+
+    def _source(self, db, actor, ref):
+        if not isinstance(ref, dict) or ref.get("kind") != "message":
+            raise Refusal("INVALID_SOURCE", "Unsupported source reference")
+        identity = self._message_access(db, actor, ref.get("id"))
+        row = db.execute("SELECT * FROM messages WHERE id=?", (identity["id"],)).fetchone()
         return {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
                 "author": row["author_id"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),

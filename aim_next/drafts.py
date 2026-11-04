@@ -7,8 +7,8 @@ from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _r
 
 
 DRAFT_SCHEMA = [
-    "CREATE TABLE drafts (id TEXT PRIMARY KEY, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, topic_id TEXT NOT NULL, revision INTEGER NOT NULL, generation TEXT NOT NULL, payload TEXT NOT NULL, UNIQUE(actor_id,source_key,topic_id))",
-    "CREATE TABLE notes (id TEXT PRIMARY KEY, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, UNIQUE(actor_id,source_key))",
+    "CREATE TABLE drafts (id TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, topic_id TEXT NOT NULL, revision INTEGER NOT NULL, generation TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(actor_id,id), UNIQUE(actor_id,source_key,topic_id))",
+    "CREATE TABLE notes (id TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, revision INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(actor_id,id), UNIQUE(actor_id,source_key))",
     "CREATE TABLE submissions (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, actor_id TEXT NOT NULL REFERENCES actors(id), source_key TEXT NOT NULL, topic_id TEXT NOT NULL, prepare_operation_id TEXT NOT NULL, send_operation_id TEXT NOT NULL, send_kind TEXT NOT NULL, metadata TEXT NOT NULL, snapshot TEXT NOT NULL, UNIQUE(actor_id,id), UNIQUE(actor_id,send_operation_id))",
     "CREATE INDEX actor_submissions ON submissions(actor_id,seq)",
     "CREATE INDEX editor_submissions ON submissions(actor_id,source_key,topic_id,seq)",
@@ -41,6 +41,8 @@ class Drafts:
         key = _source_key(ref)
         if ref["kind"] == "new_topic":
             self._workspace(db, actor, ref.get("workspace_id"))
+        elif ref["kind"] == "message":
+            self._message_access(db, actor, ref.get("id"))
         else:
             self._source(db, actor, ref)
         return key
@@ -68,14 +70,14 @@ class Drafts:
         args, target = envelope.get("args", {}), envelope.get("target", {})
         draft_id = _identifier(target.get("draft_id"), "draft_id")
         ref = args.get("source_ref")
-        source_key = self._validate_source_ref(db, actor, ref)
+        source_key = _source_key(ref)
         topic_id = _identifier(args.get("topic_id"), "topic_id")
-        if ref["kind"] != "new_topic":
-            self._topic(db, actor, topic_id)
         generation = _identifier(args.get("generation"), "generation")
-        row = db.execute("SELECT * FROM drafts WHERE id=?", (draft_id,)).fetchone()
-        if row and row["actor_id"] != actor:
-            raise Refusal("FORBIDDEN", "This draft belongs to another actor")
+        row = db.execute("SELECT * FROM drafts WHERE actor_id=? AND id=?", (actor, draft_id)).fetchone()
+        if row is None:
+            self._validate_source_ref(db, actor, ref)
+            if ref["kind"] != "new_topic":
+                self._topic(db, actor, topic_id)
         revision = row["revision"] if row else 0
         _revision(envelope.get("expected", {}), "draft_revision", revision)
         if row is None:
@@ -88,7 +90,7 @@ class Drafts:
         payload = self._writing(args)
         payload["source_ref"] = ref
         if row:
-            db.execute("UPDATE drafts SET revision=?,payload=? WHERE id=?", (revision + 1, _json(payload), draft_id))
+            db.execute("UPDATE drafts SET revision=?,payload=? WHERE actor_id=? AND id=?", (revision + 1, _json(payload), actor, draft_id))
         else:
             db.execute("INSERT INTO drafts VALUES (?,?,?,?,?,?,?)",
                        (draft_id, actor, source_key, topic_id, 1, generation, _json(payload)))
@@ -100,10 +102,10 @@ class Drafts:
         args = envelope.get("args", {})
         note_id = _identifier(envelope.get("target", {}).get("note_id"), "note_id")
         ref = args.get("source_ref")
-        key = self._validate_source_ref(db, actor, ref)
-        row = db.execute("SELECT * FROM notes WHERE id=?", (note_id,)).fetchone()
-        if row and row["actor_id"] != actor:
-            raise Refusal("FORBIDDEN", "This note belongs to another actor")
+        key = _source_key(ref)
+        row = db.execute("SELECT * FROM notes WHERE actor_id=? AND id=?", (actor, note_id)).fetchone()
+        if row is None:
+            self._validate_source_ref(db, actor, ref)
         revision = row["revision"] if row else 0
         _revision(envelope.get("expected", {}), "note_revision", revision)
         if row is None:
@@ -114,7 +116,7 @@ class Drafts:
             raise Refusal("REVISION_CONFLICT", "An existing note retains its source revision")
         payload = {"source_ref": ref, "body": _body(args.get("body", "")), "caret": args.get("caret")}
         if row:
-            db.execute("UPDATE notes SET revision=?,payload=? WHERE id=?", (revision + 1, _json(payload), note_id))
+            db.execute("UPDATE notes SET revision=?,payload=? WHERE actor_id=? AND id=?", (revision + 1, _json(payload), actor, note_id))
         else:
             db.execute("INSERT INTO notes VALUES (?,?,?,?,?)", (note_id, actor, key, 1, _json(payload)))
         self._change(db, "actor", actor, "note", note_id, revision + 1)
@@ -135,7 +137,6 @@ class Drafts:
         for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
-        self._validate_source_ref(db, actor, snapshot["source_ref"])
         submission_id = _identifier(args.get("submission_id"), "submission_id")
         send_op = _identifier(args.get("send_operation_id"), "send_operation_id")
         if db.execute("SELECT 1 FROM submissions WHERE actor_id=? AND id=?", (actor, submission_id)).fetchone():
@@ -143,7 +144,7 @@ class Drafts:
         if send_op == envelope["operation_id"] or db.execute(
                 "SELECT 1 FROM operations WHERE actor_id=? AND id=?", (actor, send_op)).fetchone() or db.execute(
                 "SELECT 1 FROM submissions WHERE actor_id=? AND send_operation_id=?", (actor, send_op)).fetchone():
-            raise Refusal("SEND_ID_UNAVAILABLE", "The future send needs an unused operation identity")
+            raise Refusal("SEND_ID_UNAVAILABLE", "The future send needs an unused operation identity", recorded=False)
         snapshot.update(id=submission_id, topic_id=row["topic_id"], draft_id=row["id"],
                         draft_revision=row["revision"], draft_generation=row["generation"],
                         prepare_operation_id=envelope["operation_id"], send_operation_id=send_op)
@@ -153,8 +154,8 @@ class Drafts:
                    (submission_id, actor, row["source_key"], row["topic_id"], envelope["operation_id"], send_op, send_kind, _json(metadata), _json(snapshot)))
         generation = "g-" + uuid.uuid4().hex
         successor = {"source_ref": snapshot["source_ref"], "body": "", "attachments": [], "quotes": [], "addressees": []}
-        db.execute("UPDATE drafts SET revision=?,generation=?,payload=? WHERE id=?",
-                   (row["revision"] + 1, generation, _json(successor), row["id"]))
+        db.execute("UPDATE drafts SET revision=?,generation=?,payload=? WHERE actor_id=? AND id=?",
+                   (row["revision"] + 1, generation, _json(successor), actor, row["id"]))
         self._change(db, "actor", actor, "draft", row["id"], row["revision"] + 1)
         self._change(db, "actor", actor, "submission", submission_id, 1)
         return {"submission_id": submission_id, "send_operation_id": send_op, "phase": "prepared",
@@ -163,11 +164,11 @@ class Drafts:
                     {"kind": "draft", "id": row["id"], "version": row["revision"] + 1},
                     {"kind": "submission", "id": submission_id, "version": 1}]
 
-    def _submission(self, db, actor, submission_id):
+    def _submission(self, db, actor, submission_id, unconfirmed=False):
         _identifier(submission_id, "submission_id")
         row = db.execute("SELECT * FROM submissions WHERE actor_id=? AND id=?", (actor, submission_id)).fetchone()
         if not row:
-            raise Refusal("FORBIDDEN", "No private submission for this actor")
+            raise Refusal("FORBIDDEN", "No private submission for this actor", recorded=not unconfirmed)
         return row, json.loads(row["snapshot"])
 
     def _view_submission(self, db, actor, args):
@@ -190,10 +191,26 @@ class Drafts:
         return {"instance_id": self.instance_id, "items": items, "next_cursor": rows[limit - 1]["seq"] if len(rows) > limit else None}
 
     def _view_editor_state(self, db, actor, args):
-        key = self._validate_source_ref(db, actor, args.get("source_ref"))
+        key = _source_key(args.get("source_ref"))
         row = db.execute("SELECT * FROM drafts WHERE actor_id=? AND source_key=? AND topic_id=?", (actor, key, args.get("topic_id"))).fetchone()
         draft = dict(json.loads(row["payload"]), id=row["id"], revision=row["revision"], generation=row["generation"]) if row else None
         row = db.execute("SELECT * FROM notes WHERE actor_id=? AND source_key=?", (actor, key)).fetchone()
         note = dict(json.loads(row["payload"]), id=row["id"], revision=row["revision"]) if row else None
+        source_available = True
+        try:
+            self._validate_source_ref(db, actor, args["source_ref"])
+        except Refusal as exc:
+            if exc.code != "FORBIDDEN" or (draft is None and note is None):
+                raise
+            source_available = False
+        destination_available = source_available
+        if args["source_ref"]["kind"] != "new_topic":
+            try:
+                self._topic(db, actor, args.get("topic_id"))
+            except Refusal as exc:
+                if exc.code != "FORBIDDEN":
+                    raise
+                destination_available = False
         return {"instance_id": self.instance_id, "source_ref": args["source_ref"], "destination": {"topic_id": args.get("topic_id")},
+                "source_available": source_available, "destination_available": destination_available,
                 "draft": draft, "note": note, "reading_place": None, "submissions": self._view_submissions(db, actor, args), "limits": dict(LIMITS)}

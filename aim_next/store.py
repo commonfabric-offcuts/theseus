@@ -156,6 +156,8 @@ class Store(Drafts, Conversation):
                 receipt = self._receipt(envelope, "committed", True, result, affected)
             except Refusal as exc:
                 db.execute("ROLLBACK TO effect")
+                if not exc.recorded:
+                    raise
                 receipt = self._refusal(envelope, exc, recorded=True)
             db.execute("RELEASE effect")
             db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op_id, fingerprint, kind, _json(receipt)))
