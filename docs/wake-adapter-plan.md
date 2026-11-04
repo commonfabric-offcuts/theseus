@@ -1,6 +1,9 @@
 # Wake adapter: bounded first implementation
 
-Status: proposed for independent critique, not implemented or enabled.
+Status: initial adapter boundary confirmed by Fable in `m-b3888405` at
+`4b6a437` / SHA256 `99bcf9beb99b`; not implemented or enabled. Core's subsequent
+held-process guard and authority interfaces are under bounded critique before
+integration; their exact API is still pending.
 Lead owns the adapter. Core owns delivery eligibility, runner ownership,
 attempt claims, acknowledgement and durable retry scheduling. This complements
 the canonical first-build plan; it does not change product scope or resume UX.
@@ -23,6 +26,21 @@ and concrete restore-authority seam are still pending. This first implementation
 route adapter tested against isolated bindings and child commands. Runner
 integration and activation wait for Core's actual claim/authority contract.
 Do not install a service or register a real agent route for these tests.
+
+Core's follow-up contracts live in
+`/Users/commonfabric/aim-worktrees/aim-core-evidence/aim-next-20261103/wake-contract.md`
+and `authority-contract.md` beside it. Lead critiques `m-ebb1e606` and
+`m-4381e792`, with agreed dispositions `m-e617a628` and `m-2405cf23`, require a
+live guard that spans parent/child lifetime, strict authority-epoch binding,
+and no post-snapshot commit loss at recovery activation. Wall-clock lease expiry
+does not authorize a second runner or cutover while the old broker survives.
+The guard uses stable external lock inodes, explicit descriptor inheritance and
+close-only lifetime; an explicit unlock can release a child's inherited lock.
+The isolated Mac probes in `work/evidence/wake-guard-probe-01` and
+`work/evidence/wake-guard-probe-02` demonstrate that distinction and actual parent
+exit with a surviving child. They are mechanism evidence, not the future
+adapter/guardian or restore integration proof. This dependency must be resolved
+before enabling the otherwise reviewed adapter boundary below.
 
 ## What a route means
 
