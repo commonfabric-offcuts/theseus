@@ -92,7 +92,8 @@ def prepare_authority(authority_path, db_path, instance_id):
     if anchor.exists():
         raise AuthorityError("INVALID_BINDING", "An existing authority is never replaced by initialization")
     record = {"v": 1, "authority_id": "a-" + uuid.uuid4().hex, "instance_id": instance_id,
-              "epoch": "e-" + uuid.uuid4().hex, "state": "active", "db_path": str(_absolute(db_path))}
+              "epoch": "e-" + uuid.uuid4().hex, "state": "active", "db_path": str(_absolute(db_path)),
+              "recovery": {"kind": "initial", "history_complete": True}}
     for suffix, prefix in ((".lock", "lock"), (".runner.lock", "runner_lock")):
         fd = os.open(str(anchor) + suffix, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
         try:
@@ -141,6 +142,19 @@ class Authority:
 
     def runner_guard(self, runner_id):
         return RunnerGuard(self, runner_id)
+
+    def facts(self, validated_record):
+        # These are display facts, never permission to replay an old-epoch act.
+        # Missing metadata cannot establish the absence of a recovery gap.
+        recovery = validated_record.get("recovery")
+        continuity = "unknown"
+        if isinstance(recovery, dict):
+            if recovery.get("history_complete") is False:
+                continuity = "incomplete"
+            elif recovery.get("history_complete") is True:
+                continuity = "initial" if recovery.get("kind") == "initial" else "complete"
+        return {"authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"],
+                "continuity": continuity}
 
     def _verify_lock(self, fd, suffix, prefix, record):
         held = os.fstat(fd)

@@ -143,6 +143,26 @@ class AuthorityCase(unittest.TestCase):
             self.assertFalse(result["error"]["retryable"])
         self.assertEqual(self.sql("SELECT * FROM operations"), before)
 
+    def test_capabilities_pin_authority_and_require_explicit_continuity_facts(self):
+        expected = {"authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"], "continuity": "initial"}
+        self.assertEqual(self.store.view("owner", "capabilities", {}).get("authority"), expected)
+        record = json.loads(self.anchor.read_text())
+        self.assertEqual(record["recovery"], {"kind": "initial", "history_complete": True})
+        cases = [(None, "unknown"), ({}, "unknown"), ({"history_complete": "true"}, "unknown"),
+                 ({"history_complete": 1}, "unknown"), ([], "unknown"),
+                 ({"history_complete": False}, "incomplete"), ({"history_complete": True}, "complete")]
+        for recovery, continuity in cases:
+            with self.subTest(recovery=recovery):
+                if recovery is None:
+                    record.pop("recovery", None)
+                else:
+                    record["recovery"] = recovery
+                self.anchor.write_text(json.dumps(record))
+                facts = self.store.view("owner", "capabilities", {})["authority"]
+                self.assertEqual(facts, dict(expected, continuity=continuity))
+        self.assertEqual(self.sql("SELECT count(*) FROM operations"), [(0,)])
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='commit_seq'"), [("0",)])
+
     def test_schema_mismatch_is_refused_before_writing(self):
         with sqlite3.connect(str(self.path)) as db:
             db.execute("UPDATE metadata SET value='unsupported' WHERE key='schema_version'")
