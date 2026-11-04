@@ -7,10 +7,11 @@ export function editorKey({ instanceId, actor, sourceRef, topicId, kind = 'reply
   return JSON.stringify([instanceId, actor, kind, sourceRef.kind, sourceRef.id, kind === 'note' ? null : topicId ?? null]);
 }
 
-export function keyAction(event, { context, menuActive = false, quoteArmed = false } = {}) {
+export function keyAction(event, { context, menuActive = false, quoteArmed = false, writingEmpty = false } = {}) {
   if (event.isComposing || event.keyCode === 229 || menuActive || event.key !== 'Enter') return 'native';
   if (event.repeat && (event.metaKey || event.altKey)) return 'native';
   if (context === 'note') return event.metaKey ? 'save-note' : 'newline';
+  if (event.metaKey && event.shiftKey && writingEmpty && ['reader', 'reply'].includes(context)) return 'return-gallery';
   if (event.metaKey) return event.shiftKey ? 'send-stay' : 'send-return';
   if (event.altKey && context === 'reply') return 'send-stay';
   if (!event.shiftKey && quoteArmed && context === 'reader') return 'quote';
@@ -32,7 +33,8 @@ export class Editor {
 
   get dirty() { return this.localVersion > this.ackVersion; }
   get canNavigateAfterSend() {
-    return this.submissions.length > 0 && this.submissions.at(-1).preparationConfirmed === true;
+    const latest = this.submissions.at(-1);
+    return Boolean(latest && !latest.detached && latest.preparationConfirmed === true);
   }
 
   edit(patch) {
@@ -52,22 +54,22 @@ export class Editor {
     return receipt?.recorded === true && receipt.instance_id === this.context.instanceId && receipt.operation_id === operationId && receipt.kind === kind;
   }
 
-  acceptSave(ticket, receipt) {
+  acceptSave(ticket, receipt, { bindDraft = true } = {}) {
     if (!ticket || ticket.key !== this.key) return false;
     const kind = this.context.kind === 'note' ? 'note.save' : 'draft.save';
     if (!this.matches(receipt, ticket.operationId, kind)) return false;
     // Send may have opened local B while A's earlier autosave was in flight.
     // Only a still-preparing A may absorb that acknowledgement. Once its
     // preparation is recorded, its source revision is fixed and B owns saves.
-    const pending = kind === 'draft.save' && this.submissions.find(item =>
-      item.status === 'preparing' && item.snapshot.id === ticket.draft.id &&
+    const pending = bindDraft && kind === 'draft.save' && this.submissions.find(item =>
+      item.status === 'preparing' && !item.detached && item.snapshot.id === ticket.draft.id &&
       item.snapshot.generation === ticket.draft.generation);
-    const target = pending ? pending.snapshot : this.draft;
+    const target = bindDraft ? (pending ? pending.snapshot : this.draft) : copy(ticket.draft);
     if (ticket.draft.id !== target.id || ticket.draft.generation !== target.generation) return false;
     if (receipt.status === 'rejected') {
       const conflict = { error: copy(receipt.error), attempted: copy(ticket.draft) };
       if (pending) pending.saveConflict = conflict;
-      else this.conflict = conflict;
+      else if (bindDraft) this.conflict = conflict;
       return false;
     }
     if (receipt.status !== 'committed') return false;
@@ -78,13 +80,13 @@ export class Editor {
     if (kind === 'note.save' && result.note_id !== target.id) return false;
     target.revision = revision;
     if (pending) pending.savedVersion = Math.max(pending.savedVersion ?? -1, ticket.localVersion);
-    else this.ackVersion = Math.max(this.ackVersion, ticket.localVersion);
+    else if (bindDraft) this.ackVersion = Math.max(this.ackVersion, ticket.localVersion);
     return true;
   }
 
   beginPrepare({ prepareOperationId, sendOperationId, submissionId }) {
     if (this.context.kind === 'note') throw new Error('A private note cannot be sent.');
-    const active = this.submissions.find(item => item.status === 'preparing');
+    const active = this.submissions.find(item => item.status === 'preparing' && !item.detached);
     if (active) return active;
     if (!this.draft.generation || this.conflict) throw new Error('Resolve the draft before preparing a send.');
     const submission = {
@@ -105,7 +107,7 @@ export class Editor {
     return submission;
   }
 
-  acceptPreparation(receipt) {
+  acceptPreparation(receipt, { bindDraft = true } = {}) {
     const item = this.submissions.find(entry => this.matches(receipt, entry.prepareOperationId, 'submission.prepare'));
     if (!item || item.preparationConfirmed || item.status === 'refused') return false;
     if (receipt.status === 'rejected') {
@@ -113,9 +115,11 @@ export class Editor {
       item.receipt = copy(receipt);
       // No server rotation happened. A remains recoverable as a rejected
       // snapshot; B can now be saved into the existing slot explicitly.
-      this.draft.id = item.snapshot.id;
-      this.draft.revision = item.snapshot.revision;
-      this.draft.generation = item.snapshot.generation;
+      if (bindDraft) {
+        this.draft.id = item.snapshot.id;
+        this.draft.revision = item.snapshot.revision;
+        this.draft.generation = item.snapshot.generation;
+      }
       return true;
     }
     const next = receipt.result?.next_draft;
@@ -124,14 +128,17 @@ export class Editor {
     item.status = 'prepared';
     item.prepareReceipt = copy(receipt);
     // Bind the existing local B. Never replace its text with an empty server B.
-    this.draft.id = next.id;
-    this.draft.revision = next.revision;
-    this.draft.generation = next.generation;
+    if (bindDraft) {
+      this.draft.id = next.id;
+      this.draft.revision = next.revision;
+      this.draft.generation = next.generation;
+    }
     return true;
   }
 
   acceptSend(receipt) {
-    const item = this.submissions.find(entry => this.matches(receipt, entry.sendOperationId, 'message.send'));
+    const item = this.submissions.find(entry => this.matches(receipt, entry.sendOperationId,
+      entry.snapshot.opening ? 'topic.create_and_send' : 'message.send'));
     if (!item || !item.preparationConfirmed || !['committed', 'rejected'].includes(receipt.status)) return false;
     if (receipt.status === 'committed' && receipt.result?.submission_id !== item.id) return false;
     item.receipt = copy(receipt);
@@ -151,7 +158,7 @@ export function restoreEditor(context, serverDraft, journal) {
   if (journal.format !== 1 || journal.key !== editorKey(context)) throw new Error('Recovery data belongs to a different editor.');
   const editor = new Editor(context, serverDraft);
   editor.submissions = copy(journal.submissions);
-  const unsettled = journal.submissions.some(item => ['preparing', 'prepared'].includes(item.status));
+  const unsettled = journal.submissions.some(item => ['preparing', 'prepared'].includes(item.status) && !item.detached);
   if (journal.localVersion > journal.ackVersion || unsettled || journal.conflict) {
     for (const field of ['sourceRef', 'draft', 'localVersion', 'ackVersion', 'submissions', 'conflict']) editor[field] = copy(journal[field]);
     // A successor whose prepare reply was lost must first reconcile preparation.

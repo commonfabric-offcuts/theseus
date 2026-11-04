@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="aim-next-session" content="__AIM_SESSION_TOKEN__">
+  <meta name="color-scheme" content="light dark">
+  <title>AIM</title>
+  <link rel="stylesheet" href="/aim.css">
+  <script type="module" src="/app.mjs"></script>
+</head>
+<body>
+  <header class="app-header">
+    <a class="wordmark" href="#">AIM<span class="presence-dot" aria-hidden="true"></span></a>
+    <span id="instance-label">Opening your workspace…</span>
+    <button id="refresh" type="button">Refresh</button>
+  </header>
+  <div id="app-status" class="notice" role="status" hidden></div>
+  <div class="workspace-layout">
+    <nav class="rail" aria-label="Workspaces and topics">
+      <div class="rail-heading"><h1>Workspaces</h1></div>
+      <div id="workspaces"></div>
+      <div class="rail-heading"><h2 id="topics-heading">Topics</h2><button id="new-topic" type="button" disabled>New topic</button></div>
+      <div id="topics" aria-labelledby="topics-heading"></div>
+      <button id="more-topics" type="button" hidden>More topics</button>
+    </nav>
+    <main id="main" tabindex="-1">
+      <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><h1 id="topic-title">A place to work together</h1><p id="topic-description" class="muted">Choose a workspace and topic to begin.</p></div></header>
+      <div id="participants" class="participants" aria-label="Topic participants"></div>
+      <section id="messages" aria-label="Conversation"></section>
+      <button id="more-messages" type="button" hidden>More messages</button>
+      <section id="notebook" aria-label="Notebook"><div class="section-heading"><h2>Notebook</h2><span class="muted">Shared grounding</span></div><div id="memory-items"></div></section>
+    </main>
+  </div>
+
+  <dialog id="reader" aria-labelledby="reader-title">
+    <div class="reader-main">
+    <header class="reader-header">
+      <button id="reader-parent" type="button" class="quiet">← Topic</button>
+      <div class="reader-heading"><h2 id="reader-title">Message</h2><p id="reader-origin" class="muted"></p></div>
+      <button id="reader-layout" type="button" aria-label="Use wide reader layout" aria-pressed="false">Wide</button>
+      <button id="reader-close" type="button" aria-label="Close reader">✕</button>
+    </header>
+      <section class="reading-pane" aria-label="Source text">
+        <div id="source-update" class="notice" hidden></div>
+        <article id="source-body" tabindex="0" aria-label="Read and select source text"></article>
+        <div id="source-attachments" class="attachments"></div>
+        <footer class="source-actions">
+          <button id="quote-selection" type="button">Quote selection</button>
+          <span class="muted">Select a passage, then Return</span>
+          <div id="reader-stepping"><button id="previous-message" type="button" aria-label="Previous eligible message">←</button><button id="next-message" type="button" aria-label="Next eligible message">→</button></div>
+        </footer>
+      </section>
+      <div id="reader-divider" role="separator" tabindex="0" aria-label="Resize reading and writing panes" aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-valuenow="48" title="Drag or use arrow keys to resize. Double-click to reset."><span aria-hidden="true"></span></div>
+      <section class="writing-pane" aria-label="Your writing">
+        <div class="writing-heading"><h3 id="writing-title">Reply</h3><button id="toggle-note" type="button">Private note</button></div>
+        <label id="destination-label" class="field-label">To topic <select id="reply-destination" aria-label="Reply destination"></select></label>
+        <div id="reply-audience" class="audience"><span class="muted">Address</span><div id="recipient-chips" class="chips"></div><input id="recipient-input" aria-label="Add recipient" placeholder="Add a name" autocomplete="off"><button id="add-recipient" type="button">Add</button></div>
+        <div id="reader-notice" class="notice" role="status" hidden></div>
+        <div id="pending-submissions" class="pending-submissions" aria-label="Submitted writing"></div>
+        <label class="sr-only" id="writing-label" for="writing-body">Reply</label>
+        <textarea id="writing-body" spellcheck="true" aria-describedby="save-state writing-hint" placeholder="Write a reply…"></textarea>
+        <div id="writing-attachments" class="attachments"></div>
+        <footer class="writing-footer">
+          <div><span id="save-state" role="status">Saved</span><span id="writing-hint" class="muted">Return for a new line · ⌘ Return to send</span></div>
+          <button id="send-reply" type="button" class="primary">Send <span aria-hidden="true">⌘↵</span></button>
+        </footer>
+      </section>
+    </div>
+  </dialog>
+</body>
+</html>

@@ -260,6 +260,18 @@ test('holding Cmd-Return after saving a note cannot send the reply underneath', 
   }
 });
 
+test('empty Shift-Cmd-Return returns to the gallery without changing other send or note keys', () => {
+  const shortcut = { key: 'Enter', metaKey: true, shiftKey: true };
+  for (const context of ['reply', 'reader']) {
+    assert.equal(keyAction(shortcut, { context, writingEmpty: true }), 'return-gallery');
+    assert.equal(keyAction(shortcut, { context, writingEmpty: false }), 'send-stay');
+    assert.equal(keyAction({ ...shortcut, repeat: true }, { context, writingEmpty: true }), 'native');
+  }
+  assert.equal(keyAction(shortcut, { context: 'note', writingEmpty: true }), 'save-note');
+  assert.equal(keyAction({ key: 'Enter' }, { context: 'reply', writingEmpty: true }), 'newline');
+  assert.equal(keyAction({ key: 'Enter', metaKey: true }, { context: 'reply', writingEmpty: true }), 'send-return');
+});
+
 test('settled A does not hide B saved later on another device', () => {
   for (const status of ['committed', 'rejected']) {
     const editor = fresh();
