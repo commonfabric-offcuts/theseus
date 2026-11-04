@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import { imageInstrumentation, imageChecks } from './reader_images_native.mjs';
 import { freshnessInstrumentation, freshnessChecks, observeUploadProof } from './reader_freshness_native.mjs';
+import { inlineChecks } from './reader_inline_native.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -18,10 +19,11 @@ const phases = { started: Date.now(), cases: [] };
 const [chromePath, evidencePath, mode = '--journal', caseFilter] = process.argv.slice(2);
 const baseline = process.env.AIM_FRESHNESS_BASELINE === 'ba4a00e';
 const legacyAdmission = process.env.AIM_FRESHNESS_LEGACY === '1';
+const liveUpdatesFixture = ['--freshness', '--inline'].includes(mode);
 assert.ok(!(baseline && legacyAdmission), 'the shared-two baseline is distinct from single-slot fallback');
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
 assert.ok(evidencePath && path.isAbsolute(evidencePath));
-assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images', '--freshness'].includes(mode));
+assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images', '--freshness', '--inline'].includes(mode));
 await mkdir(evidencePath, { recursive: true });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(probe, description, timeout = 8000) {
@@ -29,7 +31,7 @@ async function until(probe, description, timeout = 8000) {
   while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
   throw Error(`Timed out: ${description}`);
 }
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(mode === '--freshness' ? ['--freshness', '--images', '--media', ...(legacyAdmission ? ['--legacy-read-admission'] : []), ...(baseline ? ['--baseline-read-admission'] : [])] : mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(liveUpdatesFixture ? ['--freshness', '--images', '--media', ...(legacyAdmission ? ['--legacy-read-admission'] : []), ...(baseline ? ['--baseline-read-admission'] : [])] : mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
@@ -46,7 +48,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(mode === '--freshness' ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', 'tests/reader_freshness_native.mjs'] : [])]) {
+for (const filename of ['web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -172,7 +174,7 @@ try {
         },
         fail: entry => send('Fetch.failRequest', { requestId: entry.event.requestId, errorReason: 'ConnectionClosed' }),
         open: async index => {
-          if (mode === '--freshness') {
+          if (liveUpdatesFixture) {
             for (let more = 0; more < 20 && !await evaluate(`Boolean(document.querySelector('#messages [data-id="${facts.sources[index].id}"]'))`); ++more) {
               const count = await evaluate('document.querySelectorAll("#messages [data-id]").length');
               assert.equal(await evaluate('document.querySelector("#more-messages").hidden'), false, 'source exists in remaining older history');
@@ -187,15 +189,15 @@ try {
           await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
         },
       };
-      if (mode === '--freshness') {
+      if (liveUpdatesFixture) {
         freshnessPages.set(targetId, connectedPage);
-        await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, { urlPattern: facts.origin + '/app.mjs', requestStage: 'Response' }, { urlPattern: facts.origin + '/upload-cleanup.mjs', requestStage: 'Response' }] });
+        await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, ...(mode === '--freshness' ? [{ urlPattern: facts.origin + '/app.mjs', requestStage: 'Response' }, { urlPattern: facts.origin + '/upload-cleanup.mjs', requestStage: 'Response' }] : [])] });
         await setup.beforeNavigate?.(connectedPage);
       }
       await send('Page.navigate', { url: facts.origin + '/?topic=t1' });
       await until(() => evaluate('document.body?.dataset.ready === "true" || Boolean(document.querySelector("#app-status") && !document.querySelector("#app-status").hidden)'), 'application bootstrap');
       if (!setup.allowStartupError) assert.equal(await evaluate('document.body.dataset.ready'), 'true', await evaluate('document.querySelector("#app-status").textContent'));
-      if (mode !== '--freshness') await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
+      if (!liveUpdatesFixture) await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
       return connectedPage;
     }
     // A text document at this origin permits testing the real imported journal
@@ -235,15 +237,16 @@ try {
     if (mode === '--cleanup' && !name.startsWith('cleanup ')) return;
     if (mode === '--images' && !name.startsWith('images ')) return;
     if (mode === '--freshness' && !name.startsWith('freshness ')) return;
+    if (mode === '--inline' && !name.startsWith('inline ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
     const timing = { name, started: Date.now() };
     // These recovery cases deliberately leave abandoned copies behind. Each
     // gets a fresh owned storage context, shared only by that case's tabs.
-    if (/^images X[1234] /.test(name) || mode === '--freshness') recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
+    if (/^images X[1234] /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
     try {
       timing.actionStarted = Date.now();
       await action();
-      if (mode === '--freshness') {
+      if (liveUpdatesFixture) {
         const health = await control({ method: 'admission_events' });
         observations.push({ name: 'fixture health', case: name, fatal: health.fatal, next: health.next });
         assert.deepEqual(health.fatal, [], 'a fixture hold timeout is an instrument failure');
@@ -394,7 +397,9 @@ try {
       const image = await page.send('Page.captureScreenshot', { format: 'png' });
       await writeFile(path.join(evidencePath, name + '.png'), Buffer.from(image.data, 'base64'));
     };
-    if (mode === '--freshness') {
+    if (mode === '--inline') {
+      await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});
+    } else if (mode === '--freshness') {
       await freshnessChecks({check,page,until,root,facts,view,control,replace,field,shot,observations,baseline,legacyAdmission});
     } else if (mode === '--images') {
       await imageChecks({check,page,until,root,facts,view,replace,field,shot,observations});
@@ -951,7 +956,7 @@ try {
   }
 } finally {
   if (cdp && socket?.readyState === WebSocket.OPEN) { await cdp('Browser.close'); await chromeExit; socket.close(); }
-  if (mode === '--freshness' && fixture.exitCode === null) finalHealth = await control({ method: 'admission_events' });
+  if (liveUpdatesFixture && fixture.exitCode === null) finalHealth = await control({ method: 'admission_events' });
   fixture.stdin.end();
   fixtureExitCode = await fixtureExit;
   // Every origin/key here belongs to this unique disposable profile; no keys
@@ -965,6 +970,6 @@ try {
   phases.reportingEnded = Date.now();
   await writeFile(path.join(evidencePath, 'phases.json'), JSON.stringify(phases, null, 2));
   assert.equal(fixtureExitCode, 0, fixtureErrors);
-  if (mode === '--freshness') { assert.deepEqual(finalHealth?.fatal, []); assert.equal(fixtureErrors, '', 'owned fixture stderr is clean'); }
+  if (liveUpdatesFixture) { assert.deepEqual(finalHealth?.fatal, []); assert.equal(fixtureErrors, '', 'owned fixture stderr is clean'); }
 }
 assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');

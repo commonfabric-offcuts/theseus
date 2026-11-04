@@ -22,15 +22,15 @@ const pairedReads = async reads => {
 // Composition owns presentations and scheduling; EditorSession remains the only
 // owner of save/prepare/send envelopes and authority recovery.
 export class EditorRegistry {
-  constructor({ api, bootstrap, journal, present = () => {}, closed = () => {}, changed = () => {},
+  constructor({ api, bootstrap, journal, present = () => {}, closed = () => {}, changed = () => {}, activity = () => {},
     saveDelayMs = 450, maxSaveDelayMs = 2000, pendingPageSize = 20, timers = realTimers }) {
     if (!bootstrap?.actor || !bootstrap.instance_id || bootstrap.error) throw Error('A confirmed instance and actor are required.');
     if (!(saveDelayMs > 0 && maxSaveDelayMs >= saveDelayMs)) throw Error('Saves need bounded idle and maximum delays.');
-    Object.assign(this, { api, bootstrap: copy(bootstrap), journal, present, closed, changed, saveDelayMs, maxSaveDelayMs, pendingPageSize, timers });
+    Object.assign(this, { api, bootstrap: copy(bootstrap), journal, present, closed, changed, activity, saveDelayMs, maxSaveDelayMs, pendingPageSize, timers });
     this.runtime = new RuntimeAuthority({ api, instanceId: bootstrap.instance_id, authority: bootstrap.authority });
     this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map();
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
-    this.current = null; this.generation = 0; this.disposed = false;
+    this.current = null; this.inline = null; this.generation = 0; this.disposed = false;
     this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
       changed: editor => this.changed(editor), stopped: () => this.disposed });
@@ -42,8 +42,39 @@ export class EditorRegistry {
     return session;
   }
 
-  isCurrent(presentation) { return Boolean(presentation && this.current === presentation && !this.pendingOpen && !this.disposed); }
-  isSourceCurrent(presentation) { return Boolean(presentation && this.current?.source === presentation.source && !this.pendingOpen && !this.disposed); }
+  get interactive() { return this.current ?? this.inline; }
+  isCurrent(presentation, editor) {
+    return Boolean(presentation && this.interactive === presentation && !this.pendingOpen && !this.disposed &&
+      (presentation.surface !== 'inline' || presentation.initialized) &&
+      (!editor || Object.values(presentation.editors).includes(editor) && this.sessions.get(editor.key)?.editor === editor));
+  }
+  isSourceCurrent(presentation) { return Boolean(presentation?.source && this.current?.source === presentation.source && !this.pendingOpen && !this.disposed); }
+
+  async initializeInline(topic) {
+    if (this.disposed || !topic?.id) throw Error('A confirmed topic is required before writing.');
+    if (this.inline) {
+      if (this.inline.topic.id !== topic.id) throw Error('This composer belongs to another topic.');
+      return this.inline;
+    }
+    if (this.initializingInline) return this.initializingInline;
+    const initialize = async () => {
+      const foreground = this.cleanup.foreground(), sourceRef = { kind: 'topic', id: topic.id };
+      try {
+        const state = await foreground.read(options => this.api.view('editor_state', { source_ref: sourceRef, topic_id: topic.id, limit: this.pendingPageSize }, options));
+        this.validateState(state, sourceRef, topic.id);
+        if (state.note !== null) throw Error('A topic composer cannot hold a private note.');
+        if (this.disposed) return null;
+        const reply = await this.register({ instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId: topic.id, kind: 'reply' }, state.draft);
+        if (this.disposed) return null;
+        reply.unavailable = !state.source_available || !state.destination_available;
+        this.pages.set(reply.key, copy(state.submissions));
+        this.inline = { surface: 'inline', initialized: true, topic: copy(topic), editors: { reply }, mode: 'reply', destinationAvailable: !reply.unavailable };
+        this.present(this.inline); this.activity(); return this.inline;
+      } finally { foreground.release(); }
+    };
+    this.initializingInline = initialize();
+    try { return await this.initializingInline; } finally { this.initializingInline = null; }
+  }
 
   validateState(state, sourceRef, topicId) {
     if (state?.error || state?.instance_id !== this.bootstrap.instance_id || !same(state.source_ref, sourceRef) ||
@@ -118,8 +149,9 @@ export class EditorRegistry {
     const foreground = this.cleanup.foreground();
     const token = ++this.generation;
     this.pendingOpen = token;
+    this.activity();
     try {
-    await this.keepLocal(this.current);
+    await this.keepLocal(this.interactive);
     const [sourceAnswer, state] = await foreground.read(options => pairedReads([
       this.api.view('source', sourceRef, options),
       this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize }, options),
@@ -145,7 +177,7 @@ export class EditorRegistry {
     } catch (error) {
       if (token !== this.generation || this.disposed) return null;
       throw error;
-    } finally { foreground.release(); if (this.pendingOpen === token) this.pendingOpen = null; }
+    } finally { foreground.release(); if (this.pendingOpen === token) this.pendingOpen = null; this.activity(); }
   }
 
   persistLocal(editor) {
@@ -185,12 +217,14 @@ export class EditorRegistry {
 
   flush(editor) { this.cancelSave(editor); return editor.unavailable ? this.persistLocal(editor).then(() => null) : this.sessionFor(editor).save(); }
   send(editor, options = {}) {
+    if (options.presentation && !this.isCurrent(options.presentation, editor)) throw Error('Return to this writing before sending.');
     if (editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept on this device.');
     this.cancelSave(editor);
-    return this.sessionFor(editor).send({ ...options, presentation: options.presentation ?? this.current });
+    return this.sessionFor(editor).send({ ...options, presentation: options.presentation ?? this.interactive });
   }
 
   async close(presentation, { explicit = false } = {}) {
+    if (presentation?.surface === 'inline') return false;
     if (explicit) {
       if (!presentation || this.current !== presentation || this.disposed) return false;
       ++this.generation;
@@ -201,13 +235,14 @@ export class EditorRegistry {
     try { await this.keepLocal(presentation); }
     catch { return false; }
     if (!this.isCurrent(presentation) || requestGeneration !== this.generation) return false;
-    this.current = null; ++this.generation; this.closed(presentation); return true;
+    this.current = null; ++this.generation; this.closed(presentation); this.activity(); return true;
   }
 
   setMode(mode) {
     if (!this.current || !['reply', 'note'].includes(mode)) return null;
     this.pendingOpen = null;
     this.current = { ...this.current, token: ++this.generation, mode };
+    this.activity();
     return this.current;
   }
 
@@ -331,9 +366,9 @@ export class EditorRegistry {
 
   async adoptCandidate(editor, candidate, presentation) {
     const previous = this.sessionFor(editor);
-    if (!this.isCurrent(presentation) || editor.localVersion || previous.attempts.length || editor.submissions.length || uploadWork(editor)) throw Error('This page has current writing. Keep both versions and copy deliberately.');
+    if (!this.isCurrent(presentation, editor) || editor.localVersion || previous.attempts.length || editor.submissions.length || uploadWork(editor)) throw Error('This page has current writing. Keep both versions and copy deliberately.');
     const revision = editor.uploadState?.revision;
-    const current = () => this.sessions.get(editor.key) === previous && this.isCurrent(presentation) && !editor.localVersion &&
+    const current = () => this.sessions.get(editor.key) === previous && this.isCurrent(presentation, editor) && !editor.localVersion &&
       editor.uploadState?.revision === revision && !editor.imageReservation && !editor.imageBusy;
     editor.adopting = true; this.changed(editor);
     try {

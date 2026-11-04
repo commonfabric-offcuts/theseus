@@ -4,6 +4,20 @@ import { imageBarrier, freezeImages, readableUploads, refusedAtDraft } from './u
 const copy = value => structuredClone(value);
 const emptyWriting = () => ({ body: '', attachments: [], quotes: [], addressees: [], caret: { start: 0, end: 0 } });
 
+function topicCompositionError(context, sourceRef, draft) {
+  if (context.sourceRef?.kind !== 'topic') return null;
+  const canonical = ref => ref?.kind === 'topic' && ref.id === context.topicId &&
+    Object.keys(ref).length === 2 && typeof ref.id === 'string' && Boolean(ref.id);
+  if (context.kind !== 'reply' || !canonical(context.sourceRef) || !canonical(sourceRef) ||
+      Object.hasOwn(draft, 'source_ref') && !canonical(draft.source_ref) ||
+      Object.hasOwn(draft, 'topic_id') && draft.topic_id !== context.topicId ||
+      ['reply_to', 'exchange_id', 'opening'].some(field => Object.hasOwn(draft, field)) ||
+      !Array.isArray(draft.quotes) || draft.quotes.length) {
+    return 'This saved topic message has a different destination or reply fields. Its writing is kept; review it before continuing.';
+  }
+  return null;
+}
+
 export function editorKey({ instanceId, actor, sourceRef, topicId, kind = 'reply' }) {
   if (!instanceId || !actor || !sourceRef?.kind || !sourceRef?.id) throw new Error('An editor needs its instance, actor and stable source identity.');
   return JSON.stringify([instanceId, actor, kind, sourceRef.kind, sourceRef.id, kind === 'note' ? null : topicId ?? null]);
@@ -32,6 +46,13 @@ export class Editor {
     this.submissions = [];
     this.conflict = null;
     this.journalError = null;
+    this.validateComposition();
+  }
+
+  validateComposition() {
+    const message = topicCompositionError(this.context, this.sourceRef, this.draft);
+    if (message) this.conflict = { error: { code: 'INVALID_TOPIC_COMPOSITION', message }, attempted: copy(this.draft) };
+    return !message;
   }
 
   get dirty() { return this.localVersion > this.ackVersion; }
@@ -49,6 +70,7 @@ export class Editor {
   }
 
   saveTicket(operationId) {
+    if (!this.validateComposition()) return null;
     if ((this.context.kind !== 'note' && !this.draft.generation) || this.conflict) return null;
     return { operationId, key: this.key, localVersion: this.localVersion, draft: copy(this.draft), sourceRef: copy(this.sourceRef) };
   }
@@ -88,6 +110,7 @@ export class Editor {
   }
 
   beginPrepare({ prepareOperationId, sendOperationId, submissionId }) {
+    if (!this.validateComposition()) throw Error(this.conflict.error.message);
     if (this.context.kind === 'note') throw new Error('A private note cannot be sent.');
     const active = this.submissions.find(item => item.status === 'preparing' && !item.detached);
     if (active) return active;
@@ -183,5 +206,6 @@ export function restoreEditor(context, serverDraft, journal) {
       editor.conflict = { remote: copy(serverDraft), attempted: copy(editor.draft) };
     }
   }
+  editor.validateComposition();
   return editor;
 }

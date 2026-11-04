@@ -47,13 +47,13 @@ export class Uploads {
     finally { this.editor.imageBusy--; this.notify(); }
   }
   reserve(presentation) {
-    if (!this.valid() || this.editor.adopting || this.editor.recoveryDiscovery || this.editor.imageReservation || !this.registry.isCurrent(presentation)) throw Error('Review saved images before selecting another file.');
+    if (!this.valid() || this.editor.adopting || this.editor.recoveryDiscovery || this.editor.imageReservation || !this.registry.isCurrent(presentation, this.editor)) throw Error('Review saved images before selecting another file.');
     const token = { id: crypto.randomUUID(), cycle: this.editor.clientCycleId, presentation };
     this.editor.imageReservation = token; this.notify(); return token;
   }
   cancel(token) { if (this.editor.imageReservation === token) { this.editor.imageReservation = null; this.notify(); } }
   async choose(token, file) {
-    const valid = this.valid() && this.editor.imageReservation === token && token.cycle === this.editor.clientCycleId && this.registry.isCurrent(token.presentation) && !this.editor.adopting;
+    const valid = this.valid() && this.editor.imageReservation === token && token.cycle === this.editor.clientCycleId && this.registry.isCurrent(token.presentation, this.editor) && !this.editor.adopting;
     this.cancel(token);
     if (!valid) throw Error('That image selection has expired. Choose it again in the current reply.');
     return file ? this.add(file) : null;

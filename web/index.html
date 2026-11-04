@@ -32,6 +32,23 @@
       <section id="messages" aria-label="Conversation"></section>
       <button id="more-messages" type="button" hidden>More messages</button>
       <section id="notebook" aria-label="Notebook"><div class="section-heading"><h2>Notebook</h2><span class="muted">Shared grounding</span></div><div id="memory-items"></div><button id="more-memory" type="button" hidden>More Notebook items</button></section>
+      <section id="inline-composer" class="inline-composer" aria-labelledby="inline-writing-title" hidden>
+        <h2 id="inline-writing-title">New message</h2>
+        <p id="inline-destination" class="field-label"></p>
+        <div class="audience"><span class="muted">Address</span><div id="inline-recipient-chips" class="chips"></div><input id="inline-recipient-input" aria-label="Add recipient to new message" placeholder="Add a name" autocomplete="off"><button id="inline-add-recipient" type="button">Add</button></div>
+        <div id="inline-notice" class="notice" role="status" hidden></div>
+        <div id="inline-pending" class="pending-submissions" aria-label="Submitted writing"></div>
+        <label class="sr-only" for="inline-writing-body">New message</label>
+        <textarea id="inline-writing-body" spellcheck="true" aria-describedby="inline-save-state inline-writing-hint" placeholder="Write a new message…"></textarea>
+        <div id="inline-attachments" class="attachments"></div>
+        <input id="inline-image-file" type="file" accept="image/*" hidden>
+        <footer class="writing-footer">
+          <button id="inline-add-image" type="button">Add image</button>
+          <button id="inline-cancel-image" type="button" hidden>Cancel image selection</button>
+          <div><div class="save-status"><span id="inline-save-state" role="status"></span><span class="save-reserve" aria-hidden="true">Saved on this device — not yet saved to Theseus</span></div><button id="inline-review-versions" type="button" hidden>Review versions</button><span id="inline-writing-hint" class="muted">Return for a new line · ⌘ Return to send</span></div>
+          <button id="inline-send" type="button" class="primary">Send <span aria-hidden="true">⌘↵</span></button>
+        </footer>
+      </section>
     </main>
   </div>
 

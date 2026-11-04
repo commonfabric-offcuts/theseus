@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode] = process.argv.slice(2);
-assert.ok(mode === undefined || ['--mutations', '--review-gaps', '--anchor-control'].includes(mode), 'only explicit evidence modes are accepted');
+assert.ok(mode === undefined || ['--mutations', '--review-gaps', '--anchor-control', '--keyboard'].includes(mode), 'only explicit evidence modes are accepted');
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'), 'explicit Chrome for Testing required');
 assert.ok(evidencePath && path.isAbsolute(evidencePath), 'an absolute evidence directory is required');
 await mkdir(evidencePath, { recursive: true });
@@ -42,7 +42,7 @@ let chrome, socket, cdp, exitPromise;
 const results = [], pageErrors = [];
 const mutations = [], sourceHashes = {};
 const hash = text => createHash('sha256').update(text).digest('hex');
-for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/layout.mjs', 'web/editor.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
+for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
   sourceHashes[filename] = hash(await readFile(path.join(root, filename)));
 }
 try {
@@ -289,7 +289,7 @@ try {
     await dragDivider(0, -60); await preserved('stacked drag');
   });
 
-  const selectedCases = mode === '--anchor-control' ? cases.slice(7) : mode === '--review-gaps' ? cases.slice(5) : cases.slice(0, 5);
+  const selectedCases = mode === '--keyboard' ? cases.slice(0, 1) : mode === '--anchor-control' ? cases.slice(7) : mode === '--review-gaps' ? cases.slice(5) : cases.slice(0, 5);
   for (const item of selectedCases) await runCase(item);
   if (['--mutations', '--review-gaps', '--anchor-control'].includes(mode) && results.every(result => result.passed)) {
     const definitions = mode === '--mutations' ? [

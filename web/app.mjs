@@ -2,6 +2,7 @@ import { Api } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
+import { InlineComposer } from './inline-composer.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
@@ -15,9 +16,10 @@ const node = (tag, text, className) => {
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
 const status = message => { $('app-status').textContent = message; $('app-status').hidden = !message; };
 const run = action => { try { return Promise.resolve(action()).catch(error => { status(error.message); return null; }); } catch (error) { status(error.message); return Promise.resolve(null); } };
-let api, bootstrap, journal, registry, reader, topic, opening = 0, freshness, views, updateState;
+let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState;
 let localEffectVersion = 0;
 let availabilitySerial = 0;
+let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
@@ -30,6 +32,12 @@ const validate = answer => {
   return answer;
 };
 const reviewStatus = message => { $('review-status').textContent = message; $('review-status').hidden = !message; };
+const presentationFor = editor => [registry?.current, registry?.inline].find(p => p && Object.values(p.editors).includes(editor));
+const writingSurface = p => p?.surface === 'inline' ? inline : reader;
+const needsReview = editor => {
+  const known = candidates.get(editor.key);
+  return Boolean(editor.uploadState || editor.recoveryDiscovery || editor.authorityRecovery || editor.conflict || editor.cleanupError || known?.items.length || known?.nextCursor);
+};
 function closeReview() {
   ++reviewSerial; comparison = null; review.close();
   if (reviewOpener?.isConnected) reviewOpener.focus({ preventScroll: true });
@@ -59,29 +67,32 @@ function invalidateComparison(editor) {
     $('review-save').disabled = true;
     reviewStatus('The writing or saved version changed. Review again before choosing.');
     $('review-retry').hidden = false;
-    $('review-retry').onclick = () => run(() => showVersions(editor, reviewOpener));
+    $('review-retry').onclick = () => run(() => showVersions(editor, reviewOpener, comparison.presentation));
   }
 }
-async function showVersions(editor, opener = $('review-versions')) {
-  const serial = beginReview('Review versions', opener), session = registry.sessionFor(editor), presentation = registry.current;
-  const current = () => serial === reviewSerial && review.open;
+async function showVersions(editor, opener = $('review-versions'), presentation = presentationFor(editor)) {
+  if (!registry.isCurrent(presentation, editor)) throw Error('Open this writing before reviewing its versions.');
+  const serial = beginReview('Review versions', opener), session = registry.sessionFor(editor);
+  const current = () => serial === reviewSerial && review.open && registry.isCurrent(presentation);
+  const action = run => () => { if (current() && registry.isCurrent(presentation, editor)) return run(); };
+  const make = (label, run) => button(label, action(run));
   const localVersion = editor.localVersion, recovery = structuredClone(editor.authorityRecovery);
   const destination = editor.context.kind === 'note' ? 'Private note · only you' : `Reply to ${editor.context.topicId}`;
   $('review-content').append(version('Your current writing', editor.draft.body, destination));
   if (editor.context.kind === 'reply') {
     $('review-content').append(node('p', imageSummary(editor), 'muted'));
     const uploads = session.uploads;
-    if (editor.imageStorageError) $('review-content').append(button('Retry saving image change', async () => { await uploads.transition(() => {}); if (current()) await showVersions(editor, opener); }));
+    if (editor.imageStorageError) $('review-content').append(make('Retry saving image change', async () => { await uploads.transition(() => {}); if (current()) await showVersions(editor, opener, presentation); }));
     const retained = editor.uploadState?.entries.filter(e => !e.selected || e.owner.kind === 'submission') ?? [];
     if (retained.length) $('review-content').append(node('h3', 'Removed images and earlier replies'));
     for (const entry of retained) {
       const section = node('section');
       section.append(node('p', `${entry.file?.name ?? entry.ready_descriptor?.name ?? 'Attachment'} · ${uploads.status(entry.selection_id)}`));
       if (entry.owner.kind === 'submission') section.append(node('p', 'Included in the earlier reply. Discarding the local file does not remove it from that reply.', 'muted'));
-      if (entry.attempts.length) section.append(button('Check confirmation', async () => { await uploads.check(entry.selection_id); if (current()) await showVersions(editor, opener); }));
+      if (entry.attempts.length) section.append(make('Check confirmation', async () => { await uploads.check(entry.selection_id); if (current()) await showVersions(editor, opener, presentation); }));
       if (entry.bytes_ref && !uploads.running.has(entry.selection_id)) {
         section.append(node('p', 'An upload may still finish. Discard only the retained file on this device; its upload history and earlier reply stay.', 'muted'));
-        section.append(button('Discard retained file', async () => { await uploads.discard(entry.selection_id); if (current()) await showVersions(editor, opener); }));
+        section.append(make('Discard retained file', async () => { await uploads.discard(entry.selection_id); if (current()) await showVersions(editor, opener, presentation); }));
       }
       $('review-content').append(section);
     }
@@ -100,18 +111,18 @@ async function showVersions(editor, opener = $('review-versions')) {
   if (recovery) {
     reviewStatus(recovery.message);
     $('review-retry').hidden = false;
-    $('review-retry').onclick = () => run(async () => { await session.retryAuthority(); if (current()) await showVersions(editor, opener); });
+    $('review-retry').onclick = () => run(action(async () => { await session.retryAuthority(); if (current()) await showVersions(editor, opener, presentation); }));
     $('review-save').hidden = false;
     $('review-save').disabled = recovery.phase !== 'ready' || localVersion !== editor.localVersion;
-    $('review-save').onclick = () => run(async () => {
+    $('review-save').onclick = () => run(action(async () => {
       $('review-save').disabled = true;
       try {
         const result = await session.resumePrivate(recovery, localVersion);
         if (current() && result?.status === 'committed') closeReview();
       } catch (error) { if (current()) { reviewStatus(error.message); $('review-retry').hidden = false; } }
-    });
+    }));
   } else if (editor.conflict) reviewStatus(remote === undefined ? 'The saved version could not be read. Retry; sending remains blocked and your writing is kept.' : 'Both versions are kept. Copy what you need; this comparison does not overwrite either version.');
-  comparison = { editor, localVersion, authority: JSON.stringify(editor.authorityRecovery) };
+  comparison = { editor, presentation, localVersion, authority: JSON.stringify(editor.authorityRecovery) };
   const list = node('div'); $('review-content').append(list);
   const appendCandidates = async cursor => {
     const page = await registry.recoveryCandidates(editor, { cursor, limit: 10 });
@@ -123,9 +134,9 @@ async function showVersions(editor, opener = $('review-versions')) {
         candidate.snapshot ? `Writer ${candidate.writerId} · ${destination}` : 'Ownership is still held by another document.');
       if (candidate.snapshot && (candidate.snapshot.format === 1 || readableUploads(candidate.snapshot))) {
         if (candidate.snapshot.format === 2) section.append(node('p', 'This version includes saved image selections. Recover it to check or remove them before sending.', 'muted'));
-        const adopt = button('Recover this version', async () => {
+        const adopt = make('Recover this version', async () => {
           adopt.disabled = true;
-          try { await registry.adoptCandidate(editor, candidate, presentation); if (current()) { closeReview(); reader.field.focus({ preventScroll: true }); } }
+          try { await registry.adoptCandidate(editor, candidate, presentation); if (current()) { closeReview(); writingSurface(presentation).field.focus({ preventScroll: true }); } }
           catch (error) { if (current()) reviewStatus(error.message); }
           finally { if (adopt.isConnected) adopt.disabled = false; }
         });
@@ -135,57 +146,63 @@ async function showVersions(editor, opener = $('review-versions')) {
           for (const item of candidate.snapshot.submissions.filter(item => refusedAtDraft(item, editor.recoveryServerDraft))) {
             section.append(node('p', 'Earlier reply was not prepared. Keeping current writing leaves this earlier reply saved here.', 'muted'), node('pre', item.snapshot.body));
           }
-          section.append(button('Keep current writing', async () => {
+          section.append(make('Keep current writing', async () => {
             await registry.keepCurrentWriting(editor, candidate);
             if (current()) { reviewStatus('Current writing kept. The earlier reply remains saved and will not be sent.'); changed(editor); }
           }));
         }
         if (candidate.snapshot.format === 2 && candidate.snapshot.uploadState.entries.some(e => e.selected && e.owner.kind === 'cycle')) {
-          section.append(button('Remove saved image selections', async () => { await registry.removeCandidateImages(editor, candidate); if (current()) await showVersions(editor, opener); }));
+          section.append(make('Remove saved image selections', async () => { await registry.removeCandidateImages(editor, candidate); if (current()) await showVersions(editor, opener, presentation); }));
         }
         for (const e of candidate.snapshot.uploadState?.entries ?? []) if (!e.selected || e.owner.kind === 'submission') {
           const label = node('p', e.file?.name ?? e.ready_descriptor?.name ?? 'Earlier image'); section.append(label);
           const a = e.attempts[e.choice];
-          if (a) section.append(button('Check image confirmation', async () => {
+          if (a) section.append(make('Check image confirmation', async () => {
             const r = await api.view('operation', { operation_id: a.publish_operation_id });
             if (r?.instance_id !== editor.context.instanceId || r.operation_id !== a.publish_operation_id ||
                 r.recorded === true && r.kind !== 'media.publish') throw Error('Image confirmation identity does not match.');
             if (current()) label.textContent = `${e.file?.name ?? 'Earlier image'} · ${r.recorded === true ? r.status : 'Confirmation unknown'}`;
           }));
-          if (e.bytes_ref) section.append(button('Discard retained file', async () => {
+          if (e.bytes_ref) section.append(make('Discard retained file', async () => {
             await journal.changeCandidateImages(editor.key, candidate, { kind: 'discard', selectionId: e.selection_id });
-            if (current()) await showVersions(editor, opener);
+            if (current()) await showVersions(editor, opener, presentation);
           }));
         }
       } else if (candidate.availability !== 'open-in-another-tab') {
         section.append(node('p', 'This saved copy cannot be interpreted. It will remain on this device.', 'muted'));
-        section.append(button('Continue without this copy', async () => { await registry.waiveUnreadable(editor, candidate); reviewStatus('This copy is kept. The choice applies only to this writing cycle and this exact saved version.'); }));
+        section.append(make('Continue without this copy', async () => { await registry.waiveUnreadable(editor, candidate); reviewStatus('This copy is kept. The choice applies only to this writing cycle and this exact saved version.'); }));
       }
       list.append(section);
     }
     if (page.nextCursor) {
-      const more = button('More versions', async () => { more.disabled = true; await appendCandidates(page.nextCursor); more.remove(); }); list.append(more);
+      const more = make('More versions', async () => { more.disabled = true; await appendCandidates(page.nextCursor); more.remove(); }); list.append(more);
     }
   };
   try { await appendCandidates(null); } catch (error) { if (current()) reviewStatus(error.message); }
   if (!current()) return;
   if (!recovery) {
-    $('review-retry').hidden = false; $('review-retry').onclick = () => run(() => showVersions(editor, opener));
+    $('review-retry').hidden = false; $('review-retry').onclick = () => run(() => showVersions(editor, opener, presentation));
   }
-  const history = button('Earlier recovery history', async () => {
+  const history = make('Earlier recovery history', async () => {
     const append = async cursor => {
       const page = await journal.history(editor.key, { limit: 10, cursor });
       if (!current()) return;
       for (const row of page.items) list.append(version('Earlier version · already recovered', row.snapshot.draft.body, `Writer ${row.writerId}`));
-      if (page.nextCursor) list.append(button('More history', () => append(page.nextCursor)));
+      if (page.nextCursor) list.append(make('More history', () => append(page.nextCursor)));
     };
     history.disabled = true; await append(null);
   }); list.append(history);
 }
 
-async function showCorrection(editor, item, opener) {
+async function showCorrection(editor, item, opener, presentation = presentationFor(editor)) {
+  if (!registry.isCurrent(presentation, editor)) {
+    if (editor.context.sourceRef.kind === 'topic') throw Error('Return to the new message composer before preparing again.');
+    if (review.open) closeReview();
+    await openSource(editor.context.sourceRef, opener); presentation = registry.current;
+    if (!registry.isCurrent(presentation, editor)) throw Error('This writing changed. Review it again.');
+  }
   const serial = beginReview('Review this reply before preparing again', opener), localVersion = editor.localVersion;
-  const current = () => serial === reviewSerial && review.open;
+  const current = () => serial === reviewSerial && review.open && registry.isCurrent(presentation, editor);
   $('review-content').append(version('Earlier reply', item.snapshot.body, `To ${item.topicId} · Addressed to ${(item.snapshot.addressees ?? []).join(', ') || 'the topic'} · ${imageSummary(editor, item.snapshot.attachments)}`), version('Your current writing', editor.draft.body, imageSummary(editor)));
   const state = validate(await api.view('editor_state', { source_ref: item.sourceRef, topic_id: item.topicId }));
   if (!current()) return;
@@ -194,10 +211,11 @@ async function showCorrection(editor, item, opener) {
   const label = node('label'), acknowledgement = node('input'); acknowledgement.type = 'checkbox';
   label.append(acknowledgement, document.createTextNode(' ' + PRIOR_PUBLICATION_NOTICE)); $('review-content').append(label);
   const prepare = button('Prepare this reply again', async () => {
+    if (!current()) return;
     prepare.disabled = true;
     try {
       await registry.sessionFor(editor).correctPreparation(item, state.draft, localVersion,
-        { stay: true, presentation: registry.current, acknowledgePossiblePriorPublication: acknowledgement.checked });
+        { stay: true, presentation, acknowledgePossiblePriorPublication: acknowledgement.checked });
       if (current()) closeReview();
     } catch (error) { if (current()) reviewStatus(error.message); }
   });
@@ -208,14 +226,14 @@ async function showCorrection(editor, item, opener) {
 function pendingCount(editor) {
   return new Set([...editor.submissions.map(item => item.id), ...registry.pending(editor).items.map(item => item.id)]).size;
 }
-function pendingButton(host, editor) {
+function pendingButton(host, editor, presentation = presentationFor(editor)) {
   const count = pendingCount(editor), label = `Review ${count} ${count === 1 ? 'reply' : 'replies'}`;
   let control = host.firstElementChild;
   if (!count) { host.replaceChildren(); return; }
-  if (!control) { control = button(label, () => showPending(editor, control)); host.append(control); }
-  control.textContent = label; control.onclick = () => run(() => showPending(editor, control));
+  if (!control) { control = button(label, () => showPending(editor, control, presentation)); host.append(control); }
+  control.textContent = label; control.onclick = () => run(() => showPending(editor, control, presentation));
 }
-async function showPending(editor, opener) {
+async function showPending(editor, opener, presentation = presentationFor(editor)) {
   const serial = beginReview('Your replies', opener), current = () => serial === reviewSerial && review.open;
   const host = $('review-content');
   const names = { preparing: 'Preparing — writing kept', prepared: 'Confirmation unknown', confirmed: 'Sent to Theseus', refused: 'Not sent — writing kept', unknown: 'Confirmation unknown', committed: 'Sent to Theseus', rejected: 'Not sent — writing kept' };
@@ -238,7 +256,7 @@ async function showPending(editor, opener) {
         }));
         card.append(button('Check confirmation', async () => { await registry.checkPending(editor, item.id); draw(); }));
         if (local.has(item.id) && statusKey !== 'confirmed' && (item.detached || item.receipt?.kind === 'submission.prepare')) {
-          const again = button('Prepare this reply again', () => showCorrection(editor, item, opener)); card.append(again);
+          const again = button('Prepare this reply again', () => showCorrection(editor, item, opener, presentation)); card.append(again);
         }
       }
       card.querySelector('h3').textContent = (item.detached ? 'Earlier runtime · ' : '') + (names[statusKey] ?? 'Confirmation unknown');
@@ -258,10 +276,9 @@ async function showPending(editor, opener) {
 function changed(editor) {
   if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
     reader.paintStatus(); reader.paintPending();
-    reader.field.readOnly = Boolean(reader.editor?.adopting || recoveryReadOnly(reader.editor));
-    const known = candidates.get(reader.editor.key);
-    $('review-versions').hidden = !reader.editor.uploadState && !reader.editor.recoveryDiscovery && !reader.editor.authorityRecovery && !reader.editor.conflict && !reader.editor.cleanupError && !known?.items.length && !known?.nextCursor;
+    $('review-versions').hidden = !needsReview(reader.editor);
   }
+  if (inline?.editor === editor) inline.paintStatus();
   invalidateComparison(editor);
   if (editor.context.kind === 'reply' && pendingCount(editor)) {
     let host = [...$('topic-pending').children].find(child => child.dataset.key === editor.key);
@@ -275,13 +292,18 @@ function changed(editor) {
 }
 function revokeMedia() { for (const url of mediaURLs) URL.revokeObjectURL(url); mediaURLs.clear(); }
 async function present(presentation) {
-  retainRevisionTargets(presentation);
-  revokeMedia(); reader.presentation = presentation;
-  reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
-  if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
-  for (const editor of Object.values(presentation.editors)) {
-    registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); }).catch(error => { if (registry.isCurrent(presentation)) reader.notice(error.message); });
+  if (presentation.surface === 'inline') inline.show(presentation);
+  else {
+    retainRevisionTargets(presentation);
+    revokeMedia(); reader.presentation = presentation;
+    reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
+    if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
   }
+  for (const editor of Object.values(presentation.editors)) {
+    registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); })
+      .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
+  }
+  if (presentation.surface === 'inline') return;
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
     registry.current.neighbors = neighbors;
@@ -312,14 +334,21 @@ function sourceAttachments(presentation) {
 }
 async function openSource(ref, opener) {
   const request = ++opening;
+  const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
   try { await registry.open(ref, { topicId: topic.id, opener }); }
-  catch (error) { if (request === opening) status(error.message); }
+  catch (error) {
+    if (request === opening) {
+      if (registry.isCurrent(from)) writingSurface(from).notice(error.message);
+      else status(error.message);
+    }
+  }
   finally { if (request === opening) { views.retain(views.currentItem, null); reader.paintOffer(); } }
 }
 function keepListAnchor(paint) {
-  const anchor = [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(card => card.getBoundingClientRect().bottom > 0);
+  const writing = inline?.root.contains(document.activeElement) && registry.isCurrent(registry.inline);
+  const anchor = writing ? inline.field : [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(card => card.getBoundingClientRect().bottom > 0);
   const top = anchor?.getBoundingClientRect().top;
   paint();
   if (anchor?.isConnected && Number.isFinite(top)) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
@@ -330,6 +359,7 @@ function paintViews(kind) {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
     topic = views.topic; $('topic-title').textContent = topic.title;
+    if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
     $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
     $('topics').firstElementChild.textContent = topic.title;
     $('participants').replaceChildren(...views.participants.map(p => node('span', p.actor_id, 'chip')));
@@ -439,6 +469,38 @@ async function checkAvailability(read, current, topicDenied = true) {
       }
     }
   }
+  const results = await Promise.allSettled([
+    checkInlineAvailability(read, current), checkSourceAvailability(read, current, topicDenied),
+  ]);
+  const failed = results.find(result => result.status === 'rejected');
+  if (failed) throw failed.reason;
+}
+async function checkInlineAvailability(read, current) {
+  const p = registry.inline;
+  if (!p) return;
+  const editor = p.editors.reply, serial = ++inlineAvailabilitySerial;
+  const owns = () => serial === inlineAvailabilitySerial && current() && !registry.disposed && registry.inline === p && registry.sessions.get(editor.key)?.editor === editor;
+  p.availabilityChecking = true; p.availabilityUnconfirmed = true;
+  editor.unavailable = true; registry.cancelSave(editor); inline.paintStatus();
+  try {
+    const results = await Promise.allSettled([
+      read('topic', { topic_id: p.topic.id }),
+      read('editor_state', { source_ref: editor.context.sourceRef, topic_id: p.topic.id }),
+    ]);
+    if (!owns()) return;
+    const failed = results.find(result => result.status === 'rejected');
+    if (failed) throw failed.reason;
+    const [answer, state] = results.map(result => result.value);
+    if (answer.topic?.id !== p.topic.id) throw Error('The topic identity could not be confirmed.');
+    registry.validateState(state, editor.context.sourceRef, p.topic.id);
+    p.availabilityUnconfirmed = false; p.destinationAvailable = state.source_available && state.destination_available;
+    editor.unavailable = !p.destinationAvailable;
+  } catch (error) {
+    if (owns() && readFailure(error).kind === 'forbidden') p.availabilityUnconfirmed = false;
+    throw error;
+  } finally { if (owns()) { p.availabilityChecking = false; inline.paintStatus(); } }
+}
+async function checkSourceAvailability(read, current, topicDenied) {
   let p = registry.current;
   if (!p) return;
   const sourcePresentation = p, serial = ++availabilitySerial;
@@ -561,11 +623,21 @@ async function initialize() {
   const messageAnswer = checkedView(await api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }), bootstrap.instance_id);
   const memoryAnswer = checkedView(await api.view('memory_items', { owner_scope: views.scope, limit: 20 }), bootstrap.instance_id);
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
+  inline = new InlineComposer({
+    admits: (p, editor) => registry?.isCurrent(p, editor),
+    uploads: editor => registry.sessionFor(editor).uploads,
+    edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
+    status: editor => registry.status(editor), needsReview,
+    send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
+    review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
+    renderPending: (host, editor, p) => pendingButton(host, editor, p),
+  });
   reader = new Reader({
+    admits: (p, editor) => registry?.isCurrent(p, editor),
     revisionOffer,
     retrySource: () => run(retrySource),
     uploads: editor => registry?.sessionFor(editor).uploads,
-    edit: editor => run(() => registry.edited(editor)), status: editor => registry.status(editor),
+    edit: editor => run(() => { if (registry.isCurrent(reader.presentation, editor)) return registry.edited(editor); }), status: editor => registry.status(editor),
     mode: mode => {
       const cancelled = Boolean(registry.pendingOpen);
       reader.presentation = registry.setMode(mode); changed(reader.editor); retainRevisionTargets();
@@ -582,18 +654,20 @@ async function initialize() {
     },
     destination: value => { if (value !== topic.id) reader.notice('Choose the open topic for this reply.'); },
     reconcile: editor => run(() => registry.checkConfirmation(editor)),
-    renderPending: (host, editor) => pendingButton(host, editor),
-    recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement)),
+    renderPending: (host, editor) => pendingButton(host, editor, reader.presentation),
+    recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
     error: error => reader.notice(error.message),
   });
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
+    activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } } });
-  $('review-versions').onclick = () => run(() => showVersions(reader.editor));
+  await registry.initializeInline(topic);
+  $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);
   $('updates-retry').onclick = () => run(async () => {
     if (updateState?.kind === 'reconnect') { location.reload(); return; }
-    if (updateState?.kind === 'authority') { if (reader.editor) await showVersions(reader.editor); else location.reload(); return; }
-    if (registry.current?.sourceUnavailable || registry.current?.availabilityUnconfirmed || updateState?.kind === 'forbidden') freshness?.invalidate('availability', 0, true);
+    if (updateState?.kind === 'authority') { const p = registry.interactive; if (p) await showVersions(p.editors[p.mode], $('updates-retry'), p); return; }
+    if (registry.current?.sourceUnavailable || registry.current?.availabilityUnconfirmed || registry.inline?.editors.reply.unavailable || updateState?.kind === 'forbidden') freshness?.invalidate('availability', 0, true);
     await freshness?.request({ refresh: true, retry: true });
   });
   $('more-messages').onclick = () => run(() => listPage('messages', true)); $('more-memory').onclick = () => run(() => listPage('memory', true));

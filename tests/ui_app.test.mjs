@@ -8,6 +8,7 @@ import { createInterface } from 'node:readline';
 import { Api } from '../web/api.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
+import { Editor, restoreEditor } from '../web/editor.mjs';
 
 const copy = value => structuredClone(value);
 const deferred = () => {
@@ -15,6 +16,118 @@ const deferred = () => {
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
   return { promise, resolve, reject };
 };
+
+// Inline preparation only: written before the selected implementation. Run
+// these checks after Core's reviewed topic-context contract and lane handoff.
+test('inline initializes only from confirmed topic editor state without a source or note', async t => {
+  const f = await fixture(t), topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  assert.equal(typeof f.registry.initializeInline, 'function');
+  const entered = deferred(), release = deferred(), read = f.transport.view;
+  t.after(() => release.resolve());
+  f.transport.view = async (name, args, options) => {
+    const answer = await read(name, args, options);
+    if (name === 'editor_state' && args.source_ref.kind === 'topic') {
+      entered.resolve(); await release.promise;
+    }
+    return answer;
+  };
+  const opening = f.registry.initializeInline(topic); await entered.promise;
+  assert.equal(f.registry.isCurrent(f.registry.inline), false, 'unconfirmed initialization cannot admit input');
+  release.resolve(); const p = await opening;
+  assert.equal(p.surface, 'inline'); assert.equal(f.registry.inline, p);
+  assert.equal(f.registry.current, null); assert.equal(f.registry.isCurrent(p), true);
+  assert.deepEqual(Object.keys(p.editors), ['reply']); assert.equal(p.source, undefined);
+  assert.deepEqual(p.editors.reply.context.sourceRef, { kind: 'topic', id: topic.id });
+  assert.equal(p.editors.reply.context.topicId, topic.id);
+  assert.equal(f.registry.sessions.size, 1, 'one registered owner for the topic composer');
+  assert.equal(f.calls.some(c => c.type === 'view' && c.name === 'source'), false);
+  assert.equal(f.calls.some(c => c.type === 'command'), false, 'opening the composer is read-only');
+});
+
+test('inline admission suspends synchronously and resumes after failed or closed modal opens', async t => {
+  const f = await fixture(t), topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const inline = await f.registry.initializeInline(topic), editor = inline.editors.reply;
+  const uploads = f.registry.sessionFor(editor).uploads;
+  editor.edit({ body: 'Inline writing remains mine', caret: { start: 7, end: 7 } });
+  const entered = deferred(), release = deferred(), put = f.backend.put, read = f.transport.view;
+  t.after(() => { release.resolve(); f.backend.put = put; f.transport.view = read; });
+  f.backend.put = async row => { entered.resolve(); await release.promise; return put(row); };
+  f.transport.view = async (name, args, options) => {
+    if (name === 'source') throw Error('Expected source-read refusal');
+    return read(name, args, options);
+  };
+  const opening = f.open(0).then(value => ({ value }), error => ({ error }));
+  assert.equal(f.registry.isCurrent(inline, editor), false, 'input stops before the first awaited preservation');
+  assert.throws(() => uploads.reserve(inline));
+  assert.equal(uploads.valid(), true, 'already-admitted upload completion keeps its registered editor');
+  assert.equal(await Promise.race([entered.promise.then(() => true), opening.then(() => false)]), true,
+    'opening must wait for inline local preservation before reading its source');
+  release.resolve();
+  assert.match((await opening).error.message, /Expected source-read refusal/);
+  assert.equal(f.registry.isCurrent(inline, editor), true, 'failed opening resumes the same composer');
+  assert.equal((await f.journal.own(editor.key)).snapshot.draft.body, 'Inline writing remains mine');
+  f.backend.put = put; f.transport.view = read;
+  const modal = await f.open(0);
+  assert.equal(f.registry.isCurrent(inline, editor), false);
+  assert.equal(f.registry.isCurrent(modal, editor), false, 'a current modal cannot admit another surface editor');
+  assert.equal(f.registry.isCurrent(modal, modal.editors.reply), true);
+  assert.equal(uploads.valid(), true, 'suspension is not disposal');
+  const note = f.registry.setMode('note');
+  assert.equal(f.registry.isCurrent(modal, modal.editors.reply), false, 'stale presentation callbacks stay stale');
+  assert.equal(await f.registry.close(note, { explicit: true }), true);
+  assert.equal(f.registry.inline, inline); assert.equal(f.registry.isCurrent(inline, editor), true);
+  assert.deepEqual(editor.draft.caret, { start: 7, end: 7 });
+  assert.equal(f.registry.isCurrent(inline, new Editor(editor.context, editor.draft)), false, 'same key does not register a replacement editor');
+  f.registry.dispose(); assert.equal(f.registry.isCurrent(inline, editor), false);
+});
+
+test('inline explicit saved-copy adoption repaints inline and never manufactures a modal', async t => {
+  const f = await fixture(t), topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const inline = await f.registry.initializeInline(topic), original = inline.editors.reply;
+  const old = new Editor(original.context, original.draft); old.edit({ body: 'Retained inline writing' });
+  const other = new RecoveryJournal(f.backend, 'closed-inline-document'); await other.save(old.snapshot());
+  const row = await other.own(old.key);
+  // Memory-only journal timing fixture. This proves presentation routing, not
+  // native IDB durability or Web Lock behavior.
+  f.backend.adopt = async (key, candidate, guard) => {
+    assert.equal(guard(), true);
+    const current = f.rows.get(candidate.id); assert.equal(current.stamp, candidate.stamp);
+    const adopted = { ...copy(current), id: f.journal.id(key), writerId: f.journal.writerId, stamp: 'adopted-inline' };
+    f.rows.set(adopted.id, adopted); return copy(adopted);
+  };
+  const restored = await f.registry.adoptCandidate(original, row, inline);
+  assert.notEqual(restored, original); assert.equal(restored.draft.body, 'Retained inline writing');
+  assert.equal(inline.editors.reply, restored); assert.equal(f.registry.current, null);
+  assert.equal(f.shown.at(-1), inline); assert.equal(f.registry.isCurrent(inline, restored), true);
+  assert.equal(f.registry.isCurrent(inline, original), false, 'a captured callback cannot edit the replaced owner');
+});
+
+test('inline restore retains malformed topic writing but blocks save and preparation', () => {
+  const context = { instanceId: 'inline-restore', actor: 'fixture-person', kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } };
+  const remote = { id: 'topic-draft', generation: 'original', revision: 1, source_ref: context.sourceRef, topic_id: 't1' };
+  const original = new Editor(context, remote); original.edit({ body: 'Retain every byte', caret: { start: 4, end: 8 } });
+  const controls = restoreEditor(context, remote, original.snapshot());
+  assert.ok(controls.saveTicket('valid-control'), 'canonical retained writing remains saveable');
+  for (const corrupt of [
+    s => { s.sourceRef.id = 'elsewhere'; },
+    s => { s.sourceRef.revision = 1; },
+    s => { s.draft.source_ref = { kind: 'topic', id: 'elsewhere' }; },
+    s => { s.draft.topic_id = 'elsewhere'; },
+    s => { s.draft.reply_to = null; },
+    s => { s.draft.opening = null; },
+    s => { s.draft.exchange_id = null; },
+    s => { s.draft.quotes = [{ source_ref: { kind: 'message', id: 'm1' }, text: 'retained quote' }]; },
+  ]) {
+    const retained = original.snapshot(); corrupt(retained); const before = copy(retained);
+    const restored = restoreEditor(context, remote, retained);
+    assert.deepEqual(retained, before, 'validation cannot rewrite its recovery input');
+    assert.deepEqual(restored.draft, retained.draft, 'bad fields remain reviewable, never silently dropped');
+    assert.deepEqual(restored.sourceRef, retained.sourceRef);
+    assert.equal(restored.saveTicket('must-not-save'), null, 'malformed retained payload cannot be enabled for save');
+    assert.throws(() => restored.beginPrepare({ prepareOperationId: 'p', sendOperationId: 's', submissionId: 'i' }));
+    assert.deepEqual(restored.draft, retained.draft, 'blocked send cannot rotate or erase the retained draft');
+  }
+});
 
 test('source lifetime survives modes but rejects a new open, close and disposal', async t => {
   const f = await fixture(t), x = await f.open(0);

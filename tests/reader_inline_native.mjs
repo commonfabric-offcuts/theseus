@@ -1,0 +1,115 @@
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+
+// One selected real HTTP/Store flow. No product controller is replaced. File
+// selection uses a native Add image click and a fixture file supplied through
+// CDP; it does not establish interaction with the operating system's picker.
+export async function inlineChecks({ check, page, until, root, facts, view, control, replace, field, shot, observations }) {
+  await check('inline find restore owner switch arrival and exact source-free send', async () => {
+    const p = await page('inline-composer', null, true);
+    const inlineBody = () => p.evaluate('document.querySelector("#inline-writing-body").value');
+    const inlineState = () => view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id });
+    const noSend = () => assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+    assert.equal(await p.evaluate('Boolean(document.querySelector("#inline-composer"))'), true, 'the topic exposes New message without opening a source');
+    assert.equal(await p.evaluate('document.querySelector("#inline-writing-title").textContent'), 'New message');
+    assert.match(await p.evaluate('document.querySelector("#inline-destination").textContent'), /^To /);
+    assert.ok((await p.evaluate('document.querySelector("#inline-destination").textContent')).includes(await p.evaluate('document.querySelector("#topic-title").textContent')));
+    // Seed one closed, unacknowledged local copy through the actual journal.
+    // This is isolated fixture setup, not an assertion of a native user edit.
+    await p.evaluate(`(async()=>{
+      const {Editor}=await import('/editor.mjs');
+      const context=${JSON.stringify({ instanceId: facts.instance_id, actor: facts.actor, kind: 'reply', topicId: facts.topic_id, sourceRef: { kind: 'topic', id: facts.topic_id } })};
+      const previous=new Editor(context,{id:'inline-retained-fixture',generation:'retained',revision:0});
+      previous.edit({body:'Older inline writing kept on this device'});
+      const j=await (await import('/journal.mjs')).openJournal(context);
+      try { await j.save(previous.snapshot()); } finally { j.close(); }
+    })()`);
+    const beforeRecoveryReload = await p.evaluate('performance.timeOrigin');
+    await p.send('Page.reload');
+    await until(() => p.evaluate(`performance.timeOrigin !== ${beforeRecoveryReload} && document.body?.dataset.ready === "true"`), 'fresh inline document for saved-copy discovery');
+    await until(() => p.evaluate('!document.querySelector("#inline-review-versions").hidden'), 'retained inline writing exposes Review versions');
+    await p.evaluate('document.querySelector("#inline-review-versions").scrollIntoView({block:"center"})');
+    await p.point('#inline-review-versions');
+    await until(() => p.evaluate('document.querySelector("#review-content").textContent.includes("Older inline writing kept on this device")'), 'the inline recovery entry shows exact retained writing');
+    assert.equal(await inlineBody(), '', 'discovery does not adopt or overwrite current writing');
+    assert.equal(await p.evaluate('document.querySelector("#reader").open'), false, 'inline recovery never manufactures a source Reader');
+    await p.point('#review-close'); noSend();
+    const afterReview = await p.evaluate('performance.timeOrigin');
+    await p.send('Page.reload');
+    await until(() => p.evaluate(`performance.timeOrigin !== ${afterReview} && document.body?.dataset.ready === "true"`), 'inline document after review');
+    const tabLimit = await p.evaluate('document.querySelectorAll("a[href],button,input,textarea,select,[tabindex]").length + 2');
+    for (let count = 0; count < tabLimit && await p.evaluate('document.activeElement?.id') !== 'inline-writing-body'; ++count) await p.key('Tab');
+    assert.equal(await p.evaluate('document.activeElement.id'), 'inline-writing-body', 'normal Tab finds writing with no programmatic focus');
+    await p.send('Input.insertText', { text: 'A new message in this topic' });
+    await p.key('Enter');
+    assert.equal(await inlineBody(), 'A new message in this topic\n', 'plain Return inserts a real newline'); noSend();
+    await p.send('Input.insertText', { text: 'A second line kept through reload' });
+    const expected = 'A new message in this topic\nA second line kept through reload';
+    await until(async () => (await inlineState()).draft?.body === expected, 'canonical inline draft saved');
+
+    await p.open(1); await replace(p, 'Separate modal writing stays intact');
+    await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: facts.topic_id })).draft?.body === 'Separate modal writing stays intact', 'unrelated modal draft saved');
+    const modalDraft = (await view('editor_state', { source_ref: facts.sources[1], topic_id: facts.topic_id })).draft;
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'modal closed');
+    assert.equal(await inlineBody(), expected); noSend();
+    const documentStart = await p.evaluate('performance.timeOrigin');
+    await p.send('Page.reload');
+    await until(() => p.evaluate(`performance.timeOrigin !== ${documentStart} && document.body?.dataset.ready === "true" && Boolean(document.querySelector('#inline-writing-body'))`), 'new inline document ready');
+    assert.equal(await inlineBody(), expected, 'reload returns to the independent topic draft');
+
+    await p.evaluate('document.querySelector("#inline-add-image").scrollIntoView({block:"center"})');
+    await p.send('Page.setInterceptFileChooserDialog', { enabled: true });
+    p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+    await p.point('#inline-add-image');
+    const picker = await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'native inline chooser');
+    const imagePath = path.join(root, 'tests/fixtures/media/screen.png');
+    await p.send('DOM.setFileInputFiles', { backendNodeId: picker.params.backendNodeId, files: [imagePath] });
+    const held = await until(() => p.held.find(e => e.event.request.url.endsWith('/api/media/upload')), 'held inline image response');
+    assert.equal(await p.evaluate('document.querySelector("#inline-send").disabled'), true, 'an unresolved chosen image cannot be silently omitted');
+    await p.open(1); assert.equal(await field(p), modalDraft.body);
+    await p.point('#writing-body'); await p.key('e', 2);
+    const modalSnapshot = () => p.evaluate(`(()=>{const f=document.querySelector('#writing-body');return {body:f.value,start:f.selectionStart,end:f.selectionEnd,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent,images:document.querySelector('#writing-attachments').textContent}})()`);
+    const beforeCompletion = await modalSnapshot();
+    p.intercept(null); await p.release(held);
+    await until(async () => (await inlineState()).draft?.attachments.length === 1, 'the admitted upload finishes on the inline owner');
+    assert.deepEqual(await modalSnapshot(), beforeCompletion, 'late inline completion cannot paint or focus the modal');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'modal closed after inline upload');
+    await until(() => p.evaluate('document.querySelector("#inline-attachments").textContent.includes("Ready")'), 'inline attachment visible on resume');
+    assert.equal(await inlineBody(), expected); noSend();
+
+    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})');
+    await p.point('#inline-writing-body'); await p.key('e', 2); await p.key('ArrowLeft');
+    const writingPosition = () => p.evaluate(`(()=>{const f=document.querySelector('#inline-writing-body'),b=f.getBoundingClientRect();return {body:f.value,start:f.selectionStart,end:f.selectionEnd,focus:document.activeElement.id,top:b.top,bottom:b.bottom,height:innerHeight}})()`);
+    const beforeArrival = await writingPosition();
+    assert.ok(beforeArrival.top >= 0 && beforeArrival.bottom <= beforeArrival.height, 'the actual writing area is visible before arrival');
+    const arrival = 'An independent automatic arrival while writing inline';
+    const received = await control({ method: 'agent_message', operation_id: 'inline-native-automatic-arrival', body: arrival, topic_id: facts.topic_id, addressees: [] });
+    assert.equal(received.status, 'committed');
+    await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(arrival)})`), 'automatic incoming render without Refresh');
+    const afterArrival = await writingPosition();
+    assert.deepEqual({ ...afterArrival, top: beforeArrival.top, bottom: beforeArrival.bottom }, beforeArrival, 'arrival preserves body, caret and focus');
+    assert.ok(afterArrival.top >= 0 && afterArrival.bottom <= afterArrival.height, 'arrival keeps the writing area in view');
+    assert.ok(Math.abs(afterArrival.top - beforeArrival.top) <= 2, 'arrival preserves the visible writing position');
+    observations.push({ name: 'inline arrival anchor', beforeArrival, afterArrival });
+    await shot(p, 'inline-before-send'); noSend();
+
+    await p.key('Enter', 4);
+    const send = await until(() => p.calls.find(c => c.payload?.kind === 'message.send'), 'Command-Return sends');
+    const receipt = await view('operation', { operation_id: send.payload.operation_id }); assert.equal(receipt.status, 'committed');
+    const source = await view('source', { kind: 'message', id: receipt.result.message_id });
+    assert.equal(source.body, expected); assert.equal(source.author, facts.actor); assert.equal(source.topic_id, facts.topic_id);
+    assert.equal(source.reply_to, null); assert.equal(source.exchange_id, null); assert.deepEqual(source.quotes, []);
+    assert.equal(source.attachments.length, 1);
+    assert.equal(source.attachments[0].sha256, createHash('sha256').update(await readFile(imagePath)).digest('hex'));
+    await until(async () => await inlineBody() === '', 'inline successor ready');
+    assert.equal(await p.evaluate('document.activeElement.id'), 'inline-writing-body');
+    assert.equal(await p.evaluate('document.querySelector("#reader").open'), false);
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 1, 'one deliberate send');
+    assert.deepEqual((await view('editor_state', { source_ref: facts.sources[1], topic_id: facts.topic_id })).draft, modalDraft, 'the unrelated modal draft is unchanged');
+    assert.equal(p.calls.some(c => c.payload?.name === 'source' && c.payload.args?.kind === 'topic'), false, 'the composer never fabricates a source');
+    observations.push({ name: 'inline exact publication', receipt, source, modalDraft });
+    await shot(p, 'inline-after-send'); assert.deepEqual(p.errors, []);
+  });
+}

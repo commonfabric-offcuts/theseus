@@ -25,3 +25,7 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 #add-image,#cancel-image{font-size:.8rem;flex-shrink:0;min-height:2.5rem}#writing-attachments{max-height:7.5rem;overflow:auto;flex-shrink:0}.image-choice{display:flex;align-items:center;flex-wrap:wrap;gap:.3rem;font-size:.8rem;overflow-wrap:anywhere}.image-choice button{font-size:.75rem;padding:.2rem .4rem;min-height:2.5rem}.image-choice span{min-width:0}
 
 .message-preview-cue{display:block;margin-top:.5rem;font-size:.8rem;color:var(--accent)}
+.inline-composer{display:flex;flex-direction:column;gap:.55rem;margin-top:2rem;padding:1rem;border:1px solid var(--line);border-radius:.75rem;background:var(--paper);min-width:0}
+.inline-composer h2{font-size:1rem}.inline-composer textarea{height:10rem;flex:auto;min-height:10rem}
+#inline-save-state{font-size:.78rem;color:var(--muted)}#inline-writing-hint{font-size:.72rem}
+@media(max-width:760px){.inline-composer{padding:.8rem}.inline-composer textarea{font-size:16px}#inline-writing-hint{font-size:.65rem}}
