@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import http.client
+import hashlib
+import importlib.util
 import json
 import select
 import subprocess
@@ -11,6 +13,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import urlsplit
+from types import SimpleNamespace
 
 
 class FreshnessFixtureTests(unittest.TestCase):
@@ -21,6 +24,7 @@ class FreshnessFixtureTests(unittest.TestCase):
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr,
                                         text=True, bufsize=1)
         self.counter = 0
+        self.expected_exit = 0
         self.ready = self.control("ready")
         self.pool = ThreadPoolExecutor(max_workers=3)
 
@@ -29,12 +33,15 @@ class FreshnessFixtureTests(unittest.TestCase):
         self.process.stdin.close()
         self.pool.shutdown(wait=True)
         self.process.wait(timeout=5)
-        self.assertEqual(self.process.returncode, 0)
+        self.assertEqual(self.process.returncode, self.expected_exit)
         self.process.stdout.close()
         self.stderr.seek(0)
         errors = self.stderr.read()
         self.stderr.close()
-        self.assertEqual(errors, "")
+        if self.expected_exit:
+            self.assertIn("Private fixture hold timeout", errors)
+        else:
+            self.assertEqual(errors, "")
         self.tmp.cleanup()
 
     def control(self, method, **args):
@@ -50,13 +57,15 @@ class FreshnessFixtureTests(unittest.TestCase):
     def view(self, name, args=None, read_class="foreground"):
         return self.http_request("/api/view", {"name": name, "args": args or {}}, read_class)
 
-    def http_request(self, path, payload, read_class="foreground"):
+    def http_request(self, path, payload, read_class="foreground", method="POST", extra=None):
         url = urlsplit(self.ready["origin"])
         conn = http.client.HTTPConnection(url.hostname, url.port, timeout=3)
         try:
-            conn.request("POST", path, json.dumps(payload), {
+            headers = {
                 "Authorization": "Bearer " + self.ready["token"], "Origin": self.ready["origin"],
-                "Content-Type": "application/json", "X-AIM-Read-Class": read_class})
+                "Content-Type": "application/json", "X-AIM-Read-Class": read_class}
+            headers.update(extra or {})
+            conn.request(method, path, payload if isinstance(payload, bytes) else json.dumps(payload), headers)
             response = conn.getresponse()
             return response.status, json.loads(response.read())
         finally:
@@ -124,6 +133,7 @@ class FreshnessFixtureTests(unittest.TestCase):
         request_id = next(e["request_id"] for e in entered["events"] if e.get("hold_id") == "callback-hold")
         self.assertEqual(entered["lanes"]["background"]["active"], 1)
         self.assertEqual(self.view("topic", {"topic_id": "t1"})[0], 200)
+
         self.assertFalse(pending.done())
         self.control("read_release", hold_id="callback-hold")
         closing = self.events_until(lambda r: any(e.get("hold_id") == "close-hold" and e["event"] == "hold-enter" for e in r["events"]))
@@ -146,6 +156,69 @@ class FreshnessFixtureTests(unittest.TestCase):
         status, body = self.view("topic", {"topic_id": "t1"})
         self.assertEqual((status, body["error"]["code"]), (503, "SERVER_BUSY"))
         self.assertEqual(self.view("topic", {"topic_id": "t1"})[0], 200)
+
+    def test_bootstrap_fault_uses_typed_store_refusal(self):
+        self.control("read_fault", name="bootstrap", status=200,
+                     body={"error": {"code": "AUTHORITY_CHANGED", "retryable": False}}, count=1)
+        status, body = self.http_request("/api/bootstrap", {}, method="GET")
+        self.assertEqual((status, body["error"]["code"]), (409, "AUTHORITY_CHANGED"))
+        self.assertFalse(body["recorded"])
+
+    def test_media_publication_counter_has_an_http_positive_control(self):
+        _, capabilities = self.view("capabilities")
+        authority = {key: capabilities["authority"][key] for key in ("authority_id", "authority_epoch")}
+        content = b"Private fixture upload counter"
+        envelope = {"v": 1, "instance_id": self.ready["instance_id"], "operation_id": "counter-media-begin",
+                    "kind": "media.begin", "target": {"media_id": "counter-media"},
+                    "expected": {"authority": authority, "media_revision": 0},
+                    "args": {"name": "counter.txt", "content_type": "text/plain", "size_bytes": len(content),
+                             "sha256": hashlib.sha256(content).hexdigest(), "publish_operation_id": "counter-media-publish"}}
+        status, receipt = self.http_request("/api/command", envelope)
+        self.assertEqual((status, receipt["status"]), (200, "committed"))
+        before = self.control("counts")
+        envelope.update(operation_id="counter-media-publish", kind="media.publish", args={},
+                        expected={"authority": authority, "media_revision": 1})
+        status, receipt = self.http_request("/api/media/upload", content,
+                                           extra={"Content-Type": "application/octet-stream", "X-AIM-Command": json.dumps(envelope)})
+        self.assertEqual((status, receipt["status"]), (200, "committed"))
+        after = self.control("counts")
+        self.assertEqual(after["http_commands"], before["http_commands"])
+        self.assertEqual(after["http_media_publications"], before["http_media_publications"] + 1)
+        self.assertEqual(after["operations"], before["operations"] + 1)
+
+    def test_hold_timeout_is_fatal_to_fixture_even_if_http_returns_500(self):
+        self.control("read_hold", hold_id="fatal-hold", phase="close", name="topic", read_class="foreground", count=1, timeout_ms=10)
+        status, body = self.view("topic", {"topic_id": "t1"})
+        self.assertEqual((status, body["error"]["code"]), (500, "REQUEST_UNCONFIRMED"))
+        result = self.control("admission_events", after=0)
+        self.assertEqual(result["fatal"], ["fatal-hold"])
+        self.assertTrue(any(e["event"] == "hold-timeout" and e["hold_id"] == "fatal-hold" for e in result["events"]))
+        self.expected_exit = 1
+
+
+
+class FixtureFinalizerTests(unittest.TestCase):
+    def test_close_hold_timeout_still_closes_the_underlying_store(self):
+        from aim_next.server import Handler
+        spec = importlib.util.spec_from_file_location("freshness_fixture", Path(__file__).parent / "fixtures/ui_http.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        controls = module.FreshnessControls()
+        closed = []
+        base = SimpleNamespace(view=lambda *args: {}, close=lambda: closed.append(True))
+        server = SimpleNamespace(read_admission=None, RequestHandlerClass=Handler, instance_id="fixture")
+        controls.install(server, lambda: base)
+        controls.local.ticket = SimpleNamespace(number="fixture-ticket", read_class="foreground")
+        store = server.store_factory()
+        store.view("fixture-actor", "topic", {})
+        controls.control({"method": "read_hold", "hold_id": "finalizer", "phase": "close", "name": "topic",
+                          "read_class": "foreground", "timeout_ms": 1}, server)
+        with self.assertRaises(AssertionError):
+            store.close()
+        self.assertEqual(closed, [True])
+        self.assertEqual(controls.fatal, ["finalizer"])
+        with self.assertRaises(AssertionError):
+            controls.assert_healthy()
 
 
 if __name__ == "__main__":

@@ -94,6 +94,8 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         self.pool = ThreadPoolExecutor(max_workers=12)
         self.handler_errors = []
         self.server.handle_error = lambda *args: self.handler_errors.append(True)
+        self.transitions = []
+        self.admission().observer = self.transitions.append
 
     def tearDown(self):
         for _, release in self.probe.holds.values():
@@ -103,6 +105,9 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         self.server.server_close()
         self.worker.join(2)
         self.assertFalse(self.worker.is_alive())
+        # Joining the handlers includes response writes, which occur after a
+        # released read permit. Checking at release alone can miss their errors.
+        self.assertEqual(self.handler_errors, [])
         self.tmp.cleanup()
 
     def request(self, name="topic", read_class=None, path="/api/view", duplicate=None):
@@ -170,7 +175,7 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         first = self.pool.submit(self.request, "bg-first", "background")
         self.assertTrue(entered.wait(1))
         second = self.pool.submit(self.request, "bg-second", "background")
-        time.sleep(0.05)
+        self.queued("background", 1)
         self.assertNotIn(("bg-second", "callback"), self.probe.events)
         self.assertEqual(self.request("foreground")[0], 200)
         self.assertEqual(self.request(path="/api/command", read_class="invalid")[0], 200)
@@ -184,7 +189,7 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         first = self.pool.submit(self.request, "closing", "background")
         self.assertTrue(entered.wait(1))
         second = self.pool.submit(self.request, "after-close", "background")
-        time.sleep(0.05)
+        self.queued("background", 1)
         self.assertNotIn(("after-close", "callback"), self.probe.events)
         self.assertEqual(self.request("fg-during-close")[0], 200)
         release.set()
@@ -198,8 +203,11 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         waiters = [self.pool.submit(self.request, "expired-%d" % n, "background") for n in range(2)]
         self.queued("background", 2)
         before = self.probe.created
+        overflow_id = self.admission().number + 1
         full = self.pool.submit(self.request, "over-capacity", "background")
-        status, body = full.result(timeout=0.2)
+        eventually(lambda: any(e["request_id"] == overflow_id for e in self.transitions))
+        self.assertEqual([e["event"] for e in self.transitions if e["request_id"] == overflow_id], ["full"])
+        status, body = full.result(timeout=1)
         self.assertEqual(status, 503)
         self.assertEqual(body["error"]["code"], "SERVER_BUSY")
         self.assertTrue(body["error"]["retryable"])
@@ -270,15 +278,18 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         self.assertTrue(entered.wait(1))
         waiting = self.raw_view("withdrawn", "background")
         self.queued("background", 1)
+        queued = next(e for e in self.transitions if e["event"] == "queued")
         self.reset_socket(waiting)
         self.queued("background", 0)
+        ended = [e for e in self.transitions if e["request_id"] == queued["request_id"] and e["event"] != "queued"]
+        self.assertEqual([e["event"] for e in ended], ["withdrawn"])
+        self.assertLess(ended[0]["at"], queued["at"] + 0.5)
         self.reset_socket(active)
         self.assertEqual(self.admission().snapshot()["background"]["active"], 1)
         self.assertEqual(self.request("fg-after-reset")[0], 200)
         release.set()
         eventually(lambda: self.admission().snapshot()["background"]["active"] == 0)
         self.assertNotIn(("withdrawn", "callback"), self.probe.events)
-        self.assertEqual(self.handler_errors, [])
 
     def test_read_half_close_still_receives_its_response(self):
         entered, release = self.probe.hold("first")
@@ -302,6 +313,8 @@ class DeterministicReadAdmissionTests(unittest.TestCase):
     def setUp(self):
         self.now = 10.0
         self.admission = http_server.ReadAdmission(clock=lambda: self.now)
+        self.transitions = []
+        self.admission.observer = self.transitions.append
         self.pool = ThreadPoolExecutor(max_workers=3)
         self.tickets = []
 
@@ -405,21 +418,31 @@ class DeterministicReadAdmissionTests(unittest.TestCase):
             waiting.result(timeout=0.2)
         self.assertEqual(self.admission.snapshot()["background"], {"active": 0, "waiting": 0})
 
-    def test_foreground_queue_limit_is_eight_waiters(self):
+    def assert_queue_bound(self, read_class, count):
         # Test the same admission path with real waiter threads; no fake counts.
         self.pool.shutdown()
-        self.pool = ThreadPoolExecutor(max_workers=9)
-        first = self.acquire("foreground")
-        waiting = [self.pool.submit(self.acquire, "foreground") for _ in range(8)]
-        eventually(lambda: self.admission.snapshot()["foreground"]["waiting"] == 8)
+        self.pool = ThreadPoolExecutor(max_workers=count + 1)
+        first = self.acquire(read_class)
+        waiting = [self.pool.submit(self.acquire, read_class) for _ in range(count)]
+        eventually(lambda: self.admission.snapshot()[read_class]["waiting"] == count)
+        overflow_id = self.admission.number + 1
+        overflow = self.pool.submit(self.acquire, read_class)
+        eventually(lambda: any(e["request_id"] == overflow_id for e in self.transitions))
+        self.assertEqual([e["event"] for e in self.transitions if e["request_id"] == overflow_id], ["full"])
         with self.assertRaises(http_server.RequestError):
-            self.acquire("foreground")
+            overflow.result(timeout=0.2)
         self.now += 6
         self.admission.release(first)
         for future in waiting:
             with self.assertRaises(http_server.RequestError):
                 future.result(timeout=0.2)
-        self.assertEqual(self.admission.snapshot()["foreground"], {"active": 0, "waiting": 0})
+        self.assertEqual(self.admission.snapshot()[read_class], {"active": 0, "waiting": 0})
+
+    def test_foreground_queue_limit_is_eight_waiters(self):
+        self.assert_queue_bound("foreground", 8)
+
+    def test_background_queue_limit_is_two_waiters(self):
+        self.assert_queue_bound("background", 2)
 
 
 if __name__ == "__main__":

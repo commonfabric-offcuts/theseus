@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from aim_next import Store, initialize
@@ -27,6 +28,9 @@ class FreshnessControls:
         self.faults = []
         self.http_commands = 0
         self.http_delivery_acks = 0
+        self.http_media_publications = 0
+        self.legacy_number = 0
+        self.fatal = []
 
     def record(self, value):
         with self.lock:
@@ -36,10 +40,11 @@ class FreshnessControls:
         ticket = getattr(self.local, "ticket", None)
         self.record(dict({"event": event, "at": time.monotonic(), "name": name,
                           "request_id": ticket.number if ticket is not None else None,
-                          "read_class": ticket.read_class if ticket is not None else None}, **extra))
+                          "read_class": ticket.read_class if ticket is not None else None,
+                          "admission_mode": getattr(ticket, "mode", "partitioned") if ticket is not None else None}, **extra))
 
     def install(self, server, factory):
-        if server.read_admission is not None:
+        if getattr(server, "read_admission", None) is not None:
             admission = server.read_admission
             admission.observer = self.record
             acquire, release = admission.acquire, admission.release
@@ -56,6 +61,29 @@ class FreshnessControls:
                     self.local.ticket = None
             admission.acquire, admission.release = observed_acquire, observed_release
         controls = self
+        if getattr(server, "read_admission", None) is None:
+            # Observation only: retain the original server's acquire/refuse/release
+            # path and its default shared2 pool. A header here is a requested hint,
+            # not a claim that the old server reserves separate classes.
+            class ObservedLegacyHandler(server.RequestHandlerClass):
+                def _store_call(self, callback, command=False):
+                    if command:
+                        return super()._store_call(callback, command=True)
+                    values = self.headers.get_all("X-AIM-Read-Class", [])
+                    read_class = ("foreground" if not values else values[0]
+                                  if len(values) == 1 and values[0] in ("foreground", "background") else "invalid")
+                    with controls.lock:
+                        controls.legacy_number += 1
+                        number = "legacy-%d" % controls.legacy_number
+                    controls.local.ticket = SimpleNamespace(number=number, read_class=read_class,
+                                                            mode="legacy-observation")
+                    controls.event("legacy-read-enter", None)
+                    try:
+                        return super()._store_call(callback, command=False)
+                    finally:
+                        controls.event("legacy-read-exit", None)
+                        controls.local.ticket = None
+            server.RequestHandlerClass = ObservedLegacyHandler
 
         class ObservedStore:
             def __init__(self):
@@ -88,15 +116,22 @@ class FreshnessControls:
                     controls.http_delivery_acks += int(envelope.get("kind") == "delivery.ack")
                 return self.base.command(actor, envelope)
 
+            def publish_media(self, *args, **kwargs):
+                with controls.lock:
+                    controls.http_media_publications += 1
+                return self.base.publish_media(*args, **kwargs)
+
             def close(self):
                 if self.name is not None:
                     controls.event("close-enter", self.name)
                 try:
-                    if self.name is not None:
-                        controls.wait_hold(self.name, "close")
-                    close = getattr(self.base, "close", None)
-                    if callable(close):
-                        close()
+                    try:
+                        if self.name is not None:
+                            controls.wait_hold(self.name, "close")
+                    finally:
+                        close = getattr(self.base, "close", None)
+                        if callable(close):
+                            close()
                 finally:
                     if self.name is not None:
                         controls.event("close-exit", self.name)
@@ -114,12 +149,15 @@ class FreshnessControls:
             for hold_id, hold in self.holds.items():
                 if hold["phase"] == phase and self.matches(hold, name):
                     hold["count"] -= 1
-                    selected = (hold_id, hold["release"])
+                    selected = (hold_id, hold["release"], hold.get("timeout_ms", 15000) / 1000.0)
                     break
         if selected:
-            hold_id, release = selected
+            hold_id, release, timeout = selected
             self.event("hold-enter", name, hold_id=hold_id, phase=phase)
-            if not release.wait(15):
+            if not release.wait(timeout):
+                with self.lock:
+                    self.fatal.append(hold_id)
+                self.event("hold-timeout", name, hold_id=hold_id, phase=phase)
                 raise AssertionError("Private fixture hold timed out: " + hold_id)
             self.event("hold-exit", name, hold_id=hold_id, phase=phase)
 
@@ -138,6 +176,7 @@ class FreshnessControls:
             assert request["phase"] in ("callback", "close")
             assert request["read_class"] in ("foreground", "background")
             assert type(request.get("count", 1)) is int and request.get("count", 1) > 0
+            assert type(request.get("timeout_ms", 15000)) is int and 0 < request.get("timeout_ms", 15000) <= 15000
             with self.lock:
                 assert hold_id not in self.holds, "Hold identity is already in use"
                 self.holds[hold_id] = dict(request, count=request.get("count", 1), release=threading.Event())
@@ -149,21 +188,35 @@ class FreshnessControls:
         if method == "read_fault":
             assert request["status"] in (200, 400, 401, 403, 409, 500, 503)
             assert type(request.get("count", 1)) is int and request.get("count", 1) > 0
+            body = request["body"]
+            if isinstance(body, dict) and "error" in body:
+                error = body["error"]
+                assert isinstance(error, dict) and isinstance(error.get("code"), str), "Typed fault needs a code"
+                error = dict(error)
+                error.setdefault("message", "Injected private fixture read refusal")
+                error.setdefault("retryable", False)
+                assert isinstance(error["message"], str) and type(error["retryable"]) is bool
+                body = dict(body, instance_id=body.get("instance_id", server.instance_id), error=error)
             with self.lock:
-                self.faults.append(dict(request, count=request.get("count", 1)))
+                self.faults.append(dict(request, body=body, count=request.get("count", 1)))
             return {"armed": True}
         if method == "admission_events":
             with self.lock:
                 events = [dict(e) for e in self.events if e["index"] > request.get("after", 0)]
                 next_index = len(self.events)
-            return {"events": events, "next": next_index,
-                    "lanes": server.read_admission.snapshot() if server.read_admission else None}
+                fatal = list(self.fatal)
+            return {"events": events, "next": next_index, "fatal": fatal,
+                    "lanes": server.read_admission.snapshot() if getattr(server, "read_admission", None) else None}
         raise ValueError("Unknown admission control")
 
     def close(self):
         with self.lock:
             for hold in self.holds.values():
                 hold["release"].set()
+
+    def assert_healthy(self):
+        with self.lock:
+            assert not self.fatal, "Private fixture hold timeout: " + ", ".join(self.fatal)
 
 
 # Isolated wiring fixture. Actual Store and HTTP; stdin is a private fixture
@@ -244,6 +297,9 @@ def main():
                     {"item_id": "fixture-notebook", "owner_scope": {"kind": "topic", "id": "t1"}}, {"item_revision": 0}, sender="fixture-notebook-agent")
         server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web",
                                max_reads=1 if "--legacy-read-admission" in sys.argv else 2)
+        if "--baseline-read-admission" in sys.argv:
+            assert "--legacy-read-admission" not in sys.argv, "Baseline uses default shared2, never single-slot legacy"
+            assert getattr(server, "read_admission", None) is None, "Baseline flag requires the actual old server"
         controls = FreshnessControls() if freshness else None
         if controls is not None:
             controls.install(server, store)
@@ -286,7 +342,8 @@ def main():
                                                "acknowledged_deliveries": db.execute("SELECT count(*) FROM deliveries WHERE state='acknowledged'").fetchone()[0]})
                                 with controls.lock:
                                     answer.update(http_commands=controls.http_commands,
-                                                  http_delivery_acks=controls.http_delivery_acks)
+                                                  http_delivery_acks=controls.http_delivery_acks,
+                                                  http_media_publications=controls.http_media_publications)
                     elif freshness and request["method"] in ("read_hold", "read_release", "read_fault", "admission_events"):
                         answer = controls.control(request, server)
                     elif freshness and request["method"] == "agent_message":
@@ -351,6 +408,8 @@ def main():
             server.server_close()
             thread.join(2)
             assert not thread.is_alive(), "Owned HTTP fixture did not close"
+            if controls is not None:
+                controls.assert_healthy()
 
 
 if __name__ == "__main__":
