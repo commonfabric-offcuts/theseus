@@ -99,9 +99,11 @@ class Store(Drafts, Delivery, Conversation):
         self.instance_id = _identifier(expected_instance_id, "instance_id")
         self._authority = Authority(self.path, self.instance_id, expected_binding)
         try:
-            with self._authority.shared():
+            with self._authority.shared() as fence:
                 db, _ = _connect(self.path)
                 try:
+                    db.execute("BEGIN")
+                    fence.verify()
                     self._check_instance(db)
                 finally:
                     db.close()
@@ -170,6 +172,9 @@ class Store(Drafts, Delivery, Conversation):
             # All command checks, including the deduplication lookup, share the
             # write transaction. Python's implicit DML BEGIN is insufficient.
             db.execute("BEGIN IMMEDIATE")
+            # Revalidate after SQLite has opened and locked its database. The
+            # pathname may have been replaced after the fence's first check.
+            fence.verify()
             self._check_instance(db)
             self._actor(db, actor)
             previous = db.execute("SELECT fingerprint,outcome FROM operations WHERE actor_id=? AND id=?",
@@ -227,6 +232,7 @@ class Store(Drafts, Delivery, Conversation):
             fence.__enter__()
             db, runtime = _connect(self.path)
             db.execute("BEGIN")
+            fence.verify()
             self._check_instance(db)
             self._actor(db, actor)
             if view_name == "capabilities":

@@ -19,7 +19,7 @@ class AuthorityError(StoreError):
 class GuardBusy(AuthorityError):
     def __init__(self):
         self.holder = "unknown"
-        super().__init__("blocked_by_guard", "An existing runner or owned child still holds the guard")
+        super().__init__("blocked_by_guard", "An existing runner or owned child still holds the guard", retryable=True)
 
 
 def _changed():
@@ -64,6 +64,14 @@ def _unique(pairs):
     return result
 
 
+def _invalid_constant(value):
+    raise _changed()
+
+
+ANCHOR_FIELDS = {"v", "authority_id", "instance_id", "epoch", "state", "db_path", "db_device", "db_inode",
+                 "lock_device", "lock_inode", "runner_lock_device", "runner_lock_inode"}
+
+
 def _read_anchor(path):
     fd = None
     try:
@@ -73,8 +81,10 @@ def _read_anchor(path):
             data = stream.read(65537)
         if len(data) > 65536:
             raise _changed()
-        result = json.loads(data.decode("utf-8"), object_pairs_hook=_unique)
+        result = json.loads(data.decode("utf-8"), object_pairs_hook=_unique, parse_constant=_invalid_constant)
         if not isinstance(result, dict) or type(result.get("v")) is not int or result["v"] != 1:
+            raise _changed()
+        if not ANCHOR_FIELDS <= set(result) or set(result) - ANCHOR_FIELDS - {"activation_id", "recovery"}:
             raise _changed()
         return result
     except (OSError, ValueError, UnicodeError, RecursionError):
@@ -207,6 +217,14 @@ class AuthorityFence:
             # Never LOCK_UN: a child may hold this same open-file description.
             os.close(fd)
 
+    def verify(self):
+        if self._fd is None:
+            raise AuthorityError("INVALID_BINDING", "The authority fence is not held")
+        try:
+            self.record = self.authority._validate(self._fd)
+        except OSError as error:
+            raise _changed() from error
+
     def __exit__(self, *unused):
         self.close()
 
@@ -246,8 +264,8 @@ class RunnerGuard(AuthorityFence):
     def verify(self):
         if self._fd is None or self._runner_fd is None:
             raise AuthorityError("INVALID_BINDING", "The runner guard is not held")
+        super().verify()
         try:
-            self.record = self.authority._validate(self._fd)
             self.authority._verify_lock(self._runner_fd, ".runner.lock", "runner_lock", self.record)
         except OSError as error:
             raise _changed() from error
