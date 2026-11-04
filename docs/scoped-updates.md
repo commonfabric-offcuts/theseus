@@ -50,6 +50,15 @@ An active Store callback owns its slot through close, even after its browser
 request is cancelled. Slow storage, foreground overload and browser connection
 limits can still delay work. Sends retain their separate command path.
 
+The reviewed workload measured the cost of that partition with an artificial
+25 ms delay inside each Store read: paired source-open p95 rose from 44.0 ms
+to 79.7 ms, and neighbor p95 from 42.4 ms to 78.3 ms (40 observations per
+side). In separate browser scale checks, keyed Notebook-read p95 was 4.6 ms
+with 1,000 unrelated records and 5.5 ms with 10,000. Both scales performed
+the same reads for ten message/revision pairs; an unrelated commit triggered
+no dependent list reads. These are measurements of the stated workloads,
+not bounds on production latency or slow-storage behavior.
+
 Publish the reviewed reader and HTTP revision together. For the retained
 instance, follow [first-use process ownership](first-use.md): verify the owned
 server's PID, start identity, executable and arguments before stopping it, then
