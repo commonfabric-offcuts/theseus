@@ -80,6 +80,12 @@ def _view_arguments(name, args):
     # No public or private view can substitute an actor from a JSON field.
     if set(args) - VIEWS[name]:
         raise Refusal("INVALID_ARGUMENT", "Unsupported view arguments, including actor or owner overrides")
+    if (name == "editor_state" and args.get("topic_id") is None
+            and isinstance(args.get("source_ref"), dict) and args["source_ref"].get("kind") != "new_topic"):
+        # A private note has no reply destination. Normalize only this view;
+        # commands, opening editors and other ID arguments retain their rules.
+        args = dict(args)
+        args.pop("topic_id", None)
     for key in ("workspace_id", "topic_id", "operation_id", "submission_id", "id"):
         if key in args:
             _identifier(args[key], key)

@@ -197,7 +197,8 @@ class Drafts:
 
     def _view_editor_state(self, db, actor, args):
         key = _source_key(args.get("source_ref"))
-        row = db.execute("SELECT * FROM drafts WHERE actor_id=? AND source_key=? AND topic_id=?", (actor, key, args.get("topic_id"))).fetchone()
+        note_only = args["source_ref"]["kind"] != "new_topic" and args.get("topic_id") is None
+        row = None if note_only else db.execute("SELECT * FROM drafts WHERE actor_id=? AND source_key=? AND topic_id=?", (actor, key, args.get("topic_id"))).fetchone()
         draft = dict(json.loads(row["payload"]), id=row["id"], revision=row["revision"], generation=row["generation"]) if row else None
         row = db.execute("SELECT * FROM notes WHERE actor_id=? AND source_key=?", (actor, key)).fetchone()
         note = dict(json.loads(row["payload"]), id=row["id"], revision=row["revision"]) if row else None
@@ -208,14 +209,15 @@ class Drafts:
             if exc.code != "FORBIDDEN" or (draft is None and note is None):
                 raise
             source_available = False
-        destination_available = source_available
-        if args["source_ref"]["kind"] != "new_topic":
+        destination_available = source_available and not note_only
+        if not note_only and args["source_ref"]["kind"] != "new_topic":
             try:
                 self._topic(db, actor, args.get("topic_id"))
             except Refusal as exc:
                 if exc.code != "FORBIDDEN":
                     raise
                 destination_available = False
+        submissions = {"instance_id": self.instance_id, "items": [], "next_cursor": None} if note_only else self._view_submissions(db, actor, args)
         return {"instance_id": self.instance_id, "source_ref": args["source_ref"], "destination": {"topic_id": args.get("topic_id")},
                 "source_available": source_available, "destination_available": destination_available,
-                "draft": draft, "note": note, "reading_place": None, "submissions": self._view_submissions(db, actor, args), "limits": dict(LIMITS)}
+                "draft": draft, "note": note, "reading_place": None, "submissions": submissions, "limits": dict(LIMITS)}
