@@ -2,6 +2,8 @@
 
 `bin/aim-next` calls the same local Store as HTTP, using CPython 3.9 and an
 explicit absolute v2 profile path. It starts no server, browser or runner.
+The launcher uses Python's isolated mode. The supported explicit interpreter
+form is `/usr/bin/python3 -I /absolute/bin/aim-next ...`, as in the example below.
 
 ```sh
 bin/aim-next --profile /absolute/agent.json binding
@@ -19,12 +21,19 @@ Input must be one finite UTF-8 JSON object with unique keys, bounded by the
 backend HTTP envelope limit plus 8192 wrapper bytes. Named input is a regular
 file; `-` reads binary stdin. Binary media transfer is outside this CLI.
 
-One JSON result is written and flushed to stdout. Exit 0 means the requested
+One UTF-8 JSON result is written and flushed to stdout. Exit 0 means the requested
 call succeeded; an unknown operation or recorded refusal lookup is a successful
 read with its original result intact. Exit 2 is usage, binding or nonretryable
 refusal; 75 is explicitly retryable; 1 is unconfirmed storage/output; 130 is
 interrupted. Retain IDs, writing and authority pins on uncertainty and look up
 the original operation. A successful exit is never durable wake acceptance.
+Before dispatch, a known database lock returns `DATABASE_BUSY`/75 only after
+connection and authority cleanup complete. An unknown opening or cleanup failure
+returns `STORE_OPEN_UNCONFIRMED`/2 with `recorded:false`; no command was dispatched.
+For ordinary process pipes, output failure returns 1 even if stderr also fails;
+usage with a broken stderr returns 2. Injected text streams retain the same
+`main()` interface. Arbitrary caller-selected Python flags are outside these
+supported invocation forms.
 
 Delivery/source reads, preparing and sending do not acknowledge inbox work.
 `delivery.ack` is a separate retained command. Addressed-source access does not
@@ -52,7 +61,7 @@ import subprocess
 def agent_example(cli, profile, request_directory, selected_ref, operation_prefix, reply_text, addressees):
     directory = Path(request_directory)
     directory.mkdir(mode=0o700, exist_ok=False)
-    base = ["/usr/bin/python3", str(cli), "--profile", str(profile)]
+    base = ["/usr/bin/python3", "-I", str(cli), "--profile", str(profile)]
     exits = {}
     def saved(name, value):
         path = directory / (name + ".json")

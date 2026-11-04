@@ -12,6 +12,7 @@ import sys
 from .authority import AuthorityError
 from .contract import LIMITS, StoreError
 from .profile import ProfileError, load_profile
+from .store import StoreOpenError
 
 
 class InvalidRequest(ValueError):
@@ -118,33 +119,43 @@ def _exit_code(result, verb, inner):
     return (75 if error.get("retryable") else 2) if error else 0
 
 
+def _quiesce_failed_stream(stream):
+    if stream is not sys.stdout and stream is not sys.stderr:
+        return
+    # Shutdown retries buffered process streams. A second broken-pipe flush
+    # must not replace the intended exit status with Python's exit 120.
+    try:
+        fd = os.open(os.devnull, os.O_WRONLY)
+        try:
+            os.dup2(fd, stream.fileno())
+        finally:
+            os.close(fd)
+    except (OSError, ValueError):
+        pass
+
+
 def _diagnostic(stderr, message):
     try:
         stderr.write(message + "\n")
         stderr.flush()
     except (OSError, ValueError):
-        pass
+        _quiesce_failed_stream(stderr)
 
 
 def _output(stdout, stderr, result, code):
     try:
         payload = json.dumps(result, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n"
-        if stdout.write(payload) != len(payload):
+        if stdout is sys.stdout:
+            payload = payload.encode("utf-8")
+            destination = stdout.buffer
+        else:
+            destination = stdout
+        if destination.write(payload) != len(payload):
             raise OSError("Incomplete output")
-        stdout.flush()
+        destination.flush()
     except (OSError, ValueError, UnicodeError):
         _diagnostic(stderr, "CLI_OUTPUT_UNCONFIRMED: reconcile the original operation before retrying.")
-        if stdout is sys.stdout:
-            # Python retries buffered stdout at shutdown. A second broken-pipe
-            # flush would replace our unconfirmed exit 1 with exit 120.
-            try:
-                fd = os.open(os.devnull, os.O_WRONLY)
-                try:
-                    os.dup2(fd, stdout.fileno())
-                finally:
-                    os.close(fd)
-            except (OSError, ValueError):
-                pass
+        _quiesce_failed_stream(stdout)
         return 1
     return code
 
@@ -183,7 +194,7 @@ def main(argv=None, *, stdin=None, stdout=None, stderr=None):
         return 2
     except InvalidRequest:
         return _output(stdout, stderr, _attempt("INVALID_REQUEST", "Use one bounded finite UTF-8 JSON request with an exact binding."), 2)
-    except (ProfileError, AuthorityError) as error:
+    except (ProfileError, AuthorityError, StoreOpenError) as error:
         code = error.code or "PROFILE_UNAVAILABLE"
         return _output(stdout, stderr, _attempt(code, "The explicit profile or authority is unavailable; preserve the original binding.", error.retryable),
                        75 if error.retryable else 2)

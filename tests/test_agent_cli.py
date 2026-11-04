@@ -3,6 +3,8 @@ from __future__ import annotations
 """Standalone local-agent contract, with temporary profiles and records only."""
 
 import copy
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import importlib
 import importlib.util
@@ -11,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
 import subprocess
 import unittest
@@ -635,6 +638,312 @@ class AgentCLICase(AgentCLIBase):
         self.assertEqual(output["ack"]["operation_id"], "doc-act-ack")
         self.assertEqual(output["sent"]["operation_id"], "doc-act-send")
         self.assertEqual(self.store.view("agent-a", "deliveries", {})["items"], [])
+
+
+class AgentCLICorrectionCase(AgentCLIBase):
+    @contextmanager
+    def opening_fault(self, number, target, error, *, close_error=None):
+        """Retain actual handles across both pre-dispatch constructor sites."""
+        original = sqlite3.connect
+        handles, hits = [], []
+        class Connection(sqlite3.Connection):
+            close_calls = 0
+            def execute(db, sql, *args, **kwargs):
+                if db.number == number and sql == target:
+                    hits.append(sql)
+                    if error is not None:
+                        raise error
+                return super().execute(sql, *args, **kwargs)
+            def close(db):
+                db.close_calls += 1
+                if db.number == number and close_error is not None:
+                    raise close_error
+                return super().close()
+        def connect(*args, **kwargs):
+            db = original(*args, factory=Connection, **kwargs)
+            handles.append(db)
+            db.number = len(handles)
+            return db
+        try:
+            with mock.patch.object(sqlite3, "connect", connect):
+                yield handles, hits
+        finally:
+            for db in handles:
+                sqlite3.Connection.close(db)
+
+    def assert_closed(self, handles, failed_close=None):
+        for db in handles:
+            self.assertEqual(db.close_calls, 1)
+            if db.number != failed_close:
+                with self.assertRaises(sqlite3.ProgrammingError):
+                    sqlite3.Connection.execute(db, "SELECT 1")
+            else:
+                self.assertEqual(sqlite3.Connection.execute(db, "SELECT 1").fetchone()[0], 1)
+        fd = os.open(self.binding["authority_path"] + ".lock", os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(fd)
+
+    def assert_open_refusal(self, code, result, diagnostic, expected, retryable):
+        self.assertIsNotNone(result, diagnostic)
+        self.assertEqual((code, result["error"]["code"]), (75 if retryable else 2, expected))
+        self.assertIs(result["recorded"], False)
+        self.assertIs(result["error"]["retryable"], retryable)
+        self.assertNotIn("reconcile", diagnostic + result["error"]["message"])
+
+    def test_both_constructor_sites_preserve_busy_unknown_and_cleanup(self):
+        before = self.records()
+        for number in (1, 3):  # profile validation, view, then dispatch constructor
+            for target in ("PRAGMA synchronous=EXTRA", "BEGIN"):
+                for error in (sqlite3.OperationalError("database is locked"),
+                              sqlite3.OperationalError("disk I/O error"),
+                              sqlite3.DatabaseError("storage failure"), OSError("read failure")):
+                    with self.subTest(number=number, target=target, error=repr(error)):
+                        busy = "locked" in str(error)
+                        with self.opening_fault(number, target, error) as (handles, hits):
+                            with mock.patch.object(Store, "command", side_effect=AssertionError("No dispatch")):
+                                code, result, diagnostic = self.invoke("command", self.memory_command())
+                            self.assertEqual(hits, [target])
+                            self.assertEqual(len(handles), number)
+                            self.assert_closed(handles)
+                            self.assert_open_refusal(code, result, diagnostic,
+                                "DATABASE_BUSY" if busy else "STORE_OPEN_UNCONFIRMED", busy)
+                        self.assertEqual(self.records(), before)
+
+    def test_failed_constructor_close_never_becomes_retryable_busy(self):
+        before = self.records()
+        for number in (1, 3):
+            for target in ("PRAGMA synchronous=EXTRA", "BEGIN"):
+                for error in (None, sqlite3.OperationalError("database is locked")):
+                    with self.subTest(number=number, target=target, original=repr(error)):
+                        close = sqlite3.OperationalError("database busy during close")
+                        with self.opening_fault(number, target, error, close_error=close) as (handles, hits):
+                            with mock.patch.object(Store, "command", side_effect=AssertionError("No dispatch")):
+                                code, result, diagnostic = self.invoke("command", self.memory_command())
+                            self.assertEqual(hits, [target])
+                            self.assert_closed(handles, failed_close=number)
+                            self.assert_open_refusal(code, result, diagnostic, "STORE_OPEN_UNCONFIRMED", False)
+                        self.assertEqual(self.records(), before)
+
+    def test_fence_cleanup_must_complete_before_busy_classification(self):
+        from aim_next.authority import AuthorityFence
+        original = AuthorityFence.__exit__
+        before = self.records()
+        for number in (1, 3):
+            for error in (None, sqlite3.OperationalError("database is locked")):
+                with self.subTest(number=number, original=repr(error)):
+                    exits = []
+                    def fail_exit(fence, *args):
+                        original(fence, *args)
+                        exits.append(fence)
+                        # Store.view closes its fence directly, so only the
+                        # two constructor fences use __exit__ on this path.
+                        if len(exits) == (1 if number == 1 else 2):
+                            raise sqlite3.OperationalError("database busy during fence cleanup")
+                    with self.opening_fault(number, "BEGIN", error) as (handles, hits):
+                        with mock.patch.object(AuthorityFence, "__exit__", fail_exit), \
+                                mock.patch.object(Store, "command", side_effect=AssertionError("No dispatch")):
+                            code, result, diagnostic = self.invoke("command", self.memory_command())
+                        self.assertEqual(len(exits), 1 if number == 1 else 2)
+                        self.assert_closed(handles)
+                        self.assert_open_refusal(code, result, diagnostic, "STORE_OPEN_UNCONFIRMED", False)
+                    self.assertEqual(self.records(), before)
+
+    def test_real_constructor_contention_at_both_sites_has_release_controls(self):
+        before = self.records()
+        writer = sqlite3.connect(str(self.path), isolation_level=None)
+        try:
+            self.assertEqual(self.invoke("binding")[0], 0)
+            for begin in ("BEGIN IMMEDIATE", "BEGIN EXCLUSIVE"):
+                writer.execute(begin)
+                with self.subTest(site="profile", begin=begin):
+                    try:
+                        code, result, diagnostic = self.invoke("binding")
+                        if begin == "BEGIN EXCLUSIVE":
+                            self.assert_open_refusal(code, result, diagnostic, "DATABASE_BUSY", True)
+                        else:
+                            self.assertEqual(code, 0)
+                    finally:
+                        writer.rollback()
+                self.assertEqual(self.invoke("binding")[0], 0)
+            payload = json.dumps(self.request("command", self.memory_command())).encode()
+            class LockOnInput(io.BytesIO):
+                locked = False
+                def read(source, count):
+                    if not source.locked:
+                        writer.execute("BEGIN EXCLUSIVE")
+                        source.locked = True
+                    return super().read(count)
+            with self.subTest(site="dispatch", begin="BEGIN EXCLUSIVE"):
+                try:
+                    code, result, diagnostic = self.invoke("command", source=LockOnInput(payload))
+                    self.assert_open_refusal(code, result, diagnostic, "DATABASE_BUSY", True)
+                finally:
+                    writer.rollback()
+            self.assertEqual(self.invoke("binding")[0], 0)
+            self.assertEqual(self.records(), before)
+            code, result, _ = self.invoke("command", self.memory_command())
+            self.assertEqual(code, 0)
+            self.assertEqual(result["operation_id"], "cli-memory")
+        finally:
+            writer.close()
+
+    def child(self, arguments, *, payload=b"", env=None, stdout=subprocess.PIPE,
+              stderr=subprocess.PIPE):
+        root = Path(fixtures.__file__).resolve().parents[1]
+        directory = Path(self.temp.name) / ("child-" + str(len(list(Path(self.temp.name).glob('child-*')))))
+        directory.mkdir()
+        cache, facts = directory / "cache", directory / "startup.json"
+        bootstrap = directory / "bootstrap.py"
+        bootstrap.write_text('from __future__ import annotations\n'
+            'import hashlib,json,locale,runpy,sys\nfrom pathlib import Path\n'
+            'facts,launcher=sys.argv[1:3]\nroot=Path(launcher).parent.parent\n'
+            'Path(facts).write_text(json.dumps({"cache":sys.pycache_prefix,"encoding":sys.stdout.encoding,'
+            '"preferred":locale.getpreferredencoding(False),"utf8_mode":sys.flags.utf8_mode,'
+            '"isolated":sys.flags.isolated,"inputs":{str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() '
+            'for p in list((root/"aim_next").glob("*.py"))+[Path(launcher)]}}))\n'
+            'sys.argv=sys.argv[2:]\nrunpy.run_path(launcher,run_name="__main__")\n')
+        command = ["/usr/bin/python3", "-I", "-X", "pycache_prefix=" + str(cache),
+                   str(bootstrap), str(facts), str(root / "bin/aim-next")] + arguments
+        process = subprocess.run(command, input=payload, env=env, stdout=stdout, stderr=stderr, timeout=10)
+        observed = json.loads(facts.read_text())
+        self.assertEqual(observed["cache"], str(cache), "-I children need an effective -X cache")
+        self.assertEqual(observed["isolated"], 1)
+        print(json.dumps({"phase": "cli_child", "owned_root": self.temp.name, "command": command,
+                          "exit": process.returncode, "startup": observed,
+                          "stdout_hex": (process.stdout or b"").hex(), "stderr_hex": (process.stderr or b"").hex()}))
+        return process, observed
+
+    def test_process_output_is_utf8_with_non_utf8_stream_encoding(self):
+        for body in ("café", "🪴"):
+            item = "encoding-" + str(len(body))
+            self.committed(self.memory(item=item, body=body))
+            request = self.request("view", {"name": "source", "args": {"source_ref": self.memory_ref(item)}})
+            before = self.records()
+            for locale_name in ("en_US.ISO8859-1", "en_US.UTF-8"):
+                with self.subTest(body=body, locale=locale_name):
+                    process, observed = self.child(["--profile", str(self.profiles["agent-a"]), "view", "-"],
+                        payload=json.dumps(request).encode(), env=dict(os.environ, LC_ALL=locale_name))
+                    if locale_name == "en_US.ISO8859-1":
+                        self.assertEqual(observed["encoding"].lower().replace('-', ''), "iso88591")
+                        self.assertEqual(observed["utf8_mode"], 0)
+                    self.assertEqual(process.returncode, 0, process.stderr)
+                    self.assertIn(body.encode("utf-8"), process.stdout)
+                    self.assertEqual(json.loads(process.stdout.decode("utf-8"))["body"], body)
+                    self.assertTrue(process.stdout.endswith(b"\n"))
+                    self.assertEqual(self.records(), before)
+
+    def test_process_broken_diagnostics_preserve_intended_exit(self):
+        before = self.records()
+        for label, broken_stdout, broken_stderr, expected in (
+                ("stdout-only", True, False, 1), ("both", True, True, 1),
+                ("usage-stderr", False, True, 2)):
+            with self.subTest(label=label):
+                owned_fds = []
+                def pipe():
+                    read, write = os.pipe()
+                    os.close(read)
+                    owned_fds.append(write)
+                    return write
+                diagnostic = Path(self.temp.name) / (label + '.stderr')
+                with diagnostic.open('wb') as file:
+                    try:
+                        process, _ = self.child(
+                            ["--profile", str(self.profiles["agent-a"]), "binding"] if broken_stdout else [],
+                            stdout=pipe() if broken_stdout else subprocess.PIPE,
+                            stderr=pipe() if broken_stderr else file)
+                    finally:
+                        for fd in owned_fds:
+                            os.close(fd)
+                self.assertEqual(process.returncode, expected)
+                if not broken_stderr:
+                    self.assertIn(b"CLI_OUTPUT_UNCONFIRMED", diagnostic.read_bytes())
+                    self.assertNotIn(b"Exception ignored", diagnostic.read_bytes())
+                if not broken_stdout:
+                    self.assertFalse(process.stdout)
+                self.assertEqual(self.records(), before)
+
+    def test_binary_output_checks_short_writes_and_flush_failures(self):
+        from aim_next import cli
+        for failure in ("short", "flush"):
+            with self.subTest(failure=failure):
+                class Buffer(io.BytesIO):
+                    writes = 0
+                    flushes = 0
+                    def write(buffer, data):
+                        buffer.writes += 1
+                        count = super().write(data)
+                        return count - 1 if failure == "short" else count
+                    def flush(buffer):
+                        buffer.flushes += 1
+                        if failure == "flush":
+                            raise BrokenPipeError("fixture flush failed")
+                class ProcessOutput:
+                    buffer = Buffer()
+                    def write(stream, text):
+                        return len(text)  # Old text path cannot satisfy the byte proof.
+                    def flush(stream):
+                        pass
+                    def fileno(stream):
+                        raise ValueError("fixture has no real descriptor")
+                output, diagnostic = ProcessOutput(), io.StringIO()
+                act = self.memory_command(operation="binary-" + failure, item="binary-" + failure)
+                with mock.patch.object(cli.sys, "stdout", output):
+                    code = cli.main(["--profile", str(self.profiles["agent-a"]), "command", "-"],
+                        stdin=io.BytesIO(json.dumps(self.request("command", act)).encode()), stderr=diagnostic)
+                self.assertEqual(code, 1)
+                self.assertEqual(output.buffer.writes, 1)
+                self.assertEqual(output.buffer.flushes, 0 if failure == "short" else 1)
+                self.assertIn("CLI_OUTPUT_UNCONFIRMED", diagnostic.getvalue())
+                receipt = self.store.view("agent-a", "operation", {"operation_id": act["operation_id"]})
+                self.committed(receipt)
+                self.assertEqual(json.loads(output.buffer.getvalue()), receipt)
+                self.assertEqual(self.invoke("command", act)[:2], (0, receipt))
+
+    def test_direct_and_documented_invocations_ignore_pythoninspect(self):
+        root = Path(fixtures.__file__).resolve().parents[1]
+        before = self.records()
+        for mode in ("direct", "documented"):
+            for valid in (True, False):
+                with self.subTest(mode=mode, valid=valid):
+                    export = Path(self.temp.name) / (mode + str(valid))
+                    export.mkdir()
+                    for name in ("aim_next", "bin", "docs"):
+                        shutil.copytree(root / name, export / name, ignore=shutil.ignore_patterns('__pycache__'))
+                    self.assertFalse(list(export.rglob('__pycache__')))
+                    launcher = export / 'bin/aim-next'
+                    env = dict(os.environ, PYTHONINSPECT='1')
+                    if mode == 'direct':
+                        base = [str(launcher), '--profile', str(self.profiles['agent-a'])]
+                        interpreter = launcher.read_text().splitlines()[0][2:].split()
+                    else:
+                        expression = re.search(r'    base = (\[.*\])', (export / 'docs/agent-cli.md').read_text()).group(1)
+                        base = eval(expression, {'cli': launcher, 'profile': self.profiles['agent-a'], 'str': str})
+                        interpreter = base[:base.index(str(launcher))]
+                    # Separate startup control records the real flags/prefix;
+                    # the tested direct command itself is never wrapped in -I.
+                    startup = subprocess.run(interpreter + ['-c',
+                        'import json,sys;print(json.dumps({"cache":sys.pycache_prefix,"isolated":sys.flags.isolated}))'],
+                        env=env, stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+                    self.assertEqual(startup.returncode, 0, startup.stderr)
+                    marker = export / 'stdin-executed'
+                    payload = ('open(' + repr(str(marker)) + ',"w").write("bad")\n').encode()
+                    process = subprocess.run(base + (['binding'] if valid else ['invalid']), input=payload,
+                        env=env, capture_output=True, timeout=10)
+                    print(json.dumps({'phase':'cli_direct', 'owned_root':self.temp.name,'mode':mode,'valid':valid,
+                        'command':base,'exit':process.returncode,'startup':json.loads(startup.stdout),
+                        'inputs':{str(p.relative_to(export)):hashlib.sha256(p.read_bytes()).hexdigest()
+                            for p in list((export/'aim_next').glob('*.py')) + [launcher, export/'docs/agent-cli.md']},
+                        'fresh_export':str(export),'stdout_hex':process.stdout.hex(),'stderr_hex':process.stderr.hex()}))
+                    self.assertEqual(process.returncode, 0 if valid else 2, process.stderr)
+                    self.assertFalse(marker.exists())
+                    self.assertNotIn(b'Traceback', process.stderr)
+                    if valid:
+                        self.assertEqual(json.loads(process.stdout), {'v':1,'binding':self.captured})
+                    else:
+                        self.assertFalse(process.stdout)
+                    self.assertEqual(self.records(), before)
 
 
 if __name__ == "__main__":

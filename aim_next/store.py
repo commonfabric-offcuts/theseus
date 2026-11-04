@@ -109,22 +109,46 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
     return {"instance_id": instance_id, "db_path": str(path), "binding": binding}
 
 
+class StoreOpenError(StoreError):
+    """A pre-dispatch opening failed, without dispatching any command."""
+
+    def __init__(self, code, message, retryable=False):
+        self.code, self.retryable = code, retryable
+        super().__init__(message)
+
+
 class Store(Drafts, Delivery, Conversation, Runner, Memory, Media):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
         self._authority = Authority(self.path, self.instance_id, expected_binding)
+        opening_error = None
         try:
             with self._authority.shared() as fence:
-                db, _ = _connect(self.path)
                 try:
-                    db.execute("BEGIN")
-                    fence.verify()
-                    self._check_instance(db)
-                finally:
-                    db.close()
-        except (sqlite3.Error, Refusal) as exc:
+                    db, _ = _connect(self.path)
+                    try:
+                        db.execute("BEGIN")
+                        fence.verify()
+                        self._check_instance(db)
+                    finally:
+                        try:
+                            db.close()
+                        except (sqlite3.Error, OSError) as error:
+                            raise StoreOpenError("STORE_OPEN_UNCONFIRMED", "Opening connection cleanup could not be confirmed") from error
+                except (sqlite3.Error, OSError) as error:
+                    # Decide retryability only after the fence also closes.
+                    opening_error = error
+        except (sqlite3.Error, OSError) as error:
+            raise StoreOpenError("STORE_OPEN_UNCONFIRMED", "Opening authority cleanup could not be confirmed") from error
+        except Refusal as exc:
             raise StoreError("Cannot open the selected AIM Next instance") from exc
+        if opening_error is not None:
+            # _connect chains failed setup cleanup from the original error.
+            if (isinstance(opening_error, sqlite3.OperationalError) and opening_error.__cause__ is None
+                    and ("locked" in str(opening_error).lower() or "busy" in str(opening_error).lower())):
+                raise StoreOpenError("DATABASE_BUSY", "The selected instance is busy", retryable=True) from opening_error
+            raise StoreOpenError("STORE_OPEN_UNCONFIRMED", "The selected instance could not be opened") from opening_error
 
     @property
     def binding(self):
