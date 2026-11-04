@@ -87,7 +87,9 @@ def _read_anchor(path):
         if not ANCHOR_FIELDS <= set(result) or set(result) - ANCHOR_FIELDS - {"activation_id", "recovery"}:
             raise _changed()
         return result
-    except (OSError, ValueError, UnicodeError, RecursionError):
+    except (AuthorityError, OSError, ValueError, UnicodeError, RecursionError):
+        from .initialization import diagnose
+        diagnose(path)
         raise _changed()
     finally:
         if fd is not None:
@@ -206,6 +208,9 @@ class AuthorityFence:
             return self
         except OSError as error:
             self.close()
+            # An initialization can stop before even the stable lock exists.
+            # Read the anchor first so a completed publication always wins.
+            _read_anchor(self.authority.path)
             raise _changed() from error
         except BaseException:
             self.close()

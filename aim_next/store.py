@@ -15,9 +15,10 @@ from .conversation import Conversation, CONVERSATION_SCHEMA
 from .validation import COMMANDS, _command_envelope, _view_arguments
 from .authority import Authority, AuthorityError, prepare_authority, publish_initial
 from .delivery import Delivery, DELIVERY_SCHEMA
+from . import initialization
 
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 
 
 SCHEMA = [
@@ -56,41 +57,40 @@ def _connect(path):
 
 def initialize(db_path, instance_id, initial_actors, *, authority_path):
     """Create a new isolated authority. Existing paths are never overwritten."""
-    _identifier(instance_id, "instance_id")
-    path = Path(db_path).absolute()
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    os.close(fd)
-    binding, anchor = prepare_authority(authority_path, path, instance_id)
-    db = None
+    path, authority_path, actors = initialization.preflight(db_path, instance_id, initial_actors, authority_path)
+    publication_attempted = False
     try:
+        attempt = initialization.begin(authority_path, path, instance_id)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+        os.close(fd)
+        binding, anchor = prepare_authority(authority_path, path, instance_id)
         db, _ = _connect(path)
-        db.execute("BEGIN IMMEDIATE")
-        for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA:
-            db.execute(statement)
-        db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
-        db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
-        db.execute("INSERT INTO metadata VALUES ('commit_seq','0')")
-        db.executemany("INSERT INTO metadata VALUES (?,?)", list(binding.items()))
-        for actor in initial_actors:
-            actor_id = _identifier(actor["id"], "actor_id")
-            kind = actor.get("kind", "agent")
-            if kind not in ("human", "agent"):
-                raise StoreError("Actor kind must be human or agent")
-            db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)",
-                       (actor_id, kind, actor.get("name", actor_id)))
-        db.commit()
-    except BaseException:
-        if db is not None:
-            db.rollback()
-        # Keep a failed initialization distinct from a usable instance; callers
-        # inspect/remove their own failed path rather than silently reusing it.
-        raise
-    finally:
-        if db is not None:
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA:
+                db.execute(statement)
+            db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
+            db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
+            db.execute("INSERT INTO metadata VALUES ('commit_seq','0')")
+            db.execute("INSERT INTO metadata VALUES ('commit_id',?)", (uuid.uuid4().hex,))
+            db.executemany("INSERT INTO metadata VALUES (?,?)", list(binding.items()))
+            db.executemany("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", actors)
+            db.commit()
+        finally:
+            # close rolls an uncommitted transaction back. Cleanup failures
+            # also go through the typed initialization outcome below.
             db.close()
-    publish_initial(binding, anchor)
-    return {"instance_id": instance_id, "db_path": str(path.resolve()), "binding": binding}
+        publication_attempted = True
+        publish_initial(binding, anchor)
+        initialization.complete(authority_path, attempt)
+    except Exception as error:
+        # Publication may have succeeded before a subsequent fsync failed.
+        # Never call that definitely uninitialized or remove its artifacts.
+        if publication_attempted:
+            raise AuthorityError("INITIALIZATION_UNCONFIRMED", "Authority publication was attempted but completion was not confirmed. Preserve the selected paths and inspect their state") from error
+        raise initialization.incomplete() from error
+    return {"instance_id": instance_id, "db_path": str(path), "binding": binding}
 
 
 class Store(Drafts, Delivery, Conversation):
@@ -121,18 +121,21 @@ class Store(Drafts, Delivery, Conversation):
         row = db.execute("SELECT value FROM metadata WHERE key='instance_id'").fetchone()
         if row is None or row[0] != self.instance_id:
             raise Refusal("INSTANCE_MISMATCH", "The selected instance does not match")
-        metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('schema_version','commit_seq','authority_id','authority_path','authority_epoch')"))
+        metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
         sequence = metadata.get("commit_seq", "")
+        commit_id = metadata.get("commit_id", "")
         if (metadata.get("schema_version") != SCHEMA_VERSION or not sequence.isascii() or not sequence.isdigit()
-                or len(sequence) > 19 or int(sequence) >= 9223372036854775807):
+                or len(sequence) > 19 or int(sequence) >= 9223372036854775807
+                or len(commit_id) != 32 or any(c not in "0123456789abcdef" for c in commit_id)):
             raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
         if any(metadata.get(key) != value for key, value in self.binding.items()):
             raise AuthorityError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
 
     def _advance_commit_seq(self, db):
         changed = db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='commit_seq'").rowcount
-        if changed != 1:
-            raise StoreError("The durable commit sequence is unavailable")
+        identified = db.execute("UPDATE metadata SET value=? WHERE key='commit_id'", (uuid.uuid4().hex,)).rowcount
+        if changed != 1 or identified != 1:
+            raise StoreError("The durable commit identity is unavailable")
 
     def _actor(self, db, actor):
         _identifier(actor, "actor")

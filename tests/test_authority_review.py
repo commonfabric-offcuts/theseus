@@ -146,8 +146,9 @@ class AuthorityReviewCase(fixture.AuthorityCase):
 
     def test_failed_initialization_never_publishes_active_anchor(self):
         path, anchor = self.root / "failed.sqlite3", self.root / "new-control" / "authority.json"
-        with self.assertRaises(StoreError):
-            initialize(path, "failed", [{"id": "bad", "kind": "unsupported"}], authority_path=anchor)
+        with mock.patch.object(store_module, "_connect", side_effect=sqlite3.OperationalError("forced isolated failure")):
+            with self.assertRaises(StoreError):
+                initialize(path, "failed", [{"id": "owner", "kind": "human"}], authority_path=anchor)
         self.assertTrue(path.exists())
         self.assertFalse(anchor.exists())
 
