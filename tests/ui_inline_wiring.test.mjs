@@ -1131,3 +1131,24 @@ for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspa
   });
 }
 
+// The new-topic and new-outcome pages show the outcome list beside the writing.
+for (const route of ['?workspace=w1&opening=o1&opening_topic=t9', '?new=outcome&intent=i1']) {
+  test(`the outcome list beside ${route} is read again after each commit`, async () => {
+    const f = fixture('https://fixture/' + route, {
+      openIntentJournal: async () => ({ close() {} }),
+      OutcomeCreation: class { constructor() { this.row = { phase: 'draft' }; } async load() {} refresh() {} leave() {} },
+      CreateOutcomeView: class { run(action) { return Promise.resolve().then(action); } } });
+    const live = stream(), o = outcomesPage(f);
+    f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+    o.answers.push(o.page(['w1']), o.page(['w1', 'w2']));
+    await f.initialize(); await drain();
+    assert.equal(f.get('body').dataset.ready, 'true');
+    assert.equal(o.reads(), 1);
+    live.emit({ kind: 'commit', seq: 9 }); await drain();
+    assert.equal(o.reads(), 2, 'a commit reads the outcome list again');
+    assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['w1', 'w2']);
+    f.document.visibilityState = 'hidden';
+    live.emit({ kind: 'commit', seq: 10 }); await drain();
+    assert.equal(o.reads(), 2, 'a hidden page waits');
+  });
+}

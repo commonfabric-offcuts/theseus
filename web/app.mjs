@@ -1112,7 +1112,8 @@ async function initializeOpeningPage(route) {
   await view.run(()=>draft.load());
   if(draft.editable)view.title.focus();
   view.run(()=>view.loadMembers());
-  initializeOutcomeNavigation(route.workspace);await outcomeRail.load();document.body.dataset.ready='true';
+  // The outcome list stays beside the writing, and follows commits as on every page.
+  initializeOutcomeNavigation(route.workspace);await followCommits(()=>outcomeRail.load())();document.body.dataset.ready='true';
 }
 async function ensureIntentJournal() {
   if(intentJournal)return intentJournal;
@@ -1146,7 +1147,7 @@ async function initializeCreationPage(route) {
   if(outcomeCreation.row.phase==='confirmed')await form.run(()=>confirmed(outcomeCreation.row));
   $('refresh').onclick=()=>form.run(()=>outcomeCreation.refresh());
   window.addEventListener('beforeunload',event=>{if(outcomeCreation.writable&&(outcomeCreation.pending||outcomeCreation.dirty||outcomeCreation.storageError)){event.preventDefault();event.returnValue='';}});
-  initializeOutcomeNavigation();await outcomeRail.load();document.body.dataset.ready='true';
+  initializeOutcomeNavigation();await followCommits(()=>outcomeRail.load())();document.body.dataset.ready='true';
 }
 window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
 $('refresh').onclick = () => run(start);

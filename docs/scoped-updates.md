@@ -69,22 +69,22 @@ counting. A server without a native watch offers no stream and refuses one with
 server holds at most eight streams; a ninth is refused `SERVER_BUSY` and retried
 with the same back-off.
 
-Every page reloads the topic and outcome lists it shows after each commit. When
-the stream comes back it reloads them only if the last reload could not read
-them: anything saved while the stream was down changes its first number, which
-arrives as a commit, so a feed that keeps reconnecting does not reread every
-list. A page starts following commits before its first read, so a commit that
-lands while that read is out is read after it. A reload asked for while a list
-is loading, by a commit, Refresh or Retry, never settles with that load: the
-load was sent before the ask and may not show the commit, so one more load runs
-once it ends, however many asks arrive. A reload reads again every row the
-reader has loaded, the pages **More** added included, in pages as large as the
-view allows, and changes the list once all have arrived. A reload whose read
-fails says so, keeps the rows it had and offers **Retry**; the next commit, the
-stream's return or showing the page reads again. Where the server keeps its read
-lanes apart, these list reads take the foreground lane without holding
-background reads back, so the open topic's own check for the same commit runs
-beside them rather than after them.
+Every page reloads the topic and outcome lists it shows after each commit, the
+new-topic and new-outcome pages included. When the stream comes back it reloads
+them only if the last reload could not read them: anything saved while the
+stream was down changes its first number, which arrives as a commit, so a feed
+that keeps reconnecting does not reread every list. A page starts following
+commits before its first read, so a commit that lands while that read is out is
+read after it. A reload asked for while a list is loading, by a commit, Refresh
+or Retry, never settles with that load: the load was sent before the ask and may
+not show the commit, so one more load runs once it ends, however many asks
+arrive. A reload reads again every row the reader has loaded, the pages **More**
+added included, in pages as large as the view allows, and changes the list once
+all have arrived. A reload whose read fails says so, keeps the rows it had and
+offers **Retry**; the next commit, the stream's return or showing the page reads
+again. Where the server keeps its read lanes apart, these list reads take the
+foreground lane without holding background reads back, so the open topic's own
+check for the same commit runs beside them rather than after them.
 
 ## When updates cannot continue
 
