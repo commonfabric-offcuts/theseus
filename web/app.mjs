@@ -362,11 +362,19 @@ function discover(presentation, editor) {
   return registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); })
     .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
 }
-// A recovery check that a foreground read deferred runs again for the
-// presentation that still holds its editor.
-function rediscover(session) {
-  const presentation = [registry.current, registry.inline].find(p => p && Object.values(p.editors).includes(session.editor));
-  if (presentation && !registry.disposed && registry.sessions.get(session.editor.key) === session) discover(presentation, session.editor);
+// Rows a foreground read deferred were checked again: what the page lists for
+// exactly those rows is replaced, and every other listed copy stays.
+async function rechecked(session, ids, page) {
+  const editor = session.editor;
+  try {
+    if (!await registry.applyRecheck(editor, ids, page)) return;
+    const known = candidates.get(editor.key), kept = new Map(page.items.map(row => [row.id, row]));
+    if (known) candidates.set(editor.key, { ...known, items: known.items.flatMap(row => !ids.includes(row.id) ? [row] : kept.has(row.id) ? [kept.get(row.id)] : []) });
+    changed(editor);
+  } catch (error) {
+    const presentation = presentationFor(editor);
+    if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message);
+  }
 }
 function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);
@@ -760,7 +768,7 @@ async function initialize() {
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
-  registry.cleanup.resumeListeners.add(rediscover);
+  registry.cleanup.resumeListeners.add(rechecked);
   readThrough = new ReadThrough({ send: (topicId, from, seq) => {
     const { authority_id, authority_epoch } = bootstrap.authority;
     return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.read_through',

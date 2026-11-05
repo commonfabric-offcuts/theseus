@@ -307,9 +307,10 @@ export class EditorRegistry {
   async recoveryCandidates(editor, options) {
     const limit = options?.limit ?? 10;
     if (!Number.isInteger(limit) || limit < 1 || limit > 10) throw Error('Recovery cleanup reads one page of at most ten versions.');
-    await this.cleanup.own(this.sessionFor(editor));
-    const page = await this.journal.candidates(editor.key, { ...options, limit });
-    const result = await this.cleanup.candidates(this.sessionFor(editor), Array.isArray(page) ? { items: page, nextCursor: null } : page);
+    const result = await this.cleanup.discover(this.sessionFor(editor), async () => {
+      const page = await this.journal.candidates(editor.key, { ...options, limit });
+      return Array.isArray(page) ? { items: page, nextCursor: null } : page;
+    });
     if (editor.context.kind === 'reply') {
       if (!options?.cursor) editor.imageCopies = new Map();
       for (const item of result.items) {
@@ -329,6 +330,21 @@ export class EditorRegistry {
       await this.sessionFor(editor).uploads.validateRetained();
     }
     return result;
+  }
+
+  // A recheck of deferred rows replaces just those rows among the editor's
+  // image copies; false when the editor is no longer this registry's.
+  async applyRecheck(editor, ids, page) {
+    if (this.disposed || this.sessions.get(editor.key)?.editor !== editor) return false;
+    if (editor.context.kind === 'reply' && editor.imageCopies) {
+      for (const id of ids) editor.imageCopies.delete(id);
+      for (const item of page.items) {
+        if (item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable') editor.imageCopies.set(item.id, item);
+      }
+      this.updateImageBarrier(editor);
+      await this.sessionFor(editor).uploads.validateRetained();
+    }
+    return true;
   }
 
   updateImageBarrier(editor) {

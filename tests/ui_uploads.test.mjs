@@ -393,6 +393,21 @@ test('queued old-session persistence cannot write after its registration is repl
   await assert.rejects(pending, /replaced/i); assert.equal(f.puts.length, before);
 });
 
+test('a recheck replaces only its rows among saved image copies and keeps what other pages loaded', async t => {
+  const f = await fixture(t); f.editor.edit({ body: 'Otherwise sendable' });
+  const kept = { id: 'u2', editorKey: f.editor.key, stamp: 'v1', availability: 'unreadable', uploadPresent: true };
+  const locked = { id: 'r2', stamp: '1', availability: 'open-in-another-tab', uploadPresent: true };
+  f.rows.set(kept.id, copy(kept));
+  f.editor.imageCopies = new Map([[kept.id, kept], [locked.id, locked]]); f.registry.updateImageBarrier(f.editor);
+  const stale = { ...f.editor, imageCopies: new Map(f.editor.imageCopies) };
+  assert.equal(await f.registry.applyRecheck(stale, [locked.id], { items: [] }), false);
+  assert.deepEqual([...stale.imageCopies.keys()], ['u2', 'r2'], 'an editor the registry does not hold is left as it is');
+  assert.equal(await f.registry.applyRecheck(f.editor, [locked.id], { items: [] }), true);
+  assert.deepEqual([...f.editor.imageCopies.keys()], ['u2']);
+  assert.throws(() => prepare(f.editor), /saved image/i);
+  await f.registry.waiveUnreadable(f.editor, kept);
+  prepare(f.editor);
+});
 test('continuation and locked saved-image copies are barriers even without visible file refs', async t => {
   const f = await fixture(t); f.editor.edit({ body: 'Otherwise sendable' });
   f.editor.imageCopiesNext = 'page-eleven';
