@@ -678,12 +678,12 @@ try {
 
       await check('cleanup close ends every lock this document holds or was granted, and a refused cleanup lists the copy as another tab\'s', async () => {
         const source = async () => { const p = await page('cleanup-close'); await p.evaluate('j.save(snapshot)'); const row = await p.evaluate('j.own(editor.key)'); await p.close(); return row; };
-        const first = await source(), second = await source(), third = await source();
+        const first = await source(), second = await source(), third = await source(), fourth = await source();
         const b = await page('cleanup-close');
         const result = await b.evaluate(`(async()=>{
           const fake=${fakeLocks},open=()=>import('/journal.mjs').then(m=>m.openJournal({instanceId:context.instanceId,actor:context.actor}));
           const named=writer=>[...fake.holders].some(name=>name.includes(writer));
-          const first=${JSON.stringify(first)},second=${JSON.stringify(second)},third=${JSON.stringify(third)},out={};
+          const first=${JSON.stringify(first)},second=${JSON.stringify(second)},third=${JSON.stringify(third)},fourth=${JSON.stringify(fourth)},out={};
           // An adopted source and the document's own writer are ended by close.
           const k1=await open();
           await k1.adopt(editor.key,{id:first.id,stamp:first.stamp});
@@ -724,23 +724,37 @@ try {
           out.refused=await refused;
           out.listed=(await listing).map(row=>row?.availability);
           IDBDatabase.prototype.transaction=realTransaction;
-          // A cleanup whose delete was created just before close keeps the row,
-          // because close has already ended the lock that delete needs.
+          // A write transaction created just before close writes nothing,
+          // because close has already ended the locks it was made under: a
+          // cleanup's delete, an adoption, and the document's own save.
           fake.hooks.defer=null;await fake.flush();
-          const k5=await open();let closing=true;
-          IDBDatabase.prototype.transaction=function(...args){
+          const closingAtWrite=k=>{let closing=true;IDBDatabase.prototype.transaction=function(...args){
             const tx=realTransaction.apply(this,args);
-            if(closing&&args[1]==='readwrite'){closing=false;k5.close();}
+            // One microtask later: after each method's checks at creation.
+            if(closing&&args[1]==='readwrite'){closing=false;queueMicrotask(()=>k.close());}
             return tx;
-          };
-          out.retireQueuedAtClose=await k5.retireAcknowledged(editor.key,third,async()=>true).then(v=>v,()=>'refused');
-          IDBDatabase.prototype.transaction=realTransaction;
+          };};
+          const k5=await open();closingAtWrite(k5);
+          out.retireQueuedAtClose=await k5.retireAcknowledged(editor.key,third,async()=>true).then(v=>v,e=>e.message);
           out.queuedRowKept=(await readRow(third.id))?.stamp===third.stamp;
+          await fake.flush();
+          const k6=await open();closingAtWrite(k6);
+          out.adoptQueuedAtClose=await k6.adopt(editor.key,{id:fourth.id,stamp:fourth.stamp}).then(()=>'adopted',e=>e.message);
+          const source4=await readRow(fourth.id);
+          out.adoptSourceKept=source4?.stamp===fourth.stamp&&source4.active===1&&!source4.superseded_by;
+          out.adoptedRowAbsent=!(await readRow(JSON.stringify([editor.key,k6.writerId])));
+          await fake.flush();
+          const k7=await open();closingAtWrite(k7);
+          out.saveQueuedAtClose=await k7.save(snapshot).then(()=>'saved',e=>e.message);
+          out.saveRowAbsent=!(await readRow(JSON.stringify([editor.key,k7.writerId])));
+          IDBDatabase.prototype.transaction=realTransaction;
           return out;
         })()`);
         assert.deepEqual(result, { adoptedHeld: true, afterClose: [false, false], cleanupHeldAfterClose: false, retire: 'refused',
           adoptAsClosing: 'Open in another tab. Close that tab before retrying recovery.', heldAfterClosingAdoption: false, refused: false, listed: ['open-in-another-tab'],
-          retireQueuedAtClose: false, queuedRowKept: true });
+          retireQueuedAtClose: 'Recovery storage is closed.', queuedRowKept: true,
+          adoptQueuedAtClose: 'Recovery storage is closed.', adoptSourceKept: true, adoptedRowAbsent: true,
+          saveQueuedAtClose: 'Recovery storage is closed.', saveRowAbsent: true });
       });
 
       await check('cleanup a writer this document just released is taken again, never refused by its own release', async () => {

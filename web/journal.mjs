@@ -166,7 +166,7 @@ export async function openJournal({ instanceId, actor } = {}) {
     try { return await run(Boolean(await lease.end)); }
     finally { leave(writer, lease); }
   };
-  const holds = writer => !closed && (held.has(writer) || leases.has(writer));
+  const holds = writer => held.has(writer) || leases.has(writer);
   // Whether no document holds this writer now. It takes no lock, so probes of
   // one writer, in this tab or another, never see each other as its holder.
   const free = async writer => {
@@ -180,7 +180,8 @@ export async function openJournal({ instanceId, actor } = {}) {
   };
   if (!await lock(writerId)) throw Error('This document could not acquire recovery ownership.');
   // Closing ends every lock this document holds, and every lease a cleanup
-  // was granted: no transaction runs after close, so none relies on it.
+  // was granted. A write transaction made before close fails at its next
+  // callback (see transact), so no write relies on a lock after close.
   const release = () => {
     closed = true;
     for (const end of held.values()) end();
@@ -238,7 +239,11 @@ export async function openJournal({ instanceId, actor } = {}) {
     tx.onerror = () => reject(failure ?? tx.error ?? new Error('Recovery storage failed.'));
     tx.onabort = () => reject(failure ?? tx.error ?? new Error('Recovery storage was interrupted.'));
     const fail = error => { failure = error; try { tx.abort(); } catch { reject(error); } };
-    const get = (id, action) => { store.get(id).onsuccess = event => { try { action(event.target.result); } catch (error) { fail(error); } }; };
+    // Close ends every lock this document holds, so a write transaction made
+    // before close must not write after it: its next callback fails it instead.
+    const get = (id, action) => { store.get(id).onsuccess = event => {
+      if (mode === 'readwrite' && closed) { fail(Error('Recovery storage is closed.')); return; }
+      try { action(event.target.result); } catch (error) { fail(error); } }; };
     try {
       if (mode === 'readwrite' && tx.durability !== 'strict') throw Error('Strict recovery durability is unavailable. Keep this page open.');
       operation(store, value => { result = value; }, get, fail);
