@@ -79,8 +79,9 @@ export function markReach(chip, name, reach) {
   // The add belongs to the person, not to this chip: a chip rebuilt while it
   // is out shows it still out and says how it ended. While out the button
   // says so rather than being disabled, which would drop the focus it holds.
-  const offer = offerFor(reach, answer.scope, name);
-  offer.views.add({ add, said });
+  const offer = offerFor(reach, answer.scope, name), view = { add, said };
+  offer.views.add(view);
+  chip.leave = () => offer.leave(view);
   offer.paint();
   add.onclick = async () => {
     if (offer.out) return;
@@ -89,7 +90,7 @@ export function markReach(chip, name, reach) {
     try { receipt = await answer.add(); } catch (error) { receipt = { error }; }
     offer.out = false;
     offer.notice = receipt?.status === 'committed' ? '' : ` · ${receipt?.error?.message ?? `Adding ${name} was not confirmed.`}`;
-    offer.paint();
+    offer.paint(); offer.leave();
   };
   chip.append(add, said);
 }
@@ -102,10 +103,14 @@ function offerFor(reach, scope, name) {
   let offer = byName.get(key);
   if (!offer) byName.set(key, offer = { out: false, notice: '', views: new Set(), paint() {
     for (const view of this.views) {
-      if (view.add.isConnected === false) { this.views.delete(view); continue; }
       if (this.out) view.add.setAttribute('aria-disabled', 'true'); else view.add.removeAttribute('aria-disabled');
       Object.assign(view.said, { textContent: this.notice, hidden: !this.notice });
     }
+  // A chip leaves when replaceChips takes it off the page; a person with no
+  // chip left and no add out is forgotten, so their next chip starts afresh.
+  }, leave(view) {
+    this.views.delete(view);
+    if (!this.out && !this.views.size) byName.delete(key);
   } });
   return offer;
 }
@@ -117,6 +122,7 @@ function offerFor(reach, scope, name) {
 export function replaceChips(host, field, chips) {
   const at = document.activeElement;
   const held = [...host.children].find(chip => [...chip.children].includes(at))?.dataset.name;
+  for (const chip of [...host.children]) if (!chips.includes(chip)) chip.leave?.();
   host.replaceChildren(...chips);
   if (held === undefined) return;
   const next = chips.find(chip => chip.dataset.name === held);

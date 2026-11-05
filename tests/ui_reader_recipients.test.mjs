@@ -6,8 +6,10 @@ class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, dataset: {}, className: '', textContent: '' }); }
   focus() { globalThis.document.activeElement = this; }
   get classList() { return { add: name => { this.className = this.className ? `${this.className} ${name}` : name; } }; }
-  append(...nodes) { this.children.push(...nodes); }
-  replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  // A node is on the page while its parents reach a root, as in a browser.
+  get isConnected() { return !!this.root || !!this.parent?.isConnected; }
+  append(...nodes) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
+  replaceChildren(...nodes) { for (const node of this.children) node.parent = null; this.children = []; this.append(...nodes); }
   setAttribute(key, value) { this.attributes[key] = value; }
   removeAttribute(key) { delete this.attributes[key]; }
 }
@@ -32,7 +34,7 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
   const previous = globalThis.document;
   globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
   t.after(() => { globalThis.document = previous; });
-  const chips = new Element('div'), input = new Element('input');
+  const chips = Object.assign(new Element('div'), { root: true }), input = new Element('input');
   let inTopic = false, answer = { status: 'refused', error: { message: 'No permission for this topic' } };
   const editor = { draft: { addressees: ['fable', 'stranger'] }, edit(patch) { Object.assign(this.draft, patch); } };
   const reader = Object.assign(Object.create(Reader.prototype), {
@@ -71,7 +73,7 @@ test('a chip rebuilt while its add is out shows it still out, sends nothing more
   const previous = globalThis.document;
   globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
   t.after(() => { globalThis.document = previous; });
-  const chips = new Element('div'), input = new Element('input');
+  const chips = Object.assign(new Element('div'), { root: true }), input = new Element('input');
   let settle, adds = 0, scope = 't1';
   const editor = { draft: { addressees: ['stranger'] }, edit(patch) { Object.assign(this.draft, patch); } };
   const reach = name => ({ reachable: false, scope, add: () => { adds++; return new Promise(resolve => { settle = resolve; }); } });
@@ -93,6 +95,23 @@ test('a chip rebuilt while its add is out shows it still out, sends nothing more
     'the refusal is said on the chip on the page');
   scope = 't2'; reader.paintRecipients();
   assert.deepEqual([said().textContent, said().hidden], ['', true], 'in another topic the same person\'s chip starts afresh');
+  scope = 't1'; reader.paintRecipients();
+  assert.deepEqual([said().textContent, said().hidden], ['', true], 'back in the first topic, a person whose chips all left starts afresh');
+  const again = offer().onclick();
+  editor.draft.addressees = []; reader.paintRecipients();
+  editor.draft.addressees = ['stranger']; reader.paintRecipients();
+  assert.equal(offer().attributes['aria-disabled'], 'true', 'a person removed while their add is out is still out when they come back');
+  settle({ status: 'refused', error: { message: 'Still no permission' } }); await again;
+  assert.equal(said().textContent, ' · Still no permission', 'and their chip says how it ended');
+  editor.draft.addressees = []; reader.paintRecipients();
+  editor.draft.addressees = ['stranger']; reader.paintRecipients();
+  assert.deepEqual([said().textContent, said().hidden, offer().attributes['aria-disabled']], ['', true, undefined],
+    'a person removed and added again later starts afresh');
+  const unseen = offer().onclick();
+  editor.draft.addressees = []; reader.paintRecipients();
+  settle({ status: 'refused', error: { message: 'Refused unseen' } }); await unseen;
+  editor.draft.addressees = ['stranger']; reader.paintRecipients();
+  assert.deepEqual([said().textContent, offer().attributes['aria-disabled']], ['', undefined], 'an add that ended with no chip on the page is forgotten');
 });
 
 test('the origin line names the author, the kind and when it was sent, and leaves out a time it does not have', () => {
