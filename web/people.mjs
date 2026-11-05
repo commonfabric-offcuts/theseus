@@ -76,14 +76,37 @@ export function markReach(chip, name, reach) {
   const add = element('button', { type: 'button', textContent: 'Add to topic (gets all its messages)' });
   const said = element('span', { className: 'reach-notice', hidden: true });
   said.setAttribute('role', 'status');
+  // While the add is out the button says so rather than being disabled: a
+  // disabled button would drop the keyboard focus it holds.
+  let out = false;
   add.onclick = async () => {
-    add.disabled = true;
+    if (out) return;
+    out = true; add.setAttribute('aria-disabled', 'true');
     let receipt;
-    try { receipt = await answer.add(); } catch (error) { receipt = { error }; } finally { add.disabled = false; }
+    try { receipt = await answer.add(); } catch (error) { receipt = { error }; } finally { out = false; add.removeAttribute('aria-disabled'); }
     said.textContent = receipt?.status === 'committed' ? '' : ` · ${receipt?.error?.message ?? `Adding ${name} was not confirmed.`}`;
     said.hidden = !said.textContent;
   };
   chip.append(add, said);
+}
+
+// A composer's recipient chips, each built with dataset.name, replace those in
+// host. A chip's button that held focus hands it to the same button on that
+// person's new chip, or to field when there is none (an add took them into the
+// topic, or they were removed), so focus stays in the writing; and what a chip
+// said about an add stays said.
+export function replaceChips(host, field, chips) {
+  const at = document.activeElement, before = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
+  const held = [...host.children].find(chip => [...chip.children].includes(at))?.dataset.name;
+  const notice = chip => [...chip.children].find(node => node.className === 'reach-notice');
+  host.replaceChildren(...chips);
+  for (const chip of chips) {
+    const now = notice(chip), was = before.has(chip.dataset.name) && notice(before.get(chip.dataset.name));
+    if (now && was) Object.assign(now, { textContent: was.textContent, hidden: was.hidden });
+  }
+  if (held === undefined) return;
+  const next = chips.find(chip => chip.dataset.name === held);
+  ([...next?.children ?? []].find(node => node.textContent === at.textContent) ?? field).focus();
 }
 
 // The people in a team or a topic, with a field to add someone and a remove

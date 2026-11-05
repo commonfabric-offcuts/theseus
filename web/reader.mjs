@@ -1,7 +1,7 @@
 import { keyAction } from './editor.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
-import { markReach } from './people.mjs';
+import { markReach, replaceChips } from './people.mjs';
 import { readableTime } from './topic-state.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
@@ -357,19 +357,17 @@ export class Reader {
   }
 
   paintRecipients() {
-    const chips = this.$('recipient-chips');
-    chips.replaceChildren();
     const editor = this.sessions.reply, presentation = this.presentation;
-    for (const { name, removeLabel } of recipientChoices(editor.draft.addressees)) {
-      const chip = node('span', name, 'chip');
+    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices(editor.draft.addressees).map(({ name, removeLabel }) => {
+      const chip = node('span', name, 'chip'); chip.dataset.name = name;
       const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
       remove.onclick = () => {
         if (!this.admits(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
         editor.edit({ addressees: editor.draft.addressees.filter(item => item !== name) });
         this.callbacks.edit(editor); this.paintRecipients();
       };
-      chip.append(remove); markReach(chip, name, this.callbacks.reach); chips.append(chip);
-    }
+      chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
+    }));
   }
 
   addRecipient() {

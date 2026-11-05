@@ -84,7 +84,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const attentionSource = readFileSync(new URL('../web/attention.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + attentionSource + '; return {Attention,paintSent}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach,replaceChips}; })())', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,reread,PAGE}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
@@ -834,12 +834,14 @@ test('addressing someone outside the topic offers its manager to add them, and t
   const offer = walk(chip('stranger')).find(node => node.textContent?.startsWith('Add to topic'));
   // The add commits; the next topic view lists the new participant.
   const participants = [{ actor_id: 'fixture-person' }, { actor_id: 'fable' }, { actor_id: 'stranger' }];
+  offer.focus();
   await offer.onclick();
   const sent = JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'participation.set').map(call => call.envelope.args)));
   assert.deepEqual(sent, [{ actor_id: 'stranger', present: true }]);
   Object.assign(f.views, { topic: { ...f.topic, version: 4, owner_id: 'fixture-person', creator_id: 'other' }, participants, messages: new Map() });
   f.paintViews('topic');
   assert.equal(chip('stranger').className, 'chip', 'once a participant, the mark goes');
+  assert.equal(f.document.activeElement, f.get('inline-recipient-input'), 'focus that was on the offer goes to the recipient field');
 });
 
 test('a switched-off participant or teammate is marked so, with no add offer, and a refused add is said on its chip', async () => {
