@@ -353,3 +353,22 @@ test('a card\'s Unread pill keeps the name\'s last character with it, and leaves
   paintAuthor(author, 'alice', null, true);
   assert.deepEqual(shape(), ['alic', ['together', 'e', ['unread-mark', 'Unread', 'true'], ['sr-only', ', marked unread', null]]]);
 });
+
+test('a superseded open cannot discard the current reading open deferred until focus', async t => {
+  const f = await fixture(t);
+  const first = await f.known(0), second = await f.known(1);
+  const held = f.holdSource(0);
+  const openingA = f.open(0, f.marks.capture(first.message_id));
+  await held.entered;
+  const openingB = f.open(1, f.marks.capture(second.message_id));
+  f.screen.set({ visible: false, focused: false });
+  const p = await openingB;
+  assert.equal(f.registry.current, p);
+  assert.ok(f.marks.deferred, 'the successful current open is waiting for visibility');
+  held.release();
+  assert.equal(await openingA, null, 'the stale source answer does not present A');
+  f.screen.set({ visible: true, focused: true });
+  await settled();
+  assert.deepEqual(f.clears().map(c => [c.envelope.target.message_id, c.envelope.expected.mark_revision]),
+    [[second.message_id, second.mark_revision]], 'the current message must clear when it is shown');
+});

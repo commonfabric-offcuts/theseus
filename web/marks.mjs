@@ -144,8 +144,11 @@ export class Marks {
     return presentation;
   }
   settle(presentation, act, registry) {
+    // Only the open now shown decides the waiting clear: a superseded open's
+    // late answer leaves the current one's clear alone.
+    if (!presentation || !registry.isSourceCurrent(presentation)) return;
     this.deferred = null;
-    if (!presentation || presentation.sourceUnavailable || presentation.mark?.marked !== true) return;
+    if (presentation.sourceUnavailable || presentation.mark?.marked !== true) return;
     const attempt = () => {
       if (!registry.isSourceCurrent(presentation)) return;
       if (!this.shown()) { this.deferred = attempt; return; }
