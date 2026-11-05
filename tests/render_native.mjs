@@ -174,7 +174,13 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     // Unread in the topic being read (more than its first screen holds), in
     // the outcome around it, and sent by name, so every count shape is drawn.
     await control({ method: 'navigation_topics', topics: [{ id: 'render-other', title: 'A neighbouring topic with a title long enough to wrap in the rail' }] });
-    await control({ method: 'seed', messages: 40 });
+    const { message_ids: seeded } = await control({ method: 'seed', messages: 40 });
+    // Two messages the person marked unread, one of them their own, so the
+    // Unread pill is drawn on both kinds of card; a third, unmarked, opens the
+    // Reader with its Mark unread button, pressed and not.
+    const own = await control({ method: 'agent_message', operation_id: 'render-own', body: 'My own message, marked to come back to', topic_id: 't1', addressees: [], sender: 'person' });
+    const markedIds = [seeded.at(-1), own.result.message_id], unmarked = seeded.at(-2);
+    await control({ method: 'mark', operation_id: 'render-marks', message_ids: markedIds, marked: true });
     await control({ method: 'agent_message', operation_id: 'render-named', body: 'For you by name', topic_id: 'render-other', addressees: ['fixture-person'], join: true });
     await control({ method: 'agent_message', operation_id: 'render-plain', body: 'For anyone', topic_id: 'render-other', addressees: [] });
     // Titles that end without a place to break, a rail with more counted rows
@@ -196,8 +202,13 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     const counted = ['t1', 'render-other', ...crowd.map(topic => topic.id)];
     const shots = join(evidencePath, 'rendering'); mkdirSync(shots, { recursive: true });
     const found = [];
-    const topicRows = ['#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#topics [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
-    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine'))`],
+    const keep = (state, answer, image, legibility) => {
+      writeFileSync(join(shots, state + '.png'), image);
+      writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
+      for (const problem of [...answer.problems, ...judgePixels(image, answer), ...legibility]) found.push({ state, ...problem });
+    };
+    const topicRows = [...markedIds.map(id => `#messages [data-id="${id}"]`), '#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#topics [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
+    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine')) && ${JSON.stringify(markedIds)}.every(id => document.querySelector('#messages [data-id="' + id + '"] .unread-mark'))`],
       // A plain state on the row shaded as the current topic.
       ['done', origin + '/?topic=render-crowd-2', ['#topics [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#topics [aria-current=page] .topic-state[data-state=done]')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`],
       ['outcomes', origin + '/', ['#workspaces [data-workspace-id="w1"]'], `Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`]]) {
@@ -244,9 +255,23 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left - 1 && pill.top >= box.top - 1 && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
             // The topic's own state is judged at rest, never skipped as out of view.
             if (route === 'topic' && row === null) assert.ok(answer.pills.some(pill => pill.at.startsWith('#topic-state ')), `${state}: the sweep judged the topic's own state`);
-            writeFileSync(join(shots, state + '.png'), image);
-            writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
-            for (const problem of [...answer.problems, ...judgePixels(image, answer), ...await p.evaluate(legible)]) found.push({ state, ...problem });
+            keep(state, answer, image, await p.evaluate(legible));
+          }
+          // The Reader's Mark unread button, not pressed and then pressed, on a
+          // message the person had not marked; pressed again, it is as it was.
+          if (route === 'topic') {
+            const card = `#messages [data-id="${unmarked}"]`, button = "document.querySelector('#mark-unread')";
+            await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({ block: 'center' })`);
+            await p.point(card);
+            await until(() => p.evaluate(`document.querySelector('#reader').open && !${button}.hidden && ${button}.getAttribute('aria-pressed') === 'false' && document.getAnimations().every(a => a.playState !== 'running')`), 'the Reader offers Mark unread');
+            await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+            keep(`${route}-${scheme}-${layout}-reader`, await p.evaluate(audit), Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'), await p.evaluate(legible));
+            await p.point('#mark-unread');
+            await until(() => p.evaluate(`${button}.getAttribute('aria-pressed') === 'true' && ${button}.textContent === 'Marked unread'`), 'the button is pressed');
+            await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+            keep(`${route}-${scheme}-${layout}-reader-marked`, await p.evaluate(audit), Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'), await p.evaluate(legible));
+            await p.point('#mark-unread');
+            await until(() => p.evaluate(`${button}.getAttribute('aria-pressed') === 'false'`), 'pressed again, it is not marked');
           }
           await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
           assert.deepEqual(p.errors, []);
