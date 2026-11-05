@@ -50,16 +50,18 @@ class Delivery:
     def _eligibility_changed(self, db, actor, delta, last_seq=None):
         old = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (actor,)).fetchone()
         pending = old["pending_count"] + delta
-        due, retry = old["next_due_ms"], old["retry_count"]
+        due, retry, handed = old["next_due_ms"], old["retry_count"], old["handed_seq"]
         captured_done = old["captured_seq"] is not None and (self._pending_head(db, actor) or old["captured_seq"] + 1) > old["captured_seq"]
+        # Work handed to a running turn stays quiet until something newer arrives.
+        arrived_after_handing = handed is not None and last_seq is not None and last_seq > handed
         if pending == 0:
-            due, retry = None, 0
-        elif old["pending_count"] == 0 or captured_done:
+            due, retry, handed = None, 0, None
+        elif old["pending_count"] == 0 or captured_done or arrived_after_handing:
             due, retry = _now_ms(), 0
         if pending and old["claim_token"] is not None and old["claim_until_ms"] > _now_ms():
             due = old["claim_until_ms"]
-        db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=? WHERE recipient_id=?",
-                   (pending, last_seq if last_seq is not None else old["last_seq"], due, retry, actor))
+        db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=?,handed_seq=? WHERE recipient_id=?",
+                   (pending, last_seq if last_seq is not None else old["last_seq"], due, retry, handed, actor))
 
     def _queue_delivery(self, db, message_id, recipient, topic_id, reasons):
         direct = any(reason != "subscription" for reason in reasons)

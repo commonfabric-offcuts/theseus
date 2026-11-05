@@ -1290,3 +1290,25 @@ sys.exit(result)
         self.assertEqual(result['status'],'paused','unknown cleanup cannot enter short-lease retry')
         self.assertEqual(calls.call_count,1)
         self.assert_pause('storage_failure')
+
+    def test_a_hosted_answer_read_after_the_claim_lease_is_late_not_a_fault(self):
+        # A busy, error or unavailable answer can be read after Core's claim lease
+        # ended, before the loop's own abandon check: it is late, like an abandoned one.
+        api=self.api();self.create_topic()
+        with self.store.runner_guard('loop-fixture') as guard:
+            loop=api.EffectsLoop(self.profile,self.store,guard,self.wait,{},selected_executable=str(self.broker),
+                                 clock=self.clock,emit=self.trace.append)
+            loop.token=self.store.acquire_runner(guard)['runner_token']
+            for outcome in ('busy','error','unavailable'):
+                with self.subTest(outcome=outcome):
+                    self.assertEqual(self.store.renew_runner(guard,loop.token)['status'],'renewed')
+                    claim=self.store.claim_wakes(guard,loop.token,['agent-a'])['claims'][0]
+                    loop.outstanding=claim
+                    self.clock.advance(21)
+                    # The host's settle callback, as Host calls it with the answer it just read.
+                    loop._hosted_settled(outcome,None,'late')
+                    self.assertIsNone(loop.outstanding)
+                    self.assertEqual(self.trace[-1],dict(event='settled',outcome=outcome,stale=True))
+        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('running',)])
+        # Nothing was settled by a late answer; each earlier claim is recorded expired by the next.
+        self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('expired',),('expired',)])

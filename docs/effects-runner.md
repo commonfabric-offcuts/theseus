@@ -9,6 +9,10 @@ bin/aim-next-runner --profile /absolute/runner-profile.json \
   --runner-id chosen-runner --routes /absolute/routes.json
 ```
 
+A map with a hosted Codex route (see [codex-hosting.md](codex-hosting.md)) also
+needs `--host-dir /absolute/private-dir`; the process then hosts those agents'
+`codex app-server` children itself.
+
 All configured routes and pins must validate before ownership is acquired. The
 mapping is loaded once; changing its membership requires a restart. Each claim
 gets a fresh comparison of the selected route, config and Core pin. The first
@@ -31,7 +35,11 @@ confirmed result is settled. Acceptance never acknowledges the recipient's
 delivery; that remains the recipient's separate act.
 
 An O_EVTONLY, non-inherited descriptor and kqueue provide write hints and stop
-signals on macOS. A hint is not a commit: SQLite decides what is visible. The
+signals on macOS. A hosting runner adds each child's stdout and PID to the same
+kqueue; a wait returns `{dirty, stop, readable, exited}`, and child output and
+exits are handled before any claim work. A hosted claim stays outstanding
+while its RPC runs, bounded only by the claim lease; renewals and reads
+continue beside it. A hint is not a commit: SQLite decides what is visible. The
 first dirty event sets a fixed 100 ms read deadline; further hints do not
 postpone it. Reads have independent retry gates and a 60-second reconciliation
 deadline. Idle operation has no periodic claim/write polling. Database
@@ -46,7 +54,9 @@ backoff; it never silently reacquires. A short-lease refusal gets one immediate
 renewal and retry, with subsequent cycles paced at least one second apart.
 Monotonic renewal deadlines remain active across a backward wall-clock change.
 
-SIGINT and SIGTERM stop new claims. An already running invocation keeps its
+SIGINT and SIGTERM stop new claims. A hosting runner then interrupts its live
+turns, closes its children's input and waits for each exit before it exits; a
+second signal sends SIGTERM to the captured child PIDs, a third SIGKILL. An already running invocation keeps its
 original cleanup deadline; its confirmed outcome is settled once before exit.
 A stop just after a claim, before invocation, leaves that attempt unsettled
 for Core's lease recovery. Unconfirmed child cleanup attempts a cleanup_failed
@@ -71,8 +81,8 @@ survives restart. Explicit `--resume-version INTEGER` uses the observed pause
 version with a fresh guard; there is no automatic resume. Service installation
 and its restart policy require the separate activation review.
 
-Focused proof lives in `tests/test_effects_runner.py` and
-`tests/test_effects_watch.py`. It uses isolated real Stores, owned fixture
+Focused proof lives in `tests/test_effects_runner.py`,
+`tests/test_effects_watch.py` and, for hosted routes, `tests/test_codex_host.py`. It uses isolated real Stores, owned fixture
 brokers, native signals, actual SQLite statements/locks and a controlled clock
 for long retry horizons. The interference control is a fixed small burst, not
 a production throughput guarantee. The descriptor-close mechanism observation

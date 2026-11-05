@@ -20,6 +20,7 @@ import test_store as fixtures
 
 
 SCHEMA_8 = (Path(__file__).parent / "fixtures" / "schema_8.sql").read_text().splitlines()
+SCHEMA_9 = (Path(__file__).parent / "fixtures" / "schema_9.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -30,21 +31,38 @@ def schema(path):
         return sorted(row[0] for row in db.execute("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL"))
 
 
+def frozen(statements):
+    return sorted(statement.rstrip(";") for statement in statements)
+
+
+def step_back_by_hand(path, version):
+    """Recover an older stored layout from a fresh instance with plain SQL, independent of migrations.py."""
+    with sqlite3.connect(str(path)) as db:
+        # Version 10 adds the hosted turn records and handed_seq (on the schedule and on each attempt).
+        db.execute("DROP TABLE hosted_children")
+        db.execute("DROP TABLE hosted_turns")
+        db.execute("ALTER TABLE wake_attempts DROP COLUMN handed_seq")
+        db.execute("ALTER TABLE recipient_schedule DROP COLUMN handed_seq")
+        if version == "8":
+            # Version 9 only adds the openings table.
+            db.execute("DROP INDEX open_openings")
+            db.execute("DROP TABLE openings")
+        db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+
+
 class MigrationCase(fixtures.StoreCase):
     """A schema-8 instance holding records written by the unchanged legacy commands."""
+
+    VERSION, FIXTURE = "8", SCHEMA_8
 
     def setUp(self):
         super().setUp()
         self.create_topic()
         self.assertEqual(self.command("participation.set", {"actor_id": "agent-b", "present": True},
                                       {"topic_id": "t1"})["status"], "committed")
-        # Version 9 only adds the openings table; remove it to recover the
-        # exact stored layout of version 8, proven against HEAD's frozen DDL.
-        with sqlite3.connect(str(self.path)) as db:
-            db.execute("DROP INDEX open_openings")
-            db.execute("DROP TABLE openings")
-            db.execute("UPDATE metadata SET value='8' WHERE key='schema_version'")
-        self.assertEqual(schema(self.path), sorted(statement.rstrip(";") for statement in SCHEMA_8))
+        # The exact stored layout of the older version, proven against its frozen DDL.
+        step_back_by_hand(self.path, self.VERSION)
+        self.assertEqual(schema(self.path), frozen(self.FIXTURE))
         self.profile = Path(self.temp.name) / "owner.json"
         fd = os.open(str(self.profile), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as stream:
@@ -85,7 +103,7 @@ class MigrationCase(fixtures.StoreCase):
         with self.assertRaises(store_module.StoreOpenError) as raised:
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
-        for text in ("version 8", "version 9", "aim-next-admin migrate"):
+        for text in ("version 8", "version " + SCHEMA_VERSION, "aim-next-admin migrate"):
             self.assertIn(text, str(raised.exception))
         out, err = io.StringIO(), io.StringIO()
         self.assertEqual(cli.main(["--profile", str(self.profile), "binding"], stdout=out, stderr=err), 2)
@@ -108,7 +126,7 @@ class MigrationCase(fixtures.StoreCase):
         self.assertGreater(len(before["messages"]), 0)
         self.assertGreater(len(before["operations"]), 0)
         result = self.upgrade()
-        self.assertEqual(result, {"instance_id": "test-instance", "from_version": "8", "schema_version": "9", "migrated": True})
+        self.assertEqual(result, {"instance_id": "test-instance", "from_version": "8", "schema_version": SCHEMA_VERSION, "migrated": True})
         after = self.records()
         moved = self.metadata()
         self.assertEqual(moved["schema_version"], SCHEMA_VERSION)
@@ -143,11 +161,11 @@ class MigrationCase(fixtures.StoreCase):
     def test_rerun_at_the_current_version_changes_nothing(self):
         self.upgrade()
         before = self.unchanged()
-        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "9", "schema_version": "9", "migrated": False})
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": SCHEMA_VERSION, "schema_version": SCHEMA_VERSION, "migrated": False})
         self.assertEqual(self.unchanged(), before)
 
     def test_unknown_and_newer_versions_refuse(self):
-        for version in ("7", "10", "", "8 "):
+        for version in ("7", "11", "", "8 "):
             with self.subTest(version=version):
                 self.sql("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
                 before = self.unchanged()
@@ -186,7 +204,7 @@ class MigrationCase(fixtures.StoreCase):
 
     def test_a_failure_mid_upgrade_commits_nothing(self):
         before = self.unchanged()
-        failing = (("8", "9", migrations.OPENING_SCHEMA + ["CREATE TABLE openings (id TEXT)"]) + migrations.STEPS[0][3:],)
+        failing = (("8", "9", migrations.OPENING_SCHEMA + ["CREATE TABLE openings (id TEXT)"]) + migrations.STEPS[0][3:],) + migrations.STEPS[1:]
         with mock.patch.object(migrations, "STEPS", failing):
             with self.assertRaises(MigrationError) as raised:
                 self.upgrade()
@@ -254,8 +272,8 @@ class MigrationCase(fixtures.StoreCase):
         self.upgrade()
         upgraded, records = self.metadata(), self.records()
         result = migrate(self.path, "test-instance", self.binding, "8")
-        self.assertEqual(result, {"instance_id": "test-instance", "from_version": "9", "schema_version": "8", "migrated": True})
-        self.assertEqual(schema(self.path), sorted(statement.rstrip(";") for statement in SCHEMA_8))
+        self.assertEqual(result, {"instance_id": "test-instance", "from_version": SCHEMA_VERSION, "schema_version": "8", "migrated": True})
+        self.assertEqual(schema(self.path), frozen(SCHEMA_8))
         moved = self.metadata()
         self.assertEqual(moved["schema_version"], "8")
         # The commit lineage moves forward: a stale v8 copy can never pass as this instance.
@@ -265,7 +283,7 @@ class MigrationCase(fixtures.StoreCase):
             self.assertEqual(moved[key], upgraded[key])
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
                          {k: v for k, v in records.items() if k != "metadata"})
-        # Version 9 code is fenced again, and the step is repeatable.
+        # Current code is fenced again, and the step is repeatable.
         with self.assertRaises(StoreError):
             Store(self.path, "test-instance", expected_binding=self.binding)
         before = self.unchanged()
@@ -308,7 +326,7 @@ class MigrationCase(fixtures.StoreCase):
             self.assertEqual(raised.exception.code, "DATABASE_BUSY")
         finally:
             writer.close()
-        for target in ("7", "10", "", "8 "):
+        for target in ("7", "11", "", "8 "):
             with self.subTest(target=target):
                 with self.assertRaises(MigrationError) as raised:
                     migrate(self.path, "test-instance", self.binding, target)
@@ -325,7 +343,7 @@ class MigrationCase(fixtures.StoreCase):
         self.assertEqual(code, 2)
         self.assertEqual(self.metadata()["schema_version"], "8")
         code, result, _ = self.admin("migrate", "--db", str(self.path), "--instance", "test-instance", "--binding", str(self.profile))
-        self.assertEqual((code, result["ok"], result["migrated"], result["schema_version"]), (0, True, True, "9"))
+        self.assertEqual((code, result["ok"], result["migrated"], result["schema_version"]), (0, True, True, SCHEMA_VERSION))
         code, result, _ = self.admin("migrate", "--db", str(self.path), "--instance", "test-instance", "--binding", str(self.profile))
         self.assertEqual((code, result["migrated"]), (0, False))
         sequence = int(self.metadata()["commit_seq"])
@@ -354,10 +372,140 @@ class MigrationCase(fixtures.StoreCase):
         self.assertEqual(code, 2)
 
 
+HOSTED_THREAD = "12345678-1234-4234-8234-123456789abc"
+
+
+class Schema9Case(MigrationCase):
+    """A schema-9 instance: version 10 adds handed_seq, hosted_turns and hosted_children."""
+
+    VERSION, FIXTURE = "9", SCHEMA_9
+
+    def hosted_pin(self, store, guard):
+        home = Path(self.temp.name) / "codex-home"
+        home.mkdir(exist_ok=True)
+        return store.provision_route_pin(guard, "agent-a", {"kind": "codex-hosted-stdio", "protocol_version": 1,
+                                                            "codex_home": str(home.resolve()), "thread_id": HOSTED_THREAD})
+
+    def hand_a_turn(self):
+        """Settle agent-a's due wake as handed to a hosted turn, through the ordinary Core acts."""
+        store = Store(self.path, "test-instance", expected_binding=self.binding)
+        with store.runner_guard("hosting") as guard:
+            self.assertEqual(self.hosted_pin(store, guard)["status"], "provisioned")
+            token = store.acquire_runner(guard)["runner_token"]
+            claim = store.claim_wakes(guard, token, ["agent-a"])["claims"][0]
+            result = store.finish_wake(guard, token, claim["claim_token"], "handed", turn={
+                "thread_id": HOSTED_THREAD, "turn_id": "turn-1", "mode": "start",
+                "client_id": "theseus:" + claim["attempt_id"], "announced_seq": claim["captured_seq"]})
+        self.assertEqual((result["status"], result["wake_status"]), ("settled", "handed"), result)
+        return store, result
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "9")
+
+    def refused(self):
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+    def test_upgrade_from_9_keeps_records_matches_a_fresh_instance_and_hosts(self):
+        before, metadata = self.records(), self.metadata()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "9", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual(SCHEMA_VERSION, "10")
+        self.assertEqual(int(self.metadata()["commit_seq"]), int(metadata["commit_seq"]) + 1)
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"}, {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.assertEqual(self.sql("SELECT count(*) FROM recipient_schedule WHERE handed_seq IS NOT NULL"), [(0,)])
+        self.assertGreater(self.sql("SELECT count(*) FROM recipient_schedule")[0][0], 0)
+        _, result = self.hand_a_turn()
+        self.assertEqual(self.sql("SELECT handed_seq FROM recipient_schedule WHERE recipient_id='agent-a'"), [(result["handed_seq"],)])
+        self.assertEqual(self.sql("SELECT mode,turn_id FROM hosted_turns"), [("start", "turn-1")])
+
+    def test_step_back_to_9_restores_its_frozen_layout_while_nothing_is_hosted(self):
+        self.upgrade()
+        upgraded, records = self.metadata(), self.records()
+        self.assertEqual(self.step_back(), {"instance_id": "test-instance", "from_version": SCHEMA_VERSION, "schema_version": "9", "migrated": True})
+        self.assertEqual(schema(self.path), frozen(SCHEMA_9))
+        moved = self.metadata()
+        self.assertEqual(int(moved["commit_seq"]), int(upgraded["commit_seq"]) + 1)
+        self.assertNotEqual(moved["commit_id"], upgraded["commit_id"])
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+        with self.assertRaises(StoreError):
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        before = self.unchanged()
+        self.assertFalse(self.step_back()["migrated"])
+        self.assertEqual(self.unchanged(), before)
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT count(*) FROM hosted_turns"), [(0,)])
+
+    def test_step_back_refuses_while_a_handed_seq_is_set(self):
+        self.upgrade()
+        self.sql("UPDATE recipient_schedule SET handed_seq=1 WHERE recipient_id='agent-a'")
+        self.refused()
+
+    def test_step_back_refuses_while_a_hosted_turn_exists(self):
+        self.upgrade()
+        store, _ = self.hand_a_turn()
+        # The agent acknowledges its work, so handed_seq clears and only the turn row remains.
+        self.store = store
+        for item in store.view("agent-a", "deliveries", {})["items"]:
+            self.assertEqual(self.command("delivery.ack", target={"delivery_id": item["id"]}, actor="agent-a")["status"], "committed")
+        self.assertEqual(self.sql("SELECT count(*) FROM recipient_schedule WHERE handed_seq IS NOT NULL"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM hosted_turns"), [(1,)])
+        # Remove the hosted pin by hand, so the turn row is the only hosted record left.
+        self.sql("DELETE FROM metadata WHERE key LIKE 'route_pin.v1:%'")
+        self.refused()
+
+    def test_step_back_refuses_while_a_hosted_child_is_recorded(self):
+        self.upgrade()
+        self.sql("INSERT INTO hosted_children(id,runner_token,codex_home,pid,started_at,spawned_ms) VALUES ('h1','r-x','/h',1,'s',1)")
+        self.refused()
+
+    def test_step_back_refuses_while_a_hosted_route_pin_exists(self):
+        self.upgrade()
+        store = Store(self.path, "test-instance", expected_binding=self.binding)
+        with store.runner_guard("provision") as guard:
+            self.hosted_pin(store, guard)
+        self.refused()
+
+    def test_step_back_refuses_while_an_attempt_carries_a_handed_seq(self):
+        self.upgrade()
+        self.sql("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms,handed_seq) "
+                 "VALUES ('a-1','c-1','r-x','agent-a',1,1,1,2,1)")
+        self.refused()
+
+    def test_a_queue_route_pin_does_not_hold_the_step_back(self):
+        self.upgrade()
+        store = Store(self.path, "test-instance", expected_binding=self.binding)
+        home = Path(self.temp.name) / "queue-home"
+        home.mkdir()
+        with store.runner_guard("provision") as guard:
+            store.provision_route_pin(guard, "agent-a", {"kind": "codex-queue-stdio", "protocol_version": 1,
+                                                          "codex_home": str(home.resolve()), "thread_id": HOSTED_THREAD})
+        self.assertTrue(self.step_back()["migrated"])
+
+    def test_a_step_back_never_runs_an_upgrade_step(self):
+        # 9 -> 8 is one step back; it must not pass through 10 on the way.
+        broken = migrations.STEPS[:1] + (("9", "10", ["CREATE TABLE openings (id TEXT)"]) + migrations.STEPS[1][3:],)
+        with mock.patch.object(migrations, "STEPS", broken):
+            self.assertTrue(migrate(self.path, "test-instance", self.binding, "8")["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_8))
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
         setattr(MigrationCase, _name, None)
+# The schema-8 cases already run once, from MigrationCase.
+for _name in list(MigrationCase.__dict__):
+    if _name.startswith("test_") and _name not in Schema9Case.__dict__:
+        setattr(Schema9Case, _name, None)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from .contract import Refusal, StoreError, _identifier, _json
 MAX_PIN_BYTES = 8192
 BINDING_FIELDS = {"instance_id", "actor_id", "db_path", "authority_id", "authority_epoch"}
 DESTINATION_FIELDS = {"kind", "protocol_version", "codex_home", "thread_id"}
+QUEUE_KIND, HOSTED_KIND = "codex-queue-stdio", "codex-hosted-stdio"
 
 
 class RoutePinError(StoreError):
@@ -30,7 +31,7 @@ def _path_string(value):
 
 def _destination(value, *, resolve_root):
     if (type(value) is not dict or set(value) != DESTINATION_FIELDS
-            or value["kind"] != "codex-queue-stdio"
+            or value["kind"] not in (QUEUE_KIND, HOSTED_KIND)
             or type(value["protocol_version"]) is not int or value["protocol_version"] != 1
             or not isinstance(value["thread_id"], str)
             or str(uuid.UUID(value["thread_id"])) != value["thread_id"]):
@@ -63,10 +64,13 @@ def _request(store, actor_id, destination):
         payload = _json(pin)
         if len(payload.encode("utf-8")) > MAX_PIN_BYTES:
             raise ValueError("pin exceeds byte limit")
-        key = "route_pin.v1:" + hashlib.sha256(_json(binding).encode("utf-8")).hexdigest()
-        return key, pin, payload
+        return _key(binding), pin, payload
     except (ValueError, TypeError, OSError, RuntimeError) as error:
         raise RoutePinError("INVALID_ROUTE_DESTINATION", "Use an explicit bounded stdio destination with an existing root and canonical thread UUID") from error
+
+
+def _key(binding):
+    return "route_pin.v1:" + hashlib.sha256(_json(binding).encode("utf-8")).hexdigest()
 
 
 def _unique(pairs):
@@ -82,7 +86,7 @@ def _invalid_constant(value):
     raise ValueError("nonfinite pin value")
 
 
-def _stored(db, key, expected):
+def _stored(db, key, expected=None):
     # BLOB prefix bounds bytes crossing into Python, even if a malformed value
     # contains multibyte text or is enormous. Never enumerate other pins.
     row = db.execute("SELECT typeof(value),substr(CAST(value AS BLOB),1,?) FROM metadata WHERE key=?",
@@ -106,12 +110,21 @@ def _stored(db, key, expected):
     except (ValueError, TypeError, Refusal, RecursionError) as error:
         raise RoutePinError("ROUTE_PIN_INVALID", "The stored route pin is malformed; preserve it for inspection") from error
     # The key is not proof of context: compare every decoded field as well.
-    if pin != expected:
+    if expected is not None and pin != expected:
         raise RoutePinError("ROUTE_PIN_MISMATCH", "The immutable route pin does not match this binding and destination")
     return pin
 
 
 class RoutePins:
+    def _hosted_thread(self, db, actor_id):
+        """The thread of this actor's hosted pin, read in the caller's transaction; None if it has no hosted pin."""
+        binding = dict(instance_id=self.instance_id, actor_id=actor_id, db_path=str(self.path),
+                       authority_id=self.binding["authority_id"], authority_epoch=self.binding["authority_epoch"])
+        pin = _stored(db, _key(binding))
+        if pin is None or pin["binding"] != binding or pin["destination"]["kind"] != HOSTED_KIND:
+            return None
+        return pin["destination"]["thread_id"]
+
     def _pin_actor(self, db, actor_id):
         try:
             self._actor(db, actor_id)

@@ -396,7 +396,11 @@ def _executable(value):
 
 
 def _claim(value):
-    if not isinstance(value, dict) or set(value) != CLAIM_FIELDS:
+    # Core's claims also carry handed_seq, which only a hosted route reads.
+    if not isinstance(value, dict) or set(value) - {"handed_seq"} != CLAIM_FIELDS:
+        raise RouteUnavailable("invalid_claim")
+    handed = value.get("handed_seq")
+    if handed is not None and (type(handed) is not int or not 0 <= handed <= 9223372036854775807):
         raise RouteUnavailable("invalid_claim")
     if any(not _identity(value[key]) for key in ("attempt_id", "claim_token", "recipient_id")):
         raise RouteUnavailable("invalid_claim")

@@ -4,9 +4,10 @@ import argparse
 import json
 import re
 from pathlib import Path
+import sys
 import time
 
-from . import broker_routes, wake_adapter
+from . import broker_routes, codex_host, hosted_notice, wake_adapter
 from .contract import StoreError
 from .authority import AuthorityError
 from .route_pins import RoutePinError
@@ -17,6 +18,8 @@ from .profile import ProfileError, load_profile
 
 
 _UNCONFIRMED_WATCHES = []
+# A hosted notice reads at most this many pages of the recipient's pending deliveries.
+NOTICE_PAGES = 5
 
 
 class Clock:
@@ -48,7 +51,7 @@ class EffectsLoop:
     a delivery, provisions a pin, creates a service or reloads that mapping.
     """
     def __init__(self, profile, store, guard, watch, routes, *, selected_executable,
-                 resume_version=None, clock=None, emit=None):
+                 resume_version=None, clock=None, emit=None, hosted=frozenset(), host_log=None):
         self.profile, self.store, self.guard, self.watch = profile, store, guard, watch
         self.routes = dict(routes)
         # Only these actors are ever claimed; people and unrouted agents stay pending.
@@ -77,6 +80,14 @@ class EffectsLoop:
         # uncertain storage exception the process must retain the watch until
         # exit instead of pretending it can establish connection-close order.
         self.cleanup_uncertain = False
+        # Hosted routes share this process: their children's output and exits
+        # arrive through the same watch, and their claims settle from responses.
+        self.hosted = frozenset(hosted)
+        self.host = None
+        if self.hosted:
+            configs = {actor: broker_routes.preflight_hosted(self.routes[actor], actor, profile) for actor in self.hosted}
+            self.host = codex_host.Host(configs, core=self._core, settle=self._hosted_settled, watch=watch,
+                                        log=host_log, monotonic=self.clock.monotonic)
 
     def _event(self, kind, **fields):
         self.emit(dict(event=kind, **fields))
@@ -123,6 +134,15 @@ class EffectsLoop:
                 self.cleanup_uncertain = True
             raise
 
+    def _core(self, name, *args):
+        """One Core runner act for the host, under this process's guard and token."""
+        try:
+            return self._response(self._storage(lambda: getattr(self.store, name)(self.guard, self.token, *args)))
+        except LoopFault:
+            raise
+        except Exception as error:
+            raise LoopFault(self._pin_reason(error)) from error
+
     def _success(self, action):
         if self.busy_counts[action]:
             self._event('contention_recovered',action=action)
@@ -133,7 +153,9 @@ class EffectsLoop:
         try:
             result = self._storage(operation)
         except Exception as error:
-            if (self.outstanding is None and getattr(error,'code',None)=='DATABASE_BUSY'
+            # A hosted claim stays outstanding while its RPC runs; renewals and
+            # schedule reads go on beside it with the same pacing.
+            if ((self.outstanding is None or action in ('renew','schedule')) and getattr(error,'code',None)=='DATABASE_BUSY'
                     and getattr(error,'retryable',False) is True and self._cleanup_known(error)):
                 count = self.busy_counts[action]
                 self.gates[action] = self.clock.monotonic()+min(2**min(count,6),60)
@@ -176,6 +198,8 @@ class EffectsLoop:
         self.renew_at = self.clock.monotonic()+9
         self.acquire_wall = None
         self._event('acquired')
+        if self.host is not None:
+            self.host.start()
         return None
 
     def _renew(self):
@@ -210,6 +234,72 @@ class EffectsLoop:
         if hint: self.last_hint_read = self.clock.monotonic()
         self.dirty_at = None
 
+    def _finish(self, claim, outcome, turn=None, reason=None):
+        try:
+            result = self._response(self._storage(lambda:self.store.finish_wake(
+                self.guard,self.token,claim['claim_token'],outcome,turn=turn)))
+        except LoopFault:
+            raise
+        except Exception as error:
+            raise LoopFault(self._pin_reason(error)) from error
+        stale = result.get('status') == 'stale'
+        if not stale and result.get('status') != 'settled':
+            raise LoopFault()
+        if stale and turn is not None:
+            # A handed turn settled after Core's lease: the thread is re-read before its next dispatch.
+            self.host.stale(claim['attempt_id'],turn['thread_id'])
+        # Any other answer read after the lease is simply late: Core records the
+        # claim expired at the next claim, as for an abandoned one.
+        self.outstanding = None
+        self.due = None
+        self.read_needed = True
+        self._event('settled',outcome=outcome,**({'stale':True} if stale else {}))
+
+    def _hosted_settled(self, outcome, turn, reason):
+        if self.outstanding is not None:
+            self._finish(self.outstanding,outcome,turn,reason)
+
+    def _pending(self, config):
+        """The recipient's pending deliveries through its own binding, which acknowledges nothing."""
+        items, cursor = [], None
+        for unused in range(NOTICE_PAGES):
+            args = dict(limit=100) if cursor is None else dict(limit=100,cursor=cursor)
+            try:
+                page = self._storage(lambda:config.profile.store().view(config.profile.actor_id,'deliveries',args))
+            except Exception as error:
+                if not self._cleanup_known(error):
+                    self.cleanup_uncertain = True
+                raise LoopFault(self._pin_reason(error)) from error
+            if type(page) is not dict or 'error' in page or type(page.get('items')) is not list:
+                return None, False
+            items.extend(page['items'])
+            cursor = page.get('next_cursor')
+            if cursor is None:
+                return items, True
+        return items, False
+
+    def _dispatch_hosted(self, claim, route):
+        actor = claim['recipient_id']
+        try:
+            config = self._storage(lambda:broker_routes.preflight_hosted(route,actor,self.profile))
+        except broker_routes.BrokerBindingError as error:
+            raise LoopFault('route_binding_changed') from error
+        except wake_adapter.RouteUnavailable:
+            return self._finish(claim,'unavailable',reason='route_unavailable')
+        except ProfileError as error:
+            if error.code is not None or isinstance(error.__cause__,StoreError):
+                raise LoopFault(self._pin_reason(error)) from error
+            return self._finish(claim,'unavailable',reason='profile_unavailable')
+        except Exception as error:
+            raise LoopFault(self._pin_reason(error)) from error
+        items, complete = self._pending(config)
+        if items is None:
+            return self._finish(claim,'unavailable',reason='deliveries_unavailable')
+        notice = hosted_notice.notice(items,claim.get('handed_seq'),actor,claim['attempt_id'],complete)
+        if notice is None:
+            return self._finish(claim,'unavailable',reason='nothing_pending')
+        self.host.dispatch(claim,config,notice)
+
     def _register(self, claim, pid, started_at):
         return self._response(self._storage(lambda:self.store.record_runner_child(
             self.guard,self.token,claim['claim_token'],pid,started_at)),'recorded')
@@ -223,6 +313,8 @@ class EffectsLoop:
             raise LoopFault('route_binding_changed') from error
         if self.watch.stopped: return
         route = self.routes.get(claim['recipient_id'])
+        if claim['recipient_id'] in self.hosted:
+            return self._dispatch_hosted(claim,route)
         result = wake_adapter.RouteResult('unavailable',None,'missing_route')
         if route is not None:
             try:
@@ -333,15 +425,36 @@ class EffectsLoop:
         if event['dirty'] and self.dirty_at is None:
             self.dirty_at = max(self.clock.monotonic()+0.1,self.last_hint_read+0.1)
 
+    def _wait(self, timeout):
+        """One wait; child output is handled before child exits, and both before any claim work."""
+        event = self.watch.wait(timeout)
+        self._accept_event(event)
+        if self.host is not None:
+            for fd in event.get('readable',()):
+                self.host.on_readable(fd)
+            for pid in event.get('exited',()):
+                self.host.on_exit(pid)
+
     def run(self):
         try:
             while True:
-                self._accept_event(self.watch.wait(0))
-                if self.watch.stopped: return self._result('stopped')
+                self._wait(0)
+                # A host stops its children first: interrupt live turns, close
+                # input, and wait for each exit (design §6.3).
+                if self.watch.stopped and (self.host is None or self.host.stop_step(self.watch.stop_count)):
+                    return self._result('stopped')
                 now,wall = self.clock.monotonic(),self.clock.wall_ms()
                 if self.token is not None and wall >= self.lease:
                     self._event('idle_lease_lost')
                     return self._result('idle_lease_lost',pause_saved=False)
+                if (self.outstanding is not None and self.host is not None and self.host.current is not None
+                        and wall >= self.outstanding['lease_until_ms']):
+                    # Core's claim lease is the only bound on an outstanding RPC.
+                    self.host.abandon()
+                    self.outstanding = None
+                    self.due = None
+                    self.read_needed = True
+                    continue
                 renew = self.token is not None and self._renew_needed(now,wall)
                 if renew and now >= max(self.gates['renew'],self.short_at):
                     result = self._renew()
@@ -356,6 +469,7 @@ class EffectsLoop:
                     self._read(self.dirty_at is not None and now >= self.dirty_at)
                     continue
                 if (self.token is not None and not renew and self.due is not None and self.due <= wall
+                        and self.outstanding is None and not self.watch.stopped
                         and now >= max(self.gates['claim'],self.short_at)):
                     result = self._claim()
                     if result: return result
@@ -367,11 +481,15 @@ class EffectsLoop:
                 else:
                     deadlines.append(now+max(0,(self.lease-wall)/1000))
                     deadlines.append(max(now if renew else self.renew_at,self.gates['renew'],self.short_at))
-                    if self.due is not None and not renew:
+                    if self.due is not None and not renew and self.outstanding is None and not self.watch.stopped:
                         deadlines.append(max(now+max(0,(self.due-wall)/1000),self.gates['claim'],self.short_at))
+                    if self.outstanding is not None:
+                        deadlines.append(now+max(0,(self.outstanding['lease_until_ms']-wall)/1000))
                 timeout = max(0,min(60,min(deadlines)-now))
-                self._accept_event(self.watch.wait(timeout))
+                self._wait(timeout)
         except LoopFault as error:
+            return self._fault(error.reason)
+        except codex_host.HostFault as error:
             return self._fault(error.reason)
         except (Exception,KeyboardInterrupt):
             self.cleanup_uncertain = True
@@ -379,7 +497,7 @@ class EffectsLoop:
 
 
 def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
-                   selected_executable=None, emit=None):
+                   selected_executable=None, emit=None, host_dir=None):
     """Dedicated process entry. No successful return implies activation.
 
     No non-SQLite descriptor on db_path may be closed while a SQLite connection
@@ -388,18 +506,23 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
     no handle-discovery or garbage-collection claim about the failed SQL call.
     """
     emit = emit or (lambda event:None)
-    profile = store = watch = guard = loop = None
+    profile = store = watch = guard = loop = host_log = None
     result = None
     try:
         profile = load_profile(profile_path)
         store = profile.store()
         executable = selected_executable or str(Path(__file__).resolve().parents[1]/'bin'/'aim-next-codex-broker')
-        routes = broker_routes.load_route_map(routes_path,profile,selected_executable=executable)
+        routes,hosted = broker_routes.load_route_table(routes_path,profile,selected_executable=executable)
+        if hosted:
+            if host_dir is None:
+                raise broker_routes.BrokerConfigError('host_dir_required')
+            host_log = codex_host.HostLog(host_dir,emit)
         watch = NativeWatch(profile.db_path)
         guard = store.runner_guard(runner_id)
         guard.__enter__()
         loop = EffectsLoop(profile,store,guard,watch,routes,
-            selected_executable=executable,resume_version=resume_version,emit=emit)
+            selected_executable=executable,resume_version=resume_version,emit=emit,
+            hosted=hosted,host_log=host_log)
         result = loop.run()
     except (Exception,KeyboardInterrupt) as error:
         # Startup messages are fixed and contain no route/profile or exception
@@ -412,6 +535,16 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
                       retryable=busy and getattr(error,'retryable',False) is True,pause_saved=False,
                       cleanup_confirmed=not (loop is not None and loop.cleanup_uncertain))
     finally:
+        if loop is not None and loop.host is not None:
+            # Every child is reaped before the guard and watch close.
+            try:
+                if not loop.host.close():
+                    result = dict(result,cleanup_confirmed=False)
+            except BaseException:
+                result = dict(status='fatal_unsaved',reason='children_unconfirmed',pause_saved=False,
+                              cleanup_confirmed=False)
+        if host_log is not None:
+            host_log.close()
         if guard is not None:
             try:
                 guard.close()
@@ -431,15 +564,19 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ['host-provision']:
+        return codex_host.provision_main(argv[1:])
     parser = argparse.ArgumentParser(description='Run one explicit Theseus effects process in the foreground')
     parser.add_argument('--profile',required=True)
     parser.add_argument('--runner-id',required=True)
     parser.add_argument('--routes',required=True)
     parser.add_argument('--resume-version',type=int)
+    parser.add_argument('--host-dir',help='private directory for the host event log, required by hosted routes')
     args = parser.parse_args(argv)
     def report(event):
         print(json.dumps(event,separators=(',',':')),flush=True)
     result = run_foreground(args.profile,args.runner_id,args.routes,
-                            resume_version=args.resume_version,emit=report)
+                            resume_version=args.resume_version,emit=report,host_dir=args.host_dir)
     report(result)
     return 0 if result['status']=='stopped' else (75 if result['status']=='idle_lease_lost' else 2)

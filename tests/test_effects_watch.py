@@ -37,7 +37,7 @@ class EffectsWatchCase(unittest.TestCase):
             self.assertFalse(os.get_inheritable(fd))
             self.assertEqual((os.fstat(fd).st_dev, os.fstat(fd).st_ino),
                              (self.path.stat().st_dev, self.path.stat().st_ino))
-            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False))
+            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], exited=[]))
             result = self.store.command('agent-a', dict(v=1, instance_id='watch-instance',
                 operation_id='workspace-one', kind='workspace.create', target={},
                 expected=dict(authority={key:self.binding[key] for key in ('authority_id','authority_epoch')}),
@@ -91,7 +91,7 @@ class EffectsWatchCase(unittest.TestCase):
         with api.NativeWatch(self.path) as watch:
             fd = watch.fd
             for _ in range(3):
-                self.assertEqual(watch.wait(0), dict(dirty=False, stop=False))
+                self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], exited=[]))
                 self.assertEqual(watch.fd, fd)
                 self.assertEqual(os.fstat(fd).st_ino, self.path.stat().st_ino)
 
@@ -134,3 +134,84 @@ class EffectsWatchCase(unittest.TestCase):
                                   'the actual kevent, not only the Python flag, must be observed')
                     self.assertTrue(event['stop']);self.assertTrue(watch.stopped)
                 self.assertIs(signal.getsignal(number),original)
+
+
+class HostedWatchCase(EffectsWatchCase):
+    """Child output and child exits join the same wait as database hints and stop signals."""
+
+    # Bounds only a failure: a missed exit event would otherwise spin or block forever.
+    HANG_GUARD_SECONDS = 30
+
+    def guarded(self):
+        deadline = time.monotonic() + self.HANG_GUARD_SECONDS
+        return lambda: self.assertLess(time.monotonic(), deadline, 'hang guard: the child exit was never reported')
+
+    def child(self):
+        import subprocess
+        child = subprocess.Popen(['/usr/bin/python3', '-I', '-c', 'import sys; sys.stdout.write(sys.stdin.read())'],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.addCleanup(lambda: (child.poll() is None and child.kill(), child.wait(), child.stdout.close()))
+        return child
+
+    def test_child_output_eof_and_exit_are_reported_without_a_timer(self):
+        api = self.api()
+        child = self.child()
+        with api.NativeWatch(self.path) as watch:
+            out = child.stdout.fileno()
+            watch.watch_reader(out)
+            self.assertTrue(watch.watch_process(child.pid))
+            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], exited=[]))
+            child.stdin.write(b'line\n'); child.stdin.close()
+            seen, exited, data = set(), [], b''
+            alive = self.guarded()
+            while not exited:
+                alive()
+                event = watch.wait(self.HANG_GUARD_SECONDS)
+                seen.update(event['readable'])
+                exited.extend(event['exited'])
+                if out in event['readable']:
+                    data += os.read(out, 1024)
+            self.assertEqual(seen, {out})
+            self.assertEqual(exited, [child.pid])
+            self.assertEqual(child.wait(), 0)
+            while True:
+                block = os.read(out, 1024)
+                if not block:
+                    break
+                data += block
+            self.assertEqual(data, b'line\n')
+            # End of stream stays readable until it is unwatched.
+            self.assertEqual(watch.wait(0)['readable'], [out])
+            watch.unwatch_reader(out)
+            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], exited=[]))
+            self.assertEqual(watch.processes, set())
+
+    def test_an_exited_unreaped_child_is_refused_at_registration(self):
+        api = self.api()
+        child = self.child()
+        with api.NativeWatch(self.path) as watch:
+            self.assertTrue(watch.watch_process(child.pid))
+            child.stdin.close()
+            exited, alive = [], self.guarded()
+            while not exited:
+                alive()
+                exited = watch.wait(self.HANG_GUARD_SECONDS)['exited']
+            self.assertEqual(exited, [child.pid])
+            # Exited but not yet reaped: its PID is still ours, and a new registration says it is gone.
+            self.assertFalse(watch.watch_process(child.pid))
+            self.assertEqual(watch.processes, set())
+            self.assertEqual(child.wait(), 0)
+
+    def test_each_stop_signal_is_counted(self):
+        api = self.api()
+        with api.NativeWatch(self.path) as watch:
+            os.kill(os.getpid(), signal.SIGTERM)
+            watch.wait(None)
+            self.assertEqual((watch.stopped, watch.stop_count), (True, 1))
+            os.kill(os.getpid(), signal.SIGINT)
+            watch.wait(None)
+            self.assertEqual(watch.stop_count, 2)
+
+
+for _name in [name for name in EffectsWatchCase.__dict__ if name.startswith('test_')]:
+    setattr(HostedWatchCase, _name, None)

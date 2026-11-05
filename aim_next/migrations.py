@@ -8,6 +8,7 @@ import sqlite3
 from .authority import Authority, AuthorityError, GuardBusy
 from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
+from .runner import HOSTED_DOWN, HOSTED_OCCUPIED, HOSTED_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -15,6 +16,7 @@ from .openings import OPENING_SCHEMA
 STEPS = (
     ("8", "9", OPENING_SCHEMA, ("DROP TABLE openings",),
      "SELECT EXISTS (SELECT 1 FROM openings)"),
+    ("9", "10", HOSTED_SCHEMA, HOSTED_DOWN, HOSTED_OCCUPIED),
 )
 
 
@@ -32,18 +34,14 @@ def _unconfirmed(error):
 
 def _plan(stored, target):
     """The (statements, refusing query) pairs that move stored to target, in order."""
-    plan, version = [], stored
-    for source, upgraded, up, _, _ in STEPS:
-        if source == version and version != target:
-            plan.append((up, None))
-            version = upgraded
-    for source, upgraded, _, down, occupied in reversed(STEPS):
-        if upgraded == version and version != target:
-            plan.append((down, occupied))
-            version = source
-    if not plan or version != target:
+    versions = [STEPS[0][0]] + [upgraded for _, upgraded, _, _, _ in STEPS]
+    if stored not in versions or target not in versions or stored == target:
         raise MigrationError("SCHEMA_UNSUPPORTED", "This stored schema version has no path to the target; nothing was changed")
-    return plan
+    start, end = versions.index(stored), versions.index(target)
+    # One direction only: an older target never passes through a newer version.
+    if start < end:
+        return [(up, None) for _, _, up, _, _ in STEPS[start:end]]
+    return [(down, occupied) for _, _, _, down, occupied in reversed(STEPS[end:start])]
 
 
 def migrate(db_path, instance_id, binding, target=None):

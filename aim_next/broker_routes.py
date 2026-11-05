@@ -3,11 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 import grp
 import os
+import pwd
 from pathlib import Path
 import stat
 import uuid
 
 from .profile import Profile, load_profile
+from .route_pins import HOSTED_KIND, QUEUE_KIND
 from . import wake_adapter as adapter
 
 
@@ -27,6 +29,23 @@ class BrokerConfig:
     profile: Profile
     codex_executable: str
     destination: dict
+
+
+@dataclass(frozen=True)
+class HostedConfig:
+    config_path: str
+    profile_path: str
+    profile: Profile
+    cli: str
+    codex_executable: str
+    destination: dict
+    cwd: str
+    model: object
+    writable_roots: tuple
+
+
+HOSTED_FIELDS = frozenset(('v','kind','actor_id','profile','cli','codex_executable','codex_home',
+                           'thread_id','cwd','model','writable_roots'))
 
 
 def _require(value, code='invalid_broker_config'):
@@ -100,10 +119,10 @@ def profile_binding(profile):
                 authority_epoch=profile.authority_epoch)
 
 
-def _destination(value):
+def _destination(value, kind=QUEUE_KIND):
     _require(type(value) is dict and set(value) == {
         'kind','protocol_version','codex_home','thread_id'})
-    _require(value['kind']=='codex-queue-stdio' and type(value['protocol_version']) is int
+    _require(value['kind']==kind and type(value['protocol_version']) is int
              and value['protocol_version']==1)
     try:
         _require(isinstance(value['thread_id'],str)
@@ -145,6 +164,70 @@ def load_config(path, *, expected_binding=None, profile_path=None):
     return BrokerConfig(path,selected_profile,profile,executable,dict(pin['destination']))
 
 
+def writable_roots(profile_path, profile):
+    """The only directories a hosted agent's sandbox may write: the database's and its outbox."""
+    return (str(profile.db_path.parent), str(Path(profile_path).parent/(profile.actor_id+'.outbox')))
+
+
+def desktop_codex_home():
+    """The owner's own Codex home, from the password database rather than $HOME, so an altered environment cannot hide it."""
+    return os.path.realpath(os.path.join(pwd.getpwuid(os.getuid()).pw_dir, '.codex'))
+
+
+def hosted_home(value):
+    """A hosted CODEX_HOME is never the desktop app's ~/.codex or inside it (design §8.3): no shared sessions or refresh."""
+    home, desktop = os.path.realpath(value), desktop_codex_home()
+    _require(home != desktop and not home.startswith(desktop.rstrip(os.sep) + os.sep), 'invalid_codex_home')
+    return value
+
+
+def hosted_outbox(outbox):
+    """An agent's outbox is a real directory at exactly its own path: no symlink, no other spelling."""
+    try:
+        _require(stat.S_ISDIR(os.lstat(outbox).st_mode) and str(Path(outbox).resolve(strict=True))==outbox,
+                 'invalid_writable_roots')
+    except (OSError,RuntimeError) as error:
+        raise BrokerConfigError('invalid_writable_roots') from error
+    return outbox
+
+
+def load_hosted_config(path, *, expected_binding=None):
+    """Validate one hosted route config and compare Core's pin; performs no effects.
+
+    Core/Profile exceptions propagate with their typing, as for load_config.
+    """
+    path,value = _private(path)
+    _require(set(value)==HOSTED_FIELDS and type(value['v']) is int and value['v']==1
+             and value['kind']==HOSTED_KIND)
+    _require(adapter._identity(value['actor_id']),'invalid_actor')
+    selected_profile = _path(value['profile'])
+    try:
+        cli = _executable(value['cli'])
+    except BrokerConfigError as error:
+        raise BrokerConfigError('invalid_cli') from error
+    executable = _codex_executable(value['codex_executable'])
+    cwd = _path(value['cwd'])
+    _require(os.path.isdir(cwd),'invalid_cwd')
+    model = value['model']
+    _require(model is None or (adapter._identity(model) and model.isprintable()),'invalid_model')
+    destination = _destination(dict(kind=value['kind'],protocol_version=1,codex_home=value['codex_home'],
+                                    thread_id=value['thread_id']),HOSTED_KIND)
+    hosted_home(destination['codex_home'])
+    profile = load_profile(selected_profile)
+    if profile.actor_id != value['actor_id']:
+        raise BrokerBindingError()
+    if expected_binding is not None and profile_binding(profile) != expected_binding:
+        raise BrokerBindingError()
+    # Exactly these two, so a typo or an extra entry cannot widen the sandbox.
+    roots = writable_roots(selected_profile,profile)
+    supplied = value['writable_roots']
+    _require(type(supplied) is list and len(supplied)==2 and all(isinstance(root,str) for root in supplied)
+             and set(supplied)==set(roots),'invalid_writable_roots')
+    hosted_outbox(roots[1])
+    pin = profile.store().read_route_pin(profile.actor_id,destination)
+    return HostedConfig(path,selected_profile,profile,cli,executable,dict(pin['destination']),cwd,model,roots)
+
+
 def _route(path, selected_executable):
     path,value = _private(path)
     _require(set(value)=={'v','profile','argv'} and type(value['v']) is int and value['v']==1)
@@ -182,25 +265,57 @@ def preflight_route(path, actor_id, runner_profile, *, selected_executable, clai
     return config
 
 
+def is_hosted(path):
+    """Whether this map entry names a hosted route config (its own `kind`) rather than a broker route."""
+    _,value = _private(path)
+    return value.get('kind')==HOSTED_KIND
+
+
+def preflight_hosted(path, actor_id, runner_profile):
+    """A hosted route's per-claim check: its config, the actor's binding and Core's pin."""
+    _require(adapter._identity(actor_id),'invalid_actor')
+    expected = dict(profile_binding(runner_profile),actor_id=actor_id)
+    config = load_hosted_config(path,expected_binding=expected)
+    if config.profile.binding != runner_profile.binding:
+        raise BrokerBindingError()
+    return config
+
+
 def load_route_map(path, runner_profile, *, selected_executable):
+    """The startup map's broker and hosted routes together, as {actor: path}."""
+    return load_route_table(path,runner_profile,selected_executable=selected_executable)[0]
+
+
+def load_route_table(path, runner_profile, *, selected_executable):
     """Validate the explicit startup map, then return immutable path choices.
 
-    Dispatch must preflight its selected path again against its captured claim.
-    There is no directory scan, route discovery or global pin uniqueness rule.
+    Returns ({actor: path}, frozenset of hosted actors). An entry whose file
+    has kind codex-hosted-stdio is a hosted config; any other entry is a
+    broker route, and only then must the selected broker executable be
+    trusted. Dispatch must preflight its selected path again against its
+    captured claim. There is no directory scan, route discovery or global pin
+    uniqueness rule.
     """
     _,value = _private(path)
     _require(set(value)=={'v','routes'} and type(value['v']) is int and value['v']==1
              and type(value['routes']) is dict)
-    selected_executable = _executable(selected_executable)
     routes,configs,destinations = set(),set(),set()
-    result = {}
+    result,hosted = {},set()
     for actor,path in value['routes'].items():
         _require(adapter._identity(actor),'invalid_actor')
-        route,_,config_path = _route(path,selected_executable)
+        if is_hosted(path):
+            route = config_path = _path(path)
+            config = preflight_hosted(route,actor,runner_profile)
+            hosted.add(actor)
+        else:
+            selected_executable = _executable(selected_executable)
+            route,_,config_path = _route(path,selected_executable)
+            config = None
         _require(route not in routes,'duplicate_route')
         _require(config_path not in configs,'duplicate_config')
         routes.add(route);configs.add(config_path)
-        config = preflight_route(route,actor,runner_profile,selected_executable=selected_executable)
+        if config is None:
+            config = preflight_route(route,actor,runner_profile,selected_executable=selected_executable)
         try:
             root_info = Path(config.destination['codex_home']).stat()
             if not stat.S_ISDIR(root_info.st_mode):
@@ -213,4 +328,4 @@ def load_route_map(path, runner_profile, *, selected_executable):
         _require(destination not in destinations,'duplicate_destination')
         destinations.add(destination)
         result[actor] = route
-    return result
+    return result,frozenset(hosted)

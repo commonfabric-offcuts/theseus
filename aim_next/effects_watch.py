@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import math
 import os
 from pathlib import Path
@@ -33,6 +34,10 @@ class NativeWatch:
         self.fd = None
         self.queue = None
         self.stopped = False
+        # Stop signals seen; a hosting runner escalates its children's stop on the second and third.
+        self.stop_count = 0
+        self.readers = set()
+        self.processes = set()
         self.companion_moved = False
         self.companion_fds = []
         self.original_signals = {}
@@ -68,6 +73,32 @@ class NativeWatch:
     def _stop_signal(self, number, frame):
         self.stopped = True
 
+    def watch_reader(self, fd):
+        """Report this descriptor (a child's stdout) in `readable` whenever it has data or reached EOF."""
+        self.queue.control([select.kevent(fd, filter=select.KQ_FILTER_READ,
+                                          flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE)], 0, 0)
+        self.readers.add(fd)
+
+    def unwatch_reader(self, fd):
+        """Stop reporting fd; call before closing it. Closing a descriptor also removes its filter."""
+        if fd in self.readers:
+            self.readers.discard(fd)
+            self.queue.control([select.kevent(fd, filter=select.KQ_FILTER_READ, flags=select.KQ_EV_DELETE)], 0, 0)
+
+    def watch_process(self, pid):
+        """Report this un-reaped child in `exited` once it exits; False if it has already exited."""
+        try:
+            self.queue.control([select.kevent(pid, filter=select.KQ_FILTER_PROC,
+                                              flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_ONESHOT,
+                                              fflags=select.KQ_NOTE_EXIT)], 0, 0)
+        except OSError as error:
+            # An exited child that is not yet reaped refuses registration.
+            if error.errno == errno.ESRCH:
+                return False
+            raise WatchError('watch_unavailable') from error
+        self.processes.add(pid)
+        return True
+
     def verify(self):
         try:
             current = self.path.lstat()
@@ -80,22 +111,30 @@ class NativeWatch:
             raise WatchError('watch_identity_changed') from error
 
     def wait(self, timeout):
-        """Wait for a database write or a stop signal; None waits for the event alone, with no timer."""
+        """Wait for a database write, a stop signal, child output or a child exit; None waits with no timer."""
         if timeout is not None and (not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 0 <= timeout <= 60):
             raise WatchError('invalid_wait')
         self.verify()
         try:
-            events = self.queue.control(None, 8, 0 if self.stopped else timeout)
+            events = self.queue.control(None, 64, 0 if self.stopped and not (self.readers or self.processes) else timeout)
         except InterruptedError:
             events = []
         except OSError as error:
             raise WatchError('watch_wait_failed') from error
         dirty = False
+        readable, exited = [], []
         for event in events:
             if event.flags & select.KQ_EV_ERROR:
                 raise WatchError('watch_wait_failed')
             if event.filter == select.KQ_FILTER_SIGNAL:
                 self.stopped = True
+                self.stop_count += max(1, event.data)
+            elif event.filter == select.KQ_FILTER_READ:
+                readable.append(event.ident)
+            elif event.filter == select.KQ_FILTER_PROC:
+                if event.fflags & select.KQ_NOTE_EXIT:
+                    self.processes.discard(event.ident)
+                    exited.append(event.ident)
             if event.filter == select.KQ_FILTER_VNODE and event.ident in self.companion_fds:
                 dirty = True
                 if event.fflags & (select.KQ_NOTE_DELETE | select.KQ_NOTE_RENAME | select.KQ_NOTE_REVOKE):
@@ -105,7 +144,7 @@ class NativeWatch:
                     raise WatchError('watch_identity_changed')
                 dirty = dirty or bool(event.fflags & select.KQ_NOTE_WRITE)
         self.verify()
-        return dict(dirty=dirty, stop=self.stopped)
+        return dict(dirty=dirty, stop=self.stopped, readable=readable, exited=exited)
 
     def close(self):
         error = None

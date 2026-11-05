@@ -1052,11 +1052,11 @@ recovery.activate(request)
 
     def test_original_schema_is_checked_before_other_metadata(self):
         faults = {
-            'newer-missing-commit': ("UPDATE metadata SET value='10' WHERE key='schema_version'",
+            'newer-missing-commit': ("UPDATE metadata SET value='11' WHERE key='schema_version'",
                                      "DELETE FROM metadata WHERE key='commit_id'"),
             'older-missing-commit': ("UPDATE metadata SET value='7' WHERE key='schema_version'",
                                      "DELETE FROM metadata WHERE key='commit_id'"),
-            'newer-blob-commit': ("UPDATE metadata SET value='10' WHERE key='schema_version'",
+            'newer-blob-commit': ("UPDATE metadata SET value='11' WHERE key='schema_version'",
                                   "UPDATE metadata SET value=x'00' WHERE key='commit_id'"),
             'missing-version': ("DELETE FROM metadata WHERE key='schema_version'",),
             'blob-version': ("UPDATE metadata SET value=CAST(value AS BLOB) WHERE key='schema_version'",),

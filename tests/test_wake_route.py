@@ -165,6 +165,15 @@ class WakeRouteTests(unittest.TestCase):
             with self.subTest(keys=list(claim)):
                 self.rejected(claim=claim)
 
+    def test_cores_handed_seq_is_accepted_and_never_sent_to_a_broker(self):
+        for handed in (None, 0, 18):
+            with self.subTest(handed=handed):
+                prepared = prepare_route(self.route, dict(self.claim, handed_seq=handed), self.guard)
+                self.assertNotIn(b"handed_seq", prepared.stdin)
+        for handed in (-1, True, "18", 1.5):
+            with self.subTest(handed=handed):
+                self.rejected(claim=dict(self.claim, handed_seq=handed))
+
     def test_entrypoint_and_its_resolved_parents_are_protected(self):
         directory = self.root / "bin"
         directory.mkdir(mode=0o700)
