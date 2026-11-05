@@ -139,25 +139,52 @@ class Conversation:
         if any(type(value) is not int or not 0 <= value <= 9223372036854775807 for value in (through, start)) or start > through:
             raise Refusal("INVALID_ARGUMENT", "The sequences read are nonnegative integers, from_seq at most seq")
         topic = self._topic(db, actor, target["topic_id"])
-        # Subscription groups are kept per topic; addressed deliveries share
-        # one direct group, so they are found through this topic's addressee
-        # index from the oldest pending direct delivery onward.
-        rows = db.execute("SELECT d.* FROM delivery_groups g JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-                          "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.kind='subscription' AND g.topic_id=? AND g.active=1 AND g.pending_count>0 "
-                          "AND m.seq>=? AND m.seq<=? ORDER BY d.seq", (actor, topic["id"], start, through)).fetchall()
-        direct = db.execute("SELECT g.id,m.seq FROM delivery_groups g JOIN deliveries d ON d.seq=g.first_pending_seq JOIN messages m ON m.id=d.message_id "
-                            "WHERE g.recipient_id=? AND g.kind='direct' AND g.topic_id='' AND g.participant_epoch=0 AND g.active=1 AND g.pending_count>0",
-                            (actor,)).fetchone()
-        if direct is not None:
-            rows += db.execute("SELECT d.* FROM message_addressees a JOIN messages m ON m.seq=a.seq JOIN deliveries d ON d.message_id=m.id AND d.recipient_id=a.actor_id "
-                               "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>=? AND a.seq<=? AND d.group_id=? AND d.state='pending' ORDER BY a.seq",
-                               (topic["id"], actor, max(direct["seq"], start), through, direct["id"])).fetchall()
+        # Subscription groups are kept per topic, so only this topic's pending
+        # rows are visited; addressed deliveries share one direct group.
+        rows = db.execute("SELECT d.* FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
+                          "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
+                          "CROSS JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.kind='subscription' AND g.topic_id=? "
+                          "AND g.active=1 AND g.pending_count>0 AND m.seq>=? AND m.seq<=?",
+                          (actor, topic["id"], start, through)).fetchall()
+        rows = sorted(rows + self._pending_addressed(db, actor, topic["id"], start, through), key=lambda row: row["seq"])
         for row in rows:
             self._acknowledge(db, actor, row)
         result = {"topic_id": topic["id"], "seq": through, "acknowledged": len(rows)}
         if "from_seq" in args:
             result["from_seq"] = start
         return result, []
+
+    def _pending_addressed(self, db, actor, topic_id, start, through):
+        """The actor's pending addressed deliveries for one topic's messages in [start, through].
+
+        Two walks each give the whole answer: the direct group's pending rows,
+        kept when their message is in this topic and range, and the messages
+        addressed to the actor in this topic and range, kept when their
+        delivery is still pending. They step one row in turn and the first to
+        finish answers, so the work is at most twice the smaller of the actor's
+        pending addressed deliveries and this range's addressed messages."""
+        group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 "
+                           "AND active=1 AND pending_count>0", (actor,)).fetchone()
+        if group is None:
+            return []
+        pending = db.execute("SELECT d.*,m.topic_id AS message_topic_id,m.seq AS message_seq FROM deliveries d INDEXED BY pending_group_deliveries "
+                             "CROSS JOIN messages m ON m.id=d.message_id WHERE d.group_id=? AND d.state='pending' ORDER BY d.seq", (group["id"],))
+        addressed = db.execute("SELECT d.* FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
+                               "LEFT JOIN deliveries d ON d.message_id=m.id AND d.recipient_id=a.actor_id "
+                               "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>=? AND a.seq<=? ORDER BY a.seq", (topic_id, actor, start, through))
+        walks = ((pending, lambda row: row["message_topic_id"] == topic_id and start <= row["message_seq"] <= through, []),
+                 (addressed, lambda row: row["state"] == "pending", []))
+        try:
+            while True:
+                for cursor, keep, kept in walks:
+                    row = cursor.fetchone()
+                    if row is None:
+                        return kept
+                    if keep(row):
+                        kept.append(row)
+        finally:
+            pending.close()
+            addressed.close()
 
     def _open_topic(self, db, actor, topic_id, workspace_id, title, participants, untitled):
         """Create a topic with its author and chosen participants, ready for its first message."""

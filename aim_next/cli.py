@@ -13,7 +13,7 @@ import uuid
 
 from .authority import AuthorityError
 from .contract import LIMITS, StoreError
-from .effects_watch import NativeWatch, WatchError
+from .effects_watch import NativeWatch, WatchError, WatchStopped
 from .profile import ProfileError, load_profile
 from .store import StoreOpenError
 
@@ -337,9 +337,13 @@ class Agent:
             if not stat.S_ISDIR(directory.lstat().st_mode):
                 raise NotADirectoryError(str(directory))
         except OSError:
-            _diagnostic(self.out.stderr, "CLI_OUTBOX_UNAVAILABLE: the outbox directory is unavailable, so nothing was sent.")
-            raise Failed(1)
+            self.unsent("the outbox directory is unavailable")
         return directory
+
+    def unsent(self, why):
+        # Nothing was sent unless this verb already sent an earlier request.
+        _diagnostic(self.out.stderr, "CLI_OUTBOX_UNAVAILABLE: %s, so %s was sent." % (why, "nothing" if self.operation is None else "nothing more"))
+        raise Failed(1)
 
     @staticmethod
     def _sync_directory(directory):
@@ -380,7 +384,7 @@ class Agent:
             except OSError:
                 self.out.raw(receipt)
                 _diagnostic(self.out.stderr, "CLI_RECEIPT_UNSAVED: operation %s was recorded; look it up with the operation view." % envelope["operation_id"])
-                raise Failed(1)
+                raise Failed(1, recorded=True)
         self.out.raw(receipt)
         error = receipt.get("error")
         if error:
@@ -405,8 +409,7 @@ class Agent:
         try:
             self._save_request(directory, envelope["operation_id"], request)
         except OSError:
-            _diagnostic(self.out.stderr, "CLI_OUTBOX_UNAVAILABLE: the request could not be saved, so nothing was sent.")
-            raise Failed(1)
+            self.unsent("the request could not be saved")
         self.operation = envelope["operation_id"]
         return self.dispatch(directory, request)
 
@@ -502,20 +505,31 @@ class Agent:
                 "workspace_id": options.outcome, "topic_id": topic, "title": options.title,
                 "participants": _names(options.participants), "body": body, "attachments": []},
                 {"opening_revision": 0})
-        except Failed as failed:
-            if failed.code == 75:
-                self.resume(opening, topic)
+        except BaseException as stopped:
+            # Once the save request is saved, any end but a final refusal may
+            # leave the save recorded (or recordable by `retry`), so the
+            # opening and its topic are named for `publish`.
+            if self.operation is not None and not (isinstance(stopped, Failed) and stopped.code == 2):
+                _diagnostic(self.out.stderr, "start: " + self.publish_hint(opening, topic))
             raise
-        except (StoreError, OSError, KeyboardInterrupt):
-            self.resume(opening, topic)
+        try:
+            result = self.command("opening.publish", {"opening_id": opening}, {}, {"opening_revision": saved["opening_revision"]})
+        except BaseException as stopped:
+            # The save is recorded, so the opening stays whatever ends the publish.
+            if isinstance(stopped, Failed) and stopped.code == 2:
+                hint = "opening %s stays unpublished: Core refused its publish." % opening
+            elif isinstance(stopped, Failed) and stopped.recorded:
+                hint = "the publish of opening %s was recorded; `publish %s` reports whether it started topic %s." % (opening, opening, topic)
+            else:
+                hint = self.publish_hint(opening, topic, recorded=True)
+            _diagnostic(self.out.stderr, "start: " + hint)
             raise
-        result = self.command("opening.publish", {"opening_id": opening}, {}, {"opening_revision": saved["opening_revision"]})
         self.out.plain('started %s "%s" in %s with %s' % (topic, _one_line(options.title, 60), options.outcome, result["message_id"]))
 
-    def resume(self, opening, topic):
-        # The save's own diagnostic names its operation; this names what follows it.
-        _diagnostic(self.out.stderr, "start: opening %s will start topic %s; once its save is recorded, `publish %s` starts it." % (
-            opening, topic, opening))
+    @staticmethod
+    def publish_hint(opening, topic, recorded=False):
+        return "opening %s will start topic %s; %s`publish %s` starts it." % (
+            opening, topic, "" if recorded else "once its save is recorded, ", opening)
 
     def do_publish(self):
         opening = self.view("opening", {"opening_id": self.options.opening})["opening"]
@@ -555,6 +569,8 @@ class Agent:
             self.refuse("BINDING_MISMATCH", "This saved request belongs to another binding or operation")
         result = self.dispatch(directory, request)
         self.out.plain("recorded %s (%s)" % (operation, envelope["kind"]))
+        if envelope["kind"] == "opening.save":
+            self.out.plain(self.publish_hint(envelope["target"].get("opening_id"), envelope["args"].get("topic_id"), recorded=True))
         return result
 
     def do_watch(self):
@@ -566,10 +582,22 @@ class Agent:
             self.refuse("WATCH_UNAVAILABLE", "The native database watch is unavailable (%s)" % error)
         try:
             self.watch_changes(watch)
+        except WatchStopped:
+            # Stopped mid-notice: what the reader did not take is dropped, so
+            # the exit cannot block on flushing it again.
+            _quiesce_failed_stream(self.out.stdout)
         except WatchError as error:
             self.refuse("WATCH_FAILED", "The database watch stopped (%s)" % error)
         finally:
             watch.close()
+
+    def notice(self, watch, value, line):
+        """One watch notice. A stop ends it, even blocked on a reader that is not
+        draining; refusals and results are written outside this, so a stop never
+        hides one or its exit code."""
+        with watch.stoppable():
+            self.out.raw(value)
+            self.out.plain(line)
 
     def read(self, watch, name, args):
         # A read that finds the database locked has already waited in SQLite's
@@ -599,11 +627,17 @@ class Agent:
         if page is None:
             return
         cursor = page["checkpoint"]
-        self.out.raw({"event": "watching", "actor_id": self.actor, "checkpoint": cursor})
-        self.out.plain("watching %s from change %s" % (self.actor, cursor["after_seq"]))
+        self.notice(watch, {"event": "watching", "actor_id": self.actor, "checkpoint": cursor},
+                    "watching %s from change %s" % (self.actor, cursor["after_seq"]))
         while True:
             event = watch.wait(None)
             if event["stop"]:
+                # A stop ends the watch, but never hides a moved authority: take
+                # what else is queued, then check the fence once more.
+                watch.wait(0)
+                if watch.companion_moved:
+                    raise WatchError("authority_anchor_replaced")
+                self.changes(watch, cursor)
                 return
             if not event["dirty"]:
                 continue
@@ -613,6 +647,8 @@ class Agent:
                 page = self.changes(watch, cursor)
                 if page is None:
                     return
+                if watch.companion_moved:
+                    raise WatchError("authority_anchor_replaced")
                 for change in page["items"]:
                     self.report(watch, change)
                 if not page["has_more"]:
@@ -631,18 +667,29 @@ class Agent:
             error = result.get("error")
             if error:
                 # Still one notice for this delivery, without what could not be read.
-                self.out.raw({"event": "delivery", "change": change, "error": error})
-                self.out.plain("delivery unavailable (%s)  [%s]" % (error.get("code"), identity))
+                self.notice(watch, {"event": "delivery", "change": change, "error": error},
+                            "delivery unavailable (%s)  [%s]" % (error.get("code"), identity))
                 return
             item = result["item"]
-            self.out.raw({"event": "delivery", "change": change, "item": item})
-            self.out.plain(self.delivery_line(item) + ("" if item["state"] == "pending" else "  (%s)" % item["state"]))
+            self.notice(watch, {"event": "delivery", "change": change, "item": item},
+                        self.delivery_line(item) + ("" if item["state"] == "pending" else "  (%s)" % item["state"]))
             return
-        self.out.raw({"event": "change", "change": change})
-        if kind == "delivery" and version == 2:
-            self.out.plain("acknowledged %s" % identity)
-        else:
-            self.out.plain("change %s %s v%s" % (kind, identity, version))
+        self.notice(watch, {"event": "change", "change": change},
+                    "acknowledged %s" % identity if kind == "delivery" and version == 2 else "change %s %s v%s" % (kind, identity, version))
+
+
+PATH_OPTIONS = {"profile", "outbox", "outbox_after"}
+
+
+def _utf8_arguments(options):
+    """Text from argv is UTF-8; bytes that are not arrive as lone surrogates and are refused before anything is saved."""
+    for name, value in vars(options).items():
+        for item in (value if isinstance(value, list) else [value]):
+            if name not in PATH_OPTIONS and isinstance(item, str):
+                try:
+                    item.encode("utf-8")
+                except UnicodeError as error:
+                    raise InvalidRequest() from error
 
 
 def _agent_verb(options, stdin, stdout, stderr):
@@ -662,6 +709,7 @@ def _agent_verb(options, stdin, stdout, stderr):
             operation, operation) if operation else "reconcile the original operation before retrying"))
     try:
         try:
+            _utf8_arguments(options)
             agent = Agent(load_profile(options.profile), options, stdin, lines)
             getattr(agent, "do_" + options.verb.replace("-", "_"))()
             return agent.exit

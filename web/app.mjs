@@ -31,8 +31,8 @@ let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 let topicRail, topicNavigation, outcomeRail;
-let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver;
-const onScreen = new Set();
+let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver;
+const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
@@ -56,6 +56,8 @@ function closeReview() {
 }
 $('review-close').onclick = closeReview; $('review-keep').onclick = closeReview;
 review.addEventListener('cancel', event => { event.preventDefault(); closeReview(); });
+// The version review covers the page while open; what it hides is read once it closes.
+review.addEventListener('close', () => noteRead());
 function beginReview(title, opener) {
   comparison = null; const serial = ++reviewSerial;
   reviewOpener = opener ?? document.activeElement;
@@ -302,13 +304,15 @@ function changed(editor) {
     if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
   }
 }
-// What the person sees is read: while the page is visible and has focus, the
-// message the Reader shows, or else the message cards on screen. Loaded
-// messages are contiguous, so the range from the lowest to the highest card on
-// screen holds only messages on screen. Only another actor's message can
-// settle a delivery, so the person's own are never reported.
+// What the person sees is read: while the page is visible and has focus, and
+// no modal other than the Reader covers it, the message the Reader shows, or
+// else the message cards on screen. Each run of loaded messages is contiguous,
+// so the range from the lowest to the highest card on screen in one run holds
+// only messages on screen; a range never spans a gap between runs. Only
+// another actor's message can settle a delivery, so the person's own are never
+// reported.
 function noteRead() {
-  if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending()) return;
+  if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
   if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
   const source = registry.current?.source;
   if (source) {
@@ -316,23 +320,25 @@ function noteRead() {
         source.author !== bootstrap.actor) readThrough.seen(topic.id, source.seq, source.seq);
     return;
   }
-  let from = Infinity, through = -Infinity;
+  const ranges = new Map();
   for (const item of views.messages.values()) {
-    if (!onScreen.has(item.seq) || item.author_id === bootstrap.actor) continue;
-    from = Math.min(from, item.seq); through = Math.max(through, item.seq);
+    if (!(halfShown.has(item.seq) || atMiddle.has(item.seq)) || item.author_id === bootstrap.actor) continue;
+    const run = views.runOf(item.id), range = ranges.get(run);
+    ranges.set(run, range ? [Math.min(range[0], item.seq), Math.max(range[1], item.seq)] : [item.seq, item.seq]);
   }
-  if (through >= from) readThrough.seen(topic.id, from, through);
+  for (const [from, through] of ranges.values()) readThrough.seen(topic.id, from, through);
 }
-// A card counts as on screen when at least half of it, or of the viewport, shows it.
-function cardsShown(entries) {
+// A card counts as on screen when at least half of it, or of the viewport,
+// shows it. The second holds exactly when the card crosses the viewport's
+// middle line (a card that crosses it is wholly shown or covers half the
+// viewport), which a zero-height root observes for a card of any height.
+const cardsSeen = (shown, test) => entries => {
   for (const entry of entries) {
     const seq = Number(entry.target.dataset.seq);
-    const shown = entry.isIntersecting && (entry.intersectionRatio >= 0.5 ||
-      entry.intersectionRect.height * 2 >= (entry.rootBounds?.height ?? Infinity));
-    if (shown) onScreen.add(seq); else onScreen.delete(seq);
+    if (test(entry)) shown.add(seq); else shown.delete(seq);
   }
   noteRead();
-}
+};
 function revokeMedia() { for (const url of mediaURLs) URL.revokeObjectURL(url); mediaURLs.clear(); }
 async function present(presentation) {
   if (presentation.surface === 'inline') inline.show(presentation);
@@ -420,7 +426,7 @@ function paintViews(kind) {
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
       $('messages').insertBefore(card, following ?? null);
-      cardObserver?.observe(card);
+      cardObserver?.observe(card); middleObserver?.observe(card);
     }
   }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
@@ -748,7 +754,8 @@ async function initialize() {
     return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.read_through',
       target: { topic_id: topicId }, expected: { authority: { authority_id, authority_epoch } }, args: { from_seq: from, seq } });
   } });
-  cardObserver = new IntersectionObserver(cardsShown, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+  cardObserver = new IntersectionObserver(cardsSeen(halfShown, entry => entry.isIntersecting && entry.intersectionRatio >= 0.5), { threshold: [0, 0.5] });
+  middleObserver = new IntersectionObserver(cardsSeen(atMiddle, entry => entry.isIntersecting), { rootMargin: '-50% 0px -50% 0px', threshold: 0 });
   document.addEventListener('visibilitychange', noteRead);
   window.addEventListener('focus', noteRead);
   topicNavigation = new TopicNavigation({ registry, current:route,

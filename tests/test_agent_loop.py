@@ -3,9 +3,12 @@ from __future__ import annotations
 """Core acts of the everyday agent loop: post, read through, and deliveries that name their place."""
 
 import json
+import sqlite3
 import unittest
+import uuid
 
 import reader_fixture as fixtures
+from test_delivery_bounds import measured
 import test_openings
 
 
@@ -189,6 +192,90 @@ class ReadThroughCase(AgentLoopCase):
                 receipt = self.through(seq, op="bad-range", from_seq=start)
                 self.rejected(receipt, "INVALID_ARGUMENT")
                 self.assertFalse(receipt["recorded"])
+
+    def seed_addressed(self, count, topic, state, recipient="agent-a"):
+        # Bulk fixture only: the exact rows an addressed message leaves (as
+        # _publish, _queue_delivery and _acknowledge write them), with the group
+        # and schedule counters kept true, without thousands of real sends.
+        with sqlite3.connect(str(self.path)) as db:
+            group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0",
+                               (recipient,)).fetchone()[0]
+            first = None
+            for _ in range(count):
+                label = uuid.uuid4().hex
+                message, delivery = "m-seed-" + label, "d-seed-" + label
+                seq = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) VALUES (?,?,'owner','Seeded','[]','[]',?,?)",
+                                 (message, topic, json.dumps([recipient]), "seed-op-" + label)).lastrowid
+                db.execute("INSERT INTO message_addressees VALUES (?,?,?)", (topic, recipient, seq))
+                row = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,state) VALUES (?,?,?,?,?)",
+                                 (delivery, message, recipient, group, state)).lastrowid
+                first = first if first is not None else row
+                db.execute("INSERT INTO delivery_reasons VALUES (?,'addressed',?,NULL)", (delivery, topic))
+            if state == "pending" and count:
+                db.execute("UPDATE delivery_groups SET pending_count=pending_count+?,first_pending_seq=COALESCE(first_pending_seq,?) WHERE id=?",
+                           (count, first, group))
+                db.execute("UPDATE recipient_schedule SET pending_count=pending_count+? WHERE recipient_id=?", (count, recipient))
+
+    def read_through_steps_as(self, grow):
+        """VM steps of a one-delivery read-through of t1 while grow(n) adds n rows elsewhere."""
+        self.committed(self.through(10 ** 9, topic="t1"))
+        self.committed(self.through(10 ** 9, topic="t2"))
+        # An addressed delivery left pending in another topic is older than
+        # everything below; the read-through of t1 must not start from it.
+        self.committed(self.post(actor="owner", topic="t2", body="Unrelated, still pending", addressees=["agent-a"]))
+        steps, total = [], 0
+        for size in (0, 500, 2000):
+            grow(size - total)
+            total = size
+            stale = self.pending("agent-a")
+            self.assertTrue(stale and all(row[1] == "t2" for row in stale), stale)
+            self.committed(self.post(actor="owner", body="Fresh", addressees=["agent-a"]))
+            result, counts = measured(lambda: self.through(10 ** 9))
+            self.assertEqual(self.committed(result)["acknowledged"], 1)
+            self.assertEqual(self.pending("agent-a"), stale)
+            steps.append(counts["vm_steps"])
+        self.consistent()
+        return steps
+
+    def test_read_through_work_is_flat_as_settled_history_grows(self):
+        steps = self.read_through_steps_as(lambda n: self.seed_addressed(n, "t1", "acknowledged"))
+        self.assertGreater(steps[0], 0)
+        self.assertLess(max(steps), steps[0] + 250, steps)
+
+    def test_read_through_work_is_flat_as_addressed_work_waits_in_other_topics(self):
+        steps = self.read_through_steps_as(lambda n: self.seed_addressed(n, "t2", "pending"))
+        self.assertGreater(steps[0], 0)
+        self.assertLess(max(steps), steps[0] + 250, steps)
+        self.assertEqual(len(self.pending("agent-a")), 2001)
+
+    def test_read_through_settles_the_same_rows_whichever_walk_answers(self):
+        # The direct group is read by whichever walk finishes first: few
+        # pending with a long addressed range, or the reverse, with settled
+        # rows inside the range on the walk that answers. Either way only
+        # this actor's own pending deliveries in t1 within [from_seq, seq] settle.
+        for settled_in_range, pending_elsewhere in ((0, 0), (40, 0), (0, 40), (40, 60)):
+            with self.subTest(settled_in_range=settled_in_range, pending_elsewhere=pending_elsewhere):
+                self.committed(self.through(10 ** 9, topic="t1"))
+                self.committed(self.through(10 ** 9, topic="t2"))
+                self.committed(self.post(actor="agent-b", body="Addressed below the range", addressees=["agent-a"]))
+                first = self.committed(self.post(actor="owner", body="First in range", addressees=["agent-a"]))["message_id"]
+                self.seed_addressed(settled_in_range, "t1", "acknowledged")
+                self.seed_addressed(pending_elsewhere, "t2", "pending")
+                self.committed(self.post(actor="owner", body="For another reader", addressees=["agent-b"]))
+                self.committed(self.post(actor="agent-a", body="To myself", addressees=["agent-a"]))
+                self.committed(self.post(actor="owner", topic="t2", body="Other topic, in range", addressees=["agent-a"]))
+                cut = self.committed(self.post(actor="agent-b", body="Last in range", addressees=["agent-a"]))["message_id"]
+                self.committed(self.post(actor="agent-b", body="Above the range", addressees=["agent-a"]))
+                start, end = (self.sql("SELECT seq FROM messages WHERE id=?", (m,))[0][0] for m in (first, cut))
+                mine, others = self.pending("agent-a"), self.pending("agent-b")
+                expected = [row for row in mine if row[1] == "t1" and start <= row[2] <= end]
+                # first, the subscribed copy of the other reader's message, and the cut
+                self.assertEqual(len(expected), 3, mine)
+                result = self.committed(self.through(end, from_seq=start))
+                self.assertEqual(result["acknowledged"], len(expected))
+                self.assertEqual(self.pending("agent-a"), [row for row in mine if row not in expected])
+                self.assertEqual(self.pending("agent-b"), others)
+                self.consistent()
 
     def test_cancelled_subscription_is_not_settled_by_read_through(self):
         self.committed(self.post(actor="owner", body="Before leaving"))

@@ -10,6 +10,9 @@ export class TopicViews {
     Object.assign(this, { instanceId, topicId, paint, invalidate });
     this.scope = { kind: 'topic', id: topicId };
     this.messages = new Map(); this.memory = new Map(); this.revisions = new RevisionTargets();
+    // Loaded messages form runs, each holding every topic message between its
+    // oldest and newest; a gap between runs holds messages never loaded.
+    this.runs = new Map(); this.runCount = 0;
     this.olderCursor = null; this.memoryCursor = null; this.newest = 0; this.memoryTail = 0;
     this.topic = null; this.messageTarget = null; this.unloadedChanged = false;
     this.currentItem = null; this.openingItem = null;
@@ -50,11 +53,21 @@ export class TopicViews {
       const known = this.messages.get(item.id);
       if (known && (known.seq !== item.seq || known.body !== item.body || known.author_id !== item.author_id)) throw invalid('An immutable message changed.');
     }
-    for (const item of answer.items) this.messages.set(item.id, item);
+    // A page is contiguous in the topic. It extends the run it continues (the
+    // newest message for a live page, the oldest for an older page) and joins
+    // every run it overlaps; a page that does neither, such as a Refresh's
+    // newest page, starts a run of its own.
+    const joined = new Set(answer.items.map(item => this.runs.get(item.id)));
+    if (!initial) for (const item of this.messages.values()) if (item.seq === cursor) joined.add(this.runs.get(item.id));
+    joined.delete(undefined);
+    const run = joined.size ? joined.values().next().value : ++this.runCount;
+    for (const [id, other] of this.runs) if (joined.has(other)) this.runs.set(id, run);
+    for (const item of answer.items) { this.messages.set(item.id, item); this.runs.set(item.id, run); }
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (!live) this.olderCursor = answer.next_cursor;
     this.paint('messages'); return true;
   }
+  runOf(id) { return this.runs.get(id); }
   validMemory(item) {
     if (!item || typeof item.id !== 'string' || !integer(item.seq) || item.seq < 1 || !integer(item.revision) || item.revision < 1 ||
         item.owner_scope?.kind !== 'topic' || item.owner_scope.id !== this.topicId || item.source_ref?.kind !== 'memory' ||
