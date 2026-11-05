@@ -109,6 +109,9 @@ export function paintSent(host, answer, actions) {
     repaint();
     return entry.pending;
   };
+  // The order last drawn, so that focus on a row that leaves can move to its neighbour.
+  const before = shown.order ?? [];
+  shown.order = items.map(item => item.message?.id);
   if (!items.length) { host.hidden = true; host.replaceChildren(); return; }
   const list = element('ul', { className: 'sent-list' }, ...items.map(item => {
     const id = item.message.id;
@@ -141,10 +144,16 @@ export function paintSent(host, answer, actions) {
   host.replaceChildren(element('h2', { textContent: heading }), list);
   host.hidden = false;
   // A control that held focus keeps it when it is drawn again, as an opened
-  // attachment is; one drawn anew takes it; and once a read replaces Read it
-  // here, that row's Mark read does.
+  // attachment is; one drawn anew takes it; once a read replaces Read it
+  // here, that row's Mark read does; and when its row leaves the list, as one
+  // marked read does, the row now in its place takes it, or else the one
+  // before.
   if (!held || held === globalThis.document.activeElement) return;
   if (held.isConnected) { held.focus(); return; }
   const was = sentParts.get(held);
-  (was && (drawn.get(`${was.id} ${was.name}`) ?? drawn.get(`${was.id} mark`)))?.focus();
+  if (!was) return;
+  const row = id => drawn.get(`${id} open`) ?? drawn.get(`${id} more`) ?? drawn.get(`${id} mark`);
+  const at = before.indexOf(was.id);
+  const neighbour = [...before.slice(at + 1), ...before.slice(0, Math.max(at, 0)).reverse()].find(id => listed.has(id));
+  (drawn.get(`${was.id} ${was.name}`) ?? row(was.id) ?? (neighbour === undefined ? null : row(neighbour)))?.focus();
 }

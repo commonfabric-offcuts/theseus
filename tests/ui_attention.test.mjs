@@ -301,3 +301,33 @@ test('a read that ends after its message has left the list draws nothing back', 
   paintSent(host, { addressed: 1, latest_addressed: [lost] }, actions);
   assert.ok(host.all().some(node => node.textContent === 'Read it here'), 'listed again, it starts afresh');
 });
+
+test('a row that leaves the list hands its focus to the row now in its place, or else the one before', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
+  t.after(() => { globalThis.document = previous; });
+  const f = fixture();
+  const lost = (id, body) => { const item = { ...f.item(id, body, 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-' + id } }; item.message = { ...item.message, id: 'm-' + id }; return item; };
+  const [a, b, c] = [lost('d1', 'First'), lost('d2', 'Second'), lost('d3', 'Third')];
+  const actions = { open() {}, acknowledge: async () => {}, read: async () => {}, attachment: () => new Element('span') };
+  const host = new Element('section'); host.root = true;
+  const control = (body, text) => host.all().find(node => node.tag === 'li' && node.text.includes(body)).all().find(node => node.textContent === text);
+  paintSent(host, { addressed: 3, latest_addressed: [a, b, c] }, actions);
+  control('Second', 'Mark read').focus();
+  paintSent(host, { addressed: 2, latest_addressed: [a, c] }, actions);
+  assert.equal(globalThis.document.activeElement, control('Third', 'Read it here'), 'the row now in its place');
+  control('Third', 'Mark read').focus();
+  paintSent(host, { addressed: 1, latest_addressed: [a] }, actions);
+  assert.equal(globalThis.document.activeElement, control('First', 'Read it here'), 'the last row gives way to the one before');
+  // Focus elsewhere on the page stays where it is when a row leaves.
+  const outside = new Element('input'); outside.root = true; outside.focus();
+  const moves = globalThis.document.moves;
+  paintSent(host, { addressed: 0, latest_addressed: [] }, actions);
+  paintSent(host, { addressed: 1, latest_addressed: [b] }, actions);
+  assert.equal(globalThis.document.activeElement, outside); assert.equal(globalThis.document.moves, moves);
+  // So does focus on something in the list that stands for no row, such as its heading.
+  host.children[0].focus();
+  const heading = globalThis.document.moves;
+  paintSent(host, { addressed: 1, latest_addressed: [b] }, actions);
+  assert.equal(globalThis.document.moves, heading);
+});
