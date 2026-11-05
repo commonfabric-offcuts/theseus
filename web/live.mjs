@@ -35,9 +35,10 @@ export class Live {
     try { socket = this.socket(url.href, [PROTOCOL, `bearer.${this.token}`]); }
     catch { this.retry(false); return; }
     this.opened++;
-    // clean: the socket delivered and then closed or said the server stopped,
-    // as a restart does. Anything else (refused, unreadable, the feed ended
-    // for another reason) backs off, so a broken feed is not asked in a loop.
+    // clean: the socket said the server stopped, as a restart does, or closed
+    // after announcing a commit. Anything else (refused, unreadable, the feed
+    // ended for another reason, or closed after only its first number) backs
+    // off, so a broken feed is not asked in a loop.
     const attempt = this.current = { socket, lines: 0, clean: false, done: false };
     const finish = () => {
       if (attempt.done) return;
@@ -63,8 +64,10 @@ export class Live {
         finish();
       }
     };
-    // A close after messages is a restart or a network change; a close before any is a refusal.
-    socket.onclose = () => { attempt.clean = attempt.lines > 0; finish(); };
+    // A close after a commit is a restart or a network change. A close before
+    // any number is a refusal, and one right after the first is a feed that
+    // cannot stay up.
+    socket.onclose = () => { attempt.clean = attempt.lines > 1; finish(); };
     socket.onerror = () => finish();
   }
   retry(clean) {

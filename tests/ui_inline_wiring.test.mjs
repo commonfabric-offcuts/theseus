@@ -63,7 +63,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
-  const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
+  const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
@@ -1100,3 +1100,34 @@ test('a commit\'s rail reload leaves a freshness pass already reading alone', as
   reading.resolve(); await drain();
   f.owners().freshness.dispose();
 });
+
+// The stream's return rereads a page's lists only when a reload could not read
+// them: anything saved while it was down changes its first number, which comes
+// as a commit.
+for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspaces', 'workspace', 'workspace_topics']], ['?topic=t1', ['workspaces', 'workspace_topics']]]) {
+  test(`the stream coming back rereads the lists on ${route} only after a reload that failed`, async () => {
+    const f = fixture('https://fixture/' + route), live = stream(), failing = new Set();
+    if (route !== '?topic=t1') f.inject({ api: f.api, bootstrap: f.bootstrap });
+    f.useLive(live);
+    const view = f.api.view;
+    f.api.view = async (name, args, options) => {
+      if (name === 'workspace' && route === '?workspace=w1') { f.calls.push({ name }); if (failing.has(name)) throw Object.assign(Error('busy'), { status: 503 }); return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 1 } }; }
+      if (failing.has(name)) { f.calls.push({ name }); throw Object.assign(Error('This read could not enter its bounded lane.'), { status: 503 }); }
+      return view(name, args, options);
+    };
+    await f.initialize(); await drain();
+    const count = () => f.calls.filter(call => lists.includes(call.name)).length;
+    const reconnect = async () => { live.emit({ kind: 'state', state: 'down' }); live.emit({ kind: 'state', state: 'live' }); await drain(); };
+    let before = count();
+    await reconnect();
+    assert.equal(count(), before, 'nothing was owed, so the return reads nothing');
+    for (const name of lists) {
+      failing.add(name); live.emit({ kind: 'commit', seq: 20 }); await drain(); failing.delete(name);
+      before = count(); await reconnect();
+      assert.ok(count() > before, `a failed ${name} read is read again when the stream returns`);
+      before = count(); await reconnect();
+      assert.equal(count(), before, `once ${name} is read, the next return reads nothing`);
+    }
+  });
+}
+
