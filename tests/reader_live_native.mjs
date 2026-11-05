@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 // Live updates in the real browser against the real server: the page opens one
 // live WebSocket, reads nothing while nothing changes, and shows another participant's
 // message as soon as it is saved.
-export async function liveChecks({ check, page, until, control, observations, origin, cdp }) {
+export async function liveChecks({ check, page, until, control, observations, origin, cdp, view, facts }) {
   let serial = 0;
   const message = body => control({ method: 'agent_message', operation_id: `live-message-${++serial}`, body, topic_id: 't1', addressees: [] });
   const hasText = (p, selector, text) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent.includes(${JSON.stringify(text)})`);
@@ -424,6 +424,338 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.ok(Math.abs(first - button) <= 1, `the first older message is where the button was: ${JSON.stringify({ button, first })}`);
     assert.deepEqual(p.errors, []);
     await p.close();
+  });
+
+  // Mark unread. Each check marks in a topic of its own, whose first message
+  // is the person's, so nothing else there waits on them and no reading
+  // through settles anything while the counts are compared.
+  let markSerial = 0;
+  const markTopic = async title => {
+    const id = `live-marks-${++markSerial}`;
+    const [created] = await control({ method: 'navigation_topics', topics: [{ id, title }] });
+    return { id, message: created.result.message_id, url: `${origin}/?topic=${id}` };
+  };
+  const markAs = async (ids, marked) => control({ method: 'mark', operation_id: `live-mark-${++markSerial}`, message_ids: ids, marked });
+  const counts = () => control({ method: 'counts' });
+  // Each message.mark the page sent, as it left the page: a request still
+  // unanswered counts, so a check that none was sent cannot pass early.
+  const markCalls = p => p.network.filter(e => e.method === 'Network.requestWillBeSent' && e.params.request.url.endsWith('/api/command'))
+    .map(e => JSON.parse(e.params.request.postData ?? (e.params.request.postDataEntries ?? []).map(part => Buffer.from(part.bytes ?? '', 'base64').toString()).join('')))
+    .filter(envelope => envelope.kind === 'message.mark');
+  // The page's last open has ended, whatever became of it, and its clear (if
+  // any) has left.
+  const openSettled = async p => {
+    await until(() => p.evaluate('freshEvidence.opens.length > 0 && freshEvidence.opens.at(-1).end !== undefined && !observedRegistry.pendingOpen'), 'the open has ended');
+    await p.evaluate('new Promise(resolve => setTimeout(resolve, 0))');
+  };
+  const card = id => `#messages [data-id="${id}"]`;
+  const pill = (p, id) => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id) + ' .unread-mark')}))`);
+  const button = p => p.evaluate("(b => b.hidden ? null : [b.textContent, b.getAttribute('aria-pressed')])(document.querySelector('#mark-unread'))");
+  const line = p => p.evaluate("document.querySelector('#topic-marks').hidden ? '' : document.querySelector('#topic-marks-words').textContent");
+  const readerShows = (p, text) => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(text)})`);
+  const openCard = async (p, id, text) => {
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(id))}))`), 'the card is drawn');
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(id))}).scrollIntoView({block:'center'})`);
+    await p.point(card(id));
+    await until(() => readerShows(p, text), 'the Reader shows the message whole');
+  };
+  const pressed = (p, state) => until(async () => JSON.stringify(await button(p)) === JSON.stringify(state), `the Reader button is ${state}`);
+  const marksRow = id => `#topics .nav-item[data-topic-id="${id}"]`;
+
+  await check('live Mark unread in the Reader raises the title, topic and outcome counts, survives a reload, and a second page catches up', async () => {
+    const topic = await markTopic('Marks: counts');
+    const second = await page('live-mark-second', null, true, { url: topic.url }); await settled(second);
+    const p = await page('live-mark-counts', null, true, { url: topic.url }); await settled(p);
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(marksRow(topic.id))}) && document.querySelector(${JSON.stringify(outcomeRow)}))`), 'the rails are drawn');
+    await until(async () => await titleCount(p) === (await view('attention', {})).unread, 'the title holds the first attention answer');
+    const before = { title: await titleCount(p), topic: await rowCount(p, marksRow(topic.id)), outcome: await rowCount(p, outcomeRow), counts: await counts() };
+    assert.equal(before.topic, 0, 'nothing waits in a topic of the person\'s own');
+    await openCard(p, topic.message, 'Fixture conversation');
+    assert.deepEqual(markCalls(p), [], 'opening what is not marked sends nothing');
+    await pressed(p, ['Mark unread', 'false']);
+    await p.point('#mark-unread');
+    await pressed(p, ['Marked unread', 'true']);
+    await until(async () => await titleCount(p) === before.title + 1 && await rowCount(p, marksRow(topic.id)) === 1 && await rowCount(p, outcomeRow) === before.outcome + 1,
+      'the title, the topic row and the outcome row each count one more');
+    assert.equal(await pill(p, topic.message), true, 'the card behind the Reader shows Unread');
+    const after = await counts();
+    assert.deepEqual([after.marked - before.counts.marked, after.mark_operations - before.counts.mark_operations], [1, 1]);
+    assert.deepEqual([after.acknowledged_deliveries, after.http_delivery_acks], [before.counts.acknowledged_deliveries, before.counts.http_delivery_acks], 'a mark settles no delivery');
+    await second.send('Page.bringToFront');
+    await until(async () => await titleCount(second) === before.title + 1 && await rowCount(second, marksRow(topic.id)) === 1 && await pill(second, topic.message) &&
+      await line(second) === '1 message marked unread', 'the second page catches up when shown');
+    await p.send('Page.bringToFront');
+    await p.send('Page.navigate', { url: topic.url });
+    await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'the page is read again');
+    await until(async () => await pill(p, topic.message) && await line(p) === '1 message marked unread' && await titleCount(p) === before.title + 1, 'the mark survives a reload');
+    assert.deepEqual(markCalls(p).length, 1, 'loading the topic clears nothing');
+    for (const each of [p, second]) { assert.deepEqual(each.errors, []); await each.close(); }
+    await markAs([topic.message], false);
+  });
+
+  await check('live a card click clears the mark at the revision the page saw', async () => {
+    const topic = await markTopic('Marks: card');
+    const [marked] = await markAs([topic.message], true);
+    const p = await page('live-mark-card', null, true, { url: topic.url }); await settled(p);
+    await until(async () => await pill(p, topic.message) && await line(p) === '1 message marked unread', 'the card and the line show the mark');
+    const before = await counts();
+    await openCard(p, topic.message, 'Fixture conversation');
+    await until(async () => (await counts()).marked === before.marked - 1, 'the open cleared the mark');
+    assert.deepEqual(markCalls(p).map(m => [m.target.message_id, m.args.marked, m.expected.mark_revision]), [[topic.message, false, marked.mark_revision]]);
+    await until(async () => !(await pill(p, topic.message)) && await line(p) === '', 'the pill and the line are gone');
+    await pressed(p, ['Mark unread', 'false']);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('live Read it lands on a message older than the first page and clears it', async () => {
+    const oldest = facts.sources[0].id;
+    const [marked] = await markAs([oldest], true);
+    const p = await page('live-mark-read-it', null, true); await settled(p);
+    await until(async () => await line(p) === '1 message marked unread', 'the topic says one message is marked');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(oldest))}))`), false, 'the marked message is older than the loaded page');
+    await p.evaluate("document.querySelector('#read-mark').focus()");
+    await p.key('Enter');
+    await until(() => readerShows(p, 'Source 0 exact passage.'), 'Read it opens the marked message whole');
+    await until(async () => await line(p) === '', 'the line goes once the mark is cleared');
+    assert.deepEqual(markCalls(p).map(m => [m.target.message_id, m.args.marked, m.expected.mark_revision]), [[oldest, false, marked.mark_revision]]);
+    assert.equal((await view('editor_state', { source_ref: facts.sources[0], topic_id: 't1' })).mark.marked, false);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('live a refused or failed source read clears nothing', async () => {
+    const topic = await markTopic('Marks: refused');
+    await markAs([topic.message], true);
+    const p = await page('live-mark-refused', null, true, { url: topic.url }); await settled(p);
+    await until(() => pill(p, topic.message), 'the card shows the mark');
+    const status = () => p.evaluate("document.querySelector('#app-status').hidden ? '' : document.querySelector('#app-status').textContent");
+    for (const [status_, code] of [[403, 'FORBIDDEN'], [500, 'SERVER_FAILURE']]) {
+      await control({ method: 'read_fault', name: 'source', status: status_, body: { error: { code, message: `Injected ${code}` } }, count: 1 });
+      await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
+      await p.point(card(topic.message));
+      await until(async () => (await status()).includes(`Injected ${code}`), `the ${status_} refusal is reported`);
+      await openSettled(p);
+      assert.equal(await p.evaluate("document.querySelector('#reader').open"), false);
+    }
+    p.intercept(payload => payload?.name === 'source');
+    await p.point(card(topic.message));
+    const held = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
+    p.intercept(null); await p.fail(held);
+    await until(async () => (await status()) !== '', 'the failed read is reported');
+    await openSettled(p);
+    assert.equal(await p.evaluate("document.querySelector('#reader').open"), false);
+    assert.deepEqual(markCalls(p), []);
+    assert.equal(await pill(p, topic.message), true);
+    assert.equal((await view('marks', { topic_id: topic.id })).items.length, 1, 'the mark stays');
+    assert.deepEqual(p.errors, []); await p.close();
+    await markAs([topic.message], false);
+  });
+
+  await check('live Escape while the source is read cancels the open and clears nothing', async () => {
+    const topic = await markTopic('Marks: Escape');
+    await markAs([topic.message], true);
+    const p = await page('live-mark-escape', null, true, { url: topic.url }); await settled(p);
+    await until(() => pill(p, topic.message), 'the card shows the mark');
+    p.intercept(payload => payload?.name === 'source');
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
+    await p.point(card(topic.message));
+    const held = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
+    p.intercept(null);
+    assert.equal(await p.evaluate("document.querySelector('#reader').open"), false, 'no Reader yet');
+    await p.key('Escape');
+    await p.release(held);
+    await openSettled(p);
+    assert.equal(await p.evaluate("document.querySelector('#reader').open"), false, 'the cancelled open never shows');
+    assert.deepEqual(markCalls(p), []);
+    assert.equal((await view('marks', { topic_id: topic.id })).items.length, 1);
+    // The card opens on the next press, and that open clears.
+    await openCard(p, topic.message, 'Fixture conversation');
+    await until(async () => markCalls(p).length === 1 && await line(p) === '', 'a later open clears');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('live a page that leaves while the source and the next page are held clears nothing', async () => {
+    const topic = await markTopic('Marks: leaving'), away = await markTopic('Marks: elsewhere');
+    await markAs([topic.message], true);
+    const p = await page('live-mark-leave', null, true, { url: topic.url }); await settled(p);
+    await until(async () => await pill(p, topic.message) && await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(marksRow(away.id))}))`), 'the mark and the other topic are shown');
+    await p.send('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Response' }, { urlPattern: origin + '/app.mjs', requestStage: 'Response' },
+      { urlPattern: origin + '/upload-cleanup.mjs', requestStage: 'Response' }, { urlPattern: away.url, requestStage: 'Response' }] });
+    p.intercept((payload, event) => payload?.name === 'source' || event.request.url === away.url);
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
+    await p.point(card(topic.message));
+    const source = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
+    await p.evaluate(`document.querySelector(${JSON.stringify(marksRow(away.id))}).scrollIntoView({block:'center'})`);
+    await p.point(marksRow(away.id));
+    const next = await until(() => p.held.find(h => h.event.request.url === away.url), 'the next page is held');
+    p.intercept(null);
+    await p.release(source);
+    await openSettled(p);
+    assert.equal(await p.evaluate('location.search'), `?topic=${topic.id}`, 'still the leaving document');
+    assert.equal(await p.evaluate("document.querySelector('#reader').open"), false, 'the open was dropped');
+    assert.deepEqual(markCalls(p), []);
+    await p.send('Fetch.continueResponse', { requestId: next.event.requestId });
+    await until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + away.id)} && document.body?.dataset.ready === 'true'`), 'the next page opens');
+    assert.deepEqual(markCalls(p), []);
+    assert.equal((await view('marks', { topic_id: topic.id })).items.length, 1, 'the mark stays');
+    assert.deepEqual(p.errors, []); await p.close();
+    await markAs([topic.message], false);
+  });
+
+  await check('live a page in the background when the source arrives clears nothing until it is shown again', async () => {
+    const topic = await markTopic('Marks: background');
+    const [marked] = await markAs([topic.message], true);
+    const p = await page('live-mark-hidden', null, true, { url: topic.url }); await settled(p);
+    await until(() => pill(p, topic.message), 'the card shows the mark');
+    p.intercept(payload => payload?.name === 'source');
+    await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
+    await p.point(card(topic.message));
+    const held = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
+    p.intercept(null);
+    const other = await page('live-mark-front', null, true, { url: origin + '/' });
+    await until(() => p.evaluate("document.visibilityState === 'hidden'"), 'the page is in the background');
+    await p.release(held);
+    await until(() => readerShows(p, 'Fixture conversation'), 'the Reader shows the message in the background');
+    await openSettled(p);
+    assert.deepEqual(markCalls(p), [], 'nothing is cleared while the page is not in front');
+    assert.equal((await view('marks', { topic_id: topic.id })).items.length, 1);
+    await p.send('Page.bringToFront');
+    await until(async () => markCalls(p).length === 1 && (await view('marks', { topic_id: topic.id })).items.length === 0, 'shown again, the open clears');
+    assert.deepEqual(markCalls(p).map(m => [m.args.marked, m.expected.mark_revision]), [[false, marked.mark_revision]]);
+    for (const each of [p, other]) { assert.deepEqual(each.errors, []); await each.close(); }
+  });
+
+  await check('live opening a topic, from a link or its rail row, clears no mark in it', async () => {
+    const topic = await markTopic('Marks: topic only'), from = await markTopic('Marks: rail start');
+    await markAs([topic.message], true);
+    const p = await page('live-mark-topic-only', null, true, { url: topic.url }); await settled(p);
+    await until(async () => await pill(p, topic.message) && await line(p) === '1 message marked unread', 'the mark is shown');
+    await p.send('Page.navigate', { url: from.url });
+    await until(() => p.evaluate(`document.body?.dataset.ready === 'true' && Boolean(document.querySelector(${JSON.stringify(marksRow(topic.id))}))`), 'another topic is open');
+    await p.evaluate(`document.querySelector(${JSON.stringify(marksRow(topic.id))}).scrollIntoView({block:'center'})`);
+    await p.point(marksRow(topic.id));
+    await until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + topic.id)} && document.body?.dataset.ready === 'true'`), 'the rail row opens the topic');
+    await settled(p);
+    await until(async () => await pill(p, topic.message) && await line(p) === '1 message marked unread', 'the mark is still shown');
+    assert.deepEqual(markCalls(p), []);
+    assert.equal((await view('marks', { topic_id: topic.id })).items.length, 1);
+    assert.deepEqual(p.errors, []); await p.close();
+    await markAs([topic.message], false);
+  });
+
+  for (const when of ['before editor_state answers', 'after editor_state answered']) {
+    await check(`live a mark renewed while the open is under way survives, ${when}`, async () => {
+      const topic = await markTopic(`Marks: renewed ${when}`);
+      const [marked] = await markAs([topic.message], true);
+      const p = await page('live-mark-renewed', null, true, { url: topic.url }); await settled(p);
+      await until(() => pill(p, topic.message), 'the card shows the mark');
+      const hold = `live-mark-renew-${markSerial}`;
+      let held = null;
+      if (when === 'before editor_state answers') {
+        const { next } = await control({ method: 'admission_events' });
+        await control({ method: 'read_hold', hold_id: hold, name: 'editor_state', phase: 'callback' });
+        await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
+        await p.point(card(topic.message));
+        await until(async () => (await control({ method: 'admission_events', after: next })).events.some(e => e.event === 'hold-enter' && e.hold_id === hold), 'editor_state is held in Core');
+      } else {
+        p.intercept(payload => payload?.name === 'source');
+        await p.evaluate(`document.querySelector(${JSON.stringify(card(topic.message))}).scrollIntoView({block:'center'})`);
+        await p.point(card(topic.message));
+        held = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source answer is held');
+        p.intercept(null);
+        assert.ok(p.calls.some(call => call.payload?.name === 'editor_state' && call.payload.args.source_ref?.id === topic.message), 'editor_state has answered');
+      }
+      const [renewed] = await markAs([topic.message], true);
+      assert.equal(renewed.mark_revision, marked.mark_revision + 2, 'marking what is marked renews it');
+      if (held) await p.release(held); else await control({ method: 'read_release', hold_id: hold });
+      await until(() => readerShows(p, 'Fixture conversation'), 'the source shows');
+      await until(() => markCalls(p).length === 1, 'the open sent its clear');
+      assert.deepEqual(markCalls(p).map(m => [m.args.marked, m.expected.mark_revision]), [[false, marked.mark_revision]], 'fenced on the revision the card showed');
+      await pressed(p, ['Marked unread', 'true']);
+      assert.deepEqual((await view('marks', { topic_id: topic.id })).items.map(item => item.mark_revision), [renewed.mark_revision], 'the newer reminder stays');
+      assert.equal(await pill(p, topic.message), true);
+      assert.equal(await p.evaluate("document.querySelector('#reader-notice').hidden"), true, 'the open\'s refused clear is silent');
+      assert.deepEqual(p.errors, []); await p.close();
+      await markAs([topic.message], false);
+    });
+  }
+
+  await check('live Read it reaches every mark in turn, across pages of marks', async () => {
+    const topic = await markTopic('Marks: many');
+    const ids = [];
+    for (let n = 0; n < 52; n++) {
+      const sent = await control({ method: 'agent_message', operation_id: `live-mark-many-${n}`, body: `Marked message ${n} of many`, topic_id: topic.id, addressees: [], join: n === 0 });
+      ids.push(sent.result.message_id);
+    }
+    await markAs(ids, true);
+    const p = await page('live-mark-many', null, true, { url: topic.url }); await settled(p);
+    await until(async () => await line(p) === '52 messages marked unread', 'every page of marks is read');
+    const readNext = async n => {
+      await p.evaluate("document.querySelector('#read-mark').focus()");
+      await p.key('Enter');
+      await until(() => readerShows(p, `Marked message ${n} of many`), `Read it opens message ${n}`);
+      await until(async () => (await view('editor_state', { source_ref: { kind: 'message', id: ids[n] }, topic_id: topic.id })).mark.marked === false, `message ${n} is cleared`);
+      await p.key('Escape');
+      await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes');
+    };
+    await readNext(0);
+    await until(async () => await line(p) === '51 messages marked unread', 'the line names one fewer');
+    await readNext(1);
+    // Messages 2 to 49 are read on another device; 50 and 51 came on the second page.
+    await markAs(ids.slice(2, 50), false);
+    await until(async () => await line(p) === '2 messages marked unread', 'the page follows the clears made elsewhere');
+    await readNext(50);
+    await until(async () => await line(p) === '1 message marked unread', 'one left');
+    await readNext(51);
+    await until(async () => await line(p) === '', 'no marks left, no line');
+    assert.deepEqual(markCalls(p).map(m => m.target.message_id), [ids[0], ids[1], ids[50], ids[51]]);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('live a lost answer on Mark unread sends the same request again, and Core records it once', async () => {
+    const topic = await markTopic('Marks: lost answer');
+    const p = await page('live-mark-lost', null, true, { url: topic.url }); await settled(p);
+    // Only the person's own press may move the page on; no commit reload races it.
+    await p.evaluate('observedFreshness.live.stop()');
+    await openCard(p, topic.message, 'Fixture conversation');
+    await pressed(p, ['Mark unread', 'false']);
+    const before = await counts();
+    p.intercept(payload => payload?.kind === 'message.mark');
+    await p.point('#mark-unread');
+    const held = await until(() => p.held.find(h => h.payload?.kind === 'message.mark'), 'the answer is held');
+    p.intercept(null); await p.fail(held);
+    await until(() => p.evaluate("!document.querySelector('#reader-notice').hidden && document.querySelector('#reader-notice').textContent.includes('Press again')"), 'the Reader says the answer was lost');
+    const recorded = await counts();
+    assert.deepEqual([recorded.mark_operations - before.mark_operations, recorded.marked - before.marked], [1, 1], 'Core recorded it before the answer was lost');
+    await pressed(p, ['Mark unread', 'false']);
+    await p.point('#mark-unread');
+    await pressed(p, ['Marked unread', 'true']);
+    const [first, second] = markCalls(p);
+    assert.deepEqual(second, first, 'the same envelope, operation included');
+    assert.deepEqual((await counts()).mark_operations, recorded.mark_operations, 'no new operation');
+    assert.deepEqual(p.errors, []); await p.close();
+    await markAs([topic.message], false);
+  });
+
+  await check('live a second tab\'s pill and Reader button follow a mark made in the first', async () => {
+    const topic = await markTopic('Marks: two tabs');
+    const b = await page('live-mark-tab-b', null, true, { url: topic.url }); await settled(b);
+    await openCard(b, topic.message, 'Fixture conversation');
+    await pressed(b, ['Mark unread', 'false']);
+    const a = await page('live-mark-tab-a', null, true, { url: topic.url }); await settled(a);
+    await openCard(a, topic.message, 'Fixture conversation');
+    await a.point('#mark-unread');
+    await pressed(a, ['Marked unread', 'true']);
+    await b.send('Page.bringToFront');
+    await pressed(b, ['Marked unread', 'true']);
+    await until(() => pill(b, topic.message), 'the second tab\'s card shows Unread');
+    await a.send('Page.bringToFront');
+    await a.point('#mark-unread');
+    await pressed(a, ['Mark unread', 'false']);
+    await b.send('Page.bringToFront');
+    await pressed(b, ['Mark unread', 'false']);
+    await until(async () => !(await pill(b, topic.message)), 'and loses it when the mark is cleared');
+    assert.deepEqual(markCalls(b), [], 'the second tab sent nothing');
+    for (const each of [a, b]) { assert.deepEqual(each.errors, []); await each.close(); }
   });
 
   // Last, because it adds to the outcome's Notebook, which every later topic
