@@ -298,6 +298,18 @@ test('a page in the background clears when shown, and only while that open is st
   assert.equal(await f.revision(1), 3);
 });
 
+test('a page that leaves drops the clear waiting for it to be shown', async t => {
+  const f = await fixture(t);
+  const mark = await f.known(1);
+  f.screen.set({ visible: false });
+  await f.open(1, f.marks.capture(mark.message_id));
+  f.marks.leave();
+  f.screen.set({ visible: true });
+  await settled();
+  assert.deepEqual(f.clears(), []);
+  assert.equal(await f.revision(1), 1);
+});
+
 test('the Reader button names the state and is pressed while marked', () => {
   const button = { hidden: false, textContent: '', attributes: {}, setAttribute(k, v) { this.attributes[k] = v; }, removeAttribute(k) { delete this.attributes[k]; } };
   paintMarkButton(button, { marked: false, mark_revision: 2, busy: false });
