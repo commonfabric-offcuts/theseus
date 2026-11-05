@@ -110,10 +110,10 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         self.assertEqual(self.handler_errors, [])
         self.tmp.cleanup()
 
-    def request(self, name="topic", read_class=None, path="/api/view", duplicate=None):
+    def request(self, name="topic", read_class=None, path="/api/view", duplicate=None, args=None):
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=7)
         try:
-            payload = {"name": name, "args": {}}
+            payload = {"name": name, "args": args or {}}
             if path == "/api/command":
                 payload = {"v": 1, "instance_id": "admission-test", "operation_id": "fixture-send",
                            "kind": "message.send", "target": {}, "expected": {}, "args": {}}
@@ -290,6 +290,83 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         release.set()
         eventually(lambda: self.admission().snapshot()["background"]["active"] == 0)
         self.assertNotIn(("withdrawn", "callback"), self.probe.events)
+
+    def joined(self, count):
+        eventually(lambda: any(len(shared.disconnected) == count
+                               for shared in list(self.server.shared_reads.waiting.values())))
+
+    def callbacks(self, name):
+        return [n for n, phase in self.probe.events if phase == "callback" and n == name]
+
+    def test_many_pages_asking_the_same_view_share_one_waiting_read(self):
+        # Seven open pages answer one commit with the same read: one waiting
+        # place, one Store read, and every page gets its answer.
+        entered, release = self.probe.hold("held")
+        first = self.pool.submit(self.request, "held", "background")
+        self.assertTrue(entered.wait(1))
+        pages = [self.pool.submit(self.request, "attention", "background") for _ in range(7)]
+        self.joined(7)
+        self.assertEqual(self.admission().snapshot()["background"], {"active": 1, "waiting": 1})
+        release.set()
+        self.assertEqual(first.result()[0], 200)
+        self.assertEqual([page.result()[0] for page in pages], [200] * 7)
+        self.assertEqual([page.result()[1]["name"] for page in pages], ["attention"] * 7)
+        self.assertEqual(self.callbacks("attention"), ["attention"])
+
+    def test_a_read_that_has_begun_is_never_joined(self):
+        # A request may follow a commit the running read cannot show.
+        entered, release = self.probe.hold("attention")
+        first = self.pool.submit(self.request, "attention", "background")
+        self.assertTrue(entered.wait(1))
+        self.probe.holds.pop(("attention", "callback"))
+        later = self.pool.submit(self.request, "attention", "background")
+        eventually(lambda: self.admission().snapshot()["background"]["waiting"] == 1)
+        release.set()
+        self.assertEqual([first.result()[0], later.result()[0]], [200, 200])
+        self.assertEqual(len(self.callbacks("attention")), 2)
+
+    def test_only_the_same_view_arguments_and_class_share(self):
+        entered, release = self.probe.hold("held")
+        first = self.pool.submit(self.request, "held", "foreground")
+        self.assertTrue(entered.wait(1))
+        same = [self.pool.submit(self.request, "workspace_topics", "foreground", args={"workspace_id": "w1", "limit": 20})
+                for _ in range(2)]
+        self.joined(2)
+        other = self.pool.submit(self.request, "workspace_topics", "foreground", args={"limit": 20, "workspace_id": "w2"})
+        reordered = self.pool.submit(self.request, "workspace_topics", "foreground", args={"limit": 20, "workspace_id": "w1"})
+        self.joined(3)
+        self.queued("foreground", 2)
+        release.set()
+        self.assertEqual([f.result()[0] for f in same + [other, reordered, first]], [200] * 5)
+        self.assertEqual(len(self.callbacks("workspace_topics")), 2)
+        # A background read of the same view is its own read.
+        entered, release = self.probe.hold("held")
+        first = self.pool.submit(self.request, "held", "background")
+        self.assertTrue(entered.wait(1))
+        held_fg = self.probe.hold("held-fg")
+        blocker = self.pool.submit(self.request, "held-fg", "foreground")
+        self.assertTrue(held_fg[0].wait(1))
+        classes = [self.pool.submit(self.request, "attention", read_class) for read_class in ("background", "foreground")]
+        self.queued("background", 1)
+        self.queued("foreground", 1)
+        release.set()
+        held_fg[1].set()
+        self.assertEqual([f.result()[0] for f in classes + [first, blocker]], [200] * 4)
+        self.assertEqual(len(self.callbacks("attention")), 2)
+
+    def test_a_shared_read_is_withdrawn_only_when_every_page_has_gone(self):
+        entered, release = self.probe.hold("held")
+        first = self.pool.submit(self.request, "held", "background")
+        self.assertTrue(entered.wait(1))
+        leader = self.raw_view("attention", "background")
+        self.queued("background", 1)
+        joiner = self.pool.submit(self.request, "attention", "background")
+        self.joined(2)
+        self.reset_socket(leader)
+        release.set()
+        self.assertEqual(first.result()[0], 200)
+        self.assertEqual(joiner.result()[0], 200)
+        self.assertEqual(self.callbacks("attention"), ["attention"])
 
     def test_read_half_close_still_receives_its_response(self):
         entered, release = self.probe.hold("first")

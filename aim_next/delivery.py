@@ -158,8 +158,7 @@ class Delivery:
         """
         counts = self._unread(db, actor)
         waiting, waiting_topics = self._waiting_on_reader(db, actor)
-        group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 AND active=1",
-                           (actor,)).fetchone()
+        group = self._addressed_group(db, actor)
         rows = [] if group is None else db.execute(
             "SELECT * FROM deliveries INDEXED BY pending_group_deliveries WHERE group_id=? AND state='pending' ORDER BY seq DESC LIMIT 5",
             (group["id"],)).fetchall()
@@ -177,6 +176,23 @@ class Delivery:
                 "addressed": sum(entry[1] for entry in counts.values()),
                 "latest_addressed": items,
                 "waiting_on_me": waiting, "latest_waiting": waiting_topics}
+
+    def _addressed_group(self, db, actor):
+        return db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 AND active=1",
+                          (actor,)).fetchone()
+
+    def _addressed_after(self, db, actor):
+        """The newest delivery naming this actor that waits now, or 0.
+
+        Delivery numbers only grow, so a page that opens with this number knows
+        that a listed delivery above it arrived after the page opened. One read
+        through the pending index, whatever the history.
+        """
+        group = self._addressed_group(db, actor)
+        row = None if group is None else db.execute(
+            "SELECT seq FROM deliveries INDEXED BY pending_group_deliveries WHERE group_id=? AND state='pending' ORDER BY seq DESC LIMIT 1",
+            (group["id"],)).fetchone()
+        return row[0] if row else 0
 
     def _delivery_item(self, db, row, active=True):
         # The message's own sequence and its topic's title prefix let an inbox

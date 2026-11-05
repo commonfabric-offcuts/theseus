@@ -134,6 +134,26 @@ class AttentionCase(AgentLoopCase):
         # The outcome page still walks the reader's pending groups, but only those in its outcomes count.
         self.assertGreater(outcomes_after, outcomes_before)
 
+    def test_a_page_starts_from_the_newest_message_by_name_already_waiting(self):
+        # The page learns this number when it opens, so a delivery listed later
+        # with a larger number arrived after it opened, whatever reads failed.
+        after = lambda actor="owner": self.store.view(actor, "capabilities", {})["attention"]["after"]
+        self.assertEqual(after(), 0)
+        self.committed(self.post(body="Not by name"))
+        self.committed(self.post(body="For agent-b by name", addressees=["agent-b"]))
+        self.assertEqual(after(), 0, "only deliveries that name this reader count")
+        self.committed(self.post(body="First by name", addressees=["owner"]))
+        self.committed(self.post(body="Second by name", addressees=["owner"]))
+        latest = self.counts()[3]
+        start = after()
+        self.assertEqual(start, latest[0]["seq"])
+        self.committed(self.post(body="After the page opened", addressees=["owner"]))
+        newer = [item["message"]["body"] for item in self.counts()[3] if item["seq"] > start]
+        self.assertEqual(newer, ["After the page opened"])
+        # Once everything is read, nothing waits to start from.
+        self.committed(self.through(self.seq(self.counts()[3][0]["message_id"])))
+        self.assertEqual((self.counts()[3], after()), ([], 0))
+
     def test_attention_takes_no_arguments(self):
         refused = self.store.view("owner", "attention", {"limit": 3})
         self.assertEqual(refused["error"]["code"], "INVALID_ARGUMENT")

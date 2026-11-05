@@ -152,6 +152,61 @@ class ReadAdmission:
             self._advance(lane)
 
 
+class SharedRead:
+    def __init__(self, disconnected):
+        self.done = threading.Event()
+        self.disconnected = (disconnected,)
+        self.result = self.error = None
+
+
+class SharedReads:
+    """Identical reads waiting for their lane share one read.
+
+    The server reads for one actor, so the same view with the same arguments
+    and read class answers the same for every page that asks. When a commit is
+    announced, each open page asks for the same few views at once; sharing
+    keeps that to one waiting place per view, however many pages are open,
+    instead of one per page, which the lanes' bounded queues would refuse.
+
+    A request joins a read only while that read still waits for its lane, so
+    the answer it gets was read after it arrived. A read that has begun is
+    never joined: it may not show a commit the request was asked for. The
+    shared read is withdrawn only when every request in it has gone.
+    """
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.waiting = {}
+
+    def read(self, key, run, disconnected):
+        """run(begun, disconnected) reads, calling begun() once its lane is granted."""
+        with self.lock:
+            shared = self.waiting.get(key)
+            joined = shared is not None
+            if joined:
+                shared.disconnected += (disconnected,)
+            else:
+                shared = self.waiting[key] = SharedRead(disconnected)
+        if joined:
+            shared.done.wait()
+            if shared.error is not None:
+                raise shared.error
+            return shared.result
+
+        def begun():
+            with self.lock:
+                if self.waiting.get(key) is shared:
+                    del self.waiting[key]
+        try:
+            shared.result = run(begun, lambda: all(gone() for gone in shared.disconnected))
+            return shared.result
+        except BaseException as error:
+            shared.error = error
+            raise
+        finally:
+            begun()
+            shared.done.set()
+
+
 def _unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -385,15 +440,17 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
-    def _store_call(self, callback: Callable, command=False, lane=None):
+    def _store_call(self, callback: Callable, command=False, lane=None, begun=lambda: None,
+                    disconnected=None):
         admission = None if command else self.server.read_admission
         ticket = None
         slots = lane or (self.server.command_slots if command else self.server.read_slots)
         read_class = None if command else self._read_class()
         if admission is not None:
-            ticket = admission.acquire(read_class, self.deadline, self._read_disconnected)
+            ticket = admission.acquire(read_class, self.deadline, disconnected or self._read_disconnected)
         elif not slots.acquire(blocking=False):
             raise RequestError(503, "SERVER_BUSY", "This request lane is busy; retain its operation.")
+        begun()
         store = None
         try:
             store = self.server.store_factory()
@@ -463,7 +520,11 @@ class Handler(BaseHTTPRequestHandler):
         else:
             if set(value) != {"name", "args"} or not isinstance(value["name"], str) or not isinstance(value["args"], dict):
                 raise RequestError(400, "INVALID_VIEW", "A view name and argument object are required.")
-            result = self._store_call(lambda store: store.view(self.server.actor, value["name"], value["args"]))
+            # Canonical JSON is the key: the same view and arguments in any key order.
+            key = (self._read_class(), json.dumps(value, sort_keys=True, separators=(",", ":")))
+            result = self.server.shared_reads.read(key, lambda begun, disconnected: self._store_call(
+                lambda store: store.view(self.server.actor, value["name"], value["args"]),
+                begun=begun, disconnected=disconnected), self._read_disconnected)
         self._json_response(200, result)
 
     def _upload_framing(self):
@@ -601,6 +662,11 @@ class Handler(BaseHTTPRequestHandler):
                 raise RequestError(503, "CAPABILITIES_UNAVAILABLE", "The instance authority facts could not be confirmed.")
             result = {"instance_id": self.server.instance_id, "actor": self.server.actor,
                       "limits": capabilities["limits"], "authority": authority}
+            # Where the page's attention starts: a delivery naming the reader
+            # with a larger number arrived after the page opened.
+            attention = capabilities.get("attention")
+            if isinstance(attention, dict) and type(attention.get("after")) is int:
+                result["attention"] = {"after": attention["after"]}
             if self.server.read_admission is not None:
                 result["transport"] = {"read_admission": self.server.read_admission.capability()}
             # Offered only while the feed runs: an ended feed would only say so.
@@ -806,6 +872,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.request_timeout = 10.0
     server.read_slots = threading.BoundedSemaphore(max_reads)
     server.read_admission = ReadAdmission() if max_reads == 2 else None
+    server.shared_reads = SharedReads()
     server.command_slots = threading.BoundedSemaphore(2)
     server.read_through_slots = threading.BoundedSemaphore(1)
     server.upload_slots = threading.BoundedSemaphore(1)

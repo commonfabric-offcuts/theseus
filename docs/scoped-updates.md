@@ -96,7 +96,12 @@ background work, with bounded queues and no borrowing. A source open and its
 neighbor queries share the foreground slot. The split protects foreground reads
 from background occupancy, at the cost of serializing their own paired queries.
 An active Store callback owns its slot through close, even after its browser
-request is cancelled. Slow storage, foreground overload and browser connection
+request is cancelled. The server reads for one person, so pages that ask for the
+same view, with the same arguments and read class, while a read of it still
+waits for its lane share that read: a commit announced to many open pages takes
+one waiting place per view, not one per page. A read that has begun is never
+joined, since it may not show the commit the later request follows, and a shared
+read is withdrawn only once every page in it has gone. Slow storage, foreground overload and browser connection
 limits can still delay work. Sends retain their separate command path.
 
 The reviewed workload measured the cost of that partition with an artificial
