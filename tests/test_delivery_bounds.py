@@ -10,27 +10,32 @@ from aim_next import store as store_module
 from test_delivery import DeliveryCase
 
 
+def measured(operation):
+    """Run one operation and count the SQLite VM instructions and statements it takes."""
+    counts = {"vm_steps": 0, "statements": [], "group_query_vm_steps": 0}
+    connect = store_module._connect
+
+    def instrumented(path):
+        db, runtime = connect(path)
+        def step():
+            counts["vm_steps"] += 1
+            if counts["statements"] and counts["statements"][-1].startswith("SELECT id FROM delivery_groups"):
+                counts["group_query_vm_steps"] += 1
+            return 0
+        db.set_progress_handler(step, 1)
+        db.set_trace_callback(counts["statements"].append)
+        return db, runtime
+
+    started = time.monotonic()
+    with mock.patch.object(store_module, "_connect", instrumented):
+        result = operation()
+    counts["seconds"] = time.monotonic() - started
+    return result, counts
+
+
 class DeliveryBoundsCase(DeliveryCase):
     def measured(self, operation):
-        counts = {"vm_steps": 0, "statements": [], "group_query_vm_steps": 0}
-        connect = store_module._connect
-
-        def instrumented(path):
-            db, runtime = connect(path)
-            def step():
-                counts["vm_steps"] += 1
-                if counts["statements"] and counts["statements"][-1].startswith("SELECT id FROM delivery_groups"):
-                    counts["group_query_vm_steps"] += 1
-                return 0
-            db.set_progress_handler(step, 1)
-            db.set_trace_callback(counts["statements"].append)
-            return db, runtime
-
-        started = time.monotonic()
-        with mock.patch.object(store_module, "_connect", instrumented):
-            result = operation()
-        counts["seconds"] = time.monotonic() - started
-        return result, counts
+        return measured(operation)
 
     def seed_pending(self, count, new_groups=False):
         # Bulk fixture only: the small tests exercise actual public sends. These

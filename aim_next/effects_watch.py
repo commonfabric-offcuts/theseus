@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 import errno
 import math
 import os
@@ -16,6 +17,10 @@ O_EVTONLY = 0x00008000
 
 class WatchError(Exception):
     """A fixed refusal: never follow or silently reopen a watched database."""
+
+
+class WatchStopped(Exception):
+    """A stop signal that ended a stoppable section, such as a blocked write."""
 
 
 class NativeWatch:
@@ -38,6 +43,7 @@ class NativeWatch:
         self.stop_count = 0
         self.readers = set()
         self.processes = set()
+        self.stoppable_depth = 0
         self.companion_moved = False
         self.companion_fds = []
         self.original_signals = {}
@@ -72,6 +78,22 @@ class NativeWatch:
 
     def _stop_signal(self, number, frame):
         self.stopped = True
+        if self.stoppable_depth:
+            # A system call this interrupts (a write to a full pipe) ends
+            # with this exception instead of being resumed.
+            raise WatchStopped()
+
+    @contextmanager
+    def stoppable(self):
+        """A section, such as output that may block, that a stop signal ends with WatchStopped."""
+        self.stoppable_depth += 1
+        try:
+            # Marked first, then checked: a signal before the mark is seen here.
+            if self.stopped:
+                raise WatchStopped()
+            yield
+        finally:
+            self.stoppable_depth -= 1
 
     def watch_reader(self, fd):
         """Report this descriptor (a child's stdout) in `readable` whenever it has data or reached EOF."""

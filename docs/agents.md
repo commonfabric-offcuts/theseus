@@ -64,7 +64,12 @@ activity.
   beyond the captured authority. It needs topic access.
 - Acknowledges this actor's pending deliveries in that topic with message
   sequence from `from_seq` through `seq`, as `delivery.ack` does, each with
-  its own `delivery` change. It never touches another actor's deliveries,
+  its own `delivery` change. Its work is bounded by the pending deliveries
+  of this topic's subscription plus, for addressed deliveries, the smaller of
+  the actor's pending addressed deliveries in every topic and the messages
+  addressed to the actor in this topic's range: it walks both together and
+  stops when either ends, so neither settled history nor work waiting in
+  other topics grows it. It never touches another actor's deliveries,
   other topics, messages outside the range, or deliveries whose subscription
   was already cancelled.
 - The result is `{topic_id, seq, acknowledged}`, the count it settled, with
@@ -73,10 +78,16 @@ activity.
   read-position table, since nothing reads a position the acknowledgments do
   not already answer.
 - The browser reports what a person has seen: while the page is visible and
-  has focus, the message the Reader shows, or else the range of message cards
-  on screen (at least half of the card, or half of the viewport). Loaded
-  messages are contiguous, so that range holds only messages on screen;
-  messages above or below it, and unloaded history, stay pending. Ranges that
+  has focus and no modal other than the Reader (such as the version review)
+  covers it, the message the Reader shows, or else the range of message cards
+  on screen (at least half of the card, or half of the viewport, which a card
+  of any height covers exactly when it crosses the viewport's middle line).
+  Loaded messages form contiguous runs: a page joins the run it continues or
+  overlaps, and a Refresh's newest page that does neither starts its own. Each
+  run's on-screen range is reported separately, so a range holds only messages
+  on screen and never spans unloaded messages between runs; messages above or
+  below it, and unloaded history, stay pending. What a closed modal covered is
+  read when it closes. Ranges that
   hold only the person's own messages are not reported. A range is confirmed
   only by a recorded receipt; a failed report is sent again the next time the
   same messages are seen (a paint, focus, scrolling, the tab shown again),
@@ -103,18 +114,25 @@ output; the exit codes are those of `command`.
 - `post TOPIC [--to A,B] [--reply-to MESSAGE] (TEXT | -)`: sends a
   `message.post`.
 - `start OUTCOME --title TITLE [--with A,B] (TEXT | -)`: starts a topic
-  through `opening.save` and `opening.publish`. If the save is not confirmed,
-  stderr names the opening and its topic: once `retry` records the save,
-  `publish OPENING` starts the topic.
+  through `opening.save` and `opening.publish`. If the save is not confirmed
+  (busy, interrupted, a lost answer or an unsaved receipt), stderr names the
+  opening and its topic: once `retry` records the save, `publish OPENING`
+  starts the topic. Once the save is recorded, any failure of the publish
+  names them too, for `publish OPENING`. A plain `retry` of an
+  `opening.save` names them again.
 - `publish OPENING`: publishes one of the actor's saved openings at its
   current revision (`already published` if it was).
 - `ack DELIVERY...` and `read-through TOPIC SEQ` (from the start of the
   topic through `SEQ`).
 - `watch`: runs until SIGINT or SIGTERM, then exits 0. It arms the native
   watch on the database file and on the authority anchor, establishes a
-  checkpoint for the actor's scope, prints `watching ACTOR from change N`,
-  then waits on the watch alone (no timer) and reads the actor's changes
-  after the checkpoint on each event. It prints one flushed line per new
+  checkpoint for the actor's scope, prints a line for each delivery already
+  pending (oldest first, so a watch restarted after a gap names what arrived
+  while it was down), prints `watching ACTOR from change N`, then waits on
+  the watch alone (no timer) and reads the actor's changes after the
+  checkpoint on each event. A delivery made between the checkpoint and the
+  pending read is printed once. The `watching` line means the watch is idle
+  and waiting. It prints one flushed line per new
   delivery, `delivery "TITLE" #SEQ AUTHOR: preview  [DELIVERY in TOPIC]`
   (followed by `  (cancelled)` if its subscription was cancelled before the
   watch read it), or `delivery unavailable (CODE)  [DELIVERY]` when the
@@ -124,7 +142,10 @@ output; the exit codes are those of `command`.
   notification. A read that finds the database locked by a commit in progress
   reads again, waiting in SQLite's lock handler (SQLite offers no event for a
   released lock), until a stop signal, which ends the watch with exit 0 even
-  while the lock is held. Every read checks the binding: when a recovery
+  while the lock is held. A stop also ends a notice blocked on a monitor that
+  is not draining stdout, with exit 0; the rest of that output is dropped. A
+  refusal is never ended by a stop: it is written whole with its exit code,
+  even when the stop came first or at the same time. Every read checks the binding: when a recovery
   activation replaces the authority anchor, the watch ends with that refusal
   (`AUTHORITY_CHANGED`, exit 2, or `AUTHORITY_BUSY`, exit 75, during the
   cutover), so its monitor can rebind; `WATCH_FAILED` reports an anchor
@@ -137,7 +158,9 @@ cannot confirm (an interruption, a storage error, or output that failed after
 the receipt) names the saved operation: `retry OPERATION` returns its recorded
 outcome, or sends it once if nothing was recorded. With `--json`, the
 refusals the CLI decides itself (`BINDING_MISMATCH`, `WATCH_UNAVAILABLE`,
-`WATCH_FAILED`) are printed as one JSON result line too. Plain output shows
+`WATCH_FAILED`, and `INVALID_REQUEST` for argument text that is not UTF-8,
+which is refused before anything is saved) are printed as one JSON result
+line too. Plain output shows
 control characters in other actors' text (C0 except tab, DEL and C1) as `\xNN`
 escapes, so a body or title cannot drive the reader's terminal; `--json`
 escapes C1 controls as well as JSON's own.

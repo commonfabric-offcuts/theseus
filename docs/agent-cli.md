@@ -141,11 +141,11 @@ above; `binding`, `view` and `command` are unchanged.
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees and full body. Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
 | `post TOPIC [--to A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. |
-| `start OUTCOME --title TITLE [--with A,B] TEXT\|-` | Saves and publishes an opening. If the save is unconfirmed, names the opening to `publish` once `retry` records the save. |
+| `start OUTCOME --title TITLE [--with A,B] TEXT\|-` | Saves and publishes an opening. If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
 | `publish OPENING` | Publishes a saved opening at its current revision. |
 | `ack DELIVERY...` | Sends one `delivery.ack` per delivery. |
 | `read-through TOPIC SEQ` | Sends `topic.read_through`. |
-| `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM; ends with a refusal when the authority changes. |
+| `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM (exit 0, even while blocked writing to a reader that is not draining); ends with a refusal when the authority changes, reported with its exit code even if a stop came too. |
 | `retry OPERATION` | Re-sends a saved request unchanged. |
 
 Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
