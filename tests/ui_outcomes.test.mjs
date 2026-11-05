@@ -143,3 +143,19 @@ test('Refresh during More queues one first page rather than silently dropping Re
   release(f.answer(['b']));await Promise.all([more,refresh]);
   assert.deepEqual(f.calls,[{limit:20},{limit:20,cursor:'a'},{limit:20}]);assert.deepEqual(f.rail.pages.items.map(x=>x.id),['new']);
 });
+test('an outcome reload asked for while one is reading runs once more after it, never only joining it',async t=>{
+  const f=railFixture(t);let release;
+  f.queue.push(()=>new Promise(resolve=>release=resolve),f.answer(['a','b']));
+  const refresh=f.retry.onclick(),reload=f.rail.load(),again=f.rail.load();
+  assert.notEqual(reload,refresh);assert.equal(reload,again);
+  release(f.answer(['a']));await refresh;assert.equal(await reload,true);
+  assert.equal(f.calls.length,2);assert.deepEqual(f.rail.pages.items.map(x=>x.id),['a','b']);
+});
+test('an outcome reload keeps the outcomes loaded with More',async t=>{
+  const f=railFixture(t);f.rail.pageMax=100;
+  f.queue.push(f.answer(['a'],'a'));await f.rail.load();
+  f.queue.push(f.answer(['b'],'b'));await f.rail.load(true);
+  f.queue.push(f.answer(['a'],'a'),f.answer(['b','c'],'c'));await f.rail.load();
+  assert.deepEqual(f.calls.slice(2),[{limit:20},{limit:20,cursor:'a'}]);
+  assert.deepEqual(f.rail.pages.items.map(x=>x.id),['a','b','c']);assert.equal(f.more.hidden,false);
+});

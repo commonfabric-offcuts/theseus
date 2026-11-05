@@ -52,6 +52,8 @@ export class WorkspacePages {
     for(const item of answer.items) this.loaded.set(item.id,structuredClone(item));
     this.next=answer.next_cursor;this.started=true;return true;
   }
+  empty() { return new WorkspacePages(this.instanceId); }
+  precedes(a,b) { return afterId(b,a); }
 }
 
 // Only workspace navigation data lives here. Existing sessions own all writing.
@@ -60,8 +62,10 @@ export class TopicPages {
     Object.assign(this, { instanceId, workspaceId, current });
     this.loaded = new Map(); this.next = null; this.started = false;
   }
+  // The open topic's row shows what the page knows of it, with the counts the
+  // list read for it: the topic view itself carries no unread count.
   get items() {
-    const items = [...this.loaded.values()].map(item => item.id === this.current?.id ? this.current : item);
+    const items = [...this.loaded.values()].map(item => item.id === this.current?.id ? { ...item, ...this.current } : item);
     return !this.current || this.loaded.has(this.current.id) ? items : [this.current, ...items];
   }
   accept(answer, cursor = null) {
@@ -80,6 +84,24 @@ export class TopicPages {
     for (const item of answer.items) this.loaded.set(item.id, structuredClone(item));
     this.next = answer.next_cursor; this.started = true; return true;
   }
+  empty() { return new TopicPages(this.instanceId, this.workspaceId, this.current); }
+  precedes(a, b) { return a < b; }
+}
+
+export const PAGE = 20;
+// A reload reads again everything the reader has loaded, the pages More added
+// included: from the start, in pages as large as the view allows, until it
+// passes the last row they had. The list changes once, when all have arrived,
+// so a reload never folds the list back to its first page.
+export async function reread(pages, read, pageMax = PAGE) {
+  const fresh = pages.empty(), last = [...pages.loaded.keys()].pop() ?? null;
+  const limit = Math.min(pageMax, Math.max(PAGE, pages.loaded.size));
+  let cursor = null;
+  do {
+    fresh.accept(await read({ limit, ...(cursor === null ? {} : { cursor }) }), cursor);
+    cursor = fresh.next;
+  } while (cursor !== null && last !== null && fresh.precedes(cursor, last));
+  Object.assign(pages, { loaded: fresh.loaded, next: fresh.next, started: true });
 }
 
 export class TopicNavigation {
@@ -158,9 +180,9 @@ export class TopicNavigation {
 }
 
 export class TopicRail {
-  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null }) {
-    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader });
-    this.denied = false; this.loading = null; this.failedMore = false;
+  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE }) {
+    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax });
+    this.denied = false; this.loading = null; this.queued = null; this.failedMore = false;
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore);
     // Mobile browsers can retarget a gap tap to a nearby link. Only accept a
     // synthesized click when the raw touch ended inside that link's bounds.
@@ -197,29 +219,32 @@ export class TopicRail {
     this.host.hidden = this.denied;
     this.more.hidden = this.denied || this.pages.next === null;
   }
+  // A More asked for while a read runs shares it. A reload never joins a read
+  // already sent: it may have been asked for after a commit that read cannot
+  // show, so it runs once more after it; any number of reloads asked meanwhile
+  // make that one. Settles true when the list was read, false when it was not.
   load(more = false) {
     if (this.loading) {
-      if (!more && this.loadingMore) {
-        if (!this.refreshQueued) this.refreshQueued = this.loading.then(() => { this.refreshQueued = null; return this.load(); });
-        return this.refreshQueued;
-      }
-      return this.loading;
+      if (more) return this.loading;
+      this.queued ??= this.loading.then(() => { this.queued = null; return this.load(); });
+      return this.queued;
     }
     const cursor = more ? this.pages.next : null;
-    if (more && cursor === null) return Promise.resolve();
+    if (more && cursor === null) return Promise.resolve(true);
     const previousIds = new Set(this.pages.items.map(item => item.id));
-    this.loadingMore = more;
     // Keep busy controls focusable; repeated activation shares this read.
     this.more.setAttribute('aria-disabled', 'true'); this.retry.setAttribute('aria-disabled', 'true');
-    this.loading = this.read({ workspace_id: this.pages.workspaceId, limit: 20, ...(cursor === null ? {} : { cursor }) })
-      .then(answer => {
+    const read = args => this.read({ workspace_id: this.pages.workspaceId, ...args });
+    this.loading = (more ? read({ limit: PAGE, cursor }).then(answer => { this.pages.accept(answer, cursor); }) : reread(this.pages, read, this.pageMax))
+      .then(() => {
         const focused = document.activeElement;
-        this.pages.accept(answer, cursor); this.denied = false;
+        this.denied = false;
         this.message.hidden = true; this.retry.hidden = true; this.paint();
         if ((focused === this.more || focused === this.retry) && focused.hidden) {
           const links = [...this.host.children];
           (links.find(link => !previousIds.has(link.dataset.topicId)) ?? links.find(link => link.dataset.topicId === this.pages.current?.id) ?? links[0])?.focus();
         }
+        return true;
       }).catch(error => {
         const focused = document.activeElement;
         if (this.isDenied(error)) { this.denied = true; this.host.hidden = true; this.more.hidden = true; }
@@ -227,6 +252,7 @@ export class TopicRail {
         this.message.textContent = this.denied ? 'Workspace topics are unavailable. Retry to check access.' : error.message + ' Retry topics.';
         this.message.hidden = false; this.retry.hidden = false;
         if (focused === this.more && this.more.hidden) this.retry.focus();
+        return false;
       }).finally(() => { this.loading = null; this.more.removeAttribute('aria-disabled'); this.retry.removeAttribute('aria-disabled'); this.updated?.(); });
     return this.loading;
   }

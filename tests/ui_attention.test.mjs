@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Attention, paintSent } from '../web/attention.mjs';
 import { paintUnread } from '../web/topic-navigation.mjs';
 
-function fixture({ permission = 'granted', hidden = true, focused = false } = {}) {
+function fixture({ permission = 'granted', hidden = true, focused = false, after } = {}) {
   const shown = [], answers = [], opened = [];
   class Notice { constructor(title, options) { Object.assign(this, { title, options }); shown.push(this); } close() { this.closed = true; } }
   Notice.permission = permission;
@@ -11,10 +11,10 @@ function fixture({ permission = 'granted', hidden = true, focused = false } = {}
   const doc = { title: 'Theseus', hidden, hasFocus: () => focused };
   let reads = 0;
   const api = { view: async (name, args, options) => {
-    reads++; assert.equal(name, 'attention'); assert.deepEqual(args, {}); assert.equal(options.readClass, 'background');
+    reads++; assert.equal(name, 'attention'); assert.deepEqual(args, {}); assert.equal(options.readClass, 'foreground');
     const next = answers.shift(); if (next instanceof Error) throw next; return next;
   } };
-  const attention = new Attention({ api, instanceId: 'i1', doc, notifications: Notice, open: item => opened.push(item.topic.id), focus: () => {} });
+  const attention = new Attention({ api, instanceId: 'i1', after, doc, notifications: Notice, open: item => opened.push(item.topic.id), focus: () => {} });
   // A delivery's number follows its id: d3 arrived after d2.
   const item = (id, body, topic = 't1') => ({ id, seq: Number(id.slice(1)), message: { author_id: 'agent-a', body }, topic: { id: topic, title: 'Plans', title_truncated: false }, reasons: ['addressed'], topic_readable: true });
   const answer = (unread, latest) => ({ instance_id: 'i1', unread, addressed: latest.length, latest_addressed: latest });
@@ -64,6 +64,17 @@ test('a failed or malformed read keeps what is shown, and a later answer still a
   assert.equal(f.doc.title, '(2) Theseus');
   f.answers.push(f.answer(3, [f.item('d1', 'After the gap')])); await f.attention.refresh();
   assert.equal(f.shown.length, 1);
+});
+
+test('with the starting number from bootstrap, a failed first read never folds a later delivery into the start', async () => {
+  const f = fixture({ after: 5 });
+  f.answers.push(Error('busy')); await f.attention.refresh();
+  f.answers.push(f.answer(2, [f.item('d7', 'Arrived after the page opened'), f.item('d5', 'Already waiting'), f.item('d4', 'Older')]));
+  await f.attention.refresh();
+  assert.deepEqual(f.shown.map(n => n.options.tag), ['d7'], 'only what arrived after the page opened is announced');
+  const plain = fixture({ after: 'five' });
+  plain.answers.push(plain.answer(1, [plain.item('d7', 'Waiting')])); await plain.attention.refresh();
+  assert.deepEqual(plain.shown, [], 'without a usable starting number the first answer stands in');
 });
 
 test('overlapping refreshes share one read and ask once more after it', async () => {

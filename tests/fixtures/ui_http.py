@@ -67,9 +67,9 @@ class FreshnessControls:
             # path and its default shared2 pool. A header here is a requested hint,
             # not a claim that the old server reserves separate classes.
             class ObservedLegacyHandler(server.RequestHandlerClass):
-                def _store_call(self, callback, command=False):
+                def _store_call(self, callback, command=False, **options):
                     if command:
-                        return super()._store_call(callback, command=True)
+                        return super()._store_call(callback, command=True, **options)
                     values = self.headers.get_all("X-AIM-Read-Class", [])
                     read_class = ("foreground" if not values else values[0]
                                   if len(values) == 1 and values[0] in ("foreground", "background") else "invalid")
@@ -80,7 +80,7 @@ class FreshnessControls:
                                                             mode="legacy-observation")
                     controls.event("legacy-read-enter", None)
                     try:
-                        return super()._store_call(callback, command=False)
+                        return super()._store_call(callback, command=False, **options)
                     finally:
                         controls.event("legacy-read-exit", None)
                         controls.local.ticket = None

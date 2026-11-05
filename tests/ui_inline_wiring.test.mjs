@@ -81,10 +81,12 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const context = vm.createContext(scope);
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,readableTime}; })())', context);
+  const attentionSource = readFileSync(new URL('../web/attention.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + attentionSource + '; return {Attention,paintSent}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach}; })())', context);
-  const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread}; })())', context);
+  const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,reread,PAGE}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
   vm.runInContext('globalThis.OutcomeRail = (()=>{' + outcomeSource + '; return OutcomeRail; })()', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
@@ -95,7 +97,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
-    get() { return {registry,inline,freshness,candidates}; } };`, context);
+    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
     edit: editor => events.push(['inline-edit',editor.key]),
     needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
@@ -657,7 +659,7 @@ const removeButton = (host, id) => walk(host).find(node => node['aria-label'] ==
 // Envelopes come from the page's realm; compare them as data.
 const sentOf = (f, kind, field) => JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === kind).map(call => [call.envelope.expected[field], call.envelope.args])));
 const focusIn = (f, list) => { for (const [, name, fn] of f.events) if (name === 'focusin') fn({ target: { getAttribute: key => key === 'list' ? list : null } }); };
-const drain = async () => { for (let n = 0; n < 4; n++) await new Promise(setImmediate); };
+const drain = async () => { for (let n = 0; n < 6; n++) await new Promise(setImmediate); };
 
 test('a topic\'s manager adds and removes participants from the directory, and the composer offers the team and participants', async () => {
   const f = fixture();
@@ -943,4 +945,97 @@ test('an outcome page lists what waits on the reader, and follows each new atten
   for (const listener of live.listeners) listener({ kind: 'commit', seq: 10 });
   await settle();
   assert.equal(f.get('waiting-on-you').hidden, true, 'nothing waits, so nothing is listed');
+});
+
+// Lists that follow commits: the stream announces a commit, and each list the
+// page shows is read again after it.
+const stream = () => ({ listeners: [], listen(fn) { this.listeners.push(fn); return () => {}; }, emit(event) { for (const fn of [...this.listeners]) fn(event); } });
+const outcomesPage = (f, held) => {
+  const answers = [];
+  f.api.view = async (name, args) => {
+    f.calls.push({ name, args });
+    if (name === 'workspaces') { const next = answers.shift(); return typeof next === 'function' ? next() : next; }
+    if (name === 'workspace') return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 1 } };
+    return { instance_id: 'fixture', items: [], next_cursor: null };
+  };
+  const row = id => ({ id, owner_id: 'o', title: id, title_truncated: false, version: 1 });
+  return { answers, page: ids => ({ instance_id: 'fixture', items: ids.map(row), next_cursor: null }), reads: () => f.calls.filter(call => call.name === 'workspaces').length };
+};
+
+test('a commit while the outcomes page reads its first list is read after that read', async () => {
+  const f = fixture('https://fixture/?'), live = stream(), o = outcomesPage(f);
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  let release; o.answers.push(() => new Promise(resolve => release = resolve), o.page(['a', 'b']));
+  const started = f.initialize(); await drain();
+  assert.equal(o.reads(), 1);
+  live.emit({ kind: 'commit', seq: 6 });
+  release(o.page(['a'])); await started; await drain();
+  assert.equal(o.reads(), 2, 'the commit asked for a read after the first');
+  assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['a', 'b']);
+});
+
+test('a commit while Refresh reads the outcomes is read after it, and a failed reload is read again when the stream returns', async () => {
+  const f = fixture('https://fixture/?'), live = stream(), o = outcomesPage(f);
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  o.answers.push(o.page(['a'])); await f.initialize(); await drain();
+  let release; o.answers.push(() => new Promise(resolve => release = resolve), o.page(['a', 'b']));
+  const refresh = f.get('refresh').onclick(); await drain();
+  live.emit({ kind: 'commit', seq: 7 });
+  release(o.page(['a'])); await refresh; await drain();
+  assert.equal(o.reads(), 3);
+  assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['a', 'b']);
+  o.answers.push(() => Promise.reject(Object.assign(Error('This read could not enter its bounded lane.'), { status: 503 })));
+  live.emit({ kind: 'commit', seq: 8 }); await drain();
+  assert.equal(f.get('retry-workspaces').hidden, false);
+  live.emit({ kind: 'state', state: 'down' }); await drain();
+  assert.equal(o.reads(), 4, 'the stream going down reads nothing');
+  o.answers.push(o.page(['a', 'b', 'c']));
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(o.reads(), 5, 'the stream coming back reads the list again');
+  assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['a', 'b', 'c']);
+  assert.equal(f.get('retry-workspaces').hidden, true);
+});
+
+test('on an outcome page a commit reads the outcome rail as well as the outcome and its topics', async () => {
+  const f = fixture('https://fixture/?workspace=w1'), live = stream(), o = outcomesPage(f);
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  o.answers.push(o.page(['w1']), o.page(['w1', 'w2']));
+  await f.initialize(); await drain();
+  const count = name => f.calls.filter(call => call.name === name).length;
+  const before = { workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') };
+  live.emit({ kind: 'commit', seq: 9 }); await drain();
+  assert.deepEqual({ workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') },
+    { workspaces: before.workspaces + 1, workspace: before.workspace + 1, topics: before.topics + 1 });
+  assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['w1', 'w2']);
+  f.document.visibilityState = 'hidden';
+  live.emit({ kind: 'commit', seq: 10 }); await drain();
+  assert.equal(count('workspaces'), before.workspaces + 1, 'a hidden page waits');
+});
+
+test('the page starts its attention from the bootstrap\'s number', async () => {
+  const f = fixture('https://fixture/?'), o = outcomesPage(f);
+  o.answers.push(o.page([]));
+  f.bootstrap.attention = { after: 41 };
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  await f.initialize();
+  assert.equal(f.owners().attention.after, 41);
+});
+
+test('a Mark read that fails says so and reads attention again, leaving nothing unhandled', async () => {
+  const f = fixture('https://fixture/?'), o = outcomesPage(f), view = f.api.view;
+  o.answers.push(o.page([]));
+  const lost = { id: 'd1', seq: 3, topic_readable: false, topic: { id: 't9', title: 'Lost', title_truncated: false }, message: { author_id: 'tony', body: 'Hi' } };
+  f.api.view = async (name, args) => name === 'attention' ? (f.calls.push({ name }), { instance_id: 'fixture', unread: 1, addressed: 1, latest_addressed: [lost] }) : view(name, args);
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  await f.initialize(); await drain();
+  const nodes = host => host.children.filter(child => typeof child === 'object').flatMap(child => [child, ...nodes(child)]);
+  const mark = nodes(f.get('sent-to-you')).find(node => node.textContent === 'Mark read');
+  assert.ok(mark, 'a lost topic offers Mark read');
+  f.api.command = async () => { throw Object.assign(Error('Connection interrupted. Confirmation is unknown; your writing is kept.'), { status: 0 }); };
+  const reads = f.calls.filter(call => call.name === 'attention').length;
+  await mark.onclick();
+  assert.match(f.get('app-status').textContent, /Connection interrupted/);
+  assert.equal(f.get('app-status').hidden, false);
+  assert.equal(f.calls.filter(call => call.name === 'attention').length, reads + 1, 'what Core holds is read again');
+  assert.equal(mark.disabled, false);
 });

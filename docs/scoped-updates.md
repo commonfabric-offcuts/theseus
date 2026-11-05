@@ -61,15 +61,24 @@ While the stream is down, the page checks on the 500 ms cadence it used before,
 slowed by retries. A socket that delivered and then closed, or that ended with
 `stopped`, reconnects after a second; any other ending backs off from one to
 thirty seconds, so a broken feed is not asked in a loop. A page that becomes
-visible or comes back online reconnects at once. A server without a native
+visible or comes back online reconnects at once. A socket that went on to
+announce a commit has worked, so a later ending backs off from one second again;
+one that ends after only its first number keeps counting. A server without a native
 watch offers no stream and refuses one with `LIVE_UNAVAILABLE`, after the same
 Origin and session checks as any stream. The server holds
 at most eight streams; a ninth is refused `SERVER_BUSY` and retried with the
 same back-off.
 
-The outcome pages reload their topic and outcome lists after each commit. A
-commit that lands while a list is loading asks for one more load once it ends,
-so the list never stays behind the last commit.
+Every page reloads the topic and outcome lists it shows after each commit, and
+again when the stream comes back. A page starts following commits before its
+first read, so a commit that lands while that read is out is read after it. A
+reload asked for while a list is loading, by a commit, Refresh or Retry, never
+settles with that load: the load was sent before the ask and may not show the
+commit, so one more load runs once it ends, however many asks arrive. A reload
+reads again every row the reader has loaded, the pages **More** added included,
+in pages as large as the view allows, and changes the list once all have
+arrived. A reload whose read fails says so, keeps the rows it had and offers
+**Retry**; the next commit, the stream's return or showing the page reads again.
 
 ## When updates cannot continue
 
@@ -103,7 +112,12 @@ background work, with bounded queues and no borrowing. A source open and its
 neighbor queries share the foreground slot. The split protects foreground reads
 from background occupancy, at the cost of serializing their own paired queries.
 An active Store callback owns its slot through close, even after its browser
-request is cancelled. Slow storage, foreground overload and browser connection
+request is cancelled. The server reads for one person, so pages that ask for the
+same view, with the same arguments and read class, while a read of it still
+waits for its lane share that read: a commit announced to many open pages takes
+one waiting place per view, not one per page. A read that has begun is never
+joined, since it may not show the commit the later request follows, and a shared
+read is withdrawn only once every page in it has gone. Slow storage, foreground overload and browser connection
 limits can still delay work. Sends retain their separate command path.
 
 The reviewed workload measured the cost of that partition with an artificial

@@ -63,6 +63,9 @@ class SharedStoreHTTPTests(unittest.TestCase):
         self.assertEqual(bootstrap["actor"], "test-human")
         self.assertEqual(bootstrap["limits"], capabilities["limits"])
         self.assertEqual(bootstrap["authority"], capabilities["authority"])
+        # Where the page's attention starts, read when it opens.
+        self.assertEqual(bootstrap["attention"], {"after": capabilities["attention"]["after"]})
+        self.assertEqual(bootstrap["attention"], {"after": 0})
 
     def test_http_does_not_supply_a_missing_command_authority(self):
         command = self.workspace_command()
