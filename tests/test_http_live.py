@@ -93,6 +93,13 @@ class LiveStreamTests(unittest.TestCase):
             self.assertEqual(self.line(response), expected)
             self.assertEqual(self.line(other), expected)
 
+    def test_the_feed_never_fails_a_writer_in_its_own_process(self):
+        # The feed reads the commit number right after each write, inside the
+        # process whose store writes; these commits land back to back with it.
+        for n in range(200):
+            self.commit("Back to back %d" % n)
+        self.assertIsNone(self.server.live_feed.state()[1])
+
     def test_a_read_announces_nothing(self):
         response = self.open()
         start = self.line(response)["seq"]

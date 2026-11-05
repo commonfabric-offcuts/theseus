@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import sqlite3
 import threading
-from urllib.parse import quote
 
 from .effects_watch import NativeWatch, WatchError
 
@@ -46,9 +45,14 @@ class LiveFeed:
     def _read_seq(self):
         # A write event arrives while its writer still holds the lock; this
         # read waits for the commit to finish rather than see the old number.
-        db = sqlite3.connect("file:%s?mode=ro" % quote(str(self.db_path)), uri=True, timeout=5.0,
+        # The connection opens read-write, as the store's own do, and is kept
+        # from writing by query_only: a read-only connection inside the process
+        # that writes the database made that process's writers fail now and
+        # then with "disk I/O error" (SQLite 3.51.0).
+        db = sqlite3.connect(self.db_path.absolute().as_uri() + "?mode=rw", uri=True, timeout=5.0,
                              isolation_level=None)
         try:
+            db.execute("PRAGMA query_only=ON")
             row = db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()
         finally:
             db.close()
