@@ -620,8 +620,9 @@ test('a message sent by name opens where it can even when the page never started
 // The pickers: who may change a topic's participants or an outcome's team gets
 // a field fed by the directory, and the composer offers who can be sent to.
 const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
-// A small stand-in for Core: participation.set and workspace.member_set check
-// the revision as Core does, apply the change and advance it.
+// A small stand-in for Core: participation.set, workspace.member_set and
+// topic.update check the revision as Core does, apply the change and advance
+// it. A topic.update answers with the topic as it now stands, as Core does.
 const pickerApi = (f, { topic = {}, workspace = {} } = {}) => {
   const state = f.pickers = {
     topic: { ...f.topic, version: 3, owner_id: 'fixture-person', creator_id: 'other', ...topic },
@@ -641,9 +642,15 @@ const pickerApi = (f, { topic = {}, workspace = {} } = {}) => {
   };
   f.api.command = async envelope => {
     f.calls.push({ kind: envelope.kind, envelope });
-    const [record, field, list] = envelope.kind === 'participation.set' ? [state.topic, 'topic_revision', 'participants'] : [state.workspace, 'workspace_revision', 'members'];
+    const [record, field, list] = envelope.kind === 'participation.set' ? [state.topic, 'topic_revision', 'participants']
+      : envelope.kind === 'topic.update' ? [state.topic, 'topic_revision', null] : [state.workspace, 'workspace_revision', 'members'];
     if (envelope.expected[field] !== record.version)
       return { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'Writing changed; preserve this attempt and reconcile', current_versions: { [field]: record.version } } };
+    if (envelope.kind === 'topic.update') {
+      const { title = record.title, archived = record.archived ?? false, state: said = record.state ?? 'active', note = said === record.state ? record.state_note ?? '' : '', waiting_on = [] } = envelope.args;
+      Object.assign(record, { title, archived, state: said, state_note: note, waiting_on, state_by: 'fixture-person', state_ms: null, version: record.version + 1 });
+      return { status: 'committed', result: { topic_id: record.id, version: record.version, title, archived, state: said, note, waiting_on, state_by: 'fixture-person', state_ms: null } };
+    }
     const { actor_id, present } = envelope.args;
     state[list] = state[list].filter(row => row.actor_id !== actor_id).concat(present ? [{ actor_id, kind: 'human', enabled: true }] : []);
     record.version += 1;
@@ -912,10 +919,18 @@ test('a topic page says where it stands, sends its change at the current version
   const requests = () => f.events.filter(([kind]) => kind === 'request').length, before = requests();
   await save.onclick();
   // Envelopes come from the page's realm; compare them as data.
-  const sent = JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'topic.update').map(call => [call.envelope.target, call.envelope.expected.topic_revision, call.envelope.args])));
-  assert.deepEqual(sent, [[{ topic_id: 't1' }, 3, { state: 'review', note: '' }]]);
+  const sent = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'topic.update').map(call => [call.envelope.target, call.envelope.expected.topic_revision, call.envelope.args])));
+  assert.deepEqual(sent(), [[{ topic_id: 't1' }, 3, { state: 'review', note: '' }]]);
+  assert.deepEqual([f.pickers.topic.state, f.pickers.topic.version], ['review', 4], 'Core took the change');
+  assert.equal(find(node => node.className === 'notice')?.hidden, true, 'no refusal is shown');
+  assert.equal(find(node => node.className === 'topic-state')?.textContent, 'Ready for review', 'Core\'s answer is painted before any fresh read');
   assert.equal(requests(), before + 1, 'a committed change asks for fresh views');
-  Object.assign(f.views, { topic: { ...f.views.topic, version: 4, state: 'done', state_note: 'Shipped' }, messages: new Map() });
+  // The next change sends the version the first one made.
+  choice.value = 'waiting'; choice.onchange();
+  await save.onclick();
+  assert.deepEqual(sent()[1], [{ topic_id: 't1' }, 4, { state: 'waiting', note: '', waiting_on: [] }]);
+  assert.equal(f.pickers.topic.version, 5);
+  Object.assign(f.views, { topic: { ...f.views.topic, version: 6, state: 'done', state_note: 'Shipped' }, messages: new Map() });
   f.paintViews('topic');
   assert.equal(find(node => node.className === 'topic-state')?.textContent, 'Done', 'a fresh topic view repaints the panel');
   assert.equal(find(node => node.className === 'state-note')?.textContent, 'Shipped');

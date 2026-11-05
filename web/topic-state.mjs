@@ -40,6 +40,7 @@ const element = (tag, props = {}, ...children) => {
 const names = value => [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))];
 const known = state => STATES.includes(state) ? state : 'active';
 const CHANGED = 'This topic changed while you were choosing. What you chose is kept here: check it against the line above and save again.';
+const NOT_SENT = 'That was not sent: another change was still being saved. Press it again.';
 
 // The line under a topic's title, and a form for those who may change it:
 // participants say where it stands; the outcome's owner and the topic's
@@ -50,12 +51,15 @@ const CHANGED = 'This topic changed while you were choosing. What you chose is k
 // not touched shows the data; one they have touched keeps their value until
 // it is saved. A new state starts with an empty note and nobody waited on,
 // as in Core, unless the person typed them.
+//
+// A notice says what became of the person's last press, so it stays until
+// they press again: the fresh data a refusal asks for does not answer it.
 export class TopicStatePanel {
   // refresh asks the page for fresh topic data; it is called after every answer
   // to a change, so a refusal for a stale version is followed by the news.
   constructor({ host, reader, send, refresh = () => {} }) {
     Object.assign(this, { host, reader, send, refresh });
-    this.topic = null; this.busy = false; this.error = null; this.controls = null; this.touched = new Set();
+    this.topic = null; this.out = null; this.controls = null; this.touched = new Set();
     this.line = element('p', { className: 'state-line' });
     // One notice, kept in place, so a screen reader announces each new text.
     this.notice = element('p', { className: 'notice', hidden: true });
@@ -82,8 +86,6 @@ export class TopicStatePanel {
       if (!this.controls) this.host.insertBefore(this.build(), this.notice);
       this.manage(manager); this.follow();
     }
-    // A notice is about an attempt on the version it was made on.
-    if (this.error && topic.version > this.error.version) this.show(null);
     this.host.hidden = false;
   }
 
@@ -93,7 +95,7 @@ export class TopicStatePanel {
   }
 
   drop() {
-    this.controls?.details.remove(); this.controls = null; this.touched.clear();
+    this.controls?.details.remove(); this.controls = null; this.touched.clear(); this.show(null);
   }
 
   build() {
@@ -111,7 +113,7 @@ export class TopicStatePanel {
     details.append(element('div', { className: 'state-fields' },
       element('label', { className: 'field-label' }, 'State ', state),
       element('label', { className: 'field-label' }, 'Note ', note), waitingField, save));
-    this.controls = { details, state, note, waiting, waitingField, managed: null };
+    this.controls = { details, state, note, waiting, waitingField, save, managed: null };
     return details;
   }
 
@@ -127,7 +129,8 @@ export class TopicStatePanel {
       archive.onclick = () => this.submit({ archived: !this.topic.archived }, []);
       const row = element('div', { className: 'state-fields' }, element('label', { className: 'field-label' }, 'Title ', title), rename, archive);
       controls.details.append(row);
-      controls.managed = { row, title, archive };
+      controls.managed = { row, title, rename, archive };
+      this.mark();
     } else if (!manager && controls.managed) {
       controls.managed.row.remove(); controls.managed = null; this.touched.delete('title');
     }
@@ -148,33 +151,48 @@ export class TopicStatePanel {
     }
   }
 
-  show(error) {
-    this.error = error;
-    this.notice.textContent = error?.message ?? ''; this.notice.hidden = !error;
+  show(message) {
+    this.notice.textContent = message ?? ''; this.notice.hidden = !message;
+  }
+
+  // While a change is out, the buttons say they are unavailable. They are not
+  // disabled, so the one pressed keeps its focus.
+  mark() {
+    const { save, managed } = this.controls ?? {};
+    for (const button of [save, managed?.rename, managed?.archive]) {
+      if (!button) continue;
+      if (this.out !== null) button.setAttribute('aria-disabled', 'true'); else button.removeAttribute('aria-disabled');
+    }
   }
 
   // fields: the touched fields this change saves. Once it commits, each that
-  // still holds what was sent follows the data again.
+  // still holds what was sent follows the data again. Another change pressed
+  // while one is out is not sent, and the notice says so; the same change
+  // pressed twice is the one already on its way.
   async submit(args, fields) {
-    if (this.busy || !this.topic) return;
+    if (!this.topic) return;
+    if (this.out !== null) { if (JSON.stringify(args) !== this.out) this.show(NOT_SENT); return; }
     const topic = this.topic, field = name => name === 'title' ? this.controls?.managed?.title : this.controls?.[name];
     const sent = fields.map(name => [name, field(name)?.value]);
-    this.busy = true; this.show(null);
+    this.out = JSON.stringify(args); this.show(null); this.mark();
     let message = null;
     try {
       const receipt = await this.send(topic, args);
       if (receipt?.status === 'committed') {
         for (const [name, value] of sent) if (field(name)?.value === value) this.touched.delete(name);
         this.advance(receipt.result);
+        // Fresh data newer than this answer may already be painted; the
+        // fields this change saved follow it.
+        if (this.controls) this.follow();
       } else if (receipt?.error?.code === 'REVISION_CONFLICT') message = CHANGED;
       else message = receipt?.error?.message ?? 'The change was not confirmed. Refresh to see where the topic stands.';
     } catch (error) {
       message = error.message;
     } finally {
-      this.busy = false;
+      this.out = null; this.mark();
     }
     if (this.topic?.id !== topic.id) return;
-    if (message) this.show({ message, version: this.topic.version });
+    if (message) this.show(message);
     this.refresh();
   }
 
