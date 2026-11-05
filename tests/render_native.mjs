@@ -47,22 +47,28 @@ export const audit = `(() => {
     // whose words wrap onto a second line is still a pill, and a broken one.
     const line = (parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) +
       parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
-    if (!element.textContent.trim() || line > 48 || parseFloat(style.borderTopLeftRadius) < Math.min(box.height, line) / 2 - 1) continue;
-    const range = document.createRange(); range.selectNodeContents(element);
-    const words = range.getBoundingClientRect().width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) +
-      parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
-    // A least width keeps a short count round; beyond the pill's height it stretches it.
-    if (box.width > Math.max(words, Math.min(parseFloat(style.minWidth) || 0, box.height)) + 2) problems.push({ kind: 'wider than its words', at: where(element), width: Math.round(box.width), words: Math.round(words) });
-    const lines = new Set([...range.getClientRects()].filter(rect => rect.width > 0).map(rect => Math.round(rect.top + rect.height / 2)));
-    if ([...lines].some(middle => [...lines].some(other => Math.abs(other - middle) > 4))) problems.push({ kind: 'its words wrap inside it', at: where(element) });
+    // A topic's state is a label whether it is drawn as a pill or, on the
+    // topic's own page, as a box its words may wrap in: its colours are judged
+    // either way, and its shape only as a pill.
+    const pill = line <= 48 && parseFloat(style.borderTopLeftRadius) >= Math.min(box.height, line) / 2 - 1;
+    if (!element.textContent.trim() || !(pill || element.matches('.topic-state'))) continue;
     if (element.scrollWidth > element.clientWidth + 1 && style.overflowX !== 'visible' && style.textOverflow !== 'ellipsis') problems.push({ kind: 'its words are cut off', at: where(element) });
-    // A pill that follows words sits on their last line, not on a line alone.
-    const before = element.previousSibling;
-    if (before?.nodeType === Node.TEXT_NODE && before.textContent.trim()) {
-      const last = document.createRange(), text = before.textContent.trimEnd();
-      last.setStart(before, text.length - 1); last.setEnd(before, text.length);
-      const line = last.getBoundingClientRect(), middle = box.top + box.height / 2;
-      if (middle < line.top || middle > line.bottom) problems.push({ kind: 'alone on its line', at: where(element) });
+    if (pill) {
+      const range = document.createRange(); range.selectNodeContents(element);
+      const words = range.getBoundingClientRect().width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) +
+        parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
+      // A least width keeps a short count round; beyond the pill's height it stretches it.
+      if (box.width > Math.max(words, Math.min(parseFloat(style.minWidth) || 0, box.height)) + 2) problems.push({ kind: 'wider than its words', at: where(element), width: Math.round(box.width), words: Math.round(words) });
+      const lines = new Set([...range.getClientRects()].filter(rect => rect.width > 0).map(rect => Math.round(rect.top + rect.height / 2)));
+      if ([...lines].some(middle => [...lines].some(other => Math.abs(other - middle) > 4))) problems.push({ kind: 'its words wrap inside it', at: where(element) });
+      // A pill that follows words sits on their last line, not on a line alone.
+      const before = element.previousSibling;
+      if (before?.nodeType === Node.TEXT_NODE && before.textContent.trim()) {
+        const last = document.createRange(), text = before.textContent.trimEnd();
+        last.setStart(before, text.length - 1); last.setEnd(before, text.length);
+        const line = last.getBoundingClientRect(), middle = box.top + box.height / 2;
+        if (middle < line.top || middle > line.bottom) problems.push({ kind: 'alone on its line', at: where(element) });
+      }
     }
     // A box that hides what overflows it must not cut a pill it shows in part.
     // One that scrolls may hold it out of sight, which is not a fault.
@@ -144,15 +150,18 @@ export function judgePixels(png, { pills, width }) {
 // A state cut short still shows the reader that it waits on them, and the
 // topic's own page shows its state whole.
 const legible = `(() => {
-  const problems = [];
+  const problems = [], pen = document.createElement('canvas').getContext('2d');
   for (const mark of document.querySelectorAll('.topic-state.mine')) {
-    const text = mark.firstChild, box = mark.getBoundingClientRect();
-    if (!box.width || mark.closest('[hidden]') || text?.nodeType !== Node.TEXT_NODE) continue;
-    const at = text.data.indexOf('you'), range = document.createRange();
-    if (at < 0) { problems.push({ kind: 'a state waiting on the reader does not say so', at: text.data }); continue; }
+    const box = mark.getBoundingClientRect(), style = getComputedStyle(mark), text = mark.firstChild;
+    if (mark.closest('[hidden]') || style.display === 'none') continue;
+    if (text?.nodeType !== Node.TEXT_NODE || !text.data.startsWith('Waiting on you')) { problems.push({ kind: 'a state waiting on the reader does not lead with you', at: mark.textContent.slice(0, 40) }); continue; }
+    const range = document.createRange(), at = 'Waiting on '.length;
     range.setStart(text, at); range.setEnd(text, at + 3);
-    const you = range.getBoundingClientRect();
-    if (you.right > box.left + mark.clientLeft + mark.clientWidth + 1) problems.push({ kind: 'you is cut from a state', at: text.data.slice(0, 40) });
+    // Letters stop where the content ends, less the ellipsis drawn when cut.
+    pen.font = style.font;
+    const end = box.left + mark.clientLeft + mark.clientWidth - parseFloat(style.paddingRight) -
+      (mark.scrollWidth > mark.clientWidth + 1 ? pen.measureText('\u2026').width : 0);
+    if (range.getBoundingClientRect().right > end + 0.5) problems.push({ kind: 'you is cut from a state', at: text.data.slice(0, 40) });
   }
   for (const mark of document.querySelectorAll('#topic-state .topic-state')) {
     if (mark.scrollWidth > mark.clientWidth + 1) problems.push({ kind: 'the topic page cuts its own state short', at: mark.textContent.slice(0, 40) });
@@ -190,7 +199,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     const topicRows = ['#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#topics [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
     for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine'))`],
       // A plain state on the row shaded as the current topic.
-      ['done', origin + '/?topic=render-crowd-2', ['#topics [aria-current=page]'], `Boolean(document.querySelector('#topics [aria-current=page] .topic-state[data-state=done]'))`],
+      ['done', origin + '/?topic=render-crowd-2', ['#topics [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#topics [aria-current=page] .topic-state[data-state=done]'))`],
       ['outcomes', origin + '/', ['#workspaces [data-workspace-id="w1"]'], `Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`]]) {
       for (const scheme of ['light', 'dark']) {
         for (const [layout, metrics] of [['laptop', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false }], ['phone', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }]]) {
@@ -204,6 +213,8 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           for (const row of [null, ...rows]) {
             let box = null;
             const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, hovered: row.matches(':hover') }; })()`;
+            // At rest the pointer is off the page's content.
+            if (row === null) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
             if (row !== null) assert.ok(await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); row?.scrollIntoView({ block: 'center', inline: 'center' }); return Boolean(row); })()`), `${row} is drawn on the ${route} page`);
             const state = `${route}-${scheme}-${layout}-${row === null ? 'rest' : 'hover-' + row.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
             // The page may still be settling, as a count changes while it reads
@@ -228,7 +239,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
               // stands where it stood, so a page still laying out is taken again.
               if (JSON.stringify((await p.evaluate(audit)).pills) !== JSON.stringify(answer.pills)) return false;
               return { answer, image };
-            }, `${state}: ${row} stays under the pointer through its screenshot`, 30000);
+            }, `${state}: ${row === null ? 'the page' : row + ' under the pointer'} and every pill stay put through a screenshot`, 30000);
             // The row under the pointer is in view, so the sweep judges its pills.
             if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left - 1 && pill.top >= box.top - 1 && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
             writeFileSync(join(shots, state + '.png'), image);
