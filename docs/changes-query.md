@@ -61,8 +61,11 @@ and workspace Notebook items. Actor keys are private drafts, notes,
 submissions, media, openings, participation, deliveries, workspace membership
 (`workspace`, keyed by the workspace, when the actor is added or removed) and
 `waiting` (keyed by the topic, at its new version, when a topic starts or
-stops waiting on the actor, including when they lose the topic). A `waiting`
-key does not say which; the `attention` view or the topic does. A send changes
+stops waiting on the actor, including when they lose the topic), and `mark`
+(keyed by the message, at its new mark revision, when the actor marks a
+message unread or clears that mark; odd means marked). A `waiting`
+key does not say which; the `attention` view or the topic does. A mark writes
+no topic or workspace key. A send changes
 the topic version; it does not emit a separate message change row. An actor's private draft or preparation emits no
 topic/workspace key. Consumers invalidate affected lists/items and compare their
 existing `relevant_versions`; they retain the current message/Notebook revision,

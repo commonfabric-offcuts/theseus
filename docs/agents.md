@@ -85,6 +85,9 @@ activity.
   acknowledgments and by this recorded receipt; there is no separate
   read-position table, since nothing reads a position the acknowledgments do
   not already answer.
+- It settles deliveries only. A message the actor marked unread
+  (`message.mark`, [attention.md](attention.md)) stays marked and counted;
+  `delivery.ack` leaves a mark as well.
 - The browser reports what a person has seen: while the page is visible and
   has focus and no modal other than the Reader (such as the version review)
   covers it, the message the Reader shows, or else the range of message cards
