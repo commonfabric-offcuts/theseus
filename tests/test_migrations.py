@@ -156,11 +156,16 @@ class MigrationCase(fixtures.StoreCase):
         out, err = io.StringIO(), io.StringIO()
         self.assertEqual(cli.main(["--profile", str(self.profile), "binding"], stdout=out, stderr=err), 2)
         self.assertIn("run code that reads version 99", json.loads(out.getvalue())["error"]["message"])
-        # An agent's own commands carry the same advice.
+        # An agent's own commands carry the same advice, as text and as JSON.
         for verb in ("outcomes", "inbox"):
             out, err = io.StringIO(), io.StringIO()
             self.assertEqual(cli.main(["--profile", str(self.profile), verb], stdout=out, stderr=err), 2)
             self.assertIn("run code that reads version 99", out.getvalue() + err.getvalue())
+            out, err = io.StringIO(), io.StringIO()
+            self.assertEqual(cli.main(["--profile", str(self.profile), "--json", verb], stdout=out, stderr=err), 2)
+            error = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()][-1]["error"]
+            self.assertEqual(error["code"], "SCHEMA_MISMATCH")
+            self.assertIn("run code that reads version 99", error["message"])
         # Following migrate anyway, from this code, moves nothing.
         with self.assertRaises(MigrationError) as refused:
             migrate(self.path, "test-instance", self.binding)
@@ -169,7 +174,8 @@ class MigrationCase(fixtures.StoreCase):
 
     def test_a_missing_or_malformed_version_is_unsupported_not_newer(self):
         self.upgrade()
-        for value in (None, "-1", "", " 99", "099", "9.5", "1" * 10, b"99"):
+        # Not ASCII digits, padded, fractional, ten digits, binary.
+        for value in (None, "-1", "", " 99", "099", "9.5", "1" * 10, b"99", "\u0669\u0669", "\uff19\uff19", "\u00b2"):
             with self.subTest(value=value):
                 if value is None:
                     self.sql("DELETE FROM metadata WHERE key='schema_version'")
@@ -184,11 +190,75 @@ class MigrationCase(fixtures.StoreCase):
                 self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
                 self.assertNotIn("run code that reads", str(raised.exception))
                 self.assertNotIn("aim-next-admin migrate", str(raised.exception))
-        # An older version this code cannot upgrade is damage too, not newer code.
-        self.sql("UPDATE metadata SET value='1' WHERE key='schema_version'")
+        # An older version this code cannot upgrade is damage too, not newer
+        # code; "7" sorts above "10" as text, so the comparison is numeric.
+        for value in ("1", "7"):
+            with self.subTest(value=value):
+                self.sql("UPDATE metadata SET value='%s' WHERE key='schema_version'" % value)
+                with self.assertRaises(store_module.StoreOpenError) as raised:
+                    Store(self.path, "test-instance", expected_binding=self.binding)
+                self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
+        # Nine digits is the longest version read as newer code.
+        self.sql("UPDATE metadata SET value='999999999' WHERE key='schema_version'")
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertIn("run code that reads version 999999999", str(raised.exception))
+
+    def test_damaged_commit_identity_is_unsupported_at_any_version_and_migrate_never_moves_it(self):
+        # At an upgradable version: no migrate advice, and migrate refuses
+        # rather than restart the sequence.
+        self.sql("UPDATE metadata SET value='garbage' WHERE key='commit_seq'")
+        before = self.unchanged()
         with self.assertRaises(store_module.StoreOpenError) as raised:
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
+        self.assertNotIn("aim-next-admin migrate", str(raised.exception))
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding)
+        self.assertEqual(refused.exception.code, "SCHEMA_UNSUPPORTED")
+        self.assertEqual(self.unchanged(), before)
+        # At this code's own version too: migrate refuses rather than report nothing to do.
+        self.sql("UPDATE metadata SET value='5' WHERE key='commit_seq'")
+        self.upgrade()
+        self.sql("UPDATE metadata SET value='garbage' WHERE key='commit_seq'")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding)
+        self.assertEqual(refused.exception.code, "SCHEMA_UNSUPPORTED")
+        self.assertEqual(self.unchanged(), before)
+        # A damaged commit_id alone is damage as well, and migrate never replaces it.
+        self.sql("UPDATE metadata SET value='5' WHERE key='commit_seq'")
+        self.sql("UPDATE metadata SET value='garbage' WHERE key='commit_id'")
+        self.sql("UPDATE metadata SET value='8' WHERE key='schema_version'")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding)
+        self.assertEqual(refused.exception.code, "SCHEMA_UNSUPPORTED")
+        self.assertEqual(self.unchanged(), before)
+
+    def test_one_database_gets_one_remedy_from_the_store_and_from_migrate(self):
+        newer = str(int(SCHEMA_VERSION) + 1)
+        def remedies():
+            with self.assertRaises(store_module.StoreOpenError) as opened:
+                Store(self.path, "test-instance", expected_binding=self.binding)
+            with self.assertRaises(MigrationError) as moved:
+                migrate(self.path, "test-instance", self.binding)
+            return str(opened.exception), moved.exception.code, str(moved.exception)
+        # A database this code is too old for is told so first, even when its
+        # identity is laid out in a way this code does not know.
+        self.sql("UPDATE metadata SET value=? WHERE key='schema_version'", (newer,))
+        self.sql("DELETE FROM metadata WHERE key='commit_id'")
+        self.sql("UPDATE metadata SET value='e2' WHERE key='authority_epoch'")
+        opened, code, moved = remedies()
+        self.assertIn("run code that reads version %s" % newer, opened)
+        self.assertEqual(code, "SCHEMA_UNSUPPORTED")
+        self.assertIn("run code that reads version %s" % newer, moved)
+        # Damage comes before a changed binding in both: recovery cannot carry it either.
+        self.sql("UPDATE metadata SET value='8' WHERE key='schema_version'")
+        opened, code, moved = remedies()
+        self.assertIn("unsupported; no automatic migration was attempted", opened)
+        self.assertEqual(code, "SCHEMA_UNSUPPORTED")
+        self.assertIn("commit identity is damaged", moved)
 
     def test_upgrade_keeps_every_record_and_fences_old_versions(self):
         before, metadata = self.records(), self.metadata()
@@ -442,6 +512,46 @@ class MigrationCase(fixtures.StoreCase):
 
 
 HOSTED_THREAD = "12345678-1234-4234-8234-123456789abc"
+
+
+class CommitIdentityCase(fixtures.StoreCase):
+    """The commit identity a store accepts is exactly the one it writes."""
+
+    def refused(self, statement, params=()):
+        self.sql(statement, params)
+        with self.assertRaises(StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
+        self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
+
+    def test_each_damaged_form_is_refused(self):
+        cases = {
+            "padded past nineteen digits": ("UPDATE metadata SET value=? WHERE key='commit_seq'", ("0" * 20 + "5",)),
+            "at SQLite's largest integer": ("UPDATE metadata SET value='9223372036854775807' WHERE key='commit_seq'", ()),
+            "a commit_id one character too long": ("UPDATE metadata SET value=value||'a' WHERE key='commit_id'", ()),
+            "a commit_seq stored as bytes": ("UPDATE metadata SET value=x'35' WHERE key='commit_seq'", ()),
+            "a missing commit_seq": ("DELETE FROM metadata WHERE key='commit_seq'", ()),
+        }
+        for name, (statement, params) in cases.items():
+            with self.subTest(name):
+                saved = self.sql("SELECT key,value FROM metadata WHERE key IN ('commit_seq','commit_id')")
+                self.refused(statement, params)
+                self.sql("DELETE FROM metadata WHERE key IN ('commit_seq','commit_id')")
+                for key, value in saved:
+                    self.sql("INSERT INTO metadata VALUES (?,?)", (key, value))
+                Store(self.path, "test-instance", expected_binding=self.binding)
+
+    def test_the_sequence_stops_where_the_store_would_stop_accepting_it(self):
+        self.sql("UPDATE metadata SET value='9223372036854775805' WHERE key='commit_seq'")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.workspace()["status"], "committed")
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='commit_seq'"), [("9223372036854775806",)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        with self.assertRaises(StoreError):
+            self.command("workspace.create", {"id": "w2", "title": "One more", "purpose": "", "team": []})
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='commit_seq'"), [("9223372036854775806",)])
+        self.assertEqual(self.sql("SELECT count(*) FROM workspaces WHERE id='w2'"), [(0,)])
+        Store(self.path, "test-instance", expected_binding=self.binding)
 
 
 class Schema9Case(MigrationCase):
