@@ -404,4 +404,30 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  // Last, because it adds to the outcome's Notebook, which every later topic
+  // page would list.
+  await check('live the outcome Notebook is listed atop a topic, opens whole in the Reader, and follows a revision', async () => {
+    const p = await page('live-outcome-references', null, true);
+    await settled(p);
+    const rows = () => p.evaluate("[...document.querySelectorAll('#outcome-references-list .reference')].map(row => row.textContent)");
+    assert.equal(await p.evaluate("document.querySelector('#outcome-references').hidden"), true, 'an outcome with no Notebook shows nothing');
+    await control({ method: 'outcome_reference', operation_id: 'live-outcome-reference', item_id: 'live-outcome-reference',
+      title: 'Architecture', body: 'The outcome passage every topic stands on.' });
+    await until(() => p.evaluate("!document.querySelector('#outcome-references').hidden"), 'the outcome Notebook appears without a reload');
+    assert.equal(await p.evaluate("document.querySelector('#outcome-references').open"), false, 'it starts closed');
+    assert.equal(await p.evaluate("document.querySelector('#outcome-references-count').textContent"), '1');
+    await p.point('#outcome-references summary');
+    assert.deepEqual(await rows(), ['Architecture']);
+    await p.point('#outcome-references-list .reference');
+    await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('The outcome passage every topic stands on.')"), 'the Reader shows the item whole');
+    await control({ method: 'memory_revise', operation_id: 'live-outcome-reference-revise', item_id: 'live-outcome-reference',
+      expected_revision: 1, title: 'Architecture, revised', body: 'The revised outcome passage.' });
+    await until(async () => JSON.stringify(await rows()) === JSON.stringify(['Architecture, revised']), 'the row shows the revision');
+    await until(() => p.evaluate("!document.querySelector('#revision-offer').hidden && document.querySelector('#open-revision').textContent === 'Open revision 2'"), 'the Reader offers the revision');
+    await p.point('#open-revision');
+    await until(() => p.evaluate("document.querySelector('#source-body').textContent.includes('The revised outcome passage.')"), 'the revision opens');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }

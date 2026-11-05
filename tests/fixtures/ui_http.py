@@ -452,6 +452,19 @@ def main():
                         revision = store().view(agent, "topic", {"topic_id": topic_id})["topic"]["version"]
                         command("participation.set", prefix + "-remove", {"actor_id": actor, "present": False},
                                 {"topic_id": topic_id}, {"topic_revision": revision}, sender=agent)
+                    elif freshness and request["method"] == "outcome_reference":
+                        # An agent on the outcome's team writes to the outcome's
+                        # own Notebook, which every topic in it stands on.
+                        agent = "fixture-notebook-agent"
+                        members = store().view(actor, "workspace_members", {"workspace_id": "w1"})["items"]
+                        if agent not in [member["actor_id"] for member in members]:
+                            version = store().view(actor, "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+                            command("workspace.member_set", request["operation_id"] + "-member", {"actor_id": agent, "present": True},
+                                    {"workspace_id": "w1"}, {"workspace_revision": version})
+                        answer = command("memory.create", request["operation_id"], {
+                            "title": request["title"], "body": request["body"], "attachments": [], "references": []},
+                            {"item_id": request["item_id"], "owner_scope": {"kind": "workspace", "id": "w1"}},
+                            {"item_revision": 0}, sender=agent)
                     elif freshness and request["method"] == "memory_revise":
                         answer = command("memory.revise", request["operation_id"], {
                             "title": request["title"], "body": request["body"], "attachments": [], "references": []},

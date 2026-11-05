@@ -9,6 +9,7 @@ import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './
 import { TopicViews } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
+import { OutcomeReferences } from './outcome-references.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
 import { OpeningDraft } from './opening.mjs';
 import { OpeningView, UnfinishedOpenings } from './opening-view.mjs';
@@ -34,7 +35,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null;
+let topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
@@ -554,7 +555,7 @@ async function refreshLists() {
   if (authorityReviewPending()) {
     status('The runtime changed. Review your saved writing before reloading this page.'); return;
   }
-  await outcomeRail?.load(); await topicRail?.load();
+  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load();
   if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
   if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
   await listPage('messages'); await listPage('memory');
@@ -898,9 +899,22 @@ async function initialize() {
     open: id => openDestination({kind:'topic',id},topicRail.pages.items.find(item => item.id === id)?.title ?? id),
   });
   topicRail.load();
+  outcomeReferences = new OutcomeReferences({ host: $('outcome-references'), count: $('outcome-references-count'),
+    list: $('outcome-references-list'), more: $('more-references'), message: $('outcome-references-status'), pageMax: pageMax(),
+    denied: error => readFailure(error).kind === 'forbidden',
+    read: async args => {
+      if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
+      const answer = checkedView(await registry.cleanup.list(options => api.view('memory_items', { owner_scope: { kind: 'workspace', id: topic.workspace_id }, ...args }, options)), bootstrap.instance_id);
+      if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
+      return answer;
+    },
+    open: (ref, row) => run(() => openSource(ref, row)),
+    seen: items => { for (const item of items) views.revisions.observe(item.id, item.revision); reader.paintOffer(); },
+  });
+  outcomeReferences.load();
   followCommits(async () => {
-    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load();
-    return outcomes !== false && topics !== false;
+    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load();
+    return outcomes !== false && topics !== false && references !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);
