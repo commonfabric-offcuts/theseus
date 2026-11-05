@@ -489,6 +489,39 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     assert.equal(puts.at(-1).bytes, 14);
   });
 
+  await check('images Remove moves focus to Add image only while the person has not moved it', async () => {
+    const p = await page('remove-focus', null, true); await p.open(1);
+    await replace(p, 'Writing kept through Remove');
+    const choose = async () => {
+      const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
+      const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'reply chooser');
+      await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
+      await until(() => p.evaluate('document.querySelector("#writing-attachments .image-choice span")?.textContent === "screen.png · Ready" && [...document.querySelectorAll("#writing-attachments button")].some(b=>b.textContent==="Remove"&&!b.disabled)'), 'ready image with Remove');
+      await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.imageRemove=""');
+    };
+    // Another tab of this person holds the recovery store, so Remove's strict
+    // write finishes only after the person has clicked back into the writing.
+    await choose();
+    const holder = await page('remove-focus-holder');
+    await holder.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors','readwrite',{durability:'strict'}),s=t.objectStore('editors');window.release=false;const keep=()=>{if(!window.release)s.get('remove-focus-hold').onsuccess=keep};keep();t.oncomplete=()=>{d.close();window.released=true};resolve()}})`);
+    await p.point('[data-image-remove]');
+    assert.equal(await p.evaluate('Boolean(document.querySelector("[data-image-remove]")?.isConnected)'), true, 'Remove is still writing behind the held store');
+    await p.point('#writing-body');
+    await holder.evaluate('window.release=true');
+    await until(() => holder.evaluate('window.released===true'), 'held store released');
+    await until(() => p.evaluate('!document.querySelector("#writing-attachments").textContent.includes("screen.png")'), 'Remove finished');
+    await p.evaluate('new Promise(resolve=>setTimeout(resolve,0))');
+    assert.equal(await p.evaluate('document.activeElement.id'), 'writing-body', 'a finished Remove leaves focus where the person put it');
+    await replace(p, 'Typed after a late Remove');
+    // Untouched, focus leaves the removed button for Add image.
+    await choose(); await p.point('[data-image-remove]');
+    await until(() => p.evaluate('!document.querySelector("#writing-attachments").textContent.includes("screen.png")'), 'second Remove finished');
+    await until(() => p.evaluate('document.activeElement.id === "add-image"'), 'focus on Add image after an untouched Remove');
+    assert.equal(await field(p), 'Typed after a late Remove');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+    assert.deepEqual(p.errors, []);
+  });
+
   await check('images Notebook held Remove explicit download and recorded refusal cards', async () => {
     const p = await page('images-notebook', null, true);
     const notebook = '#memory-items [data-id="fixture-notebook"]';

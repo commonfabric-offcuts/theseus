@@ -417,12 +417,14 @@ export class Reader {
       const action = (label, act) => {
         const b = node('button', label); b.type = 'button';
         b.disabled = !active;
-        b.onclick = async () => { if (!this.admits(editor, presentation)) return; b.disabled = true; try { await act(); } catch (error) { if (this.admits(editor, presentation)) this.notice(error.message); } finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); } };
+        b.onclick = async () => { if (!this.admits(editor, presentation)) return; b.disabled = true; try { await act(b); } catch (error) { if (this.admits(editor, presentation)) this.notice(error.message); } finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); } };
         row.append(b);
       };
-      for (const item of e.actions) action(item.label, async () => {
+      for (const item of e.actions) action(item.label, async b => {
         await uploads[item.method](e.id);
-        if (item.method === 'remove' && this.admits(editor, presentation)) this.$('add-image').focus();
+        // Remove takes its own button away; focus lands on Add image only if it
+        // was still there. Where the person has since put it, it stays.
+        if (item.method === 'remove' && this.admits(editor, presentation) && [null, document.body, b].includes(document.activeElement)) this.$('add-image').focus();
       });
     }
   }
