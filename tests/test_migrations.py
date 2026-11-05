@@ -135,11 +135,16 @@ class MigrationCase(fixtures.StoreCase):
         out, err = io.StringIO(), io.StringIO()
         self.assertEqual(cli.main(["--profile", str(self.profile), "binding"], stdout=out, stderr=err), 2)
         self.assertIn("run code that reads version 99", json.loads(out.getvalue())["error"]["message"])
-        # An agent's own commands carry the same advice.
+        # An agent's own commands carry the same advice, as text and as JSON.
         for verb in ("outcomes", "inbox"):
             out, err = io.StringIO(), io.StringIO()
             self.assertEqual(cli.main(["--profile", str(self.profile), verb], stdout=out, stderr=err), 2)
             self.assertIn("run code that reads version 99", out.getvalue() + err.getvalue())
+            out, err = io.StringIO(), io.StringIO()
+            self.assertEqual(cli.main(["--profile", str(self.profile), "--json", verb], stdout=out, stderr=err), 2)
+            error = [json.loads(line) for line in out.getvalue().splitlines() if line.strip()][-1]["error"]
+            self.assertEqual(error["code"], "SCHEMA_MISMATCH")
+            self.assertIn("run code that reads version 99", error["message"])
         # Following migrate anyway, from this code, moves nothing.
         with self.assertRaises(MigrationError) as refused:
             migrate(self.path, "test-instance", self.binding)
@@ -148,7 +153,8 @@ class MigrationCase(fixtures.StoreCase):
 
     def test_a_missing_or_malformed_version_is_unsupported_not_newer(self):
         self.upgrade()
-        for value in (None, "-1", "", " 99", "099", "9.5", "1" * 10, b"99"):
+        # Not ASCII digits, padded, fractional, ten digits, binary.
+        for value in (None, "-1", "", " 99", "099", "9.5", "1" * 10, b"99", "\u0669\u0669", "\uff19\uff19", "\u00b2"):
             with self.subTest(value=value):
                 if value is None:
                     self.sql("DELETE FROM metadata WHERE key='schema_version'")
@@ -163,11 +169,42 @@ class MigrationCase(fixtures.StoreCase):
                 self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
                 self.assertNotIn("run code that reads", str(raised.exception))
                 self.assertNotIn("aim-next-admin migrate", str(raised.exception))
-        # An older version this code cannot upgrade is damage too, not newer code.
-        self.sql("UPDATE metadata SET value='1' WHERE key='schema_version'")
+        # An older version this code cannot upgrade is damage too, not newer
+        # code; "7" sorts above "10" as text, so the comparison is numeric.
+        for value in ("1", "7"):
+            with self.subTest(value=value):
+                self.sql("UPDATE metadata SET value='%s' WHERE key='schema_version'" % value)
+                with self.assertRaises(store_module.StoreOpenError) as raised:
+                    Store(self.path, "test-instance", expected_binding=self.binding)
+                self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
+        # Nine digits is the longest version read as newer code.
+        self.sql("UPDATE metadata SET value='999999999' WHERE key='schema_version'")
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertIn("run code that reads version 999999999", str(raised.exception))
+
+    def test_damaged_commit_identity_is_unsupported_at_any_version_and_migrate_never_moves_it(self):
+        # At an upgradable version: no migrate advice, and migrate refuses
+        # rather than restart the sequence.
+        self.sql("UPDATE metadata SET value='garbage' WHERE key='commit_seq'")
+        before = self.unchanged()
         with self.assertRaises(store_module.StoreOpenError) as raised:
             Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
+        self.assertNotIn("aim-next-admin migrate", str(raised.exception))
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding)
+        self.assertEqual(refused.exception.code, "SCHEMA_UNSUPPORTED")
+        self.assertEqual(self.unchanged(), before)
+        # At a newer version: no advice to run newer code either.
+        self.sql("UPDATE metadata SET value='5' WHERE key='commit_seq'")
+        self.upgrade()
+        self.sql("UPDATE metadata SET value='11' WHERE key='schema_version'")
+        self.sql("DELETE FROM metadata WHERE key='commit_id'")
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
+        self.assertNotIn("run code that reads", str(raised.exception))
 
     def test_upgrade_keeps_every_record_and_fences_old_versions(self):
         before, metadata = self.records(), self.metadata()

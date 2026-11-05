@@ -60,7 +60,7 @@ def migrate(db_path, instance_id, binding, target=None):
 
     A step back runs only while the newer version holds no records the older
     one cannot keep; the commit sequence still advances, never rewinds."""
-    from .store import SCHEMA_VERSION, Store, _connect
+    from .store import SCHEMA_VERSION, Store, _connect, commit_identity_intact
     _identifier(instance_id, "instance_id")
     target = SCHEMA_VERSION if target is None else target
     authority = Authority(Path(db_path).resolve(), instance_id, binding)
@@ -75,11 +75,14 @@ def migrate(db_path, instance_id, binding, target=None):
         db.execute("BEGIN IMMEDIATE")
         guard.verify()
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN "
-                                   "('instance_id','schema_version','authority_id','authority_path','authority_epoch')"))
+                                   "('instance_id','schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
         if metadata.get("instance_id") != instance_id:
             raise MigrationError("INSTANCE_MISMATCH", "The selected instance does not match")
         if any(metadata.get(key) != value for key, value in authority.binding.items()):
             raise MigrationError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
+        # Advancing a damaged sequence would rewind it; such a database moves nowhere.
+        if not commit_identity_intact(metadata):
+            raise MigrationError("SCHEMA_UNSUPPORTED", "The stored commit identity is damaged; nothing was changed")
         stored = metadata.get("schema_version")
         result = {"instance_id": instance_id, "from_version": stored, "schema_version": target}
         if stored == target:

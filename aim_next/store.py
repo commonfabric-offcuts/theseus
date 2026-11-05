@@ -27,6 +27,15 @@ from .changes import Changes
 SCHEMA_VERSION = "10"
 
 
+def commit_identity_intact(metadata):
+    """Whether commit_seq and commit_id in this metadata are ones a store wrote."""
+    sequence, commit_id = metadata.get("commit_seq"), metadata.get("commit_id")
+    return (isinstance(sequence, str) and sequence.isascii() and sequence.isdigit()
+            and len(sequence) <= 19 and int(sequence) < 9223372036854775807
+            and isinstance(commit_id, str) and len(commit_id) == 32
+            and all(c in "0123456789abcdef" for c in commit_id))
+
+
 SCHEMA = [
     "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
     "CREATE TABLE actors (id TEXT PRIMARY KEY, kind TEXT NOT NULL, name TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1)",
@@ -193,9 +202,11 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         if row is None or row[0] != self.instance_id:
             raise Refusal("INSTANCE_MISMATCH", "The selected instance does not match")
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
-        sequence = metadata.get("commit_seq", "")
-        commit_id = metadata.get("commit_id", "")
         stored = metadata.get("schema_version")
+        # Damaged commit identity is damage at any version: no version advice,
+        # since migrate would carry the damage forward.
+        if not commit_identity_intact(metadata):
+            raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
         if stored != SCHEMA_VERSION:
             from .migrations import upgradable
             # Migrate is the remedy only when this code can move the database
@@ -208,10 +219,6 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                     and len(stored) <= 9 and int(stored) > int(SCHEMA_VERSION)):
                 raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s, which this code (version %s) cannot "
                               "read or migrate; run code that reads version %s. Nothing was changed" % (stored, SCHEMA_VERSION, stored))
-            raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
-        if (not sequence.isascii() or not sequence.isdigit()
-                or len(sequence) > 19 or int(sequence) >= 9223372036854775807
-                or len(commit_id) != 32 or any(c not in "0123456789abcdef" for c in commit_id)):
             raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
         if any(metadata.get(key) != value for key, value in self.binding.items()):
             raise AuthorityError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
