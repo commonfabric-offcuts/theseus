@@ -34,7 +34,7 @@ class NativeWatch:
     Event/identity failure leaves the descriptor open for that ordering.
     """
 
-    def __init__(self, path, companions=()):
+    def __init__(self, path, companions=(), signals=True):
         self.path = Path(path)
         self.fd = None
         self.queue = None
@@ -51,7 +51,9 @@ class NativeWatch:
         try:
             if sys.platform != 'darwin' or not hasattr(select, 'kqueue') or not self.path.is_absolute():
                 raise WatchError('watch_unavailable')
-            for number in (signal.SIGINT, signal.SIGTERM):
+            # A watch off the main thread (the server's live feed) cannot take
+            # signals; its owner stops it through a watched descriptor instead.
+            for number in (signal.SIGINT, signal.SIGTERM) if signals else ():
                 original = signal.getsignal(number)
                 signal.signal(number, self._stop_signal)
                 self.original_signals[number] = original

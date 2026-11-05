@@ -23,7 +23,8 @@ def server_for_profile(profile_path, port, web_root=None, *, tailnet_origin=None
         raise ProfileError("The instance/actor binding could not be confirmed")
     return create_server(profile.store, profile.instance_id, profile.actor_id, web_root,
                          port=port, max_json_bytes=capabilities["limits"]["http_envelope_bytes"],
-                         tailnet_origin=tailnet_origin)
+                         tailnet_origin=tailnet_origin,
+                         live=(profile.db_path, (profile.authority_path,)))
 
 
 def main(argv=None):

@@ -16,6 +16,7 @@ import { openOpeningStore } from './opening-store.mjs';
 import { OutcomeCreation } from './creation.mjs';
 import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
+import { Live, liveOffered } from './live.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -25,7 +26,7 @@ const node = (tag, text, className) => {
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
 const status = message => { $('app-status').textContent = message; $('app-status').hidden = !message; };
 const run = action => { try { return Promise.resolve(action()).catch(error => { status(error.message); return null; }); } catch (error) { status(error.message); return Promise.resolve(null); } };
-let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState;
+let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null;
 let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
@@ -700,7 +701,7 @@ function enableFreshness(checkpoint) {
   if (!checkpoint) { updateStatus({ kind: 'manual', message: 'Automatic updates need the updated server. Use Refresh.' }); return; }
   freshness = new Freshness({ api, bootstrap, topicId: topic.id, checkpoint,
     read: operation => registry.cleanup.read(operation), binding: () => ({ ...bootstrap, authority: registry.runtime.current }),
-    keys: item => views.keys(item), refreshKeys: () => views.refreshKeys(), status: updateStatus,
+    keys: item => views.keys(item), refreshKeys: () => views.refreshKeys(), status: updateStatus, live,
     authorityLost: (binding, failure) => registry.parkAuthority(binding, failure.code), denied: checkAvailability,
     rebuild: async (_read, current) => { if (current()) for (const item of views.refreshKeys()) freshness.invalidate(item.key, item.version, true); },
     refresh: async (key, version, read, current) => {
@@ -715,6 +716,11 @@ function enableFreshness(checkpoint) {
       $('previous-message').disabled = !result.previous; $('next-message').disabled = !result.next; return true;
     } });
   registry.cleanup.foregroundListeners.add(() => freshness.interrupt());
+  // Each new commit asks for a pass; while the stream is down the timer resumes.
+  live?.listen(event => {
+    if (event.kind === 'commit' || event.state === 'live') freshness.request();
+    else if (event.state === 'down' || event.state === 'unavailable') freshness.schedule(freshness.delay ?? 500);
+  });
   document.addEventListener('visibilitychange', () => freshness.setVisible(document.visibilityState === 'visible'));
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); });
   freshness.setVisible(document.visibilityState === 'visible');
@@ -729,6 +735,12 @@ async function initialize() {
   if (!token || token === '__AIM_SESSION_TOKEN__') throw Error('This page needs a session from the Theseus server.');
   api = new Api(token); bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  if (liveOffered(bootstrap) && !live) {
+    live = new Live({ token });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') live.wake(); });
+    window.addEventListener('online', () => live.wake());
+    live.start();
+  }
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
   const route = parseRoute(new URL(location.href));
   if (route.kind !== 'topic') {
@@ -883,6 +895,7 @@ async function initializeOutcomePage(route) {
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
     await initializeOutcomeNavigation();
     $('refresh').onclick=()=>run(()=>outcomeRail.load());
+    live?.listen(event=>{if(event.kind==='commit')run(()=>outcomeRail.load());});
   } else {
     $('outcome-page').append($('topic-navigation'));
     await initializeOutcomeNavigation(route.id);
@@ -914,6 +927,7 @@ async function initializeOutcomePage(route) {
       await topicRail.load();
     };
     $('refresh').onclick=()=>run(refresh);await refresh();
+    live?.listen(event=>{if(event.kind==='commit')run(()=>topicRail?.load());});
   }
   document.body.dataset.ready='true';
 }

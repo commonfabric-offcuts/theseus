@@ -5,6 +5,7 @@ import html
 import io
 import json
 import mimetypes
+import os
 import secrets
 import re
 import select
@@ -18,6 +19,8 @@ from urllib.parse import quote, unquote, urlsplit
 
 from .authority import AuthorityError
 from .contract import LIMITS, Refusal
+from .effects_watch import WatchError
+from .live import LiveFeed
 from .media import INLINE_TYPES
 
 
@@ -194,6 +197,7 @@ class UploadInput:
 
 
 class AIMHTTPServer(ThreadingHTTPServer):
+    live_feed = None
     daemon_threads = False
     block_on_close = True
     allow_reuse_address = True
@@ -224,6 +228,12 @@ class AIMHTTPServer(ThreadingHTTPServer):
         finally:
             self.connection_slots.release()
 
+    def server_close(self):
+        # Live streams end before their threads are joined.
+        if self.live_feed is not None:
+            self.live_feed.stop()
+        super().server_close()
+
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
@@ -245,10 +255,18 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def _send(self, status: int, body: bytes, content_type: str):
+        self._headers(status, content_type, len(body))
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def _headers(self, status: int, content_type: str, length=None):
         self.close_connection = True
         self.send_response(status)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
+        if length is not None:
+            self.send_header("Content-Length", str(length))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
@@ -258,10 +276,6 @@ class Handler(BaseHTTPRequestHandler):
                          "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
                          "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
         self.end_headers()
-        try:
-            self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError):
-            pass
 
     def _json_response(self, status: int, value: Any):
         body = json.dumps(value, ensure_ascii=False, allow_nan=False,
@@ -586,7 +600,13 @@ class Handler(BaseHTTPRequestHandler):
                       "limits": capabilities["limits"], "authority": authority}
             if self.server.read_admission is not None:
                 result["transport"] = {"read_admission": self.server.read_admission.capability()}
+            if self.server.live_feed is not None:
+                result.setdefault("transport", {})["live"] = {"version": 1, "path": "/api/live"}
             self._json_response(200, result)
+            return
+        if path == "/api/live":
+            self._authorize()
+            self._live()
             return
         if path in ("/api/command", "/api/view", "/api/media/upload", "/api/media/read"):
             raise RequestError(405, "METHOD_REFUSED", "Use POST with the shared API contract.")
@@ -607,6 +627,50 @@ class Handler(BaseHTTPRequestHandler):
         if candidate.name == "index.html":
             body = body.replace(b"__AIM_SESSION_TOKEN__", html.escape(self.server.session_token, quote=True).encode())
         self._send(200, body, mimetypes.guess_type(str(candidate))[0] or "application/octet-stream")
+
+    def _live(self):
+        """One line of JSON per new commit number, until the feed ends or the client leaves.
+
+        The first line is the current number. A last line {"end": reason} says
+        the feed stopped; a client treats a closed stream the same way, reads
+        the views it shows, and reconnects. Writes never block: at most one
+        line is in flight, a later number replaces one not yet started, and
+        a client that is not reading when the feed ends is simply closed.
+        """
+        feed = self.server.live_feed
+        if feed is None:
+            raise RequestError(503, "LIVE_UNAVAILABLE", "This instance has no live updates; read the views instead.")
+        stream = feed.subscribe()
+        if stream is None:
+            raise RequestError(503, "SERVER_BUSY", "Every live stream slot is taken.")
+        try:
+            self._headers(200, "application/x-ndjson; charset=utf-8")
+            self.wfile.flush()
+            self.binary_headers_started = True
+            self.connection.setblocking(False)
+            sent, pending = None, b""
+            while True:
+                seq, ended = feed.state()
+                if not pending and seq != sent:
+                    pending, sent = b'{"seq":%d}\n' % seq, seq
+                if ended:
+                    pending += json.dumps({"end": ended}, separators=(",", ":")).encode("ascii") + b"\n"
+                if pending:
+                    try:
+                        pending = pending[self.connection.send(pending):]
+                    except BlockingIOError:
+                        pass
+                if ended:
+                    return
+                readable, _, _ = select.select([self.connection, stream], [self.connection] if pending else [], [])
+                if self.connection in readable:
+                    # The client sends nothing after its request: anything
+                    # readable is its close, a reset, or bytes it should not send.
+                    return
+                if stream in readable:
+                    os.read(stream, 4096)
+        finally:
+            feed.unsubscribe(stream)
 
     def do_OPTIONS(self):
         self._error(405, "METHOD_REFUSED", "Cross-origin API access is not enabled.")
@@ -630,7 +694,8 @@ def tailnet_authority(origin):
 
 
 def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.1", port=0,
-                  token=None, max_json_bytes=2 * 1024 * 1024, max_reads=2, tailnet_origin=None):
+                  token=None, max_json_bytes=2 * 1024 * 1024, max_reads=2, tailnet_origin=None,
+                  live=None):
     external_authority = tailnet_authority(tailnet_origin)
     if host != "127.0.0.1":
         raise ValueError("The first instance binds explicit IPv4 loopback only")
@@ -659,4 +724,11 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.tailnet_origin = tailnet_origin
     if external_authority is not None:
         server.origins_by_authority[external_authority] = tailnet_origin
+    if live is not None:
+        # live is (database path, companion paths). Without a native watch the
+        # instance still serves; the browser reads on its own schedule.
+        try:
+            server.live_feed = LiveFeed(*live)
+        except WatchError:
+            server.live_feed = None
     return server

@@ -331,7 +331,12 @@ def main():
                     {"item_id": "fixture-notebook", "owner_scope": {"kind": "topic", "id": "t1"}}, {"item_revision": 0}, sender="fixture-notebook-agent")
         max_reads = 1 if "--legacy-read-admission" in sys.argv else 2
         server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web",
-                               max_reads=max_reads)
+                               max_reads=max_reads,
+                               live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
+        if "--live" in sys.argv:
+            assert server.live_feed is not None, "The live fixture needs the native watch"
+        else:
+            assert server.live_feed is None
         if "--baseline-read-admission" in sys.argv:
             assert "--legacy-read-admission" not in sys.argv, "Baseline uses default shared2, never single-slot legacy"
             assert getattr(server, "read_admission", None) is None, "Baseline flag requires the actual old server"
