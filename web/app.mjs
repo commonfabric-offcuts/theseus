@@ -441,11 +441,13 @@ async function openSource(ref, opener) {
   finally { if (request === opening) { views.retain(views.currentItem, null); reader.paintOffer(); } }
 }
 // A repaint leaves in place what the person is at: the inline writing, a
-// control on the page they are working in, or else the first card in view.
+// field on the page they are typing in, or else the first card in view. A
+// button keeps no place: More would hold itself still and scroll past what
+// it loaded.
 function keepListAnchor(paint) {
-  const at = document.activeElement, main = $('main');
+  const at = document.activeElement;
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
-  const anchor = writing ? inline.field : at !== main && main.contains(at) && inView(at) ? at
+  const anchor = writing ? inline.field : $('main').contains(at) && at.matches('input, textarea, select') && inView(at) ? at
     : [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(card => card.getBoundingClientRect().bottom > 0);
   const top = anchor?.getBoundingClientRect().top;
   paint();

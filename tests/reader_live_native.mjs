@@ -175,8 +175,8 @@ export async function liveChecks({ check, page, until, control, observations, or
   });
 
   // What holds still when a message lands above it: the first card in view,
-  // unless a control on the page has focus and is on the screen.
-  await check('live a message arriving leaves the card being read in place, and a focused control scrolled away holds nothing', async () => {
+  // unless the caret is in a field on the page that is on the screen.
+  await check('live a message arriving leaves the card being read in place, and a field scrolled away holds nothing', async () => {
     const p = await page('live-anchor', null, true);
     await settled(p);
     const card = "[...document.querySelectorAll('#messages .message-card')].find(card => card.getBoundingClientRect().bottom > 0)";
@@ -193,12 +193,45 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.ok(before, 'a card is in view');
     await arrive('Arrives while a card is read');
     await stays(before, 'the card being read stays where it was');
-    await p.evaluate("(() => { document.querySelector('#topic-state summary').focus(); document.querySelector('#messages .message-card:last-child').scrollIntoView({block:'center'}); })()");
-    assert.equal(await p.evaluate("document.querySelector('#topic-state summary').getBoundingClientRect().bottom <= 0 && document.activeElement === document.querySelector('#topic-state summary')"), true,
-      'the focused control is above the screen');
+    await p.evaluate("(() => { document.querySelector('#topic-state details').open = true; document.querySelector('#topic-state-note').focus(); document.querySelector('#messages .message-card:last-child').scrollIntoView({block:'center'}); })()");
+    assert.equal(await p.evaluate("document.querySelector('#topic-state-note').getBoundingClientRect().bottom <= 0 && document.activeElement === document.querySelector('#topic-state-note')"), true,
+      'the field with the caret is above the screen');
     const away = await reading();
     await arrive('Arrives while focus is scrolled away');
-    await stays(away, 'the card in view stays where it was, not the focused control out of view');
+    await stays(away, 'the card in view stays where it was, not the field out of view');
+
+    // The browser's own scroll anchoring must not hold the page by the rail:
+    // with a rail row and a card both in view, the rail growing moves no card.
+    await p.evaluate(`(() => { document.activeElement.blur(); const rows = document.querySelectorAll('.rail a.nav-item');
+      const last = rows[rows.length - 1].getBoundingClientRect(); scrollBy(0, last.bottom - 150); })()`);
+    assert.equal(await p.evaluate(`(() => { const rows = document.querySelectorAll('.rail a.nav-item'), b = rows[rows.length - 1].getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; })()`), true,
+      'a rail row is in view');
+    const railing = await reading();
+    assert.ok(railing && railing[1] < 900, 'a card is in view beside it');
+    await p.evaluate(`(() => { const grown = document.createElement('div'); grown.style.height = '100px'; grown.id = 'fixture-rail-growth';
+      document.querySelector('.rail').prepend(grown); return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))); })()`);
+    await stays(railing, 'the rail growing moves no card');
+    await p.evaluate("document.querySelector('#fixture-rail-growth').remove()");
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // Older messages that More loads appear where its button was, so the person
+  // reads on from where they asked; the button's focus holds nothing still.
+  await check('live More messages shows the older messages where its button was', async () => {
+    await control({ method: 'seed', messages: 45 });
+    const p = await page('live-more', null, true);
+    await settled(p);
+    await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), 'More is offered');
+    const count = await p.evaluate("document.querySelectorAll('#messages .message-card').length");
+    await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
+    const button = await p.evaluate("Math.round(document.querySelector('#more-messages').getBoundingClientRect().top)");
+    await p.point('#more-messages');
+    assert.equal(await p.evaluate("document.activeElement.id"), 'more-messages', 'the press focuses the button');
+    await until(() => p.evaluate(`document.querySelectorAll('#messages .message-card').length > ${count}`), 'older messages are loaded');
+    await settled(p);
+    const first = await p.evaluate(`Math.round(document.querySelectorAll('#messages .message-card')[${count}].getBoundingClientRect().top)`);
+    assert.ok(Math.abs(first - button) <= 1, `the first older message is where the button was: ${JSON.stringify({ button, first })}`);
     assert.deepEqual(p.errors, []);
     await p.close();
   });
