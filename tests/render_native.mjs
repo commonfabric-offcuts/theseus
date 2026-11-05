@@ -228,6 +228,9 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           // Every row named here carries its count, and its state where it has
           // one. Topics left by earlier checks may sort before these, past the
           // rail's first page: the person asks for more until every row is drawn.
+          // Bringing More into view scrolls the page, so where the page stood on
+          // arrival is kept for the captures at rest.
+          const arrived = await p.evaluate('[scrollX, scrollY]');
           await until(async () => {
             if (await p.evaluate(ready)) return true;
             if (await p.evaluate(`(more => Boolean(more && !more.hidden && more.getAttribute('aria-disabled') !== 'true') && (more.scrollIntoView({ block: 'center', inline: 'center' }), true))(document.querySelector('#more-topics'))`)) await p.point('#more-topics');
@@ -236,10 +239,10 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           for (const row of [null, ...rows]) {
             let box = null;
             const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, hovered: row.matches(':hover') }; })()`;
-            // At rest the pointer is off the page's content, and the topic's own
-            // state is in view, wherever asking the rail for more scrolled it.
+            // At rest the page stands where it opened, and the pointer is off
+            // its content.
+            if (row === null) await p.evaluate(`scrollTo(${arrived[0]}, ${arrived[1]})`);
             if (row === null) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
-            if (row === null) await p.evaluate("document.querySelector('#topic-state')?.scrollIntoView({ block: 'nearest' })");
             if (row !== null) assert.ok(await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); row?.scrollIntoView({ block: 'center', inline: 'center' }); return Boolean(row); })()`), `${row} is drawn on the ${route} page`);
             const state = `${route}-${scheme}-${layout}-${row === null ? 'rest' : 'hover-' + row.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
             // The page may still be settling, as a count changes while it reads
