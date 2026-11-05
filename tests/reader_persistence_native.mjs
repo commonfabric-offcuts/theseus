@@ -341,6 +341,8 @@ try {
     const locked = await b.evaluate('j.candidates(editor.key)');
     assert.equal(locked.items[0].availability, 'open-in-another-tab');
     assert.equal(Object.hasOwn(locked.items[0], 'snapshot'), false, 'a live writer must not disclose adoptable attempts');
+    assert.deepEqual(await b.evaluate(`j.current(editor.key,[${JSON.stringify(locked.items[0].id)}])`), locked.items,
+      'reading a candidate by ID lists a live writer\'s copy exactly as a page does');
     const refusal = await b.evaluate('(async()=>{try{await j.adopt(editor.key,{id:' + JSON.stringify(JSON.stringify([await a.evaluate('editor.key'), id])) + ',stamp:(await j.candidates(editor.key)).items[0].stamp});return null}catch(e){return e.message}})()');
     assert.match(refusal, /another tab/i);
   });
@@ -382,6 +384,30 @@ try {
     assert.equal(candidates.items.length, 1); assert.equal(candidates.items[0].writerId, idB);
     assert.deepEqual(candidates.items[0].snapshot, original.snapshot);
     assert.equal((await c.evaluate('j.history(editor.key)')).items.length, 1);
+  });
+
+  await check('candidates read by ID are listed exactly as a page lists them, and only while a page would list them', async () => {
+    const a = await page('current');
+    await a.evaluate('j.save(snapshot)');
+    await a.evaluate(`(async()=>{
+      const scope=JSON.stringify([context.instanceId,context.actor]);
+      for(let n=0;n<3;n++){const writerId='past-'+n;await putRow({id:JSON.stringify([editor.key,writerId]),editorKey:editor.key,writerId,scope,active:1,stamp:'stamp-'+n,snapshot})}
+      await putRow({id:JSON.stringify([editor.key,'inactive']),editorKey:editor.key,writerId:'inactive',scope,active:0,stamp:'inactive-stamp',snapshot});
+      await putRow({id:JSON.stringify([editor.key,'foreign']),editorKey:editor.key,writerId:'foreign',scope:JSON.stringify([context.instanceId,'another-person']),stamp:'foreign-stamp',active:1,snapshot:{...snapshot,context:{...context,actor:'another-person'}}});
+      await putRow({id:JSON.stringify([editor.key,'unreadable']),editorKey:editor.key,writerId:'unreadable',scope,active:1,stamp:'unreadable-stamp',snapshot:{format:99}});
+    })()`);
+    const listed = (await a.evaluate('j.candidates(editor.key,{limit:20})')).items;
+    const id = writer => JSON.stringify([JSON.parse(listed[0].id)[0], writer]);
+    const asked = [id('past-2'), id('missing'), id('inactive'), id('foreign'), await a.evaluate('j.id(editor.key)'), id('unreadable'), id('past-0')];
+    const byId = new Map(listed.map(row => [row.id, row]));
+    assert.deepEqual(await a.evaluate(`j.current(editor.key,${JSON.stringify(asked)})`), asked.filter(row => byId.has(row)).map(row => byId.get(row)),
+      'the listed IDs come back as the page lists them, in the order asked; missing, inactive, foreign and own rows do not');
+    assert.ok(byId.has(id('unreadable')), 'an unreadable copy is still listed, so it can still hold the reply');
+    const chosen = byId.get(id('past-1'));
+    await a.evaluate('(async()=>{const row=await j.own(editor.key);await j.removeExact(editor.key,row.stamp)})()');
+    await a.evaluate(`j.adopt(editor.key,${JSON.stringify({ id: chosen.id, stamp: chosen.stamp })})`);
+    assert.deepEqual(await a.evaluate(`j.current(editor.key,${JSON.stringify([chosen.id])})`), [], 'an adopted (superseded) copy is no longer a candidate');
+    assert.deepEqual(await a.evaluate('j.current(editor.key,[])'), []);
   });
 
   await check('stale cleanup and foreign cleanup cannot remove a row', async () => {

@@ -131,6 +131,23 @@ test('a recheck after Remove saved image selections keeps the changed copy, not 
   assert.equal(editor.recoveryDiscovery, false, 'the removed selection does not come back');
 });
 
+test('image changes wait for the editor\'s cleanup task, so a recheck never lands between a change and its effect', async t => {
+  const f = await fixture(t);
+  const r1 = f.other('old-writer', 's1');
+  const editor = await f.register();
+  let release, changes = 0;
+  const held = new Promise(resolve => { release = resolve; });
+  f.registry.cleanup.enqueue(editor.key, () => held);
+  const change = f.backend.changeCandidateImages;
+  f.backend.changeCandidateImages = (...args) => { changes++; return change(...args); };
+  const changing = f.registry.changeCandidateImages(editor, editor.imageCopies.get(r1.id), { kind: 'remove' });
+  await tick();
+  assert.equal(changes, 0, 'the change waits behind the running cleanup task');
+  release(); await changing;
+  assert.equal(changes, 1);
+  assert.equal(editor.imageCopies.get(r1.id).stamp, 's1-removed');
+});
+
 test('a deferred copy that another tab retired is dropped from the image copies, lifting its barrier', async t => {
   const f = await fixture(t);
   const r1 = f.other('old-writer', 's1');

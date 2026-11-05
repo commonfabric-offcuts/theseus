@@ -82,8 +82,9 @@ export class RecoveryCleanup {
     if (rowId === undefined) entry.own = false; else entry.ids.delete(rowId);
     if (!entry.own && !entry.ids.size) this.waiting.delete(key);
   }
+  // A recheck of a stopped cleanup does nothing, so only foreground reads hold this.
   resume() {
-    if (this.foregroundCount || this.stopped()) return;
+    if (this.foregroundCount) return;
     for (const [key, entry] of [...this.waiting]) {
       if (entry.session.registered?.() === false) { this.waiting.delete(key); continue; }
       if (!entry.ready || this.queues.has(key)) continue;

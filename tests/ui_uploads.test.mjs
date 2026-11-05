@@ -403,7 +403,10 @@ test('a recheck replaces only its rows among saved image copies and keeps what o
   const stale = { ...f.editor, imageCopies: new Map(f.editor.imageCopies) };
   assert.equal(f.registry.applyRecheck(stale, [locked.id], { items: [] }), null);
   assert.deepEqual([...stale.imageCopies.keys()], ['u2', 'r2'], 'an editor the registry does not hold is left as it is');
+  const validate = f.u.validateRetained.bind(f.u); let validations = 0;
+  f.u.validateRetained = () => { validations++; return validate(); };
   await f.registry.applyRecheck(f.editor, [locked.id], { items: [] });
+  assert.equal(validations, 1, 'retained images are validated again after a recheck');
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2']);
   await f.registry.applyRecheck(f.editor, [kept.id], { items: [kept] });
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2'], 'a rechecked row that is still retained stays');
