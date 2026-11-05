@@ -344,6 +344,7 @@ class EffectsRunnerCase(unittest.TestCase):
                 mock.patch.object(api,'NativeWatch',side_effect=AssertionError('early watch')):
             result=self.foreground()
         self.assertEqual(result['status'],'startup_failed')
+        self.assertEqual((result['code'],result['reason']),('STARTUP_REFUSED','invalid_broker_config'))
         self.assertFalse(result['pause_saved'])
         self.assertEqual(self.sql('SELECT state FROM runner_state'),[('idle',)])
 
@@ -1217,6 +1218,9 @@ finally:db.close()
             result=self.foreground()
         self.assertEqual(result['status'],'startup_failed')
         self.assertEqual(result['code'],'STARTUP_REFUSED')
+        # The reason is the wrapper's fixed code; the exception text never reaches the output.
+        self.assertEqual(result['reason'],'STORE_OPEN_UNCONFIRMED')
+        self.assertNotIn('fixture storage-stage failure',str(result))
         self.assertEqual(watch.call_count,0)
         self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(0,)])
 

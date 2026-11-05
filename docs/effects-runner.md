@@ -62,7 +62,8 @@ process entry, not an embeddable recovery mechanism.
 
 Output consists of fixed JSON events for ownership, contention entry/recovery,
 settlements, pause failure and exit. It excludes message bodies, route paths,
-tokens and raw exception text. Exit 0 means a graceful stop; 75 means idle
+tokens and raw exception text. A `startup_failed` status carries `reason`, the
+refusing error's own fixed code (such as `invalid_executable`), or `null`. Exit 0 means a graceful stop; 75 means idle
 lease loss; 2 means a refusal or pause requiring inspection. A stored pause
 survives restart. Explicit `--resume-version INTEGER` uses the observed pause
 version with a fresh guard; there is no automatic resume. Service installation
