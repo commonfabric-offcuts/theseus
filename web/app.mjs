@@ -362,14 +362,19 @@ function discover(presentation, editor) {
     .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
 }
 // Rows a foreground read deferred were checked again: what the page lists for
-// exactly those rows is replaced, and every other listed copy stays.
+// exactly those rows is replaced, a copy that moved is added, and every other
+// listed copy stays.
 // It runs inside the cleanup task that rechecked them, so no discovery or
 // image change lands between the recheck and this patch.
 function rechecked(session, ids, page) {
   const editor = session.editor, validated = registry.applyRecheck(editor, ids, page);
   if (!validated) return;
   const known = candidates.get(editor.key), kept = new Map(page.items.map(row => [row.id, row]));
-  if (known) candidates.set(editor.key, { ...known, items: known.items.flatMap(row => !ids.includes(row.id) ? [row] : kept.has(row.id) ? [kept.get(row.id)] : []) });
+  if (known) {
+    const items = known.items.flatMap(row => kept.has(row.id) ? [kept.get(row.id)] : ids.includes(row.id) ? [] : [row]);
+    const listed = new Set(items.map(row => row.id));
+    candidates.set(editor.key, { ...known, items: [...items, ...page.items.filter(row => !listed.has(row.id))] });
+  }
   changed(editor);
   validated.catch(error => {
     const presentation = presentationFor(editor);

@@ -181,13 +181,14 @@ test('a recheck replaces only the rechecked rows the page lists, at once, and on
   const {candidates}=f.owners(),row=id=>({id,stamp:id});
   candidates.set(f.editor.key,{items:[row('a'),row('r2'),row('u2'),row('r3')],nextCursor:'c3'});
   // The patch lands inside the listener call, before the image validation that follows it settles.
-  listeners[0]({editor:f.editor},['r2','r3'],{items:[{...row('r3'),stamp:'released'}],nextCursor:null});
-  assert.deepEqual(applied,[['inline',['r2','r3'],['r3']]]);
-  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('u2'),{...row('r3'),stamp:'released'}],nextCursor:'c3'},
-    'retired rows leave, rechecked rows are replaced, and other rows and the next page stay');
+  // r2 moved to m2 when another tab recovered it.
+  listeners[0]({editor:f.editor},['r2','r3'],{items:[{...row('r3'),stamp:'released'},row('m2')],nextCursor:null});
+  assert.deepEqual(applied,[['inline',['r2','r3'],['r3','m2']]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('u2'),{...row('r3'),stamp:'released'},row('m2')],nextCursor:'c3'},
+    'retired rows leave, rechecked rows are replaced, a moved copy is added, and other rows and the next page stay');
   holds=false;
   listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
-  assert.equal(candidates.get(f.editor.key).items.length,3,'an editor the registry no longer holds is left as it is');
+  assert.equal(candidates.get(f.editor.key).items.length,4,'an editor the registry no longer holds is left as it is');
 });
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;

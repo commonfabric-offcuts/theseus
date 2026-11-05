@@ -406,8 +406,18 @@ try {
     const chosen = byId.get(id('past-1'));
     await a.evaluate('(async()=>{const row=await j.own(editor.key);await j.removeExact(editor.key,row.stamp)})()');
     await a.evaluate(`j.adopt(editor.key,${JSON.stringify({ id: chosen.id, stamp: chosen.stamp })})`);
-    assert.deepEqual(await a.evaluate(`j.current(editor.key,${JSON.stringify([chosen.id])})`), [], 'an adopted (superseded) copy is no longer a candidate');
+    assert.deepEqual(await a.evaluate(`j.current(editor.key,${JSON.stringify([chosen.id])})`), [], 'a copy this document adopted is no longer a candidate');
     assert.deepEqual(await a.evaluate('j.current(editor.key,[])'), []);
+    // Probes of one closed writer at once, and an ID asked twice, all read it as closed.
+    const closed = byId.get(id('past-2'));
+    assert.deepEqual(await a.evaluate(`Promise.all([j.current(editor.key,${JSON.stringify([closed.id, closed.id])}),j.current(editor.key,${JSON.stringify([closed.id])})])`),
+      [[closed], [closed]], 'no probe sees another as the writer\'s holder');
+    // Another tab recovers past-0: by its old ID the copy is listed where it moved.
+    const b = await page('current'), moving = byId.get(id('past-0'));
+    const moved = await b.evaluate(`j.adopt(editor.key,${JSON.stringify({ id: moving.id, stamp: moving.stamp })})`);
+    const now = (await a.evaluate('j.candidates(editor.key,{limit:20})')).items.find(row => row.id === moved.id);
+    assert.equal(now.availability, 'open-in-another-tab');
+    assert.deepEqual(await a.evaluate(`j.current(editor.key,${JSON.stringify([moving.id])})`), [now], 'a copy another tab recovered is listed where it moved');
   });
 
   await check('stale cleanup and foreign cleanup cannot remove a row', async () => {

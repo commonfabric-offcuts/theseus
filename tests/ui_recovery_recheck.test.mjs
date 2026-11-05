@@ -22,7 +22,18 @@ function backendFor(rows) {
     put: async row => { rows.set(row.id, copy(row)); },
     get: async id => copy(rows.get(id)),
     forEditor: async key => ({ items: [...rows.values()].filter(r => r.editorKey === key && listedNow(r)).map(r => ({ ...copy(r), availability: 'available' })), nextCursor: backend.next ?? null }),
-    currentCandidates: async (key, ids) => ids.map(id => rows.get(id)).filter(r => r?.editorKey === key && listedNow(r)).map(r => ({ ...copy(r), availability: 'available' })),
+    currentCandidates: async (key, ids) => {
+      const found = [], seen = new Set();
+      const read = id => {
+        if (seen.has(id)) return;
+        seen.add(id);
+        const r = rows.get(id);
+        if (r?.editorKey === key && r.active === 0 && r.superseded_by) read(JSON.stringify([key, r.superseded_by]));
+        else if (r?.editorKey === key && listedNow(r)) found.push({ ...copy(r), availability: 'available' });
+      };
+      for (const id of ids) read(id);
+      return found;
+    },
     history: async () => ({ items: [], nextCursor: null }),
     capture: async (row, bytes) => { rows.set(bytes.id, copy(bytes)); rows.set(row.id, copy(row)); },
     readBytes: async (_editorId, id) => copy(rows.get(id)),
@@ -88,11 +99,15 @@ async function fixture(t) {
   const realBootstrap = api.bootstrap.bind(api), server = { busy: false };
   api.bootstrap = async (...args) => server.busy ? { error: { code: 'SERVER_BUSY', message: 'busy' } } : realBootstrap(...args);
   // The app's listener: rechecked rows patch the editor the registry holds.
-  const applied = [];
-  registry.cleanup.resumeListeners.add((session, ids, page) => { const validated = registry.applyRecheck(session.editor, ids, page); applied.push({ ids, items: page.items.map(r => [r.id, r.stamp]), held: Boolean(validated) }); });
-  const register = async () => { const e = await registry.register(editor.context, remote); registry.current.editors.reply = e; return e; };
-  const settle = async key => { await tick(); await registry.cleanup.idle(key); await tick(); };
-  return { api, rows, backend, journal, registry, other, register, server, applied, settle };
+  const applied = [], settling = [];
+  registry.cleanup.resumeListeners.add((session, ids, page) => {
+    const validated = registry.applyRecheck(session.editor, ids, page);
+    applied.push({ ids, items: page.items.map(r => [r.id, r.stamp]), held: Boolean(validated) });
+    if (validated) settling.push(validated);
+  });
+  const register = async (draft = remote) => { const e = await registry.register(editor.context, draft); registry.current.editors.reply = e; return e; };
+  const settle = async key => { await tick(); await registry.cleanup.idle(key); await Promise.all(settling); await tick(); };
+  return { api, rows, backend, journal, registry, other, register, server, applied, settle, sourceRef: editor.sourceRef };
 }
 
 test('a copy the replaced editor deferred and that was since adopted is not written into the new editor', async t => {
@@ -175,4 +190,47 @@ test('a recheck keeps the continuation page and its barrier', async t => {
   assert.equal(editor.imageCopies.has(r1.id), false);
   assert.equal(editor.imageCopiesNext, 'page-two');
   assert.equal(editor.recoveryDiscovery, true, 'the unread page still holds the reply');
+});
+
+test('a deferred copy another tab recovered is followed to where it moved, so it still holds the reply', async t => {
+  const f = await fixture(t);
+  const r1 = f.other('old-writer', 's1');
+  f.server.busy = true;
+  const editor = await f.register();
+  assert.equal(editor.recoveryDiscovery, true);
+  // Tab Y recovers r1: the writing moves under Y's own ID and r1 becomes history.
+  const moved = { ...copy(r1), id: JSON.stringify([editor.key, 'tab-y']), writerId: 'tab-y', stamp: 'y1' };
+  f.rows.set(moved.id, moved);
+  f.rows.set(r1.id, { ...copy(r1), stamp: 'h1', active: 0, superseded_by: 'tab-y' });
+  f.server.busy = false;
+  f.registry.cleanup.foreground().release(); await f.settle(editor.key);
+  assert.deepEqual(f.applied.map(a => a.items), [[[moved.id, 'y1']]]);
+  assert.deepEqual([...editor.imageCopies.keys()], [moved.id]);
+  assert.equal(editor.recoveryDiscovery, true, 'the moved copy holds the reply as a fresh discovery would');
+});
+
+test('a recheck that finds a refusal reads the server draft again, so a refusal at a later revision holds the reply', async t => {
+  const f = await fixture(t);
+  const r1 = f.other('old-writer', 's1', false);
+  f.server.busy = true;
+  // The reply's server draft, as another device saved it.
+  const before = { id: 'reply-draft', generation: 'reply-generation', revision: 1, source_ref: copy(f.sourceRef), topic_id: 't1', body: 'Saved elsewhere', attachments: [] };
+  const editor = await f.register(before);
+  assert.equal(editor.recoveryServerDraft?.revision, 1);
+  assert.equal(editor.recoveryDiscovery, false, 'a copy with no selected image does not hold the reply');
+  // That device saves again, and another tab's send of r1 is refused at the new revision.
+  const later = { ...copy(before), revision: 2 };
+  const view = f.api.view.bind(f.api);
+  f.api.view = async (name, args) => { const answer = await view(name, args); return name === 'editor_state' ? { ...answer, draft: copy(later) } : answer; };
+  const refused = copy(r1);
+  refused.stamp = 's2';
+  refused.snapshot.submissions = [{ id: 'refused-a', status: 'refused', snapshot: copy(later), receipt: { kind: 'submission.prepare' } }];
+  f.rows.set(r1.id, refused);
+  f.server.busy = false;
+  f.registry.cleanup.foreground().release(); await f.settle(editor.key);
+  const shown = editor.imageCopies.get(r1.id);
+  assert.equal(shown?.stamp, f.rows.get(r1.id).stamp, 'the copy shown is the one the journal holds');
+  assert.equal(shown.snapshot.submissions[0].status, 'refused');
+  assert.equal(editor.recoveryServerDraft?.revision, later.revision, 'the server draft was read again');
+  assert.equal(editor.recoveryDiscovery, true, 'the refusal at the current revision holds the reply');
 });

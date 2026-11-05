@@ -322,32 +322,37 @@ export class EditorRegistry {
       }
       shown(page);
     });
-    if (editor.context.kind === 'reply') {
-      if ([...editor.imageCopies.values()].some(row => refusedCopyAtDraft(row, undefined))) {
-        // Until this scoped read succeeds the old slot cannot dismiss a newly
-        // discovered refusal. Retry can establish the exact revision later.
-        editor.recoveryServerDraft = undefined;
-        editor.recoveryDiscovery = true; this.changed(editor);
-        const state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
-        this.validateState(state, editor.context.sourceRef, editor.context.topicId);
-        editor.recoveryServerDraft = copy(state.draft ?? null);
-      }
-      this.updateImageBarrier(editor);
-      await this.sessionFor(editor).uploads.validateRetained();
-    }
+    if (editor.context.kind === 'reply') await this.settleImageCopies(editor);
     return result;
   }
 
+  // After the image copies change: a refusal among them is compared with the
+  // server draft read now, then the barrier and retained images follow. Up to
+  // its first read it runs at once, so the barrier is never lowered early.
+  async settleImageCopies(editor) {
+    if ([...editor.imageCopies.values()].some(row => refusedCopyAtDraft(row, undefined))) {
+      // Until this scoped read succeeds the old slot cannot dismiss a newly
+      // discovered refusal. Retry can establish the exact revision later.
+      editor.recoveryServerDraft = undefined;
+      editor.recoveryDiscovery = true; this.changed(editor);
+      const state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
+      this.validateState(state, editor.context.sourceRef, editor.context.topicId);
+      editor.recoveryServerDraft = copy(state.draft ?? null);
+    }
+    this.updateImageBarrier(editor);
+    await this.sessionFor(editor).uploads.validateRetained();
+  }
+
   // A recheck of deferred rows replaces just those rows among the editor's
-  // image copies, at once; it returns the retained-image validation that
-  // follows, or null when the editor is no longer this registry's.
+  // image copies, at once, and adds where a recovered one moved; it returns
+  // what settles the copies after that, or null when the editor is no longer
+  // this registry's.
   applyRecheck(editor, ids, page) {
     if (this.disposed || this.sessions.get(editor.key)?.editor !== editor) return null;
     if (editor.context.kind !== 'reply' || !editor.imageCopies) return Promise.resolve();
     for (const id of ids) editor.imageCopies.delete(id);
     for (const item of page.items) if (imageCopy(item)) editor.imageCopies.set(item.id, item);
-    this.updateImageBarrier(editor);
-    return this.sessionFor(editor).uploads.validateRetained();
+    return this.settleImageCopies(editor);
   }
 
   updateImageBarrier(editor) {

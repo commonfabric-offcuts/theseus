@@ -115,18 +115,26 @@ export async function openJournal({ instanceId, actor } = {}) {
   const held = new Map();
   let closed = false;
   const lockName = writer => 'aim-next-recovery-writer:' + JSON.stringify([instanceId, actor, writer]);
-  const lock = (writer, retain) => new Promise((resolve, reject) => {
+  // Take this writer's lock and hold it until the journal closes.
+  const lock = writer => new Promise((resolve, reject) => {
     if (closed) { reject(Error('Recovery storage is closed.')); return; }
     if (held.has(writer)) { resolve(true); return; }
     navigator.locks.request(lockName(writer), { mode: 'exclusive', ifAvailable: true }, granted => {
       if (!granted) { resolve(false); return; }
       if (closed) { resolve(false); return; }
-      if (!retain) { resolve(true); return; }
       const lifetime = new Promise(release => held.set(writer, release));
       resolve(true); return lifetime;
     }).catch(reject);
   });
-  if (!await lock(writerId, true)) throw Error('This document could not acquire recovery ownership.');
+  // Whether no document holds this writer now. It takes no lock, so probes of
+  // one writer, in this tab or another, never see each other as its holder.
+  const free = async writer => {
+    if (closed) throw Error('Recovery storage is closed.');
+    if (held.has(writer)) return true;
+    const name = lockName(writer);
+    return !(await navigator.locks.query()).held.some(lock => lock.name === name);
+  };
+  if (!await lock(writerId)) throw Error('This document could not acquire recovery ownership.');
   const release = () => { closed = true; for (const end of held.values()) end(); held.clear(); };
   let database;
   try { database = await new Promise((resolve, reject) => {
@@ -206,7 +214,7 @@ export async function openJournal({ instanceId, actor } = {}) {
       if (row.snapshot?.context && (row.snapshot.context.instanceId !== instanceId || row.snapshot.context.actor !== actor)) return null;
       return { id: row.id, editorKey: key, stamp: row.stamp, availability: 'unreadable', uploadPresent: row.snapshot?.format === 2 };
     }
-    if (active === 0 || await lock(row.writerId, false)) return { ...row, availability: 'available' };
+    if (active === 0 || await free(row.writerId)) return { ...row, availability: 'available' };
     return { id: row.id, editorKey: row.editorKey, writerId: row.writerId, stamp: row.stamp, availability: 'open-in-another-tab', uploadPresent: row.snapshot.format === 2 };
   };
   const validBytes = (bytes, row) => {
@@ -236,14 +244,25 @@ export async function openJournal({ instanceId, actor } = {}) {
     }),
     forEditor: (key, options) => page(key, 1, options),
     // The active candidates among these IDs, listed as a page lists them now.
+    // A copy another document recovered is listed where it moved.
     currentCandidates: async (key, ids) => {
       scopedKey(key);
       if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string')) throw Error('Invalid recovery IDs.');
       const rows = await transact('readonly', (store, finish) => {
-        const found = [];
-        let left = ids.length;
+        const found = [], seen = new Set();
+        let left = 0;
+        const read = id => {
+          if (seen.has(id)) return;
+          seen.add(id); left++;
+          store.get(id).onsuccess = event => {
+            const row = event.target.result;
+            if (row?.scope === scope && row.editorKey === key && row.active === 0 && row.superseded_by) read(JSON.stringify([key, row.superseded_by]));
+            else found.push(row);
+            if (!--left) finish(found);
+          };
+        };
+        for (const id of ids) read(id);
         if (!left) finish(found);
-        for (const id of ids) store.get(id).onsuccess = event => { found.push(event.target.result); if (!--left) finish(found); };
       });
       const items = [];
       for (const row of rows) {
@@ -257,7 +276,7 @@ export async function openJournal({ instanceId, actor } = {}) {
       scopedKey(key);
       const row = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
       if (!row || row.scope !== scope || row.editorKey !== key || row.stamp !== candidate.stamp || row.active !== 1 || row.superseded_by ||
-          row.id !== JSON.stringify([key, row.writerId]) || !await lock(row.writerId, false)) throw Error('This saved copy changed or is open in another tab. Review it again.');
+          row.id !== JSON.stringify([key, row.writerId]) || !await free(row.writerId)) throw Error('This saved copy changed or is open in another tab. Review it again.');
       return row;
     },
     history: (key, options) => page(key, 0, options),
@@ -289,7 +308,7 @@ export async function openJournal({ instanceId, actor } = {}) {
       scopedKey(key);
       const source = await transact('readonly', (_store, finish, get) => get(id, finish));
       if (!valid(source, key) || (source.snapshot.format === 2 && !readableUploads(source.snapshot)) || source.stamp !== stamp || source.superseded_by || source.writerId === writerId || !guard()) throw Error('This recovery version changed. Review it again.');
-      if (!await lock(source.writerId, true)) throw Error('Open in another tab. Close that tab before retrying recovery.');
+      if (!await lock(source.writerId)) throw Error('Open in another tab. Close that tab before retrying recovery.');
       return transact('readwrite', (store, finish, get) => get(id, current => {
         if (!valid(current, key) || current.stamp !== stamp || current.superseded_by || current.writerId !== source.writerId) throw Error('This recovery version changed. Review it again.');
         const ownId = JSON.stringify([key, writerId]);
@@ -318,7 +337,7 @@ export async function openJournal({ instanceId, actor } = {}) {
       const matches = row => valid(row, key) && row.active === 1 && !row.superseded_by && row.writerId !== writerId &&
         row.writerId === candidate.writerId && row.id === candidate.id && row.stamp === candidate.stamp;
       const source = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
-      if (!matches(source) || !await lock(source.writerId, true)) return false;
+      if (!matches(source) || !await lock(source.writerId)) return false;
       const captured = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
       if (!matches(captured) || !await confirm(structuredClone(captured))) return false;
       return transact('readwrite', (store, finish, get) => get(candidate.id, current => {
@@ -331,7 +350,7 @@ export async function openJournal({ instanceId, actor } = {}) {
       const matches = row => valid(row, key) && row.snapshot.format === 2 && row.active === 1 && !row.superseded_by &&
         row.writerId !== writerId && row.writerId === candidate.writerId && row.id === candidate.id && row.stamp === candidate.stamp;
       const source = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
-      if (!matches(source) || !await lock(source.writerId, true)) return null;
+      if (!matches(source) || !await lock(source.writerId)) return null;
       const captured = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
       if (!matches(captured)) return null;
       const proof = await prove(structuredClone(captured));
@@ -355,7 +374,7 @@ export async function openJournal({ instanceId, actor } = {}) {
       const matches = row => valid(row, key) && readableUploads(row.snapshot) && row.active === 1 && !row.superseded_by &&
         row.id === candidate.id && row.stamp === candidate.stamp && row.writerId !== writerId;
       const row = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
-      if (!matches(row) || !await lock(row.writerId, true)) throw Error('This saved copy changed or is open in another tab. Review it again.');
+      if (!matches(row) || !await lock(row.writerId)) throw Error('This saved copy changed or is open in another tab. Review it again.');
       return transact('readwrite', (store, finish, get) => get(candidate.id, current => {
         if (!matches(current) || !held.has(current.writerId)) throw Error('This saved copy changed. Review it again.');
         const next = structuredClone(current), state = next.snapshot.uploadState;
