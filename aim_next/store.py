@@ -199,12 +199,16 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         if stored != SCHEMA_VERSION:
             from .migrations import upgradable
             # Migrate is the remedy only when this code can move the database
-            # up to its own version; otherwise this code is the one out of date.
+            # up to its own version; a well-formed later version means this
+            # code is the one out of date, and anything else is damage.
             if upgradable(stored):
                 raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s and this code reads version %s; "
                               "move it with bin/aim-next-admin migrate. Nothing was changed" % (stored, SCHEMA_VERSION))
-            raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s, which this code (version %s) cannot "
-                          "read or migrate; run code that reads version %s. Nothing was changed" % (stored, SCHEMA_VERSION, stored))
+            if (isinstance(stored, str) and stored.isascii() and stored.isdigit() and stored[0] != "0"
+                    and len(stored) <= 9 and int(stored) > int(SCHEMA_VERSION)):
+                raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s, which this code (version %s) cannot "
+                              "read or migrate; run code that reads version %s. Nothing was changed" % (stored, SCHEMA_VERSION, stored))
+            raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
         if (not sequence.isascii() or not sequence.isdigit()
                 or len(sequence) > 19 or int(sequence) >= 9223372036854775807
                 or len(commit_id) != 32 or any(c not in "0123456789abcdef" for c in commit_id)):
