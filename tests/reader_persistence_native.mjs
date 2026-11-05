@@ -597,7 +597,7 @@ try {
         await a.close(); await b.point('#review-retry');
         await until(async () => !(await rows(b)).some(row => row.id === original.id), 'closed fully acknowledged candidate retired');
         const locks = await b.evaluate('(await navigator.locks.query()).held.map(l=>l.name)');
-        assert.ok(locks.some(name => name.includes(original.writerId)), 'retired closed writer lock stays held');
+        assert.equal(locks.some(name => name.includes(original.writerId)), false, 'a retired writer\'s lock is released after its cleanup');
         assert.deepEqual(b.errors, []);
       });
 
@@ -616,7 +616,20 @@ try {
         await b.evaluate(`putRow(${candidate})`);
         assert.equal(await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async row=>{await putRow({...row,stamp:'newer-stamp'});return true})`), false, 'stamp changed during confirmation survives');
         assert.equal((await b.evaluate(`readRow(${JSON.stringify(original.id)})`)).stamp, 'newer-stamp');
+        const lockHeld = async () => (await b.evaluate('(await navigator.locks.query()).held.map(l=>l.name)')).some(name => name.includes(original.writerId));
+        assert.equal(await lockHeld(), false, 'a declined cleanup leaves the other writer\'s lock free');
         await b.evaluate(`putRow(${candidate})`);
+        const overlap = await b.evaluate(`(async()=>{
+          const locked=async()=>(await navigator.locks.query()).held.some(l=>l.name.includes(${JSON.stringify(original.writerId)}));
+          let entered,open;const inside=new Promise(r=>entered=r),gate=new Promise(r=>open=r),seen=[];
+          const first=j.retireAcknowledged(editor.key,${candidate},async()=>{seen.push(['first',await locked()]);entered();await gate;return false});
+          await inside;
+          const second=await j.retireAcknowledged(editor.key,${candidate},async()=>{seen.push(['second',await locked()]);return false});
+          const midway=await locked(),listed=(await j.current(editor.key,[${JSON.stringify(original.id)}])).map(row=>row?.availability);open();
+          return {seen,second,midway,listed,first:await first,after:await locked()};
+        })()`);
+        assert.deepEqual(overlap, { seen: [['first', true], ['second', true]], second: false, midway: true, listed: ['available'], first: false, after: false },
+          'overlapping cleanups of one writer share its lock, which is released when the last ends');
         await b.evaluate('(()=>{window.cleanupDeleteSucceeded=0;window.originalDelete=IDBObjectStore.prototype.delete;IDBObjectStore.prototype.delete=function(...args){const request=originalDelete.apply(this,args),tx=this.transaction;request.addEventListener("success",()=>{++cleanupDeleteSucceeded;tx.abort()});return request}})()');
         const aborted = await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async()=>true).then(()=>false,()=>true)`);
         assert.equal(await b.evaluate('cleanupDeleteSucceeded'), 1, 'delete request succeeded before transaction abort');
@@ -625,7 +638,18 @@ try {
         assert.equal(await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async()=>true)`), true, 'positive strict retirement');
         assert.equal(await b.evaluate(`readRow(${JSON.stringify(original.id)})`), null);
         assert.ok((await b.evaluate('durability')).every(tx => tx.requested === 'strict' && tx.actual === 'strict'));
-        assert.ok((await b.evaluate('(await navigator.locks.query()).held')).some(lock => lock.name.includes(original.writerId)));
+        assert.equal(await lockHeld(), false, 'a retirement releases the other writer\'s lock');
+        await b.evaluate(`putRow(${candidate})`);
+        const kept = await b.evaluate(`(async()=>{
+          let entered,open;const inside=new Promise(r=>entered=r),gate=new Promise(r=>open=r);
+          const retire=j.retireAcknowledged(editor.key,${candidate},async()=>{entered();await gate;return true});
+          await inside;
+          const adopted=await j.adopt(editor.key,{id:${JSON.stringify(original.id)},stamp:${JSON.stringify(original.stamp)}});
+          open();
+          return {adopted:adopted?.writerId===j.writerId,retired:await retire};
+        })()`);
+        assert.deepEqual(kept, { adopted: true, retired: false }, 'an adoption during a cleanup wins, and the cleanup then refuses the moved row');
+        assert.equal(await lockHeld(), true, 'an adopted source\'s lock is kept after the cleanup that shared it ends');
       });
     } else if (mode === '--correction') {
       const sourceText = p => p.evaluate('document.querySelector("#source-body").textContent');
