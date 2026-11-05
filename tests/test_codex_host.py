@@ -239,9 +239,9 @@ class HostCase(unittest.TestCase):
         write_profile(profile, self.db, INSTANCE, name, binding=self.binding)
         return profile, self.root / "agents" / (name + ".outbox")
 
-    def gated(self):
+    def gated(self, name="gate"):
         """A FIFO the fake waits on; released at cleanup if a test stops before releasing it."""
-        gate = self.home / "gate"
+        gate = self.home / name
         os.mkfifo(str(gate), 0o600)
 
         def release():
@@ -730,6 +730,114 @@ class AbandonedDuringResumeCase(HostCase):
         self.stopped_cleanly(runner)
 
 
+class InputStallCase(HostCase):
+    """A child that stops reading its input never blocks the loop that serves leases and stop signals."""
+    script = {"gate_turns_list_once": True}
+    turns = [{"reply": "after the stall"}]
+
+    def flood(self):
+        # Twenty deliveries, all pending before the runner starts, make its
+        # first notice far larger than a pipe holds.
+        self.act("workspace.create", {"id": "w1", "title": "Input stall", "purpose": "A notice larger than a pipe",
+                                      "team": [AGENT], "coordinator": AGENT}, {})
+        for n in range(20):
+            opening = "o-%d" % n
+            self.act("opening.save", {"workspace_id": "w1", "topic_id": "%d" % n + "\U0001F600" * 198, "title": "\x01" * 80,
+                                      "participants": [AGENT], "body": "\x01" * 256, "attachments": []},
+                     {"opening_id": opening}, {"opening_revision": 0})
+            self.act("opening.publish", {}, {"opening_id": opening}, {"opening_revision": 1})
+
+    def test_a_stop_ends_the_runner_while_its_child_reads_no_input(self):
+        self.gated()
+        self.flood()
+        runner = self.runner()
+        waiting = runner.event("host_input_waiting")
+        self.assertGreater(waiting["unread"], 0)
+        os.kill(runner.pid, signal.SIGTERM)
+        os.kill(runner.pid, signal.SIGTERM)
+        code, final = runner.finish()
+        self.assertEqual((code, final["status"]), (0, "stopped"), runner.events[-8:])
+        self.assertEqual({row[1:] for row in self.sql("SELECT pid,exited_ms IS NOT NULL,cleanup FROM hosted_children")}, {(1, "confirmed")})
+        self.assertEqual(self.turn_rpcs(), [], "no turn reached the child that stopped reading")
+
+    def test_a_child_that_reads_no_input_for_a_whole_lease_is_ended_and_the_work_goes_to_a_fresh_child(self):
+        self.gated()
+        self.flood()
+        runner = self.runner()
+        runner.event("host_input_waiting")
+        abandoned = runner.event("host_dispatch_abandoned")
+        stalled = runner.event("host_input_stalled")
+        self.assertGreater(stalled["unread"], 0)
+        runner.event("host_child_exit", pid=stalled["pid"])
+        handed = runner.event("host_dispatch", outcome="handed", mode="start")
+        runner.event("host_turn_end", status="completed")
+        # The dead claim's turn never started: only the live claim's notice reached a child whole.
+        self.assertEqual(self.turn_rpcs(), [("turn/start", "theseus:" + handed["attempt"])])
+        self.assertEqual(self.sql("SELECT attempt_id,outcome FROM wake_results ORDER BY finished_ms"),
+                         [(abandoned["attempt"], "expired"), (handed["attempt"], "handed")])
+        self.stopped_cleanly(runner)
+
+    def test_a_claim_that_arrives_while_the_ended_child_is_still_exiting_goes_to_its_successor(self):
+        self.gated()
+        term = self.gated("term-gate")
+        script = dict(self.script, linger_on_term=True, turns=self.turns)
+        (self.home / "fake-script.json").write_text(json.dumps(script))
+        self.flood()
+        runner = self.runner()
+        abandoned = runner.event("host_dispatch_abandoned")
+        stalled = runner.event("host_input_stalled")
+        # The next claim finds the ended child alive and waits for its successor.
+        runner.event("host_attach_waits", pid=stalled["pid"])
+        with open(str(term), "w"):
+            pass
+        runner.event("host_child_exit", pid=stalled["pid"])
+        handed = runner.event("host_dispatch", outcome="handed", mode="start")
+        runner.event("host_turn_end", status="completed")
+        self.assertEqual(self.turn_rpcs(), [("turn/start", "theseus:" + handed["attempt"])])
+        # No claim was answered unavailable while the replacement was under way.
+        self.assertEqual(self.sql("SELECT attempt_id,outcome FROM wake_results ORDER BY finished_ms"),
+                         [(abandoned["attempt"], "expired"), (handed["attempt"], "handed")])
+        self.stopped_cleanly(runner)
+
+
+class EndBeforeAnswerCase(HostCase):
+    """A turn that is seen and ends before turn/start is answered is recorded once its handed row exists."""
+    turns = [{"end_first": True, "fail": "usageLimitExceeded"}, {"end_first": True, "reply": "done early"}]
+
+    def turn(self):
+        rows = self.turns_rows()
+        self.assertEqual(len(rows), 1, rows)
+        return rows[0]
+
+    def test_a_failure_seen_before_the_start_answer_is_recorded_and_rearms(self):
+        runner = self.runner()
+        self.open_topic("Please process this work.")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        replayed = runner.event("host_turn_end", status="failed", replayed=True)
+        self.assertTrue(replayed["rearmed"])
+        row = self.turn()
+        self.assertEqual((row["final_status"], row["error_code"], row["input_tokens"]), ("failed", "usageLimitExceeded", 100))
+        self.assertIsNotNone(row["seen_ms"], "the seen marker that arrived first is kept")
+        schedule = self.sql("SELECT handed_seq,next_due_ms FROM recipient_schedule WHERE recipient_id=?", (AGENT,))[0]
+        self.assertIsNone(schedule[0])
+        self.assertIsNotNone(schedule[1], "the failed turn's delivery is due again")
+        self.stopped_cleanly(runner)
+
+    def test_a_completion_seen_before_the_start_answer_settles_without_rearming(self):
+        (self.home / "fake-script.json").write_text(json.dumps(dict(self.script, turns=self.turns[1:])))
+        runner = self.runner()
+        self.open_topic("Please process this work.")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        replayed = runner.event("host_turn_end", status="completed", replayed=True)
+        self.assertFalse(replayed["rearmed"])
+        row = self.turn()
+        self.assertEqual(row["final_status"], "completed")
+        self.assertIsNotNone(row["seen_ms"])
+        self.assertEqual(self.replies(), ["done early"])
+        self.assertEqual(self.pending(), [])
+        self.stopped_cleanly(runner)
+
+
 class BrokenAttachCase(HostCase):
     """A shape error in the resume or reconcile answer closes the child; the thread is attached afresh."""
     turns = [{"reply": "recovered"}]
@@ -943,6 +1051,50 @@ class ProvisionCase(HostCase):
 
 class FramingCase(unittest.TestCase):
     """The host's own JSON-RPC rules, below the process level."""
+
+    def piped_child(self):
+        reader, writer = os.pipe()
+        self.addCleanup(lambda: os.close(reader))
+        child = object.__new__(codex_host.Child)
+        stdin = os.fdopen(writer, "wb", buffering=0)
+        self.addCleanup(lambda: stdin.closed or stdin.close())
+        child.popen = type("Popen", (), {"stdin": stdin, "returncode": 0})()
+        child.input, child.outbox, child.write_watched, child.backlogged, child.signals = writer, bytearray(), False, False, set()
+        os.set_blocking(writer, False)
+        watched = []
+        child.writable = lambda unused, on: watched.append(on)
+        return child, reader, watched
+
+    def test_input_the_pipe_cannot_take_waits_whole_and_drains_in_order(self):
+        child, reader, watched = self.piped_child()
+        big = {"method": "big", "params": {"text": "x" * 300000}}
+        self.assertTrue(child.send(big))
+        self.assertTrue(child.send({"method": "after"}))
+        self.assertTrue(child.outbox, "the pipe took only part of it, and the send did not wait")
+        self.assertEqual(watched, [True])
+        received = bytearray()
+        while child.outbox:
+            received.extend(os.read(reader, 1 << 20))
+            child.flush()
+        self.assertEqual(watched, [True, False])
+        os.set_blocking(reader, False)
+        try:
+            received.extend(os.read(reader, 1 << 20))
+        except BlockingIOError:
+            pass
+        lines = bytes(received).split(b"\n")
+        self.assertEqual([json.loads(line) for line in lines if line], [big, {"method": "after"}])
+
+    def test_a_child_that_leaves_too_much_unread_is_closed_and_refused(self):
+        child, reader, watched = self.piped_child()
+        filler = {"method": "fill", "params": {"text": "x" * (codex_host.MAX_MESSAGE - 1000)}}
+        self.assertTrue(child.send(filler))
+        self.assertTrue(child.send(filler))
+        self.assertFalse(child.send(filler))
+        self.assertTrue(child.backlogged)
+        self.assertFalse(child.open)
+        self.assertEqual(child.outbox, bytearray())
+        self.assertEqual(watched, [True, False], "unwatched before its descriptor closed")
 
     def test_answers_follow_the_design_table(self):
         expected = {

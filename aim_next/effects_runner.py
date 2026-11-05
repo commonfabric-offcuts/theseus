@@ -426,10 +426,12 @@ class EffectsLoop:
             self.dirty_at = max(self.clock.monotonic()+0.1,self.last_hint_read+0.1)
 
     def _wait(self, timeout):
-        """One wait; child output is handled before child exits, and both before any claim work."""
+        """One wait; child input space, then output, then exits, all before any claim work."""
         event = self.watch.wait(timeout)
         self._accept_event(event)
         if self.host is not None:
+            for fd in event.get('writable',()):
+                self.host.on_writable(fd)
             for fd in event.get('readable',()):
                 self.host.on_readable(fd)
             for pid in event.get('exited',()):

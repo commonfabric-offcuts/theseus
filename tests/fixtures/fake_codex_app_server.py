@@ -18,6 +18,10 @@ The script may also set:
   deaf                 turn/interrupt is answered but the turn goes on
   gate_resume_once     the first thread/resume waits until the test opens and
                        closes the FIFO CODEX_HOME/gate (an event, never a timer)
+  gate_turns_list_once  after answering the first thread/turns/list, stop reading
+                       input the same way, so the host's writes back up
+  linger_on_term       the first spawned fake, on SIGTERM, waits for the FIFO
+                       CODEX_HOME/term-gate the same way before it dies by that signal
   bad_resume_once      the first thread/resume answers a thread that is not an object
   bad_turns_list_once  the first thread/turns/list answers a last turn with this status
   echo_widened         thread/start and thread/resume echo a sandbox wider than asked
@@ -41,6 +45,8 @@ A turn behaviour (consumed in order across restarts) may hold:
   bad_request  mid-turn, send a server request whose threadId is an object
   bad_status   complete the turn with a status that is a list
   close_stdout  on turn/start, close standard output and go on reading input
+  end_first  the turn's input is seen and the turn ends (with its usage) before
+             turn/start is answered
 """
 
 import json
@@ -78,6 +84,15 @@ class Fake:
         self.asked = {}
         self.server_ids = 0
         self.wire({"spawn": os.getpid(), "argv": sys.argv[1:], "path": os.environ.get("PATH")})
+        if self.once("linger_on_term"):
+            signal.signal(signal.SIGTERM, self.linger)
+
+    def linger(self, number, frame):
+        self.wire({"lingering": number})
+        with open(_path("term-gate")) as handle:
+            handle.read()
+        signal.signal(number, signal.SIG_DFL)
+        os.kill(os.getpid(), number)
 
     def wire(self, entry):
         with open(_path("fake-wire.jsonl"), "a") as handle:
@@ -202,6 +217,8 @@ class Fake:
         turns = self.state["threads"][params["threadId"]]["turns"]
         data = [{"id": turn["id"], "status": turn["status"], "items": [], "error": turn.get("error")} for turn in turns[-1:]]
         self.send({"id": request["id"], "result": {"data": data, "nextCursor": None}})
+        if self.once("gate_turns_list_once"):
+            self.gate("thread/turns/list")
 
     # Turns ---------------------------------------------------------------------
 
@@ -224,6 +241,10 @@ class Fake:
         self.save()
         if behaviour.get("silent"):
             return
+        if behaviour.get("end_first"):
+            self.accept(thread_id, turn, params)
+            self.finish(thread_id, "failed" if behaviour.get("fail") else "completed")
+            return self.send({"id": request["id"], "result": {"turn": {"id": turn["id"], "status": "inProgress", "items": []}}})
         if behaviour.get("close_stdout"):
             self.wire({"closed_stdout": True})
             os.close(1)

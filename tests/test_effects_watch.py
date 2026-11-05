@@ -37,7 +37,7 @@ class EffectsWatchCase(unittest.TestCase):
             self.assertFalse(os.get_inheritable(fd))
             self.assertEqual((os.fstat(fd).st_dev, os.fstat(fd).st_ino),
                              (self.path.stat().st_dev, self.path.stat().st_ino))
-            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], exited=[]))
+            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], writable=[], exited=[]))
             result = self.store.command('agent-a', dict(v=1, instance_id='watch-instance',
                 operation_id='workspace-one', kind='workspace.create', target={},
                 expected=dict(authority={key:self.binding[key] for key in ('authority_id','authority_epoch')}),
@@ -91,7 +91,7 @@ class EffectsWatchCase(unittest.TestCase):
         with api.NativeWatch(self.path) as watch:
             fd = watch.fd
             for _ in range(3):
-                self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], exited=[]))
+                self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], writable=[], exited=[]))
                 self.assertEqual(watch.fd, fd)
                 self.assertEqual(os.fstat(fd).st_ino, self.path.stat().st_ino)
 
@@ -153,6 +153,27 @@ class HostedWatchCase(EffectsWatchCase):
         self.addCleanup(lambda: (child.poll() is None and child.kill(), child.wait(), child.stdout.close()))
         return child
 
+    def test_a_watched_writer_is_reported_only_while_it_has_room(self):
+        api = self.api()
+        read, write = os.pipe()
+        self.addCleanup(os.close, read)
+        self.addCleanup(os.close, write)
+        os.set_blocking(write, False)
+        with api.NativeWatch(self.path) as watch:
+            watch.watch_writer(write)
+            self.assertEqual(watch.wait(0)['writable'], [write])
+            # A full pipe has no room: the writer is not reported until a read drains it.
+            while True:
+                try:
+                    os.write(write, b'x' * 4096)
+                except BlockingIOError:
+                    break
+            self.assertEqual(watch.wait(0)['writable'], [])
+            os.read(read, 65536)
+            self.assertEqual(watch.wait(0)['writable'], [write])
+            watch.unwatch_writer(write)
+            self.assertEqual(watch.wait(0)['writable'], [])
+
     def test_child_output_eof_and_exit_are_reported_without_a_timer(self):
         api = self.api()
         child = self.child()
@@ -160,7 +181,7 @@ class HostedWatchCase(EffectsWatchCase):
             out = child.stdout.fileno()
             watch.watch_reader(out)
             self.assertTrue(watch.watch_process(child.pid))
-            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], exited=[]))
+            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], writable=[], exited=[]))
             child.stdin.write(b'line\n'); child.stdin.close()
             seen, exited, data = set(), [], b''
             alive = self.guarded()
@@ -183,7 +204,7 @@ class HostedWatchCase(EffectsWatchCase):
             # End of stream stays readable until it is unwatched.
             self.assertEqual(watch.wait(0)['readable'], [out])
             watch.unwatch_reader(out)
-            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], exited=[]))
+            self.assertEqual(watch.wait(0), dict(dirty=False, stop=False, readable=[], writable=[], exited=[]))
             self.assertEqual(watch.processes, set())
 
     def test_an_exited_unreaped_child_is_refused_at_registration(self):

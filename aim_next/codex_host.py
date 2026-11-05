@@ -32,6 +32,9 @@ from .runner import CLIENT_PREFIX
 
 CLIENT = "theseus_host"
 MAX_MESSAGE = 8 * 1024 * 1024
+# Bytes a child may leave unread on its input. Past this it has stopped
+# reading, so nothing more can reach it and it is ended by its captured PID.
+MAX_OUTBOX = 2 * MAX_MESSAGE
 READ_BLOCK = 65536
 SPAWN_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 
@@ -203,7 +206,7 @@ def _private_append(path):
 class Child:
     """One app-server process and its framing. Its PID is captured at spawn and never looked up again."""
 
-    def __init__(self, home, executable, stderr):
+    def __init__(self, home, executable, stderr, writable=lambda child, on: None):
         environment = {key: os.environ[key] for key in ("HOME", "LANG", "TMPDIR") if key in os.environ}
         environment.update(PATH=SPAWN_PATH, CODEX_HOME=home)
         self.home = home
@@ -215,37 +218,62 @@ class Child:
         self.pid = self.popen.pid
         self.out = self.popen.stdout.fileno()
         os.set_blocking(self.out, False)
+        # Input is written as the child reads it: a child that stops reading
+        # never blocks the loop that serves leases and stop signals.
+        self.input = self.popen.stdin.fileno()
+        os.set_blocking(self.input, False)
+        self.outbox = bytearray()
+        # writable(child, on) asks the caller's kqueue to report input space.
+        self.writable, self.write_watched = writable, False
         self.buffer = bytearray()
         self.next_id = 0
         self.waiting = {}
         self.state = "initializing"
         self.child_id = None
         self.ready_waiters = []
+        # Threads whose attach began after this child was ended; they attach to its successor.
+        self.successors = []
         self.eof = False
         # Set once NOTE_EXIT is being handled: its end of output is the exit's, not a fault.
         self.exiting = False
         self.signals = set()
+        self.backlogged = False
 
     @property
     def open(self):
         return self.popen.stdin is not None and not self.popen.stdin.closed
 
     def send(self, message):
+        """Queue one whole message and write what the input takes now; False if it can never be delivered."""
         data = (json.dumps(message, separators=(",", ":"), ensure_ascii=False, allow_nan=False) + "\n").encode("utf-8")
         if len(data) > MAX_MESSAGE:
             raise ProtocolError("message_too_large")
         if not self.open:
             return False
-        view = memoryview(data)
-        try:
-            # A blocking write: the child reads its input continuously, and each
-            # host message is bounded.
-            while view:
-                view = view[os.write(self.popen.stdin.fileno(), view):]
-        except (BrokenPipeError, ConnectionResetError):
+        if len(self.outbox) + len(data) > MAX_OUTBOX:
+            self.backlogged = True
             self.close_input()
+            self.signal(signal.SIGTERM)
             return False
-        return True
+        self.outbox.extend(data)
+        self.flush()
+        return self.open
+
+    def flush(self):
+        """Write queued input until the pipe is full; a partial frame stays at the head, so framing holds."""
+        while self.outbox and self.open:
+            try:
+                written = os.write(self.input, self.outbox)
+            except (BlockingIOError, InterruptedError):
+                break
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_input()
+                return
+            del self.outbox[:written]
+        wanted = bool(self.outbox) and self.open
+        if wanted != self.write_watched:
+            self.write_watched = wanted
+            self.writable(self, wanted)
 
     def request(self, method, params, handler):
         """Send one request; handler(result, error) runs once with its response, or with GONE."""
@@ -262,6 +290,11 @@ class Child:
 
     def close_input(self):
         if self.open:
+            self.outbox.clear()
+            if self.write_watched:
+                # Unwatched before its descriptor closes.
+                self.write_watched = False
+                self.writable(self, False)
             try:
                 self.popen.stdin.close()
             except OSError:
@@ -419,6 +452,9 @@ class HostedThread:
         self.interrupted = set()
         # (turn_id, status, error_code) of the last turn/completed, for an answer that arrives after it.
         self.last_end = None
+        # An end or a seen marker Core could not place because the answer that
+        # records the turn's handed row had not arrived; replayed when it does.
+        self.early_ends, self.early_seen = {}, set()
         # Consecutive turns that ended contextWindowExceeded (design §6.1).
         self.context_failures = 0
 
@@ -446,7 +482,7 @@ class Host:
                 raise broker_routes.BrokerConfigError("conflicting_codex_executable")
             self.threads[thread.id] = thread
         self.children = {}
-        self.by_fd, self.by_pid = {}, {}
+        self.by_fd, self.by_pid, self.by_input = {}, {}, {}
         self.current = None
         self.stopping = False
         self.inputs_closed = False
@@ -469,12 +505,21 @@ class Host:
         self.ensure_thread(thread, lambda: self._prepare(work), lambda reason: self._settle(work, "unavailable", None, reason))
 
     def abandon(self):
-        """The claim's lease ended first; a late response is logged and its thread re-read before the next dispatch."""
+        """The claim's lease ended first; a late response is logged and its thread re-read before the next dispatch.
+
+        A child that still holds unread input from this dispatch stopped reading
+        for a whole lease: it is ended, so the dead claim's turn is never
+        delivered late, and the next claim starts a fresh child."""
         if self.current is not None:
-            self.current.abandoned = True
-            self.current.thread.uncertain = True
-            self.log.write("dispatch_abandoned", attempt=self.current.claim["attempt_id"])
-            self.current = None
+            work, self.current = self.current, None
+            work.abandoned = True
+            work.thread.uncertain = True
+            self.log.write("dispatch_abandoned", attempt=work.claim["attempt_id"])
+            child = self.children.get(work.thread.home)
+            if child is not None and child.outbox:
+                self.log.write("input_stalled", pid=child.pid, unread=len(child.outbox))
+                self._fail_child(child, "stalled")
+                child.signal(signal.SIGTERM)
 
     def stale(self, attempt_id, thread_id):
         self.threads[thread_id].uncertain = True
@@ -583,13 +628,19 @@ class Host:
             raise ProtocolError("invalid_steer")
         thread, turn_id = work.thread, _string(result.get("turnId"))
         self._settle(work, "handed", self._handed(work, turn_id, "steer"), "steered")
-        if LATE_STEER_REARMS and thread.active_turn != expected and thread.active_turn != turn_id and not work.abandoned:
+        if work.abandoned:
+            return
+        late = LATE_STEER_REARMS and thread.active_turn != expected and thread.active_turn != turn_id
+        if late:
+            self.log.write("steer_late", attempt=work.claim["attempt_id"], thread=thread.id, turn=turn_id)
+        if self._replay_early(thread, turn_id, work.client_id):
+            return
+        if late:
             # The steer was answered after the host saw its turn end, so its input
             # may have been dropped (P5). Core records a steer into a turn it knows
             # ended as finished and re-arms; this applies the end Core cannot know
             # of, for a turn no earlier hand recorded.
             ended = thread.last_end if thread.last_end is not None and thread.last_end[0] == turn_id else (turn_id, "lost", None)
-            self.log.write("steer_late", attempt=work.claim["attempt_id"], thread=thread.id, turn=turn_id)
             self._end_turn(thread, turn_id, ended[1], ended[2])
 
     def _started(self, work, result, error):
@@ -602,10 +653,14 @@ class Host:
         if type(result) is not dict or type(result.get("turn")) is not dict:
             raise ProtocolError("invalid_start")
         turn_id = _string(result["turn"].get("id"))
-        # The turn is running from this answer on, whatever order its
-        # turn/started notification arrives in.
-        work.thread.active_turn, work.thread.status = turn_id, "active"
+        thread = work.thread
+        if turn_id not in thread.early_ends:
+            # The turn is running from this answer on, whatever order its
+            # turn/started notification arrives in, unless it already ended.
+            thread.active_turn, thread.status = turn_id, "active"
         self._settle(work, "handed", self._handed(work, turn_id, "start"), "started")
+        if not work.abandoned:
+            self._replay_early(thread, turn_id, work.client_id)
 
     # Children and threads --------------------------------------------------
 
@@ -626,7 +681,7 @@ class Host:
 
     def _spawn(self, home):
         try:
-            child = Child(home, self.executables[home], self.log.stderr)
+            child = Child(home, self.executables[home], self.log.stderr, self._input_space)
         except (OSError, ValueError, subprocess.SubprocessError):
             self.log.write("spawn_failed")
             return None
@@ -684,6 +739,16 @@ class Host:
         if thread.attaching:
             return None
         thread.attaching = True
+        child = self.children.get(thread.home)
+        if child is not None and child.state == "stalled":
+            # Ended and exiting: the claim waits for the successor rather than
+            # answering unavailable for a replacement already under way.
+            child.successors.append(thread)
+            self.log.write("attach_waits", thread=thread.id, pid=child.pid)
+            return None
+        self._attach(thread)
+
+    def _attach(self, thread):
         self.ensure_child(thread.home, lambda child: self._resume(child, thread), lambda reason: self._attach_failed(thread, reason))
 
     def _attach_failed(self, thread, reason):
@@ -743,6 +808,24 @@ class Host:
         for ready, failed in waiters:
             ready()
 
+    def _replay_early(self, thread, turn_id, client_id):
+        """Apply what arrived before this turn's handed row existed; True if its end was applied.
+
+        One dispatch is outstanding at a time, so any other early record
+        belongs to a turn no answer will ever record, and is dropped."""
+        seen, thread.early_seen = client_id in thread.early_seen, set()
+        ended, thread.early_ends = thread.early_ends.pop(turn_id, None), {}
+        if seen:
+            result = self.core("hosted_turn_seen", client_id)
+            self.log.write("seen", thread=thread.id, status=result.get("status"), replayed=True)
+        if ended is None:
+            return False
+        status, code, usage = ended
+        result = self.core("end_hosted_turn", thread.id, turn_id, status, code, usage)
+        self.log.write("turn_end", thread=thread.id, turn=turn_id, status=status, error_code=code, replayed=True,
+                       rearmed=result.get("rearmed"))
+        return True
+
     def _end_turn(self, thread, turn_id, status, code):
         usage = thread.usage.pop(turn_id, {})
         calls = thread.cli_calls.pop(turn_id, None)
@@ -750,11 +833,26 @@ class Host:
             usage = dict(usage, cli_calls=calls)
         thread.interrupted.discard(turn_id)
         result = self.core("end_hosted_turn", thread.id, turn_id, status, code, usage or None)
+        if result.get("status") == "unknown":
+            thread.early_ends[turn_id] = (status, code, usage or None)
         self.log.write("turn_end", thread=thread.id, turn=turn_id, status=status, error_code=code,
                        tokens={key: value for key, value in usage.items() if key != "cli_calls"} or None,
                        cli_calls=calls, rearmed=result.get("rearmed"))
 
     # Events from the loop's kqueue -----------------------------------------
+
+    def _input_space(self, child, on):
+        if on:
+            self.log.write("input_waiting", pid=child.pid, unread=len(child.outbox))
+            self.by_input[child.input] = child
+            self.watch.watch_writer(child.input)
+        elif self.by_input.pop(child.input, None) is not None:
+            self.watch.unwatch_writer(child.input)
+
+    def on_writable(self, fd):
+        child = self.by_input.get(fd)
+        if child is not None:
+            child.flush()
 
     def on_readable(self, fd):
         child = self.by_fd.get(fd)
@@ -821,7 +919,7 @@ class Host:
         for thread in threads:
             thread.attached = False
             thread.status = thread.active_turn = None
-            if thread.attaching:
+            if thread.attaching and thread not in child.successors:
                 # Its resume or reconcile handler may have failed after leaving
                 # the child's waiting set: the waiters are settled now, and the
                 # next claim spawns a fresh child.
@@ -830,6 +928,9 @@ class Host:
             by_id = {thread.id: thread for thread in threads}
             for row in self.core("open_hosted_turns", sorted(by_id)).get("turns", []):
                 self._end_turn(by_id[row["thread_id"]], row["turn_id"], "lost", None)
+        successors, child.successors = child.successors, []
+        for thread in successors:
+            self._attach(thread)
 
     def _message(self, child, message):
         kind = _kind(message)
@@ -886,6 +987,8 @@ class Host:
             item = params["item"]
             if item.get("type") == "userMessage" and isinstance(item.get("clientId"), str) and item["clientId"].startswith(CLIENT_PREFIX):
                 seen = self.core("hosted_turn_seen", item["clientId"])
+                if seen.get("status") == "unknown":
+                    thread.early_seen.add(item["clientId"])
                 self.log.write("seen", thread=thread.id, status=seen.get("status"))
             elif item.get("type") == "commandExecution" and isinstance(params.get("turnId"), str):
                 if isinstance(item.get("command"), str) and thread.config.cli in item["command"]:
@@ -1016,6 +1119,7 @@ class _Sync:
     def __init__(self, child):
         self.child = child
         self.queue = select.kqueue()
+        child.writable = self._input_space
         self.reading = True
         self.queue.control([select.kevent(child.out, filter=select.KQ_FILTER_READ, flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE)], 0, 0)
         self.exited = False
@@ -1027,11 +1131,17 @@ class _Sync:
                 raise
             self.exited = True
 
+    def _input_space(self, child, on):
+        self.queue.control([select.kevent(child.input, filter=select.KQ_FILTER_WRITE,
+                                          flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE if on else select.KQ_EV_DELETE)], 0, 0)
+
     def _step(self):
-        """Wait for one batch of events and read what arrived."""
+        """Wait for one batch of events, write what the input takes, and read what arrived."""
         for event in self.queue.control(None, 4, None):
             if event.filter == select.KQ_FILTER_PROC:
                 self.exited = True
+            elif event.filter == select.KQ_FILTER_WRITE:
+                self.child.flush()
         messages = self.child.read() if self.reading else []
         if self.child.eof and self.reading:
             # End of stream stays readable; stop watching it and wait for the exit alone.

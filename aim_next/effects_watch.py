@@ -42,6 +42,7 @@ class NativeWatch:
         # Stop signals seen; a hosting runner escalates its children's stop on the second and third.
         self.stop_count = 0
         self.readers = set()
+        self.writers = set()
         self.processes = set()
         self.stoppable_depth = 0
         self.companion_moved = False
@@ -107,6 +108,19 @@ class NativeWatch:
             self.readers.discard(fd)
             self.queue.control([select.kevent(fd, filter=select.KQ_FILTER_READ, flags=select.KQ_EV_DELETE)], 0, 0)
 
+    def watch_writer(self, fd):
+        """Report this descriptor (a child's stdin) in `writable` while it has room for more input."""
+        self.queue.control([select.kevent(fd, filter=select.KQ_FILTER_WRITE,
+                                          flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE)], 0, 0)
+        self.writers.add(fd)
+
+    def unwatch_writer(self, fd):
+        """Stop reporting fd; call before closing it."""
+        if fd in self.writers:
+            self.writers.discard(fd)
+            if self.queue is not None:
+                self.queue.control([select.kevent(fd, filter=select.KQ_FILTER_WRITE, flags=select.KQ_EV_DELETE)], 0, 0)
+
     def watch_process(self, pid):
         """Report this un-reaped child in `exited` once it exits; False if it has already exited."""
         try:
@@ -144,7 +158,7 @@ class NativeWatch:
         except OSError as error:
             raise WatchError('watch_wait_failed') from error
         dirty = False
-        readable, exited = [], []
+        readable, writable, exited = [], [], []
         for event in events:
             if event.flags & select.KQ_EV_ERROR:
                 raise WatchError('watch_wait_failed')
@@ -153,6 +167,8 @@ class NativeWatch:
                 self.stop_count += max(1, event.data)
             elif event.filter == select.KQ_FILTER_READ:
                 readable.append(event.ident)
+            elif event.filter == select.KQ_FILTER_WRITE:
+                writable.append(event.ident)
             elif event.filter == select.KQ_FILTER_PROC:
                 if event.fflags & select.KQ_NOTE_EXIT:
                     self.processes.discard(event.ident)
@@ -166,7 +182,7 @@ class NativeWatch:
                     raise WatchError('watch_identity_changed')
                 dirty = dirty or bool(event.fflags & select.KQ_NOTE_WRITE)
         self.verify()
-        return dict(dirty=dirty, stop=self.stopped, readable=readable, exited=exited)
+        return dict(dirty=dirty, stop=self.stopped, readable=readable, writable=writable, exited=exited)
 
     def close(self):
         error = None
