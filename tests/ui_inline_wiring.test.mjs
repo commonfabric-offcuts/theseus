@@ -28,6 +28,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     querySelectorAll() { return [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
+    getAttribute(name) { return this[name] ?? null; }
     insertBefore(child, before) { child.remove(); const index = before ? this.children.indexOf(before) : this.children.length; this.children.splice(index, 0, child); child.parent = this; }
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }

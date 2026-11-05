@@ -269,10 +269,12 @@ export function paintUnread(host, item) {
   badge.textContent = String(item.unread); badge.setAttribute('aria-hidden', 'true');
   spoken.className = 'sr-only';
   spoken.textContent = `, ${item.unread} unread` + (addressed ? `, ${addressed} sent to you by name` : '');
-  // The title's last word and the count never part, so a title that wraps
-  // keeps its count on its last line.
-  const title = host.lastChild, last = title?.nodeType === 3 ? /^([\s\S]*?)(\S+)\s*$/.exec(title.data) : null;
-  if (!last) { host.append(badge, spoken); return; }
-  const together = document.createElement('span'); together.className = 'together';
-  title.data = last[1]; together.append(last[2], badge, spoken); host.append(together);
+  // The title's last character and the count never part, so a title that
+  // wraps keeps its count on its last line; the rest still wraps anywhere, so
+  // a long unbroken ending cannot push the row wider.
+  const title = host.lastChild, words = title?.nodeType === 3 ? title.data.trimEnd() : '';
+  if (!words) { host.append(badge, spoken); return; }
+  const last = Array.from(words).at(-1), together = document.createElement('span');
+  together.className = 'together'; title.data = words.slice(0, words.length - last.length);
+  together.append(last, badge, spoken); host.append(together);
 }

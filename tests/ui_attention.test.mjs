@@ -119,6 +119,9 @@ test('a message that was waiting when the page opened is never announced, even w
 // and the page's focus is lost when its node leaves the page.
 class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], hidden: false, disabled: false, parent: null }); }
+  // As a browser does, disabling the focused control drops its focus.
+  get disabled() { return this.off; }
+  set disabled(value) { this.off = value; if (value && globalThis.document?.focused === this) globalThis.document.focused = null; }
   append(...nodes) {
     for (const node of nodes) {
       if (node instanceof Element) { node.leave(); node.parent?.children.splice(node.parent.children.indexOf(node), 1); node.parent = this; }
@@ -130,6 +133,7 @@ class Element {
   get isConnected() { return this.root || Boolean(this.parent?.isConnected); }
   setAttribute(name, value) { (this.attributes ??= {})[name] = String(value); }
   getAttribute(name) { return this.attributes?.[name] ?? null; }
+  removeAttribute(name) { delete this.attributes?.[name]; }
   focus() { globalThis.document.focused = this; globalThis.document.moves = (globalThis.document.moves ?? 0) + 1; }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   get text() { return (this.textContent ?? '') + this.children.map(node => node instanceof Element ? node.text : node.text).join(''); }
@@ -160,7 +164,7 @@ test('the sent list links a topic the reader can open, and marks read one they h
   const mark = closed.all().find(node => node.tag === 'button' && node.textContent === 'Mark read');
   await mark.onclick();
   assert.deepEqual(acknowledged, ['d2']);
-  assert.equal(mark.disabled, false);
+  assert.equal(mark.getAttribute('aria-disabled'), null, 'it is free again once the mark is settled');
 });
 
 test('a message in a topic the reader has lost can be read whole where it is listed, and stays read across repaints', async t => {
@@ -312,9 +316,14 @@ test('a row that leaves the list hands its focus to the row now in its place, or
   const actions = { open() {}, acknowledge: async () => {}, read: async () => {}, attachment: () => new Element('span') };
   const host = new Element('section'); host.root = true;
   const control = (body, text) => host.all().find(node => node.tag === 'li' && node.text.includes(body)).all().find(node => node.textContent === text);
+  // Pressing Mark read marks it busy while the list is read again without it.
+  actions.acknowledge = async () => { paintSent(host, { addressed: 2, latest_addressed: [a, c] }, actions); };
   paintSent(host, { addressed: 3, latest_addressed: [a, b, c] }, actions);
   control('Second', 'Mark read').focus();
-  paintSent(host, { addressed: 2, latest_addressed: [a, c] }, actions);
+  const pressed = control('Second', 'Mark read');
+  const settled = pressed.onclick();
+  assert.equal(pressed.onclick(), undefined, 'a second press while busy does nothing');
+  await settled;
   assert.equal(globalThis.document.activeElement, control('Third', 'Read it here'), 'the row now in its place');
   control('Third', 'Mark read').focus();
   paintSent(host, { addressed: 1, latest_addressed: [a] }, actions);

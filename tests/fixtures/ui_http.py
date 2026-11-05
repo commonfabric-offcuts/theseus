@@ -457,6 +457,11 @@ def main():
                         revision = store().view(agent, "topic", {"topic_id": topic_id})["topic"]["version"]
                         command("participation.set", prefix + "-remove", {"actor_id": actor, "present": False},
                                 {"topic_id": topic_id}, {"topic_revision": revision}, sender=agent)
+                    elif freshness and request["method"] == "topic_state":
+                        # The person sets where a topic stands, as the state form does.
+                        revision = store().view(actor, "topic", {"topic_id": request["topic_id"]})["topic"]["version"]
+                        answer = command("topic.update", request["operation_id"], request["args"],
+                                         {"topic_id": request["topic_id"]}, {"topic_revision": revision})
                     elif freshness and request["method"] == "outcome_reference":
                         # An agent on the outcome's team writes to the outcome's
                         # own Notebook, which every topic in it stands on.

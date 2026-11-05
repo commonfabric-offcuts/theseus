@@ -387,6 +387,21 @@ export async function liveChecks({ check, page, until, control, observations, or
 
   // Older messages that More loads appear where its button was, so the person
   // reads on from where they asked; the button's focus holds nothing still.
+  await check('live Mark read on a lost topic\'s message hands focus to the row now in its place', async () => {
+    await control({ method: 'lost_named_message', operation_id: 'live-lost-2', body: 'The older lost message.' });
+    await control({ method: 'lost_named_message', operation_id: 'live-lost-3', body: 'The newer lost message.' });
+    const p = await page('live-lost-mark', null, true, { url: origin + '/' });
+    const row = text => `[...document.querySelectorAll('#sent-to-you .closed-topic')].find(li => li.textContent.includes(${JSON.stringify(text)}))`;
+    await until(() => p.evaluate(`Boolean(${row('The older lost message.')} && ${row('The newer lost message.')})`), 'both lost messages are listed');
+    await p.evaluate(`[...${row('The newer lost message.')}.querySelectorAll('button')].find(b => b.textContent === 'Mark read').focus()`);
+    await p.key('Enter');
+    await until(() => p.evaluate(`!${row('The newer lost message.')}`), 'the message marked read leaves the list');
+    await until(() => p.evaluate(`${row('The older lost message.')}?.contains(document.activeElement) === true`), 'focus is on the row now in its place');
+    assert.equal(await p.evaluate('document.activeElement.textContent'), 'Read it here');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   await check('live More messages shows the older messages where its button was', async () => {
     await control({ method: 'seed', messages: 45 });
     const p = await page('live-more', null, true);

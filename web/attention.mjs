@@ -127,7 +127,13 @@ export function paintSent(host, answer, actions) {
     }
     const entry = shown.reads.get(id);
     const mark = part(element('button', { type: 'button', textContent: 'Mark read' }), id, 'mark');
-    mark.onclick = () => { mark.disabled = true; return Promise.resolve(acknowledge(item)).finally(() => { mark.disabled = false; }); };
+    // Busy, not disabled: a browser drops focus from a button it disables, and
+    // the row leaving must still find it there to hand it on.
+    mark.onclick = () => {
+      if (mark.getAttribute('aria-disabled') === 'true') return undefined;
+      mark.setAttribute('aria-disabled', 'true');
+      return Promise.resolve(acknowledge(item)).finally(() => { mark.removeAttribute('aria-disabled'); });
+    };
     const head = [element('span', { textContent: place }), element('span', { className: 'muted', textContent: ' (you can no longer open this topic)' })];
     const notice = [entry?.notice, ...(entry?.refusals ?? [])].filter(Boolean).join(' ');
     const said = element('span', { className: 'notice', hidden: !notice, textContent: notice ? ` ${notice}` : '' });
