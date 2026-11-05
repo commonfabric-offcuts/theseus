@@ -410,3 +410,42 @@ test('a later settle\'s failure is reported to its own caller, and an overtaken 
   assert.equal(editor.recoveryDiscovery, true, 'the failed latest read leaves the reply held');
   assert.equal(editor.recoveryServerDraft, undefined);
 });
+
+test('a settle overtaken twice finishes only when the last settle has', async t => {
+  const { f, editor, before, later, held, reads } = await refusalAtLaterRevision(t);
+  const [r1] = editor.imageCopies.keys(), row = editor.imageCopies.get(r1);
+  const recheck = () => f.registry.applyRecheck(editor, [r1], { items: [row], nextCursor: null });
+  let done = false;
+  const first = f.registry.recoveryCandidates(editor).then(() => { done = true; });
+  await reads(1);
+  const second = recheck();
+  await reads(2);
+  await held[0].serve(before); await tick();
+  const third = recheck();
+  await reads(3);
+  await held[1].serve(before); await tick();
+  assert.equal(done, false, 'the first settle waits while the third read is out');
+  assert.equal(editor.recoveryServerDraft, undefined);
+  held[2].serve(later);
+  await first; await second; await third;
+  assert.equal(editor.recoveryServerDraft?.revision, 2);
+});
+
+test('a settle whose own read failed finishes quietly when a later settle started before it could report', async t => {
+  const { f, editor, later, held, reads } = await refusalAtLaterRevision(t);
+  const [r1] = editor.imageCopies.keys(), row = editor.imageCopies.get(r1);
+  const recheck = () => f.registry.applyRecheck(editor, [r1], { items: [row], nextCursor: null });
+  const view = f.api.view, returned = [];
+  f.api.view = (...args) => { const answer = view(...args); returned.push(answer); return answer; };
+  const first = recheck();
+  await reads(1);
+  // The later settle starts in the same turn the failed read is delivered,
+  // after the first settle saw the failure and before its caller is told.
+  let newer;
+  returned[0].catch(() => { newer = recheck(); });
+  held[0].fail();
+  await reads(2);
+  held[1].serve(later);
+  await first; await newer;
+  assert.equal(editor.recoveryServerDraft?.revision, 2);
+});

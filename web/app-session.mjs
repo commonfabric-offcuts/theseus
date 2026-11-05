@@ -356,13 +356,7 @@ export class EditorRegistry {
       // discovered refusal. Retry can establish the exact revision later.
       editor.recoveryServerDraft = undefined;
       editor.recoveryDiscovery = true; this.changed(editor);
-      let state;
-      try {
-        state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
-      } catch (error) {
-        if (editor.imageSettle !== settle) return;
-        throw error;
-      }
+      const state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
       if (editor.imageSettle !== settle) return;
       this.validateState(state, editor.context.sourceRef, editor.context.topicId);
       editor.recoveryServerDraft = copy(state.draft ?? null);

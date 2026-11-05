@@ -269,6 +269,17 @@ test('a More versions page that fails after its review was replaced leaves the n
   assert.equal(f.get('review-status').textContent,'','the new review shows no error from the old one');
   assert.equal(f.get('review-retry').hidden,true);
 });
+test('the first page of a review is drawn when the registry applied it and its settle then failed',async()=>{
+  const f=fixture(),row=id=>({id,stamp:id,availability:'open-in-another-tab'});
+  f.get('version-review').showModal=function(){this.open=true;};
+  f.registry.recoveryCandidates=async(editor,options,shown)=>{shown({items:[row('a')],nextCursor:'c1'},false);throw Error('editor_state read failed');};
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  const all=(element,text)=>[...(element.textContent===text?[element]:[]),...element.children.flatMap(child=>all(child,text))];
+  assert.equal(f.get('review-status').textContent,'editor_state read failed');
+  assert.equal(all(f.get('review-content'),'Open in another tab').length,1,'the applied page is drawn');
+  assert.equal(all(f.get('review-content'),'More versions').length,1,'with its More versions');
+  assert.equal(f.get('review-retry').hidden,false);
+});
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
