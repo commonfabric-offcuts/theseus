@@ -248,30 +248,61 @@ export async function liveChecks({ check, page, until, control, observations, or
     const p = await page('live-reader-attachment', null, true);
     await settled(p);
     await p.open(0);
-    const named = "[...document.querySelectorAll('#source-attachments button')].find(b => b.textContent === 'Open passive.png')";
-    await until(() => p.evaluate(`document.querySelector('#reader').open && Boolean(${named})`), 'the Reader offers the attachment');
+    const named = name => `[...document.querySelectorAll('#source-attachments button')].find(b => b.textContent === ${JSON.stringify('Open ' + name)})`;
+    const offered = name => until(() => p.evaluate(`document.querySelector('#reader').open && Boolean(${named(name)})`), 'the Reader offers ' + name);
+    const opened = name => until(() => p.evaluate(`Boolean(document.querySelector('#source-attachments a[download=${JSON.stringify(name)}]'))`), name + ' opens');
     const notice = () => p.evaluate("document.querySelector('#reader-notice').hidden ? '' : document.querySelector('#reader-notice').textContent");
-    const press = () => p.evaluate(`${named}.focus()`).then(() => p.key('Enter'));
-    const refuse = async () => {
+    const press = name => p.evaluate(`${named(name)}.focus()`).then(() => p.key('Enter'));
+    const refuse = async name => {
       p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
-      await press();
-      const held = await until(() => p.held.find(h => !h.done && h.event.request.url.endsWith('/api/media/read')), 'the attachment read is held');
+      await press(name);
+      const held = await until(() => p.held.find(h => !h.done && h.event.request.url.endsWith('/api/media/read')), 'the read of ' + name + ' is held');
       held.done = true; p.intercept(null); await p.fail(held);
-      await until(async () => (await notice()) !== '', 'the refusal is shown');
+      await until(async () => (await notice()).startsWith(name + ': '), 'the refusal names ' + name);
     };
-    await refuse();
-    await p.evaluate("document.querySelector('#reader-notice').textContent = 'Something else said this'");
-    await press();
-    await until(() => p.evaluate(`Boolean(document.querySelector('#source-attachments a[download="passive.png"]'))`), 'the attachment opens');
-    assert.equal(await notice(), 'Something else said this', 'a notice it did not write stays');
+    await offered('passive.png');
+    // Two refusals with the same words: opening the first leaves the second's.
+    await refuse('passive.png');
+    await refuse('document.html');
+    const second = await notice();
+    await press('passive.png'); await opened('passive.png');
+    assert.equal(await notice(), second, 'another attachment\'s refusal stays');
+    await press('document.html'); await opened('document.html');
+    assert.equal(await notice(), '', 'its own refusal is gone once it opens');
+    // Two attachments with the same name: opening one leaves the other's refusal.
     await p.point('#reader-close');
     await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes');
+    const twin = await control({ method: 'agent_message', operation_id: `live-message-${++serial}`, body: 'Two pasted images', topic_id: 't1', addressees: [],
+      attachments: [{ name: 'image.png', text: 'first' }, { name: 'image.png', text: 'second' }] });
+    const card = `#messages [data-id="${twin.result.message_id}"]`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), 'the message with two attachments is shown');
+    await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+    await p.point(card);
+    const nth = n => `[...document.querySelectorAll('#source-attachments button')].filter(b => b.textContent === 'Open image.png')[${n}]`;
+    await until(() => p.evaluate(`document.querySelector('#reader').open && Boolean(${nth(1)})`), 'both attachments are offered');
+    const refuseNth = async n => {
+      p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
+      await p.evaluate(`${nth(n)}.focus()`); await p.key('Enter');
+      const held = await until(() => p.held.find(h => !h.done && h.event.request.url.endsWith('/api/media/read')), 'the read is held');
+      held.done = true; p.intercept(null); await p.fail(held);
+      await until(() => p.evaluate(`!(${nth(n)}).disabled`), 'the refusal settles');
+    };
+    await refuseNth(0);
+    await refuseNth(1);
+    const twinNotice = await notice();
+    assert.ok(twinNotice.startsWith('image.png: '), twinNotice);
+    await p.evaluate(`${nth(0)}.focus()`); await p.key('Enter');
+    await until(() => p.evaluate("document.querySelectorAll('#source-attachments a[download=\"image.png\"]').length === 1"), 'the first opens');
+    assert.equal(await notice(), twinNotice, 'the other attachment of the same name keeps its refusal');
+    await p.point('#reader-close');
+    await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes again');
+    // A notice something else wrote since is never wiped.
     await p.open(0);
-    await until(() => p.evaluate(`document.querySelector('#reader').open && Boolean(${named})`), 'the Reader offers it again');
-    await refuse();
-    await press();
-    await until(() => p.evaluate(`Boolean(document.querySelector('#source-attachments a[download="passive.png"]'))`), 'the attachment opens');
-    assert.equal(await notice(), '', 'its own refusal is gone once it opens');
+    await offered('passive.png');
+    await refuse('passive.png');
+    await p.evaluate("document.querySelector('#reader-notice').textContent = 'Something else said this'");
+    await press('passive.png'); await opened('passive.png');
+    assert.equal(await notice(), 'Something else said this', 'a notice it did not write stays');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

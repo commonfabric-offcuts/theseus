@@ -351,9 +351,22 @@ def main():
             current = store().view(sender, "editor_state", {"source_ref": sources[0], "topic_id": topic_id})
             assert not current.get("error"), current
             draft = current["draft"] or {"id": operation + "-draft", "generation": operation + "-generation", "revision": 0}
-            command("draft.save", operation + "-save", {
+            # Optional attachments, each published by the agent: {"name", "text"}.
+            attached = []
+            for number, item in enumerate(request.get("attachments", [])):
+                data, media_id = item["text"].encode(), "%s-media-%d" % (operation, number)
+                command("media.begin", "%s-media-begin-%d" % (operation, number), {
+                    "name": item["name"], "content_type": "text/plain", "size_bytes": len(data),
+                    "sha256": hashlib.sha256(data).hexdigest(), "publish_operation_id": "%s-publish-%d" % (operation, number),
+                }, {"media_id": media_id}, {"media_revision": 0}, sender=sender)
+                envelope = {"v": 1, "instance_id": instance, "kind": "media.publish", "operation_id": "%s-publish-%d" % (operation, number),
+                            "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
+                            "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
+                assert store().publish_media(sender, envelope, io.BytesIO(data))["status"] == "committed"
+                attached.append({"id": media_id})
+            command("draft.save", operation + "-save", dict({
                 "source_ref": sources[0], "topic_id": topic_id, "generation": draft["generation"],
-                "body": request["body"], "addressees": request.get("addressees", [])},
+                "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {})),
                 {"draft_id": draft["id"]}, {"draft_revision": draft["revision"]}, sender=sender)
             command("submission.prepare", operation + "-prepare", {
                 "draft_id": draft["id"], "submission_id": operation + "-submission",
