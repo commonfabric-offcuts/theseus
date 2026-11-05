@@ -359,6 +359,22 @@ test('a row that leaves the list hands its focus to the row now in its place, or
   assert.equal(globalThis.document.moves, heading);
 });
 
+test('a list drawn again with what it already shows is left alone, so a press under way ends on the button it began on', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
+  t.after(() => { globalThis.document = previous; });
+  const f = fixture();
+  const lost = { ...f.item('d2', 'Before you left', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
+  const actions = { open() {}, acknowledge: async () => {}, read: async () => {}, attachment: () => new Element('span') };
+  const host = new Element('section'); host.root = true;
+  paintSent(host, { addressed: 1, latest_addressed: [lost] }, actions);
+  const mark = host.all().find(node => node.textContent === 'Mark read');
+  paintSent(host, { addressed: 1, latest_addressed: [structuredClone(lost)] }, actions);
+  assert.equal(host.all().find(node => node.textContent === 'Mark read'), mark);
+  paintSent(host, { addressed: 2, latest_addressed: [lost] }, actions);
+  assert.notEqual(host.all().find(node => node.textContent === 'Mark read'), mark, 'a change draws it anew');
+});
+
 test('focus on the last row to leave goes to the page\'s main region, and on a row whose neighbours all left, to the first row', async t => {
   const previous = globalThis.document;
   globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };

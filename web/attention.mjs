@@ -72,7 +72,10 @@ const sentParts = new WeakMap();
 // attachments from its source, attachment(ref, sourceRef, notice) offers each
 // one, and it is marked read here.
 export function paintSent(host, answer, actions) {
-  const { open, acknowledge, read, attachment } = actions;
+  // A press reaches the actions of the latest paint, as a list left alone
+  // keeps the buttons an earlier one drew.
+  const act = name => (...args) => sentLists.get(host).actions[name](...args);
+  const [open, acknowledge, read, attachment] = ['open', 'acknowledge', 'read', 'attachment'].map(act);
   const items = Array.isArray(answer?.latest_addressed) ? answer.latest_addressed : [];
   const count = Number.isSafeInteger(answer?.addressed) ? answer.addressed : 0;
   const shown = sentLists.get(host) ?? { reads: new Map() };
@@ -109,6 +112,14 @@ export function paintSent(host, answer, actions) {
     repaint();
     return entry.pending;
   };
+  // A list drawn again with what it already shows is left alone, so a press
+  // under way finishes on the button it began on.
+  const shows = JSON.stringify([count, items, items.map(item => {
+    const entry = shown.reads.get(item.message?.id);
+    return entry && [Boolean(entry.pending), entry.notice ?? null, entry.refusals ?? [], Boolean(entry.source), entry.controls?.length ?? 0];
+  })]);
+  if (shown.shows === shows) return;
+  shown.shows = shows;
   // The order last drawn, so that focus on a row that leaves can move to its neighbour.
   const before = shown.order ?? [];
   shown.order = items.map(item => item.message?.id);

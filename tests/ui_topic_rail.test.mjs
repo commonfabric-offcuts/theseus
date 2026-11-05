@@ -116,3 +116,15 @@ test('the open topic\'s row carries the count the list read for it', async t => 
   assert.equal(row.children[0]?.textContent,'3');assert.match(row.children[1]?.textContent,/3 unread, 1 sent to you by name/);
   assert.equal(f.rail.pages.items.find(x=>x.id==='z').title,'z','the open topic still shows what the page knows of it');
 });
+
+test('a row drawn again with what it already shows is left alone, and one whose count changed is drawn anew', async t => {
+  const f = fixture(t), counted = (id, unread) => ({ ...f.item(id), unread, addressed: 0 });
+  f.queue.push({ instance_id: 'i1', items: [counted('a', 2), f.item('z')], next_cursor: null }); await f.rail.load();
+  const link = f.host.children[0], drawn = [...link.children];
+  assert.equal(drawn[0].textContent, '2');
+  f.queue.push({ instance_id: 'i1', items: [counted('a', 2), f.item('z')], next_cursor: null }); await f.rail.load();
+  assert.equal(f.host.children[0], link);
+  assert.deepEqual(link.children, drawn, 'the same badge, not a second one');
+  f.queue.push({ instance_id: 'i1', items: [counted('a', 3), f.item('z')], next_cursor: null }); await f.rail.load();
+  assert.equal(link.children.at(-2).textContent, '3');
+});

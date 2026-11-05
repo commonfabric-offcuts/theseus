@@ -208,9 +208,15 @@ export class TopicRail {
           event.preventDefault(); return this.open(item.id);
         };
       }
-      link.textContent = item.title;
-      paintUnread(link, item);
-      paintState(link, item, this.reader);
+      // A row drawn again with what it already shows is left alone, so the
+      // pointer's hover and a click under way stay on what they were on.
+      const shows = JSON.stringify([item.title, item.unread, item.addressed, item.state, item.waiting_on, item.state_note]);
+      if (drawn.get(link) !== shows) {
+        drawn.set(link, shows);
+        link.textContent = item.title;
+        paintUnread(link, item);
+        paintState(link, item, this.reader);
+      }
       if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
       // Moving a focused link can blur it. Leave unchanged rows in place.
@@ -261,6 +267,7 @@ export class TopicRail {
 // A count of what waits unread in a topic or outcome, marked when part of it
 // was sent to the reader by name. The caller has just set the row's text, so
 // the row holds no earlier count; a row without unread messages gets none.
+const drawn = new WeakMap();
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 export function paintUnread(host, item) {
   if (!(Number.isSafeInteger(item.unread) && item.unread > 0)) return;
