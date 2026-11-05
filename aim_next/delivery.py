@@ -6,6 +6,7 @@ import time
 import uuid
 
 from .contract import LIMITS, Refusal, _identifier, _json, _page_size, _prefix
+from .marks import MARKED
 
 
 DELIVERY_SCHEMA = [
@@ -114,7 +115,7 @@ class Delivery:
         self._change(db, "actor", actor, "delivery", row["id"], 2)
 
     def _unread(self, db, actor, topics=None, workspaces=None):
-        """{topic_id: [unread, addressed, workspace_id]} for this actor's pending deliveries.
+        """{topic_id: [unread, addressed, workspace_id]} for this actor's pending deliveries and marks.
 
         Unread is what has not been acknowledged, which for a person means not
         yet seen on screen; addressed is the part sent to them by name. The
@@ -130,18 +131,26 @@ class Delivery:
         settled, and the counts return when the topic is unarchived. A message
         sent by name to someone outside the outcome (neither its owner nor a
         member) still counts: no list ever held it for them.
+
+        A message the actor marked unread adds one to unread, never to
+        addressed, unless an eligible delivery (pending in an active group)
+        already counts it; a mark in a topic the actor cannot read lies
+        dormant. Its rows are read from the actor's marked index, so that part
+        follows the actor's marks.
         """
-        counts, scope, direct_scope, values = {}, "", "", ()
+        counts, scope, direct_scope, mark_scope, values = {}, "", "", "", ()
         if topics == [] or workspaces == []:
             return counts
         if topics is not None:
             places = ",".join("?" * len(topics))
             scope, direct_scope, values = " AND g.topic_id IN (%s)" % places, " AND m.topic_id IN (%s)" % places, tuple(topics)
+            mark_scope = " AND k.topic_id IN (%s)" % places
         elif workspaces is not None:
-            scope = direct_scope = " AND t.workspace_id IN (%s)" % ",".join("?" * len(workspaces))
+            scope = direct_scope = mark_scope = " AND t.workspace_id IN (%s)" % ",".join("?" * len(workspaces))
             values = tuple(workspaces)
         if topics is None:
             scope, direct_scope = scope + " AND t.archived=0", direct_scope + " AND " + NAMED_OUTSIDE_LISTS
+            mark_scope += " AND t.archived=0"
         if topics is not None:
             subscriptions = db.execute("SELECT g.topic_id,t.workspace_id,SUM(g.pending_count) AS pending "
                                        "FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 CROSS JOIN topics t ON t.id=g.topic_id "
@@ -163,6 +172,11 @@ class Delivery:
             entry = counts.setdefault(row["topic_id"], [0, 0, row["workspace_id"]])
             entry[0] += row["pending"]
             entry[1] += row["pending"]
+        for row in db.execute("SELECT k.topic_id,t.workspace_id,COUNT(*) AS marked FROM message_marks k INDEXED BY reader_marks "
+                              "CROSS JOIN topics t ON t.id=k.topic_id CROSS JOIN workspaces w ON w.id=t.workspace_id "
+                              "WHERE k.actor_id=? AND " + MARKED + mark_scope + " GROUP BY k.topic_id",
+                              (actor,) + values):
+            counts.setdefault(row["topic_id"], [0, 0, row["workspace_id"]])[0] += row["marked"]
         return counts
 
     def _view_attention(self, db, actor, args):

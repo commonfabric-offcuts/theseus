@@ -242,6 +242,9 @@ class Drafts:
                     raise
                 destination_available = False
         submissions = {"instance_id": self.instance_id, "items": [], "next_cursor": None} if note_only else self._view_submissions(db, actor, args)
+        # A message the person can mark carries its mark; any other source has none.
+        mark = self._mark_state(db, actor, args["source_ref"]["id"]) if source_available and args["source_ref"]["kind"] == "message" else None
         return {"instance_id": self.instance_id, "source_ref": args["source_ref"], "destination": {"topic_id": args.get("topic_id")},
                 "source_available": source_available, "destination_available": destination_available,
-                "draft": draft, "note": note, "reading_place": None, "submissions": submissions, "limits": dict(LIMITS)}
+                "draft": draft, "note": note, "reading_place": None, "submissions": submissions, "limits": dict(LIMITS),
+                "mark": mark}
