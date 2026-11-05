@@ -128,8 +128,8 @@ class Delivery:
         total counts leave archived topics out, as the outcome's list does, so
         no count points at a topic the reader cannot find in a list; nothing is
         settled, and the counts return when the topic is unarchived. A message
-        sent by name to someone who lost its topic still counts: no list ever
-        held it for them.
+        sent by name to someone outside the outcome (neither its owner nor a
+        member) still counts: no list ever held it for them.
         """
         counts, scope, direct_scope, values = {}, "", "", ()
         if topics == [] or workspaces == []:
@@ -177,7 +177,7 @@ class Delivery:
         waiting, waiting_topics = self._waiting_on_reader(db, actor)
         group = self._addressed_group(db, actor)
         # Newest first in index order, passing over messages in archived topics the
-        # reader can still open, as the totals do.
+        # outcome's list holds for the reader, as the totals do.
         rows = [] if group is None else db.execute(
             "SELECT d.* FROM deliveries d INDEXED BY pending_group_deliveries CROSS JOIN messages m ON m.id=d.message_id "
             "CROSS JOIN topics t ON t.id=m.topic_id WHERE d.group_id=? AND d.state='pending' AND " + NAMED_OUTSIDE_LISTS + " ORDER BY d.seq DESC LIMIT 5",
