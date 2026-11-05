@@ -862,17 +862,17 @@ async function initialize() {
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
       if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
-      const foreground = registry.cleanup.foreground();
-      try {
-        const answer = checkedView(await foreground.read(options => api.view('workspace_topics', args, options)), bootstrap.instance_id);
-        if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
-        return answer;
-      } finally { foreground.release(); }
+      const answer = checkedView(await registry.cleanup.list(options => api.view('workspace_topics', args, options)), bootstrap.instance_id);
+      if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
+      return answer;
     },
     open: id => openDestination({kind:'topic',id},topicRail.pages.items.find(item => item.id === id)?.title ?? id),
   });
   topicRail.load();
-  followCommits(async () => { await outcomeRail?.load(); await topicRail?.load(); });
+  followCommits(async () => {
+    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load();
+    return outcomes !== false && topics !== false;
+  });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);
   $('updates-retry').onclick = () => run(async () => {
@@ -969,15 +969,19 @@ function refreshDirectory() {
     .catch(() => {}).finally(() => { directoryRead = null; });
   return directoryRead;
 }
-// A visible page reloads its lists after each commit, when the stream comes
-// back, and when shown again; a hidden one waits, as its reads do. Returns the
-// page's one reload, which its first read and Refresh go through as well; the
-// page calls this before its first read, so a commit while that read is out is
-// read after it.
+// A visible page reloads its lists after each commit and when shown again; a
+// hidden one waits, as its reads do. load() settles false, or fails, when a
+// list could not be read, and only then does the stream's return read again:
+// anything saved while the stream was down changes its first number, which
+// arrives as a commit, so a feed that keeps reconnecting rereads nothing.
+// Returns the page's one reload, which its first read and Refresh go through
+// as well; the page calls this before its first read, so a commit while that
+// read is out is read after it.
 function followCommits(load) {
-  const reload = reloader(load);
+  let owed = false;
+  const reload = reloader(async () => { owed = true; owed = await load() === false; });
   if (live) {
-    live.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && document.visibilityState === 'visible') run(reload); });
+    live.listen(event => { if ((event.kind === 'commit' || event.state === 'live' && owed) && document.visibilityState === 'visible') run(reload); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(reload); });
   }
   return reload;
@@ -1005,13 +1009,9 @@ function initializeOutcomeNavigation(current=null) {
   $('new-outcome').onclick=()=>openDestination({kind:'create',intent:crypto.randomUUID()},'New outcome');
   const read=async args=>{
     if(registry&&authorityReviewPending())throw Error('The runtime changed. Review saved writing before reloading.');
-    const foreground=registry?.cleanup.foreground();
-    try {
-      const answer=checkedView(await (foreground ? foreground.read(options=>api.view('workspaces',args,options)) : api.view('workspaces',args,{readClass:'foreground'})),bootstrap.instance_id);
-      if(registry&&(registry.disposed||authorityReviewPending()))throw Error('The runtime changed. Review saved writing before reloading.');
-      return answer;
-    }
-    finally { foreground?.release(); }
+    const answer=checkedView(await (registry ? registry.cleanup.list(options=>api.view('workspaces',args,options)) : api.view('workspaces',args,{readClass:'foreground'})),bootstrap.instance_id);
+    if(registry&&(registry.disposed||authorityReviewPending()))throw Error('The runtime changed. Review saved writing before reloading.');
+    return answer;
   };
   outcomeRail=new OutcomeRail({instanceId:bootstrap.instance_id,current,host:$('workspaces'),more:$('more-workspaces'),
     retry:$('retry-workspaces'),message:$('outcomes-status'),empty:$('outcomes-empty'),read,open:openDestination,
@@ -1068,11 +1068,11 @@ async function initializeOutcomePage(route) {
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
         open:id=>openDestination({kind:'topic',id},topicRail.pages.items.find(item=>item.id===id)?.title??id),
         updated:()=>{$('outcome-empty').hidden=!topicRail.pages.started||topicRail.pages.items.length>0||!$('topics-status').hidden;}});
-      await topicRail.load();
+      return topicRail.load();
     };
     // A commit may change the team or the outcome's revision as well as its
     // topics, and the outcome rail beside them carries counts too.
-    const reload=followCommits(async()=>{await Promise.all([outcomeRail.load(),refresh()]);});
+    const reload=followCommits(async()=>(await Promise.all([outcomeRail.load(),refresh()])).every(read=>read!==false));
     $('refresh').onclick=()=>run(reload);await reload();
   }
   document.body.dataset.ready='true';
@@ -1115,7 +1115,8 @@ async function initializeOpeningPage(route) {
   await view.run(()=>draft.load());
   if(draft.editable)view.title.focus();
   view.run(()=>view.loadMembers());
-  initializeOutcomeNavigation(route.workspace);await outcomeRail.load();document.body.dataset.ready='true';
+  // The outcome list stays beside the writing, and follows commits as on every page.
+  initializeOutcomeNavigation(route.workspace);await followCommits(()=>outcomeRail.load())();document.body.dataset.ready='true';
 }
 async function ensureIntentJournal() {
   if(intentJournal)return intentJournal;
@@ -1149,7 +1150,7 @@ async function initializeCreationPage(route) {
   if(outcomeCreation.row.phase==='confirmed')await form.run(()=>confirmed(outcomeCreation.row));
   $('refresh').onclick=()=>form.run(()=>outcomeCreation.refresh());
   window.addEventListener('beforeunload',event=>{if(outcomeCreation.writable&&(outcomeCreation.pending||outcomeCreation.dirty||outcomeCreation.storageError)){event.preventDefault();event.returnValue='';}});
-  initializeOutcomeNavigation();await outcomeRail.load();document.body.dataset.ready='true';
+  initializeOutcomeNavigation();await followCommits(()=>outcomeRail.load())();document.body.dataset.ready='true';
 }
 window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
 $('refresh').onclick = () => run(start);

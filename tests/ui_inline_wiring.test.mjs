@@ -5,15 +5,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as writing from '../web/writing-helpers.mjs';
-import { readFailure, checkedView, bindingOf } from '../web/freshness.mjs';
+import { readFailure, checkedView, bindingOf, Freshness } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
 import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
 import { Attention, paintSent } from '../web/attention.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
+import { RecoveryCleanup } from '../web/cleanup.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
-function fixture(href = 'https://fixture/?topic=t1') {
+// overrides: names the app imports, replaced in its scope for one test.
+function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
@@ -55,12 +57,13 @@ function fixture(href = 'https://fixture/?topic=t1') {
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; },
-    cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; } },
+    cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
+      list: action => action({ readClass: 'foreground' }) },
     runtime: { current: bootstrap.authority },
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
-  const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
+  const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
@@ -78,7 +81,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
       load() { events.push(['opening-load']); return Promise.resolve('editing'); } leave() {} refresh() {} cancelSave() {} },
     OpeningView: class { constructor() { this.title = { focus() {} }; } run(action) { return Promise.resolve().then(action); } loadMembers() { return Promise.resolve(); } },
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
-  const context = vm.createContext(scope);
+  const context = vm.createContext(Object.assign(scope, overrides));
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,readableTime}; })())', context);
   const attentionSource = readFileSync(new URL('../web/attention.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
@@ -1080,4 +1083,131 @@ test('a Mark read that fails says so and reads attention again, leaving nothing 
   assert.equal(f.get('app-status').hidden, false);
   assert.equal(f.calls.filter(call => call.name === 'attention').length, reads + 1, 'what Core holds is read again');
   assert.equal(mark.disabled, false);
+});
+
+// A topic page whose server keeps the read lanes apart, with the real recovery
+// cleanup and the real freshness pass on a clock the test runs.
+function partitionedTopic() {
+  const jobs = new Map(); let serial = 0;
+  const clock = { jobs, setTimeout(fn, ms) { jobs.set(++serial, { fn, ms }); return serial; }, clearTimeout(id) { jobs.delete(id); } };
+  const binding = { instance_id: 'fixture', actor_id: 'fixture-person', authority_id: 'a', authority_epoch: 'e' };
+  const scope = { kind: 'topic', id: 't1' };
+  const cursor = seq => ({ v: 1, kind: 'checkpoint', ...binding, scope, after_seq: seq });
+  const f = fixture('https://fixture/?topic=t1', {
+    initialViews: async () => cursor(1),
+    Freshness: class extends Freshness { constructor(options) { super({ ...options, timers: clock, yieldRead: async () => {} }); } } });
+  f.bootstrap.authority = { authority_id: 'a', authority_epoch: 'e' }; f.registry.runtime.current = f.bootstrap.authority;
+  f.bootstrap.transport = { read_admission: { version: 1, header: 'X-AIM-Read-Class',
+    foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 }, background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } } };
+  const cleanup = new RecoveryCleanup({ api: f.api, bootstrap: f.bootstrap, journal: {}, runtime: { readTimeoutMs: 5000 }, changed() {} });
+  f.registry.cleanup = cleanup;
+  const live = stream(); live.connected = true; f.useLive(live);
+  // rails: a promise the rails' reads wait on; changes: one the next changes read waits on.
+  const held = { rails: null, changes: null }, signals = []; let seq = 1;
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'changes') {
+      f.calls.push({ name }); signals.push(options?.signal);
+      const wait = held.changes; held.changes = null; if (wait) await wait;
+      return { instance_id: 'fixture', scope, baseline: false, items: [], has_more: false, continuation: null,
+        checkpoint: cursor(++seq), covered_versions: { topic: 1, notebook: 1 } };
+    }
+    if (['workspaces', 'workspace_topics'].includes(name) && held.rails) { f.calls.push({ name }); await held.rails; return { instance_id: 'fixture', items: [], next_cursor: null }; }
+    return view(name, args, options);
+  };
+  return { f, live, jobs, held, signals, changes: () => f.calls.filter(call => call.name === 'changes').length };
+}
+
+test('a commit on a topic page reads its changes at once, beside the rails it reloads, with no timer', async () => {
+  const { f, live, jobs, held, changes } = partitionedTopic();
+  await f.initialize(); await drain();
+  const before = changes();
+  assert.ok(before >= 1, 'the page read its changes when it started');
+  const rails = defer(); held.rails = rails.promise;
+  live.emit({ kind: 'commit', seq: 7 }); await drain();
+  assert.equal(changes(), before + 1, 'the commit\'s changes are read while the rails still read');
+  assert.equal(jobs.size, 0, 'no timer waits to read them');
+  held.rails = null; rails.resolve(); await drain();
+  f.owners().freshness.dispose();
+});
+
+test('a commit\'s rail reload leaves a freshness pass already reading alone', async () => {
+  const { f, live, held, signals } = partitionedTopic();
+  await f.initialize(); await drain();
+  const reading = defer(); held.changes = reading.promise;
+  live.emit({ kind: 'commit', seq: 7 }); await drain();
+  const signal = signals.at(-1);
+  live.emit({ kind: 'commit', seq: 8 }); await drain();
+  assert.equal(signal?.aborted, false, 'the next commit\'s rail reload does not stop the pass reading');
+  reading.resolve(); await drain();
+  f.owners().freshness.dispose();
+});
+
+// The stream's return rereads a page's lists only when a reload could not read
+// them: anything saved while it was down changes its first number, which comes
+// as a commit.
+for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspaces', 'workspace', 'workspace_topics']], ['?topic=t1', ['workspaces', 'workspace_topics']]]) {
+  test(`the stream coming back rereads the lists on ${route} only after a reload that failed`, async () => {
+    const f = fixture('https://fixture/' + route), live = stream(), failing = new Set();
+    if (route !== '?topic=t1') f.inject({ api: f.api, bootstrap: f.bootstrap });
+    f.useLive(live);
+    const view = f.api.view;
+    f.api.view = async (name, args, options) => {
+      if (name === 'workspace' && route === '?workspace=w1') { f.calls.push({ name }); if (failing.has(name)) throw Object.assign(Error('busy'), { status: 503 }); return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 1 } }; }
+      if (failing.has(name)) { f.calls.push({ name }); throw Object.assign(Error('This read could not enter its bounded lane.'), { status: 503 }); }
+      return view(name, args, options);
+    };
+    await f.initialize(); await drain();
+    const count = () => f.calls.filter(call => lists.includes(call.name)).length;
+    const reconnect = async () => { live.emit({ kind: 'state', state: 'down' }); live.emit({ kind: 'state', state: 'live' }); await drain(); };
+    let before = count();
+    await reconnect();
+    assert.equal(count(), before, 'nothing was owed, so the return reads nothing');
+    for (const name of lists) {
+      failing.add(name); live.emit({ kind: 'commit', seq: 20 }); await drain(); failing.delete(name);
+      before = count(); await reconnect();
+      assert.ok(count() > before, `a failed ${name} read is read again when the stream returns`);
+      before = count(); await reconnect();
+      assert.equal(count(), before, `once ${name} is read, the next return reads nothing`);
+    }
+  });
+}
+
+// The new-topic and new-outcome pages show the outcome list beside the writing.
+for (const route of ['?workspace=w1&opening=o1&opening_topic=t9', '?new=outcome&intent=i1']) {
+  test(`the outcome list beside ${route} is read again after each commit`, async () => {
+    const f = fixture('https://fixture/' + route, {
+      openIntentJournal: async () => ({ close() {} }),
+      OutcomeCreation: class { constructor() { this.row = { phase: 'draft' }; } async load() {} refresh() {} leave() {} },
+      CreateOutcomeView: class { run(action) { return Promise.resolve().then(action); } } });
+    const live = stream(), o = outcomesPage(f);
+    f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+    o.answers.push(o.page(['w1']), o.page(['w1', 'w2']));
+    await f.initialize(); await drain();
+    assert.equal(f.get('body').dataset.ready, 'true');
+    assert.equal(o.reads(), 1);
+    live.emit({ kind: 'commit', seq: 9 }); await drain();
+    assert.equal(o.reads(), 2, 'a commit reads the outcome list again');
+    assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['w1', 'w2']);
+    f.document.visibilityState = 'hidden';
+    live.emit({ kind: 'commit', seq: 10 }); await drain();
+    assert.equal(o.reads(), 2, 'a hidden page waits');
+  });
+}
+
+test('attention is read again when the stream comes back, and not when it goes down', async () => {
+  const f = fixture('https://fixture/?'), live = stream(), o = outcomesPage(f), view = f.api.view;
+  o.answers.push(o.page([]));
+  let unread = 0;
+  f.api.view = async (name, args) => name === 'attention'
+    ? (f.calls.push({ name }), { instance_id: 'fixture', unread, addressed: 0, latest_addressed: [] }) : view(name, args);
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  await f.initialize(); await drain();
+  const reads = () => f.calls.filter(call => call.name === 'attention').length, before = reads();
+  unread = 2;
+  live.emit({ kind: 'state', state: 'down' }); await drain();
+  assert.equal(reads(), before, 'the stream going down reads nothing');
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(reads(), before + 1, 'the stream coming back reads attention');
+  assert.equal(f.owners().attention.unread, 2);
 });

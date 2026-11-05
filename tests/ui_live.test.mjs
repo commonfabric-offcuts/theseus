@@ -81,13 +81,24 @@ test('refused sockets back off to at most thirty seconds; a socket that delivere
   waits.push(times.run());
   for (let n = 0; n < 6; n++) { sockets[n].refuse(); waits.push(times.run()); }
   assert.deepEqual(waits, [1000, 2000, 4000, 8000, 16000, 30000, 30000]);
-  sockets[6].send({ seq: 9 }); sockets[6].drop();
+  sockets[6].send({ seq: 9 }); sockets[6].send({ seq: 10 }); sockets[6].drop();
   assert.equal(times.run(), 1000);
   // A socket that closes before any message is a refusal, even right after a clean one.
   sockets[7].drop();
   assert.equal(times.run(), 1000);
   sockets[8].drop();
   assert.equal(times.run(), 2000);
+});
+
+test('a feed that closes right after its first number backs off, as one that ends there does', () => {
+  const { live, sockets, events, times } = fixture();
+  const waits = [];
+  live.start();
+  for (let n = 0; n < 6; n++) { sockets[n].send({ seq: 5 }); sockets[n].drop(); waits.push(times.run()); }
+  assert.deepEqual(waits, [1000, 2000, 4000, 8000, 16000, 30000]);
+  assert.deepEqual(events.filter(e => e.kind === 'commit').map(e => e.seq), [5], 'the same number announces no commit');
+  sockets[6].send({ seq: 5 }); sockets[6].send({ seq: 6 }); sockets[6].drop();
+  assert.equal(times.run(), 1000, 'a socket that announced a commit and then closed reconnects after a second');
 });
 
 test('an unreadable or unknown message closes the socket and backs off', () => {

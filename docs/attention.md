@@ -65,8 +65,9 @@ and the server lets identical waiting reads share one, so many pages cost one
 waiting place. The tab title carries the unread total, and each topic and
 outcome row shows its count, marked when part of it names the reader; the open
 topic's row carries the count its list read for it. A visible page reloads its
-outcome and topic lists after each commit, on topic pages as on outcome pages,
-keeping the rows loaded with More; a hidden one reloads them when shown again.
+outcome and topic lists after each commit, on topic pages as on outcome pages
+and beside a new topic or outcome, keeping the rows loaded with More; a hidden
+one reloads them when shown again.
 
 Outcome pages list the newest messages sent to the reader by name. One in a
 topic they can open links there, where reading it settles it; one in a topic

@@ -61,27 +61,33 @@ While the stream is up, the page reads only after a commit, so an idle page
 reads nothing and a new message shows as soon as it is saved. A pass that fails
 in a retryable way, is interrupted, or leaves work behind keeps its own timer.
 While the stream is down, the page checks on the 500 ms cadence it used before,
-slowed by retries. A socket that delivered and then closed, or that ended with
-`stopped`, reconnects after a second; any other ending backs off from one to
-thirty seconds, so a broken feed is not asked in a loop. A page that becomes
-visible or comes back online reconnects at once. A socket that went on to
-announce a commit has worked, so a later ending backs off from one second again;
-one that ends after only its first number keeps counting. A server without a native
-watch offers no stream and refuses one with `LIVE_UNAVAILABLE`, after the same
-Origin and session checks as any stream. The server holds
-at most eight streams; a ninth is refused `SERVER_BUSY` and retried with the
-same back-off.
+slowed by retries. A socket that delivered and then ended with `stopped`, or
+that closed after announcing a commit, reconnects after a second; any other
+ending backs off from one to thirty seconds, so a broken feed is not asked in a
+loop. A page that becomes visible or comes back online reconnects at once. A
+socket that went on to announce a commit has worked, so a later ending backs off
+from one second again; one that ends or closes after only its first number keeps
+counting. A server without a native watch offers no stream and refuses one with
+`LIVE_UNAVAILABLE`, after the same Origin and session checks as any stream. The
+server holds at most eight streams; a ninth is refused `SERVER_BUSY` and retried
+with the same back-off.
 
-Every page reloads the topic and outcome lists it shows after each commit, and
-again when the stream comes back. A page starts following commits before its
-first read, so a commit that lands while that read is out is read after it. A
-reload asked for while a list is loading, by a commit, Refresh or Retry, never
-settles with that load: the load was sent before the ask and may not show the
-commit, so one more load runs once it ends, however many asks arrive. A reload
-reads again every row the reader has loaded, the pages **More** added included,
-in pages as large as the view allows, and changes the list once all have
-arrived. A reload whose read fails says so, keeps the rows it had and offers
-**Retry**; the next commit, the stream's return or showing the page reads again.
+Every page reloads the topic and outcome lists it shows after each commit, the
+new-topic and new-outcome pages included. When the stream comes back it reloads
+them only if the last reload could not read them: anything saved while the
+stream was down changes its first number, which arrives as a commit, so a feed
+that keeps reconnecting does not reread every list. A page starts following
+commits before its first read, so a commit that lands while that read is out is
+read after it. A reload asked for while a list is loading, by a commit, Refresh
+or Retry, never settles with that load: the load was sent before the ask and may
+not show the commit, so one more load runs once it ends, however many asks
+arrive. A reload reads again every row the reader has loaded, the pages **More**
+added included, in pages as large as the view allows, and changes the list once
+all have arrived. A reload whose read fails says so, keeps the rows it had and
+offers **Retry**; the next commit, the stream's return or showing the page reads
+again. Where the server keeps its read lanes apart, these list reads take the
+foreground lane without holding background reads back, so the open topic's own
+check for the same commit runs beside them rather than after them.
 
 ## When updates cannot continue
 
