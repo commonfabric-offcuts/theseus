@@ -52,7 +52,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; },
-    cleanup: { foregroundListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; } },
+    cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; } },
     runtime: { current: bootstrap.authority },
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
@@ -170,6 +170,25 @@ test('optional outcome and topic rail reads begin after the primary composer is 
   await f.initialize();await new Promise(resolve=>setImmediate(resolve));
   assert.ok(order.indexOf('composer')<order.indexOf('workspaces'));
   assert.ok(order.indexOf('composer')<order.indexOf('workspace_topics'));
+});
+test('a deferred recovery check reruns discovery only for an editor a presentation still holds',async()=>{
+  const f=fixture(),seen=[];
+  f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
+  f.registry.recoveryCandidates=async(editor,options)=>{seen.push([editor.key,options.limit]);return {items:[],nextCursor:null};};
+  await f.initialize();await new Promise(resolve=>setImmediate(resolve));
+  const listeners=[...f.registry.cleanup.resumeListeners];assert.equal(listeners.length,1);
+  const before=seen.length,rerun=listeners[0];
+  rerun({editor:f.editor});
+  const other={key:'other',context:f.editor.context},otherSession={editor:other};f.registry.sessions.set('other',otherSession);
+  rerun(otherSession);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(seen.length,before,'a replaced session or an editor no presentation holds is not rediscovered');
+  rerun(f.registry.sessions.get(f.editor.key));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(seen.slice(before),[['inline',10]]);
+  f.registry.disposed=true;rerun(f.registry.sessions.get(f.editor.key));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(seen.length,before+1,'a disposed registry starts no discovery');
 });
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;

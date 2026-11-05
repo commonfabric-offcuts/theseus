@@ -349,9 +349,7 @@ async function present(presentation) {
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
     noteRead();
   }
-  const discovery = Promise.all(Object.values(presentation.editors).map(editor =>
-    registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); })
-      .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); })));
+  const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
@@ -359,6 +357,16 @@ async function present(presentation) {
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   sourceAttachments(presentation);
+}
+function discover(presentation, editor) {
+  return registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); })
+    .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
+}
+// A recovery check that a foreground read deferred runs again for the
+// presentation that still holds its editor.
+function rediscover(session) {
+  const presentation = [registry.current, registry.inline].find(p => p && Object.values(p.editors).includes(session.editor));
+  if (presentation && !registry.disposed && registry.sessions.get(session.editor.key) === session) discover(presentation, session.editor);
 }
 function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);
@@ -752,6 +760,7 @@ async function initialize() {
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
+  registry.cleanup.resumeListeners.add(rediscover);
   readThrough = new ReadThrough({ send: (topicId, from, seq) => {
     const { authority_id, authority_epoch } = bootstrap.authority;
     return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.read_through',

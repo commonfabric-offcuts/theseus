@@ -60,8 +60,24 @@ export class RecoveryCleanup {
     this.readTail = Promise.resolve(); this.activeRead = null; this.foregroundCount = 0;
     this.partitioned = supportsAdmission(bootstrap); this.readEpoch = 0; this.readController = null;
     this.foregroundListeners = new Set();
+    // A check deferred by a foreground read runs again once no foreground read
+    // remains and its editor's queue has drained; one deferred only by a busy
+    // server waits for the next foreground release.
+    this.waiting = new Map(); this.resumeListeners = new Set();
   }
   deferred(cause) { return Object.assign(Error('Background reading is deferred; the recovery copy is retained.'), { code: 'CLEANUP_DEFERRED', ...(cause ? { cause } : {}) }); }
+  defer(session, error) {
+    const key = session.editor.key;
+    this.waiting.set(key, { session, ready: !error.cause || Boolean(this.waiting.get(key)?.ready) });
+  }
+  resume() {
+    if (this.foregroundCount || this.stopped()) return;
+    for (const [key, { session, ready }] of [...this.waiting]) {
+      if (!ready || this.queues.has(key)) continue;
+      this.waiting.delete(key);
+      for (const listener of this.resumeListeners) listener(session);
+    }
+  }
   read(operation) {
     if (this.foregroundCount) return Promise.reject(this.deferred());
     const epoch = this.readEpoch;
@@ -99,7 +115,7 @@ export class RecoveryCleanup {
     }
     const deadline = Date.now() + this.runtime.readTimeoutMs;
     let released = false, finished = true, counted = true;
-    const releaseCount = () => { if (released && finished && counted) { counted = false; --this.foregroundCount; } };
+    const releaseCount = () => { if (released && finished && counted) { counted = false; if (!--this.foregroundCount) { for (const entry of this.waiting.values()) entry.ready = true; this.resume(); } } };
     const bounded = async (promise, controller = null) => {
       const remaining = deadline - Date.now();
       if (remaining <= 0) { controller?.abort(); throw Error('Reader request timed out. Your writing is kept.'); }
@@ -124,7 +140,7 @@ export class RecoveryCleanup {
   enqueue(key, action) {
     const task = (this.queues.get(key) ?? Promise.resolve()).catch(() => {}).then(action);
     this.queues.set(key, task);
-    const done = () => { if (this.queues.get(key) === task) this.queues.delete(key); };
+    const done = () => { if (this.queues.get(key) === task) { this.queues.delete(key); this.resume(); } };
     task.then(done, done); return task;
   }
   async idle(key) { while (this.queues.has(key)) await this.queues.get(key); }
@@ -178,7 +194,7 @@ export class RecoveryCleanup {
       });
       if (removed) this.report(session, null);
       return removed;
-    } catch (error) { if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); return false; }
+    } catch (error) { if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); else this.defer(session, error); return false; }
   }
   releasedRow(row, ids) {
     const next = copy(row); next.stamp = crypto.randomUUID();
@@ -200,7 +216,7 @@ export class RecoveryCleanup {
               return { next, ids: proof.release, retire };
             });
             if (!result?.retired) retained.push(result?.row ? { ...result.row, availability: 'available' } : row);
-          } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); }
+          } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); else this.defer(session, error); }
           continue;
         }
         if (this.stopped() || row.availability !== 'available' || !row.snapshot || !eligible(row, session.editor.context)) { retained.push(row); continue; }
@@ -208,7 +224,7 @@ export class RecoveryCleanup {
           const removed = await this.journal.retireAcknowledged(session.editor.key, row,
             captured => same(captured.snapshot, row.snapshot) && this.confirm(captured, session.editor.context));
           if (!removed) retained.push(row); else this.report(session, null);
-        } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); }
+        } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); else this.defer(session, error); }
       }
       return { ...page, items: retained };
     });
