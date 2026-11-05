@@ -348,6 +348,11 @@ def main():
             operation = request["operation_id"]
             sender = "fixture-notebook-agent"
             topic_id = request.get("topic_id", "t1")
+            if request.get("join"):
+                # The person brings the agent into a topic of theirs first.
+                revision = store().view(actor, "topic", {"topic_id": topic_id})["topic"]["version"]
+                command("participation.set", operation + "-join", {"actor_id": sender, "present": True},
+                        {"topic_id": topic_id}, {"topic_revision": revision})
             current = store().view(sender, "editor_state", {"source_ref": sources[0], "topic_id": topic_id})
             assert not current.get("error"), current
             draft = current["draft"] or {"id": operation + "-draft", "generation": operation + "-generation", "revision": 0}
