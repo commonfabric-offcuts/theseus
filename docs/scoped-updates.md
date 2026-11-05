@@ -79,6 +79,9 @@ reads again every row the reader has loaded, the pages **More** added included,
 in pages as large as the view allows, and changes the list once all have
 arrived. A reload whose read fails says so, keeps the rows it had and offers
 **Retry**; the next commit, the stream's return or showing the page reads again.
+Where the server keeps its read lanes apart, these list reads take the
+foreground lane without holding background reads back, so the open topic's own
+check for the same commit runs beside them rather than after them.
 
 ## When updates cannot continue
 

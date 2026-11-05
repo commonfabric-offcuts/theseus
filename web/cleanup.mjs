@@ -165,6 +165,16 @@ export class RecoveryCleanup {
       release: () => { released = true; releaseCount(); },
     };
   }
+  // A read for a list the page shows, which every commit reloads. Where the
+  // server keeps the lanes apart, its foreground lane gives the read room, so
+  // it neither waits for background reads nor stops them: the freshness pass a
+  // commit asks for runs beside that commit's list reloads. Without the
+  // partition it waits its turn as any foreground read does.
+  async list(operation) {
+    if (this.partitioned) return operation({ readClass: 'foreground' });
+    const foreground = this.foreground();
+    try { return await foreground.read(operation); } finally { foreground.release(); }
+  }
   enqueue(key, action) {
     const task = (this.queues.get(key) ?? Promise.resolve()).catch(() => {}).then(action);
     this.queues.set(key, task);

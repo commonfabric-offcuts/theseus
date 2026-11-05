@@ -5,15 +5,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as writing from '../web/writing-helpers.mjs';
-import { readFailure, checkedView, bindingOf } from '../web/freshness.mjs';
+import { readFailure, checkedView, bindingOf, Freshness } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
 import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
 import { Attention, paintSent } from '../web/attention.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
+import { RecoveryCleanup } from '../web/cleanup.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
-function fixture(href = 'https://fixture/?topic=t1') {
+// overrides: names the app imports, replaced in its scope for one test.
+function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const elements = new Map(), events = [], calls = [], paints = [], observers = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
@@ -55,7 +57,8 @@ function fixture(href = 'https://fixture/?topic=t1') {
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; },
-    cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; } },
+    cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
+      list: action => action({ readClass: 'foreground' }) },
     runtime: { current: bootstrap.authority },
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
@@ -78,7 +81,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
       load() { events.push(['opening-load']); return Promise.resolve('editing'); } leave() {} refresh() {} cancelSave() {} },
     OpeningView: class { constructor() { this.title = { focus() {} }; } run(action) { return Promise.resolve().then(action); } loadMembers() { return Promise.resolve(); } },
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
-  const context = vm.createContext(scope);
+  const context = vm.createContext(Object.assign(scope, overrides));
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,readableTime}; })())', context);
   const attentionSource = readFileSync(new URL('../web/attention.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
@@ -1038,4 +1041,62 @@ test('a Mark read that fails says so and reads attention again, leaving nothing 
   assert.equal(f.get('app-status').hidden, false);
   assert.equal(f.calls.filter(call => call.name === 'attention').length, reads + 1, 'what Core holds is read again');
   assert.equal(mark.disabled, false);
+});
+
+// A topic page whose server keeps the read lanes apart, with the real recovery
+// cleanup and the real freshness pass on a clock the test runs.
+function partitionedTopic() {
+  const jobs = new Map(); let serial = 0;
+  const clock = { jobs, setTimeout(fn, ms) { jobs.set(++serial, { fn, ms }); return serial; }, clearTimeout(id) { jobs.delete(id); } };
+  const binding = { instance_id: 'fixture', actor_id: 'fixture-person', authority_id: 'a', authority_epoch: 'e' };
+  const scope = { kind: 'topic', id: 't1' };
+  const cursor = seq => ({ v: 1, kind: 'checkpoint', ...binding, scope, after_seq: seq });
+  const f = fixture('https://fixture/?topic=t1', {
+    initialViews: async () => cursor(1),
+    Freshness: class extends Freshness { constructor(options) { super({ ...options, timers: clock, yieldRead: async () => {} }); } } });
+  f.bootstrap.authority = { authority_id: 'a', authority_epoch: 'e' }; f.registry.runtime.current = f.bootstrap.authority;
+  f.bootstrap.transport = { read_admission: { version: 1, header: 'X-AIM-Read-Class',
+    foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 }, background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } } };
+  const cleanup = new RecoveryCleanup({ api: f.api, bootstrap: f.bootstrap, journal: {}, runtime: { readTimeoutMs: 5000 }, changed() {} });
+  f.registry.cleanup = cleanup;
+  const live = stream(); live.connected = true; f.useLive(live);
+  // rails: a promise the rails' reads wait on; changes: one the next changes read waits on.
+  const held = { rails: null, changes: null }, signals = []; let seq = 1;
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name === 'changes') {
+      f.calls.push({ name }); signals.push(options?.signal);
+      const wait = held.changes; held.changes = null; if (wait) await wait;
+      return { instance_id: 'fixture', scope, baseline: false, items: [], has_more: false, continuation: null,
+        checkpoint: cursor(++seq), covered_versions: { topic: 1, notebook: 1 } };
+    }
+    if (['workspaces', 'workspace_topics'].includes(name) && held.rails) { f.calls.push({ name }); await held.rails; return { instance_id: 'fixture', items: [], next_cursor: null }; }
+    return view(name, args, options);
+  };
+  return { f, live, jobs, held, signals, changes: () => f.calls.filter(call => call.name === 'changes').length };
+}
+
+test('a commit on a topic page reads its changes at once, beside the rails it reloads, with no timer', async () => {
+  const { f, live, jobs, held, changes } = partitionedTopic();
+  await f.initialize(); await drain();
+  const before = changes();
+  assert.ok(before >= 1, 'the page read its changes when it started');
+  const rails = defer(); held.rails = rails.promise;
+  live.emit({ kind: 'commit', seq: 7 }); await drain();
+  assert.equal(changes(), before + 1, 'the commit\'s changes are read while the rails still read');
+  assert.equal(jobs.size, 0, 'no timer waits to read them');
+  held.rails = null; rails.resolve(); await drain();
+  f.owners().freshness.dispose();
+});
+
+test('a commit\'s rail reload leaves a freshness pass already reading alone', async () => {
+  const { f, live, held, signals } = partitionedTopic();
+  await f.initialize(); await drain();
+  const reading = defer(); held.changes = reading.promise;
+  live.emit({ kind: 'commit', seq: 7 }); await drain();
+  const signal = signals.at(-1);
+  live.emit({ kind: 'commit', seq: 8 }); await drain();
+  assert.equal(signal?.aborted, false, 'the next commit\'s rail reload does not stop the pass reading');
+  reading.resolve(); await drain();
+  f.owners().freshness.dispose();
 });

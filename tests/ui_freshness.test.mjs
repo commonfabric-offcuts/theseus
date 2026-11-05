@@ -229,6 +229,30 @@ test('background 503 is cleanup deferral and older server retains conservative a
   hold.resolve(); await bg; await opened; fg.release(); assert.equal(ran, true);
 });
 
+test('a list read leaves background reads running beside it, and an older server keeps the reservation', async () => {
+  const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal: {}, runtime: { readTimeoutMs: 5000 }, changed: () => {} });
+  let interrupted = 0, listed;
+  cleanup.foregroundListeners.add(() => interrupted++);
+  // A background read sent while a list read is out runs.
+  const out = deferred(), listing = cleanup.list(async options => { listed = options; await out.promise; return 'rows'; });
+  assert.equal(await cleanup.read(async () => 'beside'), 'beside');
+  out.resolve(); assert.equal(await listing, 'rows'); assert.deepEqual(listed, { readClass: 'foreground' });
+  // A background read already out when a list read starts is not stopped.
+  const hold = deferred(), entered = deferred(); let signal;
+  const bg = cleanup.read(async options => { signal = options.signal; entered.resolve(); await hold.promise; return 'background'; });
+  await entered.promise;
+  assert.equal(await cleanup.list(async () => 'rows'), 'rows');
+  assert.equal(signal.aborted, false); assert.equal(interrupted, 0);
+  hold.resolve(); assert.equal(await bg, 'background');
+  const old = new RecoveryCleanup({ api: {}, bootstrap: { ...bootstrap, transport: {} }, journal: {}, runtime: { readTimeoutMs: 5000 }, changed: () => {} });
+  const oldHold = deferred(), oldEntered = deferred(); let ran = false;
+  const oldBg = old.read(async () => { oldEntered.resolve(); await oldHold.promise; });
+  await oldEntered.promise; const oldListing = old.list(async () => { ran = true; });
+  await tick(); assert.equal(ran, false, 'an older server\'s list read waits for the background read');
+  await assert.rejects(old.read(async () => 'held back'), e => e.code === 'CLEANUP_DEFERRED');
+  oldHold.resolve(); await oldBg; await oldListing; assert.equal(ran, true);
+});
+
 test('freshness sees the retryable server cause through cleanup deferral without losing backoff', async () => {
   const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal: {}, runtime: { readTimeoutMs: 5000 }, changed: () => {} });
   const { f, states, times } = fixture({ read: fn => cleanup.read(fn), api: { view: async () => {

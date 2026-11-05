@@ -862,12 +862,9 @@ async function initialize() {
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
       if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
-      const foreground = registry.cleanup.foreground();
-      try {
-        const answer = checkedView(await foreground.read(options => api.view('workspace_topics', args, options)), bootstrap.instance_id);
-        if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
-        return answer;
-      } finally { foreground.release(); }
+      const answer = checkedView(await registry.cleanup.list(options => api.view('workspace_topics', args, options)), bootstrap.instance_id);
+      if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
+      return answer;
     },
     open: id => openDestination({kind:'topic',id},topicRail.pages.items.find(item => item.id === id)?.title ?? id),
   });
@@ -1002,13 +999,9 @@ function initializeOutcomeNavigation(current=null) {
   $('new-outcome').onclick=()=>openDestination({kind:'create',intent:crypto.randomUUID()},'New outcome');
   const read=async args=>{
     if(registry&&authorityReviewPending())throw Error('The runtime changed. Review saved writing before reloading.');
-    const foreground=registry?.cleanup.foreground();
-    try {
-      const answer=checkedView(await (foreground ? foreground.read(options=>api.view('workspaces',args,options)) : api.view('workspaces',args,{readClass:'foreground'})),bootstrap.instance_id);
-      if(registry&&(registry.disposed||authorityReviewPending()))throw Error('The runtime changed. Review saved writing before reloading.');
-      return answer;
-    }
-    finally { foreground?.release(); }
+    const answer=checkedView(await (registry ? registry.cleanup.list(options=>api.view('workspaces',args,options)) : api.view('workspaces',args,{readClass:'foreground'})),bootstrap.instance_id);
+    if(registry&&(registry.disposed||authorityReviewPending()))throw Error('The runtime changed. Review saved writing before reloading.');
+    return answer;
   };
   outcomeRail=new OutcomeRail({instanceId:bootstrap.instance_id,current,host:$('workspaces'),more:$('more-workspaces'),
     retry:$('retry-workspaces'),message:$('outcomes-status'),empty:$('outcomes-empty'),read,open:openDestination,
