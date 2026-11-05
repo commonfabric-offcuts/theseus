@@ -518,6 +518,7 @@ export async function liveChecks({ check, page, until, control, observations, or
     await until(async () => await line(p) === '', 'the last mark clears and the line goes');
     await p.key('Escape');
     await until(() => p.evaluate("!document.querySelector('#reader').open && document.activeElement?.id === 'main'"), 'the Reader closes and the page holds focus');
+    assert.equal(await p.evaluate("getComputedStyle(document.activeElement).outlineStyle"), 'none', 'no ring is drawn around the whole page');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
