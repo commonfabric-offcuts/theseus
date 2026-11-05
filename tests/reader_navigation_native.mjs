@@ -9,7 +9,10 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   const link = id => `#topics a[data-topic-id="${id}"]`;
   const topics = [{ id: 't2', title: 'Design discussion' }, { id: 't3', title: 'Greenlight discussion' }];
   const ready = (p, id) => until(async () => { try { return await p.evaluate(`document.body.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')===${JSON.stringify(id)} && Boolean(document.querySelector(${JSON.stringify(link(id))}))`); } catch { return false; } }, 'topic '+id+' ready');
-  const click = async (p, id) => { await p.evaluate(`document.querySelector(${JSON.stringify(link(id))}).scrollIntoView({block:'center',inline:'nearest'})`); await p.point(link(id)); };
+  // The rail fills from its own workspace_topics read, which may settle after
+  // the page is ready; a native choice waits for its actual rendered link.
+  const rendered = (p, id) => until(() => p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(link(id))});if(all.length!==1)return false;const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0;})()`), 'rendered topic link '+id);
+  const click = async (p, id) => { await rendered(p, id); await p.evaluate(`document.querySelector(${JSON.stringify(link(id))}).scrollIntoView({block:'center',inline:'nearest'})`); await p.point(link(id)); };
   const noActs = p => assert.equal(p.calls.some(c => ['workspace.create','message.send','submission.prepare','delivery.ack','opening.save','opening.publish'].includes(c.payload?.kind)), false, 'navigation never sends, acknowledges or creates work');
   const noPrompt = p => assert.equal(p.events.some(e => e.method === 'Page.javascriptDialogOpening'), false, 'normal navigation never relies on beforeunload confirmation');
   const state = () => view('editor_state', { source_ref: { kind: 'topic', id: 't1' }, topic_id: 't1' });
@@ -151,6 +154,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
       const start=p.held.length;
       p.intercept((_payload,event)=>event.request.url.endsWith('/api/bootstrap'));
       if (mobile) {
+        await rendered(p, 't2');
         await p.evaluate(`document.querySelector(${JSON.stringify(link('t2'))}).scrollIntoView({block:'center',inline:'center'})`);
         const b=await p.box(link('t2'));assert.equal(b.viewportWidth,390);
         await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2}]});
@@ -192,18 +196,22 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   await check('navigation native keyboard same-tab draft preservation failure and selected-image boundaries', async () => {
     await control({ method: 'navigation_topics', topics });
     const p = await page('topic-navigation', null, true);
-    assert.equal(await p.evaluate('document.querySelectorAll("#topics a[href]").length'), 3, 'Topics must contain discoverable real links');
+    await until(() => p.evaluate('document.querySelectorAll("#topics a[href]").length===3'), 'Topics must contain discoverable real links');
     assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(link('t1'))}).getAttribute('aria-current')`), 'page');
     const original = await p.evaluate('performance.timeOrigin'); await click(p, 't1');
     assert.equal(await p.evaluate('performance.timeOrigin'), original, 'current topic is a no-op');
     // Tab/Return activation from ordinary document focus, never click().
-    await p.point('#refresh');
-    for (let n = 0; n < 12 && await p.evaluate('document.activeElement?.dataset.topicId') !== 't2'; ++n) await p.key('Tab');
+    // Earlier cases leave more outcomes in the rail; Tab passes each of them.
+    await p.evaluate('document.querySelector("#refresh").scrollIntoView({block:"center"})'); await p.point('#refresh');
+    const tabLimit = await p.evaluate('document.querySelectorAll("a[href],button,input,textarea,select,[tabindex]").length + 2');
+    for (let n = 0; n < tabLimit && await p.evaluate('document.activeElement?.dataset.topicId') !== 't2'; ++n) await p.key('Tab');
     assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), 't2');
     assert.notEqual(await p.evaluate('getComputedStyle(document.activeElement).outlineStyle'), 'none', 'keyboard focus is visible');
     await p.key('Enter'); await ready(p, 't2');
     assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'), topics[0].title);
     await click(p, 't1'); await ready(p, 't1');
+    // The debounce timing below measures writing-to-activation, not the rail read.
+    await rendered(p, 't2');
     await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})'); await p.point('#inline-writing-body');
     const text = 'A precise inline draft kept across a topic switch';
     await p.send('Input.insertText', { text }); const writtenAt = Date.now(); await click(p, 't2');
@@ -216,6 +224,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     // A connection failure after the server saves is still unknown to the UI.
     // Staying proves we do not mistake transport completion for acknowledgement.
     p.intercept(payload => payload?.kind === 'draft.save' && payload.args.source_ref?.kind === 'topic');
+    await rendered(p, 't2');
     await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})'); await p.point('#inline-writing-body'); await p.key('a', 4);
     await p.send('Input.insertText', { text: text+' — newer writing' }); await click(p, 't2');
     const held = await until(() => p.held.find(h => h.payload?.kind === 'draft.save'), 'held save acknowledgement');

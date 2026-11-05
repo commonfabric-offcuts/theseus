@@ -24,6 +24,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
       await p.key('Enter');assert.equal(await text(selector),body+'\n','plain Return remains writing');
     };
     await exercise('#inline-writing-body');
+    // The topic draft is shared with the cases that follow: leave it empty.
+    await p.key('a',4);await p.key('k',2);assert.equal(await text('#inline-writing-body'),'');
+    await until(async()=>(await view('editor_state',{source_ref:{kind:'topic',id:facts.topic_id},topic_id:facts.topic_id})).draft?.body==='','emptied topic draft saved');
     await p.open(1);await exercise('#writing-body');
     const before=await field(p);
     await p.point('#source-body [data-start="0"]','move');await p.point('#source-body');

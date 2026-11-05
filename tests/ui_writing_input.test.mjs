@@ -10,7 +10,7 @@ function fixture(value='zero\none two\nlast') {
     setSelectionRange(start,end){this.selectionStart=start;this.selectionEnd=end;},
     setRangeText(text,start,end){this.value=this.value.slice(0,start)+text+this.value.slice(end);this.setSelectionRange(start+text.length,start+text.length);},
     dispatchEvent(event){handlers[event.type]?.(event);},
-    ownerDocument:{execCommand(command,_ui,text){assert.equal(command,'insertText');field.setRangeText(text,field.selectionStart,field.selectionEnd);handlers.input();return true;}}};
+    ownerDocument:{execCommand(command,_ui,text){assert.ok(['insertText','delete'].includes(command));field.setRangeText(command==='delete'?'':text,field.selectionStart,field.selectionEnd);handlers.input();return true;}}};
   const input=new WritingInput({field,editor:()=>editor,admits:()=>admitted,beforeEdit:()=>events.push('before'),changed:()=>events.push('changed')});
   const key=(name,extra={})=>{const event={key:name,ctrlKey:true,prevented:false,preventDefault(){this.prevented=true;},...extra};const result=input.terminalKey(event);return {result,event};};
   return {field,editor,handlers,events,input,key,deny:()=>admitted=false};

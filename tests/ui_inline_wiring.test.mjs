@@ -93,8 +93,8 @@ function fixture(href = 'https://fixture/?topic=t1') {
 test('inline Ctrl-W uses the shared writing input path and preserves readonly writing', () => {
   const f=fixture(), field=f.get('inline-writing-body');
   f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
-  field.ownerDocument={execCommand:(_command,_ui,text)=>{
-    field.value=field.value.slice(0,field.selectionStart)+text+field.value.slice(field.selectionEnd);
+  field.ownerDocument={execCommand:(command,_ui,text)=>{
+    field.value=field.value.slice(0,field.selectionStart)+(command==='delete'?'':text)+field.value.slice(field.selectionEnd);
     field.handlers.input();return true;
   }};
   field.value=f.editor.draft.body='First line\nkeep remove';field.setSelectionRange(field.value.length,field.value.length);

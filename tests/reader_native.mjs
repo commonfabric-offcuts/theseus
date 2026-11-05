@@ -46,7 +46,7 @@ for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/
   sourceHashes[filename] = hash(await readFile(path.join(root, filename)));
 }
 try {
-  chrome = spawn(chromePath, ['--headless=new', '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
+  chrome = spawn(chromePath, ['--headless=new', '--use-mock-keychain', '--password-store=basic', '--disable-gpu-vsync', '--disable-frame-rate-limit', '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
     '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'], { stdio: 'ignore' });
   exitPromise = new Promise(resolve => chrome.once('exit', resolve));
   const active = await until(async () => { try { return await readFile(path.join(profile, 'DevToolsActivePort'), 'utf8'); } catch { return null; } }, 'Chrome DevTools endpoint');

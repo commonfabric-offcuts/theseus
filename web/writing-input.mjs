@@ -40,6 +40,13 @@ export class WritingInput {
     }
     const from=event.key==='u'?lineStart:event.key==='w'?start-(value.slice(lineStart,start).match(/\S+\s*$|\s+$/)?.[0].length??0):start;
     const to=event.key==='k'?lineEnd:end;
-    this.field.setSelectionRange(from,to);this.insertText('');return true;
+    this.field.setSelectionRange(from,to);this.deleteSelection();return true;
+  }
+  deleteSelection() {
+    if(this.readOnly()||this.field.selectionStart===this.field.selectionEnd)return;
+    // Chrome's delete command keeps native Undo without the stray line-break
+    // placeholder that insertText('') leaves when the text then ends in a
+    // newline; after Undo that placeholder shifts every later selection by one.
+    if(!this.field.ownerDocument.execCommand('delete'))this.insertText('');
   }
 }

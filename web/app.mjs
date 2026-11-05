@@ -29,7 +29,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation, outcomeRail;
+let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null;
 let intentJournal, intentOpening, outcomeCreation;
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
@@ -309,11 +309,10 @@ async function present(presentation) {
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
   }
-  for (const editor of Object.values(presentation.editors)) {
+  const discovery = Promise.all(Object.values(presentation.editors).map(editor =>
     registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); })
-      .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
-  }
-  if (presentation.surface === 'inline') return;
+      .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); })));
+  if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
     registry.current.neighbors = neighbors;
@@ -522,7 +521,11 @@ async function checkInlineAvailability(read, current) {
 }
 async function initializeInlineComposer() {
   try { await registry.initializeInline(topic); }
-  catch (error) { inline.fail(error.message); }
+  catch (error) { inline.fail(error.message); return; }
+  // Recovery discovery reads in the background lane, which any foreground read
+  // defers. The optional rail reads that follow wait for it, so a saved copy
+  // that Core already acknowledges is retired rather than left for review.
+  await inlineDiscovery;
 }
 async function retryInline() {
   const p = registry.inline;
