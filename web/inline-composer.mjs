@@ -9,8 +9,8 @@ const node = (tag, text, className) => {
 // The inline DOM adapter shares the existing registry/session/upload owners.
 // It has no source body, note editor, storage or retry scheduler of its own.
 export class InlineComposer {
-  constructor(callbacks, {root=document.querySelector('#inline-composer'), prefix='inline', destination=p=>`To ${p.topic.title}`, readOnly=()=>false} = {}) {
-    Object.assign(this,{callbacks,root,prefix,destination,surfaceReadOnly:readOnly});
+  constructor(callbacks) {
+    this.callbacks = callbacks; this.root = document.querySelector('#inline-composer');
     this.field = this.$('writing-body');
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
       changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();}});
@@ -53,19 +53,15 @@ export class InlineComposer {
       try { await this.callbacks.retry(); } finally { this.$('retry').disabled = false; }
     };
   }
-  $(name) { return this.root.querySelector(`#${this.prefix}-${name}`); }
+  $(name) { return this.root.querySelector(`#inline-${name}`); }
   get editor() { return this.presentation?.editors.reply; }
   admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
-  state() {
-    const state = writingState(this.editor, { active: this.admits(), status: this.callbacks.status });
-    const locked = this.surfaceReadOnly(this.presentation, this.editor);
-    return {...state, readOnly:state.readOnly||locked, sendDisabled:state.sendDisabled||locked, addDisabled:state.addDisabled||locked};
-  }
+  state() { return writingState(this.editor, { active: this.admits(), status: this.callbacks.status }); }
   caret() { return this.input.caret(); }
   show(p) {
     this.presentation = p; this.root.hidden = false;
     this.field.disabled = false; this.$('notice').hidden = true;
-    this.$('destination').textContent = this.destination(p);
+    this.$('destination').textContent = `To ${p.topic.title}`;
     this.drawEditor(); this.paintRecipients(); this.paintStatus();
   }
   fail(message) {

@@ -9,8 +9,9 @@ import uuid
 from typing import Any
 
 
-from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body, _page_size
+from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body, _bounded_page, _page_size, _prefix, _revision
 from .drafts import Drafts, DRAFT_SCHEMA
+from .openings import Openings, OPENING_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA
 from .validation import COMMANDS, _command_envelope, _view_arguments
 from .authority import Authority, AuthorityError, prepare_authority, publish_initial
@@ -23,7 +24,7 @@ from .route_pins import RoutePins
 from .changes import Changes
 
 
-SCHEMA_VERSION = "8"
+SCHEMA_VERSION = "9"
 
 
 SCHEMA = [
@@ -86,7 +87,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -119,7 +120,7 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(Drafts, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes):
+class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -159,6 +160,34 @@ class Store(Drafts, Delivery, Conversation, Runner, Memory, Media, RoutePins, Ch
     def runner_guard(self, runner_id):
         return self._authority.runner_guard(runner_id)
 
+    def register_actor(self, actor_id, kind, name):
+        """Operator registration of one enabled actor; never a command or an HTTP route."""
+        _identifier(actor_id, "actor_id")
+        if kind not in ("human", "agent"):
+            raise Refusal("INVALID_ARGUMENT", "An actor is a human or an agent")
+        if not _body(name).strip():
+            raise Refusal("INVALID_ARGUMENT", "An actor needs a name")
+        with self._authority.shared() as fence:
+            db, _ = _connect(self.path)
+            try:
+                db.execute("BEGIN IMMEDIATE")
+                fence.verify()
+                self._check_instance(db)
+                if db.execute("SELECT 1 FROM actors WHERE id=?", (actor_id,)).fetchone():
+                    raise Refusal("ACTOR_EXISTS", "This actor ID is already registered")
+                db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", (actor_id, kind, name))
+                self._advance_commit_seq(db)
+                db.commit()
+            except sqlite3.Error as error:
+                if isinstance(error, sqlite3.OperationalError) and ("locked" in str(error).lower() or "busy" in str(error).lower()):
+                    raise StoreOpenError("DATABASE_BUSY", "The selected instance is busy; nothing was registered", retryable=True) from error
+                raise StoreError("The registration could not be confirmed") from error
+            finally:
+                if db.in_transaction:
+                    db.rollback()
+                db.close()
+        return {"instance_id": self.instance_id, "actor": {"id": actor_id, "kind": kind, "name": name, "enabled": True}}
+
     def _check_instance(self, db):
         row = db.execute("SELECT value FROM metadata WHERE key='instance_id'").fetchone()
         if row is None or row[0] != self.instance_id:
@@ -173,7 +202,8 @@ class Store(Drafts, Delivery, Conversation, Runner, Memory, Media, RoutePins, Ch
         if any(metadata.get(key) != value for key, value in self.binding.items()):
             raise AuthorityError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
 
-    def _advance_commit_seq(self, db):
+    @staticmethod
+    def _advance_commit_seq(db):
         changed = db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='commit_seq'").rowcount
         identified = db.execute("UPDATE metadata SET value=? WHERE key='commit_id'", (uuid.uuid4().hex,)).rowcount
         if changed != 1 or identified != 1:
@@ -379,24 +409,57 @@ class Store(Drafts, Delivery, Conversation, Runner, Memory, Media, RoutePins, Ch
                           "FROM workspace_members AS m JOIN workspaces AS w ON w.id=m.workspace_id "
                           "WHERE m.actor_id=? AND m.workspace_id>? ORDER BY m.workspace_id LIMIT ?",
                           (actor, args.get("cursor", ""), limit + 1)).fetchall()
-        items = []
 
-        def response():
-            return {"instance_id": self.instance_id, "items": list(items),
-                    "next_cursor": items[-1]["id"] if items and len(rows) > len(items) else None}
+        def item(row):
+            title, truncated = _prefix(row["title_prefix"])
+            return {"id": row["id"], "owner_id": row["owner_id"], "title": title,
+                    "title_truncated": truncated, "version": row["version"]}
+        return _bounded_page({"instance_id": self.instance_id}, rows, limit, item, "id")
 
-        for row in rows[:limit]:
-            prefix = bytes(row["title_prefix"])
-            title = prefix[:1024].decode("utf-8", errors="ignore")
-            items.append({"id": row["id"], "owner_id": row["owner_id"], "title": title,
-                          "title_truncated": len(prefix) > len(title.encode("utf-8")), "version": row["version"]})
-            candidate = response()
-            if len(_json(candidate).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
-                items.pop()
-                if not items:
-                    raise Refusal("VIEW_TOO_LARGE", "A workspace preview cannot fit in the bounded response")
-                break
-        return response()
+    def _view_workspace_members(self, db, actor, args):
+        workspace = self._workspace(db, actor, args.get("workspace_id"))
+        limit = _page_size(args)
+        rows = db.execute("SELECT m.actor_id,a.kind,substr(CAST(a.name AS BLOB),1,1025) AS name_prefix "
+                          "FROM workspace_members AS m JOIN actors AS a ON a.id=m.actor_id "
+                          "WHERE m.workspace_id=? AND m.actor_id>? ORDER BY m.actor_id LIMIT ?",
+                          (workspace["id"], args.get("cursor", ""), limit + 1)).fetchall()
+
+        def item(row):
+            name, truncated = _prefix(row["name_prefix"])
+            return {"actor_id": row["actor_id"], "kind": row["kind"], "name": name, "name_truncated": truncated}
+        return _bounded_page({"instance_id": self.instance_id, "relevant_versions": {"workspace": workspace["version"]}},
+                             rows, limit, item, "actor_id")
+
+    def _command_workspace_member_set(self, db, actor, envelope):
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"workspace_id"} or set(args) != {"actor_id", "present"} or not isinstance(args["present"], bool):
+            raise Refusal("INVALID_ARGUMENT", "Name one workspace, one actor and whether they are present")
+        workspace = self._workspace(db, actor, target["workspace_id"], owner=True)
+        _revision(envelope["expected"], "workspace_revision", workspace["version"])
+        present = args["present"]
+        member = self._recipients(db, [args["actor_id"]], require_enabled=present)[0]
+        if member == workspace["owner_id"] and not present:
+            raise Refusal("OWNER_REQUIRED", "The workspace owner cannot be removed")
+        version = workspace["version"]
+        result = {"workspace_id": workspace["id"], "actor_id": member, "present": present, "version": version}
+        if bool(db.execute("SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?",
+                           (workspace["id"], member)).fetchone()) == present:
+            return result, []
+        if present:
+            count = db.execute("SELECT count(*) FROM workspace_members WHERE workspace_id=?", (workspace["id"],)).fetchone()[0]
+            if count >= LIMITS["workspace_members"]:
+                raise Refusal("TOO_MANY_WORKSPACE_MEMBERS", "Workspace team limit includes its owner")
+            db.execute("INSERT INTO workspace_members VALUES (?,?)", (workspace["id"], member))
+        else:
+            # Topic participation held separately is unchanged.
+            db.execute("DELETE FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace["id"], member))
+        version += 1
+        # A removed coordinator no longer coordinates; the workspace names nobody.
+        coordinator = None if not present and member == workspace["coordinator_id"] else workspace["coordinator_id"]
+        db.execute("UPDATE workspaces SET version=?,coordinator_id=? WHERE id=?", (version, coordinator, workspace["id"]))
+        self._change(db, "workspace", workspace["id"], "workspace", workspace["id"], version)
+        self._change(db, "actor", member, "workspace", workspace["id"], version)
+        return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
 
     def _view_workspace_topics(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))

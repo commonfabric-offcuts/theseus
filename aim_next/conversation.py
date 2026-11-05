@@ -113,16 +113,27 @@ class Conversation:
             self._workspace(db, actor, workspace_id)
             if workspace_id != snapshot["source_ref"].get("workspace_id"):
                 raise Refusal("INVALID_ARGUMENT", "The opening belongs to a different workspace")
-            participants = self._recipients(db, creation.get("participants", []))
-            participants = list(dict.fromkeys([actor] + participants))
-            if len(participants) > LIMITS["topic_participants"]:
-                raise Refusal("TOO_MANY_PARTICIPANTS", "Topic participant limit includes its creator")
-            title = _body(creation.get("title", ""))
-            if not title.strip():
-                raise Refusal("INVALID_ARGUMENT", "A topic needs a title")
-            db.execute("INSERT INTO topics VALUES (?,?,?,?,0)", (topic_id, workspace_id, title, actor))
-            db.executemany("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES (?,?,1,1)", [(topic_id, member) for member in participants])
-            db.execute("INSERT INTO topic_summaries VALUES (?,0,NULL)", (topic_id,))
+            self._open_topic(db, actor, topic_id, workspace_id, creation.get("title", ""), creation.get("participants", []),
+                             Refusal("INVALID_ARGUMENT", "A topic needs a title"))
+        result, affected = self._publish(db, actor, envelope["operation_id"], topic_id, snapshot)
+        self._change(db, "actor", actor, "submission", snapshot["id"], 2)
+        return dict(result, submission_id=snapshot["id"]), affected
+
+    def _open_topic(self, db, actor, topic_id, workspace_id, title, participants, untitled):
+        """Create a topic with its author and chosen participants, ready for its first message."""
+        participants = self._recipients(db, participants)
+        participants = list(dict.fromkeys([actor] + participants))
+        if len(participants) > LIMITS["topic_participants"]:
+            raise Refusal("TOO_MANY_PARTICIPANTS", "Topic participant limit includes its creator")
+        title = _body(title)
+        if not title.strip():
+            raise untitled
+        db.execute("INSERT INTO topics VALUES (?,?,?,?,0)", (topic_id, workspace_id, title, actor))
+        db.executemany("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES (?,?,1,1)", [(topic_id, member) for member in participants])
+        db.execute("INSERT INTO topic_summaries VALUES (?,0,NULL)", (topic_id,))
+
+    def _publish(self, db, actor, operation_id, topic_id, snapshot):
+        """Publish frozen writing as one message with its deliveries; every send shares this path."""
         topic = self._topic(db, actor, topic_id)
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         if not snapshot["body"].strip() and not snapshot["attachments"]:
@@ -165,15 +176,14 @@ class Conversation:
         message_id = "m-" + uuid.uuid4().hex
         sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
-                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), envelope["operation_id"])).lastrowid
+                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         db.execute("UPDATE topic_summaries SET message_count=message_count+1,latest_message_id=? WHERE topic_id=?", (message_id, topic_id))
         version = self._touch_topic(db, topic)
-        self._change(db, "actor", actor, "submission", snapshot["id"], 2)
-        return {"message_id": message_id, "submission_id": snapshot["id"], "topic": {"id": topic_id, "version": version},
+        return {"message_id": message_id, "topic": {"id": topic_id, "version": version},
                 "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
 
     def _message_access(self, db, actor, message_id):

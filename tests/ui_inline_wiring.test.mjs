@@ -60,7 +60,13 @@ function fixture(href = 'https://fixture/?topic=t1') {
     EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
     Reader: class { constructor() { return reader; } },
     TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
-    initialViews: async () => ({}), readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '' };
+    initialViews: async () => ({}), readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
+    openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
+    openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
+    OpeningDraft: class { constructor(o) { events.push(['opening-draft', { workspace: o.workspace, opening: o.opening, topic: o.topic }]); this.editable = false; }
+      load() { events.push(['opening-load']); return Promise.resolve('editing'); } leave() {} refresh() {} cancelSave() {} },
+    OpeningView: class { constructor() { this.title = { focus() {} }; } run(action) { return Promise.resolve().then(action); } loadMembers() { return Promise.resolve(); } },
+    UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(scope);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref}; })())', context);
@@ -263,26 +269,28 @@ test('inline pending stays beside inline only; modal pending remains in the topi
 });
 
 
-test('configured opening composer shares writing and enforces surface read-only without disabling review',()=>{
-  const f=fixture(),p={surface:'opening',workspace:{id:'w1',title:'Chosen outcome'},editors:{reply:f.editor}},actions=[];
-  f.registry.current=p;let locked=true;
-  const composer=f.makeInline({admits:()=>true,status:()=> 'Saved',uploads:()=>({current:()=>[]}),needsReview:()=>true,
-    renderPending:()=>{},edit:()=>actions.push('edit'),send:()=>actions.push('send'),review:()=>actions.push('review')},
-    {root:f.get('opening-composer'),prefix:'opening',destination:p=>'In '+p.workspace.title,readOnly:()=>locked});
-  f.editor.edit=patch=>Object.assign(f.editor.draft,patch);composer.show(p);
-  assert.equal(f.get('opening-destination').textContent,'In Chosen outcome');
-  assert.equal(f.get('opening-writing-body').readOnly,true);assert.equal(f.get('opening-composer').inert,false);
-  f.get('opening-writing-body').value='forbidden';f.get('opening-writing-body').handlers.input();
-  assert.equal(f.editor.draft.body,'kept');assert.equal(f.get('opening-send').disabled,true);assert.equal(f.get('opening-add-image').disabled,true);
-  f.get('opening-review-versions').onclick();assert.deepEqual(actions,['review']);
-  locked=false;composer.paintStatus();assert.equal(f.get('opening-writing-body').readOnly,false);
-  f.get('opening-writing-body').value='new writing';f.get('opening-writing-body').handlers.input();assert.equal(f.editor.draft.body,'new writing');
-});
-
 test('every application route reloads a restored closed document before accepting input',async()=>{
   for(const suffix of ['', '?workspace=w1','?new=outcome&intent=i','?workspace=w1&opening=o&opening_topic=t','?topic=t1']){
     const f=fixture('https://fixture/'+suffix),handler=f.events.find(e=>e[0]==='window-handler'&&e[1]==='pageshow');
     assert.ok(handler,'common pageshow listener exists before route initialization');handler[2]({persisted:false});assert.equal(f.events.some(e=>e[0]==='reload'),false);
     handler[2]({persisted:true});assert.equal(f.events.filter(e=>e[0]==='reload').length,1);
   }
+});
+
+test('outcome pages list unfinished openings from Core, not from browser storage',async()=>{
+  const f=fixture('https://fixture/?workspace=w1');f.inject({api:f.api,bootstrap:f.bootstrap});
+  f.api.view=async(name,args)=>{f.calls.push({name,args});return name==='workspace'?{instance_id:'fixture',workspace:{id:'w1',title:'Real outcome'}}:{instance_id:'fixture',items:[],next_cursor:null};};
+  await f.initialize();await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.events.filter(e=>e[0]==='unfinished'),[['unfinished','w1']]);
+  assert.deepEqual(f.calls.filter(c=>c.name==='openings').map(c=>c.args),[{workspace_id:'w1',limit:20}]);
+  assert.equal(f.events.some(e=>e[0]==='intent-journal'),false,'an outcome page does not consult browser-only pointers');
+});
+test('the opening route writes through a server-owned opening and never starts an editor registry',async()=>{
+  const f=fixture('https://fixture/?workspace=w1&opening=o1&opening_topic=t9');f.inject({api:f.api,bootstrap:f.bootstrap});
+  f.api.view=async(name,args)=>{f.calls.push({name,args});return name==='workspace'?{instance_id:'fixture',workspace:{id:'w1',title:'Real outcome'}}:{instance_id:'fixture',items:[],next_cursor:null};};
+  await f.initialize();
+  assert.deepEqual(f.events.find(e=>e[0]==='opening-draft')?.[1],{workspace:'w1',opening:'o1',topic:'t9'});
+  assert.ok(f.events.some(e=>e[0]==='opening-load'));
+  assert.equal(f.events.some(e=>['registry','journal','intent-journal'].includes(e[0])),false,'no EditorRegistry, recovery journal or prepared submission');
+  assert.equal(f.get('body').dataset.ready,'true');
 });

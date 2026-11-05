@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OutcomeCreation, retainOpening } from '../web/creation.mjs';
+import { OutcomeCreation } from '../web/creation.mjs';
 import { CreateOutcomeView } from '../web/creation-view.mjs';
 import { dom } from './fixtures/ui_dom.mjs';
 
@@ -50,10 +50,9 @@ test('creation persists before dispatch, shares the pending promise and freezes 
   await assert.rejects(c.edit({title:'Different'}),/locked|read.only/i);
   gate.resolve(f.receipt(f.calls[0]));await first;assert.equal(c.row.phase,'confirmed');assert.equal(c.row.workspace,f.calls[0].args.id);
 });
-test('failed durable save prevents creation and private opening admission',async()=>{
+test('failed durable save prevents creation',async()=>{
   const f=fixture(),c=f.create();await c.load();await c.edit({title:'Kept'});f.fail();
   await assert.rejects(c.create(),/Storage failed/);assert.equal(f.calls.length,0);
-  await assert.rejects(retainOpening({journal:f.journal,bootstrap,workspace:'w',opening:'o',topic:'t'}),/Storage failed/);
 });
 test('blank title and invalid actor identifiers refuse before freezing or dispatch',async()=>{
   for(const fields of [{title:'  '},{title:'Good',team:['bad\nactor']},{title:'Good',team:['x'.repeat(201)]}]){
@@ -89,14 +88,6 @@ test('another tab and a retained intent from another authority remain read-only'
   assert.equal(second.readOnly,true);await assert.rejects(second.create(),/another tab|read.only/i);assert.equal(f.calls.length,0);
   const g=fixture();g.rows.set('intent',{...copy(first.row),authority:{authority_id:'other',authority_epoch:'old'}});
   const parked=g.create();await parked.load();assert.equal(parked.parked,true);assert.equal(parked.row.form.title,'Keep');await assert.rejects(parked.create(),/authority|runtime/i);assert.equal(g.calls.length,0);
-});
-test('private opening retains original identity without body and refuses conflicting route identity',async()=>{
-  const f=fixture(),args={journal:f.journal,bootstrap,workspace:'w',opening:'o',topic:'t'};
-  const first=await retainOpening(args);assert.equal(first.writable,true);assert.deepEqual(first.row.sourceRef,{kind:'new_topic',id:'o',workspace_id:'w'});
-  assert.equal(Object.hasOwn(first.row,'body'),false);assert.equal(first.row.topic,'t');
-  assert.deepEqual((await retainOpening(args)).row,first.row);
-  await assert.rejects(retainOpening({...args,topic:'replacement'}),/identity/i);
-  f.deny();assert.equal((await retainOpening(args)).writable,false);
 });
 test('creation departure blocks active commands, retains form changes, and requires a named second choice for uncertainty',async()=>{
   const f=fixture(),c=f.create();await c.load();await c.edit({title:'Kept'});
@@ -177,13 +168,4 @@ test('creation settled results and new edits clear obsolete transport reasons',a
   g.setAnswer(()=>{throw Error('Old failure');});await d.create();
   g.setAnswer(e=>({...g.receipt(e),status:'rejected',error:{code:'INVALID_RECIPIENT',message:'Current refusal'}}));
   await d.check();await d.edit({team:[]});assert.equal(d.notice,null);assert.equal(d.row.phase,'draft');
-});
-
-test('retained opening authority drift parks its original identity without rewriting the pointer',async()=>{
-  const f=fixture(),args={journal:f.journal,bootstrap,workspace:'w',opening:'o',topic:'t'};
-  const first=await retainOpening(args),before=copy(f.rows.get('o'));let puts=0;
-  f.journal.put=async()=>{puts++;throw Error('parked pointer write');};
-  const next=await retainOpening({...args,bootstrap:{...bootstrap,authority:{...bootstrap.authority,authority_epoch:'changed'}}});
-  assert.equal(next.parked,true);assert.equal(next.writable,false);assert.deepEqual(next.row,first.row);
-  assert.equal(puts,0);assert.deepEqual(f.rows.get('o'),before);
 });

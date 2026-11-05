@@ -80,8 +80,10 @@ export class CreateOutcomeView {
   }
 }
 
+// Outcome creations kept on this browser. Unfinished topic openings are Core
+// records, listed per outcome by opening-view.mjs.
 export async function showUnfinished({host,journal,workspace=null,open}) {
-  host.replaceChildren(el('h2','Unfinished on this browser'),el('p','Private openings started in another browser are not listed here.'));
+  host.replaceChildren(el('h2','Unfinished on this browser'),el('p','Outcome forms started in another browser are not listed here.'));
   const list=el('div'),message=el('p'),more=button('More unfinished work',()=>load(cursor));let cursor=null,busy=false;
   host.append(list,message,more);protectTouchBounds(host);
   async function load(after){
@@ -89,7 +91,7 @@ export async function showUnfinished({host,journal,workspace=null,open}) {
     try{
       const page=await journal.page({workspace,cursor:after,limit:20});cursor=page.nextCursor;
       for(const item of page.items){
-        const route=item.kind==='create'?{kind:'create',intent:item.id}:{kind:'opening',workspace:item.workspace,opening:item.id,topic:item.topic};
+        const route={kind:'create',intent:item.id};
         const link=el('a','Resume '+item.title);link.className='nav-item';link.href=routeHref(route);
         link.onclick=event=>{if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;event.preventDefault();open(route,item.title);};list.append(link);
       }

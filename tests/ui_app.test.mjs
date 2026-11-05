@@ -442,65 +442,6 @@ async function retainedAcknowledgement(t, kind = 'reply', send = false, options 
   return { ...f, editor, session, row, read };
 }
 
-test('read-only opening ownership prevents cleanup of otherwise acknowledged own and candidate rows',async t=>{
-  const f=await retainedAcknowledgement(t),{editor,session,row}=f;
-  // The ownership marker is set before discovery by initializeOpening. Keep a
-  // canonically acknowledged row so removing the guard really would delete it.
-  editor.openingReadOnly=true;
-  await f.registry.cleanup.own(session);assert.deepEqual(await f.journal.own(editor.key),row);
-  let attempts=0;f.backend.retireAcknowledged=async()=>{attempts++;return true;};
-  f.backend.retireImageCandidate=async()=>{attempts++;return {retired:true};};
-  const candidate={...copy(row),id:JSON.stringify([editor.key,'other-writer']),writerId:'other-writer',availability:'available'};
-  const page={items:[candidate],nextCursor:null};
-  assert.deepEqual(await f.registry.cleanup.candidates(session,page),page);assert.equal(attempts,0);
-  editor.openingReadOnly=false;await f.registry.cleanup.own(session);
-  assert.equal(await f.journal.own(editor.key),undefined,'same acknowledged row is cleanable when its owner is writable');
-  assert.deepEqual((await f.registry.cleanup.candidates(session,page)).items,[]);assert.equal(attempts,1,'the candidate instrument observes a writable cleanup');
-});
-
-test('cleanup canonical identity payload and authority mismatches retain complete exact rows', async t => {
-  const f = await retainedAcknowledgement(t), { editor, session, row } = f;
-  const corruptions = [
-    a => { a.instance_id = 'foreign'; }, a => { a.source_ref = { ...a.source_ref, revision: 99 }; },
-    a => { a.destination.topic_id = 'elsewhere'; }, a => { a.draft.id = 'other'; },
-    a => { a.draft.generation = 'other'; }, a => { ++a.draft.revision; },
-    a => { a.draft.attachments = [{ id: 'other' }]; }, a => { a.draft.quotes = [{ text: 'other' }]; },
-    a => { a.draft.addressees = ['other']; }, a => { a.draft.body += 'new'; },
-    a => { a.draft.source_ref = { ...a.draft.source_ref, revision: 8 }; },
-  ];
-  for (const corrupt of corruptions) {
-    f.transport.view = async (name, args) => { const answer = await f.read(name, args); if (name === 'editor_state') corrupt(answer); return answer; };
-    await f.registry.cleanup.own(session); assert.deepEqual(await f.journal.own(editor.key), row);
-  }
-  f.transport.view = f.read;
-  const bootstrap = f.transport.bootstrap;
-  for (const change of ['actor', 'pair', 'between']) {
-    let reads = 0;
-    f.transport.bootstrap = async () => {
-      const answer = await bootstrap(); ++reads;
-      if (change === 'actor') answer.actor = 'someone-else';
-      if (change === 'pair' || change === 'between' && reads === 2) answer.authority.authority_epoch = 'E2';
-      return answer;
-    };
-    await f.registry.cleanup.own(session); assert.deepEqual(await f.journal.own(editor.key), row);
-    assert.equal(session.acknowledgedSnapshot ?? null, null, 'no cleanup token across unknown authority');
-  }
-  f.transport.bootstrap = bootstrap;
-  editor.draft.caret = { start: 9, end: 9 };
-  await f.registry.cleanup.own(session);
-  assert.equal(await f.journal.own(editor.key), undefined, 'only current caret differs; original tickets stay exact');
-});
-
-test('cleanup false unknown and mismatched original operation outcomes retain the exact row', async t => {
-  const f = await retainedAcknowledgement(t);
-  for (const mutate of [a => { a.recorded = false; }, a => { a.status = 'unknown'; }, a => { a.operation_id = 'wrong'; }, a => { ++a.result.draft_revision; }]) {
-    f.transport.view = async (name, args) => { const answer = await f.read(name, args); if (name === 'operation') mutate(answer); return answer; };
-    await f.registry.cleanup.own(f.session); assert.deepEqual(await f.journal.own(f.editor.key), f.row);
-  }
-  f.transport.view = f.read; await f.registry.cleanup.own(f.session);
-  assert.equal(await f.journal.own(f.editor.key), undefined);
-});
-
 test('cleanup retains unsupported writing in notes and frozen snapshots', async t => {
   const note = await retainedAcknowledgement(t, 'note');
   for (const field of ['reply_to', 'exchange_id', 'opening']) {

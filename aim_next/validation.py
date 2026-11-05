@@ -5,6 +5,7 @@ from .contract import LIMITS, Refusal, _identifier, _json
 
 COMMANDS = {
     "workspace.create": "_command_workspace_create",
+    "workspace.member_set": "_command_workspace_member_set",
     "draft.save": "_command_draft_save",
     "note.save": "_command_note_save",
     "submission.prepare": "_command_submission_prepare",
@@ -14,16 +15,22 @@ COMMANDS = {
     "delivery.ack": "_command_delivery_ack",
     "memory.create": "_command_memory_create", "memory.revise": "_command_memory_revise",
     "media.begin": "_command_media_begin", "media.publish": "_command_media_publish",
+    "opening.save": "_command_opening_save", "opening.publish": "_command_opening_publish",
+    "opening.discard": "_command_opening_discard",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
             "participation.set": {"topic_revision"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "memory.create": {"item_revision"}, "memory.revise": {"item_revision"},
-            "media.begin": {"media_revision"}, "media.publish": {"media_revision"}}
+            "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
+            "workspace.member_set": {"workspace_revision"}, "opening.save": {"opening_revision"},
+            "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
-                     "media.begin": "media_revision", "media.publish": "media_revision"}
+                     "media.begin": "media_revision", "media.publish": "media_revision",
+                     "workspace.member_set": "workspace_revision", "opening.save": "opening_revision",
+                     "opening.publish": "opening_revision", "opening.discard": "opening_revision"}
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
@@ -35,6 +42,8 @@ VIEWS = {
     "editor_state": {"source_ref", "topic_id", "cursor", "limit"},
     "submission": {"submission_id"}, "submissions": {"source_ref", "topic_id", "cursor", "limit"},
     "deliveries": {"cursor", "limit"},
+    "opening": {"opening_id"}, "openings": {"workspace_id", "cursor", "limit"},
+    "workspace_members": {"workspace_id", "cursor", "limit"},
 }
 
 
@@ -99,7 +108,7 @@ def _view_arguments(name, args):
         # commands, opening editors and other ID arguments retain their rules.
         args = dict(args)
         args.pop("topic_id", None)
-    for key in ("workspace_id", "topic_id", "operation_id", "submission_id", "id"):
+    for key in ("workspace_id", "topic_id", "operation_id", "submission_id", "opening_id", "id"):
         if key in args:
             _identifier(args[key], key)
     if "cursor" in args:
@@ -112,7 +121,7 @@ def _view_arguments(name, args):
             if cursor is None:
                 raise Refusal("INVALID_ARGUMENT", "Invalid delivery page cursor")
             _position(cursor)
-        elif name in ("workspaces", "workspace_topics"):
+        elif name in ("workspaces", "workspace_topics", "openings", "workspace_members"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):

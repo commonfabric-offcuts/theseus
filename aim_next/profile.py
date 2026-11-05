@@ -68,7 +68,7 @@ def _canonical_authority_path(value):
     return canonical
 
 
-def _validated(value):
+def _parsed(value):
     if (not isinstance(value, dict)
             or set(value) != {"v", "instance_id", "actor_id", "db_path"} | BINDING_FIELDS
             or type(value.get("v")) is not int or value["v"] != 2
@@ -76,9 +76,13 @@ def _validated(value):
             or not _identity(value.get("authority_id")) or not _identity(value.get("authority_epoch"))
             or not _absolute_path(value.get("db_path")) or not _absolute_path(value.get("authority_path"))):
         raise ProfileError("Use an explicit v2 profile with instance, actor, database and authority binding")
-    profile = Profile(value["instance_id"], value["actor_id"], Path(value["db_path"]).resolve(),
-                      _canonical_authority_path(value["authority_path"]),
-                      value["authority_id"], value["authority_epoch"])
+    return Profile(value["instance_id"], value["actor_id"], Path(value["db_path"]).resolve(),
+                   _canonical_authority_path(value["authority_path"]),
+                   value["authority_id"], value["authority_epoch"])
+
+
+def _validated(value):
+    profile = _parsed(value)
     try:
         capabilities = profile.store().view(profile.actor_id, "capabilities", {})
     except StoreError as error:
@@ -98,6 +102,15 @@ def _validated(value):
 
 def load_profile(path):
     """No default search, actor override, creation or fallback to another store."""
+    return _validated(_read(path))
+
+
+def read_binding(path):
+    """The profile's explicit binding, without opening its store (for an operator upgrade)."""
+    return _parsed(_read(path))
+
+
+def _read(path):
     fd = None
     try:
         fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -110,7 +123,7 @@ def load_profile(path):
             raw = source.read(MAX_PROFILE_BYTES + 1)
         if len(raw) > MAX_PROFILE_BYTES:
             raise ProfileError("Profile exceeds its size limit")
-        return _validated(json.loads(raw.decode("utf-8"), object_pairs_hook=_unique))
+        return json.loads(raw.decode("utf-8"), object_pairs_hook=_unique)
     except (OSError, ValueError, UnicodeError, RecursionError) as error:
         raise ProfileError("The explicit profile could not be read") from error
     finally:

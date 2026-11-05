@@ -4,13 +4,14 @@ const bytes=value=>new TextEncoder().encode(JSON.stringify(value)).length;
 const publicRow=row=>{if(!row)return null;const {key,scope,...value}=row;return value;};
 const preview=text=>{let result='';for(const ch of text??''){if(new TextEncoder().encode(result+ch).length>256)return result+'…';result+=ch;}return result;};
 export function intentSummary(row) {
-  return {id:row.id,kind:row.kind,workspace:row.workspace,phase:row.phase,
-    ...(row.kind==='opening'?{topic:row.topic,sourceRef:structuredClone(row.sourceRef)}:{}),
-    title:row.kind==='create'?preview(row.form.title)||'Untitled outcome':'Unfinished topic'};
+  return {id:row.id,kind:row.kind,workspace:row.workspace,phase:row.phase,title:preview(row.form.title)||'Untitled outcome'};
 }
+// Earlier browsers kept local pointers to prepared topic openings here. Core now
+// owns openings; such rows are left untouched and are never listed or written.
+const retiredOpening=row=>row?.kind==='opening';
 
 // A separate v1 database leaves every open v2 editor/image recovery connection
-// untouched. Opening pointers deliberately outlive ordinary editor cleanup.
+// untouched.
 export async function openIntentJournal({instanceId,actor}) {
   if(!validActorId(instanceId)||!validActorId(actor))throw Error('Intent storage needs a confirmed instance and actor.');
   if(!navigator.locks?.request)throw Error('Private creation ownership is unavailable in this browser.');
@@ -30,10 +31,8 @@ export async function openIntentJournal({instanceId,actor}) {
   database.onversionchange=()=>{database.close();release();};
   const valid=row=>row?.format===1&&row.scope===scope&&row.key===rowKey(row.id)&&validActorId(row.id)&&
     row.instanceId===instanceId&&row.actor===actor&&validActorId(row.authority?.authority_id)&&validActorId(row.authority?.authority_epoch)&&
-    (row.workspace===null||validActorId(row.workspace))&&['draft','uncertain','rejected','confirmed','private','submitted'].includes(row.phase)&&
-    (row.kind==='create'?row.form&&typeof row.form.title==='string'&&typeof row.form.purpose==='string'&&Array.isArray(row.form.team):
-      row.kind==='opening'&&validActorId(row.workspace)&&validActorId(row.topic)&&row.sourceRef?.kind==='new_topic'&&row.sourceRef.id===row.id&&
-      row.sourceRef.workspace_id===row.workspace&&Object.keys(row.sourceRef).length===3&&Object.keys(row).every(k=>['format','id','kind','instanceId','actor','authority','workspace','topic','sourceRef','phase','scope','key'].includes(k)));
+    (row.workspace===null||validActorId(row.workspace))&&['draft','uncertain','rejected','confirmed'].includes(row.phase)&&
+    row.kind==='create'&&row.form&&typeof row.form.title==='string'&&typeof row.form.purpose==='string'&&Array.isArray(row.form.team);
   const transact=(mode,action)=>new Promise((resolve,reject)=>{
     if(closed){reject(Error('Private creation storage is closed.'));return;}
     const tx=database.transaction('intents',mode,mode==='readwrite'?{durability:'strict'}:undefined);let result,failure;
@@ -68,8 +67,7 @@ export async function openIntentJournal({instanceId,actor}) {
         store.get(row.key).onsuccess=event=>{
           try{
             const old=event.target.result;
-            if(old&&(!valid(old)||old.kind!==row.kind||old.authority.authority_id!==row.authority.authority_id||old.authority.authority_epoch!==row.authority.authority_epoch||
-                row.kind==='opening'&&(old.workspace!==row.workspace||old.topic!==row.topic)))throw Error('The private intent identity changed. It has not been replaced.');
+            if(old&&(!valid(old)||old.kind!==row.kind||old.authority.authority_id!==row.authority.authority_id||old.authority.authority_epoch!==row.authority.authority_epoch))throw Error('The private intent identity changed. It has not been replaced.');
             if(!held.has(row.id))throw Error('Private intent ownership was lost.');
             store.put(row);finish(publicRow(row));
           }catch(error){fail(error);}
@@ -87,9 +85,9 @@ export async function openIntentJournal({instanceId,actor}) {
             const entry=event.target.result;
             if(!entry){finish({items,nextCursor:null,examined});return;}
             if(examined===limit){finish({items,nextCursor:last,examined});return;}
-            const row=entry.value;
-            if(!valid(row))throw Error('A saved intent cannot be read safely. It has been kept.');
-            const summary=intentSummary(row),include=row.phase!=='confirmed';
+            const row=entry.value,retired=row?.scope===scope&&retiredOpening(row);
+            if(!retired&&!valid(row))throw Error('A saved intent cannot be read safely. It has been kept.');
+            const include=!retired&&row.phase!=='confirmed',summary=include?intentSummary(row):null;
             if(include&&bytes([...items,summary])>16384){finish({items,nextCursor:last,examined});return;}
             examined++;last=row.id;if(include)items.push(summary);entry.continue();
           }catch(error){fail(error);}

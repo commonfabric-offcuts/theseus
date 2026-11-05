@@ -51,6 +51,30 @@ def _page_size(args):
     return limit
 
 
+def _prefix(raw, size=1024):
+    """Decode a size+1 byte SQL prefix to at most size UTF-8 bytes, and say whether text was cut."""
+    raw = bytes(raw)
+    text = raw[:size].decode("utf-8", errors="ignore")
+    return text, len(raw) > len(text.encode("utf-8"))
+
+
+def _bounded_page(answer, rows, limit, item, key):
+    """Fill a page from limit + 1 rows until the summary byte bound; next_cursor is the last kept key."""
+    items = []
+
+    def response():
+        return dict(answer, items=list(items), next_cursor=items[-1][key] if items and len(rows) > len(items) else None)
+
+    for row in rows[:limit]:
+        items.append(item(row))
+        if len(_json(response()).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
+            items.pop()
+            if not items:
+                raise Refusal("VIEW_TOO_LARGE", "A preview cannot fit in the bounded response")
+            break
+    return response()
+
+
 def _revision(expected, name, actual):
     value = expected.get(name)
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:

@@ -11,19 +11,8 @@ const bound=(row,bootstrap)=>row.instanceId===bootstrap.instance_id&&row.actor==
   same(authorityPair(row.authority),authorityPair(bootstrap.authority));
 const base=(id,kind,bootstrap)=>({format:1,id,kind,instanceId:bootstrap.instance_id,actor:bootstrap.actor,authority:authorityPair(bootstrap.authority)});
 
-export async function retainOpening({journal,bootstrap,workspace,opening,topic}) {
-  if(![workspace,opening,topic].every(validActorId))throw Error('The opening identity is incomplete.');
-  const writable=await journal.claim(opening),existing=await journal.get(opening);
-  const row=existing??{...base(opening,'opening',bootstrap),workspace,topic,sourceRef:{kind:'new_topic',id:opening,workspace_id:workspace},phase:'private'};
-  if(row.instanceId!==bootstrap.instance_id||row.actor!==bootstrap.actor||row.kind!=='opening'||row.workspace!==workspace||row.topic!==topic||
-      !same(row.sourceRef,{kind:'new_topic',id:opening,workspace_id:workspace}))throw Error('The retained opening identity does not match this link.');
-  if(!existing){if(!writable)throw Error('This opening is being initialized in another tab.');await journal.put(row);}
-  const parked=!bound(row,bootstrap);
-  return {row:copy(row),writable:writable&&!parked,parked};
-}
-
 // Outcome creation is an intent, not an editor. Its frozen public request is
-// durable before dispatch; message writing continues to use EditorSession.
+// durable before dispatch. New topics are server-owned openings (opening.mjs).
 export class OutcomeCreation {
   constructor({api,bootstrap,journal,intentId,id=()=>crypto.randomUUID(),changed=()=>{}}) {
     if(!validActorId(intentId))throw Error('A creation intent needs a stable identity.');

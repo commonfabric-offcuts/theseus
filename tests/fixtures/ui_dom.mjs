@@ -10,6 +10,8 @@ export function dom() {
     addEventListener(){}
     focus(){document.activeElement=this;}
     remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
+    insertBefore(child,before){child.remove();const index=before?this.children.indexOf(before):this.children.length;this.children.splice(index,0,child);child.parent=this;}
+    removeAttribute(name){delete this[name];}
     querySelector(selector){const key=selector==='[data-more]'?'more':selector==='[data-history-retry]'?'historyRetry':null;return this.children.find(x=>key&&Object.hasOwn(x.dataset,key))??null;}
   }
   document.createElement=tag=>new Element(tag);document.body=document.createElement('body');

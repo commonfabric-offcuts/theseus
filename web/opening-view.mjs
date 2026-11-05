@@ -1,113 +1,202 @@
-import { InlineComposer } from './inline-composer.mjs';
-import { ActorChoices, protectTouchBounds } from './creation-view.mjs';
-import { hasTitle } from './creation.mjs';
+import { WritingInput } from './writing-input.mjs';
+import { protectTouchBounds } from './creation-view.mjs';
+import { namedPastedImage } from './writing-helpers.mjs';
+import { OpeningPages } from './opening.mjs';
+import { routeHref } from './topic-navigation.mjs';
 
-const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
-const button=(label,action)=>{const n=el('button',label);n.type='button';n.onclick=action;return n;};
+const el=(tag,text,className)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(className)n.className=className;return n;};
+const button=(label,action,className)=>{const n=el('button',label,className);n.type='button';n.onclick=action;return n;};
+// Rows keep their nodes across repaints so a focused control is never replaced.
+function keyed(host,keys,make,update) {
+  for(const node of [...host.children])if(!keys.includes(node.dataset.key))node.remove();
+  keys.forEach((key,index)=>{
+    let node=[...host.children].find(n=>n.dataset.key===key);
+    if(!node){node=make(key);node.dataset.key=key;}
+    update(node,key);
+    if(host.children[index]!==node)host.insertBefore(node,host.children[index]??null);
+  });
+}
+const plain=event=>event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey;
+const describe=(w,names)=>[`Title: ${w.title||'(none)'}`,`Participants: ${w.participants.map(names).join(', ')||'only you'}`,
+  `Images: ${w.attachments.length}`,'',w.body].join('\n');
 
-// Metadata surrounds the existing composer. The Editor/Session/Uploads owners
-// retain all writing; this adapter never holds another editable body.
-export class OpeningComposer {
-  constructor({host,root,registry,bootstrap,presentation,open,review,needsReview,notice,confirmed}) {
-    Object.assign(this,{host,root,registry,bootstrap,presentation,open,notice,confirmed});
-    this.cards=new Map();host.classList.add('creation-form');host.replaceChildren();protectTouchBounds(host);protectTouchBounds(root);
-    const label=el('label','Topic title');this.title=el('input');this.title.id='opening-title-input';label.append(this.title);host.append(label);
-    this.title.oninput=()=>this.edit({title:this.title.value});
-    const people=el('div');people.className='actor-choices';host.append(el('h2','Topic participants'),people);
-    this.people=new ActorChoices({host:people,label:'Add topic participant',owner:bootstrap.actor,get:()=>this.metadata().participants??[],
-      set:participants=>this.edit({participants}),readOnly:()=>this.locked(),limit:bootstrap.limits.topic_participants,notice});
-    host.append(el('p','Participants receive this topic’s messages. The outcome team is not automatically included.'));
-    this.localState=el('p');this.localState.className='muted';this.localState.setAttribute('role','status');host.append(this.localState);
-    this.history=el('section');this.history.id='opening-history';this.history.setAttribute('aria-label','Submitted opening');host.append(this.history);
-    this.composer=new InlineComposer({admits:(p,e)=>registry.isCurrent(p,e),uploads:e=>registry.sessionFor(e).uploads,
-      edit:(e,p)=>this.run(()=>registry.isCurrent(p,e)?registry.edited(e):null),status:e=>registry.status(e),needsReview,
-      send:(e,p)=>this.send(e,p),review,renderPending:()=>{},retry:()=>this.run(()=>this.check())},
-      {root,destination:p=>'In '+p.workspace.title,readOnly:()=>this.locked()});
-    this.composer.$('writing-title').textContent='Opening message';this.composer.field.setAttribute('aria-label','Opening message');
-    this.composer.field.placeholder='Write the opening message…';
-    this.composer.$('recipient-input').closest('.audience').hidden=true;
-    this.later=button('Later',()=>open({kind:'workspace',id:presentation.workspace.id},presentation.workspace.title));this.later.id='opening-later';root.append(this.later);
-    this.composer.show(presentation);this.paint();this.title.focus();
+// The page for one OpeningDraft. Writing lives in the draft; this adapter only
+// paints it and routes input, keyboard, IME and touch to it.
+export class OpeningView {
+  constructor({host,draft,workspace,open}) {
+    Object.assign(this,{host,draft,workspace,open});
+    host.classList.add('creation-form');host.replaceChildren();protectTouchBounds(host);
+    this.state=el('p','','muted');this.state.id='opening-save-state';this.state.setAttribute('role','status');
+    this.notice=el('p','','notice');this.notice.id='opening-notice';this.notice.setAttribute('role','status');this.notice.hidden=true;
+    const titleLabel=el('label','Topic title');this.title=el('input');this.title.id='opening-title-input';this.title.autocomplete='off';titleLabel.append(this.title);
+    this.title.oninput=()=>this.run(()=>draft.edit({title:this.title.value}));
+    this.chips=el('div',undefined,'chips');this.members=el('div',undefined,'member-choices');this.members.id='opening-members';
+    this.moreMembers=button('More members',()=>this.run(()=>draft.loadMembers(true)));
+    this.membersState=el('p','','muted');this.retryMembers=button('Retry members',()=>this.run(()=>this.loadMembers()));
+    const people=el('div',undefined,'actor-choices');people.append(this.chips);
+    const bodyLabel=el('label','Opening message');this.body=el('textarea');this.body.id='opening-body';this.body.rows=8;
+    this.body.placeholder='Write the opening message…';this.body.spellcheck=true;bodyLabel.append(this.body);
+    const writer={get draft(){return {body:draft.writing.body};},edit:({body})=>draft.edit({body})};
+    this.input=new WritingInput({field:this.body,editor:()=>writer,admits:()=>draft.editable,changed:()=>this.paint()});
+    this.body.addEventListener('keydown',event=>{
+      if(this.input.terminalKey(event))return;
+      if(event.key==='Enter'&&event.metaKey&&!event.isComposing&&event.keyCode!==229){event.preventDefault();if(!event.repeat)this.send();}
+    });
+    this.body.addEventListener('paste',event=>this.paste(event));
+    this.attachments=el('div',undefined,'attachments');this.attachments.id='opening-attachments';
+    this.file=el('input');this.file.type='file';this.file.accept='image/png,image/jpeg,image/gif,image/webp';this.file.hidden=true;
+    this.file.onchange=()=>{const file=this.file.files?.[0];this.file.value='';if(file)this.run(()=>draft.attach(file));};
+    this.addImage=button('Add image',()=>{if(draft.editable&&!draft.conflict)this.file.click();});this.addImage.id='opening-add-image';
+    this.conflict=el('section',undefined,'pending-card');this.conflict.id='opening-conflict';this.conflict.hidden=true;
+    this.outcome=el('section',undefined,'pending-card');this.outcome.id='opening-outcome';this.outcome.hidden=true;
+    this.sendButton=button('Send',()=>this.send(),'primary');this.sendButton.id='opening-send';
+    const hint=el('span','⌘↵');hint.setAttribute('aria-hidden','true');this.sendButton.append(hint);
+    this.later=button('Later',()=>open({kind:'workspace',id:workspace.id},workspace.title));this.later.id='opening-later';
+    this.discard=button('Discard…',()=>{this.confirming=true;this.paint();this.confirm.focus();});this.discard.id='opening-discard';
+    this.confirm=button('Discard this opening',()=>this.run(async()=>{this.confirming=false;await draft.discard();}));this.confirm.id='opening-discard-confirm';
+    this.keep=button('Keep it',()=>{this.confirming=false;this.paint();this.discard.focus();});
+    const actions=el('div',undefined,'creation-actions');actions.append(this.sendButton,this.later,this.discard,this.confirm,this.keep);
+    host.append(this.state,this.notice,titleLabel,el('h2','Topic participants'),people,this.members,this.membersState,this.moreMembers,this.retryMembers,
+      el('p','Participants receive this topic’s messages. Choose from this outcome’s members.','muted'),
+      bodyLabel,this.attachments,this.file,this.addImage,this.conflict,this.outcome,actions);
+    draft.changed=()=>this.paint();this.paint();
   }
-  get editor(){return this.presentation.editors.reply;}
-  metadata(){return this.editor.draft.opening??this.editor.submissions.at(-1)?.snapshot.opening??{};}
-  locked(){return !this.presentation.writable||this.editor.openingLocked||this.editor.unavailable||Boolean(this.editor.authorityRecovery);}
-  edit(patch){
-    if(this.locked())return;
-    try{this.editor.editOpening(patch);this.run(()=>this.registry.edited(this.editor));}catch(error){this.notice(error.message);}
+  async run(action){
+    this.error=null;
+    try{return await action();}catch(error){this.error=error.message;}finally{this.paint();}
   }
-  async run(action){try{return await action();}catch(error){this.notice(error.message);}finally{this.paint();}}
-  send(editor,p){
-    const {limits}=this.bootstrap,opening=editor.draft.opening;
-    if(this.locked())throw Error('Review this opening before sending.');
-    if(!opening||!hasTitle(opening.title))throw Error('Give this topic a title before sending.');
-    if(new TextEncoder().encode(opening.title).length>limits.body_utf8_bytes)throw Error('The topic title is too long.');
-    if(new Set([this.bootstrap.actor,...opening.participants]).size>limits.topic_participants)throw Error('The participant limit includes you.');
-    const followFocus=[this.composer.field,this.composer.$('send')].includes(document.activeElement);
-    return this.registry.send(editor,{presentation:p,stay:true}).finally(()=>{
-      this.paint();
-      if(followFocus&&[document.body,this.composer.field,this.composer.$('send')].includes(document.activeElement)){
-        const card=this.cards.get(editor.submissions.at(-1)?.id);
-        [card?.open,card?.edit,card?.check].find(control=>control&&!control.hidden&&!control.disabled)?.focus();
-      }
+  send(){return this.run(()=>this.draft.send());}
+  loadMembers(){return this.draft.loadMembers().then(()=>{this.membersError=null;},error=>{this.membersError=error.message;throw error;});}
+  async paste(event) {
+    const items=[...(event.clipboardData?.items??[])].filter(item=>item.type.startsWith('image/'));
+    if(!items.length)return;
+    event.preventDefault();
+    for(const item of items){const file=item.getAsFile();await this.run(()=>{if(!file)throw Error('Could not read the pasted image. Use Add image.');return this.draft.attach(namedPastedImage(file));});}
+  }
+  name(id){const m=this.draft.members.find(m=>m.actor_id===id);return m?`${m.name}${m.name_truncated?'…':''}`:id;}
+  paint() {
+    const d=this.draft,w=d.writing,editable=d.editable,focused=document.activeElement;
+    this.state.textContent=[d.phase==='loading'?'Loading…':d.status,d.device].filter(Boolean).join(' · ');
+    const message=this.error??d.refusal??d.notice;this.notice.textContent=message??'';this.notice.hidden=!message;
+    if(this.title.value!==w.title)this.title.value=w.title;
+    if(this.body.value!==w.body)this.body.value=w.body;
+    this.title.readOnly=this.body.readOnly=!editable;
+    keyed(this.chips,[d.bootstrap.actor,...w.participants],id=>{
+      const chip=el('span',undefined,'chip');chip.append(el('span'));
+      if(id!==d.bootstrap.actor)chip.append(button('×',()=>this.run(()=>{d.setParticipants(d.writing.participants.filter(x=>x!==id));this.title.focus();})));
+      return chip;
+    },(chip,id)=>{
+      chip.children[0].textContent=id===d.bootstrap.actor?`${id} · you`:this.name(id);
+      if(chip.children[1]){chip.children[1].setAttribute('aria-label','Remove '+this.name(id));chip.children[1].disabled=!editable;}
+    });
+    const choices=d.members.filter(m=>m.actor_id!==d.bootstrap.actor);
+    keyed(this.members,choices.map(m=>m.actor_id),id=>{
+      const label=el('label',undefined,'member-choice'),box=el('input');box.type='checkbox';
+      box.onchange=()=>this.run(()=>d.setParticipants(box.checked?[...d.writing.participants,id]:d.writing.participants.filter(x=>x!==id)));
+      label.append(box,el('span'));return label;
+    },(label,id)=>{
+      const [box,text]=label.children,m=choices.find(m=>m.actor_id===id);
+      box.checked=d.writing.participants.includes(id);box.disabled=!editable;text.textContent=` ${this.name(id)} · ${m.kind}`;
+    });
+    this.moreMembers.hidden=d.membersNext===null;this.retryMembers.hidden=!this.membersError;
+    this.membersState.textContent=this.membersError?'Outcome members are unavailable. '+this.membersError:'';this.membersState.hidden=!this.membersError;
+    this.paintAttachments(editable);
+    this.addImage.disabled=!editable||Boolean(d.conflict);
+    this.paintConflict();this.paintOutcome();
+    const open=['editing','sending','unknown','loading','error'].includes(d.phase);
+    this.sendButton.hidden=!open||d.phase==='unknown';this.sendButton.disabled=!editable||Boolean(d.conflict);
+    this.discard.hidden=!open||this.confirming||d.phase==='unknown';this.discard.disabled=!editable||Boolean(d.conflict);
+    this.confirm.hidden=this.keep.hidden=!this.confirming||!editable;this.later.disabled=d.phase==='sending'||d.discarding;
+    this.later.textContent=['published','discarded'].includes(d.phase)?'Back to outcome':'Later';
+    if(focused&&focused.hidden&&[this.sendButton,this.confirm,this.keep,this.discard].includes(focused))(this.outcome.hidden?this.title:this.outcome.querySelector('button,a')??this.later)?.focus();
+  }
+  paintAttachments(editable) {
+    const d=this.draft;
+    const ids=[...new Set([...d.writing.attachments.map(ref=>ref.id),...[...d.media].filter(([,m])=>m.state==='uploading'||m.state==='failed').map(([id])=>id)])];
+    keyed(this.attachments,ids,id=>{
+      const row=el('div',undefined,'image-choice');
+      row.append(el('span'),button('Retry upload',()=>this.run(()=>d.retryUpload(id))),button('Remove',()=>this.run(()=>{d.detach(id);this.addImage.focus();})));
+      return row;
+    },(row,id)=>{
+      const m=d.media.get(id)??{name:'Image',state:'checking',message:''},[text,retry,remove]=row.children;
+      const label={uploading:'Uploading',ready:'Ready',checking:'Checking',pending:'Upload not finished',failed:'Not uploaded',unavailable:'Unavailable'}[m.state];
+      text.textContent=`${m.name} · ${label}${m.message?' — '+m.message:''}`;
+      retry.hidden=!(m.state==='failed'&&m.upload);retry.disabled=!editable;remove.disabled=!editable;remove.setAttribute('aria-label','Remove '+m.name);
     });
   }
-  async check(){
-    await this.registry.checkConfirmation(this.editor);
-    if(this.confirmationFailed){this.confirming=false;this.confirmationFailed=false;}
-    this.paint();
+  paintConflict() {
+    const d=this.draft,c=d.conflict;this.conflict.hidden=!c;
+    if(!c){this.conflict.replaceChildren();return;}
+    const key=JSON.stringify([d.localVersion,c.remote===undefined?null:c.remote?.revision??0,c.message??null]);
+    if(this.conflict.dataset.key===key)return;this.conflict.dataset.key=key;
+    const mine=el('pre',describe(d.writing,id=>this.name(id)));
+    this.conflict.replaceChildren(el('h3','This opening changed on another device'),
+      el('p','Nothing was overwritten. Choose which version to keep; the other one is replaced only when you choose.','muted'),
+      el('h3','Your writing'),mine);
+    if(c.remote===undefined){
+      this.conflict.append(el('p','The saved version could not be read. '+(c.message??''),'muted'),button('Retry reading',()=>this.run(()=>d.retryConflictRead())));
+      return;
+    }
+    this.conflict.append(el('h3',c.remote?`Saved version · revision ${c.remote.revision}`:'Saved version'),
+      el('pre',c.remote?describe(c.remote,id=>this.name(id)):'Theseus has no saved version of this opening.'),
+      button('Keep my writing',()=>this.run(()=>d.resolve('mine')),'primary'));
+    if(c.remote)this.conflict.append(button('Use the saved version',()=>this.run(()=>d.resolve('server'))));
   }
-  paint(){
-    const e=this.editor,metadata=this.metadata(),locked=this.locked();
-    if(this.title.value!==(metadata.title??''))this.title.value=metadata.title??'';
-    this.title.readOnly=locked;this.people.paint();
-    this.localState.textContent=e.authorityRecovery?'Runtime changed — this opening is kept read-only without rebinding. Review versions to inspect writing kept on this device.':!this.presentation.writable?'Open in another tab — this opening is read-only':e.openingRecovery?.message??(e.openingLocked?
-      'This opening is frozen. Review its writing and confirmation below.':'Private opening · saved writing does not create a topic until you Send.');
-    this.composer?.paintStatus();
-    if(this.composer){
-      this.composer.field.hidden=Boolean(e.openingLocked&&!e.draft.body);
-      this.composer.$('writing-hint').hidden=Boolean(e.openingLocked);
+  paintOutcome() {
+    const d=this.draft,host=this.outcome,key=JSON.stringify([d.phase,d.notice,Boolean(d.leftover)]);
+    host.hidden=!['unknown','published','discarded','error','taken'].includes(d.phase);
+    if(host.hidden||host.dataset.key===key){if(host.hidden)host.dataset.key='';return;}
+    host.dataset.key=key;host.replaceChildren();
+    if(d.phase==='error')host.append(el('h3','This opening could not be loaded'),button('Retry',()=>this.run(()=>d.load())));
+    if(d.phase==='unknown')host.append(el('h3','Sending is not confirmed'),
+      el('p','The exact send request is kept on this device only. Check reads its confirmation; Send again sends the identical request.','muted'),
+      button('Check',()=>this.run(()=>d.check())),button('Send again',()=>this.run(()=>d.sendAgain())));
+    if(d.phase==='published'){
+      const link=el('a','Open the topic');link.href=routeHref({kind:'topic',id:d.topic});
+      link.onclick=event=>{if(!plain(event))return;event.preventDefault();this.open({kind:'topic',id:d.topic},d.writing.title||'Topic');};
+      host.append(el('h3','Topic created'),el('p','Further writing is a reply in the topic, or a new opening.','muted'),link);
     }
-    this.later.disabled=this.registry.hasInFlightSend;
-    const local=new Map(e.submissions.map(item=>[item.id,item]));
-    const entries=[...local.values(),...this.registry.pending(e).items.filter(item=>!local.has(item.id))];
-    const names={preparing:'Preparation awaiting confirmation',prepared:'Preparation confirmed; publication not confirmed',confirmed:'Topic created',refused:'Recorded refusal — writing kept',unknown:'Preparation confirmed; publication not confirmed',committed:'Topic created',rejected:'Recorded refusal — writing kept'};
-    for(const item of entries){
-      let card=this.cards.get(item.id);
-      if(!card){
-        const section=el('section');section.className='pending-card';section.dataset.id=item.id;
-        const heading=el('h3'),body=el('pre'),reason=el('p'),read=button('Read submitted writing',()=>this.run(async()=>{await this.registry.inspectPending(e,item.id);})),
-          check=button('Check confirmation',()=>this.run(async()=>{await this.registry.checkPending(e,item.id);})),
-          edit=button('Edit opening',()=>this.run(async()=>{
-            const current=e.submissions.find(x=>x.id===item.id),session=this.registry.sessionFor(e);
-            const state=await session.api.view('editor_state',{source_ref:e.sourceRef,topic_id:e.context.topicId});
-            this.registry.validateState(state,e.sourceRef,e.context.topicId);
-            await session.correctOpening(current,state.draft,e.localVersion);this.composer.drawEditor();this.title.focus();
-          })),open=button('Open topic',()=>this.open({kind:'topic',id:e.context.topicId},this.metadata().title||'Topic'));
-        section.append(heading,body,reason,read,check,edit,open);this.history.append(section);
-        card={section,heading,body,reason,read,check,edit,open};this.cards.set(item.id,card);
-      }
-      const status=item.status??item.send_status,full=local.get(item.id),receipt=full?.receipt??this.registry.pendingReceipts.get(JSON.stringify([e.key,item.id,item.send_operation_id]));
-      card.heading.textContent=status==='preparing'&&item.blocked?.phase==='draft.save'?'Save awaiting confirmation':names[status]??'Confirmation unknown';
-      card.body.textContent=full?.snapshot.body??'';card.body.hidden=!full;
-      const reason=this.registry.pendingReason(e,item)??(status==='preparing'?item.blocked?.message:null)??'';
-      const active=this.registry.hasInFlightSend||this.registry.sessionFor(e).sends.has(item.id);
-      const limit=!active&&['prepared','unknown'].includes(status)?'Continuing this interrupted send is unavailable in this version. Check reads its original confirmation; it does not send.':'';
-      card.reason.textContent=[reason,limit].filter(Boolean).join(' ');card.reason.hidden=!card.reason.textContent;
-      card.read.hidden=Boolean(full);card.check.hidden=status==='confirmed'||status==='committed';
-      card.edit.hidden=!(full&&!full.detached&&e.openingRecovery?.canRestore(full)&&receipt?.kind==='topic.create_and_send'&&receipt.status==='rejected'&&['INVALID_RECIPIENT','TOO_MANY_PARTICIPANTS'].includes(receipt.error?.code));
-      card.edit.id=card.edit.hidden?'':'opening-edit';
-      card.edit.disabled=!this.presentation.writable||this.registry.hasInFlightSend;
-      card.open.hidden=!(full?.status==='confirmed'&&full.receipt?.result?.topic?.id===e.context.topicId);
-      card.open.id=card.open.hidden?'':'opening-open-topic';
-      if(!card.open.hidden&&!this.confirming){
-        this.confirming=true;
-        this.run(async()=>{try{await this.confirmed(full.receipt);}catch(error){this.confirmationFailed=true;throw error;}});
-      }
+    if(d.phase==='discarded')host.append(el('h3','This opening was discarded'));
+    if(d.phase==='taken')host.append(el('h3','This link can no longer start a topic'),
+      el('p','Its topic already exists. Your writing is kept on this device only; move it to a new topic to save and send it.','muted'),
+      button('Start a new topic with this writing',()=>this.run(async()=>{const route=await d.relocate();await this.open(route,d.writing.title||'New topic');})));
+    if(d.leftover)host.append(el('p','This writing was on this device only and was not part of it:','muted'),el('pre',describe(d.leftover,id=>this.name(id))),
+      button('Remove from this device',()=>this.run(()=>d.removeLeftover())));
+  }
+}
+
+// Each outcome page lists the person's unfinished openings from Core, so any
+// device can resume one.
+export class UnfinishedOpenings {
+  constructor({host,instanceId,workspace,read,open}) {
+    Object.assign(this,{host,read,open});this.pages=new OpeningPages(instanceId,workspace);this.loading=null;
+    this.list=el('div');this.message=el('p','','muted');this.message.setAttribute('role','status');
+    this.more=button('More unfinished topics',()=>this.load(true));this.more.hidden=true;
+    host.setAttribute('aria-label','Unfinished topics');protectTouchBounds(host);
+    host.replaceChildren(el('h2','Unfinished topics'),el('p','Private openings you started in this outcome, on any device.','muted'),this.list,this.message,this.more);
+  }
+  load(more=false) {
+    if(this.loading)return this.loading;
+    const cursor=more?this.pages.next:null;
+    if(more&&cursor===null)return Promise.resolve();
+    this.more.disabled=true;
+    this.loading=this.read({workspace_id:this.pages.workspace,limit:20,...(cursor===null?{}:{cursor})}).then(answer=>{
+      if(answer?.error)throw Error(answer.error.message??answer.error.code);
+      this.pages.accept(answer,cursor);this.paint();
+    }).catch(error=>{this.message.textContent=error.message;this.more.textContent='Retry unfinished topics';this.more.hidden=false;this.failedMore=more;
+      this.more.onclick=()=>this.load(this.failedMore);
+    }).finally(()=>{this.loading=null;this.more.disabled=false;});
+    return this.loading;
+  }
+  paint() {
+    this.list.replaceChildren();
+    for(const item of this.pages.items){
+      const route={kind:'opening',workspace:item.workspace_id,opening:item.id,topic:item.topic_id},title=item.title?item.title+(item.title_truncated?'…':''):'Untitled topic';
+      const link=el('a',`Resume ${title}`,'nav-item');link.href=routeHref(route);link.dataset.openingId=item.id;
+      link.onclick=event=>{if(!plain(event))return;event.preventDefault();this.open(route,title);};
+      this.list.append(link);
     }
-    this.history.querySelector('[data-more]')?.remove();
-    if(this.registry.pending(e).next_cursor!==null){const more=button('More submitted openings',()=>this.run(()=>this.registry.morePending(e)));more.dataset.more='';this.history.append(more);}
-    this.history.querySelector('[data-history-retry]')?.remove();
-    if(e.openingRecovery?.mode==='error'){const retry=button('Retry opening history',()=>this.run(()=>this.check()));retry.dataset.historyRetry='';this.history.append(retry);}
+    this.message.textContent=this.pages.items.length?'':'No unfinished topics.';
+    this.more.textContent='More unfinished topics';this.more.onclick=()=>this.load(true);this.more.hidden=this.pages.next===null;
   }
 }

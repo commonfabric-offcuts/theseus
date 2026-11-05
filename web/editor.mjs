@@ -1,4 +1,3 @@
-import { validActorId, hasTitle } from './creation.mjs';
 import { imageBarrier, freezeImages, readableUploads, refusedAtDraft } from './upload-state.mjs';
 
 // Private writing state. DOM, transport and persistence are separate owners.
@@ -37,6 +36,8 @@ export function keyAction(event, { context, menuActive = false, quoteArmed = fal
 
 export class Editor {
   constructor(context, draft) {
+    // New topics are server-owned openings (opening.mjs), never a prepared submission.
+    if (context?.sourceRef?.kind === 'new_topic') throw new Error('A new topic is written as an opening, not in a reply editor.');
     this.context = copy(context);
     this.key = editorKey(context);
     this.sourceRef = copy(draft?.source_ref ?? context.sourceRef);
@@ -68,21 +69,6 @@ export class Editor {
       if (Object.hasOwn(patch, field)) this.draft[field] = copy(patch[field]);
     }
     this.localVersion += 1;
-  }
-
-  get openingLocked() {
-    if(this.openingRecovery)return this.openingRecovery.locked();
-    return this.context.sourceRef.kind === 'new_topic' && (this.openingHistoryPending ||
-      this.submissions.some(item => !item.openingCorrected));
-  }
-
-  editOpening(patch) {
-    if (this.context.kind !== 'reply' || this.context.sourceRef.kind !== 'new_topic') throw Error('Only a private opening has opening metadata.');
-    if (this.openingLocked) throw Error('This opening is already frozen. Review its original confirmation before editing.');
-    if (!patch || Object.keys(patch).some(key => !['title', 'participants'].includes(key))) throw Error('Opening identity is fixed; edit title and participant metadata only.');
-    this.draft.opening ??= { workspace_id: this.context.sourceRef.workspace_id, title: '', participants: [] };
-    for (const key of ['title', 'participants']) if (Object.hasOwn(patch, key)) this.draft.opening[key] = copy(patch[key]);
-    this.localVersion++;
   }
 
   saveTicket(operationId) {
@@ -128,13 +114,6 @@ export class Editor {
   beginPrepare({ prepareOperationId, sendOperationId, submissionId }) {
     if (!this.validateComposition()) throw Error(this.conflict.error.message);
     if (this.context.kind === 'note') throw new Error('A private note cannot be sent.');
-    if (this.context.sourceRef.kind === 'new_topic') {
-      if (this.openingLocked) throw Error('This opening is already frozen. Review its original confirmation.');
-      const opening = this.draft.opening;
-      if (!opening || opening.workspace_id !== this.context.sourceRef.workspace_id) throw Error('The opening identity does not match its outcome.');
-      if (!hasTitle(opening.title)) throw Error('Give this topic a title before sending.');
-      if (!Array.isArray(opening.participants) || !opening.participants.every(validActorId)) throw Error('Use valid known participant IDs.');
-    }
     const active = this.submissions.find(item => item.status === 'preparing' && !item.detached);
     if (active) return active;
     const barrier = imageBarrier(this);
@@ -189,11 +168,9 @@ export class Editor {
   }
 
   acceptSend(receipt) {
-    const item = this.submissions.find(entry => this.matches(receipt, entry.sendOperationId,
-      entry.snapshot.opening ? 'topic.create_and_send' : 'message.send'));
+    const item = this.submissions.find(entry => this.matches(receipt, entry.sendOperationId, 'message.send'));
     if (!item || !item.preparationConfirmed || !['committed', 'rejected'].includes(receipt.status)) return false;
     if (receipt.status === 'committed' && receipt.result?.submission_id !== item.id) return false;
-    if (receipt.status === 'committed' && item.snapshot.opening && receipt.result?.topic?.id !== item.topicId) return false;
     item.receipt = copy(receipt);
     item.status = receipt.status === 'committed' ? 'confirmed' : 'refused';
     // A's outcome has no authority over B's writing or its save state.

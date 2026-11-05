@@ -11,7 +11,7 @@ export const same = (a, b) => {
 };
 const pair = a => a && typeof a.authority_id === 'string' && a.authority_id && typeof a.authority_epoch === 'string' && a.authority_epoch
   ? { authority_id: a.authority_id, authority_epoch: a.authority_epoch } : null;
-const fields = ['body', 'attachments', 'quotes', 'addressees', 'reply_to', 'exchange_id', 'opening', 'caret'];
+const fields = ['body', 'attachments', 'quotes', 'addressees', 'reply_to', 'exchange_id', 'caret'];
 const recognizedDraft = (draft, note = false) => {
   const allowed = note ? ['body', 'caret', 'attachments', 'quotes', 'addressees'] : [...fields, 'generation'];
   return draft && Object.keys(draft).every(key => [...allowed, 'id', 'revision', 'source_ref'].includes(key)) &&
@@ -146,7 +146,7 @@ export class RecoveryCleanup {
     this.changed(session.editor);
   }
   async retireOwn(session) {
-    if (this.stopped() || session.editor.openingReadOnly) return false;
+    if (this.stopped()) return false;
     try {
       let row = await this.journal.own(session.editor.key), projected;
       if (row?.snapshot.format === 2) {
@@ -187,7 +187,6 @@ export class RecoveryCleanup {
     return next;
   }
   candidates(session, page) {
-    if(session.editor.openingReadOnly)return Promise.resolve(page);
     return this.enqueue(session.editor.key, async () => {
       const retained = [];
       for (const row of page.items) {
@@ -267,7 +266,7 @@ export class RecoveryCleanup {
         target: { topic_id: context.topicId }, expected: { draft_revision: item.snapshot.revision, authority },
         args: { draft_id: item.snapshot.id, submission_id: item.id, send_operation_id: item.sendOperationId } };
       const sendEnvelope = { v: 1, instance_id: context.instanceId, operation_id: item.sendOperationId,
-        kind: item.snapshot.opening ? 'topic.create_and_send' : 'message.send', target: { topic_id: context.topicId },
+        kind: 'message.send', target: { topic_id: context.topicId },
         expected: { authority }, args: { submission_id: item.id } };
       const preparation = item.prepareReceipt?.result;
       if (!prepare || !send || !same(prepare.envelope, prepareEnvelope) || !same(send.envelope, sendEnvelope) ||

@@ -49,3 +49,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .actor-choices .chips { display: flex; flex-wrap: wrap; gap: .4rem; flex-basis: 100%; }
 .creation-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
 #unfinished-work { margin-top: 2rem; }
+.member-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(14rem, 100%), 1fr)); gap: .35rem; }
+.member-choice { display: flex; align-items: center; gap: .5rem; min-height: 44px; padding: 0 .6rem; border: 1px solid var(--line); border-radius: .5rem; background: var(--panel); overflow-wrap: anywhere; }
+.member-choice input { width: 1.15rem; height: 1.15rem; min-height: 0; flex-shrink: 0; }
+.creation-form #opening-body { min-height: 12rem; font-size: 16px; line-height: 1.6; }
+.creation-form pre { font: inherit; font-size: .88rem; white-space: pre-wrap; overflow-wrap: anywhere; margin: .4rem 0; }

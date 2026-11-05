@@ -10,8 +10,10 @@ import { TopicViews } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
-import { OpeningComposer } from './opening-view.mjs';
-import { OutcomeCreation, retainOpening } from './creation.mjs';
+import { OpeningDraft } from './opening.mjs';
+import { OpeningView, UnfinishedOpenings } from './opening-view.mjs';
+import { openOpeningStore } from './opening-store.mjs';
+import { OutcomeCreation } from './creation.mjs';
 import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 
 const $ = id => document.getElementById(id);
@@ -28,7 +30,7 @@ let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 let topicRail, topicNavigation, outcomeRail;
-let intentJournal, intentOpening, outcomeCreation, openingComposer;
+let intentJournal, intentOpening, outcomeCreation;
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
@@ -41,7 +43,7 @@ const validate = answer => {
 };
 const reviewStatus = message => { $('review-status').textContent = message; $('review-status').hidden = !message; };
 const presentationFor = editor => [registry?.current, registry?.inline].find(p => p && Object.values(p.editors).includes(editor));
-const writingSurface = p => p?.surface === 'opening' ? openingComposer?.composer : p?.surface === 'inline' ? inline : reader;
+const writingSurface = p => p?.surface === 'inline' ? inline : reader;
 const needsReview = editor => {
   const known = candidates.get(editor.key);
   return Boolean(editor.uploadState || editor.recoveryDiscovery || editor.authorityRecovery || editor.conflict || editor.cleanupError || known?.items.length || known?.nextCursor);
@@ -120,7 +122,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
     reviewStatus(recovery.message);
     $('review-retry').hidden = false;
     $('review-retry').onclick = () => run(action(async () => { await session.retryAuthority(); if (current()) await showVersions(editor, opener, presentation); }));
-    $('review-save').hidden = editor.context.sourceRef.kind === 'new_topic';
+    $('review-save').hidden = false;
     $('review-save').disabled = recovery.phase !== 'ready' || localVersion !== editor.localVersion;
     $('review-save').onclick = () => run(action(async () => {
       $('review-save').disabled = true;
@@ -148,7 +150,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
           catch (error) { if (current()) reviewStatus(error.message); }
           finally { if (adopt.isConnected) adopt.disabled = false; }
         });
-        adopt.disabled = editor.openingReadOnly || editor.localVersion > 0 || session.attempts.length > 0 || uploadWork(editor);
+        adopt.disabled = editor.localVersion > 0 || session.attempts.length > 0 || uploadWork(editor);
         section.append(adopt);
         if (refusedCopyAtDraft(candidate, editor.recoveryServerDraft)) {
           for (const item of candidate.snapshot.submissions.filter(item => refusedAtDraft(item, editor.recoveryServerDraft))) {
@@ -172,7 +174,6 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
             if (current()) label.textContent = `${e.file?.name ?? 'Earlier image'} · ${r.recorded === true ? r.status : 'Confirmation unknown'}`;
           }));
           if (e.bytes_ref) section.append(make('Discard retained file', async () => {
-            if(editor.openingReadOnly)throw Error('This opening is read-only; its retained file is unchanged.');
             await journal.changeCandidateImages(editor.key, candidate, { kind: 'discard', selectionId: e.selection_id });
             if (current()) await showVersions(editor, opener, presentation);
           }));
@@ -288,9 +289,8 @@ function changed(editor) {
     $('review-versions').hidden = !needsReview(reader.editor);
   }
   if (inline?.editor === editor) inline.paintStatus();
-  if (openingComposer?.editor === editor) openingComposer.paint();
   invalidateComparison(editor);
-  if (editor.context.kind === 'reply' && !['topic','new_topic'].includes(editor.context.sourceRef.kind) && pendingCount(editor)) {
+  if (editor.context.kind === 'reply' && editor.context.sourceRef.kind !== 'topic' && pendingCount(editor)) {
     let host = [...$('topic-pending').children].find(child => child.dataset.key === editor.key);
     if (!host) { host = node('div'); host.dataset.key = editor.key; $('topic-pending').append(host); }
     pendingButton(host, editor);
@@ -302,7 +302,6 @@ function changed(editor) {
 }
 function revokeMedia() { for (const url of mediaURLs) URL.revokeObjectURL(url); mediaURLs.clear(); }
 async function present(presentation) {
-  if (presentation.surface === 'opening') { openingComposer?.composer.show(presentation); openingComposer?.paint(); return; }
   if (presentation.surface === 'inline') inline.show(presentation);
   else {
     retainRevisionTargets(presentation);
@@ -828,25 +827,22 @@ function enableNewTopic(workspace) {
 }
 async function initializeOpeningPage(route) {
   for(const id of ['notebook','participants','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
-  $('outcome-page').hidden=false;$('topic-title').textContent='New topic';$('topic-description').textContent='Write a private opening, then Send to create the topic.';
+  $('outcome-page').hidden=false;$('topic-title').textContent='New topic';$('topic-description').textContent='Write privately, then Send to create the topic.';
   const answer=checkedView(await api.view('workspace',{workspace_id:route.workspace},{readClass:'foreground'}),bootstrap.instance_id);
   if(answer.workspace?.id!==route.workspace)throw Error('The chosen outcome could not be confirmed.');
   $('workspace-name').textContent=answer.workspace.title;
-  const intents=await ensureIntentJournal(),retained=await retainOpening({journal:intents,bootstrap,workspace:route.workspace,opening:route.opening,topic:route.topic});
-  journal=await openJournal({instanceId:bootstrap.instance_id,actor:bootstrap.actor});
-  registry=new EditorRegistry({api,bootstrap,journal,changed,present:p=>run(()=>present(p)),activity:()=>openingComposer?.paint()});
-  const p=await registry.initializeOpening(retained.row,answer.workspace,{writable:retained.writable});
-  topicNavigation=new TopicNavigation({registry,current:route,navigateTarget:target=>location.assign(routeHref(target))});
-  openingComposer=new OpeningComposer({host:$('outcome-page'),root:$('inline-composer'),registry,bootstrap,presentation:p,open:openDestination,
-    review:(editor,p,opener)=>run(()=>showVersions(editor,opener,p)),needsReview,notice:status,
-    confirmed:async receipt=>{
-      const detail=checkedView(await api.view('topic',{topic_id:route.topic},{readClass:'foreground'}),bootstrap.instance_id);
-      if(detail.topic?.id!==route.topic||detail.topic.workspace_id!==route.workspace||receipt.result?.topic?.id!==route.topic)throw Error('The created topic could not be confirmed. Its receipt is kept.');
-      if(retained.writable)await intents.put({...retained.row,phase:'confirmed'});
-    }});
-  $('refresh').onclick=()=>openingComposer.run(()=>openingComposer.check());
-  window.addEventListener('beforeunload',event=>{if(registry.hasUnprotectedWriting){event.preventDefault();event.returnValue='';}});
-  window.addEventListener('pagehide',()=>{registry.dispose();journal.close();});
+  const store=await openOpeningStore({instanceId:bootstrap.instance_id,actor:bootstrap.actor});
+  // Core owns the opening; a committed publication opens its topic.
+  const draft=new OpeningDraft({api,bootstrap,store,workspace:route.workspace,opening:route.opening,topic:route.topic,
+    published:receipt=>location.assign(routeHref({kind:'topic',id:receipt.result.topic.id}))});
+  topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>draft.leave(target,title),navigateTarget:target=>location.assign(routeHref(target))});
+  const view=new OpeningView({host:$('outcome-page'),draft,workspace:answer.workspace,open:openDestination});
+  $('refresh').onclick=()=>view.run(()=>draft.refresh());
+  window.addEventListener('beforeunload',event=>{if(draft.unprotected){event.preventDefault();event.returnValue='';}});
+  window.addEventListener('pagehide',()=>{draft.cancelSave();store.close();});
+  await view.run(()=>draft.load());
+  if(draft.editable)view.title.focus();
+  view.run(()=>view.loadMembers());
   await initializeOutcomeNavigation(route.workspace);document.body.dataset.ready='true';
 }
 async function ensureIntentJournal() {
@@ -858,7 +854,12 @@ async function ensureIntentJournal() {
 }
 async function initializeUnfinished(route) {
   const host=$('unfinished-work');host.hidden=false;
-  try{await showUnfinished({host,journal:await ensureIntentJournal(),workspace:route.kind==='workspace'?route.id:null,open:openDestination});}
+  if(route.kind==='workspace'){
+    const list=new UnfinishedOpenings({host,instanceId:bootstrap.instance_id,workspace:route.id,open:openDestination,
+      read:args=>api.view('openings',args,{readClass:'foreground'})});
+    return list.load();
+  }
+  try{await showUnfinished({host,journal:await ensureIntentJournal(),open:openDestination});}
   catch(error){host.textContent='Unfinished work on this browser is unavailable. '+error.message;}
 }
 async function initializeCreationPage(route) {

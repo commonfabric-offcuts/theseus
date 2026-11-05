@@ -76,43 +76,6 @@ export class EditorRegistry {
     try { return await this.initializingInline; } finally { this.initializingInline = null; }
   }
 
-  async initializeOpening(retained, workspace, { writable = false } = {}) {
-    if (this.disposed || retained?.kind !== 'opening' || retained.instanceId !== this.bootstrap.instance_id ||
-        retained.actor !== this.bootstrap.actor || retained.workspace !== workspace?.id ||
-        !same(retained.sourceRef, { kind: 'new_topic', id: retained.id, workspace_id: workspace.id }) || !retained.topic) {
-      throw Error('The retained opening does not match this outcome or actor.');
-    }
-    if (!retained.authority?.authority_id || !retained.authority?.authority_epoch) throw Error('The retained opening authority is incomplete.');
-    const parked=!same(retained.authority,{authority_id:this.bootstrap.authority.authority_id,authority_epoch:this.bootstrap.authority.authority_epoch});
-    writable=writable&&!parked;
-    const sourceRef = retained.sourceRef, topicId = retained.topic, foreground = this.cleanup.foreground();
-    try {
-      const state = await foreground.read(options => this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId, limit: this.pendingPageSize }, options));
-      this.validateState(state, sourceRef, topicId);
-      if (state.note !== null) throw Error('A private opening cannot hold a source note.');
-      const reply = await this.register({ instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, kind: 'reply', sourceRef, topicId }, state.draft,
-        {openingReadOnly:!writable,openingBinding:copy(retained.authority),parked});
-      if (this.disposed) return null;
-      reply.unavailable = !state.source_available || !state.destination_available;
-      reply.openingReadOnly = !writable;
-      reply.openingBinding = copy(retained.authority);
-      this.pages.set(reply.key, copy(state.submissions));
-      const proof=this.sessionFor(reply).openingProof;
-      proof.onPage=page=>this.pages.set(reply.key,page);
-      await proof.refresh({state});
-      if (writable && !reply.openingLocked && !reply.draft.opening) reply.editOpening({ title: '', participants: [] });
-      const p = { surface: 'opening', workspace: copy(workspace), retained: copy(retained), writable,
-        editors: { reply }, mode: 'reply', destinationAvailable: !reply.unavailable };
-      this.current = p; this.present(p); this.activity(); return p;
-    } finally { foreground.release(); }
-  }
-
-  updateOpeningHistory(editor) {
-    if (editor.context.sourceRef.kind !== 'new_topic') return;
-    const page = this.pending(editor);
-    editor.openingHistoryPending = page.next_cursor !== null || page.items.some(row => !editor.submissions.some(item => item.id === row.id));
-  }
-
   validateState(state, sourceRef, topicId) {
     if (state?.error || state?.instance_id !== this.bootstrap.instance_id || !same(state.source_ref, sourceRef) ||
         !same(state.destination, { topic_id: topicId ?? null })) throw Error('The source or destination identity could not be confirmed.');
@@ -130,16 +93,16 @@ export class EditorRegistry {
     return page;
   }
 
-  async register(context, remote, opening = null) {
+  async register(context, remote) {
     const key = editorKey(context);
     if (this.sessions.has(key)) return this.sessions.get(key).editor;
     if (this.registering.has(key)) return this.registering.get(key);
-    const pending = this.createEditor(context, remote, opening);
+    const pending = this.createEditor(context, remote);
     this.registering.set(key, pending);
     try { return await pending; } finally { if (this.registering.get(key) === pending) this.registering.delete(key); }
   }
 
-  async createEditor(context, remote, opening = null) {
+  async createEditor(context, remote) {
     const key = editorKey(context);
     const row = await this.journal.own(key);
     if (row && (row.scope !== JSON.stringify([context.instanceId, context.actor]) || row.editorKey !== key ||
@@ -148,8 +111,7 @@ export class EditorRegistry {
     const initial = remote ?? { id: crypto.randomUUID(), revision: 0,
       ...(context.kind === 'reply' ? { generation: crypto.randomUUID() } : {}) };
     const editor = row ? restoreEditor(context, initial, row.snapshot) : new Editor(context, initial);
-    if(opening){editor.openingReadOnly=opening.openingReadOnly;editor.openingBinding=copy(opening.openingBinding);}
-    const session = new EditorSession(editor, { api: this.api, journal: this.journal, authority: opening?{...this.runtime.current,...opening.openingBinding}:this.runtime.current,
+    const session = new EditorSession(editor, { api: this.api, journal: this.journal, authority: this.runtime.current,
       runtime: this.runtime, snapshot: row?.snapshot,
       changed: current => this.changed(current),
       persisted: (saved, snapshot) => {
@@ -163,8 +125,6 @@ export class EditorRegistry {
           this.close(options.presentation).catch(error => { editor.journalError = error.message; this.changed(editor); });
         }
       } });
-    if(opening?.parked)session.recovery={id:crypto.randomUUID(),failedPair:copy(opening.openingBinding),phase:'parked',authority:null,remote:null,error:'AUTHORITY_CHANGED',
-      message:'The runtime changed. This opening stays bound to its original runtime. Saved writing and retained versions remain available for inspection; sending is disabled.'};
     this.sessions.set(key, session);
     session.registered = () => this.sessions.get(key) === session && !this.disposed;
     if (context.kind === 'reply') {
@@ -303,7 +263,7 @@ export class EditorRegistry {
     return false;
   }
 
-  checkConfirmation(editor) { const session=this.sessionFor(editor);return session.openingProof?session.openingProof.refresh():session.reconcile(); }
+  checkConfirmation(editor) { return this.sessionFor(editor).reconcile(); }
   status(editor) {
     if (editor.journalError) return 'Recovery copy unavailable — keep this page open';
     if (this.localWrites.get(editor.key)?.pending) return 'Saving recovery copy';
@@ -378,7 +338,6 @@ export class EditorRegistry {
   }
 
   async removeCandidateImages(editor, candidate) {
-    if(editor.openingReadOnly)throw Error('This opening is read-only; its retained versions are unchanged.');
     const row = await this.journal.changeCandidateImages(editor.key, candidate, { kind: 'remove' });
     editor.imageCopies.set(row.id, { ...row, availability: 'available' });
     this.updateImageBarrier(editor);
@@ -411,7 +370,7 @@ export class EditorRegistry {
 
   async adoptCandidate(editor, candidate, presentation) {
     const previous = this.sessionFor(editor);
-    if (editor.openingReadOnly || !this.isCurrent(presentation, editor) || editor.localVersion || previous.attempts.length || editor.submissions.length || uploadWork(editor)) throw Error('This page has current writing. Keep both versions and copy deliberately.');
+    if (!this.isCurrent(presentation, editor) || editor.localVersion || previous.attempts.length || editor.submissions.length || uploadWork(editor)) throw Error('This page has current writing. Keep both versions and copy deliberately.');
     const revision = editor.uploadState?.revision;
     const current = () => this.sessions.get(editor.key) === previous && this.isCurrent(presentation, editor) && !editor.localVersion &&
       editor.uploadState?.revision === revision && !editor.imageReservation && !editor.imageBusy;
@@ -422,13 +381,7 @@ export class EditorRegistry {
       if (!current()) throw Error('The current writing changed. Review both versions again.');
       await this.journal.adopt(editor.key, { id: candidate.id, stamp: candidate.stamp }, current);
       this.sessions.delete(editor.key);
-      const restored = await this.register(editor.context, editor.context.kind === 'note' ? state.note : state.draft,
-        presentation.surface==='opening'?{openingReadOnly:editor.openingReadOnly,openingBinding:editor.openingBinding}:null);
-      if(presentation.surface==='opening'){
-        const proof=this.sessionFor(restored).openingProof;
-        proof.onPage=page=>this.pages.set(restored.key,page);
-        await proof.refresh({state});
-      }
+      const restored = await this.register(editor.context, editor.context.kind === 'note' ? state.note : state.draft);
       presentation.editors[editor.context.kind] = restored;
       if (this.isCurrent(presentation)) this.present(presentation);
       return restored;
@@ -445,25 +398,19 @@ export class EditorRegistry {
         detail.send_operation_id !== item.send_operation_id || detail.prepare_operation_id !== item.prepare_operation_id ||
         !same(detail.authority, item.authority)) throw Error('The pending source identity could not be confirmed.');
     this.pendingDetails.set(id, copy(detail));
-    if (editor.context.sourceRef.kind === 'new_topic') {
-      await this.sessionFor(editor).retainOpeningSubmission(detail); this.updateOpeningHistory(editor);
-    }
     this.rememberPendingReceipt(editor, item, detail.send_receipt);
     return detail;
   }
 
   async checkPending(editor, id) {
     const local = editor.submissions.find(item => item.id === id);
-    if (local) {
-      if (local.serverObserved) return this.sessionFor(editor).originalPublication(local);
-      return this.checkConfirmation(editor);
-    }
+    if (local) return this.checkConfirmation(editor);
     const item = this.pending(editor).items.find(item => item.id === id);
     if (!item) throw Error('This pending reply is not on the selected page.');
     const receipt = await this.api.view('operation', { operation_id: item.send_operation_id });
     if (receipt.instance_id !== this.bootstrap.instance_id || receipt.operation_id !== item.send_operation_id ||
         !['unknown', 'committed', 'rejected'].includes(receipt.status) ||
-        (receipt.status !== 'unknown' && (!receipt.recorded || !['message.send', 'topic.create_and_send'].includes(receipt.kind))) ||
+        (receipt.status !== 'unknown' && (!receipt.recorded || receipt.kind !== 'message.send')) ||
         (receipt.status === 'committed' && receipt.result?.submission_id !== id)) throw Error('The confirmation identity could not be established.');
     const page = this.pending(editor);
     this.rememberPendingReceipt(editor, item, receipt);
@@ -474,7 +421,7 @@ export class EditorRegistry {
   rememberPendingReceipt(editor, item, receipt) {
     const operation = item.send_operation_id;
     if (receipt?.recorded === true && receipt.instance_id === editor.context.instanceId && receipt.operation_id === operation &&
-        receipt.kind === (editor.context.sourceRef.kind === 'new_topic' ? 'topic.create_and_send' : 'message.send') && receipt.status === 'rejected' && typeof receipt.error?.message === 'string' && receipt.error.message.trim()) {
+        receipt.kind === 'message.send' && receipt.status === 'rejected' && typeof receipt.error?.message === 'string' && receipt.error.message.trim()) {
       this.pendingReceipts.set(JSON.stringify([editor.key, item.id, operation]), copy(receipt));
     }
   }
@@ -482,15 +429,13 @@ export class EditorRegistry {
   pendingReason(editor, item) {
     const receipt = item.receipt ?? this.pendingReceipts.get(JSON.stringify([editor.key, item.id, item.send_operation_id]));
     const correct = receipt?.kind === 'submission.prepare' ? receipt.operation_id === item.prepareOperationId
-      : receipt?.kind === (editor.context.sourceRef.kind === 'new_topic' ? 'topic.create_and_send' : 'message.send') && receipt.operation_id === (item.sendOperationId ?? item.send_operation_id);
+      : receipt?.kind === 'message.send' && receipt.operation_id === (item.sendOperationId ?? item.send_operation_id);
     return receipt?.recorded === true && correct && receipt.instance_id === editor.context.instanceId && receipt.status === 'rejected' &&
       typeof receipt.error?.message === 'string' && receipt.error.message.trim() ? receipt.error.message : null;
   }
 
   pending(editor) { return this.pages.get(editor.key) ?? { instance_id: this.bootstrap.instance_id, items: [], next_cursor: null }; }
   async morePending(editor) {
-    const proof=this.sessionFor(editor).openingProof;
-    if(proof){await proof.refresh({more:true});return this.pending(editor);}
     const previous = this.pending(editor);
     if (previous.next_cursor === null) return previous;
     const page = this.validatePage(await this.api.view('submissions', { source_ref: editor.sourceRef,
@@ -499,17 +444,15 @@ export class EditorRegistry {
     if (this.pages.get(editor.key) !== previous) return this.pending(editor);
     const ids = new Set(previous.items.map(item => item.id));
     const result = { ...page, items: [...previous.items, ...page.items.filter(item => !ids.has(item.id))] };
-    this.pages.set(editor.key, result); this.updateOpeningHistory(editor); this.changed(editor); return result;
+    this.pages.set(editor.key, result); this.changed(editor); return result;
   }
 
   get hasInFlightSend() { return [...this.sessions.values()].some(session => session.sends.size > 0); }
   get unconfirmedSends() {
     return [...this.sessions.values()].flatMap(session => {
       const editor = session.editor;
-      const local = editor.submissions.filter(item => !item.detached && ['preparing', 'prepared'].includes(item.status));
-      const server = editor.context?.sourceRef?.kind === 'new_topic' ? this.pending(editor).items.filter(item =>
-        item.send_status === 'unknown' && !editor.submissions.some(local => local.id === item.id)) : [];
-      return [...local, ...server].map(item => ({ session, editor, item }));
+      return editor.submissions.filter(item => !item.detached && ['preparing', 'prepared'].includes(item.status))
+        .map(item => ({ session, editor, item }));
     });
   }
   get hasUnprotectedWriting() {

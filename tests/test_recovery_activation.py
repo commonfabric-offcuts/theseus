@@ -950,7 +950,7 @@ recovery.activate(request)
             claim = fixture.claim(guard,token)
             guard.close()
             root = fixture.path.parent.resolve()
-            result = self.api().backup(fixture.path,fixture.store.instance_id,expected_binding=fixture.binding,
+            result = self.api().backup(fixture.path.resolve(),fixture.store.instance_id,expected_binding=fixture.binding,
                                        bundle_path=str(root/'recovery-bundle'))
             request = dict(authority_path=fixture.binding['authority_path'],authority_id=fixture.binding['authority_id'],
                            instance_id=fixture.store.instance_id,expected_epoch=fixture.binding['authority_epoch'],
@@ -1052,11 +1052,11 @@ recovery.activate(request)
 
     def test_original_schema_is_checked_before_other_metadata(self):
         faults = {
-            'newer-missing-commit': ("UPDATE metadata SET value='9' WHERE key='schema_version'",
+            'newer-missing-commit': ("UPDATE metadata SET value='10' WHERE key='schema_version'",
                                      "DELETE FROM metadata WHERE key='commit_id'"),
             'older-missing-commit': ("UPDATE metadata SET value='7' WHERE key='schema_version'",
                                      "DELETE FROM metadata WHERE key='commit_id'"),
-            'newer-blob-commit': ("UPDATE metadata SET value='9' WHERE key='schema_version'",
+            'newer-blob-commit': ("UPDATE metadata SET value='10' WHERE key='schema_version'",
                                   "UPDATE metadata SET value=x'00' WHERE key='commit_id'"),
             'missing-version': ("DELETE FROM metadata WHERE key='schema_version'",),
             'blob-version': ("UPDATE metadata SET value=CAST(value AS BLOB) WHERE key='schema_version'",),

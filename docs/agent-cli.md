@@ -125,3 +125,22 @@ The example's source, recipient and text are explicit caller choices. Stored
 quotes remain separate from addressees. A later Notebook revision does not
 replace the selected one. `delivery.ack` settles only the named incoming
 delivery; it does not mean the topic is complete or that a wake was accepted.
+
+## Openings and membership
+
+The CLI passes every command kind and view name through unchanged, so the
+kinds in [openings.md](openings.md) need no CLI change. To start a topic, save
+the whole writing with `opening.save` (`target: {opening_id}`, `expected:
+{opening_revision}`, `args: {workspace_id, topic_id, title, participants,
+body, attachments}`), then send `opening.publish` with the saved revision and
+empty `args`. `opening.discard` closes an unfinished opening. The `opening`
+view reads one of your openings with its publication receipt, and `openings`
+lists your unfinished ones, optionally within one workspace. A workspace
+owner changes membership with `workspace.member_set` (`target:
+{workspace_id}`, `expected: {workspace_revision}`, `args: {actor_id,
+present}`), and anyone with workspace access reads `workspace_members`.
+Retain an opening's publish request before sending it; on uncertainty look up
+that operation, and resend the identical request only.
+
+Schema upgrades and actor registration are operator acts in
+`bin/aim-next-admin`, not agent commands.
