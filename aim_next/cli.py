@@ -747,8 +747,9 @@ def _agent_verb(options, stdin, stdout, stderr):
         except InvalidRequest:
             return attempt("INVALID_REQUEST", "Use bounded UTF-8 text, or a saved request with an exact binding.")
         except (ProfileError, AuthorityError, StoreOpenError) as error:
-            return attempt(error.code or "PROFILE_UNAVAILABLE",
-                           "The explicit profile or authority is unavailable; preserve the original binding.", error.retryable)
+            code = error.code or "PROFILE_UNAVAILABLE"
+            message = str(error) if code == "SCHEMA_MISMATCH" else "The explicit profile or authority is unavailable; preserve the original binding."
+            return attempt(code, message, error.retryable)
     except Failed as failed:
         return failed.code
     except OutputFailed:

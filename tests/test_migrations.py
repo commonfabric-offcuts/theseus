@@ -135,11 +135,39 @@ class MigrationCase(fixtures.StoreCase):
         out, err = io.StringIO(), io.StringIO()
         self.assertEqual(cli.main(["--profile", str(self.profile), "binding"], stdout=out, stderr=err), 2)
         self.assertIn("run code that reads version 99", json.loads(out.getvalue())["error"]["message"])
+        # An agent's own commands carry the same advice.
+        for verb in ("outcomes", "inbox"):
+            out, err = io.StringIO(), io.StringIO()
+            self.assertEqual(cli.main(["--profile", str(self.profile), verb], stdout=out, stderr=err), 2)
+            self.assertIn("run code that reads version 99", out.getvalue() + err.getvalue())
         # Following migrate anyway, from this code, moves nothing.
         with self.assertRaises(MigrationError) as refused:
             migrate(self.path, "test-instance", self.binding)
         self.assertEqual(refused.exception.code, "SCHEMA_UNSUPPORTED")
         self.assertEqual(self.unchanged(), before)
+
+    def test_a_missing_or_malformed_version_is_unsupported_not_newer(self):
+        self.upgrade()
+        for value in (None, "-1", "", " 99", "099", "9.5", "1" * 10, b"99"):
+            with self.subTest(value=value):
+                if value is None:
+                    self.sql("DELETE FROM metadata WHERE key='schema_version'")
+                else:
+                    db = sqlite3.connect(str(self.path))
+                    with db:
+                        db.execute("INSERT OR REPLACE INTO metadata(key,value) VALUES('schema_version',?)", (value,))
+                    db.close()
+                with self.assertRaises(store_module.StoreOpenError) as raised:
+                    Store(self.path, "test-instance", expected_binding=self.binding)
+                self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
+                self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
+                self.assertNotIn("run code that reads", str(raised.exception))
+                self.assertNotIn("aim-next-admin migrate", str(raised.exception))
+        # An older version this code cannot upgrade is damage too, not newer code.
+        self.sql("UPDATE metadata SET value='1' WHERE key='schema_version'")
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertIn("unsupported; no automatic migration was attempted", str(raised.exception))
 
     def test_upgrade_keeps_every_record_and_fences_old_versions(self):
         before, metadata = self.records(), self.metadata()
