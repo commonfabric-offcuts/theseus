@@ -204,9 +204,9 @@ test('a recipient outside the topic is marked, with an offer to add them only fo
   assert.deepEqual([unknown.className, unknown.children], ['chip', []], 'an unknown reach is not called a refusal');
 
   const added = [];
-  let finish;
+  const finishes = [];
   const offered = chip('stranger');
-  markReach(offered, 'stranger', name => ({ reachable: false, add: () => { added.push(name); return new Promise(resolve => { finish = resolve; }); } }));
+  markReach(offered, 'stranger', name => ({ reachable: false, add: () => { added.push(name); return new Promise(resolve => { finishes.push(resolve); }); } }));
   assert.equal(offered.className, 'chip unreachable');
   assert.equal(offered.find(node => node.className === 'reach').textContent, ' · not in this topic');
   assert.equal(offered.title, 'A message to stranger is refused until they are in this topic.', 'a manager is not sent to someone else');
@@ -216,7 +216,8 @@ test('a recipient outside the topic is marked, with an offer to add them only fo
   assert.equal(button.attributes['aria-disabled'], 'true', 'the button says the add is out');
   assert.notEqual(button.disabled, true, 'it is not disabled, which would drop the focus it holds');
   button.onclick();
-  finish({ status: 'committed' }); await clicked;
+  for (const finish of finishes) finish({ status: 'committed' });
+  await clicked;
   assert.deepEqual([added, button.attributes['aria-disabled']], [['stranger'], undefined], 'a second press while the add is out sends nothing');
   const said = offered.find(node => node.className === 'reach-notice');
   assert.deepEqual([said.hidden, said.attributes.role], [true, 'status']);
