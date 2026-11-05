@@ -80,8 +80,9 @@ export class Reader {
       beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();}});
     this.field.addEventListener('paste', event => this.paste(event));
     // Clicking a passage lights it for Return, as moving over it does while
-    // Return would quote. Shift-click extends the light, and the browser's own
-    // selection is kept from growing beside it, so what lights is what quotes.
+    // Return would quote. Shift-click extends the light, from a dragged
+    // selection when there is one, and the browser's own selection is kept
+    // from growing beside it, so what lights is what quotes.
     this.sourceBody.addEventListener('pointerdown', event => {
       this.sourceBody.focus({ preventScroll: true });
       if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey);
@@ -254,10 +255,37 @@ export class Reader {
   light(target, extend) {
     const span = target.closest('[data-start]');
     if (!span || !this.sourceBody.contains(span)) return;
+    if (extend) this.adoptSelection();
     const start = Number(span.dataset.start), end = Number(span.dataset.end);
     const anchor = extend && this.hover ? this.hover.anchor : { start, end };
     this.hover = { anchor, start: Math.min(anchor.start, start), end: Math.max(anchor.end, end) };
     for (const part of this.sourceBody.children) part.classList.toggle('hover-quote', Number(part.dataset.start) < this.hover.end && Number(part.dataset.end) > this.hover.start);
+  }
+
+  // A light extended after a drag grows from what was dragged: the passages
+  // the browser's selection touches become its anchor, and the selection gives
+  // way to it, since Return would otherwise quote the selection instead.
+  adoptSelection() {
+    const selection = window.getSelection();
+    if (!selection?.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset);
+    if (from === null || to === null) return;
+    const parts = [...this.sourceBody.children].filter(part => Number(part.dataset.start) < to && Number(part.dataset.end) > from);
+    if (!parts.length) return;
+    const anchor = { start: Number(parts[0].dataset.start), end: Number(parts.at(-1).dataset.end) };
+    this.hover = { anchor, ...anchor };
+    selection.removeAllRanges();
+  }
+
+  // Where a selection boundary falls in the source text: in a passage's text,
+  // on a passage, or between passages; null outside the source.
+  sourceOffset(container, offset) {
+    if (container === this.sourceBody) return Number(this.sourceBody.children[offset]?.dataset.start ?? this.source.body.length);
+    const span = container.parentElement === this.sourceBody ? container : container.parentElement;
+    if (span?.parentElement !== this.sourceBody) return null;
+    if (span !== container) return Number(span.dataset.start) + offset;
+    return Number(offset ? span.dataset.end : span.dataset.start);
   }
 
   disarm() {
