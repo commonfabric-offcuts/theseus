@@ -9,7 +9,7 @@ archiving it, which takes it out of the outcome's list without changing
 where it stands, stay with the outcome's owner and the topic's creator.
 """
 
-from .contract import LIMITS, Refusal, _body, _prefix, _revision
+from .contract import LIMITS, READABLE, Refusal, _body, _prefix, _revision
 from .delivery import _now_ms
 
 
@@ -34,11 +34,6 @@ TOPIC_STATE_DOWN = ("DROP TABLE topic_waiting", "DROP INDEX workspace_listed_top
                     "ALTER TABLE topics DROP COLUMN state")
 TOPIC_STATE_OCCUPIED = ("SELECT EXISTS (SELECT 1 FROM topics WHERE state!='active' OR archived!=0 OR state_note!='' OR state_by IS NOT NULL) "
                         "OR EXISTS (SELECT 1 FROM topic_waiting)")
-
-# A reader can see a topic as its outcome's owner or member, its creator, or an active participant.
-READABLE = ("(w.owner_id=:actor OR t.creator_id=:actor "
-            "OR EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id=t.workspace_id AND m.actor_id=:actor) "
-            "OR EXISTS (SELECT 1 FROM topic_participants p WHERE p.topic_id=t.id AND p.actor_id=:actor AND p.active=1))")
 
 # Version 12: each waiting row copies its topic's state time and archive flag, so what
 # waits on a reader is counted and listed, newest first, from one index. Rows exist only

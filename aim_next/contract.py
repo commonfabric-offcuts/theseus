@@ -12,6 +12,11 @@ LIMITS = {
     "media_file_bytes": 67108864, "media_name_utf8_bytes": 1024,
 }
 
+# A reader can see a topic as its outcome's owner or member, its creator, or an active participant.
+READABLE = ("(w.owner_id=:actor OR t.creator_id=:actor "
+            "OR EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id=t.workspace_id AND m.actor_id=:actor) "
+            "OR EXISTS (SELECT 1 FROM topic_participants p WHERE p.topic_id=t.id AND p.actor_id=:actor AND p.active=1))")
+
 
 class StoreError(Exception):
     """An unusable store or a non-business storage failure."""

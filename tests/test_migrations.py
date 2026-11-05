@@ -24,6 +24,8 @@ SCHEMA_8 = (Path(__file__).parent / "fixtures" / "schema_8.sql").read_text().spl
 SCHEMA_9 = (Path(__file__).parent / "fixtures" / "schema_9.sql").read_text().splitlines()
 SCHEMA_10 = (Path(__file__).parent / "fixtures" / "schema_10.sql").read_text().splitlines()
 SCHEMA_11 = (Path(__file__).parent / "fixtures" / "schema_11.sql").read_text().splitlines()
+# Version 12 as its step first stood: messages timed, what waits on each reader not yet ordered.
+SCHEMA_12_EARLY = (Path(__file__).parent / "fixtures" / "schema_12_early.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -41,12 +43,15 @@ def frozen(statements):
 def step_back_by_hand(path, version):
     """Recover an older stored layout from a fresh instance with plain SQL, independent of migrations.py."""
     with sqlite3.connect(str(path)) as db:
-        # Version 12 adds when each message was sent, and orders what waits on each reader.
-        db.execute("ALTER TABLE messages DROP COLUMN sent_ms")
+        # Version 12 orders what waits on each reader; the earlier form of its step,
+        # which also stamped 12, did not.
         db.execute("DROP INDEX reader_waiting")
         db.execute("CREATE INDEX actor_waiting ON topic_waiting(actor_id,topic_id)")
         db.execute("ALTER TABLE topic_waiting DROP COLUMN archived")
         db.execute("ALTER TABLE topic_waiting DROP COLUMN state_ms")
+        if version != "12":
+            # Version 12 adds when each message was sent.
+            db.execute("ALTER TABLE messages DROP COLUMN sent_ms")
         if version in ("8", "9", "10"):
             # Version 11 adds where each topic stands: its state, archive flag, note, and who it waits on.
             db.execute("DROP TABLE topic_waiting")
@@ -810,6 +815,46 @@ class Schema11Case(MigrationCase):
         self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class EarlySchema12Case(Schema11Case):
+    """A database stamped 12 by the earlier form of that step, which timed messages
+    but did not order what waits on each reader. Its stamp says current; its shape does not."""
+
+    VERSION, FIXTURE = "12", SCHEMA_12_EARLY
+
+    def test_opening_refuses_it_and_names_migrate(self):
+        before = self.unchanged()
+        with self.assertRaises(StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
+        self.assertIn("aim-next-admin migrate", str(raised.exception))
+        self.assertEqual(self.unchanged(), before)
+
+    def test_migrate_finishes_the_step_and_orders_what_waits(self):
+        self.wait_at_11()
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "12", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.assertEqual(self.sql("SELECT topic_id,actor_id,state_ms,archived FROM topic_waiting"), [("t1", "agent-b", 1234, 1)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.store.view("agent-b", "attention", {})["waiting_on_me"], 0)
+        self.assertEqual(self.upgrade()["migrated"], False)
+
+    def test_step_back_to_11_finishes_the_step_first(self):
+        self.wait_at_11()
+        # Only a database whose messages carry no time can step back; messages are immutable.
+        self.sql("ALTER TABLE messages DROP COLUMN sent_ms")
+        self.sql("ALTER TABLE messages ADD COLUMN sent_ms INTEGER")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_12_EARLY))
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_11))
+        self.assertEqual(self.sql("SELECT * FROM topic_waiting"), [("t1", "agent-b")])
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -822,6 +867,9 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema10Case, _name, None)
     if _name.startswith("test_") and _name not in Schema11Case.__dict__:
         setattr(Schema11Case, _name, None)
+for _name in list(Schema11Case.__dict__):
+    if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
+        setattr(EarlySchema12Case, _name, None)
 
 
 if __name__ == "__main__":
