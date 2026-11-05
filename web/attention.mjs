@@ -112,7 +112,13 @@ export function paintSent(host, answer, actions) {
   // The order last drawn, so that focus on a row that leaves can move to its neighbour.
   const before = shown.order ?? [];
   shown.order = items.map(item => item.message?.id);
-  if (!items.length) { host.hidden = true; host.replaceChildren(); return; }
+  if (!items.length) {
+    // Focus on the last row to leave goes to the page's main region, not the body.
+    const lost = Boolean(held && host.contains(held));
+    host.hidden = true; host.replaceChildren();
+    if (lost) host.closest('main')?.focus();
+    return;
+  }
   const list = element('ul', { className: 'sent-list' }, ...items.map(item => {
     const id = item.message.id;
     const place = item.topic.title + (item.topic.title_truncated ? '…' : '');
@@ -153,7 +159,7 @@ export function paintSent(host, answer, actions) {
   // attachment is; one drawn anew takes it; once a read replaces Read it
   // here, that row's Mark read does; and when its row leaves the list, as one
   // marked read does, the row now in its place takes it, or else the one
-  // before.
+  // before, or else the first row.
   if (!held || held === globalThis.document.activeElement) return;
   if (held.isConnected) { held.focus(); return; }
   const was = sentParts.get(held);
@@ -161,5 +167,5 @@ export function paintSent(host, answer, actions) {
   const row = id => drawn.get(`${id} open`) ?? drawn.get(`${id} more`) ?? drawn.get(`${id} mark`);
   const at = before.indexOf(was.id);
   const neighbour = [...before.slice(at + 1), ...before.slice(0, Math.max(at, 0)).reverse()].find(id => listed.has(id));
-  (drawn.get(`${was.id} ${was.name}`) ?? row(was.id) ?? (neighbour === undefined ? null : row(neighbour)))?.focus();
+  (drawn.get(`${was.id} ${was.name}`) ?? row(was.id) ?? row(neighbour ?? items[0].message.id))?.focus();
 }

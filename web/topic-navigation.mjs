@@ -261,6 +261,7 @@ export class TopicRail {
 // A count of what waits unread in a topic or outcome, marked when part of it
 // was sent to the reader by name. The caller has just set the row's text, so
 // the row holds no earlier count; a row without unread messages gets none.
+const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 export function paintUnread(host, item) {
   if (!(Number.isSafeInteger(item.unread) && item.unread > 0)) return;
   const addressed = Number.isSafeInteger(item.addressed) && item.addressed > 0 ? item.addressed : 0;
@@ -269,12 +270,12 @@ export function paintUnread(host, item) {
   badge.textContent = String(item.unread); badge.setAttribute('aria-hidden', 'true');
   spoken.className = 'sr-only';
   spoken.textContent = `, ${item.unread} unread` + (addressed ? `, ${addressed} sent to you by name` : '');
-  // The title's last character and the count never part, so a title that
+  // The title's last character (a whole grapheme) and the count never part, so a title that
   // wraps keeps its count on its last line; the rest still wraps anywhere, so
   // a long unbroken ending cannot push the row wider.
   const title = host.lastChild, words = title?.nodeType === 3 ? title.data.trimEnd() : '';
   if (!words) { host.append(badge, spoken); return; }
-  const last = Array.from(words).at(-1), together = document.createElement('span');
+  const last = Array.from(graphemes.segment(words)).at(-1).segment, together = document.createElement('span');
   together.className = 'together'; title.data = words.slice(0, words.length - last.length);
   together.append(last, badge, spoken); host.append(together);
 }

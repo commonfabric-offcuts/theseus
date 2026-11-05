@@ -54,14 +54,14 @@ test('labels name who a topic waits on, the reader as you', () => {
   assert.equal(stateLabel(topic({ state: 'unknown' }), 'tony'), 'Active');
 });
 
-test('a row is marked unless its topic is simply active, and marked as mine when it waits on the reader', t => {
+test('a row is marked unless its topic is simply active, marked as mine when it waits on the reader, and titled with its whole words', t => {
   dom(t);
   const row = item => { const host = new Element('a'); paintState(host, item, 'tony'); return host.children.map(c => [c.className, c.textContent, c.dataset.state, c.title ?? null]); };
   assert.deepEqual(row(topic()), []);
   assert.deepEqual(row({}), []);
-  assert.deepEqual(row(topic({ state: 'waiting', waiting_on: ['tony'], state_note: 'Pick one' })), [['topic-state mine', 'Waiting on you', 'waiting', 'Pick one']]);
-  assert.deepEqual(row(topic({ state: 'waiting', waiting_on: ['fable'] })), [['topic-state', 'Waiting on fable', 'waiting', null]]);
-  assert.deepEqual(row(topic({ state: 'done' })), [['topic-state', 'Done', 'done', null]]);
+  assert.deepEqual(row(topic({ state: 'waiting', waiting_on: ['tony'], state_note: 'Pick one' })), [['topic-state mine', 'Waiting on you', 'waiting', 'Waiting on you · Pick one']]);
+  assert.deepEqual(row(topic({ state: 'waiting', waiting_on: ['fable'] })), [['topic-state', 'Waiting on fable', 'waiting', 'Waiting on fable']]);
+  assert.deepEqual(row(topic({ state: 'done' })), [['topic-state', 'Done', 'done', 'Done']]);
 });
 
 test('the panel line says who said it and when; only those who may change it get the form', t => {

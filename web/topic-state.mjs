@@ -29,7 +29,8 @@ export function paintState(host, item, reader) {
   mark.className = 'topic-state'; mark.dataset.state = item.state;
   if (item.state === 'waiting' && item.waiting_on?.includes(reader)) mark.classList.add('mine');
   mark.textContent = stateLabel(item, reader);
-  if (typeof item.state_note === 'string' && item.state_note) mark.title = item.state_note;
+  // A long state ends in an ellipsis; its title holds the whole of it.
+  mark.title = typeof item.state_note === 'string' && item.state_note ? `${mark.textContent} · ${item.state_note}` : mark.textContent;
   host.append(mark);
 }
 
@@ -73,7 +74,7 @@ export class TopicStatePanel {
     this.topic = topic; this.participants = participants;
     const reader = this.reader, manager = [topic.owner_id, topic.creator_id].includes(reader);
     const participant = participants.some(person => person.actor_id === reader);
-    const mark = element('strong', { className: 'topic-state', textContent: stateLabel(topic, reader) });
+    const mark = element('strong', { className: 'topic-state', textContent: stateLabel(topic, reader), title: stateLabel(topic, reader) });
     mark.dataset.state = topic.state ?? 'active';
     const line = [mark];
     if (topic.state_note) line.push(' · ', element('span', { className: 'state-note', textContent: topic.state_note }));

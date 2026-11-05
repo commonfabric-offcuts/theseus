@@ -104,6 +104,22 @@ test('a row shows its unread count, marks a count sent by name, and shows nothin
   for (const item of [{ unread: 0, addressed: 0 }, {}, { unread: '3' }, { unread: -1 }]) assert.deepEqual(row(item), [], JSON.stringify(item));
 });
 
+test('a count keeps only the title\'s last character with it, a whole grapheme, so the rest of the title still wraps', t => {
+  const previous = globalThis.document;
+  class Node { constructor(tag) { Object.assign(this, { tag, children: [] }); } append(...nodes) { this.children.push(...nodes.map(node => typeof node === 'string' ? { nodeType: 3, data: node } : node)); }
+    get lastChild() { return this.children.at(-1) ?? null; } setAttribute() {} }
+  globalThis.document = { createElement: tag => new Node(tag) };
+  t.after(() => { globalThis.document = previous; });
+  const row = title => {
+    const host = new Node('a'); host.append(title); paintUnread(host, { unread: 2, addressed: 0 });
+    const together = host.children.at(-1);
+    return [host.children[0].data, together.className, together.children[0].data, together.children[1].className];
+  };
+  assert.deepEqual(row('Plan at https://example.com/a-very-long-path  '), ['Plan at https://example.com/a-very-long-pat', 'together', 'h', 'unread-count']);
+  assert.deepEqual(row('Family 👨‍👩‍👧'), ['Family ', 'together', '👨‍👩‍👧', 'unread-count']);
+  assert.deepEqual(row('Café'.normalize('NFD')), ['Caf', 'together', 'e\u0301', 'unread-count']);
+});
+
 test('a message that was waiting when the page opened is never announced, even when newer ones are read first', async () => {
   const f = fixture();
   const waiting = [7, 6, 5, 4, 3].map(n => f.item('d' + n, 'Named ' + n));
@@ -135,6 +151,8 @@ class Element {
   getAttribute(name) { return this.attributes?.[name] ?? null; }
   removeAttribute(name) { delete this.attributes?.[name]; }
   focus() { globalThis.document.focused = this; globalThis.document.moves = (globalThis.document.moves ?? 0) + 1; }
+  contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
+  closest(tag) { for (let at = this; at; at = at.parent) if (at.tag === tag) return at; return null; }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   get text() { return (this.textContent ?? '') + this.children.map(node => node instanceof Element ? node.text : node.text).join(''); }
 }
@@ -339,4 +357,25 @@ test('a row that leaves the list hands its focus to the row now in its place, or
   const heading = globalThis.document.moves;
   paintSent(host, { addressed: 1, latest_addressed: [b] }, actions);
   assert.equal(globalThis.document.moves, heading);
+});
+
+test('focus on the last row to leave goes to the page\'s main region, and on a row whose neighbours all left, to the first row', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
+  t.after(() => { globalThis.document = previous; });
+  const f = fixture();
+  const lost = (id, body) => { const item = { ...f.item(id, body, 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-' + id } }; item.message = { ...item.message, id: 'm-' + id }; return item; };
+  const actions = { open() {}, acknowledge: async () => {}, read: async () => {}, attachment: () => new Element('span') };
+  const main = new Element('main'); main.root = true;
+  const host = new Element('section'); main.append(host);
+  const control = (body, text) => host.all().find(node => node.tag === 'li' && node.text.includes(body)).all().find(node => node.textContent === text);
+  paintSent(host, { addressed: 1, latest_addressed: [lost('d1', 'Only')] }, actions);
+  control('Only', 'Mark read').focus();
+  paintSent(host, { addressed: 0, latest_addressed: [] }, actions);
+  assert.equal(host.hidden, true);
+  assert.equal(globalThis.document.activeElement, main, 'not the body');
+  paintSent(host, { addressed: 1, latest_addressed: [lost('d2', 'Old')] }, actions);
+  control('Old', 'Mark read').focus();
+  paintSent(host, { addressed: 2, latest_addressed: [lost('d3', 'New one'), lost('d4', 'New two')] }, actions);
+  assert.equal(globalThis.document.activeElement, control('New one', 'Read it here'));
 });

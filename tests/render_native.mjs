@@ -43,11 +43,19 @@ export const audit = `(() => {
     const box = element.getBoundingClientRect(), style = getComputedStyle(element);
     // Words kept for screen readers alone are drawn one pixel square.
     if (box.width <= 2 || box.height <= 2 || style.visibility === 'hidden' || element.closest('[hidden]')) continue;
-    if (!element.textContent.trim() || box.height > 48 || parseFloat(style.borderTopLeftRadius) < box.height / 2 - 1) continue;
+    // A pill is rounded to half the height of one line of its words, so one
+    // whose words wrap onto a second line is still a pill, and a broken one.
+    const line = (parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2) + parseFloat(style.paddingTop) + parseFloat(style.paddingBottom) +
+      parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    if (!element.textContent.trim() || line > 48 || parseFloat(style.borderTopLeftRadius) < Math.min(box.height, line) / 2 - 1) continue;
     const range = document.createRange(); range.selectNodeContents(element);
     const words = range.getBoundingClientRect().width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) +
       parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
-    if (box.width > Math.max(words, parseFloat(style.minWidth) || 0) + 2) problems.push({ kind: 'wider than its words', at: where(element), width: Math.round(box.width), words: Math.round(words) });
+    // A least width keeps a short count round; beyond the pill's height it stretches it.
+    if (box.width > Math.max(words, Math.min(parseFloat(style.minWidth) || 0, box.height)) + 2) problems.push({ kind: 'wider than its words', at: where(element), width: Math.round(box.width), words: Math.round(words) });
+    const lines = new Set([...range.getClientRects()].filter(rect => rect.width > 0).map(rect => Math.round(rect.top + rect.height / 2)));
+    if ([...lines].some(middle => [...lines].some(other => Math.abs(other - middle) > 4))) problems.push({ kind: 'its words wrap inside it', at: where(element) });
+    if (element.scrollWidth > element.clientWidth + 1 && style.overflowX !== 'visible' && style.textOverflow !== 'ellipsis') problems.push({ kind: 'its words are cut off', at: where(element) });
     // A pill that follows words sits on their last line, not on a line alone.
     const before = element.previousSibling;
     if (before?.nodeType === Node.TEXT_NODE && before.textContent.trim()) {
@@ -155,7 +163,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     const counted = ['t1', 'render-other', ...crowd.map(topic => topic.id)];
     const shots = join(evidencePath, 'rendering'); mkdirSync(shots, { recursive: true });
     const found = [];
-    const topicRows = ['#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-url"]'];
+    const topicRows = ['#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#topics [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
     for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state'))`],
       ['outcomes', origin + '/', ['#workspaces [data-workspace-id="w1"]'], `Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`]]) {
       for (const scheme of ['light', 'dark']) {
@@ -169,19 +177,28 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           await until(() => p.evaluate(ready), 'every counted row is drawn with its count');
           for (const row of [null, ...rows]) {
             let box = null;
+            const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, hovered: row.matches(':hover') }; })()`;
             if (row !== null) {
-              box = await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; row.scrollIntoView({ block: 'center', inline: 'center' }); const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
-              assert.ok(box, `${row} is drawn on the ${route} page`);
-              await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
-              assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(row)}).matches(':hover')`), true, `${row} is under the pointer`);
+              assert.ok(await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); row?.scrollIntoView({ block: 'center', inline: 'center' }); return Boolean(row); })()`), `${row} is drawn on the ${route} page`);
+              // The page may still be settling, as counts change while it reads:
+              // the pointer follows the row until the row stays put under it.
+              await until(async () => {
+                const now = await p.evaluate(placed);
+                if (now.hovered && JSON.stringify(now) === JSON.stringify(box)) return true;
+                box = now;
+                if (!now.hovered) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: (now.left + now.right) / 2, y: (now.top + now.bottom) / 2 });
+                return false;
+              }, `${row} stays under the pointer`);
             }
             const state = `${route}-${scheme}-${layout}-${row === null ? 'rest' : 'hover-' + row.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
             const answer = await p.evaluate(audit);
             // The row under the pointer is in view, so the sweep judges its pills.
-            if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left && pill.top >= box.top && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
+            if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left - 1 && pill.top >= box.top - 1 && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
             const image = Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64');
             writeFileSync(join(shots, state + '.png'), image);
             writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
+            // What was measured is what the screenshot shows.
+            if (box) assert.deepEqual(await p.evaluate(placed), box, `${state}: the row stayed under the pointer while it was captured`);
             for (const problem of [...answer.problems, ...judgePixels(image, answer)]) found.push({ state, ...problem });
           }
           await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
