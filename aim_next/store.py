@@ -203,29 +203,34 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             raise Refusal("INSTANCE_MISMATCH", "The selected instance does not match")
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
         stored = metadata.get("schema_version")
-        # Damaged commit identity is damage at any version: no version advice,
-        # since migrate would carry the damage forward.
+        from .migrations import newer, upgradable
+        # The version comes first, as in recovery and migrate: a later layout
+        # may keep its commit identity differently, so a database this code is
+        # too old for is told so, whatever that identity looks like.
+        if newer(stored):
+            raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s, which this code (version %s) cannot "
+                          "read or migrate; run code that reads version %s. Nothing was changed" % (stored, SCHEMA_VERSION, stored))
+        # Damaged commit identity is damage at any other version: no migrate
+        # advice, since migrate would carry the damage forward.
         if not commit_identity_intact(metadata):
             raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
         if stored != SCHEMA_VERSION:
-            from .migrations import upgradable
             # Migrate is the remedy only when this code can move the database
-            # up to its own version; a well-formed later version means this
-            # code is the one out of date, and anything else is damage.
+            # up to its own version; anything else is damage.
             if upgradable(stored):
                 raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s and this code reads version %s; "
                               "move it with bin/aim-next-admin migrate. Nothing was changed" % (stored, SCHEMA_VERSION))
-            if (isinstance(stored, str) and stored.isascii() and stored.isdigit() and stored[0] != "0"
-                    and len(stored) <= 9 and int(stored) > int(SCHEMA_VERSION)):
-                raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s, which this code (version %s) cannot "
-                              "read or migrate; run code that reads version %s. Nothing was changed" % (stored, SCHEMA_VERSION, stored))
             raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
         if any(metadata.get(key) != value for key, value in self.binding.items()):
             raise AuthorityError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
 
     @staticmethod
     def _advance_commit_seq(db):
-        changed = db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 WHERE key='commit_seq'").rowcount
+        # The sequence stops one short of SQLite's largest integer, past which
+        # CAST+1 would store a float: every value it writes is one the store
+        # accepts again (commit_identity_intact).
+        changed = db.execute("UPDATE metadata SET value=CAST(value AS INTEGER)+1 "
+                             "WHERE key='commit_seq' AND CAST(value AS INTEGER) < 9223372036854775806").rowcount
         identified = db.execute("UPDATE metadata SET value=? WHERE key='commit_id'", (uuid.uuid4().hex,)).rowcount
         if changed != 1 or identified != 1:
             raise StoreError("The durable commit identity is unavailable")

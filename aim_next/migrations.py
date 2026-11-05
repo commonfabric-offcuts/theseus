@@ -43,6 +43,13 @@ def upgradable(stored):
     return stored in versions and versions.index(stored) < versions.index(SCHEMA_VERSION)
 
 
+def newer(stored):
+    """Whether stored is a well-formed schema version later than this code's own."""
+    from .store import SCHEMA_VERSION
+    return (isinstance(stored, str) and stored.isascii() and stored.isdigit() and stored[0] != "0"
+            and len(stored) <= 9 and int(stored) > int(SCHEMA_VERSION))
+
+
 def _plan(stored, target):
     """The (statements, refusing query) pairs that move stored to target, in order."""
     versions = _versions()
@@ -78,12 +85,17 @@ def migrate(db_path, instance_id, binding, target=None):
                                    "('instance_id','schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
         if metadata.get("instance_id") != instance_id:
             raise MigrationError("INSTANCE_MISMATCH", "The selected instance does not match")
-        if any(metadata.get(key) != value for key, value in authority.binding.items()):
-            raise MigrationError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
+        # The same order as opening a store and as recovery: the version, then
+        # the commit identity, then the binding, so one database gets one remedy.
+        stored = metadata.get("schema_version")
+        if newer(stored):
+            raise MigrationError("SCHEMA_UNSUPPORTED", "This database is at schema version %s, which this code (version %s) "
+                                 "cannot read or migrate; run code that reads version %s. Nothing was changed" % (stored, SCHEMA_VERSION, stored))
         # Advancing a damaged sequence would rewind it; such a database moves nowhere.
         if not commit_identity_intact(metadata):
             raise MigrationError("SCHEMA_UNSUPPORTED", "The stored commit identity is damaged; nothing was changed")
-        stored = metadata.get("schema_version")
+        if any(metadata.get(key) != value for key, value in authority.binding.items()):
+            raise MigrationError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
         result = {"instance_id": instance_id, "from_version": stored, "schema_version": target}
         if stored == target:
             return dict(result, migrated=False)
