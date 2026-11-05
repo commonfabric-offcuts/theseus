@@ -21,6 +21,13 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     if (p.open) { const open = p.open; p.open = async index => { await p.evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`); await open(index); }; }
     return p;
   };
+  // The narrow layout is applied by the Reader's media-query listener in the
+  // next rendered frame. Until then its panes keep the wide columns, so wait
+  // for the Reader's own layout before measuring a target.
+  const narrow = async p => {
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await until(() => p.evaluate('matchMedia("(max-width: 760px)").matches && document.querySelector("#reader").dataset.layout === "stacked"'), 'Reader in its narrow layout');
+  };
   const png = (await readFile(path.join(root, 'tests/fixtures/media/screen.png'))).toString('base64');
   // Page-owned clipboard payload only: never read/write the OS pasteboard or
   // dispatch Cmd+V. This proves the paste event boundary, not OS ingestion.
@@ -95,7 +102,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const p = await page('footer-stability', null, true); await p.open(1);
     for (const layout of ['stacked', 'wide', 'narrow']) {
       if (layout === 'wide') await p.point('#reader-layout');
-      if (layout === 'narrow') await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+      if (layout === 'narrow') await narrow(p);
       await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled layout');
       p.intercept(payload => payload?.kind === 'draft.save');
       const previousHeld = p.held.length;
@@ -121,7 +128,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   });
   await check('images restoration footer touch gap does nothing and deliberate Send works', async () => {
     const p = await page('footer-touch', null, true); await p.open(1);
-    await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await narrow(p);
     await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled narrow reader');
     await replace(p, 'Footer touch narrow');
     await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved to Theseus"'), 'touch fixture saved');
