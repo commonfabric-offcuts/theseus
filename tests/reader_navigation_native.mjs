@@ -277,9 +277,9 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await control({ method: 'read_fault', name: 'workspace_topics', read_class: 'foreground', status: 403, body: { error: { code: 'FORBIDDEN', message: 'Workspace unavailable', retryable: false } }, count: 1 });
     await p.evaluate('document.querySelector("#retry-topics").scrollIntoView({block:"center"})'); await p.point('#retry-topics');
     await until(() => p.evaluate('document.querySelector("#topics").hidden'), 'workspace denial hides its cached links');
-    await p.point('#retry-topics'); await until(() => p.evaluate('!document.querySelector("#topics").hidden && document.querySelectorAll("#topics a").length===21'), 'explicit Retry restores confirmed workspace links');
-    await p.evaluate('document.querySelector("#more-topics").scrollIntoView({block:"center"})'); await p.point('#more-topics');
-    await until(() => p.evaluate('document.querySelectorAll("#topics a").length===23'), 'remaining page returns');
+    // A reload reads back to the last row the reader had loaded, so Retry
+    // restores all 23 links and leaves nothing for More.
+    await p.point('#retry-topics'); await until(() => p.evaluate('!document.querySelector("#topics").hidden && document.querySelectorAll("#topics a").length===23 && document.querySelector("#more-topics").hidden'), 'explicit Retry restores every confirmed workspace link the reader had');
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await p.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await p.evaluate(`document.querySelector(${JSON.stringify(link('t2'))}).scrollIntoView({block:'center',inline:'center'})`);

@@ -996,7 +996,8 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await until(()=>p.evaluate('document.body.dataset.ready==="true" && Boolean(window.observedFreshness)'),'native Refresh restarts complete initialization');
     const names=p.calls.slice(calls).filter(c=>c.payload?.name).map(c=>c.payload.name);
     assert.ok(names.indexOf('changes')>=0 && names.indexOf('changes')<names.indexOf('topic_messages') && names.indexOf('changes')<names.indexOf('memory_items'));
-    assert.equal(p.calls.some(c=>c.payload?.kind),false); assert.deepEqual(p.errors, []);
+    // Messages on screen are marked read; restarting writes nothing else.
+    assert.deepEqual(p.calls.filter(c=>c.payload?.kind && c.payload.kind!=='topic.read_through').map(c=>c.payload.kind),[]); assert.deepEqual(p.errors, []);
     observations.push({name:'correction E startup',list:name,readOrder:names});
   });
 
