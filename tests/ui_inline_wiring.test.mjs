@@ -58,7 +58,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; } },
     runtime: { current: bootstrap.authority },
   };
-  const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
+  const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
   class IntersectionObserver {
@@ -346,6 +346,21 @@ test('Reader Retry updates source access without touching inline flags/save, als
   }
 });
 
+test('a source that comes back on Retry gets its whole origin line again, time included', async () => {
+  const f = fixture();
+  const source = { source_ref: { kind: 'message', id: 'm1' }, author: 'tony', body: '', sent_ms: 1762350240000 };
+  const modal = { source: { ...source }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+  f.registry.current = modal;
+  f.api.view = async (name, args) => name === 'source' ? { ...source, body: 'Back again', instance_id: 'fixture' } : f.state(args.source_ref);
+  await f.retrySource();
+  const painted = f.events.filter(e => e[0] === 'origin');
+  assert.equal(painted.length, 1);
+  assert.deepEqual([painted[0][1].author, painted[0][1].sent_ms, modal.sourceUnavailable], ['tony', 1762350240000, false]);
+  f.events.length = 0;
+  await f.retrySource();
+  assert.equal(f.events.some(e => e[0] === 'origin'), false, 'a source that never went away keeps its line');
+});
+
 test('confirmed inline access resumes dirty save only after confirmation; no send or recovery replay', async () => {
   for (const recovery of [false, true]) {
     const f = fixture(), gate = defer(); f.editor.authorityRecovery = recovery;
@@ -603,46 +618,112 @@ test('a message sent by name opens where it can even when the page never started
 // The pickers: who may change a topic's participants or an outcome's team gets
 // a field fed by the directory, and the composer offers who can be sent to.
 const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
+// A small stand-in for Core: participation.set and workspace.member_set check
+// the revision as Core does, apply the change and advance it.
 const pickerApi = (f, { topic = {}, workspace = {} } = {}) => {
+  const state = f.pickers = {
+    topic: { ...f.topic, version: 3, owner_id: 'fixture-person', creator_id: 'other', ...topic },
+    workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 5, ...workspace },
+    participants: [{ actor_id: 'fixture-person', kind: 'human', enabled: true }, { actor_id: 'fable', kind: 'agent', enabled: true }],
+    members: [{ actor_id: 'fixture-person', kind: 'human', name: 'Fixture', enabled: true }, { actor_id: 'ally', kind: 'agent', name: 'Ally', enabled: true }],
+    actors: [{ id: 'tony', kind: 'human', name: 'Tony' }], membersRefused: false,
+  };
   f.api.view = async (name, args) => {
     f.calls.push({ name, args });
-    if (name === 'topic') return { instance_id: 'fixture', topic: { ...f.topic, version: 3, owner_id: 'fixture-person', creator_id: 'other', ...topic },
-      participants: [{ actor_id: 'fixture-person' }, { actor_id: 'fable', kind: 'agent' }] };
-    if (name === 'workspace') return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 5, ...workspace } };
-    if (name === 'workspace_members') return { instance_id: 'fixture', items: [{ actor_id: 'fixture-person', kind: 'human' }, { actor_id: 'ally', kind: 'agent', name: 'Ally' }], next_cursor: null };
-    if (name === 'actors') return { instance_id: 'fixture', items: [{ id: 'tony', kind: 'human', name: 'Tony' }], next_cursor: null };
+    if (name === 'topic') return { instance_id: 'fixture', topic: { ...state.topic }, participants: state.participants.map(row => ({ ...row })) };
+    if (name === 'workspace') return { instance_id: 'fixture', workspace: { ...state.workspace } };
+    if (name === 'workspace_members') return state.membersRefused ? { error: { code: 'DATABASE_BUSY', message: 'Busy' } }
+      : { instance_id: 'fixture', items: state.members.map(row => ({ ...row })), next_cursor: null };
+    if (name === 'actors') return { instance_id: 'fixture', items: state.actors.map(row => ({ ...row })), next_cursor: null };
     return { instance_id: 'fixture', items: [], next_cursor: null };
   };
-  f.api.command = async envelope => { f.calls.push({ kind: envelope.kind, envelope }); return { status: 'committed', result: {} }; };
+  f.api.command = async envelope => {
+    f.calls.push({ kind: envelope.kind, envelope });
+    const [record, field, list] = envelope.kind === 'participation.set' ? [state.topic, 'topic_revision', 'participants'] : [state.workspace, 'workspace_revision', 'members'];
+    if (envelope.expected[field] !== record.version)
+      return { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'Writing changed; preserve this attempt and reconcile', current_versions: { [field]: record.version } } };
+    const { actor_id, present } = envelope.args;
+    state[list] = state[list].filter(row => row.actor_id !== actor_id).concat(present ? [{ actor_id, kind: 'human', enabled: true }] : []);
+    record.version += 1;
+    return { status: 'committed', result: { version: record.version } };
+  };
 };
 const add = async (host, id) => {
   const nodes = walk(host), input = nodes.find(node => node.list === 'directory-names');
-  input.value = id; input.oninput();
+  input.value = id;
   await nodes.find(node => node.textContent === 'Add').onclick();
 };
+const removeButton = (host, id) => walk(host).find(node => node['aria-label'] === `Remove ${id}`);
+// Envelopes come from the page's realm; compare them as data.
+const sentOf = (f, kind, field) => JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === kind).map(call => [call.envelope.expected[field], call.envelope.args])));
+const focusIn = (f, list) => { for (const [, name, fn] of f.events) if (name === 'focusin') fn({ target: { getAttribute: key => key === 'list' ? list : null } }); };
+const drain = async () => { for (let n = 0; n < 4; n++) await new Promise(setImmediate); };
 
-test('a topic\'s manager adds a participant from the directory, and the composer offers participants and the team', async () => {
+test('a topic\'s manager adds and removes participants from the directory, and the composer offers the team and participants', async () => {
   const f = fixture();
   pickerApi(f);
   await f.initialize();
-  await new Promise(setImmediate);
+  await drain();
   assert.deepEqual(f.get('directory-names').children.map(option => [option.value, option.label]), [['tony', 'Tony · human']]);
-  assert.deepEqual(f.get('addressable-names').children.map(option => option.value), ['fixture-person', 'fable', 'ally']);
-  assert.ok(walk(f.get('participants')).some(node => node.textContent === '×'), 'the manager may remove a participant');
+  assert.deepEqual(f.get('addressable-names').children.map(option => [option.value, option.label ?? null]),
+    [['fixture-person', 'Fixture · human'], ['ally', 'Ally · agent'], ['fable', 'agent']], 'team entries, which carry names, come first');
   await add(f.get('participants'), 'tony');
-  // Envelopes come from the page's realm; compare them as data.
-  const sent = JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'participation.set').map(call => [call.envelope.target, call.envelope.expected.topic_revision, call.envelope.args])));
-  assert.deepEqual(sent, [[{ topic_id: 't1' }, 3, { actor_id: 'tony', present: true }]]);
-  assert.ok(f.events.some(([kind]) => kind === 'request'), 'a committed change asks for fresh views');
+  await removeButton(f.get('participants'), 'fable').onclick();
+  assert.deepEqual(sentOf(f, 'participation.set', 'topic_revision'),
+    [[3, { actor_id: 'tony', present: true }], [3, { actor_id: 'fable', present: false }], [4, { actor_id: 'fable', present: false }]],
+    'a remove sends present:false; sent at a revision the add had moved on, it is sent once more at the current one');
+  assert.deepEqual(f.pickers.participants.map(row => row.actor_id), ['fixture-person', 'tony']);
+  assert.ok(f.events.some(([kind]) => kind === 'request'), 'a change asks for fresh views');
+  assert.equal(walk(f.get('participants')).find(node => node.className === 'notice').hidden, true);
 });
 
-test('a participant who does not manage the topic sees who is there but no field', async () => {
+test('a conflict that persists is said plainly, and a disabled person is not offered to the composer', async () => {
+  const f = fixture();
+  pickerApi(f);
+  f.pickers.members[1].enabled = false;
+  f.pickers.participants[1].enabled = false;
+  await f.initialize();
+  await drain();
+  assert.deepEqual(f.get('addressable-names').children.map(option => option.value), ['fixture-person']);
+  const command = f.api.command;
+  f.api.command = async envelope => { f.pickers.topic.version += 1; return command(envelope); };
+  await add(f.get('participants'), 'tony');
+  assert.equal(walk(f.get('participants')).find(node => node.className === 'notice').textContent, 'Someone else changed this at the same moment. Try again.');
+  assert.equal(sentOf(f, 'participation.set', 'topic_revision').length, 2, 'one more send, never a loop');
+});
+
+test('a topic\'s creator who does not own the outcome manages its participants; a participant who is neither does not', async () => {
+  const creator = fixture();
+  pickerApi(creator, { topic: { owner_id: 'tony', creator_id: 'fixture-person' } });
+  await creator.initialize();
+  assert.equal(walk(creator.get('participants')).find(node => node.className === 'people-add').hidden, false);
+  assert.ok(removeButton(creator.get('participants'), 'fable'));
+
   const f = fixture();
   pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
   await f.initialize();
   const nodes = walk(f.get('participants'));
-  assert.deepEqual([nodes.some(node => node.list), nodes.some(node => node.textContent === '×')], [false, false]);
+  assert.deepEqual([nodes.find(node => node.className === 'people-add').hidden, nodes.some(node => node.textContent === '×')], [true, false]);
   assert.deepEqual(nodes.filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'fable']);
+});
+
+test('the directory and the team behind the composer are read again when someone starts naming', async () => {
+  const f = fixture();
+  pickerApi(f);
+  await f.initialize();
+  await drain();
+  f.pickers.actors.push({ id: 'newcomer', kind: 'agent', name: 'Newcomer' });
+  focusIn(f, 'directory-names');
+  await drain();
+  assert.deepEqual(f.get('directory-names').children.map(option => option.value), ['tony', 'newcomer']);
+  f.pickers.actors.push({ id: 'second', kind: 'agent', name: 'Second' });
+  focusIn(f, 'directory-names');
+  await drain();
+  assert.equal(f.get('directory-names').children.length, 3, 'each focus reads again');
+  f.pickers.members = f.pickers.members.filter(row => row.actor_id !== 'ally');
+  focusIn(f, 'addressable-names');
+  await drain();
+  assert.deepEqual(f.get('addressable-names').children.map(option => option.value), ['fixture-person', 'fable'], 'someone removed from the team is no longer offered');
 });
 
 test('an outcome\'s owner changes its team on the outcome page; the owner cannot be removed there', async () => {
@@ -654,11 +735,22 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   assert.equal(f.get('outcome-team').hidden, false);
   assert.deepEqual(walk(team).filter(node => node.textContent === '×').map(node => node['aria-label']), ['Remove ally']);
   await add(team, 'tony');
-  await new Promise(setImmediate);
-  // Envelopes come from the page's realm; compare them as data.
-  const sent = JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'workspace.member_set').map(call => [call.envelope.target, call.envelope.expected.workspace_revision, call.envelope.args])));
-  assert.deepEqual(sent, [[{ workspace_id: 'w1' }, 5, { actor_id: 'tony', present: true }]]);
-  assert.ok(f.calls.filter(call => call.name === 'workspace').length >= 2, 'a committed change rereads the outcome and its team');
+  await drain();
+  // Someone's message elsewhere in the outcome moves its revision on.
+  f.pickers.workspace.version += 1;
+  await removeButton(team, 'ally').onclick();
+  await drain();
+  assert.deepEqual(sentOf(f, 'workspace.member_set', 'workspace_revision'),
+    [[5, { actor_id: 'tony', present: true }], [6, { actor_id: 'ally', present: false }], [7, { actor_id: 'ally', present: false }]]);
+  assert.deepEqual(f.pickers.members.map(row => row.actor_id), ['fixture-person', 'tony']);
+  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'tony'], 'the panel shows the reread team');
+
+  // A team that cannot be read keeps the chips it had and says so.
+  f.pickers.membersRefused = true;
+  await f.get('refresh').onclick();
+  await drain();
+  assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'tony']);
+  assert.match(walk(team).find(node => node.className === 'notice').textContent, /^The team could not be read/);
 
   // Someone else's commit: the page rereads the outcome, so its revision and team stay current.
   const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
@@ -670,14 +762,29 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   const reads = () => watched.calls.filter(call => call.name === 'workspace_members').length;
   const before = reads();
   for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
-  await new Promise(setImmediate); await new Promise(setImmediate);
+  await drain();
   assert.equal(reads(), before + 1, 'a commit rereads the team');
 
   const other = fixture('https://fixture/?workspace=w1');
   other.inject({ api: other.api, bootstrap: other.bootstrap });
   pickerApi(other, { workspace: { owner_id: 'tony' } });
   await other.initialize();
-  assert.equal(walk(other.get('team-people')).some(node => node.list || node.textContent === '×'), false, 'a member who is not the owner only sees the team');
+  assert.equal(walk(other.get('team-people')).find(node => node.className === 'people-add').hidden, true);
+  assert.equal(walk(other.get('team-people')).some(node => node.textContent === '×'), false, 'a member who is not the owner only sees the team');
+});
+
+test('an outcome that becomes unavailable stops showing its team', async () => {
+  const f = fixture('https://fixture/?workspace=w1');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  pickerApi(f);
+  await f.initialize();
+  assert.equal(f.get('outcome-team').hidden, false);
+  const view = f.api.view;
+  f.api.view = async (name, args) => name === 'workspace' ? { error: { code: 'FORBIDDEN', message: 'No permission for this workspace' } } : view(name, args);
+  await f.get('refresh').onclick();
+  await drain();
+  assert.equal(f.get('topic-title').textContent, 'Outcome unavailable');
+  assert.equal(f.get('outcome-team').hidden, true);
 });
 
 // Show the page's own inline composer on the fixture's topic writing.
@@ -706,6 +813,46 @@ test('addressing someone outside the topic offers its manager to add them, and t
   Object.assign(f.views, { topic: { ...f.topic, version: 4, owner_id: 'fixture-person', creator_id: 'other' }, participants, messages: new Map() });
   f.paintViews('topic');
   assert.equal(chip('stranger').className, 'chip', 'once a participant, the mark goes');
+});
+
+test('a switched-off participant or teammate is marked so, with no add offer, and a refused add is said on its chip', async () => {
+  const f = fixture();
+  pickerApi(f);
+  f.pickers.participants.push({ actor_id: 'idle', kind: 'agent', enabled: false });
+  f.pickers.members.push({ actor_id: 'gone', kind: 'agent', name: 'Gone', enabled: false });
+  await f.initialize();
+  showComposer(f);
+  const address = name => { f.get('inline-recipient-input').value = name; f.get('inline-add-recipient').onclick(); };
+  const chip = name => f.get('inline-recipient-chips').children.find(node => node.textContent === name);
+  address('idle'); address('gone'); address('stranger');
+  for (const name of ['idle', 'gone']) {
+    assert.equal(chip(name).className, 'chip unreachable', `${name} cannot receive`);
+    assert.equal(walk(chip(name)).find(node => node.className === 'reach').textContent, ' · switched off');
+    assert.equal(walk(chip(name)).some(node => node.textContent?.startsWith('Add to topic')), false);
+  }
+  f.api.command = async envelope => { f.calls.push({ kind: envelope.kind, envelope }); return { status: 'refused', error: { code: 'FORBIDDEN', message: 'No permission for this topic' } }; };
+  const before = f.get('app-status').textContent;
+  await walk(chip('stranger')).find(node => node.textContent?.startsWith('Add to topic')).onclick();
+  assert.equal(walk(chip('stranger')).find(node => node.className === 'reach-notice').textContent, ' · No permission for this topic');
+  assert.equal(f.get('app-status').textContent, before, 'nothing is said behind the reader');
+});
+
+test('a change to who is in the topic or the team repaints the open reader\'s recipients, and a closed reader is left alone', async () => {
+  const f = fixture();
+  pickerApi(f);
+  await f.initialize();
+  const painted = () => f.events.filter(e => e[0] === 'reader-recipients').length;
+  f.reader.paintRecipients = () => f.events.push(['reader-recipients']);
+  Object.assign(f.views, { topic: { ...f.pickers.topic }, participants: f.pickers.participants, messages: new Map() });
+  f.paintViews('topic');
+  assert.equal(painted(), 0, 'no reader is open');
+  f.reader.sessions = { reply: { draft: { addressees: [] } } };
+  f.paintViews('topic');
+  assert.equal(painted(), 1, 'a participant change reaches the open reader');
+  f.pickers.members.push({ actor_id: 'newcomer', kind: 'human', name: 'Newcomer', enabled: true });
+  focusIn(f, 'addressable-names');
+  await drain();
+  assert.equal(painted(), 2, 'a team read on focus reaches it too');
 });
 
 test('a reader who cannot change the participants is told who could, and a team that cannot be read marks nobody', async () => {

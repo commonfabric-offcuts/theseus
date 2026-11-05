@@ -672,8 +672,7 @@ async function checkSourceAvailability(read, current, topicDenied) {
   } else if (wasUnavailable) {
     Object.assign(p.source, source); p.sourceUnavailable = false;
     reader.drawSource(source.body); sourceAttachments(p);
-    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}` : 'Message';
-    $('reader-origin').textContent = [source.author, provenance].filter(Boolean).join(' · ');
+    reader.paintOrigin(source);
   }
   p.destinationAvailable = state.destination_available;
   p.editors.reply.unavailable = !state.source_available || !state.destination_available;
@@ -761,7 +760,11 @@ async function initialize() {
   }
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
   refreshDirectory();
-  document.addEventListener('focusin', event => { if (event.target?.getAttribute?.('list') === 'directory-names') refreshDirectory(); });
+  document.addEventListener('focusin', event => {
+    const list = event.target?.getAttribute?.('list');
+    if (list === 'directory-names') refreshDirectory();
+    if (list === 'addressable-names') refreshMembers();
+  });
   const route = parseRoute(new URL(location.href));
   if (route.kind !== 'topic') {
     await initializeOutcomePage(route);
@@ -899,7 +902,10 @@ async function acknowledgeSent(item) {
 // change, and the names the composer offers.
 function paintParticipants(current, participants) {
   participantsPanel?.paint(participants, [current.owner_id, current.creator_id].includes(bootstrap.actor));
-  fillNames($('addressable-names'), [...participants, ...outcomeMembers ?? []].map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })));
+  // The team's entries come first: they carry names, which participants do not.
+  // A disabled person cannot be sent to, so they are not offered.
+  fillNames($('addressable-names'), [...outcomeMembers ?? [], ...participants].filter(person => person.enabled !== false)
+    .map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })));
   // Who may be addressed changed: the composers' recipient chips say so again.
   if (reader?.sessions) reader.paintRecipients();
   if (inline?.editor) inline.paintRecipients();
@@ -909,19 +915,41 @@ function paintParticipants(current, participants) {
 function recipientReach(name) {
   if (!topic || !views?.participants) return null;
   const manage = [topic.owner_id, topic.creator_id].includes(bootstrap.actor);
-  const add = manage ? () => setParticipation(name, true).then(receipt => {
-    if (receipt?.status !== 'committed') status(receipt?.error?.message ?? `Adding ${name} was not confirmed.`);
-  }) : null;
+  const add = manage ? () => setParticipation(name, true) : null;
+  const known = [...views.participants, ...outcomeMembers ?? []].find(person => person.actor_id === name);
+  if (known?.enabled === false) return { reachable: false, disabled: true };
   if ([topic.owner_id, topic.creator_id].includes(name) || views.participants.some(person => person.actor_id === name)) return { reachable: true };
   if (outcomeMembers === null) return null;
   return { reachable: outcomeMembers.some(person => person.actor_id === name), add };
 }
 async function setParticipation(id, present) {
-  const { authority_id, authority_epoch } = bootstrap.authority;
-  const receipt = await api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'participation.set',
-    target: { topic_id: topic.id }, expected: { topic_revision: topic.version, authority: { authority_id, authority_epoch } }, args: { actor_id: id, present } });
-  if (receipt?.status === 'committed') freshness?.request();
+  const receipt = await setPresence('participation.set', { topic_id: topic.id }, 'topic_revision', topic.version, { actor_id: id, present });
+  freshness?.request();
   return receipt;
+}
+// participation.set and workspace.member_set check the topic's or outcome's
+// revision, which any message there advances. Each states its result outright
+// (present or not), so a conflict is answered by sending the same change once
+// more at the revision the refusal reports; a second conflict is shown.
+async function setPresence(kind, target, field, revision, args) {
+  const { authority_id, authority_epoch } = bootstrap.authority;
+  const send = at => api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind, target,
+    expected: { [field]: at, authority: { authority_id, authority_epoch } }, args });
+  let receipt = await send(revision);
+  const current = receipt?.error?.code === 'REVISION_CONFLICT' ? receipt.error.current_versions?.[field] : undefined;
+  if (Number.isInteger(current) && current !== revision) receipt = await send(current);
+  if (receipt?.error?.code !== 'REVISION_CONFLICT') return receipt;
+  return { ...receipt, error: { ...receipt.error, message: 'Someone else changed this at the same moment. Try again.' } };
+}
+// The team behind the composer's names, read again whenever someone starts
+// naming a recipient, so a change to the team since the page opened shows.
+let membersRead = null;
+function refreshMembers() {
+  if (!topic) return null;
+  membersRead ??= readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null)
+    .then(members => { outcomeMembers = members; if (views?.participants) paintParticipants(topic, views.participants); })
+    .finally(() => { membersRead = null; });
+  return membersRead;
 }
 // The directory feeds every field that adds someone to a team or topic; it is
 // read at start and again whenever such a field is focused.
@@ -1006,7 +1034,7 @@ async function initializeOutcomePage(route) {
       catch(error) {
         if(serial!==refreshSerial)return;
         if(readFailure(error).kind==='forbidden') {
-          $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';
+          $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
         }
         throw error;
@@ -1034,12 +1062,8 @@ async function initializeOutcomePage(route) {
 // An outcome's team, which its owner may change.
 let teamPanel=null;
 async function paintTeam(workspace,refresh) {
-  const send=(id,present)=>{
-    const {authority_id,authority_epoch}=bootstrap.authority;
-    return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'workspace.member_set',
-      target:{workspace_id:workspace.id},expected:{workspace_revision:workspace.version,authority:{authority_id,authority_epoch}},args:{actor_id:id,present}})
-      .then(receipt=>{if(receipt?.status==='committed')run(refresh);return receipt;});
-  };
+  const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
+    .then(receipt=>{run(refresh);return receipt;});
   if(!teamPanel){
     const section=$('outcome-team');$('outcome-page').append(section);
     teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',names:'directory-names',fixed:()=>[teamPanel.owner]});

@@ -460,14 +460,15 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
     def _view_workspace_members(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))
         limit = _page_size(args)
-        rows = db.execute("SELECT m.actor_id,a.kind,substr(CAST(a.name AS BLOB),1,1025) AS name_prefix "
+        rows = db.execute("SELECT m.actor_id,a.kind,a.enabled,substr(CAST(a.name AS BLOB),1,1025) AS name_prefix "
                           "FROM workspace_members AS m JOIN actors AS a ON a.id=m.actor_id "
                           "WHERE m.workspace_id=? AND m.actor_id>? ORDER BY m.actor_id LIMIT ?",
                           (workspace["id"], args.get("cursor", ""), limit + 1)).fetchall()
 
         def item(row):
             name, truncated = _prefix(row["name_prefix"])
-            return {"actor_id": row["actor_id"], "kind": row["kind"], "name": name, "name_truncated": truncated}
+            return {"actor_id": row["actor_id"], "kind": row["kind"], "name": name, "name_truncated": truncated,
+                    "enabled": bool(row["enabled"])}
         return _bounded_page({"instance_id": self.instance_id, "relevant_versions": {"workspace": workspace["version"]}},
                              rows, limit, item, "actor_id")
 

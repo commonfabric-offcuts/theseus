@@ -8,6 +8,7 @@ class Element {
   replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
   setAttribute(key, value) { this.attributes[key] = value; }
   getAttribute(key) { return this.attributes[key] ?? null; }
+  focus() { globalThis.document.activeElement = this; }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   find(predicate) { return this.all().find(predicate); }
   filter(predicate) { return this.all().filter(predicate); }
@@ -67,16 +68,49 @@ const chips = host => host.filter(node => node.className === 'chip').map(chip =>
 const removable = host => host.filter(node => node.tag === 'button' && node.textContent === '×').map(node => node.attributes['aria-label']);
 const field = host => host.find(node => node.tag === 'input');
 
+const notice = host => { const node = host.find(node => node.className === 'notice'); return node.hidden ? null : node.textContent; };
+
 test('only a reader who may change the people gets remove buttons and the field, and fixed people keep no button', t => {
   dom(t);
   const host = new Element('div');
   const panel = new PeoplePanel({ host, label: 'Add to team', names: 'directory-names', fixed: () => ['tony'] });
   panel.paint(people(['fable', 'tony']), false);
   assert.equal(host.hidden, false);
-  assert.deepEqual([chips(host), removable(host), field(host)], [['fable', 'tony'], [], undefined]);
+  assert.deepEqual([chips(host), removable(host), host.find(node => node.className === 'people-add').hidden], [['fable', 'tony'], [], true]);
   panel.paint(people(['fable', 'tony']), true);
   assert.deepEqual(removable(host), ['Remove fable']);
+  assert.equal(host.find(node => node.className === 'people-add').hidden, false);
   assert.deepEqual([field(host).attributes.list, field(host).attributes['aria-label']], ['directory-names', 'Add to team']);
+});
+
+test('a repaint keeps the very field the person is typing in, with what they typed', t => {
+  dom(t);
+  const host = new Element('div');
+  const panel = new PeoplePanel({ host, label: 'Add', names: 'n' });
+  panel.paint(people(['tony']), true);
+  const typing = field(host);
+  typing.value = 'fab';
+  panel.paint(people(['tony', 'ally']), true);
+  panel.paint(people(['ally']), true);
+  assert.equal(field(host), typing, 'the same input element stays in place');
+  assert.equal(typing.value, 'fab');
+  assert.deepEqual(host.children.map(node => node.className), ['chips', 'people-add', 'notice'], 'the host keeps its three parts');
+});
+
+test('a repaint while a remove button holds focus keeps focus on that person, or on the field once they are gone', t => {
+  dom(t);
+  const host = new Element('div');
+  const panel = new PeoplePanel({ host, label: 'Add', names: 'n' });
+  const out = id => host.find(node => node.attributes['aria-label'] === `Remove ${id}`);
+  panel.paint(people(['ally', 'tony']), true);
+  out('tony').focus();
+  panel.paint(people(['ally', 'fable', 'tony']), true);
+  assert.equal(document.activeElement, out('tony'), 'the new button for the same person has focus');
+  panel.paint(people(['ally', 'fable']), true);
+  assert.equal(document.activeElement, field(host), 'with them gone, the field has it');
+  document.activeElement = null;
+  panel.paint(people(['ally']), true);
+  assert.equal(document.activeElement, null, 'a repaint does not take focus it did not hold');
 });
 
 test('Enter or Add sends the typed name once; a refusal or failure is said beside the field', async t => {
@@ -86,47 +120,56 @@ test('Enter or Add sends the typed name once; a refusal or failure is said besid
   const panel = new PeoplePanel({ host, label: 'Add', names: 'n', add: async id => { sent.push(['add', id]); await new Promise(resolve => { release = resolve; }); return answer; },
     remove: async id => { sent.push(['remove', id]); return answer; } });
   panel.paint(people(['tony']), true);
-  const type = text => { field(host).value = text; field(host).oninput(); };
+  const type = text => { field(host).value = text; };
+  const add = () => host.find(node => node.textContent === 'Add');
   type('  @fable ');
   let prevented = 0;
   field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault: () => prevented++ });
-  assert.equal(field(host).disabled, true, 'the field waits while the change is sent');
-  host.find(node => node.textContent === 'Add').onclick();
+  assert.equal(add().disabled, true, 'Add waits while the change is sent');
+  assert.notEqual(field(host).disabled, true, 'the field stays usable, so it keeps focus');
+  add().onclick();
   release();
   await new Promise(setImmediate);
   assert.deepEqual([sent, prevented], [[['add', 'fable']], 1]);
-  assert.equal(host.find(node => node.className === 'notice'), undefined);
+  assert.equal(notice(host), null);
   assert.equal(field(host).value, '', 'an added name leaves the field');
 
   answer = { status: 'refused', error: { message: 'Unknown recipient' } };
   type('nobody');
-  host.find(node => node.textContent === 'Add').onclick();
+  add().onclick();
   release();
   await new Promise(setImmediate);
-  assert.deepEqual([field(host).value, host.find(node => node.className === 'notice').textContent], ['nobody', 'Unknown recipient'],
-    'a refused name stays in the field to correct');
+  assert.deepEqual([field(host).value, notice(host)], ['nobody', 'Unknown recipient'], 'a refused name stays in the field to correct');
+
+  answer = { status: 'committed' };
+  type('ally');
+  add().onclick();
+  release();
+  await new Promise(setImmediate);
+  assert.equal(notice(host), null, 'a later success clears the refusal');
 
   type('   ');
-  host.find(node => node.textContent === 'Add').onclick();
+  add().onclick();
   field(host).onkeydown({ key: 'Enter', isComposing: true, repeat: false, preventDefault: () => prevented++ });
-  assert.equal(sent.length, 2, 'an empty name or a composing Enter sends nothing');
+  assert.equal(sent.length, 3, 'an empty name or a composing Enter sends nothing');
 
   answer = { status: 'refused', error: { message: 'No permission for this topic' } };
   host.find(node => node.tag === 'button' && node.textContent === '×').onclick();
   await new Promise(setImmediate);
   assert.deepEqual(sent.at(-1), ['remove', 'tony']);
-  assert.equal(host.find(node => node.className === 'notice').textContent, 'No permission for this topic');
+  assert.equal(notice(host), 'No permission for this topic');
 
   answer = { status: 'unknown' };
   host.find(node => node.tag === 'button' && node.textContent === '×').onclick();
   await new Promise(setImmediate);
-  assert.match(host.find(node => node.className === 'notice').textContent, /not confirmed/);
+  assert.match(notice(host), /not confirmed/);
 
+  assert.equal(document.activeElement, field(host), 'after a removal the field holds focus, not the page');
   panel.remove = async () => { throw Error('offline'); };
   host.find(node => node.tag === 'button' && node.textContent === '×').onclick();
   await new Promise(setImmediate);
-  assert.equal(host.find(node => node.className === 'notice').textContent, 'offline');
-  assert.equal(field(host).disabled, false);
+  assert.equal(notice(host), 'offline');
+  assert.equal(add().disabled, false);
 });
 
 test('a recipient outside the topic is marked, with an offer to add them only for a reader who may', async t => {
@@ -146,15 +189,42 @@ test('a recipient outside the topic is marked, with an offer to add them only fo
   markReach(offered, 'stranger', name => ({ reachable: false, add: () => { added.push(name); return new Promise(resolve => { finish = resolve; }); } }));
   assert.equal(offered.className, 'chip unreachable');
   assert.equal(offered.find(node => node.className === 'reach').textContent, ' · not in this topic');
+  assert.equal(offered.title, 'A message to stranger is refused until they are in this topic.', 'a manager is not sent to someone else');
   const button = offered.find(node => node.tag === 'button');
   assert.match(button.textContent, /Add to topic \(gets all its messages\)/);
   const clicked = button.onclick();
   assert.equal(button.disabled, true);
-  finish(); await clicked;
+  finish({ status: 'committed' }); await clicked;
   assert.deepEqual([added, button.disabled], [['stranger'], false]);
+  const said = offered.find(node => node.className === 'reach-notice');
+  assert.deepEqual([said.hidden, said.attributes.role], [true, 'status']);
+
+  let reply;
+  const refusing = chip('stranger');
+  markReach(refusing, 'stranger', () => ({ reachable: false, add: () => reply() }));
+  const offer = refusing.find(node => node.tag === 'button'), note = refusing.find(node => node.className === 'reach-notice');
+  reply = async () => ({ status: 'refused', error: { message: 'No permission for this topic' } });
+  await offer.onclick();
+  assert.deepEqual([note.hidden, note.textContent], [false, ' · No permission for this topic'], 'a refusal is said on the chip, not behind the reader');
+  reply = async () => { throw Error('offline'); };
+  await offer.onclick();
+  assert.deepEqual([note.textContent, offer.disabled], [' · offline', false], 'a failure is caught and said');
+  reply = async () => ({ status: 'unknown' });
+  await offer.onclick();
+  assert.equal(note.textContent, ' · Adding stranger was not confirmed.');
+  reply = async () => ({ status: 'committed' });
+  await offer.onclick();
+  assert.deepEqual([note.hidden, note.textContent], [true, '']);
+
+  const off = chip('ghost');
+  markReach(off, 'ghost', () => ({ reachable: false, disabled: true }));
+  assert.equal(off.className, 'chip unreachable');
+  assert.equal(off.find(node => node.className === 'reach').textContent, ' · switched off');
+  assert.equal(off.find(node => node.tag === 'button'), undefined, 'no one is offered an add that would not let them receive');
+  assert.match(off.title, /ghost is switched off/);
 
   const refused = chip('stranger');
   markReach(refused, 'stranger', () => ({ reachable: false, add: null }));
   assert.equal(refused.find(node => node.tag === 'button'), undefined);
-  assert.match(refused.title, /creator or the outcome's owner can add them/);
+  assert.equal(refused.title, "A message to stranger is refused until they are in this topic. Its creator or the outcome's owner can add them.");
 });

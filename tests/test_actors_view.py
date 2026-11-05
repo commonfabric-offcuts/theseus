@@ -39,6 +39,21 @@ class ActorsViewCase(fixtures.ReaderCase):
         self.assertEqual([item["id"] for item in self.page(kind="agent")["items"]], agents)
         self.assertNotEqual(agents, everyone)
 
+    def test_names_are_given_whole_up_to_1024_bytes_and_marked_when_cut(self):
+        names = dict(self.sql("SELECT id,name FROM actors WHERE enabled=1"))
+        for item in self.page()["items"]:
+            self.assertEqual((item["name"], item["name_truncated"]), (names[item["id"]], False), item["id"])
+        self.sql("UPDATE actors SET name=? WHERE id='agent-a'", ("é" * 600,))
+        item = next(item for item in self.page()["items"] if item["id"] == "agent-a")
+        self.assertEqual((item["name"], item["name_truncated"]), ("é" * 512, True), "a 1200-byte name is cut at 1024 bytes")
+
+    def test_team_members_say_whether_each_can_be_sent_to(self):
+        self.sql("UPDATE actors SET enabled=0 WHERE id='agent-b'")
+        members = self.store.view("owner", "workspace_members", {"workspace_id": "w1"})["items"]
+        enabled = {row["actor_id"]: row["enabled"] for row in members}
+        self.assertIs(enabled.pop("agent-b"), False)
+        self.assertTrue(enabled and all(value is True for value in enabled.values()), enabled)
+
     def test_a_disabled_actor_is_not_offered(self):
         self.sql("UPDATE actors SET enabled=0 WHERE id='agent-b'")
         self.assertNotIn("agent-b", [item["id"] for item in self.page()["items"]])

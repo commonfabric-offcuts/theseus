@@ -25,3 +25,13 @@ test('the reader\'s recipient chips say who is not in the topic, and offer the a
   assert.deepEqual(chips.children.map(chip => chip.className), ['chip', 'chip unreachable']);
   assert.ok(chips.children[1].children.some(node => node.tag === 'button' && node.textContent.startsWith('Add to topic')));
 });
+
+test('the origin line names the author, the kind and when it was sent, and leaves out a time it does not have', () => {
+  const origin = new Element('div');
+  const reader = Object.assign(Object.create(Reader.prototype), { $: id => { assert.equal(id, 'reader-origin'); return origin; } });
+  const sent_ms = new Date(2026, 10, 5, 5, 44).getTime();
+  reader.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm1' }, sent_ms });
+  assert.equal(origin.textContent, 'tony · Message · 5:44 AM Thu Nov 5');
+  reader.paintOrigin({ author: 'tony', source_ref: { kind: 'memory', id: 'n1', revision: 3 } });
+  assert.equal(origin.textContent, 'tony · Notebook · revision 3');
+});

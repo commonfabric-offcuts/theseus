@@ -64,62 +64,81 @@ export function markReach(chip, name, reach) {
   const answer = reach?.(name);
   if (!answer || answer.reachable) return;
   chip.classList.add('unreachable');
+  if (answer.disabled) {
+    chip.append(element('span', { className: 'reach', textContent: ' · switched off' }));
+    chip.title = `${name} is switched off, so a message to them is refused.`;
+    return;
+  }
   chip.append(element('span', { className: 'reach', textContent: ' · not in this topic' }));
   chip.title = answer.add ? `A message to ${name} is refused until they are in this topic.`
     : `A message to ${name} is refused until they are in this topic. Its creator or the outcome's owner can add them.`;
   if (!answer.add) return;
   const add = element('button', { type: 'button', textContent: 'Add to topic (gets all its messages)' });
+  const said = element('span', { className: 'reach-notice', hidden: true });
+  said.setAttribute('role', 'status');
   add.onclick = async () => {
     add.disabled = true;
-    try { await answer.add(); } finally { add.disabled = false; }
+    let receipt;
+    try { receipt = await answer.add(); } catch (error) { receipt = { error }; } finally { add.disabled = false; }
+    said.textContent = receipt?.status === 'committed' ? '' : ` · ${receipt?.error?.message ?? `Adding ${name} was not confirmed.`}`;
+    said.hidden = !said.textContent;
   };
-  chip.append(add);
+  chip.append(add, said);
 }
 
 // The people in a team or a topic, with a field to add someone and a remove
 // button on each, for a reader who may change them. fixed names those no one
 // can remove here (an outcome's owner). add and remove return the command's
-// receipt; a refusal is shown beside the field.
+// receipt; a refusal is shown beside the field. The field is built once and
+// never replaced or disabled, so a repaint from someone else's change leaves
+// the person typing in it where they were.
 export class PeoplePanel {
   constructor({ host, label, names, fixed = () => [] , add, remove }) {
     Object.assign(this, { host, label, names, fixed, add, remove });
-    this.busy = false; this.error = ''; this.people = []; this.manage = false; this.draft = '';
+    this.busy = false; this.error = ''; this.people = []; this.manage = false; this.removers = new Map();
+    this.chips = element('div', { className: 'chips' });
+    this.input = element('input', { autocomplete: 'off', placeholder: 'Add a name' });
+    this.input.setAttribute('list', names); this.input.setAttribute('aria-label', label);
+    this.button = element('button', { type: 'button', textContent: 'Add' });
+    const go = () => {
+      const id = this.input.value.trim().replace(/^@/, '');
+      if (id) return this.submit(() => this.add(id), () => { this.input.value = ''; });
+    };
+    this.button.onclick = go;
+    this.input.onkeydown = event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); if (!event.repeat) go(); } };
+    this.row = element('div', { className: 'people-add' }, this.input, this.button);
+    this.notice = element('p', { className: 'notice', hidden: true });
+    this.notice.setAttribute('role', 'status');
+    host.replaceChildren(this.chips, this.row, this.notice);
   }
 
   paint(people = this.people, manage = this.manage) {
     this.people = people; this.manage = manage;
     const fixed = new Set(this.fixed());
-    const chips = element('div', { className: 'chips' }, ...people.map(person => {
+    // A repaint replaces the remove buttons; one that held focus hands it to
+    // the same person's new button, or to the field when they have gone.
+    const held = [...this.removers].find(([, out]) => out === document.activeElement)?.[0];
+    this.removers = new Map();
+    this.chips.replaceChildren(...people.map(person => {
       const chip = element('span', { className: 'chip', textContent: person.actor_id });
       if (manage && !fixed.has(person.actor_id)) {
         const out = element('button', { type: 'button', textContent: '×', disabled: this.busy });
         out.setAttribute('aria-label', `Remove ${person.actor_id}`);
-        out.onclick = () => this.submit(() => this.remove(person.actor_id));
+        // The chip goes with its person; the field keeps the reader's place.
+        out.onclick = () => { this.input.focus(); return this.submit(() => this.remove(person.actor_id), () => {}, () => this.input.focus()); };
+        this.removers.set(person.actor_id, out);
         chip.append(out);
       }
       return chip;
     }));
-    const nodes = [chips];
-    if (manage) {
-      // The typed name outlives a repaint, and is cleared only once added.
-      const input = element('input', { autocomplete: 'off', placeholder: 'Add a name', disabled: this.busy, value: this.draft });
-      input.setAttribute('list', this.names); input.setAttribute('aria-label', this.label);
-      input.oninput = () => { this.draft = input.value; };
-      const go = () => {
-        const id = this.draft.trim().replace(/^@/, '');
-        if (id) return this.submit(() => this.add(id), () => { this.draft = ''; });
-      };
-      const button = element('button', { type: 'button', textContent: 'Add', disabled: this.busy });
-      button.onclick = go;
-      input.onkeydown = event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); if (!event.repeat) go(); } };
-      nodes.push(element('div', { className: 'people-add' }, input, button));
-    }
-    if (this.error) { const notice = element('p', { className: 'notice', textContent: this.error }); notice.setAttribute('role', 'status'); nodes.push(notice); }
-    this.host.replaceChildren(...nodes);
+    if (held !== undefined && manage) (this.removers.get(held) ?? this.input).focus();
+    this.row.hidden = !manage;
+    this.button.disabled = this.busy;
+    this.notice.textContent = this.error; this.notice.hidden = !this.error;
     this.host.hidden = false;
   }
 
-  async submit(action, committed = () => {}) {
+  async submit(action, committed = () => {}, settled = () => {}) {
     if (this.busy) return;
     this.busy = true; this.error = ''; this.paint();
     try {
@@ -129,7 +148,7 @@ export class PeoplePanel {
     } catch (error) {
       this.error = error.message;
     } finally {
-      this.busy = false; this.paint();
+      this.busy = false; this.paint(); settled();
     }
   }
 }

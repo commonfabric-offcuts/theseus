@@ -29,6 +29,7 @@ test('creation view adopts title purpose and team together without replacing loc
   await v.run(()=>c.refresh());
   assert.equal(v.title.value,'New title');assert.equal(v.purpose.value,'New purpose');assert.equal(v.create.disabled,false);
   assert.equal(v.team.chips.children[1].textContent,'new-agent');
+  assert.equal(v.team.input.list,'directory-names','the team field offers the directory');
   v.title.value='My typing';v.paint();assert.equal(v.title.value,'My typing','ordinary paint must not overwrite an active input');
 });
 test('creation view paints current refusal then clears success and preserves a later read error',async t=>{

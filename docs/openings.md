@@ -137,8 +137,9 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
   it. `next_cursor` is the last returned ID or `null`.
 - `workspace_members` with `{workspace_id, cursor, limit}` lists member actor
   IDs, kinds and names for anyone with workspace access, ordered by actor ID,
-  as `{actor_id, kind, name, name_truncated}` with a 1024-byte name prefix,
-  bounded by `summary_utf8_bytes`, with `relevant_versions: {workspace}`.
+  as `{actor_id, kind, name, name_truncated, enabled}` with a 1024-byte name
+  prefix, bounded by `summary_utf8_bytes`, with `relevant_versions: {workspace}`.
+  A disabled member stays on the team but cannot be sent to.
   `next_cursor` is the last returned actor ID or `null`.
 - `actors` with optional `{kind, cursor, limit}` lists the instance's enabled
   people and agents, ordered by ID, as `{id, kind, name, name_truncated}`

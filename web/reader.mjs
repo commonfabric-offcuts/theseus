@@ -6,6 +6,8 @@ import { readableTime } from './topic-state.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
 
+const QUOTE_STOPS = 'button,a,input,select,summary,[role="separator"]';
+
 const node = (tag, text, className) => {
   const el = document.createElement(tag);
   if (text !== undefined) el.textContent = text;
@@ -77,13 +79,15 @@ export class Reader {
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),
       beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();}});
     this.field.addEventListener('paste', event => this.paste(event));
-    // Clicking a passage lights it for Return, as moving over it does once the
-    // caret has left the writing.
+    // Clicking a passage lights it for Return, as moving over it does while
+    // Return would quote. Shift-click extends the light, and the browser's own
+    // selection is kept from growing beside it, so what lights is what quotes.
     this.sourceBody.addEventListener('pointerdown', event => {
       this.sourceBody.focus({ preventScroll: true });
       if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey);
     });
-    this.field.addEventListener('focus', () => this.disarm());
+    this.sourceBody.addEventListener('mousedown', event => { if (event.shiftKey && event.button === 0 && this.hover) event.preventDefault(); });
+    this.dialog.addEventListener('focusin', () => { if (!this.returnQuotes()) this.disarm(); });
     this.sourceBody.addEventListener('pointermove', event => this.point(event));
     this.dialog.addEventListener('keydown', event => this.key(event));
   }
@@ -133,9 +137,7 @@ export class Reader {
     this.opener = opener ?? this.opener ?? document.activeElement;
     this.disarm();
     this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
-    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}` : 'Message';
-    const sent = Number.isInteger(source.sent_ms) ? readableTime(source.sent_ms) : '';
-    this.$('reader-origin').textContent = [source.author, provenance, sent].filter(Boolean).join(' · ');
+    this.paintOrigin(source);
     const destination = this.$('reply-destination');
     destination.replaceChildren();
     const choose = node('option', 'Choose a topic'); choose.value = ''; destination.append(choose);
@@ -234,13 +236,19 @@ export class Reader {
 
   point(event) {
     if (event.pointerType === 'touch' || event.buttons || !this.source) return;
-    // With the caret in the writing, Return makes a new line, so nothing lights
-    // to promise a quote.
-    if (document.activeElement === this.field) return;
+    // Nothing lights to promise a quote that Return would not make.
+    if (!this.returnQuotes()) return;
     const current = { x: event.clientX, y: event.clientY };
     if (this.pointer && Math.hypot(current.x - this.pointer.x, current.y - this.pointer.y) < 2) return;
     this.pointer = current;
     this.light(event.target, event.shiftKey);
+  }
+
+  // Return quotes from anywhere in the reader except the writing and its
+  // controls, where it makes a new line or presses the control; key() decides
+  // by the same rule.
+  returnQuotes(at = document.activeElement) {
+    return !!at && this.dialog.contains(at) && at !== this.field && !at.closest(QUOTE_STOPS);
   }
 
   light(target, extend) {
@@ -430,6 +438,11 @@ export class Reader {
     else control.onclick = null;
   }
 
+  paintOrigin(source) {
+    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}` : 'Message';
+    const sent = Number.isInteger(source.sent_ms) ? readableTime(source.sent_ms) : '';
+    this.$('reader-origin').textContent = [source.author, provenance, sent].filter(Boolean).join(' · ');
+  }
   hideUnavailableSource() {
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
     this.$('reader-origin').textContent = 'Source unavailable';
@@ -527,7 +540,7 @@ export class Reader {
     }
     if (target === this.field && this.writingReadOnly()) return;
     if (target === this.field && this.terminalKey(event)) return;
-    if (target !== this.field && target.closest('button,a,input,select,summary,[role="separator"]')) {
+    if (target !== this.field && target.closest(QUOTE_STOPS)) {
       if (event.key === 'Enter' && event.repeat) event.preventDefault();
       return;
     }

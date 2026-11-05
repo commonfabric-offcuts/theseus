@@ -81,6 +81,36 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await until(async()=>(await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id})).draft?.body===before,'restored draft saved');
     assert.deepEqual(p.errors,[]);
   });
+  await check('inline the light shows only where Return quotes, and Shift-click quotes exactly what lights', async () => {
+    const p=await page('quote-light-rules',null,true);
+    await p.open(1);
+    const lit=()=>p.evaluate('[...document.querySelectorAll("#source-body .hover-quote")].map(s=>s.textContent).join("")');
+    const before=await field(p);
+    await p.point('#source-body [data-start="0"]','move');
+    assert.ok(await lit(),'with the reader focused, the passage under the pointer lights');
+    await p.point('#recipient-input');
+    assert.equal(await lit(),'','a caret in the recipient field puts the light out');
+    await p.point('#source-body [data-start="0"]','move');
+    assert.equal(await lit(),'','nothing lights while Return would add a recipient');
+    const starts=await p.evaluate('[...document.querySelectorAll("#source-body [data-start]")].map(s=>s.dataset.start)');
+    assert.ok(starts.length>=3,'the fixture source has three passages');
+    await p.point('#source-body [data-start="0"]');
+    const b=await p.box(`#source-body [data-start="${starts[2]}"]`), x=b.x+Math.min(12,b.width/2), y=b.y+Math.min(12,b.height/2);
+    await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x,y,modifiers:8});
+    await p.send('Input.dispatchMouseEvent',{type:'mousePressed',x,y,button:'left',buttons:1,clickCount:1,modifiers:8});
+    await p.send('Input.dispatchMouseEvent',{type:'mouseReleased',x,y,button:'left',clickCount:1,modifiers:8});
+    const shown=await lit(), passages=await p.evaluate(`[...document.querySelectorAll("#source-body [data-start]")].slice(0,3).map(s=>s.textContent).join("")`);
+    assert.equal(shown,passages,'Shift-click lights from the first passage through the third');
+    assert.equal(await p.evaluate('getSelection().toString()'),'','the browser\'s own selection does not grow beside the light');
+    await p.key('Enter');
+    assert.ok((await field(p)).includes(shown.split('\n').map(line=>`> ${line}`).join('\n')),'Return quotes what lit');
+    // Leave the shared draft as it was found.
+    await p.key('a',4);await p.key('k',2);
+    if(before)await p.send('Input.insertText',{text:before});
+    assert.equal(await field(p),before);
+    await until(async()=>(await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id})).draft?.body===before,'restored draft saved');
+    assert.deepEqual(p.errors,[]);
+  });
   await check('inline correction unavailable startup remains readable and Retry restores its composer', async () => {
     await control({ method: 'read_fault', name: 'editor_state', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'Composer is temporarily unavailable', retryable: true } }, count: 1 });
     const p = await page('inline-startup-refusal', null, true);
