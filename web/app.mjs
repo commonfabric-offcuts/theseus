@@ -139,7 +139,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
   comparison = { editor, presentation, localVersion, authority: JSON.stringify(editor.authorityRecovery) };
   const list = node('div'); $('review-content').append(list);
   const appendCandidates = async cursor => {
-    const page = await registry.recoveryCandidates(editor, { cursor, limit: 10 }, shown => { if (current()) { candidates.set(editor.key, shown); changed(editor); } });
+    const page = await registry.recoveryCandidates(editor, { cursor, limit: 10 }, shown => { if (current()) listCandidates(editor, shown, cursor); });
     if (!current()) return;
     for (const candidate of page.items) {
       const section = version(candidate.availability === 'open-in-another-tab' ? 'Open in another tab' : 'Writing kept on this device',
@@ -357,8 +357,15 @@ async function present(presentation) {
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   sourceAttachments(presentation);
 }
+// A checked page of saved copies: the first page replaces what was listed,
+// and a later page is added to it, as the editor's image copies are.
+function listCandidates(editor, page, cursor) {
+  const known = cursor ? candidates.get(editor.key) : null;
+  candidates.set(editor.key, known ? { items: [...known.items, ...page.items], nextCursor: page.nextCursor } : page);
+  changed(editor);
+}
 function discover(presentation, editor) {
-  return registry.recoveryCandidates(editor, { limit: 10 }, page => { candidates.set(editor.key, page); changed(editor); })
+  return registry.recoveryCandidates(editor, { limit: 10 }, page => listCandidates(editor, page, null))
     .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
 }
 // Rows a foreground read deferred were checked again: what the page lists for

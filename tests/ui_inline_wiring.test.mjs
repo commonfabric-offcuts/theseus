@@ -84,7 +84,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, listCandidates,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates}; } };`, context);
@@ -189,6 +189,14 @@ test('a recheck replaces only the rechecked rows the page lists, at once, and on
   holds=false;
   listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
   assert.equal(candidates.get(f.editor.key).items.length,4,'an editor the registry no longer holds is left as it is');
+});
+test('a later page of saved copies is added to what is listed, and a first page replaces it',()=>{
+  const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id});
+  f.listCandidates(f.editor,{items:[row('a')],nextCursor:'c1'},null);
+  f.listCandidates(f.editor,{items:[row('b')],nextCursor:null},'c1');
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('b')],nextCursor:null},'the first page stays listed after More versions');
+  f.listCandidates(f.editor,{items:[row('c')],nextCursor:null},null);
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('c')],nextCursor:null},'a fresh discovery replaces the list');
 });
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;
