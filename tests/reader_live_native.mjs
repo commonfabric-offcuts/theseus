@@ -146,11 +146,14 @@ export async function liveChecks({ check, page, until, control, observations, or
     await choose('waiting');
     await p.point('#topic-state-waiting'); await p.send('Input.insertText', { text: 'fixture-person' });
     await p.point('#topic-state-note'); await p.send('Input.insertText', { text: 'Pick a name' });
+    const top = selector => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().top)`);
+    const noteTop = await top('#topic-state-note');
     const text = 'Arrives while the state is being chosen';
     await message(text);
     await until(() => hasText(p, '#messages', text), 'the new message is shown, so the topic was read and painted again');
     await settled(p);
     assert.equal(await p.evaluate('document.activeElement.id'), 'topic-state-note', 'focus stays in the note');
+    assert.ok(Math.abs(await top('#topic-state-note') - noteTop) <= 1, 'the note stays where it was on the screen');
     assert.deepEqual([await value('#topic-state-choice'), await value('#topic-state-note'), await value('#topic-state-waiting')],
       ['waiting', 'Pick a name', 'fixture-person'], 'what the person typed is kept');
     await p.send('Input.insertText', { text: '!' });
@@ -167,6 +170,35 @@ export async function liveChecks({ check, page, until, control, observations, or
     const updates = p.calls.filter(call => call.payload?.kind === 'topic.update').map(call => call.payload.expected.topic_revision);
     assert.equal(updates.length, 2);
     assert.ok(updates[1] > updates[0], 'the second change sends a newer version');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // What holds still when a message lands above it: the first card in view,
+  // unless a control on the page has focus and is on the screen.
+  await check('live a message arriving leaves the card being read in place, and a focused control scrolled away holds nothing', async () => {
+    const p = await page('live-anchor', null, true);
+    await settled(p);
+    const card = "[...document.querySelectorAll('#messages .message-card')].find(card => card.getBoundingClientRect().bottom > 0)";
+    const reading = () => p.evaluate(`(c => c && [c.dataset.id, Math.round(c.getBoundingClientRect().top)])(${card})`);
+    // The same card, wherever it is now; a correction of a fraction of a pixel
+    // lands on a whole-pixel scroll offset.
+    const stays = async (was, why) => {
+      const now = await p.evaluate(`Math.round(document.querySelector('#messages [data-id=${JSON.stringify(was[0])}]').getBoundingClientRect().top)`);
+      assert.ok(Math.abs(now - was[1]) <= 1, `${why}: ${JSON.stringify([was, now])}`);
+    };
+    const arrive = async text => { await message(text); await until(() => hasText(p, '#messages', text), `${text} is shown`); await settled(p); };
+    await p.evaluate("(() => { document.querySelector('#messages .message-card:last-child').scrollIntoView({block:'center'}); document.activeElement.blur(); })()");
+    const before = await reading();
+    assert.ok(before, 'a card is in view');
+    await arrive('Arrives while a card is read');
+    await stays(before, 'the card being read stays where it was');
+    await p.evaluate("(() => { document.querySelector('#topic-state summary').focus(); document.querySelector('#messages .message-card:last-child').scrollIntoView({block:'center'}); })()");
+    assert.equal(await p.evaluate("document.querySelector('#topic-state summary').getBoundingClientRect().bottom <= 0 && document.activeElement === document.querySelector('#topic-state summary')"), true,
+      'the focused control is above the screen');
+    const away = await reading();
+    await arrive('Arrives while focus is scrolled away');
+    await stays(away, 'the card in view stays where it was, not the focused control out of view');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

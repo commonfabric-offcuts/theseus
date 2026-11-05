@@ -68,3 +68,5 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .chip .reach { color: var(--warn); }
 .chip.unreachable button:not([aria-label]) { font-size: .75rem; color: var(--warn); text-decoration: underline; }
 .message-time { font-weight: 400; color: var(--muted); }
+/* A count growing in the rail never scrolls the page under what the person reads. */
+.rail{overflow-anchor:none}
