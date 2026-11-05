@@ -168,15 +168,17 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           // Every row named here carries its count, and its state where it has one.
           await until(() => p.evaluate(ready), 'every counted row is drawn with its count');
           for (const row of [null, ...rows]) {
+            let box = null;
             if (row !== null) {
-              const box = await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; row.scrollIntoView({ block: 'center', inline: 'center' }); const b = row.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
+              box = await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; row.scrollIntoView({ block: 'center', inline: 'center' }); const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, x: b.x + b.width / 2, y: b.y + b.height / 2 }; })()`);
               assert.ok(box, `${row} is drawn on the ${route} page`);
               await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y });
               assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(row)}).matches(':hover')`), true, `${row} is under the pointer`);
             }
             const state = `${route}-${scheme}-${layout}-${row === null ? 'rest' : 'hover-' + row.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
             const answer = await p.evaluate(audit);
-            assert.ok(answer.pills.length > 0, `${state}: the sweep found the page's pills`);
+            // The row under the pointer is in view, so the sweep judges its pills.
+            if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left && pill.top >= box.top && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
             const image = Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64');
             writeFileSync(join(shots, state + '.png'), image);
             writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
