@@ -57,12 +57,19 @@ const element = (tag, props = {}, ...children) => {
   node.append(...children); return node;
 };
 
+// The whole messages read here, by message id, while they are listed.
+const wholeMessages = new Map();
+
 // The newest messages sent to the reader by name. One in a topic they can
 // still open links there, where reading it settles it; one in a topic they
-// have lost can only be read here, so it is marked read here.
-export function paintSent(host, answer, { open, acknowledge }) {
+// have lost can only be read here: read(item) brings its whole text and
+// attachments from its source, attachment(ref, sourceRef) offers each one,
+// and it is marked read here.
+export function paintSent(host, answer, { open, acknowledge, read, attachment }) {
   const items = Array.isArray(answer?.latest_addressed) ? answer.latest_addressed : [];
   const count = Number.isSafeInteger(answer?.addressed) ? answer.addressed : 0;
+  const listed = new Set(items.map(item => item.message?.id));
+  for (const id of wholeMessages.keys()) if (!listed.has(id)) wholeMessages.delete(id);
   if (!items.length) { host.hidden = true; host.replaceChildren(); return; }
   const list = element('ul', { className: 'sent-list' }, ...items.map(item => {
     const place = item.topic.title + (item.topic.title_truncated ? '…' : '');
@@ -75,10 +82,38 @@ export function paintSent(host, answer, { open, acknowledge }) {
       };
       return element('li', {}, link, words);
     }
-    const mark = element('button', { type: 'button', textContent: 'Mark read' });
-    mark.onclick = () => { mark.disabled = true; return Promise.resolve(acknowledge(item)).finally(() => { mark.disabled = false; }); };
-    return element('li', { className: 'closed-topic' }, element('span', { textContent: place }),
-      element('span', { className: 'muted', textContent: ' (you can no longer open this topic)' }), words, ' ', mark);
+    const li = element('li', { className: 'closed-topic' });
+    const draw = () => {
+      const mark = element('button', { type: 'button', textContent: 'Mark read' });
+      mark.onclick = () => { mark.disabled = true; return Promise.resolve(acknowledge(item)).finally(() => { mark.disabled = false; }); };
+      const head = [element('span', { textContent: place }), element('span', { className: 'muted', textContent: ' (you can no longer open this topic)' })];
+      const whole = wholeMessages.get(item.message.id);
+      if (whole) {
+        li.replaceChildren(...head, element('p', { className: 'sent-whole', textContent: `${item.message.author_id}: ${whole.body}` }),
+          ...(whole.attachments ?? []).map(ref => attachment(ref, item.source_ref)), mark);
+        return mark;
+      }
+      const more = element('button', { type: 'button', textContent: 'Read it here' });
+      const said = element('span', { className: 'notice', hidden: true });
+      said.setAttribute?.('role', 'status');
+      let reading = false;
+      more.onclick = async () => {
+        if (reading) return;
+        reading = true;
+        let source;
+        try { source = await read(item); }
+        catch (error) { Object.assign(said, { textContent: ` ${error.message}`, hidden: false }); return; }
+        finally { reading = false; }
+        const held = globalThis.document.activeElement === more;
+        wholeMessages.set(item.message.id, source);
+        const next = draw();
+        if (held) next.focus();
+      };
+      li.replaceChildren(...head, words, ' ', more, ' ', mark, said);
+      return mark;
+    };
+    draw();
+    return li;
   }));
   const heading = count > items.length ? `Sent to you by name (${count}, newest ${items.length} shown)` : `Sent to you by name (${count})`;
   host.replaceChildren(element('h2', { textContent: heading }), list);

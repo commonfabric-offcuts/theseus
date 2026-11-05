@@ -405,26 +405,32 @@ function rechecked(session, ids, page) {
     if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message);
   });
 }
+// One attachment of a source: a button that fetches it, then shows an image
+// in place and offers the file to save. current() says the place it was
+// offered from still shows that source; a refusal goes to notice.
+function attachmentControl(attachment, sourceRef, current, notice) {
+  const host = node('span', undefined, 'attachment-label');
+  const available = () => host.isConnected && current();
+  const show = button(`Open ${attachment.name ?? 'attachment'}`, async () => {
+    if (!available()) return;
+    show.disabled = true;
+    try {
+      const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
+      if (!available()) return;
+      const url = URL.createObjectURL(media.blob);
+      mediaURLs.add(url); host.replaceChildren();
+      if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
+      const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
+    } catch (error) { if (available()) notice(error.message); }
+    finally { if (show.isConnected) show.disabled = false; }
+  }); host.append(show);
+  return host;
+}
 function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);
-  for (const attachment of presentation.source.attachments ?? []) {
-    const host = node('span', undefined, 'attachment-label'); $('source-attachments').append(host);
-    const available = () => registry.isSourceCurrent(presentation) && host.isConnected &&
-      !registry.current.sourceUnavailable && !registry.current.availabilityUnconfirmed;
-    const show = button(`Open ${attachment.name ?? 'attachment'}`, async () => {
-      if (!available()) return;
-      show.disabled = true;
-      try {
-        const media = await api.media(bootstrap.instance_id, attachment, presentation.source.source_ref);
-        if (!available()) return;
-        const url = URL.createObjectURL(media.blob);
-        mediaURLs.add(url); host.replaceChildren();
-        if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
-        const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
-      } catch (error) { if (available()) reader.notice(error.message); }
-      finally { if (show.isConnected) show.disabled = false; }
-    }); host.append(show);
-  }
+  const current = () => registry.isSourceCurrent(presentation) && !registry.current.sourceUnavailable && !registry.current.availabilityUnconfirmed;
+  for (const attachment of presentation.source.attachments ?? [])
+    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, message => reader.notice(message)));
 }
 async function openSource(ref, opener) {
   const request = ++opening;
@@ -757,7 +763,7 @@ async function initialize() {
   if (!attention) {
     attention = new Attention({ api: { view: (...args) => api.view(...args) }, instanceId: bootstrap.instance_id, after: bootstrap.attention?.after,
       doc: document, open: openSent });
-    attention.listen(answer => { if (sentHost) paintSent(sentHost, answer, { open: openSent, acknowledge: markSent }); });
+    attention.listen(answer => { if (sentHost) paintSent(sentHost, answer, { open: openSent, acknowledge: markSent, read: readSent, attachment: sentAttachment }); });
     const ask = $('notify'), offer = () => { ask.hidden = !attention.canAsk; };
     ask.onclick = () => run(async () => { await attention.ask(); offer(); });
     offer();
@@ -896,6 +902,14 @@ async function initialize() {
 }
 // A message sent by name opens its topic, or, where the reader has lost the
 // topic, the outcomes page that lists it to be marked read.
+// A message sent by name in a topic the reader has lost: Core lets them read
+// exactly that message, so its whole text and attachments come from its source.
+async function readSent(item) {
+  const source = checkedView(await api.view('source', item.source_ref, { readClass: 'foreground' }), bootstrap.instance_id);
+  if (source.source_ref?.kind !== 'message' || source.source_ref.id !== item.source_ref.id) throw Error('The message could not be confirmed.');
+  return source;
+}
+const sentAttachment = (attachment, sourceRef) => attachmentControl(attachment, sourceRef, () => true, status);
 function openSent(item) {
   return item.topic_readable ? openDestination({ kind: 'topic', id: item.topic.id }, item.topic.title) : openDestination({ kind: 'root' }, 'Outcomes');
 }
@@ -1034,7 +1048,7 @@ async function initializeOutcomePage(route) {
   $('outcome-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
   sentHost=$('sent-to-you');
-  if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:acknowledgeSent});
+  if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:acknowledgeSent,read:readSent,attachment:sentAttachment});
   // What waits on the reader heads every outcome page.
   waitingHost=$('waiting-on-you');
   if(attention?.last)paintWaiting(waitingHost,attention.last,(id,title)=>openDestination({kind:'topic',id},title));

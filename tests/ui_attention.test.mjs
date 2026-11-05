@@ -145,8 +145,51 @@ test('the sent list links a topic the reader can open, and marks read one they h
   assert.equal(open.all().some(node => node.tag === 'button'), false, 'reading the open topic settles it');
   assert.equal(closed.all().some(node => node.tag === 'a'), false, 'a lost topic is not linked');
   assert.match(closed.text, /you can no longer open this topic/);
-  const mark = closed.all().find(node => node.tag === 'button');
+  const mark = closed.all().find(node => node.tag === 'button' && node.textContent === 'Mark read');
   await mark.onclick();
   assert.deepEqual(acknowledged, ['d2']);
   assert.equal(mark.disabled, false);
+});
+
+test('a message in a topic the reader has lost can be read whole where it is listed, and stays read across repaints', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: tag => new Element(tag) };
+  t.after(() => { globalThis.document = previous; });
+  const f = fixture();
+  const lost = { ...f.item('d2', 'The start of a long message', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
+  lost.message = { ...lost.message, id: 'm-2', preview: true };
+  const kept = f.item('d3', 'Your call');
+  const answer = { addressed: 2, latest_addressed: [kept, lost] };
+  let settle, reads = 0;
+  const shown = [];
+  const actions = {
+    open() {}, acknowledge: async () => {},
+    read: item => { reads++; assert.deepEqual(item.source_ref, { kind: 'message', id: 'm-2' }); return new Promise(resolve => { settle = resolve; }); },
+    attachment: (attachment, sourceRef) => { shown.push([attachment.id, sourceRef.id]); return new Element('span'); },
+  };
+  const host = new Element('section');
+  const closed = () => host.all().filter(node => node.tag === 'li')[1];
+  const button = name => closed().all().find(node => node.tag === 'button' && node.textContent === name);
+  paintSent(host, answer, actions);
+  assert.equal(host.all().filter(node => node.tag === 'li')[0].all().some(node => node.textContent === 'Read it here'), false,
+    'a topic the reader can open is read there, not here');
+  const pressed = button('Read it here').onclick();
+  button('Read it here').onclick();
+  assert.equal(reads, 1, 'a second press while reading asks nothing more');
+  settle({ body: 'The start of a long message, and all the rest of it', attachments: [{ id: 'media-1', name: 'plan.png' }] });
+  await pressed;
+  assert.match(closed().text, /all the rest of it/);
+  assert.equal(button('Read it here'), undefined);
+  assert.ok(button('Mark read'), 'it can still be marked read');
+  assert.deepEqual(shown, [['media-1', 'm-2']], 'each attachment is offered from the message source');
+  paintSent(host, answer, actions);
+  assert.match(closed().text, /all the rest of it/, 'a repaint keeps the whole message shown');
+  paintSent(host, { addressed: 1, latest_addressed: [kept] }, actions);
+  paintSent(host, answer, actions);
+  assert.ok(button('Read it here'), 'once no longer listed it is forgotten');
+  const failing = { ...actions, read: async () => { throw Error('No readable source'); } };
+  paintSent(host, answer, failing);
+  await button('Read it here').onclick();
+  assert.match(closed().text, /No readable source/, 'a refused read says why');
+  assert.ok(button('Read it here'), 'and can be tried again');
 });
