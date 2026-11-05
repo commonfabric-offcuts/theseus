@@ -148,7 +148,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
           catch (error) { if (current()) reviewStatus(error.message); }
           finally { if (adopt.isConnected) adopt.disabled = false; }
         });
-        adopt.disabled = editor.localVersion > 0 || session.attempts.length > 0 || uploadWork(editor);
+        adopt.disabled = editor.openingReadOnly || editor.localVersion > 0 || session.attempts.length > 0 || uploadWork(editor);
         section.append(adopt);
         if (refusedCopyAtDraft(candidate, editor.recoveryServerDraft)) {
           for (const item of candidate.snapshot.submissions.filter(item => refusedAtDraft(item, editor.recoveryServerDraft))) {
@@ -172,6 +172,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
             if (current()) label.textContent = `${e.file?.name ?? 'Earlier image'} · ${r.recorded === true ? r.status : 'Confirmation unknown'}`;
           }));
           if (e.bytes_ref) section.append(make('Discard retained file', async () => {
+            if(editor.openingReadOnly)throw Error('This opening is read-only; its retained file is unchanged.');
             await journal.changeCandidateImages(editor.key, candidate, { kind: 'discard', selectionId: e.selection_id });
             if (current()) await showVersions(editor, opener, presentation);
           }));
@@ -871,7 +872,7 @@ async function initializeCreationPage(route) {
     if(answer.workspace?.id!==row.workspace||answer.workspace.owner_id!==bootstrap.actor)throw Error('The created outcome detail could not be confirmed. Keep its original receipt.');
     $('workspace-name').textContent=answer.workspace.title;
   };
-  const form=new CreateOutcomeView({host:$('outcome-page'),creation:outcomeCreation,open:openDestination,confirmed});
+  const form=new CreateOutcomeView({host:$('outcome-page'),creation:outcomeCreation,open:openDestination,confirmed,refresh:$('refresh')});
   if(outcomeCreation.row.phase==='confirmed')await form.run(()=>confirmed(outcomeCreation.row));
   $('refresh').onclick=()=>form.run(()=>outcomeCreation.refresh());
   window.addEventListener('beforeunload',event=>{if(outcomeCreation.writable&&(outcomeCreation.pending||outcomeCreation.dirty||outcomeCreation.storageError)){event.preventDefault();event.returnValue='';}});

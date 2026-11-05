@@ -442,6 +442,22 @@ async function retainedAcknowledgement(t, kind = 'reply', send = false, options 
   return { ...f, editor, session, row, read };
 }
 
+test('read-only opening ownership prevents cleanup of otherwise acknowledged own and candidate rows',async t=>{
+  const f=await retainedAcknowledgement(t),{editor,session,row}=f;
+  // The ownership marker is set before discovery by initializeOpening. Keep a
+  // canonically acknowledged row so removing the guard really would delete it.
+  editor.openingReadOnly=true;
+  await f.registry.cleanup.own(session);assert.deepEqual(await f.journal.own(editor.key),row);
+  let attempts=0;f.backend.retireAcknowledged=async()=>{attempts++;return true;};
+  f.backend.retireImageCandidate=async()=>{attempts++;return {retired:true};};
+  const candidate={...copy(row),id:JSON.stringify([editor.key,'other-writer']),writerId:'other-writer',availability:'available'};
+  const page={items:[candidate],nextCursor:null};
+  assert.deepEqual(await f.registry.cleanup.candidates(session,page),page);assert.equal(attempts,0);
+  editor.openingReadOnly=false;await f.registry.cleanup.own(session);
+  assert.equal(await f.journal.own(editor.key),undefined,'same acknowledged row is cleanable when its owner is writable');
+  assert.deepEqual((await f.registry.cleanup.candidates(session,page)).items,[]);assert.equal(attempts,1,'the candidate instrument observes a writable cleanup');
+});
+
 test('cleanup canonical identity payload and authority mismatches retain complete exact rows', async t => {
   const f = await retainedAcknowledgement(t), { editor, session, row } = f;
   const corruptions = [

@@ -7,7 +7,7 @@ import { imageInstrumentation, imageChecks } from './reader_images_native.mjs';
 import { freshnessInstrumentation, freshnessChecks, observeUploadProof } from './reader_freshness_native.mjs';
 import { inlineChecks } from './reader_inline_native.mjs';
 import { navigationChecks } from './reader_navigation_native.mjs';
-import { departureChecks } from './reader_departure_native.mjs';
+import { departureChecks, assertDepartureTrace } from './reader_departure_native.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -50,7 +50,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of [...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
+for (const filename of [...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/opening-proof.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -137,7 +137,7 @@ try {
           }
           if (await intercept?.(payload, event)) { held.push({ event, payload }); return; }
           await send(event.responseStatusCode===undefined?'Fetch.continueRequest':'Fetch.continueResponse', { requestId: event.requestId });
-        }; handle().catch(error => errors.push({ message: error.message }));
+        }; handle().catch(error => errors.push({ message: error.message,requestId:event.requestId,networkId:event.networkId,url:event.request.url,responseStatusCode:event.responseStatusCode }));
       }
     });
     await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
@@ -263,13 +263,30 @@ try {
       results.push({ name, passed: false, error: error.stack });
       for (const [targetId, p] of freshnessPages) {
         let state;
-        try { state = await p.evaluate('({snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
+        try { state = await p.evaluate('({departure:window.departureState?.(),departureTrace:window.departureDiagnostics,snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
         catch (error) { state = { diagnosticError: error.message }; }
         observations.push({ name: 'failed case diagnostics', case: name, targetId, state, errors: p.errors, calls: p.calls });
       }
     }
     finally {
       timing.actionEnded = Date.now();
+      // CDP console events survive navigation. Serialize passive state on green
+      // and red alike, after the scenario; never pace its native input sequence.
+      for(const [targetId,p] of freshnessPages){
+        if(p.requireDepartureTrace){
+          const record={name:'passive departure trace',case:name,targetId,trace:[],expectedReceipts:p.departureExpectedReceipts??[]};
+          observations.push(record);
+          try{
+            record.trace=p.events.filter(e=>e.method==='Runtime.consoleAPICalled'&&e.params.args[0]?.value==='departure-diagnostic').map(e=>JSON.parse(e.params.args[1].value));
+            assertDepartureTrace(record.trace,record.expectedReceipts);
+            record.valid=true;
+          }catch(error){
+            record.valid=false;record.error=error.stack;
+            Object.assign(results.at(-1),{passed:false,instrumentError:error.stack});
+          }
+        }
+        if(p.errors.length)observations.push({name:'interception failure lifecycle',case:name,targetId,errors:p.errors,network:p.network.filter(e=>['Network.loadingFailed','Network.requestWillBeSent'].includes(e.method))});
+      }
       for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear();
       freshnessPages.clear();
       if (recoveryContext) { await cdp('Target.disposeBrowserContext', { browserContextId: recoveryContext }); recoveryContext = null; }

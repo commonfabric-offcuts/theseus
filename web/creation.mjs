@@ -15,11 +15,11 @@ export async function retainOpening({journal,bootstrap,workspace,opening,topic})
   if(![workspace,opening,topic].every(validActorId))throw Error('The opening identity is incomplete.');
   const writable=await journal.claim(opening),existing=await journal.get(opening);
   const row=existing??{...base(opening,'opening',bootstrap),workspace,topic,sourceRef:{kind:'new_topic',id:opening,workspace_id:workspace},phase:'private'};
-  if(!bound(row,bootstrap))throw Error('This opening belongs to a different runtime authority. It has not been rebound.');
-  if(row.kind!=='opening'||row.workspace!==workspace||row.topic!==topic||
+  if(row.instanceId!==bootstrap.instance_id||row.actor!==bootstrap.actor||row.kind!=='opening'||row.workspace!==workspace||row.topic!==topic||
       !same(row.sourceRef,{kind:'new_topic',id:opening,workspace_id:workspace}))throw Error('The retained opening identity does not match this link.');
   if(!existing){if(!writable)throw Error('This opening is being initialized in another tab.');await journal.put(row);}
-  return {row:copy(row),writable};
+  const parked=!bound(row,bootstrap);
+  return {row:copy(row),writable:writable&&!parked,parked};
 }
 
 // Outcome creation is an intent, not an editor. Its frozen public request is
@@ -30,28 +30,38 @@ export class OutcomeCreation {
     Object.assign(this,{api,bootstrap:copy(bootstrap),journal,intentId,id,changed});
     this.pending=null;this.queue=Promise.resolve();this.retryAllowed=false;this.writable=false;this.version=0;this.savedVersion=-1;
   }
-  async load() {
-    this.writable=await this.journal.claim(this.intentId);
-    this.row=await this.journal.get(this.intentId);
-    if(!this.row){
-      if(!this.writable)throw Error('This outcome form is being initialized in another tab.');
-      this.row={...base(this.intentId,'create',this.bootstrap),workspace:null,phase:'draft',form:{title:'',purpose:'',team:[]},envelope:null,receipt:null,history:[]};
-      await this.persist();
-    }
-    if(this.row.kind!=='create'||this.row.instanceId!==this.bootstrap.instance_id||this.row.actor!==this.bootstrap.actor)throw Error('This creation belongs to a different instance or actor.');
-    this.parked=!bound(this.row,this.bootstrap);
-    this.savedVersion=this.version;this.changed();return this;
+  load() {
+    return this.perform(async()=>{
+      this.acquiring=true;
+      try {
+        await this.queue;
+        const writable=await this.journal.claim(this.intentId);
+        let row=await this.journal.get(this.intentId);
+        if(!row){
+          if(!writable)throw Error('This outcome form is being initialized in another tab.');
+          row={...base(this.intentId,'create',this.bootstrap),workspace:null,phase:'draft',form:{title:'',purpose:'',team:[]},envelope:null,receipt:null,history:[]};
+          await this.journal.put(row);
+        }
+        if(row.kind!=='create'||row.instanceId!==this.bootstrap.instance_id||row.actor!==this.bootstrap.actor)throw Error('This creation belongs to a different instance or actor.');
+        // Adopt the validated form before publishing ownership. The view paints
+        // this row while the shared busy gate still prevents input/publication.
+        this.row=row;this.parked=!bound(row,this.bootstrap);this.writable=writable;
+        this.savedVersion=this.version;this.changed();return this;
+      } finally {this.acquiring=false;}
+    });
   }
   get readOnly(){return !this.writable||this.parked||Boolean(this.pending)||Boolean(this.row?.envelope&&this.row.phase!=='rejected');}
   get dirty(){return this.savedVersion<this.version;}
-  owns(){if(!this.writable)throw Error('Open in another tab — this form is read-only.');if(this.parked)throw Error('The runtime authority changed. This act is kept without rebinding.');}
+  owns(){if(this.acquiring)throw Error('The form is busy loading its current saved version.');if(!this.writable)throw Error('Open in another tab — this form is read-only.');if(this.parked)throw Error('The runtime authority changed. This act is kept without rebinding.');}
   persist() {
+    if(this.acquiring)return Promise.reject(Error('The form is busy loading its current saved version.'));
     const row=copy(this.row),version=this.version;
     const next=this.queue.catch(()=>{}).then(()=>this.journal.put(row)).then(()=>{this.savedVersion=Math.max(this.savedVersion,version);this.storageError=null;},error=>{this.storageError=error.message;throw error;});
     this.queue=next;return next;
   }
   async edit(patch) {
     this.owns();if(this.readOnly)throw Error('This creation is locked. Check its original confirmation.');
+    this.notice=null;
     if(this.row.phase==='rejected'){
       this.row.history.push({envelope:copy(this.row.envelope),receipt:copy(this.row.receipt)});
       this.row.envelope=null;this.row.receipt=null;this.row.workspace=null;this.row.phase='draft';this.retryAllowed=false;
@@ -68,6 +78,7 @@ export class OutcomeCreation {
   }
   perform(action) {
     if(this.pending)return this.pending;
+    this.notice=null;
     const pending=Promise.resolve().then(action);this.pending=pending;this.changed();
     const finish=()=>{if(this.pending===pending)this.pending=null;this.changed();};pending.then(finish,finish);return pending;
   }
@@ -98,7 +109,7 @@ export class OutcomeCreation {
       this.row.phase='confirmed';
     }else if(receipt.status==='rejected'&&typeof receipt.error?.code==='string'&&receipt.error.code&&typeof receipt.error.message==='string')this.row.phase='rejected';
     else return false;
-    this.row.receipt=copy(receipt);this.retryAllowed=false;return true;
+    this.row.receipt=copy(receipt);this.retryAllowed=false;this.notice=null;return true;
   }
   async dispatch() {
     await this.persist(); // Also protects explicit Retry after a storage failure.
@@ -124,7 +135,7 @@ export class OutcomeCreation {
       await this.checkAuthority();this.retryAllowed=false;return this.dispatch();
     });
   }
-  refresh() {return !this.writable||this.parked?this.load():this.row.envelope?this.check():this.persist();}
+  refresh() {return this.pending??(!this.writable||this.parked?this.load():this.row.envelope?this.check():this.perform(()=>this.persist()));}
   async leave(destination,title) {
     const previous=this.departureChoice;this.departureChoice=null;
     if(this.pending)throw Error('Wait for creation or its confirmation check to finish before leaving.');

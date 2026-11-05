@@ -1,5 +1,6 @@
 // Private saves are serialized. Public send confirmation never holds that queue.
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
+import { OpeningProof } from './opening-proof.mjs';
 const copy = value => structuredClone(value);
 const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'caret', 'reply_to', 'exchange_id', 'opening'];
 const authorityPair = value => value && typeof value.authority_id === 'string' && value.authority_id &&
@@ -75,6 +76,7 @@ export class EditorSession {
     this.attempts = copy(snapshot?.attempts ?? []);
     this.queue = Promise.resolve();
     this.sends = new Map();
+    if(editor.context.sourceRef.kind==='new_topic')editor.openingRecovery=this.openingProof=new OpeningProof(this);
   }
 
   get recovery() { return this.editor.authorityRecovery; }
@@ -92,6 +94,7 @@ export class EditorSession {
   }
 
   async persist() {
+    if (this.editor.openingReadOnly) { this.changed(this.editor); return null; }
     const snapshot = this.snapshot(), meaningful = meaningfulSnapshot(snapshot);
     const sameAuthority = () => same(authorityPair(this.authority), authorityPair(this.runtime.current));
     if (!sameSnapshot(meaningful, this.acknowledgedSnapshot) || !sameAuthority()) this.acknowledgedSnapshot = null;
@@ -382,6 +385,7 @@ export class EditorSession {
       // prepare() persisted the successor and A before this navigation hook.
       this.prepared(this.editor, item, options);
       await this.sendPrepared(item);
+      if(this.openingProof&&item.status==='refused'&&['INVALID_RECIPIENT','TOO_MANY_PARTICIPANTS'].includes(item.receipt?.error?.code))await this.openingProof.refresh();
       return item;
     });
     this.sends.set(item.id, sending);
@@ -412,6 +416,12 @@ export class EditorSession {
       const entry = this.attempt(this.saveEnvelope(ticket, item.authority), { ticket, submissionId: item.id });
       const receipt = await this.dispatch(entry);
       if (receipt?.status !== 'committed') return this.block(item, entry, item.saveConflict);
+    }
+    if(this.openingProof){
+      try {
+        const proof=await this.openingProof.refresh({pending:item});
+        if(!['fresh','saved'].includes(proof.mode)||proof.laterLocal(item))throw Error(proof.message??'The saved opening or its latest preparation changed. Its original writing is kept for review.');
+      }catch(error){return this.block(item,null,{error:{code:'OPENING_REVIEW_REQUIRED',message:error.message,retryable:false}});}
     }
     const envelope = this.envelope('submission.prepare', item.prepareOperationId,
       { topic_id: item.topicId }, { draft_revision: item.snapshot.revision },
@@ -499,8 +509,9 @@ export class EditorSession {
   correctOpening(refused, reviewedRemote, reviewedLocalVersion) {
     return this.enqueue(async () => {
       const editor = this.editor;
+      await this.openingProof.refresh();
       const eligible = () => editor.context.sourceRef.kind === 'new_topic' && !editor.openingReadOnly &&
-        editor.submissions.includes(refused) && !refused.detached && !refused.openingCorrected && refused.preparationConfirmed &&
+        editor.submissions.includes(refused) && !refused.detached && this.openingProof.canRestore(refused) && refused.preparationConfirmed &&
         same(refused.sourceRef, editor.context.sourceRef) && refused.topicId === editor.context.topicId &&
         refused.snapshot.opening?.workspace_id === editor.context.sourceRef.workspace_id &&
         same(refused.authority, authorityPair(this.authority)) &&
@@ -510,7 +521,7 @@ export class EditorSession {
         !draft.opening && !draft.reply_to && !draft.exchange_id;
       const unchanged = () => editor.localVersion === reviewedLocalVersion && !editor.dirty && !editor.conflict &&
         !this.recovery && empty(editor.draft) && !this.unsettledSave() && !this.uploads?.current().length;
-      if (!eligible()) throw Error('Only an exact recorded participant refusal may return this opening to editing.');
+      if (!eligible()) throw Error(this.openingProof.message??'Only the latest exact recorded participant refusal may return this opening to editing.');
       if (!unchanged()) throw Error('Newer writing or an unresolved draft is kept. Review it before editing the refused opening.');
       const authority = await this.readAuthority();
       if (!same(authorityPair(authority), authorityPair(this.authority))) throw Error('The runtime authority changed. This opening has not been rebound.');
@@ -529,6 +540,7 @@ export class EditorSession {
       const draft = { id: editor.draft.id, revision: editor.draft.revision, generation: editor.draft.generation };
       for (const field of writingFields) if (Object.hasOwn(refused.snapshot, field)) draft[field] = copy(refused.snapshot[field]);
       editor.draft = draft; editor.localVersion++; refused.openingCorrected = true;
+      this.openingProof.restored();
       this.uploads?.importRetained();
       await this.persist();
       await this.uploads?.validateRetained();

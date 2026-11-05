@@ -4,6 +4,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
+export const recordedOpeningRefusalVisible=history=>[...history.querySelectorAll('h3')].some(heading=>heading.textContent==='Recorded refusal — writing kept');
+
 export async function navigationChecks({ check, page, until, root, evidencePath, facts, view, control, shot, observations }) {
   const link = id => `#topics a[data-topic-id="${id}"]`;
   const topics = [{ id: 't2', title: 'Design discussion' }, { id: 't3', title: 'Greenlight discussion' }];
@@ -12,6 +14,97 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   const noActs = p => assert.equal(p.calls.some(c => ['workspace.create','message.send','submission.prepare','delivery.ack','topic.create_and_send'].includes(c.payload?.kind)), false, 'navigation never sends, acknowledges or creates work');
   const noPrompt = p => assert.equal(p.events.some(e => e.method === 'Page.javascriptDialogOpening'), false, 'normal navigation never relies on beforeunload confirmation');
   const state = () => view('editor_state', { source_ref: { kind: 'topic', id: 't1' }, topic_id: 't1' });
+  const observeStorage=async p=>p.send('Page.addScriptToEvaluateOnNewDocument',{source:`
+    window.storageWrites=[];
+    for(const method of ['put','add','delete','clear']){const original=IDBObjectStore.prototype[method];IDBObjectStore.prototype[method]=function(...args){
+      const act={method,store:this.name,db:this.transaction.db.name};storageWrites.push(act);console.log('ux-storage-write',JSON.stringify(act));return original.apply(this,args);
+    };}
+    import('/journal.mjs').then(({RecoveryJournal})=>{for(const method of ['save','saveLatest','transition','capture','releaseBytes','releaseExact','removeExact','retireAcknowledged','retireImageCandidate','changeCandidateImages','adopt']){
+      const original=RecoveryJournal.prototype[method];if(!original)continue;RecoveryJournal.prototype[method]=function(...args){console.log('ux-journal-write',method);return original.apply(this,args);};
+    }});
+    import('/creation.mjs').then(({OutcomeCreation})=>{const original=OutcomeCreation.prototype.persist;OutcomeCreation.prototype.persist=function(...args){console.log('ux-journal-write','creation.persist');return original.apply(this,args);};});
+  `});
+  const storageActs=p=>p.events.filter(e=>e.method==='Runtime.consoleAPICalled'&&['ux-storage-write','ux-journal-write'].includes(e.params.args[0]?.value));
+  let observedActionId=0;
+  const observedAction=async(p,selector,kind)=>{
+    const token=kind+':'+(++observedActionId);
+    await p.evaluate(`(()=>{const node=document.querySelector(${JSON.stringify(selector)}),original=node.onclick;if(typeof original!=='function')throw Error('Native action handler absent');node.onclick=function(...args){const result=original.apply(this,args);Promise.resolve(result).then(()=>console.log('ux-action-settled',${JSON.stringify(token)}),()=>console.log('ux-action-settled',${JSON.stringify(token)}));return result;};node.scrollIntoView({block:'center'});})()`);
+    await p.point(selector);
+    await until(()=>p.events.some(e=>e.method==='Runtime.consoleAPICalled'&&e.params.args[0]?.value==='ux-action-settled'&&e.params.args[1]?.value===token),'exact native '+kind+' handler settled');
+  };
+
+  await check('navigation correction creation handover adopts the displayed title purpose team and current notices',async()=>{
+    const route=facts.origin+'/?new=outcome&intent=correction-handover';
+    const owner=await page('handover-owner',null,true,{url:route});
+    const click=async(p,s)=>{await p.evaluate(`document.querySelector(${JSON.stringify(s)}).scrollIntoView({block:'center'})`);await p.point(s);};
+    const type=async(p,s,text)=>{await click(p,s);await p.key('a',4);await p.send('Input.insertText',{text});};
+    await type(owner,'#outcome-title-input','Old title');await type(owner,'#outcome-purpose-input','Old purpose');
+    await until(()=>owner.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'original form saved');
+    const contender=await page('handover-contender',null,true,{url:route});assert.equal(await contender.evaluate('document.querySelector("#outcome-title-input").value'),'Old title');
+    await type(owner,'#outcome-title-input','New title');await type(owner,'#outcome-purpose-input','New purpose');
+    await type(owner,'[aria-label="Add outcome team member"]','fixture-notebook-agent');await owner.key('Enter');
+    await until(()=>owner.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'new form saved');await owner.close();
+    await click(contender,'#refresh');await until(()=>contender.evaluate('!document.querySelector("#create-outcome").disabled'),'handover completed');
+    assert.equal(await contender.evaluate('document.querySelector("#outcome-title-input").value'),'New title');
+    assert.equal(await contender.evaluate('document.querySelector("#outcome-purpose-input").value'),'New purpose');
+    assert.match(await contender.evaluate('document.querySelector("#outcome-page .chips").textContent'),/fixture-notebookbook-agent|fixture-notebook-agent/);
+    contender.intercept(payload=>payload?.kind==='workspace.create');await click(contender,'#create-outcome');
+    const held=await until(()=>contender.held.find(h=>h.payload?.kind==='workspace.create'),'handover creation response');
+    assert.equal(held.payload.args.title,'New title');assert.equal(held.payload.args.purpose,'New purpose');assert.deepEqual(held.payload.args.team,[facts.actor,'fixture-notebook-agent']);
+    contender.intercept(null);await contender.fail(held);
+    await until(()=>contender.evaluate('!document.querySelector("#outcome-page .notice").hidden'),'lost response reason rendered');
+    await control({method:'read_fault',name:'operation',status:503,body:{error:{code:'DATABASE_BUSY',message:'Current confirmation read failed',retryable:true}},count:1});
+    await click(contender,'#check-outcome');await until(()=>contender.evaluate('document.querySelector("#outcome-page .notice").textContent.includes("Current confirmation read failed")'),'new read reason overrides old transport error');
+    await click(contender,'#check-outcome');await until(()=>contender.evaluate('!document.querySelector("#start-first-topic").hidden'),'creation confirmation');
+    assert.equal(await contender.evaluate('document.querySelector("#outcome-page .notice").hidden'),true);
+    assert.equal(contender.calls.filter(c=>c.payload?.kind==='workspace.create').length,1);assert.deepEqual(contender.errors,[]);noPrompt(contender);
+    await shot(contender,'creation-handover-confirmed');
+  });
+
+  await check('navigation correction interrupted preparation stays passive and parks visibly after authority drift',async()=>{
+    await control({method:'navigation_workspaces',workspaces:[{id:'interrupted-outcome',title:'Interrupted outcome',purpose:''}]});
+    const route=facts.origin+'/?workspace=interrupted-outcome&opening=interrupted-opening&opening_topic=interrupted-topic';
+    const p=await page('interrupted-opening',null,true,{url:route});
+    const click=async s=>{await p.evaluate(`document.querySelector(${JSON.stringify(s)}).scrollIntoView({block:'center'})`);await p.point(s);};
+    await click('#opening-title-input');await p.send('Input.insertText',{text:'Interrupted title'});
+    await click('#inline-writing-body');await p.send('Input.insertText',{text:'Frozen interrupted A'});
+    await until(()=>p.evaluate('document.querySelector("#inline-save-state").textContent.includes("Saved to Theseus")'),'opening saved before interruption');
+    p.intercept(payload=>payload?.kind==='submission.prepare');await p.key('Enter',4);
+    const held=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'prepare response held');p.intercept(null);await p.fail(held);
+    await until(()=>p.evaluate('document.querySelector("#opening-history").textContent.includes("Preparation awaiting confirmation") && /fetch|connection|network/i.test(document.querySelector("#opening-history").textContent)'),'settled blocked preparation phase and reason');
+    const before=await p.evaluate('document.querySelector("#opening-history").textContent');assert.match(before,/fetch|connection|network/i);assert.match(before,/Frozen interrupted A/);
+    const count=p.calls.filter(c=>c.payload?.kind).length;
+    await observedAction(p,'#refresh','opening');
+    assert.equal(p.calls.filter(c=>c.payload?.kind).length,count,'settled Check must not dispatch any command');
+    await until(()=>p.evaluate('document.querySelector("#opening-history").textContent.includes("Preparation confirmed; publication not confirmed")'),'passive Check confirmed preparation');
+    const text=await p.evaluate('document.querySelector("#opening-history").textContent');assert.match(text,/Continuing this interrupted send is unavailable in this version/);assert.doesNotMatch(text,/Not sent|Failed to fetch/);
+    assert.equal(p.calls.filter(c=>c.payload?.kind==='topic.create_and_send').length,0);
+    await shot(p,'interrupted-preparation-confirmed');
+    const contender=await page('interrupted-competing',null,true,{url:route,beforeNavigate:observeStorage});
+    assert.match(await contender.evaluate('document.querySelector("#outcome-page").textContent'),/read-only/);
+    await contender.evaluate(`(()=>{const b=[...document.querySelectorAll('#opening-history button')].find(b=>b.textContent==='Read submitted writing');b.id='read-competing-writing';})()`);
+    await observedAction(contender,'#read-competing-writing','opening');
+    assert.match(await contender.evaluate('document.querySelector("#opening-history").textContent'),/Frozen interrupted A/);
+    assert.deepEqual(storageActs(contender),[],'read-only submitted-writing inspection attempts no journal write');
+    await observedAction(contender,'#refresh','opening');
+    assert.deepEqual(storageActs(contender),[],'settled read-only Check attempts no journal write');
+    await contender.evaluate('document.querySelector("#opening-later").scrollIntoView({block:"center"})');await contender.point('#opening-later');
+    await until(()=>contender.evaluate('document.querySelector("#topic-navigation-status").textContent.includes("unconfirmed")'),'pending opening departure is informed');
+    await contender.point('#opening-later');
+    await until(()=>contender.evaluate('document.body.dataset.ready==="true" && !new URL(location.href).searchParams.has("opening")'),'read-only pending opening departure');
+    assert.deepEqual(storageActs(contender),[],'pending read-only departure attempts no journal write or cleanup');
+    assert.equal(contender.calls.some(c=>c.payload?.kind),false);assert.deepEqual(contender.errors,[]);await contender.close();
+    await control({method:'epoch',epoch:'correction-parked-epoch',complete:true});
+    await observeStorage(p);const previous=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');
+    await until(()=>p.evaluate(`performance.timeOrigin!==${previous} && document.body.dataset.ready==='true'`),'parked opening reload');
+    assert.match(await p.evaluate('document.querySelector("#outcome-page").textContent'),/Runtime changed.*read-only/);
+    assert.equal(await p.evaluate('document.querySelector("#inline-send").disabled'),true);
+    await p.evaluate(`(()=>{const b=[...document.querySelectorAll('#opening-history button')].find(b=>b.textContent==='Read submitted writing');b.id='read-parked-writing';})()`);await observedAction(p,'#read-parked-writing','opening');
+    await until(()=>p.evaluate('document.querySelector("#opening-history").textContent.includes("Frozen interrupted A")'),'parked original writing inspected');
+    await observedAction(p,'#refresh','opening');assert.deepEqual(storageActs(p),[],'parked reads attempt no recovery or intent write/delete');
+    assert.equal(p.calls.filter(c=>c.payload?.kind).length,count,'runtime drift never rebinds or dispatches');
+    await shot(p,'opening-parked');assert.deepEqual(p.errors,[]);
+  });
 
   await check('navigation outcomes root empty paging keyboard and protected departure', async () => {
     const workspaces=Array.from({length:21},(_,n)=>({id:'outcome-'+String(n).padStart(2,'0'),title:n<2?'Same outcome':'Outcome '+n,purpose:'Purpose '+n}));
@@ -386,8 +479,12 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
       await until(()=>p.evaluate('!document.querySelector("#version-review").open'),'reviewed original image writing');
     }
     await until(()=>p.evaluate('!document.querySelector("#inline-send").disabled'),'resumed opening send available');
+    p.intercept(payload=>payload?.kind==='topic.create_and_send');
     await click('#inline-writing-body');await p.key('Enter',4);
-    await until(()=>p.evaluate('document.querySelector("#opening-history").textContent.includes("unavailable")'),'participant refusal visible');
+    const activePublication=await until(()=>p.held.find(entry=>entry.payload?.kind==='topic.create_and_send'),'active publication answer held');
+    assert.doesNotMatch(await p.evaluate('document.querySelector("#opening-history").textContent'),/Continuing this interrupted send is unavailable/,'active publication has no interrupted-send claim');
+    p.intercept(null);await p.release(activePublication);
+    await until(()=>p.evaluate(`(${recordedOpeningRefusalVisible.toString()})(document.querySelector("#opening-history"))`),'participant refusal visible');
     const publications=p.calls.filter(c=>c.payload?.kind==='topic.create_and_send');assert.equal(publications.length,1);
     const first=publications[0].payload;assert.equal((await view('operation',{operation_id:first.operation_id})).error.code,'INVALID_RECIPIENT');
     assert.equal(await p.evaluate('document.querySelector("#inline-send").disabled'),true);
@@ -399,6 +496,19 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await click('[aria-label="Remove missing-native-agent"]');
     await click('[aria-label="Add topic participant"]');await p.send('Input.insertText',{text:'fixture-notebook-agent'});await p.key('Enter');
     await until(()=>p.evaluate('!document.querySelector("#inline-send").disabled'),'corrected ready attachments retained');
+    await until(()=>p.evaluate('document.querySelector("#inline-save-state").textContent.includes("Saved to Theseus")'),'corrected B saved canonically');
+    const savedB=await view('editor_state',{source_ref:source,topic_id:topicId});
+    const priorDocument=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');
+    await until(()=>p.evaluate(`performance.timeOrigin!==${priorDocument} && document.body.dataset.ready==="true" && Boolean(document.querySelector("#opening-title-input"))`),'corrected opening reload');
+    assert.equal(await p.evaluate('document.querySelector("#opening-title-input").readOnly'),false,'one initialization admits saved B without a local correction flag');
+    assert.equal(await p.evaluate('document.querySelector("#inline-writing-body").value'),body);
+    if(await p.evaluate('document.querySelector("#inline-save-state").textContent.includes("Check saved image copies")')){
+      await click('#inline-review-versions');
+      const choice=await until(()=>p.evaluate(`(()=>{const b=[...document.querySelectorAll('#review-content button')].find(b=>b.textContent==='Recover this version');if(b){b.id='opening-recover-b';return 'recover';}return !document.querySelector('#inline-send').disabled?'checked':null;})()`),'saved B image review');
+      await click(choice==='recover'?'#opening-recover-b':'#review-close');
+    }
+    await until(()=>p.evaluate('!document.querySelector("#inline-send").disabled'),'saved B ready after reload');
+    assert.deepEqual((await view('editor_state',{source_ref:source,topic_id:topicId})).draft,savedB.draft,'reload retains canonical B exactly');
     await control({method:'read_fault',name:'topic',status:503,body:{error:{code:'DATABASE_BUSY',message:'Created topic detail temporarily unavailable',retryable:true}},count:1});
     await click('#inline-writing-body');await p.key('Enter',4);
     await until(()=>p.evaluate('Boolean(document.querySelector("#opening-open-topic"))'),'confirmed opening offers deliberate Open topic');
@@ -427,13 +537,14 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await click(p,'#outcome-title-input');await p.send('Input.insertText',{text:'Guarded outcome'});
     await until(()=>p.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'guarded form saved');
     const route=await p.evaluate('location.href');
-    const other=await page('creation-competing',null,true,{url:route});
+    const other=await page('creation-competing',null,true,{url:route,beforeNavigate:observeStorage});
     assert.match(await other.evaluate('document.querySelector("#outcome-page").textContent'),/read-only/);
-    await click(other,'#refresh');
+    await observedAction(other,'#refresh','creation');
     await until(()=>other.evaluate('document.querySelector("#outcome-page").textContent.includes("read-only")'),'read-only Refresh settled');
     assert.equal(other.calls.some(c=>c.payload?.kind),false,'read-only Refresh cannot dispatch a write');
+    assert.deepEqual(storageActs(other),[],'actual intent/recovery stores and journal entry points stay unwritten after Refresh');
     await click(other,'#creation-later');await until(()=>other.evaluate('document.body.dataset.ready==="true" && location.search===""'),'competing tab can leave');
-    noPrompt(other);await other.close();
+    assert.deepEqual(storageActs(other),[],'read-only departure attempts no journal write or delete');noPrompt(other);await other.close();
     p.intercept(payload=>payload?.kind==='workspace.create');await click(p,'#create-outcome');
     const held=await until(()=>p.held.find(h=>h.payload?.kind==='workspace.create'),'creation response held after effect');
     await click(p,'#outcomes-home');
@@ -465,12 +576,17 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await touch('#opening-title-input');await p.send('Input.insertText',{text:'Touch opening'});
     await touch('#inline-writing-body');await p.send('Input.insertText',{text:'Preserve mobile writing'});
     await until(()=>p.evaluate('document.querySelector("#inline-save-state").textContent.includes("Saved to Theseus")'),'mobile writing saved');
-    const other=await page('opening-competing',null,true,{url:route});
+    const other=await page('opening-competing',null,true,{url:route,beforeNavigate:observeStorage});
     assert.match(await other.evaluate('document.querySelector("#outcome-page").textContent'),/read-only/);
     assert.equal(await other.evaluate('document.querySelector("#inline-writing-body").readOnly'),true);
     assert.equal(await other.evaluate('document.querySelector("#inline-send").disabled'),true);
     assert.equal(await other.evaluate('document.querySelector("#opening-title-input").readOnly'),true);
-    assert.equal(other.calls.some(c=>c.payload?.kind),false);await other.close();
+    assert.equal(other.calls.some(c=>c.payload?.kind),false);
+    await observedAction(other,'#refresh','opening');await until(()=>other.evaluate('document.querySelector("#outcome-page").textContent.includes("read-only")'),'read-only opening Refresh');
+    assert.deepEqual(storageActs(other),[],'read-only opening Refresh attempts no intent/recovery mutation');
+    await other.evaluate('document.querySelector("#opening-later").scrollIntoView({block:"center"})');await other.point('#opening-later');
+    await until(()=>other.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="mobile-opening-workspace" && !new URL(location.href).searchParams.has("opening")'),'read-only opening departure');
+    assert.deepEqual(storageActs(other),[],'read-only opening departure attempts no journal mutation');await other.close();
     await p.send('Page.bringToFront');
     await p.evaluate('document.querySelector("#inline-send").scrollIntoView({block:"center"})');const b=await p.box('#inline-send');assert.ok(b.height>=44);
     await tap(b.x+b.width+3,b.y+b.height/2);await p.evaluate('new Promise(r=>setTimeout(r,100))');

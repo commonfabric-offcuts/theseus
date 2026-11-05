@@ -71,6 +71,7 @@ export class Editor {
   }
 
   get openingLocked() {
+    if(this.openingRecovery)return this.openingRecovery.locked();
     return this.context.sourceRef.kind === 'new_topic' && (this.openingHistoryPending ||
       this.submissions.some(item => !item.openingCorrected));
   }

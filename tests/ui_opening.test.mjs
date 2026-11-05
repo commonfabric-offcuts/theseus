@@ -3,9 +3,33 @@ import assert from 'node:assert/strict';
 import { Editor } from '../web/editor.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
+import { OpeningComposer } from '../web/opening-view.mjs';
+import { dom } from './fixtures/ui_dom.mjs';
+import { recordedOpeningRefusalVisible } from './reader_navigation_native.mjs';
 
 const context={instanceId:'instance',actor:'person',kind:'reply',sourceRef:{kind:'new_topic',id:'opening',workspace_id:'workspace'},topicId:'reserved'};
 const initial=()=>new Editor(context,{id:'draft',revision:0,generation:'generation',body:'Opening words'});
+test('opening card renders actual blocked phase and reason and the explicit interrupted-send limitation',t=>{
+  const previous=globalThis.document;globalThis.document=dom();t.after(()=>{globalThis.document=previous;});
+  const e=initial(),item={id:'a',status:'preparing',snapshot:{body:'Frozen A'},blocked:{phase:'draft.save',message:'The saved revision changed.'}};
+  const sends=new Map();
+  e.submissions=[item];const registry={hasInFlightSend:false,sessionFor:()=>({sends}),pending:()=>({items:[],next_cursor:null}),pendingReceipts:new Map(),pendingReason:()=>null};
+  const v=Object.assign(Object.create(OpeningComposer.prototype),{presentation:{writable:true,editors:{reply:e}},registry,cards:new Map(),
+    title:document.createElement('input'),people:{paint(){}},localState:document.createElement('p'),later:document.createElement('button'),history:document.createElement('section')});
+  v.paint();const card=v.cards.get('a');assert.match(card.heading.textContent,/Save awaiting confirmation/);assert.equal(card.reason.hidden,false);assert.match(card.reason.textContent,/saved revision changed/);
+  item.blocked={phase:'submission.prepare',message:'Preparation read timed out.'};v.paint();assert.match(card.heading.textContent,/Preparation awaiting confirmation/);assert.match(card.reason.textContent,/Preparation read timed out/);
+  item.status='prepared';item.preparationConfirmed=true;item.blocked=null;sends.set(item.id,Promise.resolve());registry.hasInFlightSend=true;v.paint();
+  assert.doesNotMatch(card.reason.textContent,/interrupted|unavailable in this version/,'an active publication is not described as an interrupted send');
+  sends.clear();registry.hasInFlightSend=false;v.paint();
+  assert.match(card.heading.textContent,/Preparation confirmed; publication not confirmed/);assert.match(card.reason.textContent,/Continuing this interrupted send is unavailable in this version/);
+  assert.doesNotMatch(card.heading.textContent,/Not sent/);assert.equal(card.edit.hidden,true);assert.equal(card.check.hidden,false);
+  // Use the actual rendered heading/reason nodes; this minimal DOM fixture
+  // deliberately does not implement aggregate textContent or selector engines.
+  const history={get textContent(){return card.heading.textContent+' '+card.reason.textContent;},querySelectorAll:selector=>selector==='h3'?[card.heading]:[]};
+  assert.equal(recordedOpeningRefusalVisible(history),false,'the continuation limitation is not a recorded participant refusal');
+  item.status='refused';v.paint();
+  assert.equal(recordedOpeningRefusalVisible(history),true,'the native wait recognizes the terminal refusal heading');
+});
 test('opening metadata edits preserve W O T and refuse identity fields',()=>{
   const editor=initial();editor.editOpening({title:'Topic title',participants:['agent']});
   assert.deepEqual(editor.draft.opening,{workspace_id:'workspace',title:'Topic title',participants:['agent']});

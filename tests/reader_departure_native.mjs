@@ -1,13 +1,57 @@
 import assert from 'node:assert/strict';
 
+export function assertDepartureTrace(trace, expectedReceipts) {
+  assert.equal(expectedReceipts.length,2,'both expected publication identities are retained');
+  assert.ok(trace.some(e=>e.event==='registry trace installed'),'registry trace installed');
+  assert.ok(trace.some(e=>e.event==='navigation trace installed'),'navigation trace installed');
+  assert.ok(trace.some(e=>e.event==='notice mutation'&&e.hidden===false),'visible departure notice retained');
+  const entries=trace.filter(e=>e.event==='openTarget entered');
+  assert.ok(entries.length>0,'native departure decisions retained');
+  for(const entry of entries){
+    const click=trace.find(e=>e.event==='native click'&&e.act===entry.act);
+    assert.equal(click?.target.topic,entry.destination.id,'actual native target matches the navigation decision');
+    assert.ok(trace.some(e=>e.act===entry.act&&['openTarget settled','openTarget refused'].includes(e.event)),'navigation decision settled in retained trace');
+    assert.equal(typeof entry.state.hasInFlightSend,'boolean');
+    assert.ok(Array.isArray(entry.state.unconfirmed)&&Array.isArray(entry.state.sessions));
+    assert.equal(typeof entry.state.notice.hidden,'boolean');
+    for(const session of entry.state.sessions)assert.ok(Array.isArray(session.activeSends)&&Array.isArray(session.submissions));
+  }
+  for(const operationId of expectedReceipts)assert.ok(entries.some(e=>e.state.sessions.some(s=>s.submissions.some(i=>i.receipt?.operation_id===operationId&&i.receipt.status==='committed'))),'exact confirmed receipt retained at departure');
+}
+
 export async function departureChecks({check,page,until,facts,view,control,observations,shot}) {
   const ready=(p,id)=>until(async()=>{try{return await p.evaluate(`document.body.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')===${JSON.stringify(id)}`);}catch{return false;}},'ready '+id);
-  const point=async(p,selector)=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'nearest'})`);await p.point(selector);};
+  const point=async(p,selector)=>{
+    await until(()=>p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(selector)});if(all.length!==1)return false;const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0;})()`),'unique rendered departure target '+selector);
+    await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'nearest'})`);await p.point(selector);
+  };
   const choose=(p,id='t2')=>point(p,`#topics a[data-topic-id="${id}"]`);
   const notice=p=>p.evaluate('document.querySelector("#topic-navigation-status").hidden?"":document.querySelector("#topic-navigation-status").textContent');
   const rows=p=>p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending',2);r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,t=db.transaction('editors'),q=t.objectStore('editors').index('editorKey').getAll(${JSON.stringify(JSON.stringify([facts.instance_id,facts.actor,'reply','topic','t1','t1']))});q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error);t.oncomplete=()=>db.close();};})`);
   const write=async(p,text)=>{await point(p,'#inline-writing-body');await p.key('a',4);await p.send('Input.insertText',{text});};
   const setup=()=>control({method:'navigation_topics',topics:[{id:'t2',title:'Design discussion'}]});
+  const observeDeparture=async p=>{p.requireDepartureTrace=true;return p.send('Page.addScriptToEvaluateOnNewDocument',{source:`
+    window.departureDiagnostics=[];
+    window.departureAct=0;window.departureClick=null;
+    window.departureTrace=entry=>{departureDiagnostics.push(entry);console.log('departure-diagnostic',JSON.stringify(entry));};
+    import('/app-session.mjs').then(({EditorRegistry})=>{
+      const original=EditorRegistry.prototype.initializeInline;
+      EditorRegistry.prototype.initializeInline=function(...args){window.departureRegistry=this;return original.apply(this,args);};
+      departureTrace({event:'registry trace installed'});
+    });
+    import('/topic-navigation.mjs').then(({TopicNavigation})=>{const original=TopicNavigation.prototype.openTarget;TopicNavigation.prototype.openTarget=function(...args){
+      const act=departureClick;departureTrace({event:'openTarget entered',act,destination:args[0],state:departureState()});
+      const result=original.apply(this,args);result.then(value=>departureTrace({event:'openTarget settled',act,value,state:departureState()}),error=>departureTrace({event:'openTarget refused',act,error:error.message,state:departureState()}));return result;
+    };departureTrace({event:'navigation trace installed'});});
+    window.departureState=()=>{const r=window.departureRegistry;return {route:location.href,ready:document.body?.dataset.ready,
+      links:[...document.querySelectorAll('#topics a')].map(a=>({id:a.dataset.topicId,href:a.href})),
+      visibleCards:[...document.querySelectorAll('#review-content [data-id]')].map(n=>({id:n.dataset.id,text:n.textContent})),
+      notice:{text:document.querySelector('#topic-navigation-status')?.textContent,hidden:document.querySelector('#topic-navigation-status')?.hidden},
+      hasInFlightSend:r?.hasInFlightSend,unconfirmed:r?.unconfirmedSends.map(({editor,item})=>({key:editor.key,source:editor.sourceRef,id:item.id,status:item.status,receipt:item.receipt})),
+      sessions:r?[...r.sessions.values()].map(s=>({key:s.editor.key,source:s.editor.sourceRef,readOnly:s.editor.openingReadOnly,openingProof:Boolean(s.openingProof),activeSends:[...s.sends.keys()],submissions:s.editor.submissions.map(i=>({id:i.id,status:i.status,receipt:i.receipt,blocked:i.blocked})),attempts:s.attempts.map(a=>({id:a.envelope.operation_id,kind:a.envelope.kind,error:a.error,receipt:a.receipt}))})):[]};};
+    document.addEventListener('click',e=>{const t=e.target.closest('a,button')??e.target;departureClick=performance.timeOrigin+':'+(++departureAct);departureTrace({event:'native click',act:departureClick,target:{tag:t.tagName,text:t.textContent?.slice(0,100),id:t.id,href:t.href,topic:t.dataset.topicId,submission:t.closest('[data-id]')?.dataset.id},state:departureState()});},true);
+    document.addEventListener('DOMContentLoaded',()=>{const n=document.querySelector('#topic-navigation-status');if(n)new MutationObserver(()=>departureTrace({event:'notice mutation',text:n.textContent,hidden:n.hidden,state:departureState()})).observe(n,{subtree:true,childList:true,attributes:true,characterData:true});});
+  `});};
   const exact=async(p,call,body)=>{
     const receipt=await view('operation',{operation_id:call.payload.operation_id});assert.equal(receipt.status,'committed');
     const source=await view('source',{kind:'message',id:receipt.result.message_id});
@@ -19,7 +63,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
   };
 
   await check('navigation correction active prepare publication reload and settled confirmation',async()=>{
-    await setup();const p=await page('departure-active',null,true),body='One exact message before switching';
+    await setup();const p=await page('departure-active',null,true,{beforeNavigate:observeDeparture}),body='One exact message before switching';
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await write(p,body);await p.key('Enter',4);
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held prepare');
@@ -49,7 +93,24 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${item.id}"] h3')?.textContent==='Sent to Theseus'`),'Check confirms original publication');
     await point(p,'#review-close');await choose(p);await ready(p,'t2');await exact(p,held,unknown);
     assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,1,'only the deliberate headless reload opened a prompt');
+    p.departureExpectedReceipts=[sending.payload.operation_id,held.payload.operation_id];
     assert.deepEqual(p.errors,[]);
+  });
+
+  await check('navigation departure instrument waits for the actual rendered target',async()=>{
+    await setup();const hold='departure-rail-not-ready';
+    await control({method:'read_hold',hold_id:hold,name:'workspace_topics',read_class:'foreground',phase:'callback',count:1});
+    let p;
+    try {
+      p=await page('departure-target-readiness',null,true);
+      assert.equal(await p.evaluate('document.querySelectorAll("#topics a[data-topic-id=t2]").length'),0,'the held read really prevents the target from existing');
+      let observed=0,settled=false;const evaluate=p.evaluate;p.evaluate=async expression=>{try{return await evaluate(expression);}finally{observed++;}};
+      const selecting=choose(p).then(()=>{settled=true;},error=>{settled=true;throw error;});selecting.catch(()=>{});
+      await until(()=>observed>0,'target observation attempted');
+      assert.equal(settled,false,'the helper must wait for its absent target instead of attempting a native click');
+      await control({method:'read_release',hold_id:hold});await selecting;await ready(p,'t2');
+      assert.deepEqual(p.errors,[]);assert.equal(p.calls.some(c=>c.payload?.kind),false);
+    }finally{await control({method:'read_release',hold_id:hold});}
   });
 
   await check('navigation correction blocked before prepare informed departure and retained return',async()=>{

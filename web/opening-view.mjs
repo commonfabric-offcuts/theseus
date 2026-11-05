@@ -54,7 +54,6 @@ export class OpeningComposer {
   }
   async check(){
     await this.registry.checkConfirmation(this.editor);
-    for(const row of this.registry.pending(this.editor).items)if(!this.editor.submissions.some(item=>item.id===row.id&&!item.serverObserved))await this.registry.checkPending(this.editor,row.id);
     if(this.confirmationFailed){this.confirming=false;this.confirmationFailed=false;}
     this.paint();
   }
@@ -62,8 +61,8 @@ export class OpeningComposer {
     const e=this.editor,metadata=this.metadata(),locked=this.locked();
     if(this.title.value!==(metadata.title??''))this.title.value=metadata.title??'';
     this.title.readOnly=locked;this.people.paint();
-    this.localState.textContent=!this.presentation.writable?'Open in another tab — this opening is read-only':e.openingLocked?
-      'This opening is frozen. Review its writing and confirmation below.':'Private opening · saved writing does not create a topic until you Send.';
+    this.localState.textContent=e.authorityRecovery?'Runtime changed — this opening is kept read-only without rebinding. Review versions to inspect writing kept on this device.':!this.presentation.writable?'Open in another tab — this opening is read-only':e.openingRecovery?.message??(e.openingLocked?
+      'This opening is frozen. Review its writing and confirmation below.':'Private opening · saved writing does not create a topic until you Send.');
     this.composer?.paintStatus();
     if(this.composer){
       this.composer.field.hidden=Boolean(e.openingLocked&&!e.draft.body);
@@ -72,7 +71,7 @@ export class OpeningComposer {
     this.later.disabled=this.registry.hasInFlightSend;
     const local=new Map(e.submissions.map(item=>[item.id,item]));
     const entries=[...local.values(),...this.registry.pending(e).items.filter(item=>!local.has(item.id))];
-    const names={preparing:'Preparing — writing kept',prepared:'Confirmation unknown',confirmed:'Topic created',refused:'Not sent — writing kept',unknown:'Confirmation unknown',committed:'Topic created',rejected:'Not sent — writing kept'};
+    const names={preparing:'Preparation awaiting confirmation',prepared:'Preparation confirmed; publication not confirmed',confirmed:'Topic created',refused:'Recorded refusal — writing kept',unknown:'Preparation confirmed; publication not confirmed',committed:'Topic created',rejected:'Recorded refusal — writing kept'};
     for(const item of entries){
       let card=this.cards.get(item.id);
       if(!card){
@@ -89,10 +88,14 @@ export class OpeningComposer {
         card={section,heading,body,reason,read,check,edit,open};this.cards.set(item.id,card);
       }
       const status=item.status??item.send_status,full=local.get(item.id),receipt=full?.receipt??this.registry.pendingReceipts.get(JSON.stringify([e.key,item.id,item.send_operation_id]));
-      card.heading.textContent=names[status]??'Confirmation unknown';card.body.textContent=full?.snapshot.body??'';card.body.hidden=!full;
-      card.reason.textContent=this.registry.pendingReason(e,item)??'';card.reason.hidden=!card.reason.textContent;
+      card.heading.textContent=status==='preparing'&&item.blocked?.phase==='draft.save'?'Save awaiting confirmation':names[status]??'Confirmation unknown';
+      card.body.textContent=full?.snapshot.body??'';card.body.hidden=!full;
+      const reason=this.registry.pendingReason(e,item)??(status==='preparing'?item.blocked?.message:null)??'';
+      const active=this.registry.hasInFlightSend||this.registry.sessionFor(e).sends.has(item.id);
+      const limit=!active&&['prepared','unknown'].includes(status)?'Continuing this interrupted send is unavailable in this version. Check reads its original confirmation; it does not send.':'';
+      card.reason.textContent=[reason,limit].filter(Boolean).join(' ');card.reason.hidden=!card.reason.textContent;
       card.read.hidden=Boolean(full);card.check.hidden=status==='confirmed'||status==='committed';
-      card.edit.hidden=!(full&&!full.openingCorrected&&!full.detached&&receipt?.kind==='topic.create_and_send'&&receipt.status==='rejected'&&['INVALID_RECIPIENT','TOO_MANY_PARTICIPANTS'].includes(receipt.error?.code));
+      card.edit.hidden=!(full&&!full.detached&&e.openingRecovery?.canRestore(full)&&receipt?.kind==='topic.create_and_send'&&receipt.status==='rejected'&&['INVALID_RECIPIENT','TOO_MANY_PARTICIPANTS'].includes(receipt.error?.code));
       card.edit.id=card.edit.hidden?'':'opening-edit';
       card.edit.disabled=!this.presentation.writable||this.registry.hasInFlightSend;
       card.open.hidden=!(full?.status==='confirmed'&&full.receipt?.result?.topic?.id===e.context.topicId);
@@ -104,5 +107,7 @@ export class OpeningComposer {
     }
     this.history.querySelector('[data-more]')?.remove();
     if(this.registry.pending(e).next_cursor!==null){const more=button('More submitted openings',()=>this.run(()=>this.registry.morePending(e)));more.dataset.more='';this.history.append(more);}
+    this.history.querySelector('[data-history-retry]')?.remove();
+    if(e.openingRecovery?.mode==='error'){const retry=button('Retry opening history',()=>this.run(()=>this.check()));retry.dataset.historyRetry='';this.history.append(retry);}
   }
 }

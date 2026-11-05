@@ -1584,6 +1584,41 @@ async function openingFixture(t, participants = ['missing-agent']) {
   const state=()=>f.api.view('editor_state',{source_ref:sourceRef,topic_id:'reserved-topic'});
   return {...f,editor,session,state};
 }
+
+test('saved opening B reopens after reload from canonical refusal and successor without a local correction flag',async t=>{
+  const f=await openingFixture(t);await f.session.send();const a=f.editor.submissions[0];
+  await f.session.correctOpening(a,(await f.state()).draft,f.editor.localVersion);
+  f.editor.editOpening({participants:[],title:'My revised title'});f.editor.edit({body:'My later B, not the refused A'});await f.session.save();
+  const saved=copy((await f.state()).draft),before=f.calls.length;
+  const registry=new EditorRegistry({api:f.transport,bootstrap:{instance_id:'ux-fixture',actor:'fixture-person',authority:f.authority},journal:journal()});t.after(()=>registry.dispose());
+  const p=await registry.initializeOpening({kind:'opening',id:'correctable-opening',workspace:'w1',topic:'reserved-topic',instanceId:'ux-fixture',actor:'fixture-person',authority:f.pin(),sourceRef:f.editor.sourceRef},{id:'w1',title:'Outcome'},{writable:true});
+  const e=p.editors.reply;
+  assert.equal(e.openingLocked,false,'normal one-attempt reload admits the saved B in one action');
+  assert.equal(e.draft.body,saved.body);assert.deepEqual(e.draft.opening,saved.opening);
+  assert.equal(e.draft.generation,saved.generation);assert.equal(f.calls.length,before,'reload only reads');
+  await registry.send(e,{presentation:p,stay:true});
+  const messages=await f.api.view('topic_messages',{topic_id:'reserved-topic'});
+  assert.equal(messages.items.length,1);assert.equal(messages.items[0].body,saved.body);
+});
+
+test('competing opening reads and departure cannot write any recovery row',async t=>{
+  const f=await openingFixture(t);f.editor.openingReadOnly=true;
+  let writes=0;f.storage.backend.put=async()=>{writes++;throw Error('readonly recovery write');};
+  await f.session.reconcile();await f.session.persist();
+  assert.equal(writes,0,'read-only must not even attempt the journal write');
+});
+
+test('opening initialization parks authority drift with saved writing visible and no journal mutation',async t=>{
+  const f=await openingFixture(t);await f.session.save();const originalPin=f.pin(),saved=copy((await f.state()).draft);
+  await f.advance({epoch:'new-opening-epoch',complete:true});
+  let writes=0;const storage=journal();storage.backend.put=async()=>{writes++;throw Error('parked recovery write');};
+  const registry=new EditorRegistry({api:f.transport,bootstrap:{instance_id:'ux-fixture',actor:'fixture-person',authority:f.authority},journal:storage});t.after(()=>registry.dispose());
+  const p=await registry.initializeOpening({kind:'opening',id:'correctable-opening',workspace:'w1',topic:'reserved-topic',instanceId:'ux-fixture',actor:'fixture-person',authority:originalPin,sourceRef:f.editor.sourceRef},{id:'w1',title:'Outcome'},{writable:false});
+  assert.equal(p.editors.reply.draft.body,saved.body);assert.deepEqual(p.editors.reply.openingBinding,originalPin);
+  assert.equal(p.editors.reply.authorityRecovery.phase,'parked');assert.equal(p.writable,false);
+  await registry.checkConfirmation(p.editors.reply);await registry.keepLocal(p);assert.equal(writes,0);
+});
+
 test('opening participant refusal restores exact A for explicit editing and one fresh same-O/T publication',async t=>{
   const f=await openingFixture(t);await f.session.send();
   const original=f.editor.submissions[0],receipt=copy(original.receipt);
@@ -1674,4 +1709,80 @@ test('private opening cannot use ordinary runtime recovery to rebind its authori
   const count=f.calls.length;
   await assert.rejects(f.session.resumePrivate(f.session.recovery,f.editor.localVersion),/opening|rebind/i);
   assert.deepEqual(f.session.authority,pin);assert.deepEqual(f.editor.draft,before);assert.equal(f.calls.length,count);
+});
+
+async function canonicalOpening(f, serial, {publish=true,participants=['missing-agent']}={}) {
+  const prior=(await f.state()).draft, source=f.editor.sourceRef, topic=f.editor.context.topicId;
+  const save=await f.api.command(f.command('draft.save',`canonical-save-${serial}`,
+    {source_ref:source,topic_id:topic,generation:prior.generation,body:`Canonical opening ${serial}`,opening:{workspace_id:'w1',title:`Title ${serial}`,participants}},
+    {draft_id:prior.id},{draft_revision:prior.revision}));assert.equal(save.status,'committed');
+  const prepared=await f.api.command(f.command('submission.prepare',`canonical-prepare-${serial}`,
+    {draft_id:prior.id,submission_id:`canonical-${serial}`,send_operation_id:`canonical-send-${serial}`},{topic_id:topic},{draft_revision:save.result.draft_revision}));
+  assert.equal(prepared.status,'committed');
+  if(publish)await f.api.command(f.command('topic.create_and_send',`canonical-send-${serial}`,{submission_id:`canonical-${serial}`},{topic_id:topic}));
+  return (await f.state()).draft;
+}
+
+async function reopenOpening(t,f,api=f.transport) {
+  const registry=new EditorRegistry({api,bootstrap:{instance_id:'ux-fixture',actor:'fixture-person',authority:f.authority},journal:journal()});t.after(()=>registry.dispose());
+  const p=await registry.initializeOpening({kind:'opening',id:'correctable-opening',workspace:'w1',topic:'reserved-topic',instanceId:'ux-fixture',actor:'fixture-person',authority:f.pin(),sourceRef:f.editor.sourceRef},
+    {id:'w1',title:'Outcome'},{writable:true});
+  return {registry,p,editor:p.editors.reply,session:registry.sessionFor(p.editors.reply)};
+}
+
+test('old refused A cannot be restored after a newer canonical preparation even into its empty successor',async t=>{
+  const f=await openingFixture(t);await f.session.send();const a=f.editor.submissions[0];
+  const remote=await canonicalOpening(f,1,{publish:false});
+  f.editor.draft={...copy(remote),caret:{start:0,end:0}};f.editor.ackVersion=f.editor.localVersion;
+  const before=copy(f.editor.draft),count=f.calls.length;
+  await assert.rejects(f.session.correctOpening(a,remote,f.editor.localVersion),/latest|participant|confirmation|review/i);
+  assert.deepEqual(f.editor.draft,before);assert.equal(f.calls.length,count);assert.equal(a.openingCorrected,undefined);
+});
+
+test('opening history advances one bounded page and admits only the latest exact successor',async t=>{
+  const f=await openingFixture(t);await f.session.send();
+  for(let n=1;n<=21;n++)await canonicalOpening(f,n);
+  const reads=[],api={...f.transport,view:async(name,args)=>{const answer=await f.transport.view(name,args);reads.push({name,answer});return answer;}};
+  const g=await reopenOpening(t,f,api),proof=g.session.openingProof;
+  assert.equal(proof.mode,'incomplete');assert.equal(g.editor.openingLocked,true);assert.equal(proof.items.length,20);
+  assert.equal(reads.filter(r=>r.name==='submissions').length,0,'initialization never drains ascending history');
+  reads.length=0;await g.registry.morePending(g.editor);
+  assert.equal(proof.mode,'empty');assert.equal(proof.items.length,22);assert.equal(proof.detail.id,'canonical-21');
+  assert.equal(reads.length,4);assert.equal(reads[0].name,'submissions');
+  const summaries=reads.reduce((n,r)=>n+(r.answer.submissions?.items.length??(r.name==='submissions'?r.answer.items.length:0)),0);assert.ok(summaries<=40);
+  assert.equal(proof.next.generation,g.editor.draft.generation);
+  assert.equal(proof.canRestore({id:f.editor.submissions[0].id}),false);
+});
+
+test('opening evidence failure stays locked and explicit Retry makes no command',async t=>{
+  const f=await openingFixture(t);await f.session.send();let fail=true;
+  const api={...f.transport,view:async(name,args)=>{if(fail&&name==='submission')throw Error('Latest detail unavailable');return f.transport.view(name,args);}};
+  const count=f.calls.length,g=await reopenOpening(t,f,api);
+  assert.equal(g.session.openingProof.mode,'error');assert.equal(g.editor.openingLocked,true);assert.match(g.session.openingProof.message,/Latest detail unavailable/);
+  fail=false;await g.registry.checkConfirmation(g.editor);assert.equal(g.session.openingProof.mode,'empty');assert.equal(f.calls.length,count);
+});
+
+for(const [label,alter] of [
+  ['wrong successor generation',a=>{a.result.next_draft.generation='unrelated';}],
+  ['wrong prepared draft',a=>{a.result.draft_id='wrong';}],
+  ['wrong reserved send',a=>{a.result.send_operation_id='wrong';}],
+  ['unknown prepare receipt',a=>{a.status='unknown';a.recorded=false;}],
+])test(`opening refuses ${label} without restoring A`,async t=>{
+  const f=await openingFixture(t);await f.session.send();const a=f.editor.submissions[0];
+  const api={...f.transport,view:async(name,args)=>{const answer=copy(await f.transport.view(name,args));if(name==='operation'&&args.operation_id===a.prepareOperationId)alter(answer);return answer;}};
+  const g=await reopenOpening(t,f,api);assert.equal(g.editor.openingLocked,true);assert.equal(g.session.openingProof.canRestore(a),false);
+});
+
+test('opening final draft change invalidates history admission without replacing local writing',async t=>{
+  const f=await openingFixture(t);await f.session.send();let states=0;
+  const api={...f.transport,view:async(name,args)=>{const answer=copy(await f.transport.view(name,args));if(name==='editor_state'&&++states===2)answer.draft.revision++;return answer;}};
+  const g=await reopenOpening(t,f,api);assert.equal(g.session.openingProof.mode,'error');assert.equal(g.editor.openingLocked,true);
+  assert.match(g.session.openingProof.message,/changed while reading/);assert.equal(g.editor.draft.body,'');
+});
+
+test('a later saved opening with missing metadata stays visible and locked, never replaced by A',async t=>{
+  const f=await openingFixture(t);await f.session.send();const prior=(await f.state()).draft;
+  const saved=await f.api.command(f.command('draft.save','plain-B',{source_ref:f.editor.sourceRef,topic_id:f.editor.context.topicId,generation:prior.generation,body:'My B without opening metadata'},
+    {draft_id:prior.id},{draft_revision:prior.revision}));assert.equal(saved.status,'committed');
+  const g=await reopenOpening(t,f);assert.equal(g.editor.draft.body,'My B without opening metadata');assert.equal(g.editor.openingLocked,true);assert.equal(g.session.openingProof.canRestore(f.editor.submissions[0]),false);
 });

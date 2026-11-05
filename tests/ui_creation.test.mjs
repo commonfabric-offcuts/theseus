@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { OutcomeCreation, retainOpening } from '../web/creation.mjs';
+import { CreateOutcomeView } from '../web/creation-view.mjs';
+import { dom } from './fixtures/ui_dom.mjs';
 
 const copy=structuredClone;
 const bootstrap={instance_id:'fixture',actor:'person',authority:{authority_id:'authority',authority_epoch:'epoch',continuity:'initial'},limits:{body_utf8_bytes:1024,workspace_members:4,http_envelope_bytes:2048}};
@@ -19,6 +21,27 @@ function fixture() {
   const create=()=>new OutcomeCreation({api,bootstrap:copy(bootstrap),journal,intentId:'intent',id:()=>`id-${++serial}`});
   return {rows,calls,reads,journal,api,receipt,create,setAnswer:fn=>answer=fn,fail:()=>fail=true,deny:()=>owned=false};
 }
+test('creation view adopts title purpose and team together without replacing local typing on paint',async t=>{
+  const previous=globalThis.document;globalThis.document=dom();t.after(()=>{globalThis.document=previous;});
+  const f=fixture(),c=f.create();await c.load();await c.edit({title:'Old title',purpose:'Old purpose'});
+  const v=new CreateOutcomeView({host:document.body,creation:c,open(){},confirmed(){}});
+  c.writable=false;const next={...copy(c.row),form:{title:'New title',purpose:'New purpose',team:['new-agent']}};f.rows.set('intent',next);
+  await v.run(()=>c.refresh());
+  assert.equal(v.title.value,'New title');assert.equal(v.purpose.value,'New purpose');assert.equal(v.create.disabled,false);
+  assert.equal(v.team.chips.children[1].textContent,'new-agent');
+  v.title.value='My typing';v.paint();assert.equal(v.title.value,'My typing','ordinary paint must not overwrite an active input');
+});
+test('creation view paints current refusal then clears success and preserves a later read error',async t=>{
+  const previous=globalThis.document;globalThis.document=dom();t.after(()=>{globalThis.document=previous;});
+  const f=fixture(),c=f.create();await c.load();await c.edit({title:'Kept'});
+  const v=new CreateOutcomeView({host:document.body,creation:c,open(){},confirmed(){}});
+  f.setAnswer(e=>({...f.receipt(e),recorded:false,status:'rejected',error:{code:'BUSY',message:'Original transport refusal'}}));
+  await v.run(()=>c.create());assert.equal(v.notice.hidden,false);assert.match(v.notice.textContent,/Original transport refusal/);
+  f.setAnswer(()=>{throw Error('Current read failed');});await v.run(()=>c.check());
+  assert.equal(v.notice.hidden,false);assert.equal(v.notice.textContent,'Current read failed');
+  f.setAnswer(f.receipt);await v.run(()=>c.check());assert.equal(v.notice.hidden,true);assert.equal(v.notice.textContent,'');
+  assert.equal(v.saveState.textContent,'Outcome created');
+});
 test('creation persists before dispatch, shares the pending promise and freezes owner and exact form',async()=>{
   const f=fixture(),c=f.create();await c.load();await c.edit({title:'Real outcome',purpose:'Its purpose',team:['agent']});
   const gate=defer();f.setAnswer(()=>gate.promise);
@@ -123,4 +146,44 @@ test('contradictory unknown cannot erase a verified terminal creation receipt',a
   const f=fixture(),c=f.create();await c.load();await c.edit({title:'Kept'});await c.create();const before=copy(c.row.receipt);
   f.setAnswer(e=>({instance_id:'fixture',operation_id:e.operation_id,status:'unknown',recorded:false}));
   await assert.rejects(c.check(),/recorded|confirmation/i);assert.equal(c.row.phase,'confirmed');assert.deepEqual(c.row.receipt,before);
+});
+
+test('creation ownership acquisition coalesces and cannot persist or publish the previously displayed row',async()=>{
+  const f=fixture(),c=f.create();await c.load();await c.edit({title:'Old title',purpose:'Old purpose'});
+  c.writable=false;
+  const newer={...copy(c.row),form:{title:'New title',purpose:'New purpose',team:['agent']}};
+  f.rows.set('intent',copy(newer));const reading=defer(),release=defer();let reads=0,writes=0;
+  f.journal.get=async()=>{reads++;reading.resolve();await release.promise;return copy(newer);};
+  f.journal.put=async row=>{writes++;f.rows.set(row.id,copy(row));};
+  const first=c.refresh();await reading.promise;
+  try {
+    assert.equal(c.readOnly,true,'ownership cannot become writable before row adoption');
+    const again=c.refresh();assert.equal(again,first,'Refresh joins the same acquisition');
+    await assert.rejects(c.edit({title:'stale overwrite'}),/busy|locked|read.only|loading/i);
+    await assert.rejects(c.persist(),/busy|locked|read.only|loading/i);
+    assert.equal(c.create(),first,'Create during acquisition joins the busy action without queuing a public act');
+    assert.equal(f.calls.length,0,'Create during acquisition cannot queue a public act');
+    assert.equal(writes,0);assert.equal(reads,1);
+  } finally {release.resolve();await first;}
+  assert.deepEqual(c.row.form,newer.form);assert.equal(c.readOnly,false);
+  assert.deepEqual(f.rows.get('intent').form,newer.form);
+});
+
+test('creation settled results and new edits clear obsolete transport reasons',async()=>{
+  const f=fixture(),c=f.create();await c.load();await c.edit({title:'Kept'});
+  f.setAnswer(()=>{throw Error('Original connection lost');});await c.create();assert.match(c.notice,/Original connection/);
+  f.setAnswer(f.receipt);await c.check();assert.equal(c.notice,null);
+  const g=fixture(),d=g.create();await d.load();await d.edit({title:'Kept'});
+  g.setAnswer(()=>{throw Error('Old failure');});await d.create();
+  g.setAnswer(e=>({...g.receipt(e),status:'rejected',error:{code:'INVALID_RECIPIENT',message:'Current refusal'}}));
+  await d.check();await d.edit({team:[]});assert.equal(d.notice,null);assert.equal(d.row.phase,'draft');
+});
+
+test('retained opening authority drift parks its original identity without rewriting the pointer',async()=>{
+  const f=fixture(),args={journal:f.journal,bootstrap,workspace:'w',opening:'o',topic:'t'};
+  const first=await retainOpening(args),before=copy(f.rows.get('o'));let puts=0;
+  f.journal.put=async()=>{puts++;throw Error('parked pointer write');};
+  const next=await retainOpening({...args,bootstrap:{...bootstrap,authority:{...bootstrap.authority,authority_epoch:'changed'}}});
+  assert.equal(next.parked,true);assert.equal(next.writable,false);assert.deepEqual(next.row,first.row);
+  assert.equal(puts,0);assert.deepEqual(f.rows.get('o'),before);
 });

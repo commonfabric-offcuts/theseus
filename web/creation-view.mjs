@@ -38,8 +38,8 @@ export class ActorChoices {
 }
 
 export class CreateOutcomeView {
-  constructor({host,creation,open,confirmed}) {
-    Object.assign(this,{host,creation,open,confirmed});host.classList.add('creation-form');host.replaceChildren();
+  constructor({host,creation,open,confirmed,refresh}) {
+    Object.assign(this,{host,creation,open,confirmed,refresh});host.classList.add('creation-form');host.replaceChildren();
     protectTouchBounds(host);
     this.notice=el('p');this.notice.className='notice';this.notice.setAttribute('role','status');this.notice.hidden=true;
     const field=(label,tag,id)=>{const container=el('label',label),input=el(tag);input.id=id;container.append(input);host.append(container);return input;};
@@ -62,17 +62,19 @@ export class CreateOutcomeView {
     host.append(this.notice,this.saveState,actions);creation.changed=()=>this.paint();this.paint();this.title.focus();
   }
   message(text){this.notice.textContent=text;this.notice.hidden=!text;}
-  async run(action){try{this.message('');await action();if(this.creation.row.phase==='confirmed')await this.confirmed(this.creation.row);}catch(error){this.message(error.message);}finally{this.paint();}}
+  async run(action){try{this.error=null;this.message('');await action();if(this.creation.row.phase==='confirmed')await this.confirmed(this.creation.row);}catch(error){this.error=error.message;}finally{this.paint();}}
   paint(){
     const focused=document.activeElement;
-    const c=this.creation,phase=c.row.phase;this.title.readOnly=this.purpose.readOnly=c.readOnly;this.team.paint();
+    const c=this.creation,phase=c.row.phase;
+    if(this.adoptedRow!==c.row){this.title.value=c.row.form.title;this.purpose.value=c.row.form.purpose;this.adoptedRow=c.row;}
+    this.title.readOnly=this.purpose.readOnly=c.readOnly;this.team.paint();
+    if(this.refresh)this.refresh.disabled=Boolean(c.pending);
     this.create.hidden=Boolean(c.row.envelope);this.create.disabled=c.readOnly;
     this.check.hidden=!c.row.envelope||phase==='confirmed';this.check.disabled=!c.writable||Boolean(c.pending)||c.parked;
     this.retry.hidden=!c.retryAllowed;this.retry.disabled=!c.writable||Boolean(c.pending)||c.parked;
     this.start.hidden=phase!=='confirmed';this.later.disabled=Boolean(c.pending);
     if([this.create,this.retry,this.check].includes(focused)&&focused.hidden)(phase==='confirmed'?this.start:phase==='rejected'?this.title:this.check).focus();
-    if(c.notice)this.message(c.notice);
-    if(phase==='rejected')this.message(c.row.receipt.error.message+' Edit the fields to make a new creation request.');
+    this.message(this.error??c.notice??(phase==='rejected'?c.row.receipt.error.message+' Edit the fields to make a new creation request.':''));
     this.saveState.textContent=c.parked?'Runtime changed — this act is kept without rebinding':!c.writable?'Open in another tab — read-only':c.storageError?'Keep this page open — '+c.storageError:
       c.pending?'Checking creation…':phase==='confirmed'?'Outcome created':phase==='uncertain'?'Creation not confirmed — the original request is kept on this browser':c.dirty?'Saving on this browser…':'Form saved on this browser';
   }

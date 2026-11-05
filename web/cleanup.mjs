@@ -146,7 +146,7 @@ export class RecoveryCleanup {
     this.changed(session.editor);
   }
   async retireOwn(session) {
-    if (this.stopped()) return false;
+    if (this.stopped() || session.editor.openingReadOnly) return false;
     try {
       let row = await this.journal.own(session.editor.key), projected;
       if (row?.snapshot.format === 2) {
@@ -187,6 +187,7 @@ export class RecoveryCleanup {
     return next;
   }
   candidates(session, page) {
+    if(session.editor.openingReadOnly)return Promise.resolve(page);
     return this.enqueue(session.editor.key, async () => {
       const retained = [];
       for (const row of page.items) {
