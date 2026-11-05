@@ -86,6 +86,10 @@ export class EditorRegistry {
           remote.source_ref?.kind !== sourceRef.kind || remote.source_ref?.id !== sourceRef.id)) throw Error('The saved writing does not match this source.');
     }
     if (state.draft && !state.draft.generation) throw Error('The saved draft generation is missing.');
+    // A mark is the person's own reminder on a message; a server without marks sends none.
+    const mark = state.mark;
+    if (mark !== undefined && mark !== null && !(typeof mark.marked === 'boolean' && Number.isSafeInteger(mark.mark_revision) &&
+        mark.mark_revision >= 0 && mark.marked === (mark.mark_revision % 2 === 1))) throw Error('The mark could not be confirmed.');
     this.validatePage(state.submissions);
   }
 
@@ -177,13 +181,20 @@ export class EditorRegistry {
     const source = sourceUnavailable ? { instance_id: this.bootstrap.instance_id, source_ref: copy(sourceRef),
       topic_id: topicId ?? null, title: 'Source unavailable', body: '', attachments: [] } : sourceAnswer;
     const presentation = { token, source, sourceUnavailable, destinationAvailable: state.destination_available,
-      editors: { reply, note }, mode: 'reply', opener };
+      editors: { reply, note }, mode: 'reply', opener, mark: state.mark ?? null };
     this.pendingOpen = null;
     this.current = presentation; this.present(presentation); return presentation;
     } catch (error) {
       if (token !== this.generation || this.disposed) return null;
       throw error;
     } finally { foreground.release(); if (this.pendingOpen === token) this.pendingOpen = null; this.activity(); }
+  }
+
+  // Escape before the Reader shows, or a page that is leaving: the open under
+  // way is dropped, as a newer open would drop it.
+  cancelOpen() {
+    if (!this.pendingOpen) return false;
+    ++this.generation; this.pendingOpen = null; this.activity(); return true;
   }
 
   persistLocal(editor) {

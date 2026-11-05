@@ -348,7 +348,8 @@ def main():
 
         def agent_message(request):
             operation = request["operation_id"]
-            sender = "fixture-notebook-agent"
+            # The person may write one too, so their own message is drawn.
+            sender = actor if request.get("sender") == "person" else "fixture-notebook-agent"
             topic_id = request.get("topic_id", "t1")
             if request.get("join"):
                 # The person brings the agent into a topic of theirs first.
@@ -400,11 +401,24 @@ def main():
                             if freshness:
                                 answer.update({"messages": db.execute("SELECT count(*) FROM messages").fetchone()[0],
                                                "operations": db.execute("SELECT count(*) FROM operations").fetchone()[0],
-                                               "acknowledged_deliveries": db.execute("SELECT count(*) FROM deliveries WHERE state='acknowledged'").fetchone()[0]})
+                                               "acknowledged_deliveries": db.execute("SELECT count(*) FROM deliveries WHERE state='acknowledged'").fetchone()[0],
+                                               "marked": db.execute("SELECT count(*) FROM message_marks WHERE actor_id=? AND revision%2=1", (actor,)).fetchone()[0],
+                                               "mark_operations": db.execute("SELECT count(*) FROM operations WHERE kind='message.mark'").fetchone()[0]})
                                 with controls.lock:
                                     answer.update(http_commands=controls.http_commands,
                                                   http_delivery_acks=controls.http_delivery_acks,
                                                   http_media_publications=controls.http_media_publications)
+                    elif request["method"] == "mark":
+                        # The person marks (or clears) messages elsewhere, as
+                        # another tab or device would, each at its current revision.
+                        answer = []
+                        for message_id in request["message_ids"]:
+                            with sqlite3.connect(str(path)) as db:
+                                row = db.execute("SELECT revision FROM message_marks WHERE actor_id=? AND message_id=?",
+                                                 (actor, message_id)).fetchone()
+                            answer.append(command("message.mark", "%s-%s" % (request["operation_id"], message_id),
+                                                  {"marked": request["marked"]}, {"message_id": message_id},
+                                                  {"mark_revision": row[0] if row else 0})["result"])
                     elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_delay", "read_fault", "admission_events"):
                         answer = controls.control(request, server)
                     elif freshness and request["method"] == "navigation_topics":
