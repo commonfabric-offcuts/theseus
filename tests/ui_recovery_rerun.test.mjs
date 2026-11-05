@@ -168,6 +168,35 @@ test('a later check of a deferred row answers for it, so it is not checked again
   assert.deepEqual(rechecks, [{ session, ids: ['r2'], kept: [] }]);
 });
 
+test('a later retirement of the own copy answers for its deferral, so it is not retired again', async () => {
+  let answer = busy;
+  const { cleanup, session, calls } = fixture({ check: cleanup => answer(cleanup) });
+  cleanup.request(session); await cleanup.idle(key);
+  answer = cleanup => cleanup.read(async () => null);
+  cleanup.request(session); await cleanup.idle(key);
+  const fg = cleanup.foreground(); fg.release(); await tick();
+  assert.deepEqual(calls, ['own', 'own']);
+});
+
+test('a row answered after a foreground deferral leaves a later busy deferral waiting for the next release', async () => {
+  const hold = deferred(), entered = deferred(), seen = new Set();
+  const { cleanup, session, rechecks, calls } = fixture({ check: (cleanup, row) => {
+    const first = !seen.has(row.id); seen.add(row.id);
+    if (row.id === 'r2' && first) return busy(cleanup);
+    return cleanup.read(async () => { if (row.id === 'r1' && first) { entered.resolve(); await hold.promise; } return null; });
+  } });
+  const page = cleanup.candidates(session, { items: [imageRow], nextCursor: null });
+  await entered.promise;
+  const fg = cleanup.foreground();
+  // Queued behind the held page: it answers for r1 and finds the server busy for r2.
+  const next = cleanup.candidates(session, { items: [imageRow, { ...imageRow, id: 'r2' }], nextCursor: null });
+  fg.release();
+  hold.resolve(); await page; await next; await tick();
+  assert.deepEqual([calls, rechecks], [['r1', 'r1', 'r2'], []]);
+  cleanup.foreground().release(); await tick();
+  assert.deepEqual(rechecks, [{ session, ids: ['r2'], kept: [] }]);
+});
+
 test('no recheck runs between discovery reading its page and checking it', async () => {
   const { hold, entered, check } = held();
   const { cleanup, session, rechecks, calls } = fixture({ check });

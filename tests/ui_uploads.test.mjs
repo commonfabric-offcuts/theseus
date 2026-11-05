@@ -404,9 +404,14 @@ test('a recheck replaces only its rows among saved image copies and keeps what o
   assert.deepEqual([...stale.imageCopies.keys()], ['u2', 'r2'], 'an editor the registry does not hold is left as it is');
   assert.equal(await f.registry.applyRecheck(f.editor, [locked.id], { items: [] }), true);
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2']);
+  assert.equal(await f.registry.applyRecheck(f.editor, [kept.id], { items: [kept] }), true);
+  assert.deepEqual([...f.editor.imageCopies.keys()], ['u2'], 'a rechecked row that is still retained stays');
   assert.throws(() => prepare(f.editor), /saved image/i);
   await f.registry.waiveUnreadable(f.editor, kept);
   prepare(f.editor);
+  f.registry.dispose();
+  assert.equal(await f.registry.applyRecheck(f.editor, [kept.id], { items: [] }), false);
+  assert.deepEqual([...f.editor.imageCopies.keys()], ['u2'], 'a disposed registry changes nothing');
 });
 test('continuation and locked saved-image copies are barriers even without visible file refs', async t => {
   const f = await fixture(t); f.editor.edit({ body: 'Otherwise sendable' });
