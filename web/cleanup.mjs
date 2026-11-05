@@ -60,8 +60,52 @@ export class RecoveryCleanup {
     this.readTail = Promise.resolve(); this.activeRead = null; this.foregroundCount = 0;
     this.partitioned = supportsAdmission(bootstrap); this.readEpoch = 0; this.readController = null;
     this.foregroundListeners = new Set();
+    // The row IDs (and own copy) whose check a read deferred, per editor and
+    // bound to the session that deferred them. They are checked again once no
+    // foreground read remains and the editor's queue has drained; rows deferred
+    // only by a busy server wait for the next foreground release. A later check
+    // of a row answers for it, and a session that is no longer registered
+    // leaves nothing to check.
+    this.waiting = new Map(); this.resumeListeners = new Set();
   }
   deferred(cause) { return Object.assign(Error('Background reading is deferred; the recovery copy is retained.'), { code: 'CLEANUP_DEFERRED', ...(cause ? { cause } : {}) }); }
+  defer(session, error, row) {
+    const key = session.editor.key, held = this.waiting.get(key);
+    const entry = held?.session === session ? held : { session, ids: new Set(), own: false, ready: false };
+    if (row) entry.ids.add(row.id); else entry.own = true;
+    entry.ready ||= !error.cause;
+    this.waiting.set(key, entry);
+  }
+  checking(session, rowId) {
+    const key = session.editor.key, entry = this.waiting.get(key);
+    if (!entry) return;
+    if (rowId === undefined) entry.own = false; else entry.ids.delete(rowId);
+    if (!entry.own && !entry.ids.size) this.waiting.delete(key);
+  }
+  // A recheck of a stopped cleanup does nothing, so only foreground reads hold this.
+  resume() {
+    if (this.foregroundCount) return;
+    for (const [key, entry] of [...this.waiting]) {
+      if (entry.session.registered?.() === false) { this.waiting.delete(key); continue; }
+      if (!entry.ready || this.queues.has(key)) continue;
+      this.waiting.delete(key);
+      this.enqueue(key, () => this.recheck(entry)).catch(() => {});
+    }
+  }
+  // Only the deferred rows are checked again, as the journal holds them now: a
+  // row that changed is checked at its current stamp, and one that left the
+  // journal is absent from the page. Listeners patch what the editor shows for
+  // exactly those IDs inside this task, leaving every loaded page in place.
+  async recheck({ session, ids, own }) {
+    if (own) await this.retireOwn(session);
+    if (!ids.size || this.stopped()) return;
+    let items;
+    try { items = await this.journal.current(session.editor.key, [...ids]); } catch (error) { this.report(session, error); return; }
+    const page = await this.check(session, { items, nextCursor: null });
+    for (const listener of this.resumeListeners) {
+      try { listener(session, [...ids], page); } catch (error) { this.report(session, error); }
+    }
+  }
   read(operation) {
     if (this.foregroundCount) return Promise.reject(this.deferred());
     const epoch = this.readEpoch;
@@ -98,8 +142,8 @@ export class RecoveryCleanup {
       for (const listener of this.foregroundListeners) listener();
     }
     const deadline = Date.now() + this.runtime.readTimeoutMs;
-    let released = false, finished = true, counted = true;
-    const releaseCount = () => { if (released && finished && counted) { counted = false; --this.foregroundCount; } };
+    let released = false, inFlight = 0, counted = true;
+    const releaseCount = () => { if (released && !inFlight && counted) { counted = false; if (!--this.foregroundCount) { for (const entry of this.waiting.values()) entry.ready = true; this.resume(); } } };
     const bounded = async (promise, controller = null) => {
       const remaining = deadline - Date.now();
       if (remaining <= 0) { controller?.abort(); throw Error('Reader request timed out. Your writing is kept.'); }
@@ -112,9 +156,9 @@ export class RecoveryCleanup {
       read: async operation => {
         if (!this.partitioned && this.activeRead) await bounded(this.activeRead.catch(() => {}));
         if (released || Date.now() >= deadline) throw Error('Reader request timed out. Your writing is kept.');
-        const controller = new AbortController(); finished = false;
+        const controller = new AbortController(); ++inFlight;
         const transport = Promise.resolve().then(() => operation({ signal: controller.signal }));
-        const done = () => { finished = true; releaseCount(); };
+        const done = () => { --inFlight; releaseCount(); };
         transport.then(done, done);
         return bounded(transport, controller);
       },
@@ -124,7 +168,7 @@ export class RecoveryCleanup {
   enqueue(key, action) {
     const task = (this.queues.get(key) ?? Promise.resolve()).catch(() => {}).then(action);
     this.queues.set(key, task);
-    const done = () => { if (this.queues.get(key) === task) this.queues.delete(key); };
+    const done = () => { if (this.queues.get(key) === task) { this.queues.delete(key); this.resume(); } };
     task.then(done, done); return task;
   }
   async idle(key) { while (this.queues.has(key)) await this.queues.get(key); }
@@ -141,12 +185,22 @@ export class RecoveryCleanup {
     }).catch(() => {});
   }
   own(session) { return this.enqueue(session.editor.key, () => this.retireOwn(session)); }
+  // Discovery retires the own copy, reads a page, checks it and applies it in
+  // one task, so no recheck runs between the read and what it shows.
+  discover(session, readPage, apply) {
+    return this.enqueue(session.editor.key, async () => {
+      await this.retireOwn(session);
+      const page = await this.check(session, await readPage());
+      apply(page); return page;
+    });
+  }
   report(session, error) {
     session.editor.cleanupError = error ? 'Saved; recovery-copy cleanup could not finish. Retry from Review versions.' : null;
     this.changed(session.editor);
   }
   async retireOwn(session) {
     if (this.stopped()) return false;
+    this.checking(session);
     try {
       let row = await this.journal.own(session.editor.key), projected;
       if (row?.snapshot.format === 2) {
@@ -178,7 +232,7 @@ export class RecoveryCleanup {
       });
       if (removed) this.report(session, null);
       return removed;
-    } catch (error) { if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); return false; }
+    } catch (error) { if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); else this.defer(session, error); return false; }
   }
   releasedRow(row, ids) {
     const next = copy(row); next.stamp = crypto.randomUUID();
@@ -186,32 +240,32 @@ export class RecoveryCleanup {
     next.snapshot.uploadState.revision++;
     return next;
   }
-  candidates(session, page) {
-    return this.enqueue(session.editor.key, async () => {
-      const retained = [];
-      for (const row of page.items) {
-        if (row.availability === 'available' && row.snapshot?.format === 2 && this.journal.retireImageCandidate) {
-          try {
-            const result = await this.journal.retireImageCandidate(session.editor.key, row, async captured => {
-              const proof = await uploadProof(captured, session.editor.context, { api: this.api, read: fn => this.read(fn), authority: this.runtime.current });
-              if (!proof) return null;
-              const next = proof.release.length ? this.releasedRow(captured, proof.release) : captured;
-              const retire = proof.projected && await this.confirm(proof.projected, session.editor.context);
-              return { next, ids: proof.release, retire };
-            });
-            if (!result?.retired) retained.push(result?.row ? { ...result.row, availability: 'available' } : row);
-          } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); }
-          continue;
-        }
-        if (this.stopped() || row.availability !== 'available' || !row.snapshot || !eligible(row, session.editor.context)) { retained.push(row); continue; }
+  candidates(session, page) { return this.enqueue(session.editor.key, () => this.check(session, page)); }
+  async check(session, page) {
+    const retained = [];
+    for (const row of page.items) {
+      this.checking(session, row.id);
+      if (row.availability === 'available' && row.snapshot?.format === 2 && this.journal.retireImageCandidate) {
         try {
-          const removed = await this.journal.retireAcknowledged(session.editor.key, row,
-            captured => same(captured.snapshot, row.snapshot) && this.confirm(captured, session.editor.context));
-          if (!removed) retained.push(row); else this.report(session, null);
-        } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); }
+          const result = await this.journal.retireImageCandidate(session.editor.key, row, async captured => {
+            const proof = await uploadProof(captured, session.editor.context, { api: this.api, read: fn => this.read(fn), authority: this.runtime.current });
+            if (!proof) return null;
+            const next = proof.release.length ? this.releasedRow(captured, proof.release) : captured;
+            const retire = proof.projected && await this.confirm(proof.projected, session.editor.context);
+            return { next, ids: proof.release, retire };
+          });
+          if (!result?.retired) retained.push(result?.row ? { ...result.row, availability: 'available' } : row);
+        } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); else this.defer(session, error, row); }
+        continue;
       }
-      return { ...page, items: retained };
-    });
+      if (this.stopped() || row.availability !== 'available' || !row.snapshot || !eligible(row, session.editor.context)) { retained.push(row); continue; }
+      try {
+        const removed = await this.journal.retireAcknowledged(session.editor.key, row,
+          captured => same(captured.snapshot, row.snapshot) && this.confirm(captured, session.editor.context));
+        if (!removed) retained.push(row); else this.report(session, null);
+      } catch (error) { retained.push(row); if (error.code !== 'CLEANUP_DEFERRED') this.report(session, error); else this.defer(session, error, row); }
+    }
+    return { ...page, items: retained };
   }
   async confirm(row, context) {
     if (this.stopped() || context.instanceId !== this.bootstrap.instance_id || context.actor !== this.bootstrap.actor || !eligible(row, context)) return false;

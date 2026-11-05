@@ -370,6 +370,7 @@ async function fixture(t, options = {}) {
     put: async row => { rows.set(row.id, copy(row)); },
     get: async id => copy(rows.get(id)),
     forEditor: async key => [...rows.values()].filter(row => row.editorKey === key).map(copy),
+    currentCandidates: async (key, ids) => ids.map(id => rows.get(id)).filter(row => row?.editorKey === key).map(copy),
     removeExact: async (id, stamp) => rows.get(id)?.stamp === stamp ? rows.delete(id) : false,
   };
   const journal = new RecoveryJournal(backend, 'fixture-document');
@@ -594,8 +595,10 @@ test('cleanup confirmations yield every ten exact reads and candidate cleanup co
   const retired = [], pages = [];
   f.backend.forEditor = async (key, options) => { pages.push({ key, ...options }); return { items: all.slice(0, 10), nextCursor: 'next-page' }; };
   f.backend.retireAcknowledged = async (key, candidate, confirm) => { assert.equal(key, editor.key); if (!await confirm(candidate)) return false; retired.push(candidate.id); return true; };
-  const page = await f.registry.recoveryCandidates(editor, { limit: 10 });
+  const shown = [];
+  const page = await f.registry.recoveryCandidates(editor, { limit: 10 }, checked => shown.push(checked));
   assert.equal(page.items.length, 0); assert.equal(page.nextCursor, 'next-page');
+  assert.deepEqual(shown, [page], 'the checked page is shown once, as discovery returns it');
   assert.equal(pages.length, 1); assert.deepEqual(retired, all.slice(0, 10).map(r => r.id));
   assert.equal(commands, 0);
 });

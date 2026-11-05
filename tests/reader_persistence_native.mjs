@@ -341,6 +341,8 @@ try {
     const locked = await b.evaluate('j.candidates(editor.key)');
     assert.equal(locked.items[0].availability, 'open-in-another-tab');
     assert.equal(Object.hasOwn(locked.items[0], 'snapshot'), false, 'a live writer must not disclose adoptable attempts');
+    assert.deepEqual(await b.evaluate(`j.current(editor.key,[${JSON.stringify(locked.items[0].id)}])`), locked.items,
+      'reading a candidate by ID lists a live writer\'s copy exactly as a page does');
     const refusal = await b.evaluate('(async()=>{try{await j.adopt(editor.key,{id:' + JSON.stringify(JSON.stringify([await a.evaluate('editor.key'), id])) + ',stamp:(await j.candidates(editor.key)).items[0].stamp});return null}catch(e){return e.message}})()');
     assert.match(refusal, /another tab/i);
   });
@@ -382,6 +384,50 @@ try {
     assert.equal(candidates.items.length, 1); assert.equal(candidates.items[0].writerId, idB);
     assert.deepEqual(candidates.items[0].snapshot, original.snapshot);
     assert.equal((await c.evaluate('j.history(editor.key)')).items.length, 1);
+  });
+
+  await check('candidates read by ID are listed exactly as a page lists them, and only while a page would list them', async () => {
+    const a = await page('current');
+    await a.evaluate('j.save(snapshot)');
+    await a.evaluate(`(async()=>{
+      const scope=JSON.stringify([context.instanceId,context.actor]);
+      for(let n=0;n<4;n++){const writerId='past-'+n;await putRow({id:JSON.stringify([editor.key,writerId]),editorKey:editor.key,writerId,scope,active:1,stamp:'stamp-'+n,snapshot})}
+      await putRow({id:JSON.stringify([editor.key,'inactive']),editorKey:editor.key,writerId:'inactive',scope,active:0,stamp:'inactive-stamp',snapshot});
+      await putRow({id:JSON.stringify([editor.key,'foreign']),editorKey:editor.key,writerId:'foreign',scope:JSON.stringify([context.instanceId,'another-person']),stamp:'foreign-stamp',active:1,snapshot:{...snapshot,context:{...context,actor:'another-person'}}});
+      await putRow({id:JSON.stringify([editor.key,'unreadable']),editorKey:editor.key,writerId:'unreadable',scope,active:1,stamp:'unreadable-stamp',snapshot:{format:99}});
+    })()`);
+    const listed = (await a.evaluate('j.candidates(editor.key,{limit:20})')).items;
+    const id = writer => JSON.stringify([JSON.parse(listed[0].id)[0], writer]);
+    const asked = [id('past-2'), id('missing'), id('inactive'), id('foreign'), await a.evaluate('j.id(editor.key)'), id('unreadable'), id('past-0')];
+    const byId = new Map(listed.map(row => [row.id, row]));
+    assert.deepEqual(await a.evaluate(`j.current(editor.key,${JSON.stringify(asked)})`), asked.filter(row => byId.has(row)).map(row => byId.get(row)),
+      'the listed IDs come back as the page lists them, in the order asked; missing, inactive, foreign and own rows do not');
+    assert.ok(byId.has(id('unreadable')), 'an unreadable copy is still listed, so it can still hold the reply');
+    const chosen = byId.get(id('past-1'));
+    await a.evaluate('(async()=>{const row=await j.own(editor.key);await j.removeExact(editor.key,row.stamp)})()');
+    await a.evaluate(`j.adopt(editor.key,${JSON.stringify({ id: chosen.id, stamp: chosen.stamp })})`);
+    assert.deepEqual(await a.evaluate(`j.current(editor.key,${JSON.stringify([chosen.id])})`), [], 'a copy this document adopted is no longer a candidate');
+    assert.deepEqual(await a.evaluate('j.current(editor.key,[])'), []);
+    // Probes of one closed writer at once, and an ID asked twice, all read it as closed.
+    const closed = byId.get(id('past-2'));
+    assert.deepEqual(await a.evaluate(`Promise.all([j.current(editor.key,${JSON.stringify([closed.id, closed.id])}),j.current(editor.key,${JSON.stringify([closed.id])})])`),
+      [[closed], [closed]], 'no probe sees another as the writer\'s holder');
+    // Inspections and by-ID reads of one closed writer at once never see each other as its holder.
+    const inspected = byId.get(id('past-3'));
+    const together = await a.evaluate(`(async()=>{const c=${JSON.stringify({ id: inspected.id, stamp: inspected.stamp })};
+      const runs=[];for(let n=0;n<20;n++){runs.push(j.inspectCandidate(editor.key,c).then(()=>'inspected',e=>e.message));runs.push(j.current(editor.key,[c.id]).then(rows=>rows.map(r=>r.availability).join()));}
+      return [...new Set(await Promise.all(runs))].sort()})()`);
+    assert.deepEqual(together, ['available', 'inspected']);
+    // A writer this document holds after a declined retirement is still listed to it as available.
+    assert.equal(await a.evaluate(`j.retireAcknowledged(editor.key,${JSON.stringify(closed)},async()=>false)`), false);
+    assert.deepEqual((await a.evaluate(`j.current(editor.key,${JSON.stringify([closed.id])})`)).map(row => row.availability), ['available']);
+    assert.equal((await a.evaluate(`j.inspectCandidate(editor.key,${JSON.stringify({ id: closed.id, stamp: closed.stamp })})`)).id, closed.id);
+    // Another tab recovers past-0: by its old ID the copy is listed where it moved.
+    const b = await page('current'), moving = byId.get(id('past-0'));
+    const moved = await b.evaluate(`j.adopt(editor.key,${JSON.stringify({ id: moving.id, stamp: moving.stamp })})`);
+    const now = (await a.evaluate('j.candidates(editor.key,{limit:20})')).items.find(row => row.id === moved.id);
+    assert.equal(now.availability, 'open-in-another-tab');
+    assert.deepEqual(await a.evaluate(`j.current(editor.key,${JSON.stringify([moving.id])})`), [now], 'a copy another tab recovered is listed where it moved');
   });
 
   await check('stale cleanup and foreign cleanup cannot remove a row', async () => {
@@ -551,7 +597,7 @@ try {
         await a.close(); await b.point('#review-retry');
         await until(async () => !(await rows(b)).some(row => row.id === original.id), 'closed fully acknowledged candidate retired');
         const locks = await b.evaluate('(await navigator.locks.query()).held.map(l=>l.name)');
-        assert.ok(locks.some(name => name.includes(original.writerId)), 'retired closed writer lock stays held');
+        assert.equal(locks.some(name => name.includes(original.writerId)), false, 'a retired writer\'s lock is released after its cleanup');
         assert.deepEqual(b.errors, []);
       });
 
@@ -570,7 +616,20 @@ try {
         await b.evaluate(`putRow(${candidate})`);
         assert.equal(await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async row=>{await putRow({...row,stamp:'newer-stamp'});return true})`), false, 'stamp changed during confirmation survives');
         assert.equal((await b.evaluate(`readRow(${JSON.stringify(original.id)})`)).stamp, 'newer-stamp');
+        const lockHeld = async () => (await b.evaluate('(await navigator.locks.query()).held.map(l=>l.name)')).some(name => name.includes(original.writerId));
+        assert.equal(await lockHeld(), false, 'a declined cleanup leaves the other writer\'s lock free');
         await b.evaluate(`putRow(${candidate})`);
+        const overlap = await b.evaluate(`(async()=>{
+          const locked=async()=>(await navigator.locks.query()).held.some(l=>l.name.includes(${JSON.stringify(original.writerId)}));
+          let entered,open;const inside=new Promise(r=>entered=r),gate=new Promise(r=>open=r),seen=[];
+          const first=j.retireAcknowledged(editor.key,${candidate},async()=>{seen.push(['first',await locked()]);entered();await gate;return false});
+          await inside;
+          const second=await j.retireAcknowledged(editor.key,${candidate},async()=>{seen.push(['second',await locked()]);return false});
+          const midway=await locked(),listed=(await j.current(editor.key,[${JSON.stringify(original.id)}])).map(row=>row?.availability);open();
+          return {seen,second,midway,listed,first:await first,after:await locked()};
+        })()`);
+        assert.deepEqual(overlap, { seen: [['first', true], ['second', true]], second: false, midway: true, listed: ['available'], first: false, after: false },
+          'overlapping cleanups of one writer share its lock, which is released when the last ends');
         await b.evaluate('(()=>{window.cleanupDeleteSucceeded=0;window.originalDelete=IDBObjectStore.prototype.delete;IDBObjectStore.prototype.delete=function(...args){const request=originalDelete.apply(this,args),tx=this.transaction;request.addEventListener("success",()=>{++cleanupDeleteSucceeded;tx.abort()});return request}})()');
         const aborted = await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async()=>true).then(()=>false,()=>true)`);
         assert.equal(await b.evaluate('cleanupDeleteSucceeded'), 1, 'delete request succeeded before transaction abort');
@@ -579,7 +638,18 @@ try {
         assert.equal(await b.evaluate(`j.retireAcknowledged(editor.key,${candidate},async()=>true)`), true, 'positive strict retirement');
         assert.equal(await b.evaluate(`readRow(${JSON.stringify(original.id)})`), null);
         assert.ok((await b.evaluate('durability')).every(tx => tx.requested === 'strict' && tx.actual === 'strict'));
-        assert.ok((await b.evaluate('(await navigator.locks.query()).held')).some(lock => lock.name.includes(original.writerId)));
+        assert.equal(await lockHeld(), false, 'a retirement releases the other writer\'s lock');
+        await b.evaluate(`putRow(${candidate})`);
+        const kept = await b.evaluate(`(async()=>{
+          let entered,open;const inside=new Promise(r=>entered=r),gate=new Promise(r=>open=r);
+          const retire=j.retireAcknowledged(editor.key,${candidate},async()=>{entered();await gate;return true});
+          await inside;
+          const adopted=await j.adopt(editor.key,{id:${JSON.stringify(original.id)},stamp:${JSON.stringify(original.stamp)}});
+          open();
+          return {adopted:adopted?.writerId===j.writerId,retired:await retire};
+        })()`);
+        assert.deepEqual(kept, { adopted: true, retired: false }, 'an adoption during a cleanup wins, and the cleanup then refuses the moved row');
+        assert.equal(await lockHeld(), true, 'an adopted source\'s lock is kept after the cleanup that shared it ends');
       });
     } else if (mode === '--correction') {
       const sourceText = p => p.evaluate('document.querySelector("#source-body").textContent');

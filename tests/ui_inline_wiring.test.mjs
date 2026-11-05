@@ -52,7 +52,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; },
-    cleanup: { foregroundListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; } },
+    cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; } },
     runtime: { current: bootstrap.authority },
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
@@ -84,10 +84,10 @@ function fixture(href = 'https://fixture/?topic=t1') {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
-    get() { return {registry,inline,freshness}; } };`, context);
+    get() { return {registry,inline,freshness,candidates}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
     edit: editor => events.push(['inline-edit',editor.key]),
     needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
@@ -170,6 +170,104 @@ test('optional outcome and topic rail reads begin after the primary composer is 
   await f.initialize();await new Promise(resolve=>setImmediate(resolve));
   assert.ok(order.indexOf('composer')<order.indexOf('workspaces'));
   assert.ok(order.indexOf('composer')<order.indexOf('workspace_topics'));
+});
+test('a recheck replaces only the rechecked rows the page lists, at once, and only for an editor the registry still holds',async()=>{
+  const f=fixture(),applied=[],validation=new Promise(()=>{});let holds=true;
+  f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
+  f.registry.recoveryCandidates=async()=>({items:[],nextCursor:null});
+  f.registry.applyRecheck=(editor,ids,page)=>{applied.push([editor.key,ids,page.items.map(row=>row.id)]);return holds?validation:null;};
+  await f.initialize();await new Promise(resolve=>setImmediate(resolve));
+  const listeners=[...f.registry.cleanup.resumeListeners];assert.equal(listeners.length,1);
+  const {candidates}=f.owners(),row=id=>({id,stamp:id});
+  candidates.set(f.editor.key,{items:[row('a'),row('r2'),row('u2'),row('r3')],nextCursor:'c3'});
+  // The patch lands inside the listener call, before the image validation that follows it settles.
+  // r2 moved to m2 when another tab recovered it.
+  listeners[0]({editor:f.editor},['r2','r3'],{items:[{...row('r3'),stamp:'released'},row('m2')],nextCursor:null});
+  assert.deepEqual(applied,[['inline',['r2','r3'],['r3','m2']]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('u2'),{...row('r3'),stamp:'released'},row('m2')],nextCursor:'c3'},
+    'retired rows leave, rechecked rows are replaced, a moved copy is added, and other rows and the next page stay');
+  holds=false;
+  listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
+  assert.equal(candidates.get(f.editor.key).items.length,4,'an editor the registry no longer holds is left as it is');
+});
+test('More versions adds its page to the listed copies, and a fresh discovery replaces them',async()=>{
+  const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id}),asked=[];
+  f.get('version-review').showModal=function(){this.open=true;};
+  // As the registry does: a page from a cursor continues the list.
+  f.registry.recoveryCandidates=async(editor,options,shown)=>{
+    asked.push(options.cursor);
+    const page=options.cursor==='c1'?{items:[row('b')],nextCursor:null}:{items:[row(options.cursor===null?'a':'c')],nextCursor:options.cursor===null?'c1':null};
+    shown(page,Boolean(options.cursor));return page;
+  };
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a')],nextCursor:'c1'});
+  const find=(element,text)=>element.textContent===text?element:element.children.map(child=>find(child,text)).find(Boolean);
+  await find(f.get('review-content'),'More versions').onclick();
+  assert.deepEqual(asked,[null,'c1']);
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('b')],nextCursor:null},'the first page stays listed after More versions');
+  await f.discover(f.p,f.editor);
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('c')],nextCursor:null},'a fresh discovery replaces the list');
+});
+test('a refused More versions page is reported in the review, keeps the list, and leaves More versions usable',async()=>{
+  const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id});let refuse=true;
+  f.get('version-review').showModal=function(){this.open=true;};
+  f.registry.recoveryCandidates=async(editor,options,shown)=>{
+    if(options.cursor&&refuse)throw Error('These saved versions changed. Review versions again.');
+    const page=options.cursor?{items:[row('b')],nextCursor:null}:{items:[row('a')],nextCursor:'c1'};
+    shown(page,Boolean(options.cursor));return page;
+  };
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  f.get('review-retry').hidden=true;
+  const find=(element,text)=>element.textContent===text?element:element.children.map(child=>find(child,text)).find(Boolean);
+  const more=find(f.get('review-content'),'More versions');
+  await more.onclick();
+  assert.equal(f.get('review-status').textContent,'These saved versions changed. Review versions again.');
+  assert.equal(f.get('review-status').hidden,false);assert.equal(f.get('review-retry').hidden,false);
+  assert.equal(more.disabled,false,'More versions can be tried again');
+  assert.ok(find(f.get('review-content'),'More versions'),'the button stays in the list');
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a')],nextCursor:'c1'},'the listed copies are unchanged');
+  refuse=false;await more.onclick();
+  assert.equal(find(f.get('review-content'),'More versions'),undefined,'a page with no further cursor removes the button');
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('b')],nextCursor:null});
+});
+test('a More versions page the registry applied is drawn even when its settle fails, and its button is spent',async()=>{
+  const f=fixture(),{candidates}=f.owners(),asked=[],row=id=>({id,stamp:id,availability:'open-in-another-tab'});
+  f.get('version-review').showModal=function(){this.open=true;};
+  f.registry.recoveryCandidates=async(editor,options,shown)=>{
+    asked.push(options.cursor);
+    const page=options.cursor==='c1'?{items:[row('b')],nextCursor:'c2'}:{items:[row(options.cursor?'c':'a')],nextCursor:options.cursor?null:'c1'};
+    shown(page,Boolean(options.cursor));
+    if(options.cursor==='c1')throw Error('editor_state read failed');
+    return page;
+  };
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  f.get('review-retry').hidden=true;
+  const all=(element,text)=>[...(element.textContent===text?[element]:[]),...element.children.flatMap(child=>all(child,text))];
+  const first=all(f.get('review-content'),'More versions')[0];
+  await first.onclick();
+  assert.equal(f.get('review-status').textContent,'editor_state read failed');assert.equal(f.get('review-retry').hidden,false);
+  assert.equal(all(f.get('review-content'),'Open in another tab').length,2,'the applied page is drawn');
+  const more=all(f.get('review-content'),'More versions');
+  assert.equal(more.length,1,'the spent button is replaced by the next page\'s');assert.notEqual(more[0],first);
+  await more[0].onclick();
+  assert.deepEqual(asked,[null,'c1','c2'],'the next page continues from the applied page\'s cursor');
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))).items.map(item=>item.id),['a','b','c']);
+});
+test('a More versions page that fails after its review was replaced leaves the new review alone',async()=>{
+  const f=fixture(),row=id=>({id,stamp:id,availability:'open-in-another-tab'});let fail;
+  f.get('version-review').showModal=function(){this.open=true;};
+  f.registry.recoveryCandidates=async(editor,options,shown)=>{
+    if(options.cursor)return new Promise((_resolve,reject)=>{fail=reject;});
+    const page={items:[row('a')],nextCursor:'c1'};shown(page,false);return page;
+  };
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  const find=(element,text)=>element.textContent===text?element:element.children.map(child=>find(child,text)).find(Boolean);
+  const pending=find(f.get('review-content'),'More versions').onclick();
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  f.get('review-retry').hidden=true;
+  fail(Error('old page failed'));await pending;
+  assert.equal(f.get('review-status').textContent,'','the new review shows no error from the old one');
+  assert.equal(f.get('review-retry').hidden,true);
 });
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;

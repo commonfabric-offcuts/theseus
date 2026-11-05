@@ -5,6 +5,8 @@ import { Uploads } from './uploads.mjs';
 import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
+// A listed copy that holds the reply for image review until it is resolved.
+const imageCopy = item => item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable';
 const same = (a, b) => {
   if (a === b) return true;
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
@@ -304,31 +306,81 @@ export class EditorRegistry {
     }));
   }
 
-  async recoveryCandidates(editor, options) {
+  // `shown(page, continued)` receives the checked page inside the cleanup task
+  // that read it, so a later recheck's patch always lands after it. A page
+  // continues the list only from the list's own next cursor: one whose list a
+  // fresh discovery replaced meanwhile changes nothing and is refused.
+  async recoveryCandidates(editor, options, shown = () => {}) {
     const limit = options?.limit ?? 10;
     if (!Number.isInteger(limit) || limit < 1 || limit > 10) throw Error('Recovery cleanup reads one page of at most ten versions.');
-    await this.cleanup.own(this.sessionFor(editor));
-    const page = await this.journal.candidates(editor.key, { ...options, limit });
-    const result = await this.cleanup.candidates(this.sessionFor(editor), Array.isArray(page) ? { items: page, nextCursor: null } : page);
-    if (editor.context.kind === 'reply') {
-      if (!options?.cursor) editor.imageCopies = new Map();
-      for (const item of result.items) {
-        if (item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable') editor.imageCopies.set(item.id, item);
+    let stale = false;
+    const result = await this.cleanup.discover(this.sessionFor(editor), async () => {
+      const page = await this.journal.candidates(editor.key, { ...options, limit });
+      return Array.isArray(page) ? { items: page, nextCursor: null } : page;
+    }, page => {
+      const continued = Boolean(options?.cursor);
+      if (continued && options.cursor !== editor.candidatesNext) { stale = true; return; }
+      editor.candidatesNext = page.nextCursor;
+      if (editor.context.kind === 'reply') {
+        if (!continued) editor.imageCopies = new Map();
+        for (const item of page.items) if (imageCopy(item)) editor.imageCopies.set(item.id, item);
+        editor.imageCopiesNext = page.nextCursor;
       }
-      editor.imageCopiesNext = result.nextCursor;
-      if ([...editor.imageCopies.values()].some(row => refusedCopyAtDraft(row, undefined))) {
-        // Until this scoped read succeeds the old slot cannot dismiss a newly
-        // discovered refusal. Retry can establish the exact revision later.
-        editor.recoveryServerDraft = undefined;
-        editor.recoveryDiscovery = true; this.changed(editor);
-        const state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
-        this.validateState(state, editor.context.sourceRef, editor.context.topicId);
-        editor.recoveryServerDraft = copy(state.draft ?? null);
-      }
-      this.updateImageBarrier(editor);
-      await this.sessionFor(editor).uploads.validateRetained();
-    }
+      shown(page, continued);
+    });
+    if (stale) throw Error('These saved versions changed. Review versions again.');
+    if (editor.context.kind === 'reply') await this.settleImageCopies(editor);
     return result;
+  }
+
+  // After the image copies change: a refusal among them is compared with the
+  // server draft read now, then the barrier and retained images follow. Up to
+  // its first read it runs at once, so the barrier is never lowered early.
+  // Only the latest settle's answer counts, and every settle finishes when the
+  // latest one has, so no caller acts while a newer read is out. A failure is
+  // reported only to the latest settle's caller; one a later settle overtook
+  // finishes quietly, with the barrier that settle left.
+  async settleImageCopies(editor) {
+    const settle = editor.imageSettle = (editor.imageSettle ?? 0) + 1;
+    const own = this.settleOnce(editor, settle);
+    if (editor.imageSettle === settle) editor.imageSettled = own;
+    for (let latest = settle, done = own; ; latest = editor.imageSettle, done = editor.imageSettled) {
+      try { await done; } catch (error) { if (latest === settle && editor.imageSettle === settle) throw error; }
+      if (editor.imageSettle === latest) return;
+    }
+  }
+
+  async settleOnce(editor, settle) {
+    if ([...editor.imageCopies.values()].some(row => refusedCopyAtDraft(row, undefined))) {
+      // Until this scoped read succeeds the old slot cannot dismiss a newly
+      // discovered refusal. Retry can establish the exact revision later.
+      editor.recoveryServerDraft = undefined;
+      editor.recoveryDiscovery = true; this.changed(editor);
+      let state;
+      try {
+        state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
+      } catch (error) {
+        if (editor.imageSettle !== settle) return;
+        throw error;
+      }
+      if (editor.imageSettle !== settle) return;
+      this.validateState(state, editor.context.sourceRef, editor.context.topicId);
+      editor.recoveryServerDraft = copy(state.draft ?? null);
+    }
+    this.updateImageBarrier(editor);
+    await this.sessionFor(editor).uploads.validateRetained();
+  }
+
+  // A recheck of deferred rows replaces just those rows among the editor's
+  // image copies, at once, and adds where a recovered one moved; it returns
+  // what settles the copies after that, or null when the editor is no longer
+  // this registry's.
+  applyRecheck(editor, ids, page) {
+    if (this.disposed || this.sessions.get(editor.key)?.editor !== editor) return null;
+    if (editor.context.kind !== 'reply' || !editor.imageCopies) return Promise.resolve();
+    for (const id of ids) editor.imageCopies.delete(id);
+    for (const item of page.items) if (imageCopy(item)) editor.imageCopies.set(item.id, item);
+    return this.settleImageCopies(editor);
   }
 
   updateImageBarrier(editor) {
@@ -337,11 +389,20 @@ export class EditorRegistry {
     this.changed(editor);
   }
 
-  async removeCandidateImages(editor, candidate) {
-    const row = await this.journal.changeCandidateImages(editor.key, candidate, { kind: 'remove' });
-    editor.imageCopies.set(row.id, { ...row, availability: 'available' });
-    this.updateImageBarrier(editor);
-    await this.sessionFor(editor).uploads.validateRetained();
+  // Removing a copy's image selections or discarding one retained file runs in
+  // the editor's cleanup queue, so a recheck either sees the changed row or has
+  // already been applied.
+  async changeCandidateImages(editor, candidate, action) {
+    const session = this.sessionFor(editor);
+    const row = await this.cleanup.enqueue(editor.key, async () => {
+      const row = await this.journal.changeCandidateImages(editor.key, candidate, action);
+      if (editor.imageCopies && this.sessions.get(editor.key) === session) {
+        editor.imageCopies.set(row.id, { ...row, availability: 'available' });
+        this.updateImageBarrier(editor);
+      }
+      return row;
+    });
+    await session.uploads.validateRetained();
     return row;
   }
 

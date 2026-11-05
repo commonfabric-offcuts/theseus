@@ -138,10 +138,15 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
   } else if (editor.conflict) reviewStatus(remote === undefined ? 'The saved version could not be read. Retry; sending remains blocked and your writing is kept.' : 'Both versions are kept. Copy what you need; this comparison does not overwrite either version.');
   comparison = { editor, presentation, localVersion, authority: JSON.stringify(editor.authorityRecovery) };
   const list = node('div'); $('review-content').append(list);
-  const appendCandidates = async cursor => {
-    const page = await registry.recoveryCandidates(editor, { cursor, limit: 10 });
+  // A page the registry applied is drawn even when settling its image copies
+  // then fails; the failure is reported after it, and `more` (the button that
+  // asked for it) is spent once the page is applied.
+  const appendCandidates = async (cursor, more) => {
+    let page = null, failure = null;
+    try { await registry.recoveryCandidates(editor, { cursor, limit: 10 }, (shown, continued) => { page = shown; if (current()) listCandidates(editor, shown, continued); }); }
+    catch (error) { if (!page) throw error; failure = error; }
     if (!current()) return;
-    candidates.set(editor.key, page); changed(editor);
+    more?.remove();
     for (const candidate of page.items) {
       const section = version(candidate.availability === 'open-in-another-tab' ? 'Open in another tab' : 'Writing kept on this device',
         candidate.snapshot?.draft.body ?? 'Close the other tab, then Retry to review its writing.',
@@ -166,7 +171,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
           }));
         }
         if (candidate.snapshot.format === 2 && candidate.snapshot.uploadState.entries.some(e => e.selected && e.owner.kind === 'cycle')) {
-          section.append(make('Remove saved image selections', async () => { await registry.removeCandidateImages(editor, candidate); if (current()) await showVersions(editor, opener, presentation); }));
+          section.append(make('Remove saved image selections', async () => { await registry.changeCandidateImages(editor, candidate, { kind: 'remove' }); if (current()) await showVersions(editor, opener, presentation); }));
         }
         for (const e of candidate.snapshot.uploadState?.entries ?? []) if (!e.selected || e.owner.kind === 'submission') {
           const label = node('p', e.file?.name ?? e.ready_descriptor?.name ?? 'Earlier image'); section.append(label);
@@ -178,7 +183,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
             if (current()) label.textContent = `${e.file?.name ?? 'Earlier image'} · ${r.recorded === true ? r.status : 'Confirmation unknown'}`;
           }));
           if (e.bytes_ref) section.append(make('Discard retained file', async () => {
-            await journal.changeCandidateImages(editor.key, candidate, { kind: 'discard', selectionId: e.selection_id });
+            await registry.changeCandidateImages(editor, candidate, { kind: 'discard', selectionId: e.selection_id });
             if (current()) await showVersions(editor, opener, presentation);
           }));
         }
@@ -189,8 +194,15 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
       list.append(section);
     }
     if (page.nextCursor) {
-      const more = make('More versions', async () => { more.disabled = true; await appendCandidates(page.nextCursor); more.remove(); }); list.append(more);
+      const next = make('More versions', async () => {
+        next.disabled = true;
+        try { await appendCandidates(page.nextCursor, next); }
+        catch (error) { if (current()) { reviewStatus(error.message); $('review-retry').hidden = false; } }
+        finally { if (next.isConnected) next.disabled = false; }
+      });
+      list.append(next);
     }
+    if (failure) throw failure;
   };
   try { await appendCandidates(null); } catch (error) { if (current()) reviewStatus(error.message); }
   if (!current()) return;
@@ -349,9 +361,7 @@ async function present(presentation) {
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
     noteRead();
   }
-  const discovery = Promise.all(Object.values(presentation.editors).map(editor =>
-    registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); })
-      .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); })));
+  const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
   registry.neighbors(presentation).then(neighbors => {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
@@ -359,6 +369,37 @@ async function present(presentation) {
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   sourceAttachments(presentation);
+}
+// A checked page of saved copies: the first page replaces what was listed,
+// and a page that continues it is added, as the editor's image copies are.
+function listCandidates(editor, page, continued) {
+  const known = continued ? candidates.get(editor.key) : null;
+  candidates.set(editor.key, known ? { items: [...known.items, ...page.items], nextCursor: page.nextCursor } : page);
+  changed(editor);
+}
+function discover(presentation, editor) {
+  return registry.recoveryCandidates(editor, { limit: 10 }, (page, continued) => listCandidates(editor, page, continued))
+    .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
+}
+// Rows a foreground read deferred were checked again: what the page lists for
+// exactly those rows is replaced, a copy that moved is added, and every other
+// listed copy stays.
+// It runs inside the cleanup task that rechecked them, so no discovery or
+// image change lands between the recheck and this patch.
+function rechecked(session, ids, page) {
+  const editor = session.editor, validated = registry.applyRecheck(editor, ids, page);
+  if (!validated) return;
+  const known = candidates.get(editor.key), kept = new Map(page.items.map(row => [row.id, row]));
+  if (known) {
+    const items = known.items.flatMap(row => kept.has(row.id) ? [kept.get(row.id)] : ids.includes(row.id) ? [] : [row]);
+    const listed = new Set(items.map(row => row.id));
+    candidates.set(editor.key, { ...known, items: [...items, ...page.items.filter(row => !listed.has(row.id))] });
+  }
+  changed(editor);
+  validated.catch(error => {
+    const presentation = presentationFor(editor);
+    if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message);
+  });
 }
 function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);
@@ -752,6 +793,7 @@ async function initialize() {
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
+  registry.cleanup.resumeListeners.add(rechecked);
   readThrough = new ReadThrough({ send: (topicId, from, seq) => {
     const { authority_id, authority_epoch } = bootstrap.authority;
     return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.read_through',

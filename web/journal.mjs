@@ -83,6 +83,7 @@ export class RecoveryJournal {
   }
   own(editorKey) { return this.enqueue(editorKey, () => this.backend.get(this.id(editorKey))); }
   candidates(editorKey, options) { return this.backend.forEditor(editorKey, options); }
+  current(editorKey, ids) { return this.backend.currentCandidates(editorKey, ids); }
   async inspectCandidate(editorKey, candidate) {
     const row = this.backend.inspectCandidate ? await this.backend.inspectCandidate(editorKey, candidate) : await this.backend.get(candidate.id);
     if (!row || row.id !== candidate.id || row.stamp !== candidate.stamp || row.editorKey !== editorKey) throw Error('This saved copy changed. Review it again.');
@@ -111,21 +112,57 @@ export async function openJournal({ instanceId, actor } = {}) {
   if (!instanceId || !actor) throw Error('Recovery needs the confirmed instance and actor.');
   if (!navigator.locks?.request) throw Error('Recovery ownership is unavailable in this browser. Keep this page open.');
   const scope = JSON.stringify([instanceId, actor]), writerId = crypto.randomUUID();
-  const held = new Map();
+  const held = new Map(), borrowed = new Map();
   let closed = false;
   const lockName = writer => 'aim-next-recovery-writer:' + JSON.stringify([instanceId, actor, writer]);
-  const lock = (writer, retain) => new Promise((resolve, reject) => {
-    if (closed) { reject(Error('Recovery storage is closed.')); return; }
-    if (held.has(writer)) { resolve(true); return; }
+  // Take a writer's lock if no document holds it, and hold it until end() is called.
+  const take = writer => new Promise((resolve, reject) => {
     navigator.locks.request(lockName(writer), { mode: 'exclusive', ifAvailable: true }, granted => {
-      if (!granted) { resolve(false); return; }
-      if (closed) { resolve(false); return; }
-      if (!retain) { resolve(true); return; }
-      const lifetime = new Promise(release => held.set(writer, release));
-      resolve(true); return lifetime;
+      if (!granted || closed) { resolve(null); return; }
+      let end; const lifetime = new Promise(release => { end = release; });
+      resolve(end); return lifetime;
     }).catch(reject);
   });
-  if (!await lock(writerId, true)) throw Error('This document could not acquire recovery ownership.');
+  // Take this writer's lock and hold it until the journal closes.
+  const lock = async writer => {
+    if (closed) throw Error('Recovery storage is closed.');
+    if (held.has(writer)) return true;
+    const lease = borrowed.get(writer);
+    const end = lease ? await lease.end : await take(writer);
+    if (!end) return false;
+    if (lease) lease.kept = true;
+    if (closed) { end(); return false; }
+    held.set(writer, end); return true;
+  };
+  // Hold another writer's lock only while run() works on its rows, so a
+  // cleanup that is declined or fails never leaves that writer looking open
+  // in another tab. Overlapping operations in this document share the lock.
+  const borrow = async (writer, run) => {
+    if (closed) throw Error('Recovery storage is closed.');
+    if (held.has(writer)) return run(true);
+    let lease = borrowed.get(writer);
+    if (!lease) { lease = { users: 0, end: take(writer) }; borrowed.set(writer, lease); }
+    lease.users++;
+    try { return await run(Boolean(await lease.end)); }
+    finally {
+      if (!--lease.users) {
+        const end = await lease.end.catch(() => null);
+        if (!lease.users) { borrowed.delete(writer); if (!lease.kept) end?.(); }
+      }
+    }
+  };
+  const holds = writer => held.has(writer) || borrowed.has(writer);
+  // Whether no document holds this writer now. It takes no lock, so probes of
+  // one writer, in this tab or another, never see each other as its holder.
+  const free = async writer => {
+    if (closed) throw Error('Recovery storage is closed.');
+    if (held.has(writer)) return true;
+    const lease = borrowed.get(writer);
+    if (lease && await lease.end) return true;
+    const name = lockName(writer);
+    return !(await navigator.locks.query()).held.some(lock => lock.name === name);
+  };
+  if (!await lock(writerId)) throw Error('This document could not acquire recovery ownership.');
   const release = () => { closed = true; for (const end of held.values()) end(); held.clear(); };
   let database;
   try { database = await new Promise((resolve, reject) => {
@@ -193,15 +230,20 @@ export async function openJournal({ instanceId, actor } = {}) {
     });
     const selected = rows.slice(0, limit), items = [];
     for (const row of selected) {
-      if (active === 1 && (row.superseded_by || row.writerId === writerId)) continue;
-      if (!valid(row, key)) {
-        if (row.snapshot?.context && (row.snapshot.context.instanceId !== instanceId || row.snapshot.context.actor !== actor)) continue;
-        items.push({ id: row.id, editorKey: key, stamp: row.stamp, availability: 'unreadable', uploadPresent: row.snapshot?.format === 2 }); continue;
-      }
-      if (active === 0 || await lock(row.writerId, false)) items.push({ ...row, availability: 'available' });
-      else items.push({ id: row.id, editorKey: row.editorKey, writerId: row.writerId, stamp: row.stamp, availability: 'open-in-another-tab', uploadPresent: row.snapshot.format === 2 });
+      const item = await listed(row, key, active);
+      if (item) items.push(item);
     }
     return { items, nextCursor: rows.length > limit ? selected.at(-1).id : null };
+  };
+  // How a stored row is listed for an editor, or null when it is not listed.
+  const listed = async (row, key, active) => {
+    if (active === 1 && (row.superseded_by || row.writerId === writerId)) return null;
+    if (!valid(row, key)) {
+      if (row.snapshot?.context && (row.snapshot.context.instanceId !== instanceId || row.snapshot.context.actor !== actor)) return null;
+      return { id: row.id, editorKey: key, stamp: row.stamp, availability: 'unreadable', uploadPresent: row.snapshot?.format === 2 };
+    }
+    if (active === 0 || await free(row.writerId)) return { ...row, availability: 'available' };
+    return { id: row.id, editorKey: row.editorKey, writerId: row.writerId, stamp: row.stamp, availability: 'open-in-another-tab', uploadPresent: row.snapshot.format === 2 };
   };
   const validBytes = (bytes, row) => {
     if (!bytes || row.active !== 1 || row.superseded_by || bytes.kind !== 'upload-bytes-v1' ||
@@ -229,11 +271,40 @@ export async function openJournal({ instanceId, actor } = {}) {
       });
     }),
     forEditor: (key, options) => page(key, 1, options),
+    // The active candidates among these IDs, listed as a page lists them now.
+    // A copy another document recovered is listed where it moved.
+    currentCandidates: async (key, ids) => {
+      scopedKey(key);
+      if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string')) throw Error('Invalid recovery IDs.');
+      const rows = await transact('readonly', (store, finish) => {
+        const found = [], seen = new Set();
+        let left = 0;
+        const read = id => {
+          if (seen.has(id)) return;
+          seen.add(id); left++;
+          store.get(id).onsuccess = event => {
+            const row = event.target.result;
+            if (row?.scope === scope && row.editorKey === key && row.active === 0 && row.superseded_by) read(JSON.stringify([key, row.superseded_by]));
+            else found.push(row);
+            if (!--left) finish(found);
+          };
+        };
+        for (const id of ids) read(id);
+        if (!left) finish(found);
+      });
+      const items = [];
+      for (const row of rows) {
+        if (!row || row.scope !== scope || row.editorKey !== key || row.active !== 1) continue;
+        const item = await listed(row, key, 1);
+        if (item) items.push(item);
+      }
+      return items;
+    },
     inspectCandidate: async (key, candidate) => {
       scopedKey(key);
       const row = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
       if (!row || row.scope !== scope || row.editorKey !== key || row.stamp !== candidate.stamp || row.active !== 1 || row.superseded_by ||
-          row.id !== JSON.stringify([key, row.writerId]) || !await lock(row.writerId, false)) throw Error('This saved copy changed or is open in another tab. Review it again.');
+          row.id !== JSON.stringify([key, row.writerId]) || !await free(row.writerId)) throw Error('This saved copy changed or is open in another tab. Review it again.');
       return row;
     },
     history: (key, options) => page(key, 0, options),
@@ -265,7 +336,7 @@ export async function openJournal({ instanceId, actor } = {}) {
       scopedKey(key);
       const source = await transact('readonly', (_store, finish, get) => get(id, finish));
       if (!valid(source, key) || (source.snapshot.format === 2 && !readableUploads(source.snapshot)) || source.stamp !== stamp || source.superseded_by || source.writerId === writerId || !guard()) throw Error('This recovery version changed. Review it again.');
-      if (!await lock(source.writerId, true)) throw Error('Open in another tab. Close that tab before retrying recovery.');
+      if (!await lock(source.writerId)) throw Error('Open in another tab. Close that tab before retrying recovery.');
       return transact('readwrite', (store, finish, get) => get(id, current => {
         if (!valid(current, key) || current.stamp !== stamp || current.superseded_by || current.writerId !== source.writerId) throw Error('This recovery version changed. Review it again.');
         const ownId = JSON.stringify([key, writerId]);
@@ -294,26 +365,31 @@ export async function openJournal({ instanceId, actor } = {}) {
       const matches = row => valid(row, key) && row.active === 1 && !row.superseded_by && row.writerId !== writerId &&
         row.writerId === candidate.writerId && row.id === candidate.id && row.stamp === candidate.stamp;
       const source = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
-      if (!matches(source) || !await lock(source.writerId, true)) return false;
-      const captured = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
-      if (!matches(captured) || !await confirm(structuredClone(captured))) return false;
-      return transact('readwrite', (store, finish, get) => get(candidate.id, current => {
-        if (matches(current) && held.has(current.writerId) && !ownsBytes(current.snapshot)) { store.delete(current.id); finish(true); }
-        else finish(false);
-      }));
+      if (!matches(source)) return false;
+      return borrow(source.writerId, async owned => {
+        if (!owned) return false;
+        const captured = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
+        if (!matches(captured) || !await confirm(structuredClone(captured))) return false;
+        return transact('readwrite', (store, finish, get) => get(candidate.id, current => {
+          if (matches(current) && holds(current.writerId) && !ownsBytes(current.snapshot)) { store.delete(current.id); finish(true); }
+          else finish(false);
+        }));
+      });
     },
     retireImageCandidate: async (key, candidate, prove) => {
       scopedKey(key);
       const matches = row => valid(row, key) && row.snapshot.format === 2 && row.active === 1 && !row.superseded_by &&
         row.writerId !== writerId && row.writerId === candidate.writerId && row.id === candidate.id && row.stamp === candidate.stamp;
       const source = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
-      if (!matches(source) || !await lock(source.writerId, true)) return null;
+      if (!matches(source)) return null;
+      return borrow(source.writerId, async owned => {
+      if (!owned) return null;
       const captured = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
       if (!matches(captured)) return null;
       const proof = await prove(structuredClone(captured));
       if (!proof) return null;
       return transact('readwrite', (store, finish, get) => get(candidate.id, current => {
-        if (!matches(current) || !held.has(current.writerId)) { finish(null); return; }
+        if (!matches(current) || !holds(current.writerId)) { finish(null); return; }
         const complete = () => {
           if (proof.retire && !ownsBytes(proof.next.snapshot)) { store.delete(current.id); finish({ retired: true }); }
           else { if (proof.ids.length) store.put(proof.next); finish({ row: proof.next }); }
@@ -325,15 +401,18 @@ export async function openJournal({ instanceId, actor } = {}) {
           store.delete(id); if (!--remaining) complete();
         });
       }));
+      });
     },
     changeCandidateImages: async (key, candidate, action) => {
       scopedKey(key);
       const matches = row => valid(row, key) && readableUploads(row.snapshot) && row.active === 1 && !row.superseded_by &&
         row.id === candidate.id && row.stamp === candidate.stamp && row.writerId !== writerId;
       const row = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));
-      if (!matches(row) || !await lock(row.writerId, true)) throw Error('This saved copy changed or is open in another tab. Review it again.');
+      if (!matches(row)) throw Error('This saved copy changed or is open in another tab. Review it again.');
+      return borrow(row.writerId, owned => {
+      if (!owned) throw Error('This saved copy changed or is open in another tab. Review it again.');
       return transact('readwrite', (store, finish, get) => get(candidate.id, current => {
-        if (!matches(current) || !held.has(current.writerId)) throw Error('This saved copy changed. Review it again.');
+        if (!matches(current) || !holds(current.writerId)) throw Error('This saved copy changed. Review it again.');
         const next = structuredClone(current), state = next.snapshot.uploadState;
         next.stamp = crypto.randomUUID(); state.revision++;
         if (action.kind === 'remove') {
@@ -357,6 +436,7 @@ export async function openJournal({ instanceId, actor } = {}) {
           });
         } else throw Error('Unknown saved-image action.');
       }));
+      });
     },
     close: () => { database.close(); release(); },
   }, writerId);
