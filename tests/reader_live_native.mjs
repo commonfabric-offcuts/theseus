@@ -242,6 +242,24 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
+  // A message that named the reader in a topic they have since lost: the
+  // outcomes page lists its start, and Read it here shows all of it.
+  await check('live a message sent by name in a topic you have lost can be read whole where it is listed', async () => {
+    const body = 'Named before you left. ' + 'The rest of a long message. '.repeat(20) + 'The very end.';
+    await control({ method: 'lost_named_message', operation_id: 'live-lost-1', body });
+    const p = await page('live-lost', null, true, { url: origin + '/' });
+    const item = "document.querySelector('#sent-to-you .closed-topic')";
+    await until(() => p.evaluate(`Boolean(${item}?.textContent.includes('Named before you left.'))`), 'the lost topic\'s message is listed under Sent to you');
+    assert.equal(await p.evaluate(`${item}.textContent.includes('The very end.')`), false, 'only its start is listed');
+    assert.equal(await p.evaluate(`[...${item}.querySelectorAll('button')].some(b => b.textContent === 'Read it here')`), true, 'the item offers Read it here');
+    await p.evaluate(`[...${item}.querySelectorAll('button')].find(b => b.textContent === 'Read it here').focus()`);
+    await p.key('Enter');
+    await until(() => p.evaluate(`${item}.querySelector('.sent-whole')?.textContent.endsWith('The very end.') === true`), 'the whole message is shown where it is listed');
+    assert.equal(await p.evaluate('document.activeElement.textContent'), 'Mark read', 'focus moves on to Mark read');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // Older messages that More loads appear where its button was, so the person
   // reads on from where they asked; the button's focus holds nothing still.
   await check('live More messages shows the older messages where its button was', async () => {

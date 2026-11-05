@@ -409,6 +409,25 @@ def main():
                                   for item in request["workspaces"]]
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
+                    elif freshness and request["method"] == "lost_named_message":
+                        # The reader is named in a message in another outcome's
+                        # topic and then taken out of it: Core keeps exactly that
+                        # message readable to them, and nothing else there.
+                        agent, prefix = "fixture-notebook-agent", request["operation_id"]
+                        workspace, topic_id = prefix + "-w", prefix + "-t"
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Elsewhere", "team": []}, sender=agent)
+                        command("draft.save", prefix + "-save", {
+                            "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
+                            "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
+                            "addressees": [actor], "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
+                            {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
+                        command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
+                                                                           "send_operation_id": prefix + "-send"},
+                                {"topic_id": topic_id}, {"draft_revision": 1}, sender=agent)
+                        answer = command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}, sender=agent)
+                        revision = store().view(agent, "topic", {"topic_id": topic_id})["topic"]["version"]
+                        command("participation.set", prefix + "-remove", {"actor_id": actor, "present": False},
+                                {"topic_id": topic_id}, {"topic_revision": revision}, sender=agent)
                     elif freshness and request["method"] == "memory_revise":
                         answer = command("memory.revise", request["operation_id"], {
                             "title": request["title"], "body": request["body"], "attachments": [], "references": []},
