@@ -188,7 +188,13 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
       list.append(section);
     }
     if (page.nextCursor) {
-      const more = make('More versions', async () => { more.disabled = true; await appendCandidates(page.nextCursor); more.remove(); }); list.append(more);
+      const more = make('More versions', async () => {
+        more.disabled = true;
+        try { await appendCandidates(page.nextCursor); more.remove(); }
+        catch (error) { if (current()) { reviewStatus(error.message); $('review-retry').hidden = false; } }
+        finally { if (more.isConnected) more.disabled = false; }
+      });
+      list.append(more);
     }
   };
   try { await appendCandidates(null); } catch (error) { if (current()) reviewStatus(error.message); }

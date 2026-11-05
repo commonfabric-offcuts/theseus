@@ -309,16 +309,17 @@ export class EditorRegistry {
   // `shown(page, continued)` receives the checked page inside the cleanup task
   // that read it, so a later recheck's patch always lands after it. A page
   // continues the list only from the list's own next cursor: one whose list a
-  // fresh discovery replaced meanwhile changes nothing.
+  // fresh discovery replaced meanwhile changes nothing and is refused.
   async recoveryCandidates(editor, options, shown = () => {}) {
     const limit = options?.limit ?? 10;
     if (!Number.isInteger(limit) || limit < 1 || limit > 10) throw Error('Recovery cleanup reads one page of at most ten versions.');
+    let stale = false;
     const result = await this.cleanup.discover(this.sessionFor(editor), async () => {
       const page = await this.journal.candidates(editor.key, { ...options, limit });
       return Array.isArray(page) ? { items: page, nextCursor: null } : page;
     }, page => {
       const continued = Boolean(options?.cursor);
-      if (continued && options.cursor !== editor.candidatesNext) return;
+      if (continued && options.cursor !== editor.candidatesNext) { stale = true; return; }
       editor.candidatesNext = page.nextCursor;
       if (editor.context.kind === 'reply') {
         if (!continued) editor.imageCopies = new Map();
@@ -327,6 +328,7 @@ export class EditorRegistry {
       }
       shown(page, continued);
     });
+    if (stale) throw Error('These saved versions changed. Review versions again.');
     if (editor.context.kind === 'reply') await this.settleImageCopies(editor);
     return result;
   }
@@ -334,17 +336,27 @@ export class EditorRegistry {
   // After the image copies change: a refusal among them is compared with the
   // server draft read now, then the barrier and retained images follow. Up to
   // its first read it runs at once, so the barrier is never lowered early, and
-  // only the latest settle's answer counts: an older read that lands later is
-  // dropped.
-  async settleImageCopies(editor) {
+  // only the latest settle's answer counts: an older settle, whether its read
+  // answered or failed, finishes when the latest one does.
+  settleImageCopies(editor) {
     const settle = editor.imageSettle = (editor.imageSettle ?? 0) + 1;
+    return editor.imageSettled = this.settleOnce(editor, settle);
+  }
+
+  async settleOnce(editor, settle) {
     if ([...editor.imageCopies.values()].some(row => refusedCopyAtDraft(row, undefined))) {
       // Until this scoped read succeeds the old slot cannot dismiss a newly
       // discovered refusal. Retry can establish the exact revision later.
       editor.recoveryServerDraft = undefined;
       editor.recoveryDiscovery = true; this.changed(editor);
-      const state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
-      if (editor.imageSettle !== settle) return;
+      let state;
+      try {
+        state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
+      } catch (error) {
+        if (editor.imageSettle !== settle) return editor.imageSettled;
+        throw error;
+      }
+      if (editor.imageSettle !== settle) return editor.imageSettled;
       this.validateState(state, editor.context.sourceRef, editor.context.topicId);
       editor.recoveryServerDraft = copy(state.draft ?? null);
     }

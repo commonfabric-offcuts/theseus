@@ -208,6 +208,28 @@ test('More versions adds its page to the listed copies, and a fresh discovery re
   await f.discover(f.p,f.editor);
   assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('c')],nextCursor:null},'a fresh discovery replaces the list');
 });
+test('a refused More versions page is reported in the review, keeps the list, and leaves More versions usable',async()=>{
+  const f=fixture(),{candidates}=f.owners(),row=id=>({id,stamp:id});let refuse=true;
+  f.get('version-review').showModal=function(){this.open=true;};
+  f.registry.recoveryCandidates=async(editor,options,shown)=>{
+    if(options.cursor&&refuse)throw Error('These saved versions changed. Review versions again.');
+    const page=options.cursor?{items:[row('b')],nextCursor:null}:{items:[row('a')],nextCursor:'c1'};
+    shown(page,Boolean(options.cursor));return page;
+  };
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  f.get('review-retry').hidden=true;
+  const find=(element,text)=>element.textContent===text?element:element.children.map(child=>find(child,text)).find(Boolean);
+  const more=find(f.get('review-content'),'More versions');
+  await more.onclick();
+  assert.equal(f.get('review-status').textContent,'These saved versions changed. Review versions again.');
+  assert.equal(f.get('review-status').hidden,false);assert.equal(f.get('review-retry').hidden,false);
+  assert.equal(more.disabled,false,'More versions can be tried again');
+  assert.ok(find(f.get('review-content'),'More versions'),'the button stays in the list');
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a')],nextCursor:'c1'},'the listed copies are unchanged');
+  refuse=false;await more.onclick();
+  assert.equal(find(f.get('review-content'),'More versions'),undefined,'a page with no further cursor removes the button');
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('b')],nextCursor:null});
+});
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};

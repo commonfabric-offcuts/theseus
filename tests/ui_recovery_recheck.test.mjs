@@ -107,7 +107,7 @@ async function fixture(t) {
   });
   const register = async (draft = remote) => { const e = await registry.register(editor.context, draft); registry.current.editors.reply = e; return e; };
   const settle = async key => { await tick(); await registry.cleanup.idle(key); await Promise.all(settling); await tick(); };
-  return { api, rows, backend, journal, registry, other, register, server, applied, settle, sourceRef: editor.sourceRef };
+  return { api, rows, backend, journal, registry, other, register, server, applied, settle, sourceRef: editor.sourceRef, note: p.editors.note };
 }
 
 test('a copy the replaced editor deferred and that was since adopted is not written into the new editor', async t => {
@@ -273,10 +273,11 @@ for (const order of ['newer first', 'older first']) test(`only the latest settle
     held[1].serve(later); await newer;
     held[0].serve(before); await older;
   } else {
-    held[0].serve(before); await older;
+    await held[0].serve(before);
+    for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve));
     assert.equal(editor.recoveryDiscovery, true, 'the older answer does not lower the barrier while the newer read is out');
     assert.equal(editor.recoveryServerDraft, undefined);
-    held[1].serve(later); await newer;
+    held[1].serve(later); await newer; await older;
   }
   assert.equal(editor.recoveryServerDraft?.revision, 2, 'the newer read is the server draft');
   assert.equal(editor.recoveryDiscovery, true, 'the refusal at that revision holds the reply');
@@ -295,19 +296,60 @@ test('a recheck that brings in a refusal holds the reply at once, and still afte
   assert.equal(editor.recoveryServerDraft, undefined);
 });
 
-test('a More versions page whose list a fresh discovery replaced changes nothing', async t => {
+test('More versions continues the list from its own cursor, and a page from a replaced list is refused and changes nothing', async t => {
   const f = await fixture(t);
-  f.other('w-b', 's-b');
+  const wb = f.other('w-b', 's-b', false);
   f.backend.next = 'cursor-b';
   const editor = await f.register();
-  assert.equal(editor.recoveryDiscovery, true);
-  // A fresh discovery replaces the list, which now ends; a later page from the old list's cursor lands after it.
-  f.backend.next = null;
+  assert.equal(editor.recoveryDiscovery, true, 'an unread page holds the reply');
+  // A fresh discovery replaces the list; it now continues from cursor-c.
+  f.backend.next = 'cursor-c';
   const listed = [];
-  await f.registry.recoveryCandidates(editor, { limit: 10 }, (page, continued) => listed.push(continued));
+  const list = (page, continued) => listed.push([continued, page.items.map(row => row.id)]);
+  await f.registry.recoveryCandidates(editor, { limit: 10 }, list);
   const copies = [...editor.imageCopies.keys()];
-  await f.registry.recoveryCandidates(editor, { cursor: 'cursor-b', limit: 10 }, (page, continued) => listed.push(continued));
-  assert.deepEqual(listed, [false], 'the stale page is not shown');
+  // A page from the old list's cursor lands after it, and is refused.
+  f.backend.next = null;
+  await assert.rejects(f.registry.recoveryCandidates(editor, { cursor: 'cursor-b', limit: 10 }, list), /changed/);
+  assert.deepEqual(listed.map(([continued]) => continued), [false], 'the stale page is not shown');
   assert.deepEqual([...editor.imageCopies.keys()], copies);
+  assert.equal(editor.imageCopiesNext, 'cursor-c', 'the stale page leaves the list\'s own cursor');
+  // The fresh list's own continuation still applies, and reading its last page lifts the hold.
+  const wc = f.other('w-c', 's-c', false);
+  await f.registry.recoveryCandidates(editor, { cursor: 'cursor-c', limit: 10 }, list);
+  assert.deepEqual(listed.at(-1), [true, [wb.id, wc.id]]);
+  assert.ok(editor.imageCopies.has(wc.id));
   assert.equal(editor.imageCopiesNext, null);
+  assert.equal(editor.recoveryDiscovery, false, 'no unread page and no selected image is left');
+});
+
+test('a note\'s More versions page continues its list', async t => {
+  const f = await fixture(t);
+  f.backend.next = 'note-cursor';
+  const listed = [];
+  const list = (page, continued) => listed.push(continued);
+  await f.registry.recoveryCandidates(f.note, { limit: 10 }, list);
+  f.backend.next = null;
+  await f.registry.recoveryCandidates(f.note, { cursor: 'note-cursor', limit: 10 }, list);
+  assert.deepEqual(listed, [false, true]);
+});
+
+test('a settle whose read is superseded finishes with the latest settle, whether its own read answered or failed', async t => {
+  for (const older of ['answered', 'failed']) {
+    const { f, editor, before, later, held, reads } = await refusalAtLaterRevision(t);
+    const first = f.registry.recoveryCandidates(editor);
+    await reads(1);
+    const [r1] = editor.imageCopies.keys();
+    const second = f.registry.applyRecheck(editor, [r1], { items: [editor.imageCopies.get(r1)], nextCursor: null });
+    await reads(2);
+    let done = false;
+    const firstDone = first.then(() => { done = true; });
+    if (older === 'answered') await held[0].serve(before); else held[0].fail();
+    for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(done, false, `the older caller waits for the newer read (${older})`);
+    held[1].serve(later);
+    await firstDone; await second;
+    assert.equal(editor.recoveryServerDraft?.revision, 2, 'when the older caller finishes, the server draft is known');
+    assert.equal(editor.recoveryDiscovery, true);
+  }
 });
