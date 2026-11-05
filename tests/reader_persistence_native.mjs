@@ -651,6 +651,56 @@ try {
         assert.deepEqual(kept, { adopted: true, retired: false }, 'an adoption during a cleanup wins, and the cleanup then refuses the moved row');
         assert.equal(await lockHeld(), true, 'an adopted source\'s lock is kept after the cleanup that shared it ends');
       });
+
+      await check('cleanup a writer this document just released is taken again, never refused by its own release', async () => {
+        const a = await page('cleanup-relock');
+        await a.evaluate('j.save(snapshot)');
+        const original = await a.evaluate('j.own(editor.key)');
+        await a.close(); const b = await page('cleanup-relock');
+        const candidate = JSON.stringify(original);
+        // A second journal over a lock manager that completes each release
+        // only when the test lets it: one task after the next read-only
+        // transaction completes, so all the work that read starts has run.
+        const result = await b.evaluate(`(async()=>{
+          const holders=new Set(),pending=[];
+          const fake={
+            request(name,options,callback){
+              if(holders.has(name))return Promise.resolve(callback(null));
+              holders.add(name);
+              return Promise.resolve(callback({name,mode:'exclusive'})).then(value=>new Promise(done=>pending.push(()=>{holders.delete(name);done(value);})));
+            },
+            query:async()=>({held:[...holders].map(name=>({name})),pending:[]}),
+          };
+          Object.defineProperty(navigator,'locks',{value:fake,configurable:true});
+          const k=await (await import('/journal.mjs')).openJournal({instanceId:context.instanceId,actor:context.actor});
+          let armed=false;const realTransaction=IDBDatabase.prototype.transaction;
+          IDBDatabase.prototype.transaction=function(...args){
+            const tx=realTransaction.apply(this,args);
+            if(armed&&args[1]==='readonly'){armed=false;tx.addEventListener('complete',()=>setTimeout(()=>{for(const release of pending.splice(0))release();}));}
+            return tx;
+          };
+          const out={};
+          out.first=await k.retireAcknowledged(editor.key,${candidate},async()=>false);
+          out.pendingRelease=pending.length;
+          armed=true;let confirmed=false;
+          out.second=await k.retireAcknowledged(editor.key,${candidate},async()=>{confirmed=true;return false});
+          out.confirmed=confirmed;
+          // A third declined cleanup leaves its own release pending for the adoption.
+          armed=true;
+          out.third=await k.retireAcknowledged(editor.key,${candidate},async()=>false);
+          // Listing while that release is pending lists the copy as available here.
+          armed=true;
+          out.listed=(await k.current(editor.key,[${JSON.stringify(original.id)}])).map(row=>row?.availability);
+          out.fourth=await k.retireAcknowledged(editor.key,${candidate},async()=>false);
+          out.pendingBeforeAdoption=pending.length;
+          armed=true;
+          out.adopted=await k.adopt(editor.key,{id:${JSON.stringify(original.id)},stamp:${JSON.stringify(original.stamp)}}).then(row=>row.writerId===k.writerId,error=>error.message);
+          IDBDatabase.prototype.transaction=realTransaction;
+          return out;
+        })()`);
+        assert.deepEqual(result, { first: false, pendingRelease: 1, second: false, confirmed: true, third: false, listed: ['available'], fourth: false, pendingBeforeAdoption: 1, adopted: true },
+          'a cleanup or adoption right after this document released the writer waits for that release, not refused as another tab');
+      });
     } else if (mode === '--correction') {
       const sourceText = p => p.evaluate('document.querySelector("#source-body").textContent');
       const observeCalls = async p => {
