@@ -1,4 +1,5 @@
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
+import { WritingInput } from './writing-input.mjs';
 
 const node = (tag, text, className) => {
   const el = document.createElement(tag); if (text !== undefined) el.textContent = text;
@@ -11,13 +12,10 @@ export class InlineComposer {
   constructor(callbacks) {
     this.callbacks = callbacks; this.root = document.querySelector('#inline-composer');
     this.field = this.$('writing-body');
-    this.field.addEventListener('input', () => {
-      const p = this.presentation, editor = this.editor;
-      if (!editor || !this.admits(p, editor) || this.state().readOnly) { if (editor) this.field.value = editor.draft.body; return; }
-      editor.edit({ body: this.field.value, caret: this.caret() }); this.callbacks.edit(editor, p); this.paintStatus();
-    });
-    this.field.addEventListener('select', () => { if (this.admits()) this.editor.draft.caret = this.caret(); });
+    this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
+      changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();}});
     this.field.addEventListener('keydown', event => {
+      if(this.input.terminalKey(event))return;
       if (event.key === 'Enter' && event.metaKey && !event.isComposing && event.keyCode !== 229) {
         event.preventDefault(); if (!event.repeat) this.send();
       }
@@ -59,7 +57,7 @@ export class InlineComposer {
   get editor() { return this.presentation?.editors.reply; }
   admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
   state() { return writingState(this.editor, { active: this.admits(), status: this.callbacks.status }); }
-  caret() { return { start: this.field.selectionStart, end: this.field.selectionEnd }; }
+  caret() { return this.input.caret(); }
   show(p) {
     this.presentation = p; this.root.hidden = false;
     this.field.disabled = false; this.$('notice').hidden = true;

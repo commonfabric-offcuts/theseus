@@ -2,6 +2,7 @@ import { keyAction } from './editor.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
+import { WritingInput } from './writing-input.mjs';
 
 const node = (tag, text, className) => {
   const el = document.createElement(tag);
@@ -71,14 +72,8 @@ export class Reader {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
     this.$('reply-destination').onchange = event => this.callbacks.destination(event.target.value);
-    this.field.addEventListener('input', () => {
-      if (this.writingReadOnly()) { this.field.value = this.editor.draft.body; return; }
-      this.disarm();
-      this.editor.edit({ body: this.field.value, caret: this.caret() });
-      this.callbacks.edit(this.editor);
-      this.paintStatus();
-    });
-    this.field.addEventListener('select', () => { if (this.editor && this.admits()) this.editor.draft.caret = this.caret(); });
+    this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),
+      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();}});
     this.field.addEventListener('paste', event => this.paste(event));
     this.sourceBody.addEventListener('pointerdown', () => this.sourceBody.focus({ preventScroll: true }));
     this.sourceBody.addEventListener('pointermove', event => this.point(event));
@@ -274,7 +269,7 @@ export class Reader {
     this.disarm();
   }
 
-  caret() { return { start: this.field.selectionStart, end: this.field.selectionEnd }; }
+  caret() { return this.input.caret(); }
   placeKey() { return JSON.stringify(this.source?.source_ref); }
   rememberPlace() { this.positions.set(this.placeKey(), this.sourceBody.scrollTop); }
 
@@ -495,31 +490,14 @@ export class Reader {
     this.close();
   }
 
-  writingReadOnly() { return Boolean(!this.admits() || this.field.readOnly || this.editor?.adopting || recoveryReadOnly(this.editor)); }
+  writingReadOnly() { return this.input.readOnly(); }
 
   insertText(text) {
-    if (this.writingReadOnly()) return;
-    // execCommand keeps a native undo item for textarea text edits. The actual
-    // keyboard/undo contract is checked in the native-browser lane.
-    if (!document.execCommand('insertText', false, text)) {
-      this.field.setRangeText(text, this.field.selectionStart, this.field.selectionEnd, 'end');
-      this.field.dispatchEvent(new Event('input', { bubbles: true }));
-    }
+    this.input.insertText(text);
   }
 
   terminalKey(event) {
-    if (this.writingReadOnly()) return false;
-    if (!event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !['w', 'u', 'k', 'a', 'e'].includes(event.key)) return false;
-    const value = this.field.value, start = this.field.selectionStart, end = this.field.selectionEnd;
-    const lineStart = value.lastIndexOf('\n', start - 1) + 1;
-    const at = value.indexOf('\n', end), lineEnd = at < 0 ? value.length : at;
-    event.preventDefault();
-    if (event.key === 'a' || event.key === 'e') {
-      const point = event.key === 'a' ? lineStart : lineEnd; this.field.setSelectionRange(point, point); return true;
-    }
-    const from = event.key === 'u' ? lineStart : event.key === 'w' ? start - (value.slice(lineStart, start).match(/\S+\s*$|\s+$/)?.[0].length ?? 0) : start;
-    const to = event.key === 'k' ? lineEnd : end;
-    this.field.setSelectionRange(from, to); this.insertText(''); return true;
+    return this.input.terminalKey(event);
   }
 
   key(event) {

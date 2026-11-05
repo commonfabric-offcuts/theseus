@@ -7,6 +7,34 @@ import { createHash } from 'node:crypto';
 // selection uses a native Add image click and a fixture file supplied through
 // CDP; it does not establish interaction with the operating system's picker.
 export async function inlineChecks({ check, page, until, root, facts, view, control, replace, field, shot, observations }) {
+  await check('inline shared writing Ctrl commands and Undo match Reader', async () => {
+    const p=await page('shared-writing',null,true), body='First line\nkeep remove';
+    const text=selector=>p.evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
+    const exercise=async selector=>{
+      await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+      await p.point(selector);await p.send('Input.insertText',{text:body});
+      await p.key('w',2);assert.equal(await text(selector),'First line\nkeep ','Ctrl-W deletes the previous word');
+      await p.key('z',4);assert.equal(await text(selector),body,'native Undo restores Ctrl-W');
+      await p.key('u',2);assert.equal(await text(selector),'First line\n','Ctrl-U preserves earlier lines');
+      await p.key('z',4);assert.equal(await text(selector),body,'native Undo restores Ctrl-U');
+      await p.key('a',2);assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).selectionStart`),11);
+      await p.key('k',2);assert.equal(await text(selector),'First line\n');
+      await p.key('z',4);assert.equal(await text(selector),body);
+      await p.key('e',2);assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).selectionStart`),body.length);
+      await p.key('Enter');assert.equal(await text(selector),body+'\n','plain Return remains writing');
+    };
+    await exercise('#inline-writing-body');
+    await p.open(1);await exercise('#writing-body');
+    const before=await field(p);
+    await p.point('#source-body [data-start="0"]','move');await p.point('#source-body');
+    await p.point('#source-body [data-start="0"]','move');await p.key('Enter');
+    const quoted=await field(p);assert.notEqual(quoted,before);assert.match(quoted,/> Source 1 exact passage/);
+    assert.equal(await p.evaluate('document.activeElement.id'),'writing-body');
+    await p.key('z',4);assert.equal(await field(p),before,'native Undo restores writing before quote insertion');
+    await until(async()=>{const s=await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id});return s.draft?.body===before;},'Undo is saved canonically');
+    assert.equal(p.calls.some(c=>['message.send','submission.prepare'].includes(c.payload?.kind)),false,'editing and Undo do not send');
+    await shot(p,'shared-writing-reader');assert.deepEqual(p.errors,[]);
+  });
   await check('inline correction unavailable startup remains readable and Retry restores its composer', async () => {
     await control({ method: 'read_fault', name: 'editor_state', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'Composer is temporarily unavailable', retryable: true } }, count: 1 });
     const p = await page('inline-startup-refusal', null, true);

@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import * as writing from '../web/writing-helpers.mjs';
 import { readFailure, checkedView, bindingOf } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
+import { WritingInput } from '../web/writing-input.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 function fixture(href = 'https://fixture/?topic=t1') {
   const elements = new Map(), events = [], calls = [], paints = [];
@@ -52,7 +53,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [] };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
-  const scope = { ...writing, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, WritingInput, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener() {} }, location: { href },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
@@ -73,6 +74,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     inline(callbacks) { return new InlineComposer(callbacks); },
     get() { return {registry,inline,freshness}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
+    edit: editor => events.push(['inline-edit',editor.key]),
     needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
   // Initialize the real adapter; empty upload list is a deliberate fixture.
   inline.show(p);
@@ -80,6 +82,23 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
   return { ...context.wiring, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap };
 }
+
+test('inline Ctrl-W uses the shared writing input path and preserves readonly writing', () => {
+  const f=fixture(), field=f.get('inline-writing-body');
+  f.editor.edit=patch=>Object.assign(f.editor.draft,patch);
+  field.ownerDocument={execCommand:(_command,_ui,text)=>{
+    field.value=field.value.slice(0,field.selectionStart)+text+field.value.slice(field.selectionEnd);
+    field.handlers.input();return true;
+  }};
+  field.value=f.editor.draft.body='First line\nkeep remove';field.setSelectionRange(field.value.length,field.value.length);
+  const event={key:'w',ctrlKey:true,prevented:false,preventDefault(){this.prevented=true;}};
+  field.handlers.keydown(event);
+  assert.equal(event.prevented,true,'inline Ctrl-W must invoke the writing command');
+  assert.equal(field.value,'First line\nkeep ');assert.equal(f.editor.draft.body,field.value);
+  f.editor.adopting=true;const kept=f.editor.draft.body;
+  field.value='unadmitted change';field.handlers.input();
+  assert.equal(field.value,kept);assert.equal(f.editor.draft.body,kept);
+});
 
 test('outcome detail keeps transient choices, hides denied content, and recovers through Refresh', async () => {
   const f = fixture('https://fixture/?workspace=w1');
