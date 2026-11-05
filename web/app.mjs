@@ -7,7 +7,8 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
-import { TopicPages, TopicNavigation, TopicRail } from './topic-navigation.mjs';
+import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref } from './topic-navigation.mjs';
+import { OutcomeRail } from './outcomes.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -22,7 +23,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation;
+let topicRail, topicNavigation, outcomeRail;
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
@@ -427,7 +428,7 @@ async function refreshLists() {
   if (authorityReviewPending()) {
     status('The runtime changed. Review your saved writing before reloading this page.'); return;
   }
-  await topicRail?.load();
+  await outcomeRail?.load(); await topicRail?.load();
   if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
   if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
   await listPage('messages'); await listPage('memory');
@@ -636,8 +637,9 @@ async function initialize() {
   api = new Api(token); bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
-  const topicId = new URL(location.href).searchParams.get('topic');
-  if (!topicId) throw Error('Open a Theseus topic link to choose the conversation.');
+  const route = parseRoute(new URL(location.href));
+  if (route.kind !== 'topic') return initializeOutcomePage(route);
+  const topicId = route.id;
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version) });
@@ -647,7 +649,7 @@ async function initialize() {
   $('topic-title').textContent = topic.title; $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
-    $('workspace-name').textContent = workspace.title; $('workspaces').replaceChildren(node('p', workspace.title));
+    $('workspace-name').textContent = workspace.title;
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   $('participants').replaceChildren(...result.participants.map(participant => node('span', participant.actor_id, 'chip')));
   // Keep startup retry read-only: no editor or clickable source exists until
@@ -694,8 +696,9 @@ async function initialize() {
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } } });
-  topicNavigation = new TopicNavigation({ registry, topicId,
-    navigate: id => location.assign('?topic=' + encodeURIComponent(id)) });
+  topicNavigation = new TopicNavigation({ registry, current:route,
+    navigateTarget: target => location.assign(routeHref(target)) });
+  initializeOutcomeNavigation(topic.workspace_id);
   topicRail = new TopicRail({ pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
     host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'),
     denied: error => readFailure(error).kind === 'forbidden',
@@ -708,15 +711,7 @@ async function initialize() {
         return answer;
       } finally { foreground.release(); }
     },
-    open: async id => {
-      const notice = $('topic-navigation-status'); notice.hidden = true;
-      const pending = topicNavigation.open(id, topicRail.pages.items.find(item => item.id === id)?.title ?? id), serial = topicNavigation.serial;
-      try { await pending; }
-      catch (error) {
-        if (serial !== topicNavigation.serial) return;
-        notice.textContent = error.message; notice.hidden = false; notice.scrollIntoView({ block: 'nearest' });
-      }
-    },
+    open: id => openDestination({kind:'topic',id},topicRail.pages.items.find(item => item.id === id)?.title ?? id),
   });
   topicRail.load();
   await initializeInlineComposer();
@@ -734,6 +729,79 @@ async function initialize() {
   window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint);
+}
+async function openDestination(target, title) {
+  const notice=$('topic-navigation-status');notice.hidden=true;
+  const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
+  try { return await pending; }
+  catch(error) {
+    if(serial!==topicNavigation.serial)return;
+    notice.textContent=error.message;notice.hidden=false;notice.scrollIntoView({block:'nearest'});
+  }
+}
+function initializeOutcomeNavigation(current=null) {
+  const home=event=>{
+    if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+    event.preventDefault();return openDestination({kind:'root'},'Outcomes');
+  };
+  $('outcomes-home').onclick=home;document.querySelector('.wordmark').onclick=home;
+  const read=async args=>{
+    if(registry&&authorityReviewPending())throw Error('The runtime changed. Review saved writing before reloading.');
+    const foreground=registry?.cleanup.foreground();
+    try {
+      const answer=checkedView(await (foreground ? foreground.read(options=>api.view('workspaces',args,options)) : api.view('workspaces',args,{readClass:'foreground'})),bootstrap.instance_id);
+      if(registry&&(registry.disposed||authorityReviewPending()))throw Error('The runtime changed. Review saved writing before reloading.');
+      return answer;
+    }
+    finally { foreground?.release(); }
+  };
+  outcomeRail=new OutcomeRail({instanceId:bootstrap.instance_id,current,host:$('workspaces'),more:$('more-workspaces'),
+    retry:$('retry-workspaces'),message:$('outcomes-status'),empty:$('outcomes-empty'),read,open:openDestination,
+    denied:error=>readFailure(error).kind==='forbidden'});
+  return outcomeRail.load();
+}
+async function initializeOutcomePage(route) {
+  // There is no topic, implicit composer or source in a selection-only view.
+  if(!['root','workspace'].includes(route.kind))throw Error('This creation link is not available yet. Open Outcomes to choose a place.');
+  status('');
+  for(const id of ['notebook','participants','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  $('outcome-page').hidden=false;
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
+  if(route.kind==='root') {
+    $('topic-title').textContent='Outcomes';$('topic-description').textContent='Choose an outcome to see its topics.';
+    $('outcomes-heading').textContent='Your outcomes';
+    $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
+    await initializeOutcomeNavigation();
+    $('refresh').onclick=()=>run(()=>outcomeRail.load());
+  } else {
+    $('outcome-page').append($('topic-navigation'));
+    await initializeOutcomeNavigation(route.id);
+    const refresh=async()=>{
+      status('');
+      let answer;
+      try { answer=checkedView(await api.view('workspace',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id); }
+      catch(error) {
+        if(readFailure(error).kind==='forbidden') {
+          $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';
+          $('topic-navigation').hidden=true;
+        }
+        throw error;
+      }
+      const workspace=answer.workspace;
+      if(workspace?.id!==route.id||typeof workspace.title!=='string')throw Error('The outcome identity could not be confirmed.');
+      $('topic-navigation').hidden=false;
+      $('topic-title').textContent=workspace.title;$('topic-description').textContent=workspace.purpose||'Choose a topic, or start a new one.';
+      $('workspace-name').textContent=workspace.id;
+      if(!topicRail)topicRail=new TopicRail({pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
+        retry:$('retry-topics'),message:$('topics-status'),denied:error=>readFailure(error).kind==='forbidden',
+        read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
+        open:id=>openDestination({kind:'topic',id},topicRail.pages.items.find(item=>item.id===id)?.title??id),
+        updated:()=>{$('outcome-empty').hidden=!topicRail.pages.started||topicRail.pages.items.length>0||!$('topics-status').hidden;}});
+      await topicRail.load();
+    };
+    $('refresh').onclick=()=>run(refresh);await refresh();
+  }
+  document.body.dataset.ready='true';
 }
 $('refresh').onclick = () => run(start);
 run(start);

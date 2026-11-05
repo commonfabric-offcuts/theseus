@@ -11,25 +11,36 @@
 </head>
 <body>
   <header class="app-header">
-    <a class="wordmark" href="#">Theseus<span class="presence-dot" aria-hidden="true"></span></a>
+    <a class="wordmark" href="/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"></span></a>
     <span id="instance-label">Opening your workspace…</span>
     <button id="refresh" type="button">Refresh</button>
   </header>
   <div id="app-status" class="notice" role="status" hidden></div>
   <div id="updates-status" class="notice" hidden><span id="updates-message" role="status"></span><button id="updates-retry" type="button">Retry updates</button></div>
   <div class="workspace-layout">
-    <nav class="rail" aria-label="Workspaces and topics">
-      <div class="rail-heading"><h1>Workspaces</h1></div>
-      <div id="workspaces"></div>
-      <div class="rail-heading"><h2 id="topics-heading">Topics</h2><button id="new-topic" type="button" disabled>New topic</button></div>
+    <nav class="rail" aria-label="Outcomes and topics">
+      <a id="outcomes-home" href="/">← Outcomes</a>
       <div id="topic-navigation-status" class="notice" role="status" hidden></div>
+      <section id="outcome-navigation" aria-label="Outcomes">
+      <div class="rail-heading"><h2 id="outcomes-heading">Outcomes</h2><button id="new-outcome" type="button" disabled>New outcome</button></div>
+      <div id="workspaces"></div>
+      <p id="outcomes-empty" class="empty" tabindex="-1" hidden>No outcomes are available yet.</p>
+      <div id="outcomes-status" class="notice" role="status" hidden></div>
+      <button id="more-workspaces" type="button" hidden>More outcomes</button>
+      <button id="retry-workspaces" type="button" hidden>Retry outcomes</button>
+      </section>
+      <section id="topic-navigation" aria-label="Topics">
+      <div class="rail-heading"><h2 id="topics-heading">Topics</h2><button id="new-topic" type="button" disabled>New topic</button></div>
       <div id="topics-status" class="notice" role="status" hidden></div>
       <div id="topics" aria-labelledby="topics-heading"></div>
       <button id="more-topics" type="button" hidden>More topics</button>
       <button id="retry-topics" type="button" hidden>Retry topics</button>
+      <p id="outcome-empty" class="empty" hidden>No topics yet. Start the first topic in this outcome.</p>
+      </section>
     </nav>
     <main id="main" tabindex="-1">
       <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><h1 id="topic-title"></h1><p id="topic-description" class="muted"></p></div></header>
+      <section id="outcome-page" class="selection-page" hidden></section>
       <div id="participants" class="participants" aria-label="Topic participants"></div>
       <section id="topic-pending" aria-label="Your pending replies"></section>
       <section id="messages" aria-label="Conversation"></section>

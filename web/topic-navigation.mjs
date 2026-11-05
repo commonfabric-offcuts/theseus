@@ -1,5 +1,58 @@
 import { currentImages } from './upload-state.mjs';
 
+const validId = id => typeof id === 'string' && id.length > 0 && [...id].length <= 200 && !/[\x00-\x1f]/.test(id);
+const afterId = (id,previous) => {
+  const a=[...id],b=[...previous];
+  for(let i=0;i<Math.min(a.length,b.length);i++)if(a[i]!==b[i])return a[i].codePointAt(0)>b[i].codePointAt(0);
+  return a.length>b.length;
+};
+const badRoute = () => { throw Error('This destination link is incomplete or ambiguous. Open Outcomes to choose a place.'); };
+export function routeKey(route) {
+  const fields = {root:[],topic:['id'],workspace:['id'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
+  if (!fields || Object.keys(route).length !== fields.length + 1 || !fields.every(key=>validId(route[key]))) badRoute();
+  return JSON.stringify([route.kind,...fields.map(key=>route[key])]);
+}
+export function routeHref(route) {
+  routeKey(route);
+  const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id} :
+    route.kind === 'workspace' ? {workspace:route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
+      {workspace:route.workspace,opening:route.opening,opening_topic:route.topic};
+  return params ? '?' + new URLSearchParams(params) : '/';
+}
+export function parseRoute(url) {
+  const p=url.searchParams, keys=[...p.keys()];
+  if (new Set(keys).size !== keys.length) badRoute();
+  let route;
+  if (!keys.length) route={kind:'root'};
+  else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
+  else if (keys.length===1 && p.has('workspace')) route={kind:'workspace',id:p.get('workspace')};
+  else if (keys.length===2 && p.get('new')==='outcome' && p.has('intent')) route={kind:'create',intent:p.get('intent')};
+  else if (keys.length===3 && ['workspace','opening','opening_topic'].every(k=>p.has(k))) route={kind:'opening',workspace:p.get('workspace'),opening:p.get('opening'),topic:p.get('opening_topic')};
+  else badRoute();
+  routeKey(route);return route;
+}
+
+export class WorkspacePages {
+  constructor(instanceId) { this.instanceId=instanceId;this.loaded=new Map();this.next=null;this.started=false; }
+  get items() { return [...this.loaded.values()]; }
+  accept(answer,cursor=null) {
+    if (cursor!==null && (!this.started || cursor!==this.next)) return false;
+    const fail=()=>{throw Error('The outcome list could not be confirmed. Retry outcomes.');};
+    if (answer?.instance_id!==this.instanceId || !Array.isArray(answer.items) ||
+      !(answer.next_cursor===null || validId(answer.next_cursor))) fail();
+    let previous=cursor??'';
+    for(const item of answer.items) {
+      if (!validId(item?.id) || !afterId(item.id,previous) || !validId(item.owner_id) || typeof item.title!=='string' ||
+        new TextEncoder().encode(item.title).length>1024 || typeof item.title_truncated!=='boolean' || !Number.isInteger(item.version) || item.version<1) fail();
+      previous=item.id;
+    }
+    if (answer.next_cursor!==null && (!answer.items.length || answer.next_cursor!==previous)) fail();
+    if (cursor===null) this.loaded.clear();
+    for(const item of answer.items) this.loaded.set(item.id,structuredClone(item));
+    this.next=answer.next_cursor;this.started=true;return true;
+  }
+}
+
 // Only workspace navigation data lives here. Existing sessions own all writing.
 export class TopicPages {
   constructor(instanceId, workspaceId, current) {
@@ -7,8 +60,8 @@ export class TopicPages {
     this.loaded = new Map(); this.next = null; this.started = false;
   }
   get items() {
-    const items = [...this.loaded.values()].map(item => item.id === this.current.id ? this.current : item);
-    return this.loaded.has(this.current.id) ? items : [this.current, ...items];
+    const items = [...this.loaded.values()].map(item => item.id === this.current?.id ? this.current : item);
+    return !this.current || this.loaded.has(this.current.id) ? items : [this.current, ...items];
   }
   accept(answer, cursor = null) {
     if (cursor !== null && (!this.started || cursor !== this.next)) return false;
@@ -29,12 +82,21 @@ export class TopicPages {
 }
 
 export class TopicNavigation {
-  constructor({ registry, topicId, navigate }) { Object.assign(this, { registry, topicId, navigate }); this.serial = 0; }
-  async open(topicId, title = topicId) {
+  constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget }) {
+    Object.assign(this, { registry, topicId, current, navigate, navigateTarget }); this.serial = 0;
+  }
+  open(topicId, title = topicId) { return this.openTarget({kind:'topic',id:topicId},title); }
+  async openTarget(destination, title = destination.kind) {
+    const destinationKey=routeKey(destination);
     const request = ++this.serial;
     const previousChoice = this.departureChoice; this.departureChoice = null;
-    if (topicId === this.topicId) return false;
+    if (destinationKey === routeKey(this.current)) return false;
+    const navigate = () => this.navigateTarget ? this.navigateTarget(structuredClone(destination)) :
+      destination.kind==='topic' ? this.navigate(destination.id) : badRoute();
     const registry = this.registry;
+    // Root/outcome browsing has no writing owners. Creation supplies its own
+    // registered owners before admitting any editable surface.
+    if (!registry) { navigate();return true; }
     const inline = registry.inline, current = registry.current;
     const snapshots = [...registry.sessions.values()].map(owner => ({ owner, editor: owner.editor, version: owner.editor.localVersion,
       sendIds: JSON.stringify(owner.editor.submissions.map(item => item.id)), needsSave: owner.editor.dirty }));
@@ -75,11 +137,11 @@ export class TopicNavigation {
       sendGuard();
       if (!same() || !imagesAttached() || registry.hasUnprotectedWriting) throw Error('Keep this page open until your writing and selected images are safely saved, then choose the topic again.');
       const pending = pendingSnapshot();
-      if (pending.length && !(previousChoice?.topicId === topicId && previousChoice.same() && samePending(previousChoice.pending, pending))) {
-        nextChoice = { topicId, same, pending };
+      if (pending.length && !(previousChoice?.destinationKey === destinationKey && previousChoice.same() && samePending(previousChoice.pending, pending))) {
+        nextChoice = { destinationKey, same, pending };
         throw Error(`A send is unconfirmed; its pending copy is kept on this device. Choose “${title}” again to leave without resolving it. Use the pending reply’s Review button to Check confirmation; after returning, use Review versions for a local copy.`);
       }
-      this.navigate(topicId); return true;
+      navigate(); return true;
     } catch (error) {
       // Preserve through the same registry even after a refused or offline save.
       const kept = await Promise.allSettled([registry.keepEditorsLocal(editors)]);
@@ -94,8 +156,8 @@ export class TopicNavigation {
 }
 
 export class TopicRail {
-  constructor({ pages, host, more, retry, message, read, open, denied }) {
-    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied });
+  constructor({ pages, host, more, retry, message, read, open, denied, updated }) {
+    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated });
     this.denied = false; this.loading = null; this.failedMore = false;
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore);
     // Mobile browsers can retarget a gap tap to a nearby link. Only accept a
@@ -123,7 +185,7 @@ export class TopicRail {
         };
       }
       link.textContent = item.title;
-      if (item.id === this.pages.current.id) link.setAttribute('aria-current', 'page');
+      if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
       // Moving a focused link can blur it. Leave unchanged rows in place.
       if (this.host.children[index] !== link) this.host.insertBefore(link, this.host.children[index] ?? null);
@@ -145,7 +207,7 @@ export class TopicRail {
         this.message.hidden = true; this.retry.hidden = true; this.paint();
         if ((focused === this.more || focused === this.retry) && focused.hidden) {
           const links = [...this.host.children];
-          (links.find(link => !previousIds.has(link.dataset.topicId)) ?? links.find(link => link.dataset.topicId === this.pages.current.id))?.focus();
+          (links.find(link => !previousIds.has(link.dataset.topicId)) ?? links.find(link => link.dataset.topicId === this.pages.current?.id) ?? links[0])?.focus();
         }
       }).catch(error => {
         const focused = document.activeElement;
@@ -154,7 +216,7 @@ export class TopicRail {
         this.message.textContent = this.denied ? 'Workspace topics are unavailable. Retry to check access.' : error.message + ' Retry topics.';
         this.message.hidden = false; this.retry.hidden = false;
         if (focused === this.more && this.more.hidden) this.retry.focus();
-      }).finally(() => { this.loading = null; this.more.removeAttribute('aria-disabled'); this.retry.removeAttribute('aria-disabled'); });
+      }).finally(() => { this.loading = null; this.more.removeAttribute('aria-disabled'); this.retry.removeAttribute('aria-disabled'); this.updated?.(); });
     return this.loading;
   }
 }

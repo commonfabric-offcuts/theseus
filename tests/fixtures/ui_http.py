@@ -399,6 +399,9 @@ def main():
                                 {"topic_id": topic_id}, {"draft_revision": 1})
                             created.append(command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}))
                         answer = created
+                    elif freshness and request["method"] == "navigation_workspaces":
+                        answer = [command("workspace.create", "navigation-workspace-" + item["id"], item)
+                                  for item in request["workspaces"]]
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
                     elif freshness and request["method"] == "memory_revise":

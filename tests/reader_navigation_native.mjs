@@ -6,9 +6,84 @@ export async function navigationChecks({ check, page, until, root, facts, view, 
   const topics = [{ id: 't2', title: 'Design discussion' }, { id: 't3', title: 'Greenlight discussion' }];
   const ready = (p, id) => until(async () => { try { return await p.evaluate(`document.body.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')===${JSON.stringify(id)} && Boolean(document.querySelector(${JSON.stringify(link(id))}))`); } catch { return false; } }, 'topic '+id+' ready');
   const click = async (p, id) => { await p.evaluate(`document.querySelector(${JSON.stringify(link(id))}).scrollIntoView({block:'center',inline:'nearest'})`); await p.point(link(id)); };
-  const noActs = p => assert.equal(p.calls.some(c => ['message.send','submission.prepare','delivery.ack','topic.create_and_send'].includes(c.payload?.kind)), false, 'navigation never sends, acknowledges or creates work');
+  const noActs = p => assert.equal(p.calls.some(c => ['workspace.create','message.send','submission.prepare','delivery.ack','topic.create_and_send'].includes(c.payload?.kind)), false, 'navigation never sends, acknowledges or creates work');
   const noPrompt = p => assert.equal(p.events.some(e => e.method === 'Page.javascriptDialogOpening'), false, 'normal navigation never relies on beforeunload confirmation');
   const state = () => view('editor_state', { source_ref: { kind: 'topic', id: 't1' }, topic_id: 't1' });
+
+  await check('navigation outcomes root empty paging keyboard and protected departure', async () => {
+    const workspaces=Array.from({length:21},(_,n)=>({id:'outcome-'+String(n).padStart(2,'0'),title:n<2?'Same outcome':'Outcome '+n,purpose:'Purpose '+n}));
+    const created=await control({method:'navigation_workspaces',workspaces});
+    assert.ok(created.every(r=>r.status==='committed'));
+    const p=await page('outcome-navigation',null,true), start=p.calls.length;
+    const activate=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'center'})`);await p.point(selector);};
+    await p.send('Page.navigate',{url:facts.origin+'/'});
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" || (!document.querySelector("#app-status").hidden && document.querySelector("#app-status").textContent)'), 'root startup settled');
+    assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Outcomes','root provides discoverable outcomes rather than requiring a topic URL');
+    await until(()=>p.evaluate('document.querySelectorAll("#workspaces a").length===20'),'first bounded outcome page');
+    assert.equal(p.calls.slice(start).some(c=>['topic','topic_messages','editor_state'].includes(c.payload?.name)),false,'root reads no fabricated topic/editor');
+    const labels=await p.evaluate('[...document.querySelectorAll("#workspaces a")].slice(0,2).map(a=>a.textContent)');
+    assert.notEqual(labels[0],labels[1]);assert.ok(labels.every(x=>x.includes('Same outcome')&&x.includes('outcome-')));
+    await shot(p,'outcomes-root');
+    await control({method:'read_fault',name:'workspaces',status:503,body:{error:{code:'DATABASE_BUSY',message:'Outcomes temporarily unavailable',retryable:true}},count:1});
+    await activate('#refresh');
+    await until(()=>p.evaluate('!document.querySelector("#retry-workspaces").hidden'),'outcome retry is discoverable');
+    assert.match(await p.evaluate('document.querySelector("#outcomes-status").textContent'),/Outcomes temporarily unavailable/);
+    assert.equal(await p.evaluate('document.querySelectorAll("#workspaces a").length'),20,'transient error preserves available choices');
+    await activate('#retry-workspaces');
+    await until(()=>p.evaluate('document.querySelector("#retry-workspaces").hidden'),'retry restores outcomes');
+    assert.equal(await p.evaluate('document.activeElement.dataset.workspaceId'),'outcome-00','Retry hands focus to an available outcome');
+    await activate('#more-workspaces');
+    await until(()=>p.evaluate('document.querySelector("#more-workspaces").hidden'),'last outcome page');
+    assert.equal(await p.evaluate('document.querySelectorAll("#workspaces a").length'),22);
+    assert.equal(await p.evaluate('document.activeElement.dataset.workspaceId'),'outcome-20');
+    await activate('#workspaces a[data-workspace-id="outcome-00"]');
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'empty outcome');
+    assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Same outcome');
+    assert.match(await p.evaluate('document.querySelector("#outcome-empty").textContent'),/No topics yet/);
+    assert.equal(await p.evaluate('document.querySelector("#inline-composer").hidden'),true);
+    await shot(p,'outcomes-empty');
+    // A keyboard user chooses the real outcome and topic through ordinary links.
+    await activate('#outcomes-home');
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" && !location.search'),'root again');
+    await until(()=>p.evaluate('!document.querySelector("#more-workspaces").hidden'),'root More available');
+    await activate('#more-workspaces');
+    await until(()=>p.evaluate('Boolean(document.querySelector("#workspaces a[data-workspace-id=w1]"))'),'original outcome visible');
+    await p.key('Tab');
+    assert.equal(await p.evaluate('document.activeElement.dataset.workspaceId'),'w1');
+    await p.key('Enter');
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" && Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'),'workspace topics');
+    await control({method:'read_fault',name:'workspace',status:403,body:{error:{code:'FORBIDDEN',message:'Outcome access denied'}},count:1});
+    await activate('#refresh');
+    await until(()=>p.evaluate('document.querySelector("#topic-navigation").hidden'),'denied outcome hides its previous topic choices');
+    assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Outcome unavailable');
+    assert.equal(await p.evaluate('document.querySelector("#app-status").hidden'),false);
+    await activate('#refresh');
+    await until(()=>p.evaluate('!document.querySelector("#topic-navigation").hidden && document.querySelector("#app-status").hidden'),'Refresh restores permitted outcome');
+    await activate('#topics a[data-topic-id="t1"]');await ready(p,'t1');
+    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})');await activate('#inline-writing-body');
+    const body='Writing preserved when choosing Outcomes';await p.send('Input.insertText',{text:body});const entered=Date.now();
+    await activate('#outcomes-home');
+    assert.ok(Date.now()-entered<450,'outcome link activated before autosave debounce');
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" && !location.search'),'guarded root departure');
+    assert.equal((await state()).draft.body,body);
+    await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+    await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
+    await until(()=>p.evaluate('Boolean(document.querySelector("#workspaces a[data-workspace-id=outcome-00]"))'),'mobile outcomes');
+    await p.evaluate('document.querySelector("#workspaces a[data-workspace-id=outcome-00]").scrollIntoView({block:"center"})');
+    const b=await p.box('#workspaces a[data-workspace-id="outcome-00"]');
+    const next=await p.box('#workspaces a[data-workspace-id="outcome-01"]');
+    const gap={x:b.x+b.width/2,y:(b.y+b.height+next.y)/2};
+    assert.ok(next.y>b.y+b.height,'there is a real gap outside either outcome');
+    await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[gap]});
+    await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await new Promise(resolve=>setTimeout(resolve,100));
+    assert.equal(await p.evaluate('location.search'),'','a neighboring gap does not choose an outcome');
+    await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2}]});
+    await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'mobile outcome selection');
+    await shot(p,'outcomes-mobile-empty');
+    noActs(p);noPrompt(p);assert.deepEqual(p.errors,[]);
+  });
 
   await check('navigation placeholder absent during pending startup and error recovery', async () => {
     await control({ method: 'navigation_topics', topics });
@@ -56,10 +131,11 @@ export async function navigationChecks({ check, page, until, root, facts, view, 
     await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
     await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
     await heldTransition(true);
-    // A person can still open a bare URL and find the existing explicit guidance.
+    // Outcomes is now the selected bare-root behavior; pending topic headers
+    // stay empty, while a resolved root has its own real selection heading.
     await p.send('Page.navigate',{url:facts.origin+'/'});
-    await until(()=>p.evaluate('!document.querySelector("#app-status").hidden && document.querySelector("#app-status").textContent.includes("Open a Theseus topic link to choose the conversation.")'),'bare-root guidance retained');
-    await emptyHeader('bare root');
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'bare-root outcome selection');
+    assert.equal((await header()).generic,false);
     noActs(p);noPrompt(p);assert.deepEqual(p.errors,[]);
   });
 

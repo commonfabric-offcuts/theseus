@@ -8,7 +8,7 @@ import * as writing from '../web/writing-helpers.mjs';
 import { readFailure, checkedView, bindingOf } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
-function fixture() {
+function fixture(href = 'https://fixture/?topic=t1') {
   const elements = new Map(), events = [], calls = [], paints = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
@@ -52,16 +52,18 @@ function fixture() {
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [] };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
-  const scope = { ...writing, readFailure, checkedView, bindingOf, currentImages, document, URL, structuredClone, console,
-    window: { addEventListener() {} }, location: { href: 'https://fixture/?topic=t1' },
+  const scope = { ...writing, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+    window: { addEventListener() {} }, location: { href },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
     Reader: class { constructor() { return reader; } },
     TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
     initialViews: async () => ({}), readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '' };
   const context = vm.createContext(scope);
-  const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replaceAll('export class ', 'class ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail}; })())', context);
+  const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref}; })())', context);
+  const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
+  vm.runInContext('globalThis.OutcomeRail = (()=>{' + outcomeSource + '; return OutcomeRail; })()', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
@@ -78,6 +80,36 @@ function fixture() {
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
   return { ...context.wiring, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap };
 }
+
+test('outcome detail keeps transient choices, hides denied content, and recovers through Refresh', async () => {
+  const f = fixture('https://fixture/?workspace=w1');
+  f.inject({ api:f.api, bootstrap:f.bootstrap });
+  let failure = null;
+  f.api.view = async name => {
+    if(name==='workspace') {
+      if(failure) throw failure;
+      return {instance_id:'fixture',workspace:{id:'w1',title:'Real outcome',purpose:'Purpose'}};
+    }
+    return {instance_id:'fixture',items:name==='workspace_topics'?[f.topic]:[],next_cursor:null};
+  };
+  await f.initialize();
+  assert.equal(f.get('topic-title').textContent,'Real outcome');
+  assert.equal(f.get('topics').children.length,1);
+  failure = Object.assign(Error('Temporarily offline'),{code:'DATABASE_BUSY'});
+  await f.get('refresh').onclick();
+  assert.equal(f.get('topic-navigation').hidden,false);
+  assert.equal(f.get('topic-title').textContent,'Real outcome');
+  failure = Object.assign(Error('Access denied'),{code:'FORBIDDEN'});
+  await f.get('refresh').onclick();
+  assert.equal(f.get('topic-navigation').hidden,true,'confirmed denial removes stale topic choices');
+  assert.equal(f.get('topic-title').textContent,'Outcome unavailable');
+  assert.equal(f.get('topic-description').textContent,'');
+  assert.equal(f.get('app-status').hidden,false);
+  failure = null;await f.get('refresh').onclick();
+  assert.equal(f.get('topic-navigation').hidden,false);
+  assert.equal(f.get('topic-title').textContent,'Real outcome');
+  assert.equal(f.get('app-status').hidden,true);
+});
 
 test('inline startup failure disables ownerless input but paints lists, enables freshness and keeps one registry on Refresh', async () => {
   const f = fixture(); f.registry.inline = null;
