@@ -141,7 +141,7 @@ export function judgePixels(png, { pills, width }) {
     }
     const stands = Math.max(ratio(fill, around), ...rows.map(row => ratio(row, around)));
     if (stands < 1.15) problems.push({ kind: 'blends into what is around it', at: pill.at, contrast: Number(stands.toFixed(2)) });
-    const ink = Math.max(...inner.map(pixel => ratio(pixel, fill)));
+    const ink = inner.reduce((most, pixel) => Math.max(most, ratio(pixel, fill)), 0);
     if (ink < 4.5) problems.push({ kind: 'faint words', at: pill.at, contrast: Number(ink.toFixed(2)) });
   }
   return problems;
