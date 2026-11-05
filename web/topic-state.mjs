@@ -18,7 +18,9 @@ export function readableTime(ms) {
 export function stateLabel(item, reader) {
   const state = STATES.includes(item?.state) ? item.state : 'active';
   const waiting = Array.isArray(item?.waiting_on) ? item.waiting_on : [];
-  return state === 'waiting' && waiting.length ? `Waiting on ${waiting.map(id => named(id, reader)).join(', ')}` : LABELS[state];
+  // The reader comes first, so a list cut short never cuts them.
+  const names = [...waiting.filter(id => id === reader), ...waiting.filter(id => id !== reader)];
+  return state === 'waiting' && names.length ? `Waiting on ${names.map(id => named(id, reader)).join(', ')}` : LABELS[state];
 }
 
 // A row in a topic list says where its topic stands unless it is simply active.
@@ -76,6 +78,7 @@ export class TopicStatePanel {
     const participant = participants.some(person => person.actor_id === reader);
     const mark = element('strong', { className: 'topic-state', textContent: stateLabel(topic, reader), title: stateLabel(topic, reader) });
     mark.dataset.state = topic.state ?? 'active';
+    if (topic.state === 'waiting' && topic.waiting_on?.includes(reader)) mark.classList.add('mine');
     const line = [mark];
     if (topic.state_note) line.push(' · ', element('span', { className: 'state-note', textContent: topic.state_note }));
     if (topic.state_by) line.push(element('span', { className: 'muted', textContent:

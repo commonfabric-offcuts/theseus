@@ -62,6 +62,8 @@ test('a row is marked unless its topic is simply active, marked as mine when it 
   assert.deepEqual(row(topic({ state: 'waiting', waiting_on: ['tony'], state_note: 'Pick one' })), [['topic-state mine', 'Waiting on you', 'waiting', 'Waiting on you · Pick one']]);
   assert.deepEqual(row(topic({ state: 'waiting', waiting_on: ['fable'] })), [['topic-state', 'Waiting on fable', 'waiting', 'Waiting on fable']]);
   assert.deepEqual(row(topic({ state: 'done' })), [['topic-state', 'Done', 'done', 'Done']]);
+  // Core sends the list sorted; the reader still comes first, so a list cut short never cuts them.
+  assert.deepEqual(row(topic({ state: 'waiting', waiting_on: ['aim-ux', 'fable', 'tony'] })), [['topic-state mine', 'Waiting on you, aim-ux, fable', 'waiting', 'Waiting on you, aim-ux, fable']]);
 });
 
 test('the panel line says who said it and when; only those who may change it get the form', t => {
@@ -72,6 +74,12 @@ test('the panel line says who said it and when; only those who may change it get
   panel.paint(said, [{ actor_id: 'fable' }]);
   assert.equal(host.hidden, false);
   assert.equal(host.children[0].text, 'Waiting on tony · Which name? — you, 7:41 AM Thu Nov 5');
+  const mark = host.children[0].children[0];
+  assert.equal(mark.title, 'Waiting on tony', 'its whole words are its title');
+  assert.equal(mark.classes.has('mine'), false, 'it waits on someone else');
+  const mine = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
+  mine.paint(said, []);
+  assert.equal(mine.host.children[0].children[0].classes.has('mine'), true, 'the panel marks a state that waits on the reader');
   const form = host.find(node => node.tag === 'details');
   assert.ok(form, 'a participant may say where it stands');
   assert.equal(host.find(node => node.id === 'topic-rename'), undefined, 'a participant who is not its creator or owner cannot rename it');

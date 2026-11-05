@@ -373,6 +373,13 @@ test('a list drawn again with what it already shows is left alone, so a press un
   assert.equal(host.all().find(node => node.textContent === 'Mark read'), mark);
   paintSent(host, { addressed: 2, latest_addressed: [lost] }, actions);
   assert.notEqual(host.all().find(node => node.textContent === 'Mark read'), mark, 'a change draws it anew');
+  // So does a change to the same message's topic: a rename, or the reader regaining it.
+  const renamed = host.all().find(node => node.textContent === 'Mark read');
+  paintSent(host, { addressed: 2, latest_addressed: [{ ...lost, topic: { ...lost.topic, title: 'Renamed' } }] }, actions);
+  assert.match(host.text, /Renamed/);
+  assert.notEqual(host.all().find(node => node.textContent === 'Mark read'), renamed);
+  paintSent(host, { addressed: 2, latest_addressed: [{ ...lost, topic: { ...lost.topic, title: 'Renamed' }, topic_readable: true }] }, actions);
+  assert.equal(host.all().some(node => node.textContent === 'Mark read'), false, 'a topic the reader can open again is linked');
 });
 
 test('focus on the last row to leave goes to the page\'s main region, and on a row whose neighbours all left, to the first row', async t => {

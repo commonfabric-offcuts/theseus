@@ -265,6 +265,8 @@ def main():
         if "--images" in sys.argv or freshness:
             actors.append({"id": "fixture-notebook-agent", "kind": "agent"})
             actors.append({"id": "fixture-outside-agent", "kind": "agent"})
+            # Agents a topic can wait on, so a waiting list can run long.
+            actors.extend({"id": "fixture-%s-agent" % name, "kind": "agent"} for name in ("planning", "reviewing", "writing"))
         binding = initialize(path, instance, actors,
                              authority_path=root / "control" / "authority.json")["binding"]
 
@@ -458,7 +460,12 @@ def main():
                         command("participation.set", prefix + "-remove", {"actor_id": actor, "present": False},
                                 {"topic_id": topic_id}, {"topic_revision": revision}, sender=agent)
                     elif freshness and request["method"] == "topic_state":
-                        # The person sets where a topic stands, as the state form does.
+                        # The person sets where a topic stands, as the state form does,
+                        # after adding any participants it is to wait on.
+                        for member in request.get("participants", []):
+                            revision = store().view(actor, "topic", {"topic_id": request["topic_id"]})["topic"]["version"]
+                            command("participation.set", request["operation_id"] + "-" + member, {"actor_id": member, "present": True},
+                                    {"topic_id": request["topic_id"]}, {"topic_revision": revision})
                         revision = store().view(actor, "topic", {"topic_id": request["topic_id"]})["topic"]["version"]
                         answer = command("topic.update", request["operation_id"], request["args"],
                                          {"topic_id": request["topic_id"]}, {"topic_revision": revision})

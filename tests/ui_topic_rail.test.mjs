@@ -127,4 +127,12 @@ test('a row drawn again with what it already shows is left alone, and one whose 
   assert.deepEqual(link.children, drawn, 'the same badge, not a second one');
   f.queue.push({ instance_id: 'i1', items: [counted('a', 3), f.item('z')], next_cursor: null }); await f.rail.load();
   assert.equal(link.children.at(-2).textContent, '3');
+  // Each thing a row shows, changed alone, draws it anew.
+  const base = { ...counted('a', 3), state: 'waiting', waiting_on: ['x'] };
+  for (const change of [{ state: 'done' }, { waiting_on: ['y'] }, { state_note: 'note' }, { addressed: 1 }, { title: 'A' }]) {
+    f.queue.push({ instance_id: 'i1', items: [base, f.item('z')], next_cursor: null }); await f.rail.load();
+    const before = [...link.children];
+    f.queue.push({ instance_id: 'i1', items: [{ ...base, ...change }, f.item('z')], next_cursor: null }); await f.rail.load();
+    assert.notDeepEqual(link.children, before, JSON.stringify(change));
+  }
 });

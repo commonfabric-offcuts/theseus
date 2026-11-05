@@ -1076,7 +1076,7 @@ async function initializeOutcomePage(route) {
   $('outcome-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
   sentHost=$('sent-to-you');
-  if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:acknowledgeSent,read:readSent,attachment:sentAttachment});
+  if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:markSent,read:readSent,attachment:sentAttachment});
   // What waits on the reader heads every outcome page.
   waitingHost=$('waiting-on-you');
   if(attention?.last)paintWaiting(waitingHost,attention.last,(id,title)=>openDestination({kind:'topic',id},title));

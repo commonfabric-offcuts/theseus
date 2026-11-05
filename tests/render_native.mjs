@@ -141,6 +141,25 @@ export function judgePixels(png, { pills, width }) {
   return problems;
 }
 
+// A state cut short still shows the reader that it waits on them, and the
+// topic's own page shows its state whole.
+const legible = `(() => {
+  const problems = [];
+  for (const mark of document.querySelectorAll('.topic-state.mine')) {
+    const text = mark.firstChild, box = mark.getBoundingClientRect();
+    if (!box.width || mark.closest('[hidden]') || text?.nodeType !== Node.TEXT_NODE) continue;
+    const at = text.data.indexOf('you'), range = document.createRange();
+    if (at < 0) { problems.push({ kind: 'a state waiting on the reader does not say so', at: text.data }); continue; }
+    range.setStart(text, at); range.setEnd(text, at + 3);
+    const you = range.getBoundingClientRect();
+    if (you.right > box.left + mark.clientLeft + mark.clientWidth + 1) problems.push({ kind: 'you is cut from a state', at: text.data.slice(0, 40) });
+  }
+  for (const mark of document.querySelectorAll('#topic-state .topic-state')) {
+    if (mark.scrollWidth > mark.clientWidth + 1) problems.push({ kind: 'the topic page cuts its own state short', at: mark.textContent.slice(0, 40) });
+  }
+  return problems;
+})()`;
+
 export async function renderChecks({ check, page, until, control, origin, evidencePath }) {
   await check('live rendering: every pill is as wide as its words and stands out from its row, in both schemes, laptop and phone, at rest and hovered', async () => {
     // Unread in the topic being read (more than its first screen holds), in
@@ -160,11 +179,18 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     await control({ method: 'topic_state', operation_id: 'render-state-review', topic_id: 'render-crowd-0', args: { state: 'review' } });
     await control({ method: 'topic_state', operation_id: 'render-state-waiting', topic_id: 'render-crowd-1', args: { state: 'waiting', waiting_on: ['fixture-notebook-agent'] } });
     await control({ method: 'topic_state', operation_id: 'render-state-done', topic_id: 'render-crowd-2', args: { state: 'done' } });
+    // The topic being read waits on a list long enough to be cut short in the
+    // rail and to wrap on its own page, the reader among them.
+    const waiters = ['fixture-planning-agent', 'fixture-reviewing-agent', 'fixture-writing-agent'];
+    await control({ method: 'topic_state', operation_id: 'render-state-long', topic_id: 't1', participants: waiters,
+      args: { state: 'waiting', waiting_on: ['fixture-notebook-agent', ...waiters, 'fixture-person'] } });
     const counted = ['t1', 'render-other', ...crowd.map(topic => topic.id)];
     const shots = join(evidencePath, 'rendering'); mkdirSync(shots, { recursive: true });
     const found = [];
     const topicRows = ['#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#topics [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
-    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state'))`],
+    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine'))`],
+      // A plain state on the row shaded as the current topic.
+      ['done', origin + '/?topic=render-crowd-2', ['#topics [aria-current=page]'], `Boolean(document.querySelector('#topics [aria-current=page] .topic-state[data-state=done]'))`],
       ['outcomes', origin + '/', ['#workspaces [data-workspace-id="w1"]'], `Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`]]) {
       for (const scheme of ['light', 'dark']) {
         for (const [layout, metrics] of [['laptop', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false }], ['phone', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }]]) {
@@ -187,6 +213,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             const { answer, image } = await until(async () => {
               if (row !== null) {
                 const now = await p.evaluate(placed);
+                assert.ok(now, `${row} is still drawn on the ${route} page`);
                 if (!now.hovered || JSON.stringify(now) !== JSON.stringify(box)) {
                   box = now;
                   if (!now.hovered) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: (now.left + now.right) / 2, y: (now.top + now.bottom) / 2 });
@@ -202,7 +229,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left - 1 && pill.top >= box.top - 1 && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
             writeFileSync(join(shots, state + '.png'), image);
             writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
-            for (const problem of [...answer.problems, ...judgePixels(image, answer)]) found.push({ state, ...problem });
+            for (const problem of [...answer.problems, ...judgePixels(image, answer), ...await p.evaluate(legible)]) found.push({ state, ...problem });
           }
           await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
           assert.deepEqual(p.errors, []);
