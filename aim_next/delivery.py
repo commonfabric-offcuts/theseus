@@ -5,7 +5,7 @@ import json
 import time
 import uuid
 
-from .contract import LIMITS, READABLE, Refusal, _identifier, _json, _page_size, _prefix
+from .contract import LIMITS, Refusal, _identifier, _json, _page_size, _prefix
 
 
 DELIVERY_SCHEMA = [
@@ -18,10 +18,12 @@ DELIVERY_SCHEMA = [
 ]
 
 # A message sent by name in an archived topic still waits in the attention view for
-# a recipient who can no longer open the topic: no list holds it for them, so there
+# a recipient who has no list of the outcome's topics (neither its owner nor a
+# member: a participant from outside it, or someone who lost the topic), so there
 # is nowhere else to read it or mark it read. Read with deliveries d and topics t.
 NAMED_OUTSIDE_LISTS = ("(t.archived=0 OR NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id=t.workspace_id AND "
-                       + READABLE.replace(":actor", "d.recipient_id") + "))")
+                       "(w.owner_id=d.recipient_id OR EXISTS (SELECT 1 FROM workspace_members m "
+                       "WHERE m.workspace_id=w.id AND m.actor_id=d.recipient_id))))")
 
 
 def _now_ms():

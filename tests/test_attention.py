@@ -171,7 +171,7 @@ class AttentionCase(AgentLoopCase):
     def test_archiving_keeps_a_message_sent_by_name_for_someone_who_lost_the_topic(self):
         # No list holds the topic for someone who lost it, so attention is where
         # they read and settle what was sent to them by name, archived or not. A
-        # reader who can still open the topic finds it in the archived list instead.
+        # member of the outcome finds it in the archived list instead.
         self.participation("other-reader", True)
         self.committed(self.post(body="Before you left", addressees=["other-reader"]))
         self.committed(self.post(body="For the owner", addressees=["owner"]))
@@ -186,6 +186,23 @@ class AttentionCase(AgentLoopCase):
         self.committed(self.command("delivery.ack", {}, target={"delivery_id": item["id"]}, actor="other-reader"))
         answer = self.store.view("other-reader", "attention", {})
         self.assertEqual((answer["unread"], answer["addressed"], answer["latest_addressed"]), (0, 0, []))
+
+    def test_archiving_keeps_a_message_sent_by_name_for_a_participant_outside_the_outcome(self):
+        # A participant who is not on the outcome's team can open the topic but
+        # has no list of the outcome's topics, archived or not, so attention is
+        # still where they read and settle what was sent to them by name.
+        self.participation("other-reader", True)
+        self.committed(self.post(body="For you", addressees=["other-reader"]))
+        self.archive(True)
+        self.assertEqual(self.store.view("other-reader", "workspace_topics", {"workspace_id": "w1", "archived": True})["error"]["code"], "FORBIDDEN")
+        answer = self.store.view("other-reader", "attention", {})
+        self.assertEqual((answer["unread"], answer["addressed"]), (1, 1))
+        [item] = answer["latest_addressed"]
+        self.assertEqual((item["message"]["body"], item["topic_readable"]), ("For you", True))
+        # A member of the outcome has its archived list, so the topic leaves their totals.
+        self.committed(self.post(body="For a member", addressees=["agent-b"], actor="agent-a"))
+        member = self.store.view("agent-b", "attention", {})
+        self.assertEqual(member["latest_addressed"], [])
 
     def test_a_topic_set_waiting_while_archived_waits_without_counting(self):
         self.archive(True)

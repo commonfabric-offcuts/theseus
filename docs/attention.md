@@ -23,16 +23,20 @@ pending. Reading through it on screen, or acknowledging it, settles it.
 An archived topic is out of the outcome's list, and the browser lists archived
 topics nowhere, so it counts nowhere else either: the outcome row, the totals,
 `latest_addressed`, `waiting_on_me` and `latest_waiting` all leave it out,
-save for a message sent by name to someone who has lost the topic (below).
+save for a message sent by name to someone with no list of the outcome's
+topics (below).
 Archiving settles nothing. `workspace_topics` with `archived: true` still
 shows each archived topic's own `unread`, `addressed` and `waiting_on`, and
 when the topic is unarchived its counts return everywhere.
 
 A person sent a message by name keeps reading that message after they lose
 its topic, but can no longer read through the topic; `topic_readable` is
-false, and they settle it with `delivery.ack`. This holds when the topic is
-archived too: no list ever held the topic for them, so the message stays in
-their totals and `latest_addressed`, the one place they can read and settle it.
+false, and they settle it with `delivery.ack`. When the topic is archived, a
+message sent by name stays in the totals and `latest_addressed` of anyone who
+is neither the outcome's owner nor a member: someone who lost the topic, or a
+participant from outside the outcome. No list of the outcome's topics, archived
+or not, ever held the topic for them, so attention is the one place they can
+read and settle it.
 
 A list view counts only the topics or outcomes on its page. The topic list
 finds each topic's subscription group by its key, so its cost follows the
@@ -42,7 +46,7 @@ A subscription group keeps its own pending total. The one direct group per
 reader is found by its key and counted row by row, so that part of every
 count follows the number of pending messages that name the reader.
 `latest_addressed` reads the newest five of them in index order, passing over
-any in archived topics the reader can still open.
+any in archived topics of outcomes the reader owns or belongs to.
 
 Each waiting row keeps a copy of its topic's state time and archive flag, so
 what waits on a reader is read from one index on (reader, archived, state
