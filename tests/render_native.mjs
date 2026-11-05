@@ -199,7 +199,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     const topicRows = ['#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#topics [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
     for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine'))`],
       // A plain state on the row shaded as the current topic.
-      ['done', origin + '/?topic=render-crowd-2', ['#topics [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#topics [aria-current=page] .topic-state[data-state=done]'))`],
+      ['done', origin + '/?topic=render-crowd-2', ['#topics [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#topics [aria-current=page] .topic-state[data-state=done]')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`],
       ['outcomes', origin + '/', ['#workspaces [data-workspace-id="w1"]'], `Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`]]) {
       for (const scheme of ['light', 'dark']) {
         for (const [layout, metrics] of [['laptop', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false }], ['phone', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }]]) {
@@ -242,6 +242,8 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             }, `${state}: ${row === null ? 'the page' : row + ' under the pointer'} and every pill stay put through a screenshot`, 30000);
             // The row under the pointer is in view, so the sweep judges its pills.
             if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left - 1 && pill.top >= box.top - 1 && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
+            // The topic's own state is judged at rest, never skipped as out of view.
+            if (route === 'topic' && row === null) assert.ok(answer.pills.some(pill => pill.at.startsWith('#topic-state ')), `${state}: the sweep judged the topic's own state`);
             writeFileSync(join(shots, state + '.png'), image);
             writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
             for (const problem of [...answer.problems, ...judgePixels(image, answer), ...await p.evaluate(legible)]) found.push({ state, ...problem });
