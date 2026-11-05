@@ -443,7 +443,7 @@ function sourceAttachments(presentation) {
   for (const attachment of presentation.source.attachments ?? []) {
     const mine = {};
     $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, message => {
-      if (message) { mine.said = `${attachment.name}: ${message}`; last = mine; reader.notice(mine.said); }
+      if (message) { mine.said = `${attachment.name ?? 'attachment'}: ${message}`; last = mine; reader.notice(mine.said); }
       else if (last === mine && $('reader-notice').textContent === mine.said) { reader.notice(''); last = null; }
     }));
   }
