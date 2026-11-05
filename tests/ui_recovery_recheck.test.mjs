@@ -234,3 +234,80 @@ test('a recheck that finds a refusal reads the server draft again, so a refusal 
   assert.equal(editor.recoveryServerDraft?.revision, later.revision, 'the server draft was read again');
   assert.equal(editor.recoveryDiscovery, true, 'the refusal at the current revision holds the reply');
 });
+
+// The reply's server draft at two revisions, a copy refused at the later one,
+// and editor_state answers the test releases one by one.
+async function refusalAtLaterRevision(t) {
+  const f = await fixture(t);
+  const before = { id: 'reply-draft', generation: 'reply-generation', revision: 1, source_ref: copy(f.sourceRef), topic_id: 't1', body: 'Saved elsewhere', attachments: [] };
+  const later = { ...copy(before), revision: 2 };
+  const r1 = f.other('old-writer', 's1', false);
+  r1.snapshot.submissions = [{ id: 'refused-a', status: 'refused', snapshot: copy(later), receipt: { kind: 'submission.prepare' } }];
+  f.rows.set(r1.id, copy(r1));
+  const view = f.api.view.bind(f.api), held = [], arrivals = [];
+  let gated = false;
+  f.api.view = async (name, args) => {
+    if (name !== 'editor_state') return view(name, args);
+    if (!gated) return { ...await view(name, args), draft: copy(before) };
+    return new Promise((resolve, reject) => {
+      held.push({ serve: async draft => resolve({ ...await view(name, args), draft: copy(draft) }), fail: () => reject(Error('busy')) });
+      arrivals.shift()?.();
+    });
+  };
+  // Resolves once n reads are held.
+  const reads = n => held.length >= n ? Promise.resolve() : new Promise(resolve => arrivals.push(resolve)).then(() => reads(n));
+  const editor = await f.register(before);
+  assert.equal(editor.recoveryDiscovery, false, 'a refusal at a revision the server draft is not at does not hold the reply');
+  gated = true;
+  return { f, editor, before, later, held, reads };
+}
+
+for (const order of ['newer first', 'older first']) test(`only the latest settle's server-draft read counts (${order})`, async t => {
+  const { f, editor, before, later, held, reads } = await refusalAtLaterRevision(t);
+  const older = f.registry.recoveryCandidates(editor);
+  await reads(1);
+  const newer = f.registry.recoveryCandidates(editor);
+  await reads(2);
+  assert.equal(editor.recoveryDiscovery, true, 'held while the reads are out');
+  if (order === 'newer first') {
+    held[1].serve(later); await newer;
+    held[0].serve(before); await older;
+  } else {
+    held[0].serve(before); await older;
+    assert.equal(editor.recoveryDiscovery, true, 'the older answer does not lower the barrier while the newer read is out');
+    assert.equal(editor.recoveryServerDraft, undefined);
+    held[1].serve(later); await newer;
+  }
+  assert.equal(editor.recoveryServerDraft?.revision, 2, 'the newer read is the server draft');
+  assert.equal(editor.recoveryDiscovery, true, 'the refusal at that revision holds the reply');
+});
+
+test('a recheck that brings in a refusal holds the reply at once, and still after its read fails', async t => {
+  const { f, editor, held, reads } = await refusalAtLaterRevision(t);
+  const [r1] = editor.imageCopies.keys();
+  const validated = f.registry.applyRecheck(editor, [r1], { items: [editor.imageCopies.get(r1)], nextCursor: null });
+  assert.equal(editor.recoveryDiscovery, true, 'held before the read answers');
+  assert.equal(editor.recoveryServerDraft, undefined, 'the old server draft no longer dismisses the refusal');
+  await reads(1);
+  held[0].fail();
+  await assert.rejects(validated, /busy/);
+  assert.equal(editor.recoveryDiscovery, true, 'a failed read leaves the reply held');
+  assert.equal(editor.recoveryServerDraft, undefined);
+});
+
+test('a More versions page whose list a fresh discovery replaced changes nothing', async t => {
+  const f = await fixture(t);
+  f.other('w-b', 's-b');
+  f.backend.next = 'cursor-b';
+  const editor = await f.register();
+  assert.equal(editor.recoveryDiscovery, true);
+  // A fresh discovery replaces the list, which now ends; a later page from the old list's cursor lands after it.
+  f.backend.next = null;
+  const listed = [];
+  await f.registry.recoveryCandidates(editor, { limit: 10 }, (page, continued) => listed.push(continued));
+  const copies = [...editor.imageCopies.keys()];
+  await f.registry.recoveryCandidates(editor, { cursor: 'cursor-b', limit: 10 }, (page, continued) => listed.push(continued));
+  assert.deepEqual(listed, [false], 'the stale page is not shown');
+  assert.deepEqual([...editor.imageCopies.keys()], copies);
+  assert.equal(editor.imageCopiesNext, null);
+});

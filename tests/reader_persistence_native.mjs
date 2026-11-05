@@ -391,7 +391,7 @@ try {
     await a.evaluate('j.save(snapshot)');
     await a.evaluate(`(async()=>{
       const scope=JSON.stringify([context.instanceId,context.actor]);
-      for(let n=0;n<3;n++){const writerId='past-'+n;await putRow({id:JSON.stringify([editor.key,writerId]),editorKey:editor.key,writerId,scope,active:1,stamp:'stamp-'+n,snapshot})}
+      for(let n=0;n<4;n++){const writerId='past-'+n;await putRow({id:JSON.stringify([editor.key,writerId]),editorKey:editor.key,writerId,scope,active:1,stamp:'stamp-'+n,snapshot})}
       await putRow({id:JSON.stringify([editor.key,'inactive']),editorKey:editor.key,writerId:'inactive',scope,active:0,stamp:'inactive-stamp',snapshot});
       await putRow({id:JSON.stringify([editor.key,'foreign']),editorKey:editor.key,writerId:'foreign',scope:JSON.stringify([context.instanceId,'another-person']),stamp:'foreign-stamp',active:1,snapshot:{...snapshot,context:{...context,actor:'another-person'}}});
       await putRow({id:JSON.stringify([editor.key,'unreadable']),editorKey:editor.key,writerId:'unreadable',scope,active:1,stamp:'unreadable-stamp',snapshot:{format:99}});
@@ -412,6 +412,16 @@ try {
     const closed = byId.get(id('past-2'));
     assert.deepEqual(await a.evaluate(`Promise.all([j.current(editor.key,${JSON.stringify([closed.id, closed.id])}),j.current(editor.key,${JSON.stringify([closed.id])})])`),
       [[closed], [closed]], 'no probe sees another as the writer\'s holder');
+    // Inspections and by-ID reads of one closed writer at once never see each other as its holder.
+    const inspected = byId.get(id('past-3'));
+    const together = await a.evaluate(`(async()=>{const c=${JSON.stringify({ id: inspected.id, stamp: inspected.stamp })};
+      const runs=[];for(let n=0;n<20;n++){runs.push(j.inspectCandidate(editor.key,c).then(()=>'inspected',e=>e.message));runs.push(j.current(editor.key,[c.id]).then(rows=>rows.map(r=>r.availability).join()));}
+      return [...new Set(await Promise.all(runs))].sort()})()`);
+    assert.deepEqual(together, ['available', 'inspected']);
+    // A writer this document holds after a declined retirement is still listed to it as available.
+    assert.equal(await a.evaluate(`j.retireAcknowledged(editor.key,${JSON.stringify(closed)},async()=>false)`), false);
+    assert.deepEqual((await a.evaluate(`j.current(editor.key,${JSON.stringify([closed.id])})`)).map(row => row.availability), ['available']);
+    assert.equal((await a.evaluate(`j.inspectCandidate(editor.key,${JSON.stringify({ id: closed.id, stamp: closed.stamp })})`)).id, closed.id);
     // Another tab recovers past-0: by its old ID the copy is listed where it moved.
     const b = await page('current'), moving = byId.get(id('past-0'));
     const moved = await b.evaluate(`j.adopt(editor.key,${JSON.stringify({ id: moving.id, stamp: moving.stamp })})`);
