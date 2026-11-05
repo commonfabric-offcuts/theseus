@@ -80,6 +80,29 @@ class MigrationCase(fixtures.StoreCase):
         self.assertEqual(self.command("workspace.create", {"id": "w2", "title": "After"})["error"]["code"], "SCHEMA_MISMATCH")
         self.assertEqual(self.unchanged(), before)
 
+    def test_a_version_mismatch_names_both_versions_and_the_command(self):
+        from aim_next import cli, serve
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
+        for text in ("version 8", "version 9", "aim-next-admin migrate"):
+            self.assertIn(text, str(raised.exception))
+        out, err = io.StringIO(), io.StringIO()
+        self.assertEqual(cli.main(["--profile", str(self.profile), "binding"], stdout=out, stderr=err), 2)
+        error = json.loads(out.getvalue())["error"]
+        self.assertEqual(error["code"], "SCHEMA_MISMATCH")
+        self.assertIn("aim-next-admin migrate", error["message"])
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            self.assertEqual(serve.main(["--profile", str(self.profile), "--port", "0"]), 2)
+        self.assertIn("SCHEMA_MISMATCH: This database is at schema version 8", stderr.getvalue())
+        # A sound version with damaged commit identity keeps the plain refusal.
+        self.upgrade()
+        self.sql("UPDATE metadata SET value='x' WHERE key='commit_seq'")
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
+        self.assertNotIn("aim-next-admin migrate", str(raised.exception))
+
     def test_upgrade_keeps_every_record_and_fences_old_versions(self):
         before, metadata = self.records(), self.metadata()
         self.assertGreater(len(before["messages"]), 0)
