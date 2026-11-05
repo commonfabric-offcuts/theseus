@@ -64,7 +64,22 @@ export const audit = `(() => {
     if (ink < 4.5) problems.push({ kind: 'faint words', at: where(element), contrast: Number(ink.toFixed(2)) });
   }
   const scroller = document.scrollingElement;
-  if (scroller.scrollWidth > scroller.clientWidth + 1) problems.push({ kind: 'the page scrolls sideways', width: scroller.scrollWidth, view: scroller.clientWidth });
+  if (scroller.scrollWidth > scroller.clientWidth + 1) {
+    // Name the outermost elements reaching past the right edge, leaving out
+    // those a box that scrolls or clips them holds. Such a box holds an
+    // absolutely placed element only from its containing block outward.
+    const past = element => element.getBoundingClientRect().right > scroller.clientWidth + 1;
+    const clipped = element => {
+      const place = getComputedStyle(element).position;
+      if (place === 'fixed') return false;
+      for (let at = place === 'absolute' ? element.offsetParent : element.parentElement; at && at !== document.body; at = at.parentElement) {
+        if (getComputedStyle(at).overflowX !== 'visible') return true;
+      }
+      return false;
+    };
+    const wide = [...document.querySelectorAll('body *')].filter(element => past(element) && !clipped(element) && !(element.parentElement && past(element.parentElement) && !clipped(element.parentElement)));
+    problems.push({ kind: 'the page scrolls sideways', width: scroller.scrollWidth, view: scroller.clientWidth, by: wide.slice(0, 3).map(where) });
+  }
   return { pills, problems };
 })()`;
 
@@ -76,6 +91,11 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     await control({ method: 'seed', messages: 40 });
     await control({ method: 'agent_message', operation_id: 'render-named', body: 'For you by name', topic_id: 'render-other', addressees: ['fixture-person'], join: true });
     await control({ method: 'agent_message', operation_id: 'render-plain', body: 'For anyone', topic_id: 'render-other', addressees: [] });
+    // A rail with more counted rows than a phone shows, so some sit beyond
+    // its right edge, inside the strip that scrolls them.
+    const crowd = Array.from({ length: 6 }, (_, n) => ({ id: `render-crowd-${n}`, title: `Crowded rail topic ${n}` }));
+    await control({ method: 'navigation_topics', topics: crowd });
+    for (const { id } of crowd) await control({ method: 'agent_message', operation_id: `render-${id}`, body: 'Unread here', topic_id: id, addressees: [], join: true });
     const shots = join(evidencePath, 'rendering'); mkdirSync(shots, { recursive: true });
     const found = [];
     for (const [route, url, rows] of [['topic', origin + '/?topic=t1', ['#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]']],
