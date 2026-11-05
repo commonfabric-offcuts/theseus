@@ -87,6 +87,9 @@ test('a reload keeps the topics loaded with More: it reads them again, in pages 
   assert.deepEqual(f.calls.slice(3),[{workspace_id:'w1',limit:20},{workspace_id:'w1',limit:20,cursor:'c'}]);
   assert.deepEqual(f.rail.pages.items.map(x=>x.id),['z','a','b','b2','c','d','e','f']);
   assert.equal(f.more.hidden,false,'what lies past the loaded rows is still behind More');
+  // Rows that arrived early in the list do not cut the reload short of the last row loaded.
+  f.queue.push(f.page(['a','a1','a2','a3','b','b2','c'],'c'),f.page(['d','e','f','g'],'g'));await f.rail.load();
+  assert.deepEqual(f.rail.pages.items.map(x=>x.id).slice(-3),['e','f','g']);
   // Past one page's worth, a reload asks for as many rows as are loaded, up to the view's maximum.
   const many=Array.from({length:45},(_,n)=>'r'+String(n).padStart(2,'0'));
   f.queue.push(f.page(many,'r44'));await f.rail.load();
