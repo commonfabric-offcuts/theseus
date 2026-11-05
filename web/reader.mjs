@@ -174,6 +174,13 @@ export class Reader {
     this.$('reader-divider').setAttribute('aria-valuenow', String(Math.round(share * 100)));
     this.$('reader-divider').setAttribute('aria-valuetext', `${Math.round(share * 100)} percent writing space`);
     this.restoreVisiblePlace(place);
+    // Native selection paints the line box, while an inline background paints
+    // the glyph box. Extend only the paint, using this source's actual metrics.
+    const glyphHeight = this.sourceBody.firstElementChild?.getClientRects()[0]?.height;
+    const lineHeight = parseFloat(getComputedStyle(this.sourceBody).lineHeight);
+    if (glyphHeight > 0 && Number.isFinite(lineHeight)) {
+      this.sourceBody.style.setProperty('--quote-overhang', `${Math.max(0, lineHeight - glyphHeight) / 2}px`);
+    }
   }
 
   captureVisiblePlace() {

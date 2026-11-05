@@ -68,6 +68,26 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .chip .reach { color: var(--warn); }
 .chip.unreachable button:not([aria-label]) { font-size: .75rem; color: var(--warn); text-decoration: underline; }
 .message-time { font-weight: 400; color: var(--muted); }
+
+/* Reading colors: paint only; passage bounds and writing geometry stay put. */
+.reading-pane { background: var(--soft); }
+.hover-quote {
+  background: #000;
+  color: #fff;
+  border-radius: 0;
+  box-shadow: 0 calc(-1 * var(--quote-overhang, 0px)) #000, 0 var(--quote-overhang, 0px) #000;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.message-card.own-message {
+  --ink: #e0e8e5;
+  --muted: #9aaba8;
+  --accent: #79c7ab;
+  background: #000;
+  color: var(--ink);
+  border-color: var(--accent);
+}
+.message-card.own-message:hover { background: #000; border-color: var(--ink); }
 /* On a wide screen the rail scrolls on its own, so nothing it shows can move the conversation, and the conversation cannot move it. Scrolling past its end moves the page, which brings the rail's last rows below the header into view. */
 @media(min-width:761px){.rail{position:sticky;top:0;align-self:start;max-height:100dvh;overflow-y:auto}}
 .sent-whole{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0}
