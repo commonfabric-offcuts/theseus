@@ -720,7 +720,8 @@ def main(argv=None, *, stdin=None, stdout=None, stderr=None):
         return _output(stdout, stderr, _attempt("INVALID_REQUEST", "Use one bounded finite UTF-8 JSON request with an exact binding."), 2)
     except (ProfileError, AuthorityError, StoreOpenError) as error:
         code = error.code or "PROFILE_UNAVAILABLE"
-        return _output(stdout, stderr, _attempt(code, "The explicit profile or authority is unavailable; preserve the original binding.", error.retryable),
+        message = str(error) if code == "SCHEMA_MISMATCH" else "The explicit profile or authority is unavailable; preserve the original binding."
+        return _output(stdout, stderr, _attempt(code, message, error.retryable),
                        75 if error.retryable else 2)
     except (StoreError, OSError):
         _diagnostic(stderr, "CLI_REQUEST_UNCONFIRMED: reconcile the original operation before retrying.")

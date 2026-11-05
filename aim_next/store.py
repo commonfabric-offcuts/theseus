@@ -145,7 +145,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         except (sqlite3.Error, OSError) as error:
             raise StoreOpenError("STORE_OPEN_UNCONFIRMED", "Opening authority cleanup could not be confirmed") from error
         except Refusal as exc:
-            raise StoreError("Cannot open the selected AIM Next instance") from exc
+            raise StoreOpenError(exc.code, exc.message) from exc
         if opening_error is not None:
             # _connect chains failed setup cleanup from the original error.
             if (isinstance(opening_error, sqlite3.OperationalError) and opening_error.__cause__ is None
@@ -195,7 +195,11 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
         sequence = metadata.get("commit_seq", "")
         commit_id = metadata.get("commit_id", "")
-        if (metadata.get("schema_version") != SCHEMA_VERSION or not sequence.isascii() or not sequence.isdigit()
+        if metadata.get("schema_version") != SCHEMA_VERSION:
+            raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s and this code reads version %s; "
+                          "move it with bin/aim-next-admin migrate. Nothing was changed"
+                          % (metadata.get("schema_version"), SCHEMA_VERSION))
+        if (not sequence.isascii() or not sequence.isdigit()
                 or len(sequence) > 19 or int(sequence) >= 9223372036854775807
                 or len(commit_id) != 32 or any(c not in "0123456789abcdef" for c in commit_id)):
             raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")

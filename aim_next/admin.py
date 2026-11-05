@@ -26,6 +26,7 @@ def _parser():
     upgrade.add_argument("--db", required=True)
     upgrade.add_argument("--instance", required=True)
     upgrade.add_argument("--binding", required=True)
+    upgrade.add_argument("--to")
     actor = verbs.add_parser("add-actor", add_help=False)
     actor.add_argument("--profile", required=True)
     actor.add_argument("--id", required=True)
@@ -39,7 +40,7 @@ def _run(options):
         profile = read_binding(options.binding)
         if profile.db_path != Path(options.db).resolve() or profile.instance_id != options.instance:
             raise Refusal("BINDING_MISMATCH", "The profile binds another database or instance")
-        return migrate(profile.db_path, options.instance, profile.binding)
+        return migrate(profile.db_path, options.instance, profile.binding, options.to)
     profile = load_profile(options.profile)
     return profile.store().register_actor(options.id, options.kind, options.name)
 
@@ -53,7 +54,7 @@ def main(argv=None, *, stdout=None, stderr=None):
                 getattr(options, "db", "/"), getattr(options, "binding", "/"), getattr(options, "profile", "/"))):
             raise ValueError("absolute paths")
     except ValueError:
-        stderr.write("usage: aim-next-admin migrate --db /abs/db --instance ID --binding /abs/profile.json\n"
+        stderr.write("usage: aim-next-admin migrate --db /abs/db --instance ID --binding /abs/profile.json [--to VERSION]\n"
                      "       aim-next-admin add-actor --profile /abs/profile.json --id ID --kind human|agent --name NAME\n")
         return 2
     try:

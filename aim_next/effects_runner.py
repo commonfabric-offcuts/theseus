@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 import time
 
@@ -402,9 +403,12 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
         result = loop.run()
     except (Exception,KeyboardInterrupt) as error:
         # Startup messages are fixed and contain no route/profile or exception
-        # text. Preserve typed busy without adding an implicit pin-read retry.
-        busy = getattr(error,'code',None)=='DATABASE_BUSY'
-        result = dict(status='startup_failed',code='DATABASE_BUSY' if busy else 'STARTUP_REFUSED',
+        # text; a typed error's own fixed code is the reason. Preserve typed
+        # busy without adding an implicit pin-read retry.
+        reason = getattr(error,'code',None)
+        reason = reason if isinstance(reason,str) and re.fullmatch('[A-Za-z_]{1,64}',reason) else None
+        busy = reason=='DATABASE_BUSY'
+        result = dict(status='startup_failed',code='DATABASE_BUSY' if busy else 'STARTUP_REFUSED',reason=reason,
                       retryable=busy and getattr(error,'retryable',False) is True,pause_saved=False,
                       cleanup_confirmed=not (loop is not None and loop.cleanup_uncertain))
     finally:

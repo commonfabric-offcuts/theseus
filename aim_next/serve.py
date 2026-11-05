@@ -35,7 +35,8 @@ def main(argv=None):
     try:
         server = server_for_profile(args.profile, args.port, tailnet_origin=args.tailnet_origin)
     except (ProfileError, StoreError, OSError, ValueError) as error:
-        print("AIM Next did not start: %s" % error, file=sys.stderr)
+        print("AIM Next did not start: %s%s" % ("%s: " % error.code if getattr(error, "code", None) else "", error),
+              file=sys.stderr)
         return 2
 
     def stop(signum, frame):

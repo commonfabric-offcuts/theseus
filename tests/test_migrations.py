@@ -80,6 +80,29 @@ class MigrationCase(fixtures.StoreCase):
         self.assertEqual(self.command("workspace.create", {"id": "w2", "title": "After"})["error"]["code"], "SCHEMA_MISMATCH")
         self.assertEqual(self.unchanged(), before)
 
+    def test_a_version_mismatch_names_both_versions_and_the_command(self):
+        from aim_next import cli, serve
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
+        for text in ("version 8", "version 9", "aim-next-admin migrate"):
+            self.assertIn(text, str(raised.exception))
+        out, err = io.StringIO(), io.StringIO()
+        self.assertEqual(cli.main(["--profile", str(self.profile), "binding"], stdout=out, stderr=err), 2)
+        error = json.loads(out.getvalue())["error"]
+        self.assertEqual(error["code"], "SCHEMA_MISMATCH")
+        self.assertIn("aim-next-admin migrate", error["message"])
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            self.assertEqual(serve.main(["--profile", str(self.profile), "--port", "0"]), 2)
+        self.assertIn("SCHEMA_MISMATCH: This database is at schema version 8", stderr.getvalue())
+        # A sound version with damaged commit identity keeps the plain refusal.
+        self.upgrade()
+        self.sql("UPDATE metadata SET value='x' WHERE key='commit_seq'")
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
+        self.assertNotIn("aim-next-admin migrate", str(raised.exception))
+
     def test_upgrade_keeps_every_record_and_fences_old_versions(self):
         before, metadata = self.records(), self.metadata()
         self.assertGreater(len(before["messages"]), 0)
@@ -163,7 +186,7 @@ class MigrationCase(fixtures.StoreCase):
 
     def test_a_failure_mid_upgrade_commits_nothing(self):
         before = self.unchanged()
-        failing = (("8", "9", migrations.OPENING_SCHEMA + ["CREATE TABLE openings (id TEXT)"]),)
+        failing = (("8", "9", migrations.OPENING_SCHEMA + ["CREATE TABLE openings (id TEXT)"]) + migrations.STEPS[0][3:],)
         with mock.patch.object(migrations, "STEPS", failing):
             with self.assertRaises(MigrationError) as raised:
                 self.upgrade()
@@ -226,6 +249,74 @@ class MigrationCase(fixtures.StoreCase):
             os.close(fd)
         self.assertEqual(self.unchanged(), before)
         self.assertEqual(self.migrate_command()[0], 0)
+
+    def test_step_back_restores_version_8_while_no_opening_exists(self):
+        self.upgrade()
+        upgraded, records = self.metadata(), self.records()
+        result = migrate(self.path, "test-instance", self.binding, "8")
+        self.assertEqual(result, {"instance_id": "test-instance", "from_version": "9", "schema_version": "8", "migrated": True})
+        self.assertEqual(schema(self.path), sorted(statement.rstrip(";") for statement in SCHEMA_8))
+        moved = self.metadata()
+        self.assertEqual(moved["schema_version"], "8")
+        # The commit lineage moves forward: a stale v8 copy can never pass as this instance.
+        self.assertEqual(int(moved["commit_seq"]), int(upgraded["commit_seq"]) + 1)
+        self.assertNotEqual(moved["commit_id"], upgraded["commit_id"])
+        for key in ("instance_id", "authority_id", "authority_path", "authority_epoch"):
+            self.assertEqual(moved[key], upgraded[key])
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+        # Version 9 code is fenced again, and the step is repeatable.
+        with self.assertRaises(StoreError):
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        before = self.unchanged()
+        self.assertFalse(migrate(self.path, "test-instance", self.binding, "8")["migrated"])
+        self.assertEqual(self.unchanged(), before)
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(int(self.metadata()["commit_seq"]), int(moved["commit_seq"]) + 1)
+
+    def test_step_back_refuses_while_any_opening_exists(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        saved = self.command("opening.save", {"workspace_id": "w1", "topic_id": "t-kept", "title": "Kept",
+                                              "participants": ["agent-a"], "body": "Words", "attachments": []},
+                             {"opening_id": "o1"}, {"opening_revision": 0})
+        self.assertEqual(saved["status"], "committed", saved)
+        for state in ("open", "published", "discarded"):
+            with self.subTest(state=state):
+                self.sql("UPDATE openings SET state=?", (state,))
+                before = self.unchanged()
+                with self.assertRaises(MigrationError) as raised:
+                    migrate(self.path, "test-instance", self.binding, "8")
+                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+                code, result, _ = self.admin("migrate", "--db", str(self.path), "--instance", "test-instance",
+                                             "--binding", str(self.profile), "--to", "8")
+                self.assertEqual((code, result["error"]["code"]), (2, "RECORDS_WOULD_BE_LOST"))
+                self.assertEqual(self.unchanged(), before)
+
+    def test_step_back_is_fenced_like_an_upgrade(self):
+        self.upgrade()
+        before = self.unchanged()
+        with Authority(self.path.resolve(), "test-instance", self.binding).runner_guard("runner"):
+            with self.assertRaises(MigrationError) as raised:
+                migrate(self.path, "test-instance", self.binding, "8")
+            self.assertEqual(raised.exception.code, "RUNNER_GUARD_HELD")
+        writer = sqlite3.connect(str(self.path), isolation_level=None)
+        try:
+            writer.execute("BEGIN IMMEDIATE")
+            with self.assertRaises(MigrationError) as raised:
+                migrate(self.path, "test-instance", self.binding, "8")
+            self.assertEqual(raised.exception.code, "DATABASE_BUSY")
+        finally:
+            writer.close()
+        for target in ("7", "10", "", "8 "):
+            with self.subTest(target=target):
+                with self.assertRaises(MigrationError) as raised:
+                    migrate(self.path, "test-instance", self.binding, target)
+                self.assertEqual(raised.exception.code, "SCHEMA_UNSUPPORTED")
+        self.assertEqual(self.unchanged(), before)
+        code, result, _ = self.admin("migrate", "--db", str(self.path), "--instance", "test-instance",
+                                     "--binding", str(self.profile), "--to", "8")
+        self.assertEqual((code, result["ok"], result["schema_version"], result["migrated"]), (0, True, "8", True))
 
     def test_admin_migrates_then_registers_an_actor(self):
         code, result, _ = self.admin("migrate", "--db", str(self.path), "--instance", "other", "--binding", str(self.profile))

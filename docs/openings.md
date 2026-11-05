@@ -82,7 +82,9 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
   receipt. A different operation ID on a published opening refuses with
   `OPENING_CLOSED`, recorded, and the `opening` view links the result.
 - A recorded refusal leaves the opening open and unchanged. The person can
-  correct it, save, and publish with a new operation ID.
+  correct it, save, and publish with a new operation ID. The refused
+  writing is not kept separately: nothing was delivered, and the next save
+  replaces the private draft on purpose.
 - Refusal codes, all recorded: an unknown or another actor's opening is
   `FORBIDDEN`; lost workspace access `FORBIDDEN`; a used topic ID
   `REVISION_CONFLICT`; a disabled participant `INVALID_RECIPIENT`; a blank
@@ -160,6 +162,14 @@ binding as the server and is never exposed over HTTP.
   unknown version refuses. Reads and the server never migrate. Because older
   code accepts only its own version, a committed upgrade fences every older
   writer.
+- `migrate ... --to VERSION` moves to an earlier version through the same
+  guard, transaction and checks, and is the rollback for a deployment. A
+  step back runs only while the newer version holds no records the older
+  one cannot keep: version 9 steps back to 8 only while `openings` has no
+  row in any state, otherwise it refuses with `RECORDS_WOULD_BE_LOST`. The
+  commit sequence advances on a step back too, so a backup taken before the
+  upgrade stays older than the instance; rollback and backup activation are
+  separate acts.
 - `add-actor --profile PROFILE --id ID --kind KIND --name NAME` registers an
   enabled actor in one recorded transaction. An existing ID refuses.
 - Each prints one JSON object. Success is `{ok: true, ...}` with exit 0; a
@@ -168,7 +178,7 @@ binding as the server and is never exposed over HTTP.
   `{instance_id, from_version, schema_version, migrated}`. Its codes are
   `BINDING_MISMATCH` (the profile names another database or instance),
   `RUNNER_GUARD_HELD`, `INSTANCE_MISMATCH`, `AUTHORITY_CHANGED`,
-  `SCHEMA_UNSUPPORTED`, `MIGRATION_FAILED`, and two retryable codes:
+  `SCHEMA_UNSUPPORTED`, `RECORDS_WOULD_BE_LOST`, `MIGRATION_FAILED`, and two retryable codes:
   `DATABASE_BUSY`, and `AUTHORITY_BUSY` while a recovery activation or
   cutover holds the authority. Each of these changed nothing. A storage
   error from the commit itself, other than busy, is unconfirmed (exit 1,

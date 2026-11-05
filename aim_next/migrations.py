@@ -10,9 +10,11 @@ from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
 
 
-# Ordered steps; each upgrades exactly one stored version to the next.
+# Ordered steps between adjacent stored versions: the upgrade, the step back,
+# and a query that is true while the step back would drop someone's records.
 STEPS = (
-    ("8", "9", OPENING_SCHEMA),
+    ("8", "9", OPENING_SCHEMA, ("DROP TABLE openings",),
+     "SELECT EXISTS (SELECT 1 FROM openings)"),
 )
 
 
@@ -28,22 +30,30 @@ def _unconfirmed(error):
     return StoreError("The upgrade could not be confirmed; read schema_version, or run migrate again, which reports a completed upgrade")
 
 
-def _plan(stored):
-    from .store import SCHEMA_VERSION
+def _plan(stored, target):
+    """The (statements, refusing query) pairs that move stored to target, in order."""
     plan, version = [], stored
-    for source, target, statements in STEPS:
-        if source == version:
-            plan.append(statements)
-            version = target
-    if not plan or version != SCHEMA_VERSION:
-        raise MigrationError("SCHEMA_UNSUPPORTED", "This stored schema version has no upgrade path; nothing was changed")
+    for source, upgraded, up, _, _ in STEPS:
+        if source == version and version != target:
+            plan.append((up, None))
+            version = upgraded
+    for source, upgraded, _, down, occupied in reversed(STEPS):
+        if upgraded == version and version != target:
+            plan.append((down, occupied))
+            version = source
+    if not plan or version != target:
+        raise MigrationError("SCHEMA_UNSUPPORTED", "This stored schema version has no path to the target; nothing was changed")
     return plan
 
 
-def migrate(db_path, instance_id, binding):
-    """Upgrade one bound instance to SCHEMA_VERSION in a single transaction."""
+def migrate(db_path, instance_id, binding, target=None):
+    """Move one bound instance to target (default SCHEMA_VERSION) in a single transaction.
+
+    A step back runs only while the newer version holds no records the older
+    one cannot keep; the commit sequence still advances, never rewinds."""
     from .store import SCHEMA_VERSION, Store, _connect
     _identifier(instance_id, "instance_id")
+    target = SCHEMA_VERSION if target is None else target
     authority = Authority(Path(db_path).resolve(), instance_id, binding)
     try:
         # Holding the guard also keeps a runner from starting mid-upgrade.
@@ -62,13 +72,15 @@ def migrate(db_path, instance_id, binding):
         if any(metadata.get(key) != value for key, value in authority.binding.items()):
             raise MigrationError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
         stored = metadata.get("schema_version")
-        result = {"instance_id": instance_id, "from_version": stored, "schema_version": SCHEMA_VERSION}
-        if stored == SCHEMA_VERSION:
+        result = {"instance_id": instance_id, "from_version": stored, "schema_version": target}
+        if stored == target:
             return dict(result, migrated=False)
-        for statements in _plan(stored):
+        for statements, occupied in _plan(stored, target):
+            if occupied is not None and db.execute(occupied).fetchone()[0]:
+                raise MigrationError("RECORDS_WOULD_BE_LOST", "The older version cannot hold records that exist; nothing was changed")
             for statement in statements:
                 db.execute(statement)
-        if db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (SCHEMA_VERSION,)).rowcount != 1:
+        if db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (target,)).rowcount != 1:
             raise MigrationError("SCHEMA_UNSUPPORTED", "The stored schema version could not be replaced")
         Store._advance_commit_seq(db)
         # SQLite can report a failure after its commit point, so from here a
