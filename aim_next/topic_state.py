@@ -98,14 +98,27 @@ class TopicState:
                     {"kind": "topic", "id": topic["id"], "version": version}]
 
     def _waiting_on(self, db, topic, members):
-        members = self._recipients(db, members, require_enabled=False)
-        if len(members) > LIMITS["recipients"]:
+        # The limit bounds the list as sent, before any name is looked up, as for addressees.
+        if isinstance(members, list) and len(members) > LIMITS["recipients"]:
             raise Refusal("TOO_MANY_RECIPIENTS", "A topic waits on at most %d people or agents" % LIMITS["recipients"])
+        members = self._recipients(db, members, require_enabled=False)
         for member in members:
             if not db.execute("SELECT 1 FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=:topic AND " + READABLE,
                               {"topic": topic["id"], "actor": member}).fetchone():
                 raise Refusal("INVALID_RECIPIENT", "%s cannot read this topic, so it cannot wait on them" % member)
         return sorted(members)
+
+    def _unwait(self, db, member, scope, scope_id):
+        """Take member off the waiting list of each topic they can no longer read, among
+        the topics whose `scope` ("id" or "workspace_id") is scope_id; return those topics.
+
+        Every command that takes away read access calls this, so a topic waits only on
+        someone who can read it. The caller touches each returned topic."""
+        topics = db.execute("SELECT t.*,w.owner_id FROM topic_waiting q JOIN topics t ON t.id=q.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+                            "WHERE q.actor_id=:actor AND t." + scope + "=:scope AND NOT " + READABLE,
+                            {"actor": member, "scope": scope_id}).fetchall()
+        db.executemany("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", [(topic["id"], member) for topic in topics])
+        return topics
 
     def _waiting_by_topic(self, db, topic_ids):
         """{topic_id: [actor_id, ...]} for the given topics."""

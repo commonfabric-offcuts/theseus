@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Where a topic stands: state, note, who it waits on, rename and archive."""
 
+import sqlite3
 import unittest
 
 import reader_fixture as fixtures
@@ -140,6 +141,99 @@ class TopicStateCase(fixtures.ReaderCase):
         again = self.topic()
         self.assertEqual((again["state_note"], again["state_by"]), (first["state_note"], "agent-a"))
         self.assertGreaterEqual(again["state_ms"], first["state_ms"])
+
+    def changes_since(self, seq):
+        return self.sql("SELECT scope_kind,scope_id,resource_kind,resource_id,version FROM changes WHERE seq>? ORDER BY seq", (seq,))
+
+    def head(self):
+        return self.sql("SELECT coalesce(max(seq),0) FROM changes")[0][0]
+
+    def test_someone_who_leaves_the_topic_is_no_longer_waited_on(self):
+        self.participation("other-reader", True)
+        self.committed(self.update({"state": "waiting", "note": "Need both", "waiting_on": ["agent-b", "other-reader"]}, actor="agent-a"))
+        before, mark = self.topic()["version"], self.head()
+        self.participation("other-reader", False)
+        # The topic stops waiting on them, and says so to its readers and to them.
+        topic = self.topic()
+        self.assertEqual((topic["waiting_on"], self.listed()["t1"]["waiting_on"]), (["agent-b"], ["agent-b"]))
+        self.assertEqual(topic["version"], before + 1)
+        self.assertIn(("actor", "other-reader", "waiting", "t1", topic["version"]), self.changes_since(mark))
+        self.assertIn(("topic", "t1", "topic", "t1", topic["version"]), self.changes_since(mark))
+        # An update that names nobody is not refused for a name its caller never gave.
+        self.committed(self.update({"note": "Still need it"}, actor="agent-a"))
+        self.committed(self.update({"state": "waiting"}, actor="agent-a"))
+        self.assertEqual((self.topic()["state_note"], self.topic()["waiting_on"]), ("Still need it", ["agent-b"]))
+        # Coming back does not bring the waiting back with it.
+        self.participation("other-reader", True)
+        self.assertEqual((self.topic()["waiting_on"], self.waiting_on("other-reader")), (["agent-b"], (0, [])))
+        # Leaving a topic you can still read as a member of its outcome keeps you on the list.
+        self.participation("agent-b", True)
+        self.participation("agent-b", False)
+        self.assertEqual(self.topic()["waiting_on"], ["agent-b"])
+
+    def member_set(self, member, present):
+        version = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        return self.committed(self.command("workspace.member_set", {"actor_id": member, "present": present},
+                                           target={"workspace_id": "w1"}, expected={"workspace_revision": version}))
+
+    def test_someone_removed_from_the_outcome_is_no_longer_waited_on(self):
+        # agent-b reads t1 only as a member; agent-a also works in it.
+        self.committed(self.update({"state": "waiting", "waiting_on": ["agent-a", "agent-b"]}, actor="agent-a"))
+        before, mark = self.topic()["version"], self.head()
+        result = self.member_set("agent-b", False)
+        topic = self.topic()
+        self.assertEqual((topic["waiting_on"], self.listed()["t1"]["waiting_on"]), (["agent-a"], ["agent-a"]))
+        self.assertEqual(topic["version"], before + 1)
+        changes = self.changes_since(mark)
+        self.assertIn(("actor", "agent-b", "waiting", "t1", topic["version"]), changes)
+        self.assertIn(("topic", "t1", "topic", "t1", topic["version"]), changes)
+        self.assertIn(("workspace", "w1", "topic", "t1", topic["version"]), changes)
+        # The removal's own version is the outcome's current one.
+        self.assertEqual(result["version"], self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"])
+        self.committed(self.update({"note": "Still need it"}, actor="agent-a"))
+        self.member_set("agent-b", True)
+        self.assertEqual(self.topic()["waiting_on"], ["agent-a"])
+        # Someone who still works in the topic stays on the list when they leave the outcome.
+        self.member_set("agent-a", False)
+        self.assertEqual(self.topic()["waiting_on"], ["agent-a"])
+
+    def test_waiting_on_is_bounded_as_given_before_any_name_is_looked_up(self):
+        # The limit applies to the list as sent, so an unknown 33rd name is never looked up.
+        self.rejected(self.update({"state": "waiting", "waiting_on": ["owner"] * 32 + ["nobody-here"]}, actor="agent-a"), "TOO_MANY_RECIPIENTS")
+        self.rejected(self.update({"state": "waiting", "waiting_on": ["owner", "agent-b"] * 20}, actor="agent-a"), "TOO_MANY_RECIPIENTS")
+        # Repeats within the limit name each reader once.
+        self.assertEqual(self.committed(self.update({"state": "waiting", "waiting_on": ["owner", "owner"]}, actor="agent-a"))["waiting_on"], ["owner"])
+
+    def test_more_than_the_limit_of_distinct_readers_is_refused(self):
+        readers = ["reader-%02d" % n for n in range(33)]
+        with sqlite3.connect(str(self.path)) as db:
+            db.executemany("INSERT INTO actors(id,kind,name) VALUES (?,'agent',?)", [(reader, reader) for reader in readers])
+            db.executemany("INSERT INTO workspace_members VALUES ('w1',?)", [(reader,) for reader in readers])
+        self.rejected(self.update({"state": "waiting", "waiting_on": readers}, actor="agent-a"), "TOO_MANY_RECIPIENTS")
+        self.assertEqual(self.committed(self.update({"state": "waiting", "waiting_on": readers[:32]}, actor="agent-a"))["waiting_on"], readers[:32])
+
+    def test_the_owner_says_where_a_topic_stands_after_leaving_it(self):
+        self.participation("owner", False)
+        self.committed(self.update({"state": "review", "note": "Over to me"}))
+        self.assertEqual((self.topic()["state"], self.topic()["state_by"]), ("review", "owner"))
+
+    def test_the_owner_renames_and_archives_a_topic_someone_else_created(self):
+        self.committed(self.command("opening.save", {"workspace_id": "w1", "topic_id": "t2", "title": "Theirs",
+                                                     "participants": [], "body": "Opening", "attachments": []},
+                                    target={"opening_id": "o2"}, expected={"opening_revision": 0}, actor="agent-a"))
+        self.committed(self.command("opening.publish", {}, target={"opening_id": "o2"}, expected={"opening_revision": 1}, actor="agent-a"))
+        self.assertEqual(self.store.view("owner", "topic", {"topic_id": "t2"})["topic"]["creator_id"], "agent-a")
+        self.committed(self.update({"title": "Renamed by the owner"}, topic="t2"))
+        self.committed(self.update({"archived": True}, topic="t2"))
+        # Another member who did not create it cannot.
+        self.rejected(self.update({"archived": False}, topic="t2", actor="agent-b"), "FORBIDDEN")
+        self.assertEqual(self.listed(archived=True)["t2"]["title"], "Renamed by the owner")
+
+    def test_the_topic_list_takes_archived_only_as_true_or_false(self):
+        for value in ("yes", 1, None):
+            with self.subTest(value=value):
+                answer = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "archived": value})
+                self.assertEqual(answer.get("error", {}).get("code"), "INVALID_ARGUMENT", answer)
 
     def test_attention_lists_the_newest_waiting_topics_first_and_bounds_them(self):
         for n in range(7):

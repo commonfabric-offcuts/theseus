@@ -89,8 +89,11 @@ class Conversation:
         responsibility = _body(args.get("responsibility", old["responsibility"] if old else ""))
         db.execute("INSERT INTO topic_participants VALUES (?,?,?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET active=excluded.active,epoch=excluded.epoch,responsibility=excluded.responsibility",
                    (topic["id"], member, int(present), epoch, responsibility))
+        unwaited = not present and self._unwait(db, member, "id", topic["id"])
         version = self._touch_topic(db, topic)
         self._change(db, "actor", member, "participation", topic["id"], version)
+        if unwaited:
+            self._change(db, "actor", member, "waiting", topic["id"], version)
         return {"topic_id": topic["id"], "actor_id": member, "present": present, "epoch": epoch,
                 "responsibility": responsibility, "version": version}, [{"kind": "topic", "id": topic["id"], "version": version}]
 
