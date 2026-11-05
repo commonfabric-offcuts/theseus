@@ -23,6 +23,7 @@ class Element {
   get root() { return this.parent ? this.parent.root : this; }
   focus() { focus.on = this; }
   setAttribute(key, value) { this.attributes[key] = value; }
+  removeAttribute(key) { delete this.attributes[key]; }
   querySelector(selector) { return this.all().find(node => node.tag === selector) ?? null; }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   get text() { return (this.textContent ?? '') + this.children.map(node => node instanceof Element ? node.text : node.text).join(''); }
@@ -35,6 +36,8 @@ function dom(t) {
   globalThis.document = { createElement: tag => new Element(tag), get activeElement() { return focus.on; } };
   t.after(() => { globalThis.document = previous; });
 }
+const CHANGED = 'This topic changed while you were choosing. What you chose is kept here: check it against the line above and save again.';
+const NOT_SENT = 'That was not sent: another change was still being saved. Press it again.';
 const topic = (fields = {}) => ({ id: 't1', version: 4, title: 'Naming', owner_id: 'tony', creator_id: 'tony', state: 'active',
   state_note: '', state_by: null, state_ms: null, waiting_on: [], archived: false, ...fields });
 
@@ -191,11 +194,79 @@ test('a stale-revision refusal keeps the attempt, asks for fresh data, and its n
   assert.equal(notice.hidden, false, 'the same version again leaves the notice');
   panel.paint(topic({ version: 5 }), []);
   assert.equal(controls(host).notice, notice, 'one notice, kept in place so a reader announces its changes');
-  assert.deepEqual([notice.hidden, notice.textContent], [true, ''], 'fresh data clears the notice');
+  assert.deepEqual([notice.hidden, notice.textContent], [false, CHANGED], 'fresh data does not answer the refusal, so its notice stays');
   assert.deepEqual([choice.value, note.value], ['done', 'Shipped'], 'the attempt survives the fresh data');
   await save.onclick();
   assert.deepEqual(sent, [[4, { state: 'done', note: 'Shipped' }], [5, { state: 'done', note: 'Shipped' }]], 'the retry sends the fresh version');
   assert.match(host.children[0].text, /^Done · Shipped/);
+  assert.deepEqual([notice.hidden, notice.textContent], [true, ''], 'the next attempt clears the notice');
+});
+
+// The page's refresh reads the topic and repaints the panel, as freshness does;
+// the refusal's notice is still there once the read it asked for has landed.
+test('a stale-revision refusal is still said after the fresh read it asks for repaints the panel', async t => {
+  dom(t);
+  const host = new Element('section'), theirs = topic({ version: 5, state: 'done', state_by: 'fable' });
+  const panel = new TopicStatePanel({ host, reader: 'tony', refresh: () => panel.paint(theirs, []),
+    send: async () => ({ status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'Writing changed', current_versions: { topic_revision: 5 } } }) });
+  panel.paint(topic(), []);
+  const { choice, save, notice } = controls(host);
+  choose(choice, 'review');
+  await save.onclick();
+  assert.match(host.children[0].text, /^Done — fable/, 'the fresh read was painted');
+  assert.deepEqual([notice.hidden, notice.textContent, choice.value], [false, CHANGED, 'review'], 'the refused choice and its notice are both still shown');
+  panel.paint(topic({ version: 6, owner_id: 'fable', creator_id: 'fable' }), [{ actor_id: 'fable' }]);
+  assert.deepEqual([host.find(node => node.tag === 'details'), notice.hidden], [undefined, true], 'a reader who may no longer change it loses the form and the notice about it');
+});
+
+test('a commit answered after newer reads were painted leaves the fields showing the newest data', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  let release;
+  const panel = new TopicStatePanel({ host, reader: 'tony',
+    send: (current, args) => { sent.push([current.version, args]); return sent.length > 1 ? committed(current, args) : new Promise(resolve => { release = resolve; }); } });
+  panel.paint(topic(), []);
+  const { choice, note, save } = controls(host);
+  choose(choice, 'review'); type(note, 'look');
+  const out = save.onclick();
+  // The reader's own change, then fable's, are read and painted before the answer.
+  panel.paint(topic({ version: 5, state: 'review', state_note: 'look', state_by: 'tony' }), []);
+  panel.paint(topic({ version: 6, state: 'done', state_note: 'Shipped', state_by: 'fable' }), []);
+  release(committed(topic(), { state: 'review', note: 'look' }, 5));
+  await out;
+  assert.match(host.children[0].text, /^Done · Shipped — fable/);
+  assert.deepEqual([choice.value, note.value], ['done', 'Shipped'], 'what was saved is the topic\'s, so the fields follow the newest data');
+  type(note, 'Shipped, checked');
+  await save.onclick();
+  assert.deepEqual(sent[1], [6, { state: 'done', note: 'Shipped, checked' }], 'editing only the note does not send back the older state');
+});
+
+test('a press while another change is out is not sent, and says so', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  let release;
+  const panel = new TopicStatePanel({ host, reader: 'tony',
+    send: (current, args) => { sent.push([current.version, args]); return sent.length > 1 ? committed(current, args) : new Promise(resolve => { release = resolve; }); } });
+  panel.paint(topic(), []);
+  const { choice, title, save, rename, notice } = controls(host);
+  const archive = host.find(node => node.textContent === 'Archive');
+  choose(choice, 'review');
+  const out = save.onclick();
+  assert.deepEqual([save, rename, archive].map(button => button.attributes['aria-disabled']), ['true', 'true', 'true'], 'every button says it is unavailable');
+  await save.onclick();
+  assert.deepEqual([sent.length, notice.hidden], [1, true], 'Save pressed twice is the one change already on its way');
+  type(title, 'New name'); rename.focus();
+  await rename.onclick();
+  assert.deepEqual(sent, [[4, { state: 'review', note: '' }]], 'the rename is not sent while the save is out');
+  assert.deepEqual([notice.hidden, notice.textContent], [false, NOT_SENT]);
+  assert.equal(document.activeElement, rename, 'focus stays on the button pressed');
+  release(committed(topic(), { state: 'review', note: '' }));
+  await out;
+  assert.deepEqual([save, rename, archive].map(button => button.attributes['aria-disabled']), [undefined, undefined, undefined]);
+  assert.deepEqual([notice.hidden, notice.textContent, title.value], [false, NOT_SENT, 'New name'], 'the unsent rename is still said, and its title kept');
+  await rename.onclick();
+  assert.deepEqual(sent[1], [5, { title: 'New name' }], 'pressed again, it is sent');
+  assert.equal(notice.hidden, true);
 });
 
 test('after a committed change the next one sends the version it made, and focus stays on its button', async t => {
