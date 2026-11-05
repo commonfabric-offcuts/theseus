@@ -128,6 +128,8 @@ class Element {
   replaceChildren(...nodes) { for (const node of this.children) if (node instanceof Element) { node.leave(); node.parent = null; } this.children = []; this.append(...nodes); }
   leave() { for (let at = globalThis.document.focused; at; at = at.parent) if (at === this) globalThis.document.focused = null; }
   get isConnected() { return this.root || Boolean(this.parent?.isConnected); }
+  setAttribute(name, value) { (this.attributes ??= {})[name] = String(value); }
+  getAttribute(name) { return this.attributes?.[name] ?? null; }
   focus() { globalThis.document.focused = this; globalThis.document.moves = (globalThis.document.moves ?? 0) + 1; }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   get text() { return (this.textContent ?? '') + this.children.map(node => node instanceof Element ? node.text : node.text).join(''); }
@@ -184,10 +186,12 @@ test('a message in a topic the reader has lost can be read whole where it is lis
   assert.equal(host.all().filter(node => node.tag === 'li')[0].all().some(node => node.textContent === 'Read it here'), false,
     'a topic the reader can open is read there, not here');
   const pressed = button('Read it here').onclick();
-  button('Read it here').onclick();
+  assert.equal(button('Read it here'), undefined, 'while it reads, the button says so');
+  assert.equal(button('Reading…').getAttribute('aria-busy'), 'true');
+  button('Reading…').onclick();
   assert.equal(reads, 1, 'a second press while reading asks nothing more');
   paintSent(host, answer, actions);
-  button('Read it here').onclick();
+  button('Reading…').onclick();
   assert.equal(reads, 1, 'nor does a press on the button drawn again while reading');
   settle({ body: 'The start of a long message, and all the rest of it', source_ref: { kind: 'message', id: 'm-2' }, attachments: [{ id: 'media-1', name: 'plan.png' }] });
   await pressed;
@@ -245,10 +249,10 @@ test('a read survives the list being drawn again, keeps its focus, and ends on t
   paintSent(host, answer, actions);
   button('Read it here').focus();
   const pressed = button('Read it here').onclick();
-  assert.equal(document.activeElement, button('Read it here'), 'pressing keeps focus on the button');
+  assert.equal(document.activeElement, button('Reading…'), 'pressing keeps focus on the button');
   paintSent(host, later, actions);
-  assert.equal(document.activeElement, button('Read it here'), 'the button drawn again takes the focus');
-  settle({ body: 'The start, and the whole rest', source_ref: { kind: 'message', id: 'm-2' }, attachments: [{ id: 'media-1', name: 'plan.txt' }] });
+  assert.equal(document.activeElement, button('Reading…'), 'the button drawn again takes the focus');
+  settle({ body: 'The start, and the whole rest', source_ref: { kind: 'message', id: 'm-2' }, attachments: [{ id: 'media-1', name: 'plan.txt' }, { id: 'media-2', name: 'notes.txt' }] });
   await pressed;
   assert.match(closed().text, /the whole rest/, 'the row on the page shows the whole message');
   assert.equal(document.activeElement, button('Mark read'), 'focus moves on to Mark read');
@@ -256,11 +260,15 @@ test('a read survives the list being drawn again, keeps its focus, and ends on t
   const opened = controls[0].children[0];
   opened.focus();
   paintSent(host, later, actions);
-  assert.equal(controls.length, 1, 'an attachment control is made once');
+  assert.equal(controls.length, 2, 'each attachment control is made once');
   assert.equal(closed().all().includes(opened), true, 'and is kept, with whatever it opened');
   assert.equal(document.activeElement, opened, 'keeping its focus');
   notices[0]('The attachment could not be read');
   assert.match(closed().text, /The attachment could not be read/, 'an attachment\'s refusal is said on its row');
+  notices[1]('');
+  assert.match(closed().text, /could not be read/, 'another attachment opening leaves it said');
+  notices[0]('');
+  assert.doesNotMatch(closed().text, /could not be read/, 'and it is gone once its own attachment opens');
   // Focus elsewhere on the page stays there.
   const outside = new Element('input'); outside.root = true; outside.focus();
   const moves = document.moves;

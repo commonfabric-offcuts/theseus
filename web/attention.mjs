@@ -95,8 +95,10 @@ export function paintSent(host, answer, actions) {
         if (source?.source_ref?.kind !== 'message' || source.source_ref.id !== item.source_ref.id) throw Error('The message could not be confirmed.');
         // A message no longer listed is forgotten: its answer is not kept.
         if (shown.reads.get(id) !== entry) return;
-        entry.controls = (source.attachments ?? []).map(ref => attachment(ref, item.source_ref, message => {
-          entry.notice = message;
+        // Each attachment's latest refusal, until it opens.
+        entry.refusals = [];
+        entry.controls = (source.attachments ?? []).map((ref, index) => attachment(ref, item.source_ref, message => {
+          entry.refusals[index] = message;
           repaint();
         }));
         entry.source = source;
@@ -124,13 +126,15 @@ export function paintSent(host, answer, actions) {
     const mark = part(element('button', { type: 'button', textContent: 'Mark read' }), id, 'mark');
     mark.onclick = () => { mark.disabled = true; return Promise.resolve(acknowledge(item)).finally(() => { mark.disabled = false; }); };
     const head = [element('span', { textContent: place }), element('span', { className: 'muted', textContent: ' (you can no longer open this topic)' })];
-    const said = element('span', { className: 'notice', hidden: !entry?.notice, textContent: entry?.notice ? ` ${entry.notice}` : '' });
+    const notice = [entry?.notice, ...(entry?.refusals ?? [])].filter(Boolean).join(' ');
+    const said = element('span', { className: 'notice', hidden: !notice, textContent: notice ? ` ${notice}` : '' });
     said.setAttribute?.('role', 'status');
     if (entry?.source) {
       return element('li', { className: 'closed-topic' }, ...head,
         element('p', { className: 'sent-whole', textContent: `${item.message.author_id}: ${entry.source.body}` }), ...entry.controls, mark, said);
     }
-    const more = part(element('button', { type: 'button', textContent: 'Read it here' }), id, 'more');
+    const more = part(element('button', { type: 'button', textContent: entry?.pending ? 'Reading…' : 'Read it here' }), id, 'more');
+    more.setAttribute?.('aria-busy', String(Boolean(entry?.pending)));
     more.onclick = () => readWhole(item);
     return element('li', { className: 'closed-topic' }, ...head, words, ' ', more, ' ', mark, said);
   }));

@@ -407,12 +407,17 @@ function rechecked(session, ids, page) {
 }
 // One attachment of a source: a button that fetches it, then shows an image
 // in place and offers the file to save. current() says the place it was
-// offered from still shows that source; a refusal goes to notice.
+// offered from still shows that source; a refusal goes to notice, and an open
+// that succeeds sends notice('') to say an earlier refusal no longer holds.
+// Focus pressed onto Open moves to Download, or back to Open on a refusal,
+// unless the person has put it somewhere else meanwhile.
 function attachmentControl(attachment, sourceRef, current, notice) {
   const host = node('span', undefined, 'attachment-label');
   const available = () => host.isConnected && current();
+  const unplaced = () => !document.activeElement || document.activeElement === document.body;
   const show = button(`Open ${attachment.name ?? 'attachment'}`, async () => {
     if (!available()) return;
+    const held = document.activeElement === show;
     show.disabled = true;
     try {
       const media = await api.media(bootstrap.instance_id, attachment, sourceRef);
@@ -421,8 +426,10 @@ function attachmentControl(attachment, sourceRef, current, notice) {
       mediaURLs.add(url); host.replaceChildren();
       if (media.inline) { const image = node('img'); image.alt = attachment.name; image.src = url; host.append(image); }
       const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
+      notice('');
+      if (held && unplaced()) download.focus();
     } catch (error) { if (available()) notice(error.message); }
-    finally { if (show.isConnected) show.disabled = false; }
+    finally { if (show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
   }); host.append(show);
   return host;
 }
@@ -430,7 +437,7 @@ function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);
   const current = () => registry.isSourceCurrent(presentation) && !registry.current.sourceUnavailable && !registry.current.availabilityUnconfirmed;
   for (const attachment of presentation.source.attachments ?? [])
-    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, message => reader.notice(message)));
+    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, message => { if (message) reader.notice(message); }));
 }
 async function openSource(ref, opener) {
   const request = ++opening;
