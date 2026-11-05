@@ -678,12 +678,12 @@ try {
 
       await check('cleanup close ends every lock this document holds or was granted, and a refused cleanup lists the copy as another tab\'s', async () => {
         const source = async () => { const p = await page('cleanup-close'); await p.evaluate('j.save(snapshot)'); const row = await p.evaluate('j.own(editor.key)'); await p.close(); return row; };
-        const first = await source(), second = await source(), third = await source(), fourth = await source();
+        const first = await source(), second = await source(), third = await source(), fourth = await source(), fifth = await source();
         const b = await page('cleanup-close');
         const result = await b.evaluate(`(async()=>{
           const fake=${fakeLocks},open=()=>import('/journal.mjs').then(m=>m.openJournal({instanceId:context.instanceId,actor:context.actor}));
           const named=writer=>[...fake.holders].some(name=>name.includes(writer));
-          const first=${JSON.stringify(first)},second=${JSON.stringify(second)},third=${JSON.stringify(third)},fourth=${JSON.stringify(fourth)},out={};
+          const first=${JSON.stringify(first)},second=${JSON.stringify(second)},third=${JSON.stringify(third)},fourth=${JSON.stringify(fourth)},fifth=${JSON.stringify(fifth)},out={};
           // An adopted source and the document's own writer are ended by close.
           const k1=await open();
           await k1.adopt(editor.key,{id:first.id,stamp:first.stamp});
@@ -748,13 +748,29 @@ try {
           out.saveQueuedAtClose=await k7.save(snapshot).then(()=>'saved',e=>e.message);
           out.saveRowAbsent=!(await readRow(JSON.stringify([editor.key,k7.writerId])));
           IDBDatabase.prototype.transaction=realTransaction;
+          // Close can also land between a write's first read and the read it
+          // makes from that read's callback: an adoption's check for its own
+          // row. That later callback writes nothing either.
+          await fake.flush();
+          const k8=await open(),realGet=IDBObjectStore.prototype.get;let reads=0;
+          IDBObjectStore.prototype.get=function(...args){
+            if(this.transaction.mode==='readwrite'&&++reads===2){IDBObjectStore.prototype.get=realGet;k8.close();}
+            return realGet.apply(this,args);
+          };
+          out.adoptNestedAtClose=await k8.adopt(editor.key,{id:fifth.id,stamp:fifth.stamp}).then(()=>'adopted',e=>e.message);
+          IDBObjectStore.prototype.get=realGet;
+          out.nestedReads=reads;
+          const source5=await readRow(fifth.id);
+          out.nestedSourceKept=source5?.stamp===fifth.stamp&&source5.active===1&&!source5.superseded_by;
+          out.nestedRowAbsent=!(await readRow(JSON.stringify([editor.key,k8.writerId])));
           return out;
         })()`);
         assert.deepEqual(result, { adoptedHeld: true, afterClose: [false, false], cleanupHeldAfterClose: false, retire: 'refused',
           adoptAsClosing: 'Open in another tab. Close that tab before retrying recovery.', heldAfterClosingAdoption: false, refused: false, listed: ['open-in-another-tab'],
           retireQueuedAtClose: 'Recovery storage is closed.', queuedRowKept: true,
           adoptQueuedAtClose: 'Recovery storage is closed.', adoptSourceKept: true, adoptedRowAbsent: true,
-          saveQueuedAtClose: 'Recovery storage is closed.', saveRowAbsent: true });
+          saveQueuedAtClose: 'Recovery storage is closed.', saveRowAbsent: true,
+          adoptNestedAtClose: 'Recovery storage is closed.', nestedReads: 2, nestedSourceKept: true, nestedRowAbsent: true });
       });
 
       await check('cleanup a writer this document just released is taken again, never refused by its own release', async () => {
