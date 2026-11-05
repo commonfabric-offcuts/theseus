@@ -21,6 +21,10 @@ class LiveFeed:
     stream carries only that number: what changed is read through the usual
     views, so the feed adds no new way to see records.
 
+    The thread's first act is to read the current number, so a writer that
+    holds its lock while the server starts delays the first message rather
+    than keeping the feed from starting; until then a stream waits.
+
     The feed ends, and says why, when the database or the authority anchor is
     moved, when the commit number cannot be read, or when the server stops.
     """
@@ -30,6 +34,7 @@ class LiveFeed:
         self.lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(max_streams)
         self.wakers = {}  # each stream's read end: its write end
+        self.seq = None  # until the thread's first read
         self.ended = None
         self.stopped = False
         self.stop_read, self.stop_write = os.pipe()
@@ -37,7 +42,6 @@ class LiveFeed:
         try:
             self.watch = NativeWatch(self.db_path, companions, signals=False)
             self.watch.watch_reader(self.stop_read)
-            self.seq = self._read_seq()
         except BaseException:
             self._close_watch()
             self._close_pipe()
@@ -65,11 +69,12 @@ class LiveFeed:
         return int(row[0])
 
     def _settled_seq(self):
-        """The commit number once the writer that fired the event is done, or None if the feed is stopping.
+        """The commit number once no writer holds the lock, or None if the feed is stopping.
 
         Each read waits on the writer's lock. A writer that holds it longer
         than one read waits is still writing, so the read is asked again; the
-        feed never ends because a commit was slow."""
+        feed never ends, or fails to start, because a commit was slow. Releasing
+        a lock writes nothing to watch, so this read is what sees it go."""
         while True:
             try:
                 return self._read_seq()
@@ -82,14 +87,10 @@ class LiveFeed:
     def _run(self):
         reason = "stopped"
         try:
+            # The watch is open before this first read, so no commit falls between them.
+            dirty = True
             while True:
-                result = self.watch.wait(None)
-                if self.stop_read in result["readable"]:
-                    break
-                if self.watch.companion_moved:
-                    reason = "binding_changed"
-                    break
-                if result["dirty"]:
+                if dirty:
                     seq = self._settled_seq()
                     if seq is None:
                         break
@@ -97,6 +98,13 @@ class LiveFeed:
                         if seq != self.seq:
                             self.seq = seq
                             self._wake_all()
+                result = self.watch.wait(None)
+                if self.stop_read in result["readable"]:
+                    break
+                if self.watch.companion_moved:
+                    reason = "binding_changed"
+                    break
+                dirty = result["dirty"]
         except WatchError:
             reason = "database_moved"
         except (sqlite3.Error, StoreError, ValueError, OSError):
@@ -126,7 +134,7 @@ class LiveFeed:
         os.close(self.stop_write)
 
     def state(self):
-        """(latest commit number, why the feed ended or None)."""
+        """(latest commit number or None before the first read, why the feed ended or None)."""
         with self.lock:
             return self.seq, self.ended
 

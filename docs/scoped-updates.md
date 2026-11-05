@@ -41,12 +41,18 @@ A last message `{"end": reason}`, followed by a close, says the server stopped
 (`stopped`), the database or authority anchor moved (`database_moved`,
 `binding_changed`), or the commit number could not be read (`unconfirmed`). The
 client sends only control frames: a ping is answered, and anything else closes
-the socket.
+the socket, as does a control frame that is fragmented, longer than 125 bytes or
+has a reserved bit set. The server writes one frame at a time: a newer number
+replaces one not yet sent, and a newer ping replaces one not yet answered, so a
+client that pings without reading is owed one answer, not one per ping.
 
 The feed reads the commit number through the store's own connection settings,
 kept from SQL writes. If another process died partway through a commit, that
 read is what rolls its journal back, with the store's full sync. A read that
-waits on a writer's lock is asked again; a slow commit never ends the feed.
+waits on a writer's lock is asked again, and a stopping server ends that wait; a
+slow commit never ends the feed. The first number is read the same way, on the
+feed's own thread, so a writer holding its lock while the server starts delays
+the first message rather than leaving the instance without a stream.
 
 While the stream is up, the page reads only after a commit, so an idle page
 reads nothing and a new message shows as soon as it is saved. A pass that fails
@@ -56,7 +62,8 @@ slowed by retries. A socket that delivered and then closed, or that ended with
 `stopped`, reconnects after a second; any other ending backs off from one to
 thirty seconds, so a broken feed is not asked in a loop. A page that becomes
 visible or comes back online reconnects at once. A server without a native
-watch offers no stream and refuses one with `LIVE_UNAVAILABLE`. The server holds
+watch offers no stream and refuses one with `LIVE_UNAVAILABLE`, after the same
+Origin and session checks as any stream. The server holds
 at most eight streams; a ninth is refused `SERVER_BUSY` and retried with the
 same back-off.
 

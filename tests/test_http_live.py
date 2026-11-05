@@ -97,18 +97,21 @@ class LiveStreamTests(unittest.TestCase):
             self.stop()
         self.tmp.cleanup()
 
-    def open(self, token="live-session", origin=None, protocols=None, upgrade=True):
-        """A live WebSocket, or the JSON refusal (status, body) when the server refuses one."""
+    def open(self, token="live-session", origin=None, protocols=None, upgrade=True, headers=None):
+        """A live WebSocket, or the JSON refusal (status, body) when the server refuses one.
+
+        headers replaces or adds handshake headers; a None value leaves one out."""
         address = "%s:%d" % self.server.server_address
         connection = socket.create_connection(self.server.server_address, timeout=5)
         self.connections.append(connection)
         if protocols is None:
             protocols = "theseus-live.v1, bearer." + token
-        lines = ["GET /api/live HTTP/1.1", "Host: " + address, "Origin: " + (origin or self.server.origin),
-                 "Sec-WebSocket-Protocol: " + protocols, "Sec-WebSocket-Version: 13",
-                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="]
+        fields = {"Host": address, "Origin": origin or self.server.origin, "Sec-WebSocket-Protocol": protocols,
+                  "Sec-WebSocket-Version": "13", "Sec-WebSocket-Key": "dGhlIHNhbXBsZSBub25jZQ=="}
         if upgrade:
-            lines += ["Upgrade: websocket", "Connection: Upgrade"]
+            fields.update({"Upgrade": "websocket", "Connection": "Upgrade"})
+        fields.update(headers or {})
+        lines = ["GET /api/live HTTP/1.1"] + ["%s: %s" % item for item in fields.items() if item[1] is not None]
         connection.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
         client = LiveClient(connection)
         head = client.until(b"\r\n\r\n").decode("latin-1").split("\r\n")
@@ -192,7 +195,13 @@ class LiveStreamTests(unittest.TestCase):
                                  ({"protocols": "bearer.live-session"}, (401, "SESSION_REQUIRED")),
                                  ({"protocols": "theseus-live.v1, bearer.live-session, bearer.live-session"}, (401, "SESSION_REQUIRED")),
                                  ({"origin": "http://elsewhere.example"}, (403, "ORIGIN_REFUSED")),
-                                 ({"upgrade": False}, (400, "WEBSOCKET_REQUIRED"))):
+                                 ({"upgrade": False}, (400, "WEBSOCKET_REQUIRED")),
+                                 # Each WebSocket requirement on its own.
+                                 ({"headers": {"Upgrade": None}}, (400, "WEBSOCKET_REQUIRED")),
+                                 ({"headers": {"Connection": "keep-alive"}}, (400, "WEBSOCKET_REQUIRED")),
+                                 ({"headers": {"Sec-WebSocket-Version": "8"}}, (400, "WEBSOCKET_REQUIRED")),
+                                 ({"headers": {"Sec-WebSocket-Key": "c2hvcnQ="}}, (400, "WEBSOCKET_REQUIRED")),
+                                 ({"headers": {"Sec-WebSocket-Key": None}}, (400, "WEBSOCKET_REQUIRED"))):
             with self.subTest(kwargs=kwargs):
                 status, body = self.open(**kwargs)
                 self.assertEqual((status, body["error"]["code"]), expected)
@@ -234,6 +243,52 @@ class LiveStreamTests(unittest.TestCase):
                     pass
                 self.assertTrue(all(opcode == 8 for opcode, _ in frames), frames)
         self.assertEqual(len(self.server.live_feed.wakers), 0)
+
+    def test_a_frame_that_is_not_a_plain_ping_ends_the_stream(self):
+        mask = b"\x01\x02\x03\x04"
+        hi = bytes(b ^ mask[i % 4] for i, b in enumerate(b"hi"))
+        frames = {
+            # A ping that is not final: control frames are never fragmented.
+            "fragmented": bytes([0x09, 0x82]) + mask + hi,
+            # A reserved bit set, with no extension agreed.
+            "reserved bit": bytes([0xC9, 0x82]) + mask + hi,
+            # Extended length: a control frame carries at most 125 bytes. The
+            # last two bytes start another masked ping, so a reader that took
+            # 126 as the length would wait for it rather than close.
+            "extended length": bytes([0x89, 0xFE, 0x00, 0x7E]) + mask + b"x" * 124 + b"\x89\x85",
+        }
+        for name, raw in frames.items():
+            with self.subTest(frame=name):
+                client = self.open()
+                self.line(client)
+                client.connection.sendall(raw)
+                self.assertEqual(client.frame(), (8, b""))
+                self.assertEqual(client.connection.recv(1), b"")
+
+    def test_a_client_that_pings_without_reading_has_one_answer_waiting_at_most(self):
+        # Small buffers on both ends, so the server's answers back up after a
+        # few kilobytes rather than after megabytes of kernel buffer.
+        self.server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096)
+        client = self.open()
+        client.connection.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+        self.line(client)
+        mask, count = b"\x01\x02\x03\x04", 4000
+        def ping(n):
+            payload = b"%06d" % n + b"x" * 119
+            return bytes([0x89, 0x80 | len(payload)]) + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        client.connection.sendall(b"".join(ping(n) for n in range(count)))
+        last, answers = b"%06d" % (count - 1), 0
+        while True:
+            opcode, payload = client.frame()
+            self.assertEqual(opcode, 10)
+            answers += 1
+            if payload.startswith(last):
+                break
+        # The pings that arrived while an answer could not be written were
+        # answered once, by the answer to the latest of them.
+        self.assertLess(answers, count // 2)
+        self.commit()
+        self.assertEqual(self.line(client), {"seq": self.seq()})
 
     def test_streams_are_bounded_and_a_closed_stream_frees_its_slot(self):
         self.stop()
@@ -311,6 +366,84 @@ class LiveStreamTests(unittest.TestCase):
         self.assertEqual(self.line(client), {"seq": self.seq()})
         self.assertGreaterEqual(len(calls), 3)
         self.assertIsNone(feed.state()[1])
+
+    def spill_under_lock(self):
+        """Another connection that holds the writer's exclusive lock, having written pages into the file."""
+        holder = sqlite3.connect(str(self.db), isolation_level=None)
+        holder.execute("BEGIN IMMEDIATE")
+        holder.execute("CREATE TABLE spill(v TEXT)")
+        holder.executemany("INSERT INTO spill VALUES (?)", [("x" * 200,)] * 5000)
+        holder.execute("COMMIT")
+        holder.execute("PRAGMA cache_size=2")
+        holder.execute("PRAGMA cache_spill=1")
+        holder.execute("BEGIN IMMEDIATE")
+        holder.execute("UPDATE spill SET v = v || 'y'")
+        return holder
+
+    def watch_locked_reads(self, cls_or_feed, wanted):
+        """An event set once the feed's read has found the database locked `wanted` times."""
+        read, seen, locked = cls_or_feed._read_seq, [], threading.Event()
+        def counted(*args):
+            try:
+                return read(*args)
+            except sqlite3.OperationalError as error:
+                if "locked" in str(error):
+                    seen.append(1)
+                    if len(seen) >= wanted:
+                        locked.set()
+                raise
+        cls_or_feed._read_seq = counted
+        return locked, read
+
+    def test_stopping_does_not_wait_for_a_writer_that_holds_its_lock(self):
+        client = self.open()
+        self.line(client)
+        feed = self.server.live_feed
+        locked, _ = self.watch_locked_reads(feed, 1)
+        holder, stopper = self.spill_under_lock(), None
+        try:
+            self.assertTrue(locked.wait(5), "the feed's read never met the lock")
+            stopped = threading.Event()
+            stopper = threading.Thread(target=lambda: (self.stop(), stopped.set()), daemon=True)
+            stopper.start()
+            self.assertTrue(stopped.wait(5), "stopping waited for the writer's lock")
+        finally:
+            holder.execute("ROLLBACK")
+            holder.close()
+            if stopper is not None:
+                stopper.join()
+        self.assertEqual(self.line(client), {"end": "stopped"})
+
+    def test_a_writer_that_holds_its_lock_at_start_delays_the_feed_and_does_not_end_it(self):
+        self.stop()
+        holder = sqlite3.connect(str(self.db), isolation_level=None)
+        holder.execute("BEGIN EXCLUSIVE")
+        # The first read is asked again while the lock is held, longer than one read waits.
+        locked, read = self.watch_locked_reads(live_module.LiveFeed, 2)
+        try:
+            self.start()
+            self.assertIsNotNone(self.server.live_feed)
+            client = self.open()
+            self.assertTrue(locked.wait(5), "the feed's first read never met the lock")
+        finally:
+            live_module.LiveFeed._read_seq = read
+            holder.execute("ROLLBACK")
+            holder.close()
+        # Releasing a lock writes nothing; the waiting read sees it go.
+        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertIn("live", self.bootstrap()["transport"])
+        self.commit()
+        self.assertEqual(self.line(client), {"seq": self.seq()})
+
+    def test_without_a_feed_a_stream_is_still_refused_its_session_and_origin_first(self):
+        self.stop()
+        self.start(live=False)
+        for kwargs, expected in (({"token": "wrong"}, (401, "SESSION_REQUIRED")),
+                                 ({"origin": "http://elsewhere.example"}, (403, "ORIGIN_REFUSED")),
+                                 ({}, (503, "LIVE_UNAVAILABLE"))):
+            with self.subTest(kwargs=kwargs):
+                status, body = self.open(**kwargs)
+                self.assertEqual((status, body["error"]["code"]), expected)
 
     def test_a_writer_that_died_mid_commit_is_rolled_back_and_the_feed_carries_on(self):
         client = self.open()
