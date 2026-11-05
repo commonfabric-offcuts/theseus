@@ -121,6 +121,26 @@ class MigrationCase(fixtures.StoreCase):
         self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
         self.assertNotIn("aim-next-admin migrate", str(raised.exception))
 
+    def test_a_database_newer_than_this_code_names_the_code_and_never_moves(self):
+        from aim_next import cli
+        self.upgrade()
+        self.sql("UPDATE metadata SET value='99' WHERE key='schema_version'")
+        before = self.unchanged()
+        with self.assertRaises(store_module.StoreOpenError) as raised:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(raised.exception.code, "SCHEMA_MISMATCH")
+        for text in ("version 99", "version " + SCHEMA_VERSION, "run code that reads version 99"):
+            self.assertIn(text, str(raised.exception))
+        self.assertNotIn("aim-next-admin migrate", str(raised.exception))
+        out, err = io.StringIO(), io.StringIO()
+        self.assertEqual(cli.main(["--profile", str(self.profile), "binding"], stdout=out, stderr=err), 2)
+        self.assertIn("run code that reads version 99", json.loads(out.getvalue())["error"]["message"])
+        # Following migrate anyway, from this code, moves nothing.
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding)
+        self.assertEqual(refused.exception.code, "SCHEMA_UNSUPPORTED")
+        self.assertEqual(self.unchanged(), before)
+
     def test_upgrade_keeps_every_record_and_fences_old_versions(self):
         before, metadata = self.records(), self.metadata()
         self.assertGreater(len(before["messages"]), 0)
