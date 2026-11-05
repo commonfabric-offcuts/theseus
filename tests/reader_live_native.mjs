@@ -242,20 +242,61 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
+  // On a wide, short window the rail scrolls on its own; a long rail's last
+  // row can still be reached by scrolling over the rail, though the page beside
+  // it is short.
+  await check('live a long rail can be scrolled to its end on a short page', async () => {
+    await control({ method: 'navigation_topics', topics: [{ id: 'live-rail', title: 'Live short topic' }] });
+    const p = await page('live-rail-end', null, true, { url: origin + '/?topic=live-rail' });
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await settled(p);
+    assert.equal(await p.evaluate("document.querySelector('.rail').getBoundingClientRect().height > 0"), true, 'the rail is shown');
+    await p.evaluate(`(() => { const rail = document.querySelector('.rail'), grown = document.createElement('div'), end = document.createElement('div');
+      grown.style.height = '1500px'; end.id = 'fixture-rail-end'; end.textContent = 'The end of the rail'; rail.append(grown, end); scrollTo(0, 0);
+      return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))); })()`);
+    const room = await p.evaluate("JSON.stringify({ page: document.documentElement.scrollHeight - innerHeight, header: document.querySelector('.app-header').offsetHeight })");
+    assert.ok(JSON.parse(room).page <= JSON.parse(room).header, `the page has no more room to scroll than the header: ${room}`);
+    const rail = await p.evaluate("(() => { const b = document.querySelector('.rail').getBoundingClientRect(); return { x: b.x + b.width / 2, y: Math.max(b.y, 0) + 100 }; })()");
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...rail });
+    const end = "(() => { const b = document.querySelector('#fixture-rail-end').getBoundingClientRect(); return b.bottom <= innerHeight; })()";
+    for (let n = 0; n < 12 && !(await p.evaluate(end)); n++) {
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', ...rail, deltaX: 0, deltaY: 400 });
+      await p.evaluate('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))');
+    }
+    assert.equal(await p.evaluate(end), true, `the rail's last row comes into view: ${await p.evaluate("JSON.stringify({ scrollY, rail: document.querySelector('.rail').scrollTop, bottom: document.querySelector('#fixture-rail-end').getBoundingClientRect().bottom })")}`);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // A message that named the reader in a topic they have since lost: the
-  // outcomes page lists its start, and Read it here shows all of it.
+  // outcomes page lists its start, and Read it here shows all of it and its
+  // attachment. The list is drawn again while the read's answer is held, and
+  // again after the attachment is opened, and neither loses anything.
   await check('live a message sent by name in a topic you have lost can be read whole where it is listed', async () => {
     const body = 'Named before you left. ' + 'The rest of a long message. '.repeat(20) + 'The very end.';
     await control({ method: 'lost_named_message', operation_id: 'live-lost-1', body });
     const p = await page('live-lost', null, true, { url: origin + '/' });
     const item = "document.querySelector('#sent-to-you .closed-topic')";
+    const press = name => p.evaluate(`[...${item}.querySelectorAll('button')].find(b => b.textContent === ${JSON.stringify(name)}).focus()`).then(() => p.key('Enter'));
     await until(() => p.evaluate(`Boolean(${item}?.textContent.includes('Named before you left.'))`), 'the lost topic\'s message is listed under Sent to you');
     assert.equal(await p.evaluate(`${item}.textContent.includes('The very end.')`), false, 'only its start is listed');
     assert.equal(await p.evaluate(`[...${item}.querySelectorAll('button')].some(b => b.textContent === 'Read it here')`), true, 'the item offers Read it here');
-    await p.evaluate(`[...${item}.querySelectorAll('button')].find(b => b.textContent === 'Read it here').focus()`);
-    await p.key('Enter');
+    p.intercept(payload => payload?.name === 'source');
+    await press('Read it here');
+    const held = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the read\'s answer is held');
+    p.intercept(null);
+    await named('Arrives while the read is held');
+    await until(() => p.evaluate("document.querySelector('#sent-to-you').textContent.includes('Arrives while the read is held')"), 'the list is drawn again mid-read');
+    assert.equal(await p.evaluate('document.activeElement.textContent'), 'Read it here', 'the redrawn button keeps focus');
+    await p.release(held);
     await until(() => p.evaluate(`${item}.querySelector('.sent-whole')?.textContent.endsWith('The very end.') === true`), 'the whole message is shown where it is listed');
     assert.equal(await p.evaluate('document.activeElement.textContent'), 'Mark read', 'focus moves on to Mark read');
+    await press('Open plan.txt');
+    await until(() => p.evaluate(`[...${item}.querySelectorAll('a')].some(a => a.textContent === 'Download plan.txt')`), 'the attachment opens from the message');
+    await named('Arrives after the attachment is open');
+    await until(() => p.evaluate("document.querySelector('#sent-to-you').textContent.includes('Arrives after the attachment is open')"), 'the list is drawn again');
+    assert.equal(await p.evaluate(`[...${item}.querySelectorAll('a')].some(a => a.textContent === 'Download plan.txt')`), true, 'the opened attachment stays open');
+    assert.equal(await p.evaluate(`${item}.querySelector('.sent-whole').textContent.endsWith('The very end.')`), true, 'the whole message stays shown');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

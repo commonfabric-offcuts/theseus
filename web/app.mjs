@@ -905,11 +905,9 @@ async function initialize() {
 // A message sent by name in a topic the reader has lost: Core lets them read
 // exactly that message, so its whole text and attachments come from its source.
 async function readSent(item) {
-  const source = checkedView(await api.view('source', item.source_ref, { readClass: 'foreground' }), bootstrap.instance_id);
-  if (source.source_ref?.kind !== 'message' || source.source_ref.id !== item.source_ref.id) throw Error('The message could not be confirmed.');
-  return source;
+  return checkedView(await api.view('source', item.source_ref, { readClass: 'foreground' }), bootstrap.instance_id);
 }
-const sentAttachment = (attachment, sourceRef) => attachmentControl(attachment, sourceRef, () => true, status);
+const sentAttachment = (attachment, sourceRef, notice) => attachmentControl(attachment, sourceRef, () => true, notice);
 function openSent(item) {
   return item.topic_readable ? openDestination({ kind: 'topic', id: item.topic.id }, item.topic.title) : openDestination({ kind: 'root' }, 'Outcomes');
 }

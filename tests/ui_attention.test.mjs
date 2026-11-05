@@ -115,10 +115,20 @@ test('a message that was waiting when the page opened is never announced, even w
   assert.deepEqual(f.shown.map(n => n.options.tag), ['d8']);
 });
 
+// A node knows its parent, as in a page: one appended elsewhere moves there,
+// and the page's focus is lost when its node leaves the page.
 class Element {
-  constructor(tag) { Object.assign(this, { tag, children: [], hidden: false, disabled: false }); }
-  append(...nodes) { this.children.push(...nodes.map(node => typeof node === 'string' ? { text: node } : node)); }
-  replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  constructor(tag) { Object.assign(this, { tag, children: [], hidden: false, disabled: false, parent: null }); }
+  append(...nodes) {
+    for (const node of nodes) {
+      if (node instanceof Element) { node.leave(); node.parent?.children.splice(node.parent.children.indexOf(node), 1); node.parent = this; }
+      this.children.push(typeof node === 'string' ? { text: node } : node);
+    }
+  }
+  replaceChildren(...nodes) { for (const node of this.children) if (node instanceof Element) { node.leave(); node.parent = null; } this.children = []; this.append(...nodes); }
+  leave() { for (let at = globalThis.document.focused; at; at = at.parent) if (at === this) globalThis.document.focused = null; }
+  get isConnected() { return this.root || Boolean(this.parent?.isConnected); }
+  focus() { globalThis.document.focused = this; globalThis.document.moves = (globalThis.document.moves ?? 0) + 1; }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   get text() { return (this.textContent ?? '') + this.children.map(node => node instanceof Element ? node.text : node.text).join(''); }
 }
@@ -176,7 +186,10 @@ test('a message in a topic the reader has lost can be read whole where it is lis
   const pressed = button('Read it here').onclick();
   button('Read it here').onclick();
   assert.equal(reads, 1, 'a second press while reading asks nothing more');
-  settle({ body: 'The start of a long message, and all the rest of it', attachments: [{ id: 'media-1', name: 'plan.png' }] });
+  paintSent(host, answer, actions);
+  button('Read it here').onclick();
+  assert.equal(reads, 1, 'nor does a press on the button drawn again while reading');
+  settle({ body: 'The start of a long message, and all the rest of it', source_ref: { kind: 'message', id: 'm-2' }, attachments: [{ id: 'media-1', name: 'plan.png' }] });
   await pressed;
   assert.match(closed().text, /all the rest of it/);
   assert.equal(button('Read it here'), undefined);
@@ -192,4 +205,88 @@ test('a message in a topic the reader has lost can be read whole where it is lis
   await button('Read it here').onclick();
   assert.match(closed().text, /No readable source/, 'a refused read says why');
   assert.ok(button('Read it here'), 'and can be tried again');
+  const other = { ...actions, read: async () => ({ body: 'Another message', source_ref: { kind: 'message', id: 'm-9' }, attachments: [] }) };
+  paintSent(host, answer, other);
+  await button('Read it here').onclick();
+  assert.match(closed().text, /could not be confirmed/, 'an answer for another message is refused');
+  assert.doesNotMatch(closed().text, /Another message/);
+  paintSent(host, answer, actions);
+  const retried = button('Read it here').onclick();
+  assert.doesNotMatch(closed().text, /could not be confirmed|No readable source/, 'a new try clears at once what the last one said');
+  settle({ body: 'All of it at last', source_ref: { kind: 'message', id: 'm-2' }, attachments: [] });
+  await retried;
+  assert.match(closed().text, /All of it at last/);
+  assert.doesNotMatch(closed().text, /could not be confirmed/, 'and a read that succeeds says nothing more');
+});
+
+test('a read survives the list being drawn again, keeps its focus, and ends on the row now shown', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
+  t.after(() => { globalThis.document = previous; });
+  const f = fixture();
+  const lost = { ...f.item('d2', 'The start', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
+  lost.message = { ...lost.message, id: 'm-2', preview: true };
+  const answer = { addressed: 1, latest_addressed: [lost] };
+  const later = { addressed: 2, latest_addressed: [f.item('d5', 'Newer'), lost] };
+  let settle;
+  const notices = [], controls = [];
+  const actions = {
+    open() {}, acknowledge: async () => {},
+    read: () => new Promise(resolve => { settle = resolve; }),
+    attachment: (attachment, sourceRef, notice) => {
+      notices.push(notice);
+      const control = new Element('span'); control.append(Object.assign(new Element('button'), { textContent: `Open ${attachment.name}` }));
+      controls.push(control); return control;
+    },
+  };
+  const host = new Element('section'); host.root = true;
+  const closed = () => host.all().filter(node => node.tag === 'li').at(-1);
+  const button = name => closed().all().find(node => node.tag === 'button' && node.textContent === name);
+  paintSent(host, answer, actions);
+  button('Read it here').focus();
+  const pressed = button('Read it here').onclick();
+  assert.equal(document.activeElement, button('Read it here'), 'pressing keeps focus on the button');
+  paintSent(host, later, actions);
+  assert.equal(document.activeElement, button('Read it here'), 'the button drawn again takes the focus');
+  settle({ body: 'The start, and the whole rest', source_ref: { kind: 'message', id: 'm-2' }, attachments: [{ id: 'media-1', name: 'plan.txt' }] });
+  await pressed;
+  assert.match(closed().text, /the whole rest/, 'the row on the page shows the whole message');
+  assert.equal(document.activeElement, button('Mark read'), 'focus moves on to Mark read');
+  assert.equal(host.text.includes('Newer'), true, 'the list it ended on is the latest one');
+  const opened = controls[0].children[0];
+  opened.focus();
+  paintSent(host, later, actions);
+  assert.equal(controls.length, 1, 'an attachment control is made once');
+  assert.equal(closed().all().includes(opened), true, 'and is kept, with whatever it opened');
+  assert.equal(document.activeElement, opened, 'keeping its focus');
+  notices[0]('The attachment could not be read');
+  assert.match(closed().text, /The attachment could not be read/, 'an attachment\'s refusal is said on its row');
+  // Focus elsewhere on the page stays there.
+  const outside = new Element('input'); outside.root = true; outside.focus();
+  const moves = document.moves;
+  paintSent(host, later, actions);
+  assert.equal(document.activeElement, outside);
+  assert.equal(document.moves, moves, 'and the paint moves no focus');
+});
+
+test('a read that ends after its message has left the list draws nothing back', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: tag => new Element(tag) };
+  t.after(() => { globalThis.document = previous; });
+  const f = fixture();
+  const lost = { ...f.item('d2', 'The start', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
+  lost.message = { ...lost.message, id: 'm-2', preview: true };
+  let settle, offered = 0;
+  const actions = { open() {}, acknowledge: async () => {}, read: () => new Promise(resolve => { settle = resolve; }), attachment: () => { offered++; return new Element('span'); } };
+  const host = new Element('section');
+  paintSent(host, { addressed: 1, latest_addressed: [lost] }, actions);
+  const pressed = host.all().find(node => node.textContent === 'Read it here').onclick();
+  paintSent(host, { addressed: 0, latest_addressed: [] }, actions);
+  settle({ body: 'The whole', source_ref: { kind: 'message', id: 'm-2' }, attachments: [{ id: 'media-1' }] });
+  await pressed;
+  assert.equal(host.hidden, true);
+  assert.deepEqual(host.children, [], 'the emptied list stays empty');
+  assert.equal(offered, 0, 'and its attachments are not offered');
+  paintSent(host, { addressed: 1, latest_addressed: [lost] }, actions);
+  assert.ok(host.all().some(node => node.textContent === 'Read it here'), 'listed again, it starts afresh');
 });

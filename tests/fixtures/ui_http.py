@@ -416,9 +416,20 @@ def main():
                         agent, prefix = "fixture-notebook-agent", request["operation_id"]
                         workspace, topic_id = prefix + "-w", prefix + "-t"
                         command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "Elsewhere", "team": []}, sender=agent)
+                        # It carries one attachment, which the reader opens from the message.
+                        data, media_id = b"The attached plan.", prefix + "-media"
+                        command("media.begin", prefix + "-media-begin", {
+                            "name": "plan.txt", "content_type": "text/plain", "size_bytes": len(data),
+                            "sha256": hashlib.sha256(data).hexdigest(), "publish_operation_id": prefix + "-publish",
+                        }, {"media_id": media_id}, {"media_revision": 0}, sender=agent)
+                        envelope = {"v": 1, "instance_id": instance, "kind": "media.publish", "operation_id": prefix + "-publish",
+                                    "target": {"media_id": media_id}, "args": {}, "expected": {"media_revision": 1,
+                                    "authority": {key: binding[key] for key in ("authority_id", "authority_epoch")}}}
+                        assert store().publish_media(agent, envelope, io.BytesIO(data))["status"] == "committed"
                         command("draft.save", prefix + "-save", {
                             "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
                             "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
+                            "attachments": [{"id": media_id}],
                             "addressees": [actor], "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
                             {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
                         command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",

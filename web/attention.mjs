@@ -57,65 +57,91 @@ const element = (tag, props = {}, ...children) => {
   node.append(...children); return node;
 };
 
-// The whole messages read here, by message id, while they are listed.
-const wholeMessages = new Map();
+// What the reader has done with each message in a host's list, by message id,
+// while it is listed: a read in flight, the whole message it brought and the
+// attachment controls it offers, or what went wrong. Every paint, and every
+// read as it ends, draws the list again from here.
+const sentLists = new WeakMap();
+// The message id and part each drawn control stands for, so that a control
+// holding focus hands it to the one drawn in its place.
+const sentParts = new WeakMap();
 
 // The newest messages sent to the reader by name. One in a topic they can
 // still open links there, where reading it settles it; one in a topic they
 // have lost can only be read here: read(item) brings its whole text and
-// attachments from its source, attachment(ref, sourceRef) offers each one,
-// and it is marked read here.
-export function paintSent(host, answer, { open, acknowledge, read, attachment }) {
+// attachments from its source, attachment(ref, sourceRef, notice) offers each
+// one, and it is marked read here.
+export function paintSent(host, answer, actions) {
+  const { open, acknowledge, read, attachment } = actions;
   const items = Array.isArray(answer?.latest_addressed) ? answer.latest_addressed : [];
   const count = Number.isSafeInteger(answer?.addressed) ? answer.addressed : 0;
+  const shown = sentLists.get(host) ?? { reads: new Map() };
+  sentLists.set(host, Object.assign(shown, { answer, actions }));
+  const repaint = () => paintSent(host, shown.answer, shown.actions);
   const listed = new Set(items.map(item => item.message?.id));
-  for (const id of wholeMessages.keys()) if (!listed.has(id)) wholeMessages.delete(id);
+  for (const id of shown.reads.keys()) if (!listed.has(id)) shown.reads.delete(id);
+  const held = globalThis.document.activeElement;
+  const drawn = new Map();
+  const part = (node, id, name) => { sentParts.set(node, { id, name }); drawn.set(`${id} ${name}`, node); return node; };
+  const readWhole = item => {
+    const id = item.message.id;
+    const entry = shown.reads.get(id) ?? {};
+    if (entry.pending) return entry.pending;
+    shown.reads.set(id, entry);
+    entry.notice = null;
+    entry.pending = (async () => {
+      try {
+        const source = await read(item);
+        if (source?.source_ref?.kind !== 'message' || source.source_ref.id !== item.source_ref.id) throw Error('The message could not be confirmed.');
+        // A message no longer listed is forgotten: its answer is not kept.
+        if (shown.reads.get(id) !== entry) return;
+        entry.controls = (source.attachments ?? []).map(ref => attachment(ref, item.source_ref, message => {
+          entry.notice = message;
+          repaint();
+        }));
+        entry.source = source;
+      } catch (error) { entry.notice = error.message; }
+      finally { entry.pending = null; }
+      repaint();
+    })();
+    repaint();
+    return entry.pending;
+  };
   if (!items.length) { host.hidden = true; host.replaceChildren(); return; }
   const list = element('ul', { className: 'sent-list' }, ...items.map(item => {
+    const id = item.message.id;
     const place = item.topic.title + (item.topic.title_truncated ? '…' : '');
     const words = element('span', { className: 'muted', textContent: ` ${item.message.author_id}: ${item.message.body}${item.message.preview ? '…' : ''}` });
     if (item.topic_readable) {
-      const link = element('a', { href: '?topic=' + encodeURIComponent(item.topic.id), textContent: place });
+      const link = part(element('a', { href: '?topic=' + encodeURIComponent(item.topic.id), textContent: place }), id, 'open');
       link.onclick = event => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault(); open(item);
       };
       return element('li', {}, link, words);
     }
-    const li = element('li', { className: 'closed-topic' });
-    const draw = () => {
-      const mark = element('button', { type: 'button', textContent: 'Mark read' });
-      mark.onclick = () => { mark.disabled = true; return Promise.resolve(acknowledge(item)).finally(() => { mark.disabled = false; }); };
-      const head = [element('span', { textContent: place }), element('span', { className: 'muted', textContent: ' (you can no longer open this topic)' })];
-      const whole = wholeMessages.get(item.message.id);
-      if (whole) {
-        li.replaceChildren(...head, element('p', { className: 'sent-whole', textContent: `${item.message.author_id}: ${whole.body}` }),
-          ...(whole.attachments ?? []).map(ref => attachment(ref, item.source_ref)), mark);
-        return mark;
-      }
-      const more = element('button', { type: 'button', textContent: 'Read it here' });
-      const said = element('span', { className: 'notice', hidden: true });
-      said.setAttribute?.('role', 'status');
-      let reading = false;
-      more.onclick = async () => {
-        if (reading) return;
-        reading = true;
-        let source;
-        try { source = await read(item); }
-        catch (error) { Object.assign(said, { textContent: ` ${error.message}`, hidden: false }); return; }
-        finally { reading = false; }
-        const held = globalThis.document.activeElement === more;
-        wholeMessages.set(item.message.id, source);
-        const next = draw();
-        if (held) next.focus();
-      };
-      li.replaceChildren(...head, words, ' ', more, ' ', mark, said);
-      return mark;
-    };
-    draw();
-    return li;
+    const entry = shown.reads.get(id);
+    const mark = part(element('button', { type: 'button', textContent: 'Mark read' }), id, 'mark');
+    mark.onclick = () => { mark.disabled = true; return Promise.resolve(acknowledge(item)).finally(() => { mark.disabled = false; }); };
+    const head = [element('span', { textContent: place }), element('span', { className: 'muted', textContent: ' (you can no longer open this topic)' })];
+    const said = element('span', { className: 'notice', hidden: !entry?.notice, textContent: entry?.notice ? ` ${entry.notice}` : '' });
+    said.setAttribute?.('role', 'status');
+    if (entry?.source) {
+      return element('li', { className: 'closed-topic' }, ...head,
+        element('p', { className: 'sent-whole', textContent: `${item.message.author_id}: ${entry.source.body}` }), ...entry.controls, mark, said);
+    }
+    const more = part(element('button', { type: 'button', textContent: 'Read it here' }), id, 'more');
+    more.onclick = () => readWhole(item);
+    return element('li', { className: 'closed-topic' }, ...head, words, ' ', more, ' ', mark, said);
   }));
   const heading = count > items.length ? `Sent to you by name (${count}, newest ${items.length} shown)` : `Sent to you by name (${count})`;
   host.replaceChildren(element('h2', { textContent: heading }), list);
   host.hidden = false;
+  // A control that held focus keeps it when it is drawn again, as an opened
+  // attachment is; one drawn anew takes it; and once a read replaces Read it
+  // here, that row's Mark read does.
+  if (!held || held === globalThis.document.activeElement) return;
+  if (held.isConnected) { held.focus(); return; }
+  const was = sentParts.get(held);
+  (was && (drawn.get(`${was.id} ${was.name}`) ?? drawn.get(`${was.id} mark`)))?.focus();
 }
