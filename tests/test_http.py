@@ -219,6 +219,21 @@ class HTTPContractTests(unittest.TestCase):
             self.assertEqual(first.result()[0], 200)
         self.assertEqual([call[2]["operation_id"] for call in self.store.calls if call[0] == "command"], ["through-held", "send-A", "send-B"])
 
+    def test_a_mark_takes_a_command_slot_not_the_read_through_lane(self):
+        held = self.command(kind="topic.read_through", operation_id="through-held", args={"seq": 4, "hold": True})
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            first = executor.submit(self.request, "/api/command", held)
+            try:
+                self.assertTrue(self.store.command_started.wait(1))
+                status, _, raw = self.request("/api/command", self.command(
+                    kind="message.mark", operation_id="mark-A", target={"message_id": "m1"}, args={"marked": True}))
+                self.assertEqual(status, 200)
+                self.assertTrue(json.loads(raw)["recorded"])
+                self.assertFalse(first.done())
+            finally:
+                self.store.release_command.set()
+            self.assertEqual(first.result()[0], 200)
+
     def test_graceful_close_waits_for_an_admitted_command(self):
         with ThreadPoolExecutor(max_workers=2) as executor:
             pending = executor.submit(self.request, "/api/command", self.command(kind="blocked-command"))

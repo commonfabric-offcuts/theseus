@@ -26,6 +26,7 @@ SCHEMA_10 = (Path(__file__).parent / "fixtures" / "schema_10.sql").read_text().s
 SCHEMA_11 = (Path(__file__).parent / "fixtures" / "schema_11.sql").read_text().splitlines()
 # Version 12 as its step first stood: messages timed, what waits on each reader not yet ordered.
 SCHEMA_12_EARLY = (Path(__file__).parent / "fixtures" / "schema_12_early.sql").read_text().splitlines()
+SCHEMA_12 = (Path(__file__).parent / "fixtures" / "schema_12.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -41,15 +42,22 @@ def frozen(statements):
 
 
 def step_back_by_hand(path, version):
-    """Recover an older stored layout from a fresh instance with plain SQL, independent of migrations.py."""
+    """Recover an older stored layout from a fresh instance with plain SQL, independent of migrations.py.
+
+    "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 13 adds the messages each person marked unread.
+        db.execute("DROP TABLE message_marks")
+        if version == "12":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 12 orders what waits on each reader; the earlier form of its step,
         # which also stamped 12, did not.
         db.execute("DROP INDEX reader_waiting")
         db.execute("CREATE INDEX actor_waiting ON topic_waiting(actor_id,topic_id)")
         db.execute("ALTER TABLE topic_waiting DROP COLUMN archived")
         db.execute("ALTER TABLE topic_waiting DROP COLUMN state_ms")
-        if version != "12":
+        if version != "12-early":
             # Version 12 adds when each message was sent.
             db.execute("ALTER TABLE messages DROP COLUMN sent_ms")
         if version in ("8", "9", "10"):
@@ -68,13 +76,14 @@ def step_back_by_hand(path, version):
             # Version 9 only adds the openings table.
             db.execute("DROP INDEX open_openings")
             db.execute("DROP TABLE openings")
-        db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+        db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version.split("-")[0],))
 
 
 class MigrationCase(fixtures.StoreCase):
     """A schema-8 instance holding records written by the unchanged legacy commands."""
 
     VERSION, FIXTURE = "8", SCHEMA_8
+    LAYOUT = None  # the hand-built layout, when it is not simply VERSION
 
     def setUp(self):
         super().setUp()
@@ -82,7 +91,7 @@ class MigrationCase(fixtures.StoreCase):
         self.assertEqual(self.command("participation.set", {"actor_id": "agent-b", "present": True},
                                       {"topic_id": "t1"})["status"], "committed")
         # The exact stored layout of the older version, proven against its frozen DDL.
-        step_back_by_hand(self.path, self.VERSION)
+        step_back_by_hand(self.path, self.LAYOUT or self.VERSION)
         self.assertEqual(schema(self.path), frozen(self.FIXTURE))
         self.profile = Path(self.temp.name) / "owner.json"
         fd = os.open(str(self.profile), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -819,7 +828,7 @@ class EarlySchema12Case(Schema11Case):
     """A database stamped 12 by the earlier form of that step, which timed messages
     but did not order what waits on each reader. Its stamp says current; its shape does not."""
 
-    VERSION, FIXTURE = "12", SCHEMA_12_EARLY
+    VERSION, FIXTURE, LAYOUT = "12", SCHEMA_12_EARLY, "12-early"
 
     def test_opening_refuses_it_and_names_migrate(self):
         before = self.unchanged()
@@ -855,6 +864,54 @@ class EarlySchema12Case(Schema11Case):
         self.assertEqual(self.sql("SELECT * FROM topic_waiting"), [("t1", "agent-b")])
 
 
+class Schema12Case(MigrationCase):
+    """A schema-12 instance: version 13 keeps the messages each person marked unread."""
+
+    VERSION, FIXTURE = "12", SCHEMA_12
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "12")
+
+    def mark(self, marked, revision):
+        message = self.sql("SELECT id FROM messages ORDER BY seq LIMIT 1")[0][0]
+        return self.command("message.mark", {"marked": marked}, target={"message_id": message},
+                            expected={"mark_revision": revision})
+
+    def test_upgrade_from_12_keeps_records_matches_a_fresh_instance_and_marks(self):
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "12", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.mark(True, 0)["result"]["mark_revision"], 1)
+        self.assertEqual(self.store.view("owner", "attention", {})["unread"], 1)
+
+    def test_step_back_to_12_restores_its_frozen_layout_while_no_mark_exists(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_12))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_refuses_while_any_mark_exists_cleared_or_not(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        for marked, revision in ((True, 0), (False, 1)):
+            with self.subTest(marked=marked):
+                self.assertEqual(self.mark(marked, revision)["status"], "committed")
+                before = self.unchanged()
+                with self.assertRaises(MigrationError) as raised:
+                    self.step_back()
+                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(self.unchanged(), before)
+                self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -867,6 +924,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema10Case, _name, None)
     if _name.startswith("test_") and _name not in Schema11Case.__dict__:
         setattr(Schema11Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema12Case.__dict__:
+        setattr(Schema12Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

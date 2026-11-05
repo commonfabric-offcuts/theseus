@@ -174,6 +174,34 @@ class LiveStreamTests(unittest.TestCase):
             self.commit("Back to back %d" % n)
         self.assertIsNone(self.server.live_feed.state()[1])
 
+    def test_a_mark_made_over_http_is_announced_like_any_commit(self):
+        # Other pages learn of a mark only from this announcement; a mark changes no topic version.
+        pin = dict(self.pin)
+        self.commit()
+        for operation, kind, target, args, expected in (
+                ("open-o1", "opening.save", {"opening_id": "o1"},
+                 {"workspace_id": "w-live-1", "topic_id": "t1", "title": "Marks", "participants": [], "body": "Come back to this", "attachments": []},
+                 {"opening_revision": 0}),
+                ("open-o1-publish", "opening.publish", {"opening_id": "o1"}, {}, {"opening_revision": 1})):
+            result = self.store.command("test-human", {"v": 1, "instance_id": "isolated-test", "operation_id": operation, "kind": kind,
+                                                       "target": target, "expected": dict(expected, authority=pin), "args": args})
+            self.assertEqual(result.get("status"), "committed", result)
+        message = result["result"]["message_id"]
+        client = self.open()
+        start = self.line(client)["seq"]
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        try:
+            connection.request("POST", "/api/command", body=json.dumps({
+                "v": 1, "instance_id": "isolated-test", "operation_id": "mark-1", "kind": "message.mark",
+                "target": {"message_id": message}, "expected": {"authority": pin, "mark_revision": 0},
+                "args": {"marked": True}}).encode(), headers={
+                "Authorization": "Bearer live-session", "Origin": self.server.origin, "Content-Type": "application/json"})
+            receipt = json.loads(connection.getresponse().read())
+        finally:
+            connection.close()
+        self.assertEqual((receipt["status"], receipt["result"]["mark_revision"]), ("committed", 1), receipt)
+        self.assertEqual(self.line(client), {"seq": start + 1})
+
     def test_a_read_announces_nothing(self):
         client = self.open()
         start = self.line(client)["seq"]
