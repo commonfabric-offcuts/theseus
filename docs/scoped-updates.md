@@ -62,12 +62,14 @@ reads nothing and a new message shows as soon as it is saved. A pass that fails
 in a retryable way, is interrupted, or leaves work behind keeps its own timer.
 While the stream is down, the page checks on the 500 ms cadence it used before,
 slowed by retries. A socket that delivered and then ended with `stopped`, or
-that closed after announcing a commit, reconnects after a second; any other
-ending backs off from one to thirty seconds, so a broken feed is not asked in a
-loop. A page that becomes visible or comes back online reconnects at once. A
-socket that went on to announce a commit has worked, so a later ending backs off
-from one second again; one that ends or closes after only its first number keeps
-counting. A server without a native watch offers no stream and refuses one with
+that closed after announcing a commit or after staying up for thirty seconds,
+reconnects after a second; any other ending backs off from one to thirty
+seconds, so a broken feed is not asked in a loop. A page that becomes visible
+or comes back online reconnects at once. A socket that worked in one of those
+ways resets the back-off, so a later ending backs off from one second again;
+one that ends or closes soon after only its first number keeps counting. A
+quiet instance announces nothing after the first number, so the thirty seconds
+keep a healthy idle socket that drops from being counted as broken. A server without a native watch offers no stream and refuses one with
 `LIVE_UNAVAILABLE`, after the same Origin and session checks as any stream. The
 server holds at most eight streams; a ninth is refused `SERVER_BUSY` and retried
 with the same back-off.

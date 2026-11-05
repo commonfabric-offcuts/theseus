@@ -20,12 +20,12 @@ function socket(url, protocols) {
   return s;
 }
 function fixture({ throws = 0 } = {}) {
-  const sockets = [], events = [], times = clock();
+  const sockets = [], events = [], times = clock(), now = { ms: 0 };
   let refusals = throws;
-  const live = new Live({ token: 'secret', origin: 'http://127.0.0.1:5192', timers: times, random: () => 0,
+  const live = new Live({ token: 'secret', origin: 'http://127.0.0.1:5192', timers: times, random: () => 0, now: () => now.ms,
     socket: (url, protocols) => { if (refusals-- > 0) throw Error('blocked'); const s = socket(url, protocols); sockets.push(s); return s; } });
   live.listen(event => events.push(event));
-  return { live, sockets, events, times };
+  return { live, sockets, events, times, now };
 }
 
 test('only the advertised version 2 WebSocket is used', () => {
@@ -99,6 +99,18 @@ test('a feed that closes right after its first number backs off, as one that end
   assert.deepEqual(events.filter(e => e.kind === 'commit').map(e => e.seq), [5], 'the same number announces no commit');
   sockets[6].send({ seq: 5 }); sockets[6].send({ seq: 6 }); sockets[6].drop();
   assert.equal(times.run(), 1000, 'a socket that announced a commit and then closed reconnects after a second');
+});
+
+test('a socket that stayed up through a quiet spell and then dropped had worked, so it reconnects after a second', () => {
+  const { live, sockets, times, now } = fixture();
+  live.start();
+  for (let n = 0; n < 6; n++) { sockets[n].send({ seq: 5 }); sockets[n].drop(); times.run(); }
+  // A quiet instance announces nothing after the first number; the socket is healthy.
+  sockets[6].send({ seq: 5 }); now.ms += 30000; sockets[6].drop();
+  assert.equal(times.run(), 1000, 'up as long as the longest wait, so it worked');
+  const waits = [];
+  for (const n of [7, 8]) { sockets[n].send({ seq: 5 }); now.ms += 29999; sockets[n].drop(); waits.push(times.run()); }
+  assert.deepEqual(waits, [1000, 2000], 'a shorter life after only the first number still counts as failing');
 });
 
 test('an unreadable or unknown message closes the socket and backs off', () => {

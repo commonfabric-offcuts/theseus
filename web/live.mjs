@@ -5,6 +5,7 @@
 // its few HTTP connections per host: open pages never queue reads behind it.
 const timers = { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: t => clearTimeout(t) };
 const PROTOCOL = 'theseus-live.v1';
+const LONGEST_WAIT = 30000;
 
 export function liveOffered(bootstrap) {
   const live = bootstrap?.transport?.live;
@@ -13,8 +14,8 @@ export function liveOffered(bootstrap) {
 
 export class Live {
   constructor({ token, socket = (url, protocols) => new WebSocket(url, protocols), origin = globalThis.location?.origin,
-    timers: clock = timers, random = Math.random }) {
-    Object.assign(this, { token, socket, origin, timers: clock, random });
+    timers: clock = timers, random = Math.random, now = () => Date.now() }) {
+    Object.assign(this, { token, socket, origin, timers: clock, random, now });
     this.listeners = new Set();
     this.connected = false; this.seq = null; this.state = 'idle';
     this.failures = 0; this.timer = null; this.current = null; this.stopped = false; this.opened = 0;
@@ -36,10 +37,12 @@ export class Live {
     catch { this.retry(false); return; }
     this.opened++;
     // clean: the socket said the server stopped, as a restart does, or closed
-    // after announcing a commit. Anything else (refused, unreadable, the feed
-    // ended for another reason, or closed after only its first number) backs
-    // off, so a broken feed is not asked in a loop.
-    const attempt = this.current = { socket, lines: 0, clean: false, done: false };
+    // after announcing a commit or after staying up as long as the longest
+    // wait (a quiet instance announces nothing after the first number).
+    // Anything else (refused, unreadable, the feed ended for another reason,
+    // or closed soon after only its first number) backs off, so a broken feed
+    // is not asked in a loop.
+    const attempt = this.current = { socket, lines: 0, clean: false, done: false, started: this.now() };
     const finish = () => {
       if (attempt.done) return;
       attempt.done = true;
@@ -64,16 +67,19 @@ export class Live {
         finish();
       }
     };
-    // A close after a commit is a restart or a network change. A close before
-    // any number is a refusal, and one right after the first is a feed that
-    // cannot stay up.
-    socket.onclose = () => { attempt.clean = attempt.lines > 1; finish(); };
+    // A close after a commit, or after a long quiet spell, is a restart or a
+    // network change. A close before any number is a refusal, and one soon
+    // after the first is a feed that cannot stay up.
+    socket.onclose = () => {
+      attempt.clean = attempt.lines > 1 || (attempt.lines > 0 && this.now() - attempt.started >= LONGEST_WAIT);
+      finish();
+    };
     socket.onerror = () => finish();
   }
   retry(clean) {
     this.setState('down');
     if (clean) this.failures = 0;
-    const delay = clean ? 1000 : Math.min(30000, 1000 * 2 ** Math.min(this.failures++, 5));
+    const delay = clean ? 1000 : Math.min(LONGEST_WAIT, 1000 * 2 ** Math.min(this.failures++, 5));
     this.timer = this.timers.setTimeout(() => { this.timer = null; this.start(); }, delay + Math.floor(this.random() * 250));
   }
   stop() {
