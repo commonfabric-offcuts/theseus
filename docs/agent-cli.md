@@ -15,8 +15,9 @@ Capture `binding` for new work. Retained work uses its original five fields:
 instance_id, actor_id, canonical db_path, authority_id and authority_epoch.
 A view/command request is `{ "v": 1, "binding": CAPTURED, "view": VIEW }` or
 `{ "v": 1, "binding": CAPTURED, "command": COMMAND }`. VIEW is `{name,args}`;
-COMMAND is the complete Core envelope. No actor override, profile discovery,
-implicit defaults, new operation identities, pagination or retries are added.
+COMMAND is the complete Core envelope. These two verbs add no actor override,
+profile discovery, implicit defaults, new operation identities, pagination or
+retries; the everyday verbs below build envelopes for you.
 Input must be one finite UTF-8 JSON object with unique keys, bounded by the
 backend HTTP envelope limit plus 8192 wrapper bytes. Named input is a regular
 file; `-` reads binary stdin. Binary media transfer is outside this CLI.
@@ -125,6 +126,61 @@ The example's source, recipient and text are explicit caller choices. Stored
 quotes remain separate from addressees. A later Notebook revision does not
 replace the selected one. `delivery.ack` settles only the named incoming
 delivery; it does not mean the topic is complete or that a wake was accepted.
+
+## Everyday verbs
+
+The verbs below build each envelope, capture the binding and a fresh operation
+ID, and print plain lines; `--json` (before or after the verb) prints each raw
+Core result as one JSON line instead. They are the same commands and views as
+above; `binding`, `view` and `command` are unchanged.
+
+| Verb | Does |
+| --- | --- |
+| `outcomes` | Lists the actor's outcomes. |
+| `topics OUTCOME` | Lists an outcome's topics, newest activity first. |
+| `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees and full body. Acknowledges nothing. |
+| `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
+| `post TOPIC [--to A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. |
+| `start OUTCOME --title TITLE [--with A,B] TEXT\|-` | Saves and publishes an opening. If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
+| `publish OPENING` | Publishes a saved opening at its current revision. |
+| `ack DELIVERY...` | Sends one `delivery.ack` per delivery. |
+| `read-through TOPIC SEQ` | Sends `topic.read_through`. |
+| `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM (exit 0, even while blocked writing to a reader that is not draining); ends with a refusal when the authority changes, reported with its exit code even if a stop came too. |
+| `retry OPERATION` | Re-sends a saved request unchanged. |
+
+Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
+DIR`, default `ACTOR.outbox/` beside the profile) before it is sent, and its
+recorded receipt as `OPERATION.receipt.json` after. A saved request is also a
+valid `command` request file. When an answer is not recorded (exit 75, or 1 if
+storage or output was unconfirmed, or 130 if interrupted), the request stays,
+the diagnostic names its operation, and `retry OPERATION` sends exactly it
+again; Core returns the original receipt if it was recorded. A refusal that is
+final (exit 2) is not offered for retry.
+
+An example session for an agent, `agent-a`, whose profile is
+`/absolute/agent-a.json`:
+
+```sh
+$ aim-next --profile /absolute/agent-a.json inbox
+delivery "Release notes" #41 owner: Can you draft the summary?  [d-5c1e… in t-9a7…]
+$ aim-next --profile /absolute/agent-a.json read t-9a7… --after 40
+t-9a7…  Release notes
+
+#41 m-77f… owner to agent-a
+  Can you draft the summary?
+$ aim-next --profile /absolute/agent-a.json post t-9a7… --to owner --reply-to m-77f… "Drafted below."
+posted m-a03… in t-9a7… (1 deliveries queued)
+$ aim-next --profile /absolute/agent-a.json read-through t-9a7… 41
+read t-9a7… through #41 (1 acknowledged)
+$ aim-next --profile /absolute/agent-a.json watch
+watching agent-a from change 1207
+delivery "Release notes" #43 owner: Thanks, ship it.  [d-91b… in t-9a7…]
+```
+
+`watch` arms the native watch on the database and the authority anchor, takes
+a checkpoint, and then waits for an event with no timer; each line is flushed as it is printed, so a monitor
+can turn each one into a notification. An agent without a wake route, such as
+a Claude Code seat, runs it under its own monitor.
 
 ## Openings and membership
 

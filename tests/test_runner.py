@@ -24,6 +24,10 @@ class RunnerCase(DeliveryCase):
         self.addCleanup(patch.stop)
         self.create_topic()
 
+    def everyone(self):
+        # These cases exercise claim mechanics, so every fixture actor is routed.
+        return ["owner", "agent-a", "agent-b"]
+
     def guard(self, name="test-runner"):
         guard = self.store.runner_guard(name)
         guard.__enter__()
@@ -36,7 +40,7 @@ class RunnerCase(DeliveryCase):
         return result["runner_token"]
 
     def claim(self, guard, token, **args):
-        result = self.store.claim_wakes(guard, token, **args)
+        result = self.store.claim_wakes(guard, token, self.everyone(), **args)
         self.assertEqual(result["status"], "ok", result)
         self.assertEqual(len(result["claims"]), 1, result)
         return result["claims"][0]
@@ -52,14 +56,36 @@ class RunnerCase(DeliveryCase):
         self.assertNotIn("delivery_ids", claim)
         self.assertEqual(claim["route_binding"], {"authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"],
             "instance_id": "test-instance", "actor_id": "agent-a", "db_path": str(self.path.resolve())})
-        self.assertEqual(self.store.claim_wakes(guard, token)["claims"], [])
+        self.assertEqual(self.store.claim_wakes(guard, token, self.everyone())["claims"], [])
         result = self.store.finish_wake(guard, token, claim["claim_token"], "accepted")
         self.assertEqual(result["status"], "settled")
         self.assertEqual(result["next_due_ms"], self.now + 60000)
         self.assertEqual(len(self.pending()["items"]), 5)
         self.send_next("Arrival does not bypass cooldown")
-        self.assertEqual(self.store.claim_wakes(guard, token)["claims"], [])
+        self.assertEqual(self.store.claim_wakes(guard, token, self.everyone())["claims"], [])
         self.assertEqual(self.sql("SELECT count(*) FROM wake_attempts"), [(1,)])
+
+    def test_only_routed_recipients_are_claimed_or_scheduled(self):
+        # The owner (a person) and agent-a both have due pending work; only
+        # agent-a is routed, so the owner is never read as due or attempted.
+        self.send_next()
+        self.command("message.post", {"body": "For the owner"}, target={"topic_id": "t1"}, actor="agent-a")
+        self.assertEqual(self.sql("SELECT recipient_id FROM recipient_schedule WHERE pending_count>0 AND next_due_ms<=? ORDER BY recipient_id", (self.now,)),
+                         [("agent-a",), ("owner",)])
+        guard = self.guard()
+        token = self.token(guard)
+        self.assertEqual(self.store.runner_schedule(["agent-b"])["next_due_ms"], None)
+        self.assertEqual(self.store.runner_schedule(["agent-a"])["next_due_ms"], self.now)
+        claimed = self.store.claim_wakes(guard, token, ["agent-a", "agent-b"], limit=32)
+        self.assertEqual([claim["recipient_id"] for claim in claimed["claims"]], ["agent-a"])
+        self.assertEqual(claimed["next_due_ms"], claimed["claims"][0]["lease_until_ms"])
+        self.assertEqual(self.store.claim_wakes(guard, token, ["agent-a"], limit=32)["claims"], [])
+        self.assertEqual(self.store.claim_wakes(guard, token, [], limit=32)["claims"], [])
+        self.assertEqual(self.sql("SELECT recipient_id FROM wake_attempts"), [("agent-a",)])
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE recipient_id='owner' AND state='pending'"), [(1,)])
+        for invalid in ("agent-a", None, {"agent-a": 1}, ["agent-a", 7], [""]):
+            with self.subTest(invalid=invalid), self.assertRaises(StoreError):
+                self.store.claim_wakes(guard, token, invalid)
 
     def test_ack_of_captured_work_releases_newer_work_after_active_claim_finishes(self):
         guard = self.guard()
@@ -69,7 +95,7 @@ class RunnerCase(DeliveryCase):
         self.send_next("B while A is waking")
         self.ack(first["id"])
         try:
-            still_held = self.store.claim_wakes(guard, token)
+            still_held = self.store.claim_wakes(guard, token, self.everyone())
         except StoreError as error:
             self.fail("Reconciled work invalidated an active claim: " + str(error))
         self.assertEqual(still_held["claims"], [])
@@ -98,7 +124,7 @@ class RunnerCase(DeliveryCase):
         guard = self.guard()
         token = self.token(guard, lease_ms=1000)
         with self.assertRaises(StoreError) as caught:
-            self.store.claim_wakes(guard, token)
+            self.store.claim_wakes(guard, token, self.everyone())
         self.assertEqual(caught.exception.code, "LEASE_TOO_SHORT")
         self.assertEqual(self.sql("SELECT count(*) FROM wake_attempts"), [(0,)])
         self.assertEqual(self.store.renew_runner(guard, token)["status"], "renewed")
@@ -117,7 +143,7 @@ class RunnerCase(DeliveryCase):
         paused = self.store.pause_runner(guard, token, "cleanup_failed")
         self.assertEqual(paused["status"], "paused")
         self.assertEqual(self.store.renew_runner(guard, token)["status"], "paused")
-        self.assertEqual(self.store.claim_wakes(guard, token)["status"], "paused")
+        self.assertEqual(self.store.claim_wakes(guard, token, self.everyone())["status"], "paused")
         self.assertEqual(self.store.finish_wake(guard, token, claim["claim_token"], "accepted")["status"], "stale")
         self.assertEqual(self.sql("SELECT lease_until_ms FROM runner_state"), [(31000,)])
         with self.assertRaises(StoreError):
@@ -204,7 +230,7 @@ class RunnerCase(DeliveryCase):
         token = self.token(guard)
         with sqlite3.connect(str(self.path)) as db:
             db.execute("UPDATE actors SET enabled=0 WHERE id='agent-a'")
-        self.assertEqual(self.store.claim_wakes(guard, token)["claims"], [])
+        self.assertEqual(self.store.claim_wakes(guard, token, self.everyone())["claims"], [])
         with sqlite3.connect(str(self.path)) as db:
             db.execute("UPDATE actors SET enabled=1 WHERE id='agent-a'")
         claim = self.claim(guard, token)
@@ -233,7 +259,7 @@ class RunnerCase(DeliveryCase):
         self.assertEqual(int(self.sql("SELECT value FROM metadata WHERE key='commit_seq'")[0][0]), before + 2)
         guard.close()
         with self.assertRaises(StoreError):
-            self.store.claim_wakes(guard, token)
+            self.store.claim_wakes(guard, token, self.everyone())
         rejected = self.command("runner.claim", {})
         self.assertEqual(rejected["error"]["code"], "UNKNOWN_COMMAND")
 
@@ -340,7 +366,7 @@ class RunnerCase(DeliveryCase):
         self.assertNotEqual(second.generation, generation)
         before = self.runner_records()
         self.assertEqual(self.store.acquire_runner(second)["status"], "busy")
-        result = self.store.claim_wakes(second, token)
+        result = self.store.claim_wakes(second, token, self.everyone())
         self.assertEqual(result["status"], "lost")
         self.assertEqual(result["claims"], [])
         self.assertEqual(self.runner_records(), before)
@@ -358,7 +384,7 @@ class RunnerCase(DeliveryCase):
         before = self.runner_records()
         calls = (
             ("renew", "lost", lambda: self.store.renew_runner(second, token)),
-            ("claim", "lost", lambda: self.store.claim_wakes(second, token)),
+            ("claim", "lost", lambda: self.store.claim_wakes(second, token, self.everyone())),
             ("finish", "stale", lambda: self.store.finish_wake(second, token, claim["claim_token"], "accepted")),
             ("child", "stale", lambda: self.store.record_runner_child(second, token, claim["claim_token"], os.getpid(), "fixture")),
             ("pause", "lost", lambda: self.store.pause_runner(second, token, "cleanup_failed")),
@@ -394,7 +420,7 @@ class RunnerCase(DeliveryCase):
         self.now = until - 20000 + 1
         before = self.runner_records()
         with self.assertRaises(StoreError) as caught:
-            self.store.claim_wakes(guard, token, lease_ms=20000)
+            self.store.claim_wakes(guard, token, self.everyone(), lease_ms=20000)
         self.assertEqual(caught.exception.code, "LEASE_TOO_SHORT")
         self.assertEqual(self.runner_records(), before)
         # Renew to equality without changing time; a correctly covered claim
@@ -408,7 +434,7 @@ class RunnerCase(DeliveryCase):
         token = self.token(guard)
         self.claim(guard, token)
         before = self.runner_records()
-        result = self.store.claim_wakes(guard, token)
+        result = self.store.claim_wakes(guard, token, self.everyone())
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["claims"], [])
         self.assertEqual(self.runner_records(), before)
@@ -424,7 +450,7 @@ class RunnerCase(DeliveryCase):
         for name, call in (
             ("pause", lambda: self.store.pause_runner(guard, old, "cleanup_failed")),
             ("renew", lambda: self.store.renew_runner(guard, old)),
-            ("claim", lambda: self.store.claim_wakes(guard, old)),
+            ("claim", lambda: self.store.claim_wakes(guard, old, self.everyone())),
         ):
             with self.subTest(call=name):
                 self.assertEqual(call()["status"], "lost")

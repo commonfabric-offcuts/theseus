@@ -5,7 +5,7 @@ import json
 import time
 import uuid
 
-from .contract import LIMITS, Refusal, _identifier, _json, _page_size
+from .contract import LIMITS, Refusal, _identifier, _json, _page_size, _prefix
 
 
 DELIVERY_SCHEMA = [
@@ -92,12 +92,46 @@ class Delivery:
             return dict(result, already_acknowledged=True), []
         if not row["active"]:
             return dict(result, reason="not_pending"), []
-        db.execute("UPDATE deliveries SET state='acknowledged' WHERE id=?", (delivery_id,))
+        self._acknowledge(db, actor, row)
+        return dict(result, acknowledged=True, already_acknowledged=False), [{"kind": "delivery", "id": delivery_id, "version": 2}]
+
+    def _acknowledge(self, db, actor, row):
+        """Settle one pending delivery of an active group; every acknowledgment shares this path."""
+        db.execute("UPDATE deliveries SET state='acknowledged' WHERE id=?", (row["id"],))
         head = db.execute("SELECT seq FROM deliveries INDEXED BY pending_group_deliveries WHERE group_id=? AND state='pending' ORDER BY seq LIMIT 1", (row["group_id"],)).fetchone()
         db.execute("UPDATE delivery_groups SET pending_count=pending_count-1,first_pending_seq=? WHERE id=?", (head[0] if head else None, row["group_id"]))
         self._eligibility_changed(db, actor, -1)
-        self._change(db, "actor", actor, "delivery", delivery_id, 2)
-        return dict(result, acknowledged=True, already_acknowledged=False), [{"kind": "delivery", "id": delivery_id, "version": 2}]
+        self._change(db, "actor", actor, "delivery", row["id"], 2)
+
+    def _delivery_item(self, db, row, active=True):
+        # The message's own sequence and its topic's title prefix let an inbox
+        # line or a wake notice name the place without another read.
+        message = dict(db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,substr(m.body,1,256) AS body,length(m.body)>256 AS preview,"
+                                  "substr(CAST(t.title AS BLOB),1,1025) AS title_prefix FROM messages m JOIN topics t ON t.id=m.topic_id WHERE m.id=?",
+                                  (row["message_id"],)).fetchone())
+        message["preview"] = bool(message["preview"])
+        title, truncated = _prefix(message.pop("title_prefix"))
+        item = {key: row[key] for key in ("seq", "id", "message_id", "recipient_id", "state")}
+        if row["state"] == "pending" and not active:
+            # A pending row of a cancelled subscription can never be settled.
+            item["state"] = "cancelled"
+        item.update(reasons=self._effective_reasons(db, row), message=message, source_ref={"kind": "message", "id": row["message_id"]},
+                    topic={"id": message["topic_id"], "title": title, "title_truncated": truncated})
+        return item
+
+    def _view_delivery(self, db, actor, args):
+        delivery_id = _identifier(args.get("delivery_id"), "delivery_id")
+        row = db.execute("SELECT d.*,g.active FROM deliveries d JOIN delivery_groups g ON g.id=d.group_id WHERE d.id=? AND d.recipient_id=?",
+                         (delivery_id, actor)).fetchone()
+        if row is None:
+            raise Refusal("FORBIDDEN", "No readable delivery")
+        # The item carries the message and its topic, so it is readable only
+        # while the message itself is: topic access, or an addressed delivery.
+        try:
+            self._message_access(db, actor, row["message_id"])
+        except Refusal:
+            raise Refusal("FORBIDDEN", "No readable delivery")
+        return {"instance_id": self.instance_id, "item": self._delivery_item(db, row, active=bool(row["active"]))}
 
     def _view_deliveries(self, db, actor, args):
         limit = _page_size(args)
@@ -113,10 +147,7 @@ class Delivery:
                 if len(answer["items"]) == limit:
                     answer["next_cursor"] = _cursor(*last)
                     return answer
-                message = dict(db.execute("SELECT id,topic_id,author_id,substr(body,1,256) AS body,length(body)>256 AS preview FROM messages WHERE id=?", (row["message_id"],)).fetchone())
-                message["preview"] = bool(message["preview"])
-                item = {key: row[key] for key in ("seq", "id", "message_id", "recipient_id", "state")}
-                item.update(reasons=self._effective_reasons(db, row), message=message, source_ref={"kind": "message", "id": row["message_id"]})
+                item = self._delivery_item(db, row)
                 candidate = dict(answer, items=answer["items"] + [item], next_cursor=_cursor(group_id, row["seq"]))
                 if len(_json(candidate).encode("utf-8")) > LIMITS["summary_utf8_bytes"]:
                     if not answer["items"]:

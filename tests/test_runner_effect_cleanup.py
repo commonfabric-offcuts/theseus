@@ -250,7 +250,7 @@ class EffectCleanupCase(runner_tests.RunnerCase):
             reader.execute("BEGIN")
             reader.execute("SELECT * FROM runner_state").fetchall()
             with effect_connections() as seen:
-                error = self.failure(lambda: self.store.claim_wakes(guard, token))
+                error = self.failure(lambda: self.store.claim_wakes(guard, token, self.everyone()))
                 self.assertIn("COMMIT", seen["sql"], "the conflict must reach COMMIT, not only BEGIN")
                 self.assertTrue(any(sql.startswith("INSERT INTO wake_attempts") for sql in seen["sql"]))
                 self.assertEqual(seen["events"], ["commit", "rollback", "close"])

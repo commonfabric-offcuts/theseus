@@ -72,7 +72,7 @@ class ScheduleCase(runner_tests.RunnerCase):
     def schedule(self):
         method = getattr(self.store, "runner_schedule", None)
         self.assertTrue(callable(method), "runner_schedule must be implemented")
-        return method()
+        return method(self.everyone())
 
     def closed(self, observed):
         self.assertEqual(len(observed["handles"]), 1)

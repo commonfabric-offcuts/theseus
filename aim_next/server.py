@@ -368,10 +368,10 @@ class Handler(BaseHTTPRequestHandler):
             return True
         return False
 
-    def _store_call(self, callback: Callable, command=False):
+    def _store_call(self, callback: Callable, command=False, lane=None):
         admission = None if command else self.server.read_admission
         ticket = None
-        slots = self.server.command_slots if command else self.server.read_slots
+        slots = lane or (self.server.command_slots if command else self.server.read_slots)
         read_class = None if command else self._read_class()
         if admission is not None:
             ticket = admission.acquire(read_class, self.deadline, self._read_disconnected)
@@ -439,7 +439,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/command":
             if set(value) != COMMAND_FIELDS:
                 raise RequestError(400, "INVALID_ENVELOPE", "Use the shared command envelope without an actor override.")
-            result = self._store_call(lambda store: store.command(self.server.actor, value), command=True)
+            # A read-through report is background work with a lane of its own,
+            # so it never takes a command slot that a send or a save needs.
+            lane = self.server.read_through_slots if value["kind"] == "topic.read_through" else None
+            result = self._store_call(lambda store: store.command(self.server.actor, value), command=True, lane=lane)
         else:
             if set(value) != {"name", "args"} or not isinstance(value["name"], str) or not isinstance(value["args"], dict):
                 raise RequestError(400, "INVALID_VIEW", "A view name and argument object are required.")
@@ -646,6 +649,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     server.read_slots = threading.BoundedSemaphore(max_reads)
     server.read_admission = ReadAdmission() if max_reads == 2 else None
     server.command_slots = threading.BoundedSemaphore(2)
+    server.read_through_slots = threading.BoundedSemaphore(1)
     server.upload_slots = threading.BoundedSemaphore(1)
     server.media_read_slots = threading.BoundedSemaphore(1)
     server.connection_slots = threading.BoundedSemaphore(16)

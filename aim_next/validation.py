@@ -11,6 +11,8 @@ COMMANDS = {
     "submission.prepare": "_command_submission_prepare",
     "topic.create_and_send": "_command_topic_create_and_send",
     "message.send": "_command_message_send",
+    "message.post": "_command_message_post",
+    "topic.read_through": "_command_topic_read_through",
     "participation.set": "_command_participation_set",
     "delivery.ack": "_command_delivery_ack",
     "memory.create": "_command_memory_create", "memory.revise": "_command_memory_revise",
@@ -21,6 +23,7 @@ COMMANDS = {
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
             "participation.set": {"topic_revision"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
+            "message.post": set(), "topic.read_through": set(),
             "memory.create": {"item_revision"}, "memory.revise": {"item_revision"},
             "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
             "workspace.member_set": {"workspace_revision"}, "opening.save": {"opening_revision"},
@@ -41,7 +44,7 @@ VIEWS = {
     "media": {"media_id", "source_ref"},
     "editor_state": {"source_ref", "topic_id", "cursor", "limit"},
     "submission": {"submission_id"}, "submissions": {"source_ref", "topic_id", "cursor", "limit"},
-    "deliveries": {"cursor", "limit"},
+    "deliveries": {"cursor", "limit"}, "delivery": {"delivery_id"},
     "opening": {"opening_id"}, "openings": {"workspace_id", "cursor", "limit"},
     "workspace_members": {"workspace_id", "cursor", "limit"},
 }
@@ -108,7 +111,7 @@ def _view_arguments(name, args):
         # commands, opening editors and other ID arguments retain their rules.
         args = dict(args)
         args.pop("topic_id", None)
-    for key in ("workspace_id", "topic_id", "operation_id", "submission_id", "opening_id", "id"):
+    for key in ("workspace_id", "topic_id", "operation_id", "submission_id", "opening_id", "delivery_id", "id"):
         if key in args:
             _identifier(args[key], key)
     if "cursor" in args:

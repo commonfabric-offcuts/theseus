@@ -15,6 +15,7 @@ import { OpeningView, UnfinishedOpenings } from './opening-view.mjs';
 import { openOpeningStore } from './opening-store.mjs';
 import { OutcomeCreation } from './creation.mjs';
 import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
+import { ReadThrough } from './read-through.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -30,7 +31,8 @@ let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null;
-let intentJournal, intentOpening, outcomeCreation;
+let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver;
+const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
@@ -54,6 +56,8 @@ function closeReview() {
 }
 $('review-close').onclick = closeReview; $('review-keep').onclick = closeReview;
 review.addEventListener('cancel', event => { event.preventDefault(); closeReview(); });
+// The version review covers the page while open; what it hides is read once it closes.
+review.addEventListener('close', () => noteRead());
 function beginReview(title, opener) {
   comparison = null; const serial = ++reviewSerial;
   reviewOpener = opener ?? document.activeElement;
@@ -300,6 +304,41 @@ function changed(editor) {
     if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
   }
 }
+// What the person sees is read: while the page is visible and has focus, and
+// no modal other than the Reader covers it, the message the Reader shows, or
+// else the message cards on screen. Each run of loaded messages is contiguous,
+// so the range from the lowest to the highest card on screen in one run holds
+// only messages on screen; a range never spans a gap between runs. Only
+// another actor's message can settle a delivery, so the person's own are never
+// reported.
+function noteRead() {
+  if (!readThrough || !topic || topicUnavailable || $('messages').hidden || authorityReviewPending() || review.open) return;
+  if (document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  const source = registry.current?.source;
+  if (source) {
+    if (!registry.current.sourceUnavailable && source.source_ref.kind === 'message' && source.topic_id === topic.id &&
+        source.author !== bootstrap.actor) readThrough.seen(topic.id, source.seq, source.seq);
+    return;
+  }
+  const ranges = new Map();
+  for (const item of views.messages.values()) {
+    if (!(halfShown.has(item.seq) || atMiddle.has(item.seq)) || item.author_id === bootstrap.actor) continue;
+    const run = views.runOf(item.id), range = ranges.get(run);
+    ranges.set(run, range ? [Math.min(range[0], item.seq), Math.max(range[1], item.seq)] : [item.seq, item.seq]);
+  }
+  for (const [from, through] of ranges.values()) readThrough.seen(topic.id, from, through);
+}
+// A card counts as on screen when at least half of it, or of the viewport,
+// shows it. The second holds exactly when the card crosses the viewport's
+// middle line (a card that crosses it is wholly shown or covers half the
+// viewport), which a zero-height root observes for a card of any height.
+const cardsSeen = (shown, test) => entries => {
+  for (const entry of entries) {
+    const seq = Number(entry.target.dataset.seq);
+    if (test(entry)) shown.add(seq); else shown.delete(seq);
+  }
+  noteRead();
+};
 function revokeMedia() { for (const url of mediaURLs) URL.revokeObjectURL(url); mediaURLs.clear(); }
 async function present(presentation) {
   if (presentation.surface === 'inline') inline.show(presentation);
@@ -308,6 +347,7 @@ async function present(presentation) {
     revokeMedia(); reader.presentation = presentation;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
+    noteRead();
   }
   const discovery = Promise.all(Object.values(presentation.editors).map(editor =>
     registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); })
@@ -373,7 +413,7 @@ function paintViews(kind) {
     topicRail?.updateCurrent(topic);
     $('participants').replaceChildren(...views.participants.map(p => node('span', p.actor_id, 'chip')));
     for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = false;
-    return;
+    noteRead(); return;
   }
   keepListAnchor(() => {
   for (const item of kind === 'messages' ? [...views.messages.values()].sort((a, b) => b.seq - a.seq) : []) {
@@ -385,6 +425,7 @@ function paintViews(kind) {
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
       $('messages').insertBefore(card, following ?? null);
+      cardObserver?.observe(card); middleObserver?.observe(card);
     }
   }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
@@ -402,6 +443,7 @@ function paintViews(kind) {
   });
   $('more-messages').hidden = views.olderCursor === null;
   $('more-memory').hidden = views.memoryCursor === null;
+  if (kind === 'messages') noteRead();
 }
 function authorityReviewPending() {
   return updateState?.kind === 'authority' ||
@@ -709,7 +751,16 @@ async function initialize() {
   });
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
-    closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } } });
+    closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
+  readThrough = new ReadThrough({ send: (topicId, from, seq) => {
+    const { authority_id, authority_epoch } = bootstrap.authority;
+    return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.read_through',
+      target: { topic_id: topicId }, expected: { authority: { authority_id, authority_epoch } }, args: { from_seq: from, seq } });
+  } });
+  cardObserver = new IntersectionObserver(cardsSeen(halfShown, entry => entry.isIntersecting && entry.intersectionRatio >= 0.5), { threshold: [0, 0.5] });
+  middleObserver = new IntersectionObserver(cardsSeen(atMiddle, entry => entry.isIntersecting), { rootMargin: '-50% 0px -50% 0px', threshold: 0 });
+  document.addEventListener('visibilitychange', noteRead);
+  window.addEventListener('focus', noteRead);
   topicNavigation = new TopicNavigation({ registry, current:route,
     navigateTarget: target => location.assign(routeHref(target)) });
   await initializeInlineComposer();

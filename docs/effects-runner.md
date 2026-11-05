@@ -21,9 +21,11 @@ new retry policy or evidence that nothing happened.
 One actual guard acquisition owns the entire process. The singleton lease is
 30 seconds, renewed every nine elapsed seconds or before a 20-second claim
 would lack coverage. Claims are taken one at a time, only when a successful
-global schedule read or claim response reports due work. After settlement the
-runner reads the global schedule again; one recipient's cooldown cannot delay
-another due recipient. The adapter separately checks launch budget, binding
+schedule read or claim response reports due work. Both read only the actors the
+route map names, one primary-key probe each: a person or an agent without a
+route is never due here, never claimed and never attempted, and its deliveries
+stay pending and visible. After settlement the runner reads the schedule again;
+one recipient's cooldown cannot delay another due recipient. The adapter separately checks launch budget, binding
 and guard, registers the actual child, and confirms owned cleanup. Only its
 confirmed result is settled. Acceptance never acknowledges the recipient's
 delivery; that remains the recipient's separate act.

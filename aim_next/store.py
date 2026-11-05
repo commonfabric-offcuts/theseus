@@ -470,7 +470,10 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         limit = args.get("limit", LIMITS["page_default"])
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= LIMITS["page_max"]:
             raise Refusal("INVALID_ARGUMENT", "Invalid page size")
-        rows = db.execute("SELECT * FROM topics WHERE workspace_id=? AND id>? ORDER BY id LIMIT ?",
+        # latest_seq orders topics by activity; it is the sequence of the
+        # topic's newest message, read through its one-row summary.
+        rows = db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t LEFT JOIN topic_summaries s ON s.topic_id=t.id "
+                          "LEFT JOIN messages m ON m.id=s.latest_message_id WHERE t.workspace_id=? AND t.id>? ORDER BY t.id LIMIT ?",
                           (workspace["id"], args.get("cursor", ""), limit + 1)).fetchall()
         items = [dict(row) for row in rows[:limit]]
         return {"instance_id": self.instance_id, "items": items,

@@ -23,6 +23,9 @@ CONVERSATION_SCHEMA = [
 ]
 
 
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes"}
+
+
 def _preview(value, size=1024):
     return value.encode("utf-8")[:size].decode("utf-8", errors="ignore")
 
@@ -119,6 +122,70 @@ class Conversation:
         self._change(db, "actor", actor, "submission", snapshot["id"], 2)
         return dict(result, submission_id=snapshot["id"]), affected
 
+    def _command_message_post(self, db, actor, envelope):
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"topic_id"} or "body" not in args or set(args) - POST_FIELDS:
+            raise Refusal("INVALID_ARGUMENT", "A post names one topic and carries its body, and optionally attachments, addressees, reply_to and quotes")
+        snapshot = self._writing(args)
+        if snapshot.get("reply_to") is not None:
+            _identifier(snapshot["reply_to"], "reply_to")
+        return self._publish(db, actor, envelope["operation_id"], _identifier(target["topic_id"], "topic_id"), snapshot)
+
+    def _command_topic_read_through(self, db, actor, envelope):
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"topic_id"} or "seq" not in args or set(args) - {"seq", "from_seq"}:
+            raise Refusal("INVALID_ARGUMENT", "Name one topic and the sequence read through")
+        through, start = args["seq"], args.get("from_seq", 0)
+        if any(type(value) is not int or not 0 <= value <= 9223372036854775807 for value in (through, start)) or start > through:
+            raise Refusal("INVALID_ARGUMENT", "The sequences read are nonnegative integers, from_seq at most seq")
+        topic = self._topic(db, actor, target["topic_id"])
+        # Subscription groups are kept per topic, so only this topic's pending
+        # rows are visited; addressed deliveries share one direct group.
+        rows = db.execute("SELECT d.* FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
+                          "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
+                          "CROSS JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.kind='subscription' AND g.topic_id=? "
+                          "AND g.active=1 AND g.pending_count>0 AND m.seq>=? AND m.seq<=?",
+                          (actor, topic["id"], start, through)).fetchall()
+        rows = sorted(rows + self._pending_addressed(db, actor, topic["id"], start, through), key=lambda row: row["seq"])
+        for row in rows:
+            self._acknowledge(db, actor, row)
+        result = {"topic_id": topic["id"], "seq": through, "acknowledged": len(rows)}
+        if "from_seq" in args:
+            result["from_seq"] = start
+        return result, []
+
+    def _pending_addressed(self, db, actor, topic_id, start, through):
+        """The actor's pending addressed deliveries for one topic's messages in [start, through].
+
+        Two walks each give the whole answer: the direct group's pending rows,
+        kept when their message is in this topic and range, and the messages
+        addressed to the actor in this topic and range, kept when their
+        delivery is still pending. They step one row in turn and the first to
+        finish answers, so the work is at most twice the smaller of the actor's
+        pending addressed deliveries and this range's addressed messages."""
+        group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 "
+                           "AND active=1 AND pending_count>0", (actor,)).fetchone()
+        if group is None:
+            return []
+        pending = db.execute("SELECT d.*,m.topic_id AS message_topic_id,m.seq AS message_seq FROM deliveries d INDEXED BY pending_group_deliveries "
+                             "CROSS JOIN messages m ON m.id=d.message_id WHERE d.group_id=? AND d.state='pending' ORDER BY d.seq", (group["id"],))
+        addressed = db.execute("SELECT d.* FROM message_addressees a CROSS JOIN messages m ON m.seq=a.seq "
+                               "LEFT JOIN deliveries d ON d.message_id=m.id AND d.recipient_id=a.actor_id "
+                               "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>=? AND a.seq<=? ORDER BY a.seq", (topic_id, actor, start, through))
+        walks = ((pending, lambda row: row["message_topic_id"] == topic_id and start <= row["message_seq"] <= through, []),
+                 (addressed, lambda row: row["state"] == "pending", []))
+        try:
+            while True:
+                for cursor, keep, kept in walks:
+                    row = cursor.fetchone()
+                    if row is None:
+                        return kept
+                    if keep(row):
+                        kept.append(row)
+        finally:
+            pending.close()
+            addressed.close()
+
     def _open_topic(self, db, actor, topic_id, workspace_id, title, participants, untitled):
         """Create a topic with its author and chosen participants, ready for its first message."""
         participants = self._recipients(db, participants)
@@ -143,7 +210,8 @@ class Conversation:
         if snapshot.get("reply_to"):
             parent = db.execute("SELECT topic_id FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
             if not parent or parent["topic_id"] != topic_id:
-                raise Refusal("INVALID_ARGUMENT", "Reply context must belong to the destination topic")
+                # A state check, not a shape error: it is recorded like the others.
+                raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
         for quote in snapshot["quotes"]:
             if not isinstance(quote, dict):
                 raise Refusal("INVALID_ARGUMENT", "Invalid quote reference")

@@ -8,9 +8,11 @@ import * as writing from '../web/writing-helpers.mjs';
 import { readFailure, checkedView, bindingOf } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
+import { ReadThrough } from '../web/read-through.mjs';
+import { TopicViews } from '../web/topic-views.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 function fixture(href = 'https://fixture/?topic=t1') {
-  const elements = new Map(), events = [], calls = [], paints = [];
+  const elements = new Map(), events = [], calls = [], paints = [], observers = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
@@ -25,11 +27,13 @@ function fixture(href = 'https://fixture/?topic=t1') {
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }
     scrollIntoView() {}
+    contains() { return false; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
-  const document = { body: get('body'), activeElement: null, visibilityState: 'visible', getElementById: get,
-    createElement: () => new Element(), querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)), addEventListener() {} };
+  const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
+    createElement: () => new Element(), querySelectorAll: () => [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    addEventListener(name, fn) { events.push(['document-handler', name, fn]); } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
   const api = { bootstrap: async () => bootstrap, view: async (name, args) => {
@@ -37,7 +41,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
     return { instance_id: 'fixture', items: [], next_cursor: null };
-  } };
+  }, command: async envelope => { calls.push({ kind: envelope.kind, envelope }); return { recorded: true }; } };
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
   const p = { surface: 'inline', initialized: true, topic, mode: 'reply', editors: { reply: editor } };
   const uploads = { current: () => [], running: new Map(), status: () => 'Ready' };
@@ -52,12 +56,16 @@ function fixture(href = 'https://fixture/?topic=t1') {
     runtime: { current: bootstrap.authority },
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
-  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [] };
+  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
-  const scope = { ...writing, WritingInput, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  class IntersectionObserver {
+    constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
+    observe(target) { this.targets.push(target); }
+  }
+  const scope = { ...writing, WritingInput, ReadThrough, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
-    EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
+    EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },
     TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
     initialViews: async () => ({}), readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
@@ -76,7 +84,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, openSource, retrySource, checkInlineAvailability, changed,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness}; } };`, context);
@@ -87,7 +95,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   inline.show(p);
   context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh });
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
-  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap };
+  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers };
 }
 
 test('inline Ctrl-W uses the shared writing input path and preserves readonly writing', () => {
@@ -293,4 +301,176 @@ test('the opening route writes through a server-owned opening and never starts a
   assert.ok(f.events.some(e=>e[0]==='opening-load'));
   assert.equal(f.events.some(e=>['registry','journal','intent-journal'].includes(e[0])),false,'no EditorRegistry, recovery journal or prepared submission');
   assert.equal(f.get('body').dataset.ready,'true');
+});
+
+test('a topic page reports read-through only for what the person sees, and never their own messages', async () => {
+  const f = fixture(); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const reads = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => JSON.parse(JSON.stringify(c.envelope)));
+  const ranges = () => reads().map(e => [e.args.from_seq, e.args.seq]);
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: 'older', memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  const [observer, middle] = f.observers;
+  assert.deepEqual(JSON.parse(JSON.stringify(middle.options)), { rootMargin: '-50% 0px -50% 0px', threshold: 0 }, 'the second observer watches the middle line');
+  const message = (seq, author = 'agent-a') => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: author, body: 'Body ' + seq, topic_id: 't1' });
+  const card = seq => observer.targets.find(target => target.dataset.seq === seq);
+  const show = (shown, hidden = []) => {
+    const away = seq => ({ target: card(seq), isIntersecting: false, intersectionRatio: 0, intersectionRect: { height: 0 }, rootBounds: { height: 0 } });
+    if (hidden.length) middle.callback(hidden.map(away));
+    observer.callback([...shown.map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })),
+      ...hidden.map(seq => ({ target: card(seq), isIntersecting: false, intersectionRatio: 0, intersectionRect: { height: 0 }, rootBounds: { height: 600 } }))]);
+  };
+  // The page loaded #20..#31; older history (an addressed #1, say) is not loaded.
+  for (let seq = 20; seq <= 31; seq++) message(seq);
+  f.views.newest = 31; f.paintViews('messages'); await settle();
+  assert.deepEqual(reads(), [], 'painting messages reads nothing until a card is on screen');
+  assert.equal(observer.targets.length, 12, 'each message card is observed');
+
+  show([29, 30, 31]); await settle();
+  assert.equal(reads().length, 1);
+  const [first] = reads();
+  assert.deepEqual({ ...first, operation_id: typeof first.operation_id }, { v: 1, instance_id: 'fixture', operation_id: 'string', kind: 'topic.read_through',
+    target: { topic_id: 't1' }, expected: { authority: { authority_id: 'a1', authority_epoch: 'e1' } }, args: { from_seq: 29, seq: 31 } });
+  f.paintViews('messages'); await settle();
+  assert.equal(reads().length, 1, 'repainting the same messages is not a new read');
+
+  // A card only slightly in view is not read; one filling half the viewport is.
+  observer.callback([{ target: card(28), isIntersecting: true, intersectionRatio: 0.1, intersectionRect: { height: 10 }, rootBounds: { height: 600 } }]); await settle();
+  assert.deepEqual(ranges(), [[29, 31]], 'a sliver of a card is not read');
+  observer.callback([{ target: card(28), isIntersecting: true, intersectionRatio: 0.4, intersectionRect: { height: 300 }, rootBounds: { height: 600 } }]); await settle();
+  assert.deepEqual(ranges(), [[29, 31]], 'less than half of a card is not read by its own share');
+  middle.callback([{ target: card(28), isIntersecting: true, intersectionRatio: 0, intersectionRect: { height: 0 }, rootBounds: { height: 0 } }]); await settle();
+  assert.deepEqual(ranges(), [[29, 31], [28, 31]], 'a tall card across the middle of the viewport is read');
+
+  // Visible but unfocused (a second display), or hidden: a new message is not read.
+  message(32); f.views.newest = 32; f.paintViews('messages');
+  f.document.focused = false; show([32]); await settle();
+  f.document.focused = true; f.document.visibilityState = 'hidden'; show([32]); await settle();
+  assert.deepEqual(ranges(), [[29, 31], [28, 31]], 'nothing is read without focus or while hidden');
+  f.document.visibilityState = 'visible';
+  const focus = f.events.filter(e => e[0] === 'window-handler' && e[1] === 'focus');
+  assert.ok(focus.length); for (const handler of focus) handler[2]();
+  await settle();
+  assert.deepEqual(ranges().at(-1), [28, 32], 'focusing the page reads what is on screen');
+
+  // Scrolled down into older history: a new message inserted above the viewport is not read.
+  show([24, 25], [28, 29, 30, 31, 32]); await settle();
+  assert.deepEqual(ranges().at(-1), [24, 25]);
+  message(33); f.views.newest = 33; f.paintViews('messages'); await settle();
+  assert.deepEqual(ranges().at(-1), [24, 25], 'a message added outside the viewport is not read');
+
+  // The person's own messages settle nothing and are never reported.
+  message(34, 'fixture-person'); message(35, 'fixture-person'); f.views.newest = 35; f.paintViews('messages');
+  show([34, 35], [24, 25]); await settle();
+  assert.deepEqual(ranges().at(-1), [24, 25], 'only the person\'s own messages on screen: nothing to report');
+  assert.ok(ranges().every(([from]) => from >= 20), 'nothing below the loaded page is ever reported');
+
+  const presentation = { source: { source_ref: { kind: 'message', id: 'm7' }, topic_id: 't1', seq: 26, author: 'agent-a' }, editors: {}, mode: 'reply' };
+  const count = reads().length;
+  f.registry.current = presentation; show([33]); await settle();
+  assert.deepEqual(ranges().slice(count), [[26, 26]], 'under a Reader only the message it shows is read');
+  f.registry.current = null; f.registry.options.closed(presentation); await settle();
+  assert.deepEqual(ranges().at(-1), [33, 33], 'closing the Reader reads the cards on screen');
+});
+
+async function readingPage() {
+  const f = fixture(); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  const ranges = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => [c.envelope.args.from_seq, c.envelope.args.seq]);
+  const card = seq => f.observers[0].targets.find(target => target.dataset.seq === seq);
+  return { f, ranges, card };
+}
+const settle = () => new Promise(resolve => setImmediate(resolve));
+const messages = (from, through) => Array.from({ length: through - from + 1 }, (_, i) => ({ id: 'm' + (from + i), seq: from + i, author_id: 'agent-a', body: 'Body ' + (from + i), topic_id: 't1' }));
+const page = (from, through, next) => ({ instance_id: 'fixture', items: messages(from, through), next_cursor: next, relevant_versions: { topic: 1 } });
+
+test('a Refresh that leaves a gap in the loaded messages never reads across it', async () => {
+  const { f, ranges, card } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  views.messagesPage(page(22, 31, 22), { initial: true }); await settle();
+  // Freshness is stopped; #32..#41 arrive meanwhile, then #42..#71. Refresh
+  // loads the newest page, so #32..#41 are not loaded.
+  f.fresh.stopped = true;
+  const pages = [page(42, 71, 42), page(32, 41, 32), page(20, 31, 20)];
+  const view = f.api.view;
+  f.api.view = async (name, args) => {
+    if (name === 'topic_messages') { f.calls.push({ name, args }); return pages.shift(); }
+    if (name === 'memory_items') return { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } };
+    return view(name, args);
+  };
+  await f.refreshLists(); await settle();
+  assert.equal(views.messages.has('m35'), false, 'the gap is real: #35 was never loaded');
+  const shown = seqs => f.observers[0].callback(seqs.map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })));
+  shown([30, 31, 42, 43]); await settle(); await settle();
+  assert.deepEqual(ranges().sort((a, b) => a[0] - b[0]), [[30, 31], [42, 43]], 'each side of the gap is its own range; #32..#41 stay pending');
+  // An older page continues the newest run. Until a page overlaps what was
+  // loaded before, nothing shows the two runs meet.
+  await f.get('more-messages').onclick(); await settle();
+  assert.equal(views.messages.has('m35'), true);
+  shown([30, 31, 42, 43]); await settle(); await settle();
+  assert.equal(ranges().length, 2, 'the runs have not met: still two ranges');
+  await f.get('more-messages').onclick(); await settle();
+  shown([30, 31, 42, 43]); await settle(); await settle();
+  assert.deepEqual(ranges().at(-1), [30, 43], 'once a page overlaps both, the cards on screen are one range');
+});
+
+test('nothing is read while the version review covers the page; closing it reads once', async () => {
+  const { f, ranges, card } = await readingPage();
+  for (let seq = 20; seq <= 25; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  f.paintViews('messages'); await settle();
+  const review = f.get('version-review');
+  review.open = true;
+  f.observers[0].callback([24, 25].map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })));
+  for (const handler of f.events.filter(e => e[0] === 'window-handler' && e[1] === 'focus')) handler[2]();
+  await settle();
+  assert.deepEqual(ranges(), [], 'the cards under the review are not read');
+  review.open = false; review.handlers.close(); await settle();
+  assert.deepEqual(ranges(), [[24, 25]], 'closing the review reads what it covered, once');
+  review.handlers.close(); await settle();
+  assert.deepEqual(ranges(), [[24, 25]]);
+});
+
+// A model of IntersectionObserver for vertical scrolling: an entry is queued
+// when a target's threshold index or isIntersecting changes, and an edge-
+// adjacent (zero-area) intersection counts as intersecting.
+function viewport(observers, height, boxes) {
+  const known = new Map();
+  return top => {
+    for (const observer of observers) {
+      const [above, , below] = (observer.options.rootMargin ?? '0% 0px 0% 0px').split(' ').map(value => parseFloat(value) / 100 * height);
+      const rootTop = top - above, rootBottom = top + height + below, thresholds = [observer.options.threshold].flat();
+      const entries = [];
+      for (const target of observer.targets) {
+        const box = boxes.get(Number(target.dataset.seq));
+        const from = Math.max(box.top, rootTop), to = Math.min(box.top + box.height, rootBottom);
+        const isIntersecting = from <= to, ratio = isIntersecting ? (to - from) / box.height : 0;
+        const index = thresholds.findIndex(value => value > ratio), state = (index < 0 ? thresholds.length : index) + ':' + isIntersecting;
+        const key = `${observer.options.rootMargin}|${target.dataset.seq}`;
+        if (known.get(key) === state) continue;
+        known.set(key, state);
+        entries.push({ target, isIntersecting, intersectionRatio: ratio, intersectionRect: { height: Math.max(0, to - from) }, rootBounds: { height: rootBottom - rootTop } });
+      }
+      if (entries.length) observer.callback(entries);
+    }
+  };
+}
+
+test('a card taller than four viewports is read when the person scrolls through it', async () => {
+  const { f, ranges } = await readingPage();
+  for (const seq of [30, 31, 32]) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  f.paintViews('messages'); await settle();
+  // #30 fills the top of the viewport; #31 below it is five viewports tall.
+  const scroll = viewport(f.observers, 600, new Map([[30, { top: 0, height: 400 }], [31, { top: 400, height: 3000 }], [32, { top: 3400, height: 100 }]]));
+  const reads = [];
+  for (let top = 0; top <= 2600; top += 50) {
+    scroll(top); await settle(); await settle();
+    reads.push([top, ranges().some(([from, through]) => from <= 31 && 31 <= through)]);
+  }
+  assert.deepEqual(ranges()[0], [30, 30], 'the short card on screen at the start is read alone');
+  // It covers half the 600-pixel viewport once scrolled 100 pixels.
+  assert.deepEqual(reads.filter(([top]) => top <= 100), [[0, false], [50, false], [100, true]], 'the tall card is read once it covers half the viewport, not before');
 });
