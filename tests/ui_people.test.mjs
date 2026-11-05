@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PeoplePanel, fillNames, readDirectory, readMembers } from '../web/people.mjs';
+import { PeoplePanel, fillNames, markReach, readDirectory, readMembers } from '../web/people.mjs';
 
 class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, hidden: true }); }
@@ -127,4 +127,34 @@ test('Enter or Add sends the typed name once; a refusal or failure is said besid
   await new Promise(setImmediate);
   assert.equal(host.find(node => node.className === 'notice').textContent, 'offline');
   assert.equal(field(host).disabled, false);
+});
+
+test('a recipient outside the topic is marked, with an offer to add them only for a reader who may', async t => {
+  dom(t);
+  const chip = name => { const node = new Element('span'); node.className = 'chip'; node.classList = { add: c => { node.className += ' ' + c; } }; node.textContent = name; return node; };
+  const reachable = chip('fable');
+  markReach(reachable, 'fable', () => ({ reachable: true }));
+  assert.deepEqual([reachable.className, reachable.children], ['chip', []]);
+  const unknown = chip('fable');
+  markReach(unknown, 'fable', () => null);
+  markReach(unknown, 'fable', undefined);
+  assert.deepEqual([unknown.className, unknown.children], ['chip', []], 'an unknown reach is not called a refusal');
+
+  const added = [];
+  let finish;
+  const offered = chip('stranger');
+  markReach(offered, 'stranger', name => ({ reachable: false, add: () => { added.push(name); return new Promise(resolve => { finish = resolve; }); } }));
+  assert.equal(offered.className, 'chip unreachable');
+  assert.equal(offered.find(node => node.className === 'reach').textContent, ' · not in this topic');
+  const button = offered.find(node => node.tag === 'button');
+  assert.match(button.textContent, /Add to topic \(gets all its messages\)/);
+  const clicked = button.onclick();
+  assert.equal(button.disabled, true);
+  finish(); await clicked;
+  assert.deepEqual([added, button.disabled], [['stranger'], false]);
+
+  const refused = chip('stranger');
+  markReach(refused, 'stranger', () => ({ reachable: false, add: null }));
+  assert.equal(refused.find(node => node.tag === 'button'), undefined);
+  assert.match(refused.title, /creator or the outcome's owner can add them/);
 });

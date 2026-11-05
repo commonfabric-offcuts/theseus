@@ -1,3 +1,4 @@
+import { markReach } from './people.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
 
@@ -95,7 +96,7 @@ export class InlineComposer {
         editor.edit({ addressees: editor.draft.addressees.filter(value => value !== name) });
         this.callbacks.edit(editor, p); this.paintRecipients();
       };
-      chip.append(remove); host.append(chip);
+      chip.append(remove); markReach(chip, name, this.callbacks.reach); host.append(chip);
     }
   }
   addRecipient() {

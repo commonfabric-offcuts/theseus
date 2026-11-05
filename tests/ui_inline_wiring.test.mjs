@@ -18,6 +18,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
+    get classList() { return { add: name => { this.className = this.className ? `${this.className} ${name}` : name; } }; }
     append(...items) { for (const item of items) { if (typeof item === 'object') item.parent = this; this.children.push(item); } }
     replaceChildren(...items) { this.children = []; this.append(...items); }
     get firstElementChild() { return this.children[0]; }
@@ -81,7 +82,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach}; })())', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
@@ -677,4 +678,55 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   pickerApi(other, { workspace: { owner_id: 'tony' } });
   await other.initialize();
   assert.equal(walk(other.get('team-people')).some(node => node.list || node.textContent === '×'), false, 'a member who is not the owner only sees the team');
+});
+
+// Show the page's own inline composer on the fixture's topic writing.
+const showComposer = f => {
+  f.editor.edit = patch => Object.assign(f.editor.draft, patch);
+  f.owners().inline.show(f.p);
+};
+
+test('addressing someone outside the topic offers its manager to add them, and the chip clears once they are in', async () => {
+  const f = fixture();
+  pickerApi(f);
+  await f.initialize();
+  showComposer(f);
+  const address = name => { f.get('inline-recipient-input').value = name; f.get('inline-add-recipient').onclick(); };
+  const chip = name => f.get('inline-recipient-chips').children.find(node => node.textContent === name);
+  address('ally'); address('stranger'); address('fable');
+  assert.equal(chip('ally').className, 'chip', 'an outcome member can be sent to');
+  assert.equal(chip('fable').className, 'chip', 'a participant can be sent to');
+  assert.equal(chip('stranger').className, 'chip unreachable');
+  const offer = walk(chip('stranger')).find(node => node.textContent?.startsWith('Add to topic'));
+  // The add commits; the next topic view lists the new participant.
+  const participants = [{ actor_id: 'fixture-person' }, { actor_id: 'fable' }, { actor_id: 'stranger' }];
+  await offer.onclick();
+  const sent = JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'participation.set').map(call => call.envelope.args)));
+  assert.deepEqual(sent, [{ actor_id: 'stranger', present: true }]);
+  Object.assign(f.views, { topic: { ...f.topic, version: 4, owner_id: 'fixture-person', creator_id: 'other' }, participants, messages: new Map() });
+  f.paintViews('topic');
+  assert.equal(chip('stranger').className, 'chip', 'once a participant, the mark goes');
+});
+
+test('a reader who cannot change the participants is told who could, and a team that cannot be read marks nobody', async () => {
+  const f = fixture();
+  pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
+  await f.initialize();
+  showComposer(f);
+  f.get('inline-recipient-input').value = 'stranger'; f.get('inline-add-recipient').onclick();
+  const chip = f.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger');
+  assert.equal(chip.className, 'chip unreachable');
+  assert.equal(walk(chip).some(node => node.textContent?.startsWith('Add to topic')), false);
+  f.get('inline-recipient-input').value = 'tony'; f.get('inline-add-recipient').onclick();
+  assert.equal(f.get('inline-recipient-chips').children.find(node => node.textContent === 'tony').className, 'chip',
+    'the topic\'s owner can always be sent to, participant or not');
+
+  const hidden = fixture();
+  pickerApi(hidden);
+  const view = hidden.api.view;
+  hidden.api.view = async (name, args) => name === 'workspace_members' ? { error: { code: 'FORBIDDEN', message: 'No permission for this workspace' } } : view(name, args);
+  await hidden.initialize();
+  showComposer(hidden);
+  hidden.get('inline-recipient-input').value = 'stranger'; hidden.get('inline-add-recipient').onclick();
+  assert.equal(hidden.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger').className, 'chip');
 });

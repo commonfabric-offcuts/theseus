@@ -56,6 +56,26 @@ const element = (tag, props = {}, ...children) => {
   node.append(...children); return node;
 };
 
+// A recipient who cannot see the topic would make the whole send refused.
+// reach(name) answers { reachable, add }: the chip says when they are not in
+// the topic, and add, given to a reader who may change its participants,
+// offers to make them one, which also sends them every later message.
+export function markReach(chip, name, reach) {
+  const answer = reach?.(name);
+  if (!answer || answer.reachable) return;
+  chip.classList.add('unreachable');
+  chip.append(element('span', { className: 'reach', textContent: ' · not in this topic' }));
+  chip.title = answer.add ? `A message to ${name} is refused until they are in this topic.`
+    : `A message to ${name} is refused until they are in this topic. Its creator or the outcome's owner can add them.`;
+  if (!answer.add) return;
+  const add = element('button', { type: 'button', textContent: 'Add to topic (gets all its messages)' });
+  add.onclick = async () => {
+    add.disabled = true;
+    try { await answer.add(); } finally { add.disabled = false; }
+  };
+  chip.append(add);
+}
+
 // The people in a team or a topic, with a field to add someone and a remove
 // button on each, for a reader who may change them. fixed names those no one
 // can remove here (an outcome's owner). add and remove return the command's

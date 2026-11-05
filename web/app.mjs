@@ -34,7 +34,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = [];
+let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
@@ -781,7 +781,7 @@ async function initialize() {
     add: id => setParticipation(id, true), remove: id => setParticipation(id, false) });
   // Who can be sent a message here: the topic's participants and the outcome's
   // members. A reader outside the outcome cannot list its members.
-  outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => []);
+  outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null);
   paintParticipants(topic, result.participants);
   topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, saved: () => freshness?.request(),
     send: (current, args) => {
@@ -797,6 +797,7 @@ async function initialize() {
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
   inline = new InlineComposer({
     admits: (p, editor) => registry?.isCurrent(p, editor),
+    reach: recipientReach,
     uploads: editor => registry.sessionFor(editor).uploads,
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), needsReview,
@@ -807,6 +808,7 @@ async function initialize() {
   });
   reader = new Reader({
     admits: (p, editor) => registry?.isCurrent(p, editor),
+    reach: recipientReach,
     revisionOffer,
     retrySource: () => run(retrySource),
     uploads: editor => registry?.sessionFor(editor).uploads,
@@ -894,7 +896,22 @@ async function acknowledgeSent(item) {
 // change, and the names the composer offers.
 function paintParticipants(current, participants) {
   participantsPanel?.paint(participants, [current.owner_id, current.creator_id].includes(bootstrap.actor));
-  fillNames($('addressable-names'), [...participants, ...outcomeMembers].map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })));
+  fillNames($('addressable-names'), [...participants, ...outcomeMembers ?? []].map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })));
+  // Who may be addressed changed: the composers' recipient chips say so again.
+  if (reader?.sessions) reader.paintRecipients();
+  if (inline?.editor) inline.paintRecipients();
+}
+// Whether a message to name would reach them: they must be able to see the
+// topic. Unknown when the outcome's team could not be read.
+function recipientReach(name) {
+  if (!topic || !views?.participants) return null;
+  const manage = [topic.owner_id, topic.creator_id].includes(bootstrap.actor);
+  const add = manage ? () => setParticipation(name, true).then(receipt => {
+    if (receipt?.status !== 'committed') status(receipt?.error?.message ?? `Adding ${name} was not confirmed.`);
+  }) : null;
+  if ([topic.owner_id, topic.creator_id].includes(name) || views.participants.some(person => person.actor_id === name)) return { reachable: true };
+  if (outcomeMembers === null) return null;
+  return { reachable: outcomeMembers.some(person => person.actor_id === name), add };
 }
 async function setParticipation(id, present) {
   const { authority_id, authority_epoch } = bootstrap.authority;

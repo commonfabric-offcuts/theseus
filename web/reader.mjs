@@ -1,6 +1,7 @@
 import { keyAction } from './editor.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
+import { markReach } from './people.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
 
@@ -316,7 +317,7 @@ export class Reader {
         editor.edit({ addressees: editor.draft.addressees.filter(item => item !== name) });
         this.callbacks.edit(editor); this.paintRecipients();
       };
-      chip.append(remove); chips.append(chip);
+      chip.append(remove); markReach(chip, name, this.callbacks.reach); chips.append(chip);
     }
   }
 
