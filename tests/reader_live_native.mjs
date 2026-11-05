@@ -789,6 +789,59 @@ export async function liveChecks({ check, page, until, control, observations, or
     for (const each of [a, b]) { assert.deepEqual(each.errors, []); await each.close(); }
   });
 
+  // Closing the Reader keeps its writing on this device first, and only then
+  // closes the modal dialog. A press on the page in between lands on the
+  // Reader, so a check that presses a card right after × must wait for the
+  // Reader to close. The hold delivers each write's completion only when the
+  // check lets it go; the write itself commits as usual.
+  const keptWritesHold = `(() => {
+    let gate = null, release = null;
+    window.keptWrites = { held: 0, delivered: 0 };
+    window.holdKeptWrites = () => { gate = new Promise(resolve => { release = resolve; }); };
+    window.releaseKeptWrites = () => { const resolve = release; gate = null; release = null; resolve(); };
+    const transaction = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function (...args) {
+      const tx = transaction.apply(this, args), held = gate;
+      if (!held || args[1] !== 'readwrite') return tx;
+      let handler = null;
+      Object.defineProperty(tx, 'oncomplete', { configurable: true, get: () => handler, set: fn => { handler = fn; } });
+      keptWrites.held++;
+      tx.addEventListener('complete', event => held.then(() => { keptWrites.delivered++; handler?.call(tx, event); }));
+      return tx;
+    };
+  })()`;
+  await check('live a card pressed while the Reader is still keeping its writing opens nothing, and opens once the Reader has closed', async () => {
+    const p = await page('live-close-keeps-writing', null, true, { beforeNavigate: q => q.send('Page.addScriptToEvaluateOnNewDocument', { source: keptWritesHold }) });
+    await settled(p);
+    const notebook = '#memory-items .memory-card';
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(notebook)}))`), 'the Notebook is listed');
+    await p.open(1);
+    // The idle save's answer is held, so the close has writing to keep.
+    p.intercept(payload => payload?.kind === 'draft.save');
+    await p.point('#writing-body'); await p.send('Input.insertText', { text: 'Kept while the Reader closes' });
+    await p.evaluate('holdKeptWrites()');
+    const opens = await p.evaluate('freshEvidence.opens.length');
+    await p.point('#reader-close');
+    await until(() => p.evaluate('keptWrites.held > 0'), 'the close is keeping the writing on this device');
+    assert.equal(await p.evaluate("document.querySelector('#reader').open"), true, 'the Reader stays open until its writing is kept');
+    await p.evaluate(`document.querySelector(${JSON.stringify(notebook)}).scrollIntoView({block:'center'})`);
+    const target = await p.box(notebook);
+    const at = { x: target.x + Math.min(12, target.width / 2), y: target.y + Math.min(12, target.height / 2) };
+    assert.equal(await p.evaluate(`Boolean(document.elementFromPoint(${at.x},${at.y})?.closest('#reader'))`), true, 'the press lands on the Reader');
+    await p.point(notebook);
+    assert.equal(await p.evaluate('freshEvidence.opens.length'), opens, 'a card behind the open Reader opens nothing');
+    await p.evaluate('releaseKeptWrites()');
+    await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes once its writing is kept');
+    assert.equal(await p.evaluate('freshEvidence.opens.length'), opens, 'the press made while it was open is not replayed');
+    await p.evaluate(`document.querySelector(${JSON.stringify(notebook)}).scrollIntoView({block:'center'})`);
+    await p.point(notebook);
+    await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#reader-origin').textContent.includes('Notebook')"), 'the Notebook opens once the Reader has closed');
+    assert.equal(await p.evaluate('freshEvidence.opens.length'), opens + 1);
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   // Last, because it adds to the outcome's Notebook, which every later topic
   // page would list.
   await check('live the outcome Notebook is listed atop a topic, opens whole in the Reader, and follows a revision', async () => {
