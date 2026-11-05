@@ -2,22 +2,37 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TopicStatePanel, paintState, paintWaiting, readableTime, stateLabel } from '../web/topic-state.mjs';
 
+// A small DOM with parents and one focused element. Detaching the focused
+// element, or an ancestor of it, sends focus to the body, as a browser does;
+// putting a node back does not give it focus again.
 class Element {
-  constructor(tag) { Object.assign(this, { tag, children: [], dataset: {}, attributes: {}, hidden: false, classes: new Set() }); }
+  constructor(tag) { Object.assign(this, { tag, children: [], dataset: {}, attributes: {}, hidden: false, classes: new Set(), parent: null }); }
   get classList() { return { add: name => this.classes.add(name) }; }
   set className(value) { this.classes = new Set(value.split(' ').filter(Boolean)); }
   get className() { return [...this.classes].join(' '); }
-  append(...nodes) { this.children.push(...nodes.map(node => typeof node === 'string' ? { text: node } : node)); }
-  replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  adopt(node) { if (node instanceof Element) { node.remove(); node.parent = this; } return typeof node === 'string' ? { text: node } : node; }
+  append(...nodes) { this.children.push(...nodes.map(node => this.adopt(node))); }
+  replaceChildren(...nodes) { for (const node of [...this.children]) if (node instanceof Element) node.remove(); else this.children.splice(this.children.indexOf(node), 1); this.append(...nodes); }
+  insertBefore(node, before) { const adopted = this.adopt(node); this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, adopted); }
+  remove() {
+    if (!this.parent) return;
+    if (focus.on && (focus.on === this || this.contains(focus.on))) focus.on = null;
+    this.parent.children = this.parent.children.filter(node => node !== this); this.parent = null;
+  }
+  contains(node) { return this.all().includes(node); }
+  get root() { return this.parent ? this.parent.root : this; }
+  focus() { focus.on = this; }
   setAttribute(key, value) { this.attributes[key] = value; }
   querySelector(selector) { return this.all().find(node => node.tag === selector) ?? null; }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   get text() { return (this.textContent ?? '') + this.children.map(node => node instanceof Element ? node.text : node.text).join(''); }
   find(predicate) { return this.all().find(predicate); }
 }
+const focus = { on: null };
 function dom(t) {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag) };
+  focus.on = null;
+  globalThis.document = { createElement: tag => new Element(tag), get activeElement() { return focus.on; } };
   t.after(() => { globalThis.document = previous; });
 }
 const topic = (fields = {}) => ({ id: 't1', version: 4, title: 'Naming', owner_id: 'tony', creator_id: 'tony', state: 'active',
@@ -65,20 +80,161 @@ test('the panel line says who said it and when; only those who may change it get
   assert.equal(owner.host.find(node => node.textContent === 'Archive')?.tag, 'button');
 });
 
+// The form's controls, found by what the person sees.
+const controls = host => ({
+  details: host.find(node => node.tag === 'details'),
+  choice: host.find(node => node.id === 'topic-state-choice'), note: host.find(node => node.id === 'topic-state-note'),
+  waiting: host.find(node => node.id === 'topic-state-waiting'), title: host.find(node => node.id === 'topic-rename'),
+  save: host.find(node => node.textContent === 'Save'), rename: host.find(node => node.textContent === 'Rename'),
+  notice: host.find(node => node.classes.has('notice')),
+});
+const type = (input, value) => { input.value = value; input.oninput?.(); };
+const choose = (select, value) => { select.value = value; select.onchange(); };
+// What Core answers to a committed topic.update: the topic as it now stands.
+const committed = (current, args, version = current.version + 1) => ({ status: 'committed', result: {
+  topic_id: current.id, version, title: args.title ?? current.title, archived: args.archived ?? current.archived,
+  state: args.state ?? current.state, note: args.note ?? current.state_note, waiting_on: args.waiting_on ?? [],
+  state_by: 'tony', state_ms: null } });
+
 test('Save sends the chosen state, its note, and who it waits on only while waiting', async t => {
   dom(t);
-  const host = new Element('section'), sent = [], saved = [];
-  const panel = new TopicStatePanel({ host, reader: 'tony', saved: result => saved.push(result),
-    send: async (current, args) => { sent.push([current.id, current.version, args]); return { status: 'committed', result: { state: args.state } }; } });
+  const host = new Element('section'), sent = [];
+  const panel = new TopicStatePanel({ host, reader: 'tony',
+    send: async (current, args) => { sent.push([current.id, current.version, args]); return committed(current, args); } });
   panel.paint(topic(), []);
-  const choice = host.find(node => node.id === 'topic-state-choice'), note = host.find(node => node.id === 'topic-state-note');
-  const waiting = host.find(node => node.id === 'topic-state-waiting'), save = host.find(node => node.textContent === 'Save');
-  choice.value = 'waiting'; choice.onchange(); note.value = 'Your call'; waiting.value = 'fable, tony, fable,';
+  const { choice, note, waiting, save } = controls(host);
+  choose(choice, 'waiting'); type(note, 'Your call'); type(waiting, 'fable, tony, fable,');
   await save.onclick();
-  choice.value = 'done'; choice.onchange(); note.value = '';
+  choose(choice, 'done'); type(note, '');
   await save.onclick();
-  assert.deepEqual(sent, [['t1', 4, { state: 'waiting', note: 'Your call', waiting_on: ['fable', 'tony'] }], ['t1', 4, { state: 'done', note: '' }]]);
-  assert.deepEqual(saved, [{ state: 'waiting' }, { state: 'done' }]);
+  assert.deepEqual(sent, [['t1', 4, { state: 'waiting', note: 'Your call', waiting_on: ['fable', 'tony'] }], ['t1', 5, { state: 'done', note: '' }]]);
+});
+
+test('a repaint from fresh data keeps what the person typed and their focus; untouched fields follow the data', t => {
+  dom(t);
+  const host = new Element('section');
+  const panel = new TopicStatePanel({ host, reader: 'tony', send: async () => assert.fail('nothing is sent') });
+  panel.paint(topic(), [{ actor_id: 'tony' }]);
+  const before = controls(host);
+  before.details.open = true;
+  choose(before.choice, 'waiting'); type(before.note, 'Pick a name'); type(before.waiting, 'fable');
+  before.note.focus();
+  // Someone posts a message: the topic's version moves on and the page repaints it.
+  panel.paint(topic({ version: 5, title: 'Naming, again' }), [{ actor_id: 'tony' }]);
+  const after = controls(host);
+  assert.equal(after.note, before.note, 'the same field, not a rebuilt one');
+  assert.equal(document.activeElement, before.note, 'focus stays where the person left it');
+  assert.deepEqual([after.choice.value, after.note.value, after.waiting.value, after.details.open], ['waiting', 'Pick a name', 'fable', true]);
+  assert.equal(after.waiting.parent.hidden, false, 'the waiting field stays shown while Waiting is chosen');
+  assert.equal(after.title.value, 'Naming, again', 'an untouched title follows the data');
+  type(after.title, 'My title');
+  // Another participant says where it stands: what the person typed is kept,
+  // what they did not touch shows the news.
+  panel.paint(topic({ version: 6, title: 'Theirs', state: 'review', state_note: 'Look please' }), [{ actor_id: 'tony' }]);
+  assert.deepEqual([after.choice.value, after.note.value, after.waiting.value, after.title.value], ['waiting', 'Pick a name', 'fable', 'My title']);
+  assert.match(host.children[0].text, /^Ready for review · Look please/);
+  // An older read that lands late changes nothing.
+  panel.paint(topic({ version: 5, title: 'Stale', state: 'done' }), [{ actor_id: 'tony' }]);
+  assert.match(host.children[0].text, /^Ready for review/);
+  assert.equal(panel.topic.version, 6);
+
+  // A person who has typed nothing sees each repaint's data in the form.
+  const quiet = new Element('section'), other = new TopicStatePanel({ host: quiet, reader: 'tony', send: async () => ({}) });
+  other.paint(topic(), []);
+  other.paint(topic({ version: 5, state: 'waiting', state_note: 'Which name?', waiting_on: ['fable'], title: 'New' }), []);
+  const fresh = controls(quiet);
+  assert.deepEqual([fresh.choice.value, fresh.note.value, fresh.waiting.value, fresh.title.value], ['waiting', 'Which name?', 'fable', 'New']);
+});
+
+test('a new state clears the note and who it waits on unless the person typed them', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  const panel = new TopicStatePanel({ host, reader: 'tony', send: async (current, args) => { sent.push(args); return committed(current, args); } });
+  panel.paint(topic({ state: 'waiting', state_note: 'Which name?', waiting_on: ['fable'] }), []);
+  const { choice, note, waiting, save } = controls(host);
+  choose(choice, 'done');
+  assert.deepEqual([note.value, waiting.value], ['', '']);
+  choose(choice, 'waiting');
+  assert.deepEqual([note.value, waiting.value], ['Which name?', 'fable'], 'back to where it stands, its note and names return');
+  choose(choice, 'done');
+  await save.onclick();
+  assert.deepEqual(sent, [{ state: 'done', note: '' }]);
+  // What the person typed survives a change of state.
+  choose(choice, 'review'); type(note, 'Have a look'); choose(choice, 'waiting'); type(waiting, 'tony'); choose(choice, 'waiting');
+  assert.deepEqual([note.value, waiting.value], ['Have a look', 'tony']);
+});
+
+test('a stale-revision refusal keeps the attempt, asks for fresh data, and its notice goes once a newer version arrives', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  let refreshed = 0, server = 5;
+  const panel = new TopicStatePanel({ host, reader: 'tony', refresh: () => { refreshed++; },
+    send: async (current, args) => {
+      sent.push([current.version, args]);
+      if (current.version !== server) return { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'Writing changed; preserve this attempt and reconcile', current_versions: { topic_revision: server } } };
+      return committed(current, args);
+    } });
+  panel.paint(topic(), []);
+  const { choice, note, save } = controls(host);
+  choose(choice, 'done'); type(note, 'Shipped'); save.focus();
+  await save.onclick();
+  const kept = controls(host);
+  assert.deepEqual([kept.choice.value, kept.note.value], ['done', 'Shipped'], 'the attempt is kept');
+  assert.equal(document.activeElement, save, 'focus stays on Save');
+  const notice = controls(host).notice;
+  assert.equal(notice.hidden, false);
+  assert.equal(notice.attributes.role, 'status');
+  assert.match(notice.textContent, /changed/);
+  assert.doesNotMatch(notice.textContent, /reconcile/, 'plain words, not the server\'s');
+  assert.equal(refreshed, 1, 'a refusal asks for fresh data');
+  panel.paint(topic(), []);
+  assert.equal(notice.hidden, false, 'the same version again leaves the notice');
+  panel.paint(topic({ version: 5 }), []);
+  assert.equal(controls(host).notice, notice, 'one notice, kept in place so a reader announces its changes');
+  assert.deepEqual([notice.hidden, notice.textContent], [true, ''], 'fresh data clears the notice');
+  assert.deepEqual([choice.value, note.value], ['done', 'Shipped'], 'the attempt survives the fresh data');
+  await save.onclick();
+  assert.deepEqual(sent, [[4, { state: 'done', note: 'Shipped' }], [5, { state: 'done', note: 'Shipped' }]], 'the retry sends the fresh version');
+  assert.match(host.children[0].text, /^Done · Shipped/);
+});
+
+test('after a committed change the next one sends the version it made, and focus stays on its button', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  let server = 4, refreshed = 0;
+  const panel = new TopicStatePanel({ host, reader: 'tony', refresh: () => { refreshed++; },
+    send: async (current, args) => {
+      sent.push(current.version);
+      if (current.version < server) return { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'Writing changed' } };
+      server = current.version + 1; return committed(current, args, server);
+    } });
+  panel.paint(topic(), []);
+  const { choice, title, save, rename } = controls(host);
+  choose(choice, 'review'); save.focus();
+  await save.onclick();
+  assert.equal(document.activeElement, save);
+  const line = host.children[0].text;
+  type(title, 'Named'); rename.focus();
+  await rename.onclick();
+  assert.deepEqual(sent, [4, 5], 'the second change sends the version the first one made');
+  assert.match(line, /^Ready for review/, 'the line showed the change at once');
+  assert.equal(document.activeElement, rename);
+  assert.equal(controls(host).notice.hidden, true);
+  assert.equal(refreshed, 2, 'each commit asks for fresh data');
+  assert.equal(title.value, 'Named');
+  // Fresh data from before the second commit does not undo it.
+  panel.paint(topic({ version: 5, state: 'review' }), []);
+  assert.equal(title.value, 'Named');
+  assert.equal(panel.topic.version, 6);
+  // What was saved is the topic's now, so the fields follow later news again.
+  panel.paint(topic({ version: 7, state: 'done', title: 'Theirs' }), []);
+  assert.deepEqual([choice.value, title.value], ['done', 'Theirs']);
+  // Typing again while a change is out is kept when it commits.
+  type(title, 'Mine'); const out = rename.onclick(); type(title, 'Mine, longer');
+  await out;
+  assert.deepEqual([sent, controls(host).notice.hidden], [[4, 5, 7], true], 'the rename committed');
+  panel.paint(topic({ version: 9, title: 'Theirs again' }), []);
+  assert.equal(title.value, 'Mine, longer');
 });
 
 test('a refused or failed change is shown and the panel keeps its topic', async t => {
@@ -86,9 +242,12 @@ test('a refused or failed change is shown and the panel keeps its topic', async 
   const host = new Element('section'), answers = [{ status: 'rejected', error: { message: 'No permission for this topic' } }, Error('offline')];
   const panel = new TopicStatePanel({ host, reader: 'tony', send: async () => { const next = answers.shift(); if (next instanceof Error) throw next; return next; } });
   panel.paint(topic(), []);
-  await panel.submit({ archived: true });
+  const archive = host.find(node => node.textContent === 'Archive');
+  archive.focus();
+  await archive.onclick();
   assert.equal(host.find(node => node.classes.has('notice')).textContent, 'No permission for this topic');
-  await panel.submit({ archived: true });
+  assert.equal(document.activeElement, archive, 'focus stays on the button the person pressed');
+  await archive.onclick();
   assert.equal(host.find(node => node.classes.has('notice')).textContent, 'offline');
   assert.equal(panel.topic.id, 't1');
 });

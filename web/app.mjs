@@ -786,7 +786,7 @@ async function initialize() {
   // members. A reader outside the outcome cannot list its members.
   outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null);
   paintParticipants(topic, result.participants);
-  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, saved: () => freshness?.request(),
+  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(),
     send: (current, args) => {
       const { authority_id, authority_epoch } = bootstrap.authority;
       return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.update',
