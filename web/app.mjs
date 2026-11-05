@@ -927,7 +927,7 @@ function recipientReach(name) {
   if (known?.enabled === false) return { reachable: false, disabled: true };
   if ([topic.owner_id, topic.creator_id].includes(name) || views.participants.some(person => person.actor_id === name)) return { reachable: true };
   if (outcomeMembers === null) return null;
-  return { reachable: outcomeMembers.some(person => person.actor_id === name), add };
+  return { reachable: outcomeMembers.some(person => person.actor_id === name), add, scope: topic.id };
 }
 async function setParticipation(id, present) {
   const receipt = await setPresence('participation.set', { topic_id: topic.id }, 'topic_revision', topic.version, { actor_id: id, present });

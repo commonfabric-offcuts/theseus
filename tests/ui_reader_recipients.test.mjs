@@ -67,6 +67,34 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
   assert.equal(document.activeElement, null, 'a repaint takes no focus it did not hold');
 });
 
+test('a chip rebuilt while its add is out shows it still out, sends nothing more, and says how the add ended', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
+  t.after(() => { globalThis.document = previous; });
+  const chips = new Element('div'), input = new Element('input');
+  let settle, adds = 0, scope = 't1';
+  const editor = { draft: { addressees: ['stranger'] }, edit(patch) { Object.assign(this.draft, patch); } };
+  const reach = name => ({ reachable: false, scope, add: () => { adds++; return new Promise(resolve => { settle = resolve; }); } });
+  const reader = Object.assign(Object.create(Reader.prototype), {
+    sessions: { reply: editor }, presentation: {}, admits: () => true,
+    $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id], callbacks: { edit() {}, reach },
+  });
+  const offer = () => chips.children[0].children.find(node => node.textContent.startsWith('Add to topic'));
+  const said = () => chips.children[0].children.find(node => node.className === 'reach-notice');
+  reader.paintRecipients();
+  offer().focus();
+  const pressed = offer().onclick();
+  reader.paintRecipients();
+  assert.equal(offer().attributes['aria-disabled'], 'true', 'the new chip says the add is still out');
+  await offer().onclick();
+  assert.equal(adds, 1, 'pressing the new chip sends no second add');
+  settle({ status: 'refused', error: { code: 'FORBIDDEN', message: 'No permission for this topic' } }); await pressed;
+  assert.deepEqual([said().textContent, said().hidden, offer().attributes['aria-disabled']], [' · No permission for this topic', false, undefined],
+    'the refusal is said on the chip on the page');
+  scope = 't2'; reader.paintRecipients();
+  assert.deepEqual([said().textContent, said().hidden], ['', true], 'in another topic the same person\'s chip starts afresh');
+});
+
 test('the origin line names the author, the kind and when it was sent, and leaves out a time it does not have', () => {
   const origin = new Element('div');
   const reader = Object.assign(Object.create(Reader.prototype), { $: id => { assert.equal(id, 'reader-origin'); return origin; } });
