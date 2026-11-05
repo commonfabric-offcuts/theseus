@@ -166,7 +166,7 @@ export async function openJournal({ instanceId, actor } = {}) {
     try { return await run(Boolean(await lease.end)); }
     finally { leave(writer, lease); }
   };
-  const holds = writer => held.has(writer) || leases.has(writer);
+  const holds = writer => !closed && (held.has(writer) || leases.has(writer));
   // Whether no document holds this writer now. It takes no lock, so probes of
   // one writer, in this tab or another, never see each other as its holder.
   const free = async writer => {
