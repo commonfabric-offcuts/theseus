@@ -226,8 +226,10 @@ for (const when of ['before editor_state answers', 'after editor_state answered'
     }
     const p = await opening;
     if (when === 'before editor_state answers') assert.equal(p.mark.mark_revision, 3, 'the open saw the renewal');
-    assert.equal((await answered).error.code, 'REVISION_CONFLICT');
-    assert.deepEqual(f.clears().map(c => c.envelope.expected.mark_revision), [1], 'fenced on the act, not the answer');
+    assert.equal((await answered).error?.code, 'REVISION_CONFLICT');
+    // Nothing follows the refusal: the page never retries at a newer fence.
+    await settled();
+    assert.deepEqual(f.clears().map(c => c.envelope.expected.mark_revision), [1], 'fenced on the act, not the answer, and sent once');
     assert.equal(await f.revision(1), 3, 'the newer reminder stays');
     assert.deepEqual(f.marks.state(mark.message_id), { marked: true, mark_revision: 3 });
   });
