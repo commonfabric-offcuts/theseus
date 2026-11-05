@@ -21,6 +21,7 @@ import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention, paintSent } from './attention.mjs';
 import { TopicStatePanel, paintWaiting, readableTime } from './topic-state.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
+import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -36,7 +37,7 @@ let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 let topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null;
-let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver;
+let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
@@ -364,6 +365,11 @@ async function present(presentation) {
     revokeMedia(); reader.presentation = presentation;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
+    const shown = presentation.source.source_ref;
+    if (presentation.mark && !presentation.sourceUnavailable && shown.kind === 'message') {
+      marks.learn(shown.id, presentation.mark.mark_revision, { topicId: presentation.source.topic_id, seq: presentation.source.seq });
+    }
+    paintReaderMark();
     noteRead();
   }
   const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
@@ -449,12 +455,14 @@ function sourceAttachments(presentation) {
     }));
   }
 }
-async function openSource(ref, opener) {
+// act: what the person's act of reading captured (Marks.capture), for a card
+// or Read it; every other open passes none and clears nothing.
+async function openSource(ref, opener, act = null) {
   const request = ++opening;
   const from = registry.interactive;
   views.retain(views.currentItem, ref.kind === 'memory' ? ref.id : null);
   status('');
-  try { await registry.open(ref, { topicId: topic.id, opener }); }
+  try { await marks.open(registry, ref, { topicId: topic.id, opener }, act); }
   catch (error) {
     if (request === opening) {
       if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error.message);
@@ -489,17 +497,17 @@ function paintViews(kind) {
     topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
     for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = false;
-    noteRead(); return;
+    paintMarks(); noteRead(); return;
   }
   keepListAnchor(() => {
   for (const item of kind === 'messages' ? [...views.messages.values()].sort((a, b) => b.seq - a.seq) : []) {
     let card = [...$('messages').children].find(child => child.dataset.id === item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
-      card = button('', () => openSource(ref, card)); card.className = item.author_id === bootstrap.actor ? 'message-card own-message' : 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
-      const author = node('span', item.author_id, 'message-author');
-      // Messages sent before times were kept have none.
-      if (Number.isInteger(item.sent_ms)) author.append(node('span', ` · ${readableTime(item.sent_ms)}`, 'message-time'));
+      // The revision a click or keypress may clear is the one the card shows.
+      card = button('', () => openSource(ref, card, marks.capture(item.id))); card.className = item.author_id === bootstrap.actor ? 'message-card own-message' : 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
+      const author = node('span', undefined, 'message-author');
+      paintCardAuthor(author, item);
       card.append(author, node('span', item.body, 'message-preview'));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
@@ -523,6 +531,52 @@ function paintViews(kind) {
   $('more-messages').hidden = views.olderCursor === null;
   $('more-memory').hidden = views.memoryCursor === null;
   if (kind === 'messages') noteRead();
+}
+// Messages sent before times were kept have none.
+function paintCardAuthor(author, item) {
+  paintAuthor(author, item.author_id, Number.isInteger(item.sent_ms) ? readableTime(item.sent_ms) : null, marks?.state(item.id)?.marked === true);
+}
+// What the page knows of the person's marks: the topic's line, each loaded
+// card's pill and the Reader's button.
+function paintMarks() {
+  if (!marks || !topic) return;
+  const count = marks.marked(topic.id).length;
+  $('topic-marks-words').textContent = marksWords(count);
+  $('topic-marks').hidden = !count || topicUnavailable;
+  keepListAnchor(() => {
+    for (const card of $('messages').children) {
+      const item = views.messages.get(card.dataset.id);
+      if (item) paintCardAuthor(card.querySelector('.message-author'), item);
+    }
+  });
+  paintReaderMark();
+}
+function paintReaderMark() {
+  const p = registry?.current, ref = p?.source?.source_ref;
+  const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
+  paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
+}
+// Every page of the person's marks in this topic.
+function loadMarks() {
+  if (!marks || topicUnavailable) return Promise.resolve(true);
+  if (authorityReviewPending()) return Promise.resolve(false);
+  return marks.load(topic.id, async args => checkedView(await registry.cleanup.list(options => api.view('marks', args, options)), bootstrap.instance_id));
+}
+async function toggleMark() {
+  const p = registry.current, ref = p?.source?.source_ref;
+  if (!p || p.sourceUnavailable || !p.mark || ref.kind !== 'message' || marks.busy(ref.id)) return;
+  const state = marks.state(ref.id);
+  if (!state) return;
+  let receipt;
+  try { receipt = await marks.send(ref.id, !state.marked, state.mark_revision); }
+  catch {
+    if (registry.isSourceCurrent(p)) reader.notice('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.');
+    return;
+  }
+  if (!registry.isSourceCurrent(p)) return;
+  if (receipt?.error?.code === 'REVISION_CONFLICT') {
+    reader.notice(`This message's mark changed in another tab or device: it is ${marks.state(ref.id)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
+  } else if (receipt?.status !== 'committed') reader.notice(receipt?.error?.message ?? 'The mark was not confirmed. Press again to send the same request.');
 }
 function authorityReviewPending() {
   return updateState?.kind === 'authority' ||
@@ -555,7 +609,7 @@ async function refreshLists() {
   if (authorityReviewPending()) {
     status('The runtime changed. Review your saved writing before reloading this page.'); return;
   }
-  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load();
+  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks();
   if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
   if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
   await listPage('messages'); await listPage('memory');
@@ -593,6 +647,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     topicUnavailable = true; ++listAccessEpoch;
     for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = true;
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
+    paintMarks();
     for (const session of registry.sessions.values()) {
       if (session.editor.context.kind === 'reply' && session.editor.context.topicId === topic.id) {
         session.editor.unavailable = true; registry.cancelSave(session.editor); changed(session.editor);
@@ -709,7 +764,7 @@ async function checkSourceAvailability(read, current, topicDenied) {
   p.editors.note.unavailable = !state.source_available;
   reader.paintStatus();
   } finally {
-    if (sameSource()) { registry.current.availabilityChecking = false; reader.paintStatus(); }
+    if (sameSource()) { registry.current.availabilityChecking = false; reader.paintStatus(); paintReaderMark(); }
   }
 }
 async function retrySource() {
@@ -874,6 +929,20 @@ async function initialize() {
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
   registry.cleanup.resumeListeners.add(rechecked);
+  // After any recorded answer to a mark, this page shows what Core now holds,
+  // with or without the live stream.
+  marks = new Marks({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current, cancelOpen: () => registry.cancelOpen(),
+    recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
+  marks.listen(paintMarks);
+  $('mark-unread').onclick = () => run(toggleMark);
+  $('read-mark').onclick = () => run(() => {
+    const next = marks.marked(topic.id)[0];
+    if (next) return openSource({ kind: 'message', id: next.messageId }, $('read-mark'), marks.capture(next.messageId));
+  });
+  // Escape before the Reader shows cancels the open under way.
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !reader.dialog.open && !review.open && registry.cancelOpen()) event.preventDefault();
+  });
   readThrough = new ReadThrough({ send: (topicId, from, seq) => {
     const { authority_id, authority_epoch } = bootstrap.authority;
     return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.read_through',
@@ -884,7 +953,7 @@ async function initialize() {
   document.addEventListener('visibilitychange', noteRead);
   window.addEventListener('focus', noteRead);
   topicNavigation = new TopicNavigation({ registry, current:route,
-    navigateTarget: target => location.assign(routeHref(target)) });
+    navigateTarget: target => { marks.leave(); location.assign(routeHref(target)); } });
   await initializeInlineComposer();
   initializeOutcomeNavigation(topic.workspace_id); outcomeRail.load();
   topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
@@ -912,9 +981,11 @@ async function initialize() {
     seen: items => { for (const item of items) views.revisions.observe(item.id, item.revision); reader.paintOffer(); },
   });
   outcomeReferences.load();
-  followCommits(async () => {
-    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load();
-    return outcomes !== false && topics !== false && references !== false;
+  // The open topic's marks are the person's own, read by the person's scope
+  // and paged; the open Reader's button follows them.
+  commitReload = followCommits(async () => {
+    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks();
+    return outcomes !== false && topics !== false && references !== false && marked !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);
@@ -925,9 +996,10 @@ async function initialize() {
     await freshness?.request({ refresh: true, retry: true });
   });
   $('more-messages').onclick = () => run(() => listPage('messages', true)); $('more-memory').onclick = () => run(() => listPage('memory', true));
-  window.addEventListener('beforeunload', event => { if (registry.hasUnprotectedWriting) { event.preventDefault(); event.returnValue = ''; } });
+  window.addEventListener('beforeunload', event => { marks.leave(); if (registry.hasUnprotectedWriting) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
+  run(loadMarks);
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint);
 }
 // A message sent by name opens its topic, or, where the reader has lost the

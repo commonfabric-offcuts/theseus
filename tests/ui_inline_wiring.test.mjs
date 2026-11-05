@@ -46,6 +46,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     calls.push({ name, args });
     if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
+    if (name === 'marks') return { instance_id: 'fixture', topic_id: args.topic_id, items: [], next_cursor: null };
     return { instance_id: 'fixture', items: [], next_cursor: null };
   }, command: async envelope => { calls.push({ kind: envelope.kind, envelope }); return { recorded: true }; } };
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
@@ -56,7 +57,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
     cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); },
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
-    pending() { return { items: [], next_cursor: null }; },
+    pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; },
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
       list: action => action({ readClass: 'foreground' }) },
@@ -91,6 +92,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach,replaceChips}; })())', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,reread,PAGE}; })())', context);
+  const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + marksSource + '; return {Marks,paintMarkButton,paintAuthor,marksWords}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
   vm.runInContext('globalThis.OutcomeRail = (()=>{' + outcomeSource + '; return OutcomeRail; })()', context);
   const referencesSource = readFileSync(new URL('../web/outcome-references.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeReferences', 'class OutcomeReferences');
@@ -100,7 +103,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
   vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent,
-    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
+    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail}; } };`, context);
@@ -109,7 +112,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
   // Initialize the real adapter; empty upload list is a deliberate fixture.
   inline.show(p);
-  context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh });
+  context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh,
+    marks: new context.Marks({ api, instanceId: 'fixture', authority: () => bootstrap.authority, doc: null, win: null }) });
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
   return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers };
 }
@@ -929,8 +933,9 @@ test('a card in the topic log says when its message was sent, and a message from
   f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'fable', body: 'Untimed', topic_id: 't1', sent_ms: null });
   f.paintViews('messages');
   const author = id => f.get('messages').children.find(card => card.dataset.id === id).children[0];
-  assert.deepEqual([author('m1').textContent, author('m1').children.map(node => node.textContent)], ['tony', [' · 5:44 AM Thu Nov 5']]);
-  assert.deepEqual(author('m2').children, []);
+  const parts = id => author(id).children.map(node => typeof node === 'string' ? node : node.textContent);
+  assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM Thu Nov 5']);
+  assert.deepEqual(parts('m2'), ['fable']);
 });
 
 // Every element under a node; text children are skipped.
