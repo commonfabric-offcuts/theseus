@@ -10,7 +10,7 @@ import { currentImages } from '../web/upload-state.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
 import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
-import { Attention } from '../web/attention.mjs';
+import { Attention, paintSent } from '../web/attention.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 function fixture(href = 'https://fixture/?topic=t1') {
@@ -65,7 +65,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -889,4 +889,58 @@ test('a card in the topic log says when its message was sent, and a message from
   const author = id => f.get('messages').children.find(card => card.dataset.id === id).children[0];
   assert.deepEqual([author('m1').textContent, author('m1').children.map(node => node.textContent)], ['tony', [' · 5:44 AM Thu Nov 5']]);
   assert.deepEqual(author('m2').children, []);
+});
+
+// Every element under a node; text children are skipped.
+const deep = node => node.children.flatMap(child => typeof child === 'object' ? [child, ...deep(child)] : []);
+
+// Where a topic stands, wired into the page: the panel's form sends the
+// topic's current version, a commit asks for fresh views, and a fresh topic
+// view repaints the panel.
+test('a topic page says where it stands, sends its change at the current version, and repaints from fresh data', async () => {
+  const f = fixture();
+  pickerApi(f);
+  await f.initialize();
+  const panel = f.get('topic-state');
+  const find = predicate => deep(panel).find(predicate);
+  assert.equal(panel.hidden, false);
+  assert.equal(find(node => node.className === 'topic-state')?.textContent, 'Active');
+  const choice = find(node => node.id === 'topic-state-choice'), save = find(node => node.textContent === 'Save');
+  choice.value = 'review'; choice.onchange();
+  const requests = () => f.events.filter(([kind]) => kind === 'request').length, before = requests();
+  await save.onclick();
+  // Envelopes come from the page's realm; compare them as data.
+  const sent = JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'topic.update').map(call => [call.envelope.target, call.envelope.expected.topic_revision, call.envelope.args])));
+  assert.deepEqual(sent, [[{ topic_id: 't1' }, 3, { state: 'review', note: '' }]]);
+  assert.equal(requests(), before + 1, 'a committed change asks for fresh views');
+  Object.assign(f.views, { topic: { ...f.views.topic, version: 4, state: 'done', state_note: 'Shipped' }, messages: new Map() });
+  f.paintViews('topic');
+  assert.equal(find(node => node.className === 'topic-state')?.textContent, 'Done', 'a fresh topic view repaints the panel');
+  assert.equal(find(node => node.className === 'state-note')?.textContent, 'Shipped');
+});
+
+test('an outcome page lists what waits on the reader, and follows each new attention answer', async () => {
+  const f = fixture('https://fixture/?workspace=w1');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  pickerApi(f);
+  let waiting = [{ id: 't7', title: 'First', title_truncated: false, note: '', state_by: 'fable', state_ms: null }];
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => name === 'attention'
+    ? { instance_id: 'fixture', unread: 0, addressed: 0, latest_addressed: [], waiting_on_me: waiting.length, latest_waiting: waiting }
+    : view(name, args, options);
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  f.useLive(live);
+  await f.initialize();
+  const settle = async () => { for (let n = 0; n < 4; n++) await new Promise(setImmediate); };
+  await settle();
+  const titles = () => deep(f.get('waiting-on-you')).filter(node => node.href?.startsWith('?topic=')).map(node => node.textContent);
+  waiting = [{ id: 't8', title: 'Second', title_truncated: false, note: 'Pick one', state_by: 'fable', state_ms: null }, ...waiting];
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await settle();
+  assert.deepEqual(titles(), ['Second', 'First'], 'a commit brings the new list');
+  assert.equal(f.get('waiting-on-you').hidden, false);
+  waiting = [];
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 10 });
+  await settle();
+  assert.equal(f.get('waiting-on-you').hidden, true, 'nothing waits, so nothing is listed');
 });
