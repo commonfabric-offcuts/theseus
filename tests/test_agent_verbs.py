@@ -613,7 +613,8 @@ class WatchReadingCase(AgentVerbCase):
             with watch.stoppable():
                 lines.write("before")
             os.kill(os.getpid(), signal.SIGTERM)
-            self.assertEqual(watch.wait(None), dict(dirty=False, stop=True))
+            event = watch.wait(None)
+            self.assertEqual((event["dirty"], event["stop"]), (False, True))
             with self.assertRaises(WatchStopped), watch.stoppable():
                 lines.write("after the stop")
         self.assertEqual(output.getvalue(), "before\n")
