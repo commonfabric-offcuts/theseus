@@ -134,6 +134,40 @@ class AttentionCase(AgentLoopCase):
         # The outcome page still walks the reader's pending groups, but only those in its outcomes count.
         self.assertGreater(outcomes_after, outcomes_before)
 
+    def archive(self, archived, topic="t1"):
+        version = self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]
+        self.committed(self.command("topic.update", {"archived": archived}, target={"topic_id": topic},
+                                    expected={"topic_revision": version}))
+
+    def test_an_archived_topic_counts_only_on_its_own_row_in_the_archived_list(self):
+        self.committed(self.post(body="Plain"))
+        self.committed(self.post(body="By name", addressees=["owner"]))
+        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        self.committed(self.command("topic.update", {"state": "waiting", "waiting_on": ["owner"]}, target={"topic_id": "t1"},
+                                    expected={"topic_revision": version}, actor="agent-a"))
+        topics, outcomes, total, latest = self.counts()
+        listed = topics["t1"]
+        self.assertEqual(outcomes["w1"], listed)
+        self.assertEqual(total, listed)
+        self.assertEqual([item["topic"]["id"] for item in latest], ["t1"])
+        self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 1)
+        self.archive(True)
+        topics, outcomes, total, latest = self.counts()
+        # Nothing the reader cannot find in a list counts toward the outcome or the total.
+        self.assertNotIn("t1", topics)
+        self.assertEqual((outcomes["w1"], total, latest), ((0, 0), (0, 0), []))
+        attention = self.store.view("owner", "attention", {})
+        self.assertEqual((attention["waiting_on_me"], attention["latest_waiting"]), (0, []))
+        # The archived list still shows the topic's own count, and nothing was settled.
+        archived = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "archived": True})["items"]
+        self.assertEqual([(item["id"], item["unread"], item["addressed"], item["waiting_on"]) for item in archived],
+                         [("t1", listed[0], listed[1], ["owner"])])
+        self.archive(False)
+        topics, outcomes, total, latest = self.counts()
+        self.assertEqual((topics["t1"], outcomes["w1"], total), (listed, listed, listed))
+        self.assertEqual([item["topic"]["id"] for item in latest], ["t1"])
+        self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 1)
+
     def test_attention_takes_no_arguments(self):
         refused = self.store.view("owner", "attention", {"limit": 3})
         self.assertEqual(refused["error"]["code"], "INVALID_ARGUMENT")

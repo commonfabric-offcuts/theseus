@@ -14,6 +14,18 @@ pending. Reading through it on screen, or acknowledging it, settles it.
   topic, and `topic_readable`. A topic the reader can reach only as a
   participant, outside any outcome they belong to, counts in the totals and
   never names its outcome.
+- `attention` also returns `waiting_on_me`, how many topics say they wait on
+  the reader, and `latest_waiting`: up to five of them, most recently said
+  first, each with its `id`, `title`, `title_truncated`, `note`, `state_by`
+  and `state_ms`. A topic waits only on someone who can read it; whoever
+  loses the topic is taken off its waiting list.
+
+An archived topic is out of the outcome's list, and the browser lists archived
+topics nowhere, so it counts nowhere else either: the outcome row, the totals,
+`latest_addressed`, `waiting_on_me` and `latest_waiting` all leave it out.
+Archiving settles nothing. `workspace_topics` with `archived: true` still
+shows each archived topic's own `unread`, `addressed` and `waiting_on`, and
+when the topic is unarchived its counts return everywhere.
 
 A person sent a message by name keeps reading that message after they lose
 its topic, but can no longer read through the topic; `topic_readable` is
@@ -26,7 +38,15 @@ recipient, so its cost follows the number of topics with something pending.
 A subscription group keeps its own pending total. The one direct group per
 reader is found by its key and counted row by row, so that part of every
 count follows the number of pending messages that name the reader.
-`latest_addressed` reads the newest five of them in index order.
+`latest_addressed` reads the newest five of them in index order, passing over
+any in archived topics.
+
+Each waiting row keeps a copy of its topic's state time and archive flag, so
+what waits on a reader is read from one index on (reader, archived, state
+time): `waiting_on_me` counts the reader's rows in that index, without reading
+the topics, and `latest_waiting` reads the newest five in index order.
+Schema version 12 adds those copies; the upgrade also drops any waiting row
+for someone who had already lost its topic, and stepping back keeps the rest.
 
 ## In the browser
 

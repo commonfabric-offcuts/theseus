@@ -41,8 +41,12 @@ def frozen(statements):
 def step_back_by_hand(path, version):
     """Recover an older stored layout from a fresh instance with plain SQL, independent of migrations.py."""
     with sqlite3.connect(str(path)) as db:
-        # Version 12 adds when each message was sent.
+        # Version 12 adds when each message was sent, and orders what waits on each reader.
         db.execute("ALTER TABLE messages DROP COLUMN sent_ms")
+        db.execute("DROP INDEX reader_waiting")
+        db.execute("CREATE INDEX actor_waiting ON topic_waiting(actor_id,topic_id)")
+        db.execute("ALTER TABLE topic_waiting DROP COLUMN archived")
+        db.execute("ALTER TABLE topic_waiting DROP COLUMN state_ms")
         if version in ("8", "9", "10"):
             # Version 11 adds where each topic stands: its state, archive flag, note, and who it waits on.
             db.execute("DROP TABLE topic_waiting")
@@ -650,6 +654,32 @@ class Schema11Case(MigrationCase):
         [(sent,)] = self.sql("SELECT sent_ms FROM messages WHERE body='After the upgrade'")
         self.assertGreaterEqual(sent, start)
         self.assertLessEqual(sent, int(time.time() * 1000))
+
+    def wait_at_11(self):
+        """t1, archived, waits on agent-b and on someone who lost it before version 12 pruned such rows."""
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO actors(id,kind,name) VALUES ('gone','agent','Lost the topic')")
+            db.execute("UPDATE topics SET state='waiting',state_by='owner',state_ms=1234,archived=1 WHERE id='t1'")
+            db.executemany("INSERT INTO topic_waiting VALUES ('t1',?)", [("agent-b",), ("gone",)])
+
+    def test_upgrade_from_11_orders_what_waits_and_drops_who_cannot_read_it(self):
+        self.wait_at_11()
+        self.upgrade()
+        self.assertEqual(self.sql("SELECT topic_id,actor_id,state_ms,archived FROM topic_waiting"), [("t1", "agent-b", 1234, 1)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        # An archived topic waits without counting; unarchived, it counts again.
+        self.assertEqual(self.store.view("agent-b", "attention", {})["waiting_on_me"], 0)
+        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        self.assertEqual(self.command("topic.update", {"archived": False}, {"topic_id": "t1"}, {"topic_revision": version})["status"], "committed")
+        attention = self.store.view("agent-b", "attention", {})
+        self.assertEqual((attention["waiting_on_me"], [item["id"] for item in attention["latest_waiting"]]), (1, ["t1"]))
+
+    def test_step_back_to_11_keeps_who_a_topic_waits_on(self):
+        self.wait_at_11()
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_11))
+        self.assertEqual(self.sql("SELECT * FROM topic_waiting"), [("t1", "agent-b")])
 
     def test_step_back_to_11_restores_its_frozen_layout_while_no_message_has_a_time(self):
         self.upgrade()

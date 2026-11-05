@@ -121,6 +121,12 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
   separately is unchanged. Removing the workspace's coordinator also clears
   `coordinator_id` in the same change, so the workspace never names a
   coordinator who is not a member.
+- A topic waits only on someone who can read it. Each of the workspace's
+  topics that the removed member can no longer read, and that waits on them,
+  stops waiting on them in the same change: the topic version advances, with
+  its usual topic and workspace change rows, and the member gets
+  `("actor", member, "waiting", T, topic_version)`. The workspace version
+  then advances once more, so it can rise by more than one.
 - Result: `{workspace_id, actor_id, present, version}`.
 
 ## Views
