@@ -138,9 +138,15 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
   } else if (editor.conflict) reviewStatus(remote === undefined ? 'The saved version could not be read. Retry; sending remains blocked and your writing is kept.' : 'Both versions are kept. Copy what you need; this comparison does not overwrite either version.');
   comparison = { editor, presentation, localVersion, authority: JSON.stringify(editor.authorityRecovery) };
   const list = node('div'); $('review-content').append(list);
-  const appendCandidates = async cursor => {
-    const page = await registry.recoveryCandidates(editor, { cursor, limit: 10 }, (shown, continued) => { if (current()) listCandidates(editor, shown, continued); });
+  // A page the registry applied is drawn even when settling its image copies
+  // then fails; the failure is reported after it, and `more` (the button that
+  // asked for it) is spent once the page is applied.
+  const appendCandidates = async (cursor, more) => {
+    let page = null, failure = null;
+    try { await registry.recoveryCandidates(editor, { cursor, limit: 10 }, (shown, continued) => { page = shown; if (current()) listCandidates(editor, shown, continued); }); }
+    catch (error) { if (!page) throw error; failure = error; }
     if (!current()) return;
+    more?.remove();
     for (const candidate of page.items) {
       const section = version(candidate.availability === 'open-in-another-tab' ? 'Open in another tab' : 'Writing kept on this device',
         candidate.snapshot?.draft.body ?? 'Close the other tab, then Retry to review its writing.',
@@ -188,14 +194,15 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
       list.append(section);
     }
     if (page.nextCursor) {
-      const more = make('More versions', async () => {
-        more.disabled = true;
-        try { await appendCandidates(page.nextCursor); more.remove(); }
+      const next = make('More versions', async () => {
+        next.disabled = true;
+        try { await appendCandidates(page.nextCursor, next); }
         catch (error) { if (current()) { reviewStatus(error.message); $('review-retry').hidden = false; } }
-        finally { if (more.isConnected) more.disabled = false; }
+        finally { if (next.isConnected) next.disabled = false; }
       });
-      list.append(more);
+      list.append(next);
     }
+    if (failure) throw failure;
   };
   try { await appendCandidates(null); } catch (error) { if (current()) reviewStatus(error.message); }
   if (!current()) return;

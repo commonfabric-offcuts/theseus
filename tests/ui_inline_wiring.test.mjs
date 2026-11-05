@@ -230,6 +230,29 @@ test('a refused More versions page is reported in the review, keeps the list, an
   assert.equal(find(f.get('review-content'),'More versions'),undefined,'a page with no further cursor removes the button');
   assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('b')],nextCursor:null});
 });
+test('a More versions page the registry applied is drawn even when its settle fails, and its button is spent',async()=>{
+  const f=fixture(),{candidates}=f.owners(),asked=[],row=id=>({id,stamp:id,availability:'open-in-another-tab'});
+  f.get('version-review').showModal=function(){this.open=true;};
+  f.registry.recoveryCandidates=async(editor,options,shown)=>{
+    asked.push(options.cursor);
+    const page=options.cursor==='c1'?{items:[row('b')],nextCursor:'c2'}:{items:[row(options.cursor?'c':'a')],nextCursor:options.cursor?null:'c1'};
+    shown(page,Boolean(options.cursor));
+    if(options.cursor==='c1')throw Error('editor_state read failed');
+    return page;
+  };
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  f.get('review-retry').hidden=true;
+  const all=(element,text)=>[...(element.textContent===text?[element]:[]),...element.children.flatMap(child=>all(child,text))];
+  const first=all(f.get('review-content'),'More versions')[0];
+  await first.onclick();
+  assert.equal(f.get('review-status').textContent,'editor_state read failed');assert.equal(f.get('review-retry').hidden,false);
+  assert.equal(all(f.get('review-content'),'Open in another tab').length,2,'the applied page is drawn');
+  const more=all(f.get('review-content'),'More versions');
+  assert.equal(more.length,1,'the spent button is replaced by the next page\'s');assert.notEqual(more[0],first);
+  await more[0].onclick();
+  assert.deepEqual(asked,[null,'c1','c2'],'the next page continues from the applied page\'s cursor');
+  assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))).items.map(item=>item.id),['a','b','c']);
+});
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};

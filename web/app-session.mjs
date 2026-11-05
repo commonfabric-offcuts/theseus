@@ -335,12 +335,19 @@ export class EditorRegistry {
 
   // After the image copies change: a refusal among them is compared with the
   // server draft read now, then the barrier and retained images follow. Up to
-  // its first read it runs at once, so the barrier is never lowered early, and
-  // only the latest settle's answer counts: an older settle, whether its read
-  // answered or failed, finishes when the latest one does.
-  settleImageCopies(editor) {
+  // its first read it runs at once, so the barrier is never lowered early.
+  // Only the latest settle's answer counts, and every settle finishes when the
+  // latest one has, so no caller acts while a newer read is out. A failure is
+  // reported only to the latest settle's caller; one a later settle overtook
+  // finishes quietly, with the barrier that settle left.
+  async settleImageCopies(editor) {
     const settle = editor.imageSettle = (editor.imageSettle ?? 0) + 1;
-    return editor.imageSettled = this.settleOnce(editor, settle);
+    const own = this.settleOnce(editor, settle);
+    if (editor.imageSettle === settle) editor.imageSettled = own;
+    for (let latest = settle, done = own; ; latest = editor.imageSettle, done = editor.imageSettled) {
+      try { await done; } catch (error) { if (latest === settle && editor.imageSettle === settle) throw error; }
+      if (editor.imageSettle === latest) return;
+    }
   }
 
   async settleOnce(editor, settle) {
@@ -353,10 +360,10 @@ export class EditorRegistry {
       try {
         state = await this.api.view('editor_state', { source_ref: editor.context.sourceRef, topic_id: editor.context.topicId });
       } catch (error) {
-        if (editor.imageSettle !== settle) return editor.imageSettled;
+        if (editor.imageSettle !== settle) return;
         throw error;
       }
-      if (editor.imageSettle !== settle) return editor.imageSettled;
+      if (editor.imageSettle !== settle) return;
       this.validateState(state, editor.context.sourceRef, editor.context.topicId);
       editor.recoveryServerDraft = copy(state.draft ?? null);
     }

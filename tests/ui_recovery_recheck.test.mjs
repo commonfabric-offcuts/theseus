@@ -353,3 +353,46 @@ test('a settle whose read is superseded finishes with the latest settle, whether
     assert.equal(editor.recoveryDiscovery, true);
   }
 });
+
+test('a settle overtaken with no read of its own, or after its read, finishes only when the latest settle has', async t => {
+  for (const overtaken of ['with no read', 'after its read']) {
+    const { f, editor, before, later, held, reads } = await refusalAtLaterRevision(t);
+    const [r1] = editor.imageCopies.keys(), row = editor.imageCopies.get(r1);
+    const uploads = f.registry.sessionFor(editor).uploads, validate = uploads.validateRetained.bind(uploads);
+    let first, entered, open;
+    const inside = new Promise(resolve => { entered = resolve; }), gate = new Promise(resolve => { open = resolve; });
+    uploads.validateRetained = async () => { if (entered) { const e = entered; entered = null; e(); await gate; } return validate(); };
+    if (overtaken === 'with no read') {
+      // Dropping the refused copy needs no read; the next recheck brings it back.
+      first = f.registry.applyRecheck(editor, [r1], { items: [], nextCursor: null });
+    } else {
+      first = f.registry.recoveryCandidates(editor);
+      await reads(1); await held[0].serve(before);
+    }
+    await inside;
+    const latest = f.registry.applyRecheck(editor, [r1], { items: [row], nextCursor: null });
+    await reads(overtaken === 'with no read' ? 1 : 2);
+    let done = false;
+    const firstDone = first.then(() => { done = true; });
+    open(); await tick();
+    assert.equal(done, false, `a settle overtaken ${overtaken} waits for the latest read`);
+    held.at(-1).serve(later);
+    await firstDone; await latest;
+    assert.equal(editor.recoveryServerDraft?.revision, 2, 'when it finishes, the server draft is known');
+    assert.equal(editor.recoveryDiscovery, true);
+  }
+});
+
+test('a later settle\'s failure is reported to its own caller, and an overtaken settle finishes quietly with the reply held', async t => {
+  const { f, editor, before, held, reads } = await refusalAtLaterRevision(t);
+  const first = f.registry.recoveryCandidates(editor);
+  await reads(1);
+  const [r1] = editor.imageCopies.keys();
+  const second = f.registry.applyRecheck(editor, [r1], { items: [editor.imageCopies.get(r1)], nextCursor: null });
+  await reads(2);
+  await held[0].serve(before); held[1].fail();
+  await first;
+  await assert.rejects(second, /busy/);
+  assert.equal(editor.recoveryDiscovery, true, 'the failed latest read leaves the reply held');
+  assert.equal(editor.recoveryServerDraft, undefined);
+});
