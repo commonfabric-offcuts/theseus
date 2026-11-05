@@ -573,11 +573,24 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // While a document's own navigation is held, DevTools holds every command
+  // to its frame (Runtime.evaluate included) until the navigation goes on,
+  // and then runs it in the next document. So the leaving document reports
+  // through a binding, an event it sends itself, when its open has ended.
   await check('live a page that leaves while the source and the next page are held clears nothing', async () => {
     const topic = await markTopic('Marks: leaving'), away = await markTopic('Marks: elsewhere');
     await markAs([topic.message], true);
     const p = await page('live-mark-leave', null, true, { url: topic.url }); await settled(p);
     await until(async () => await pill(p, topic.message) && await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(marksRow(away.id))}))`), 'the mark and the other topic are shown');
+    const before = await counts();
+    await p.send('Runtime.addBinding', { name: 'leavingOpenEnded' });
+    // When the next open ends, and a turn later (when any clear it earned has
+    // left), the document says where it is and what it shows.
+    await p.evaluate(`(() => { const opens = freshEvidence.opens; opens.push = function (record) {
+      let end; Object.defineProperty(record, 'end', { enumerable: true, get: () => end, set: value => { end = value;
+        setTimeout(() => leavingOpenEnded(JSON.stringify({ search: location.search, readerOpen: document.querySelector('#reader').open,
+          pendingOpen: Boolean(observedRegistry.pendingOpen), error: record.error ?? null })), 0); } });
+      return Array.prototype.push.call(this, record); }; })()`);
     await p.send('Fetch.enable', { patterns: [{ urlPattern: origin + '/api/*', requestStage: 'Response' }, { urlPattern: origin + '/app.mjs', requestStage: 'Response' },
       { urlPattern: origin + '/upload-cleanup.mjs', requestStage: 'Response' }, { urlPattern: away.url, requestStage: 'Response' }] });
     p.intercept((payload, event) => payload?.name === 'source' || event.request.url === away.url);
@@ -588,15 +601,17 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.point(marksRow(away.id));
     const next = await until(() => p.held.find(h => h.event.request.url === away.url), 'the next page is held');
     p.intercept(null);
-    await p.release(source);
-    await openSettled(p);
-    assert.equal(await p.evaluate('location.search'), `?topic=${topic.id}`, 'still the leaving document');
-    assert.equal(await p.evaluate("document.querySelector('#reader').open"), false, 'the open was dropped');
-    assert.deepEqual(markCalls(p), []);
+    // From here until the next page goes on, nothing is asked of the page.
+    await p.send('Fetch.continueResponse', { requestId: source.event.requestId });
+    const ended = await until(() => p.events.find(e => e.method === 'Runtime.bindingCalled' && e.params.name === 'leavingOpenEnded'), 'the leaving document reports its open ended');
+    assert.deepEqual(JSON.parse(ended.params.payload), { search: `?topic=${topic.id}`, readerOpen: false, pendingOpen: false, error: null },
+      'the leaving document dropped the open and shows no Reader');
+    assert.deepEqual(markCalls(p), [], 'the leaving document sent no clear');
     await p.send('Fetch.continueResponse', { requestId: next.event.requestId });
     await until(() => p.evaluate(`location.search === ${JSON.stringify('?topic=' + away.id)} && document.body?.dataset.ready === 'true'`), 'the next page opens');
     assert.deepEqual(markCalls(p), []);
     assert.equal((await view('marks', { topic_id: topic.id })).items.length, 1, 'the mark stays');
+    assert.equal((await counts()).mark_operations, before.mark_operations, 'no mark operation was recorded');
     assert.deepEqual(p.errors, []); await p.close();
     await markAs([topic.message], false);
   });

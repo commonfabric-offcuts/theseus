@@ -114,7 +114,7 @@ try {
     const errors = [], calls = [], held = [], events = [], network = [], responses = [], finished = new Set();
     let intercept = null, recordResponses = false;
     listeners.set(sessionId, packet => {
-      if (packet.method === 'Page.fileChooserOpened') events.push(packet);
+      if (['Page.fileChooserOpened', 'Runtime.bindingCalled'].includes(packet.method)) events.push(packet);
       if (mode === '--navigation' && packet.method === 'Runtime.consoleAPICalled') events.push(packet);
       if (mode === '--navigation' && packet.method === 'Page.javascriptDialogOpening') { events.push(packet); send('Page.handleJavaScriptDialog', { accept: false }).catch(error => errors.push({ message: error.message })); }
       if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
