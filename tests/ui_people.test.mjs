@@ -172,6 +172,25 @@ test('Enter or Add sends the typed name once; a refusal or failure is said besid
   assert.equal(add().disabled, false);
 });
 
+test('a name typed while an add is out stays in the field when that add commits', async t => {
+  dom(t);
+  const host = new Element('div'), sent = [];
+  let release;
+  const panel = new PeoplePanel({ host, label: 'Add', names: 'n',
+    add: async id => { sent.push(id); await new Promise(resolve => { release = resolve; }); return { status: 'committed' }; } });
+  panel.paint(people(['tony']), true);
+  field(host).value = 'fable';
+  field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {} });
+  field(host).value = 'ally';
+  release();
+  await new Promise(setImmediate);
+  assert.deepEqual([sent, field(host).value], [['fable'], 'ally'], 'the next name the person typed is kept');
+  field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {} });
+  release();
+  await new Promise(setImmediate);
+  assert.deepEqual([sent, field(host).value], [['fable', 'ally'], ''], 'a field still holding what was sent is cleared');
+});
+
 test('a recipient outside the topic is marked, with an offer to add them only for a reader who may', async t => {
   dom(t);
   const chip = name => { const node = new Element('span'); node.className = 'chip'; node.classList = { add: c => { node.className += ' ' + c; } }; node.textContent = name; return node; };

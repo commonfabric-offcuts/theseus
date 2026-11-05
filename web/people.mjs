@@ -100,9 +100,11 @@ export class PeoplePanel {
     this.input = element('input', { autocomplete: 'off', placeholder: 'Add a name' });
     this.input.setAttribute('list', names); this.input.setAttribute('aria-label', label);
     this.button = element('button', { type: 'button', textContent: 'Add' });
+    // An added name leaves the field only if the field still holds it; a name
+    // typed while the add was out is the person's next one.
     const go = () => {
-      const id = this.input.value.trim().replace(/^@/, '');
-      if (id) return this.submit(() => this.add(id), () => { this.input.value = ''; });
+      const typed = this.input.value, id = typed.trim().replace(/^@/, '');
+      if (id) return this.submit(() => this.add(id), () => { if (this.input.value === typed) this.input.value = ''; });
     };
     this.button.onclick = go;
     this.input.onkeydown = event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); if (!event.repeat) go(); } };
