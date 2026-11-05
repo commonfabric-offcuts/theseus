@@ -1152,3 +1152,20 @@ for (const route of ['?workspace=w1&opening=o1&opening_topic=t9', '?new=outcome&
     assert.equal(o.reads(), 2, 'a hidden page waits');
   });
 }
+
+test('attention is read again when the stream comes back, and not when it goes down', async () => {
+  const f = fixture('https://fixture/?'), live = stream(), o = outcomesPage(f), view = f.api.view;
+  o.answers.push(o.page([]));
+  let unread = 0;
+  f.api.view = async (name, args) => name === 'attention'
+    ? (f.calls.push({ name }), { instance_id: 'fixture', unread, addressed: 0, latest_addressed: [] }) : view(name, args);
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  await f.initialize(); await drain();
+  const reads = () => f.calls.filter(call => call.name === 'attention').length, before = reads();
+  unread = 2;
+  live.emit({ kind: 'state', state: 'down' }); await drain();
+  assert.equal(reads(), before, 'the stream going down reads nothing');
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(reads(), before + 1, 'the stream coming back reads attention');
+  assert.equal(f.owners().attention.unread, 2);
+});
