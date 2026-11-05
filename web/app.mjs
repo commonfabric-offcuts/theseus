@@ -448,7 +448,7 @@ function keepListAnchor(paint) {
   const at = document.activeElement;
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const anchor = writing ? inline.field : $('main').contains(at) && at.matches('input, textarea, select') && inView(at) ? at
-    : [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(card => card.getBoundingClientRect().bottom > 0);
+    : [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(inView);
   const top = anchor?.getBoundingClientRect().top;
   paint();
   if (anchor?.isConnected) window.scrollBy(0, anchor.getBoundingClientRect().top - top);

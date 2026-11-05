@@ -200,6 +200,14 @@ export async function liveChecks({ check, page, until, control, observations, or
     await arrive('Arrives while focus is scrolled away');
     await stays(away, 'the card in view stays where it was, not the field out of view');
 
+    // A select being chosen in holds still too; the cards below it move down.
+    await p.evaluate(`(() => { const choice = document.querySelector('#topic-state-choice'); choice.focus();
+      scrollBy(0, choice.getBoundingClientRect().top - 100); })()`);
+    const chosen = await p.evaluate("Math.round(document.querySelector('#topic-state-choice').getBoundingClientRect().top)");
+    await arrive('Arrives while a state is being chosen');
+    assert.ok(Math.abs(await p.evaluate("Math.round(document.querySelector('#topic-state-choice').getBoundingClientRect().top)") - chosen) <= 1,
+      'the select being chosen in stays where it was');
+
     // The browser's own scroll anchoring must not hold the page by the rail:
     // with a rail row and a card both in view, the rail growing moves no card.
     await p.evaluate(`(() => { document.activeElement.blur(); const rows = document.querySelectorAll('.rail a.nav-item');
@@ -212,6 +220,25 @@ export async function liveChecks({ check, page, until, control, observations, or
       document.querySelector('.rail').prepend(grown); return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))); })()`);
     await stays(railing, 'the rail growing moves no card');
     await p.evaluate("document.querySelector('#fixture-rail-growth').remove()");
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // On a phone at the top of a topic, with its state open and no card on the
+  // screen, a message arriving below moves nothing the person is reading.
+  await check('live with no card on the screen, a message arriving scrolls nothing', async () => {
+    const p = await page('live-no-card', null, true);
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await settled(p);
+    await p.evaluate(`(() => { document.querySelector('#topic-state details').open = true; document.activeElement.blur(); scrollTo(0, 0);
+      return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))); })()`);
+    assert.equal(await p.evaluate("[...document.querySelectorAll('#messages .message-card')].some(card => { const b = card.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; })"), false,
+      'no card is on the screen');
+    const text = 'Arrives below the screen';
+    await message(text);
+    await until(() => hasText(p, '#messages', text), 'the message is shown');
+    await settled(p);
+    assert.equal(await p.evaluate('scrollY'), 0, 'the page did not scroll');
     assert.deepEqual(p.errors, []);
     await p.close();
   });
