@@ -179,7 +179,14 @@ export async function openJournal({ instanceId, actor } = {}) {
     return !(await navigator.locks.query()).held.some(lock => lock.name === name);
   };
   if (!await lock(writerId)) throw Error('This document could not acquire recovery ownership.');
-  const release = () => { closed = true; for (const end of held.values()) end(); held.clear(); };
+  // Closing ends every lock this document holds, and every lease a cleanup
+  // was granted: no transaction runs after close, so none relies on it.
+  const release = () => {
+    closed = true;
+    for (const end of held.values()) end();
+    for (const lease of leases.values()) lease.release?.();
+    held.clear();
+  };
   let database;
   try { database = await new Promise((resolve, reject) => {
     let failed = false;

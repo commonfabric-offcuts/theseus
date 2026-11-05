@@ -652,6 +652,84 @@ try {
         assert.equal(await lockHeld(), true, 'an adopted source\'s lock is kept after the cleanup that shared it ends');
       });
 
+      // A lock manager the test drives: a release completes only on flush(),
+      // which first lets every queued microtask run,
+      // hooks.defer(name) holds a request until deferred.get(name)() runs, and
+      // hooks.granted(name) runs right after a grant's callback returns.
+      const fakeLocks = `(()=>{
+        const holders=new Set(),pending=[],deferred=new Map(),hooks={};
+        const locks={
+          request(name,options,callback){
+            const decide=()=>{
+              if(holders.has(name))return Promise.resolve(callback(null));
+              holders.add(name);
+              const value=callback({name,mode:'exclusive'});
+              hooks.granted?.(name);
+              return Promise.resolve(value).then(result=>new Promise(done=>pending.push(()=>{holders.delete(name);done(result);})));
+            };
+            if(hooks.defer?.(name))return new Promise(resolve=>deferred.set(name,()=>resolve(decide())));
+            return decide();
+          },
+          query:async()=>({held:[...holders].map(name=>({name})),pending:[]}),
+        };
+        Object.defineProperty(navigator,'locks',{value:locks,configurable:true});
+        return {holders,pending,deferred,hooks,flush:async()=>{await new Promise(r=>setTimeout(r));for(const release of pending.splice(0))release();}};
+      })()`;
+
+      await check('cleanup close ends every lock this document holds or was granted, and a refused cleanup lists the copy as another tab\'s', async () => {
+        const source = async () => { const p = await page('cleanup-close'); await p.evaluate('j.save(snapshot)'); const row = await p.evaluate('j.own(editor.key)'); await p.close(); return row; };
+        const first = await source(), second = await source();
+        const b = await page('cleanup-close');
+        const result = await b.evaluate(`(async()=>{
+          const fake=${fakeLocks},open=()=>import('/journal.mjs').then(m=>m.openJournal({instanceId:context.instanceId,actor:context.actor}));
+          const named=writer=>[...fake.holders].some(name=>name.includes(writer));
+          const first=${JSON.stringify(first)},second=${JSON.stringify(second)},out={};
+          // An adopted source and the document's own writer are ended by close.
+          const k1=await open();
+          await k1.adopt(editor.key,{id:first.id,stamp:first.stamp});
+          out.adoptedHeld=named(first.writerId);
+          k1.close();await fake.flush();
+          out.afterClose=[named(k1.writerId),named(first.writerId)];
+          // A cleanup's granted lease is ended by close while its confirmation is still out.
+          const k2=await open();
+          let entered,open2;const inside=new Promise(r=>entered=r),gate=new Promise(r=>open2=r);
+          const retire=k2.retireAcknowledged(editor.key,second,async()=>{entered();await gate;return true}).then(v=>v,e=>'refused');
+          await inside;
+          k2.close();await fake.flush();
+          out.cleanupHeldAfterClose=named(second.writerId);
+          open2();out.retire=await retire;
+          // A lock granted just as the journal closes is released, not kept.
+          const k3=await open();
+          fake.hooks.granted=name=>{if(name.includes(second.writerId))k3.close();};
+          out.adoptAsClosing=await k3.adopt(editor.key,{id:second.id,stamp:second.stamp}).then(()=>'adopted',e=>e.message);
+          fake.hooks.granted=null;await fake.flush();
+          out.heldAfterClosingAdoption=named(second.writerId);
+          // While another tab holds the writer, a listing during this document's refused cleanup says so.
+          const k4=await open();
+          const other='aim-next-recovery-writer:'+JSON.stringify([context.instanceId,context.actor,second.writerId]);
+          fake.holders.add(other);
+          let arrived;const requested=new Promise(r=>arrived=r);
+          fake.hooks.defer=name=>{if(name!==other)return false;arrived();return true;};
+          const refused=k4.retireAcknowledged(editor.key,second,async()=>true);
+          await requested;
+          // The cleanup's request is answered one task after the listing's read
+          // completes, so the listing is already asking about that writer.
+          const realTransaction=IDBDatabase.prototype.transaction;let armed=true;
+          IDBDatabase.prototype.transaction=function(...args){
+            const tx=realTransaction.apply(this,args);
+            if(armed&&args[1]==='readonly'){armed=false;tx.addEventListener('complete',()=>setTimeout(()=>fake.deferred.get(other)()));}
+            return tx;
+          };
+          const listing=k4.current(editor.key,[second.id]);
+          out.refused=await refused;
+          out.listed=(await listing).map(row=>row?.availability);
+          IDBDatabase.prototype.transaction=realTransaction;
+          return out;
+        })()`);
+        assert.deepEqual(result, { adoptedHeld: true, afterClose: [false, false], cleanupHeldAfterClose: false, retire: 'refused',
+          adoptAsClosing: 'Open in another tab. Close that tab before retrying recovery.', heldAfterClosingAdoption: false, refused: false, listed: ['open-in-another-tab'] });
+      });
+
       await check('cleanup a writer this document just released is taken again, never refused by its own release', async () => {
         const a = await page('cleanup-relock');
         await a.evaluate('j.save(snapshot)');
@@ -662,16 +740,7 @@ try {
         // only when the test lets it: one task after the next read-only
         // transaction completes, so all the work that read starts has run.
         const result = await b.evaluate(`(async()=>{
-          const holders=new Set(),pending=[];
-          const fake={
-            request(name,options,callback){
-              if(holders.has(name))return Promise.resolve(callback(null));
-              holders.add(name);
-              return Promise.resolve(callback({name,mode:'exclusive'})).then(value=>new Promise(done=>pending.push(()=>{holders.delete(name);done(value);})));
-            },
-            query:async()=>({held:[...holders].map(name=>({name})),pending:[]}),
-          };
-          Object.defineProperty(navigator,'locks',{value:fake,configurable:true});
+          const {pending}=${fakeLocks};
           const k=await (await import('/journal.mjs')).openJournal({instanceId:context.instanceId,actor:context.actor});
           let armed=false;const realTransaction=IDBDatabase.prototype.transaction;
           IDBDatabase.prototype.transaction=function(...args){
