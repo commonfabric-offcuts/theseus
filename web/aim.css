@@ -68,6 +68,6 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .chip .reach { color: var(--warn); }
 .chip.unreachable button:not([aria-label]) { font-size: .75rem; color: var(--warn); text-decoration: underline; }
 .message-time { font-weight: 400; color: var(--muted); }
-/* On a wide screen the rail scrolls on its own, so nothing it shows can move the conversation, and the conversation cannot move it. */
-@media(min-width:761px){.rail{position:sticky;top:0;align-self:start;max-height:100dvh;overflow-y:auto;overscroll-behavior:contain}}
+/* On a wide screen the rail scrolls on its own, so nothing it shows can move the conversation, and the conversation cannot move it. Scrolling past its end moves the page, which brings the rail's last rows below the header into view. */
+@media(min-width:761px){.rail{position:sticky;top:0;align-self:start;max-height:100dvh;overflow-y:auto}}
 .sent-whole{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0}
