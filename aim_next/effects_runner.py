@@ -426,16 +426,30 @@ class EffectsLoop:
             self.dirty_at = max(self.clock.monotonic()+0.1,self.last_hint_read+0.1)
 
     def _wait(self, timeout):
-        """One wait; child input space, then output, then exits, all before any claim work."""
+        """One wait; an ended claim lease, then child input space, output and exits, all before any other claim work."""
         event = self.watch.wait(timeout)
         self._accept_event(event)
         if self.host is not None:
+            # A lease that ended during the wait is abandoned before any input is
+            # flushed, so a dead claim's queued bytes never reach the child.
+            self._expire()
             for fd in event.get('writable',()):
                 self.host.on_writable(fd)
             for fd in event.get('readable',()):
                 self.host.on_readable(fd)
             for pid in event.get('exited',()):
                 self.host.on_exit(pid)
+
+    def _expire(self):
+        """Core's claim lease is the only bound on an outstanding RPC: once it ends, the dispatch is abandoned."""
+        if (self.outstanding is None or self.host is None or self.host.current is None
+                or self.clock.wall_ms() < self.outstanding['lease_until_ms']):
+            return False
+        self.host.abandon()
+        self.outstanding = None
+        self.due = None
+        self.read_needed = True
+        return True
 
     def run(self):
         try:
@@ -449,13 +463,7 @@ class EffectsLoop:
                 if self.token is not None and wall >= self.lease:
                     self._event('idle_lease_lost')
                     return self._result('idle_lease_lost',pause_saved=False)
-                if (self.outstanding is not None and self.host is not None and self.host.current is not None
-                        and wall >= self.outstanding['lease_until_ms']):
-                    # Core's claim lease is the only bound on an outstanding RPC.
-                    self.host.abandon()
-                    self.outstanding = None
-                    self.due = None
-                    self.read_needed = True
+                if self._expire():
                     continue
                 renew = self.token is not None and self._renew_needed(now,wall)
                 if renew and now >= max(self.gates['renew'],self.short_at):

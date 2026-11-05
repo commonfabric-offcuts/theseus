@@ -233,6 +233,9 @@ class Child:
         self.ready_waiters = []
         # Threads whose attach began after this child was ended; they attach to its successor.
         self.successors = []
+        # Set when a lease ended with a request unanswered: the highest request ID
+        # sent by then. A response to any later request is the child's recovery.
+        self.suspect = None
         self.eof = False
         # Set once NOTE_EXIT is being handled: its end of output is the exit's, not a fault.
         self.exiting = False
@@ -483,6 +486,9 @@ class Host:
             self.threads[thread.id] = thread
         self.children = {}
         self.by_fd, self.by_pid, self.by_input = {}, {}, {}
+        # While a child this host ended is handled as exited: its home's
+        # interrupted attaches go to the successor.
+        self.replacing = None
         self.current = None
         self.stopping = False
         self.inputs_closed = False
@@ -507,19 +513,37 @@ class Host:
     def abandon(self):
         """The claim's lease ended first; a late response is logged and its thread re-read before the next dispatch.
 
-        A child that still holds unread input from this dispatch stopped reading
-        for a whole lease: it is ended, so the dead claim's turn is never
-        delivered late, and the next claim starts a fresh child."""
+        Each lease end is also the clock for a child that misbehaves; no other
+        timer exists. A child that still holds unread input from this dispatch
+        stopped reading for a whole lease, and one that left a request
+        unanswered through a second lease, after the re-read that was its
+        recovery chance, stopped answering: either is ended, so the dead
+        claim's turn is never delivered late, and the next claim starts a fresh
+        child. One still alive a lease after its TERM is killed."""
         if self.current is not None:
             work, self.current = self.current, None
             work.abandoned = True
             work.thread.uncertain = True
             self.log.write("dispatch_abandoned", attempt=work.claim["attempt_id"])
             child = self.children.get(work.thread.home)
-            if child is not None and child.outbox:
+            if child is None:
+                return
+            if child.state == "stalled":
+                self.log.write("child_killed", pid=child.pid)
+                child.signal(signal.SIGKILL)
+            elif child.outbox:
                 self.log.write("input_stalled", pid=child.pid, unread=len(child.outbox))
-                self._fail_child(child, "stalled")
-                child.signal(signal.SIGTERM)
+                self._end_child(child)
+            elif child.waiting and child.suspect is None:
+                child.suspect = child.next_id
+                self.log.write("child_suspect", pid=child.pid, unanswered=len(child.waiting))
+            elif child.waiting:
+                self.log.write("child_unresponsive", pid=child.pid, unanswered=len(child.waiting))
+                self._end_child(child)
+
+    def _end_child(self, child):
+        self._fail_child(child, "stalled")
+        child.signal(signal.SIGTERM)
 
     def stale(self, attempt_id, thread_id):
         self.threads[thread_id].uncertain = True
@@ -752,6 +776,11 @@ class Host:
         self.ensure_child(thread.home, lambda child: self._resume(child, thread), lambda reason: self._attach_failed(thread, reason))
 
     def _attach_failed(self, thread, reason):
+        replacing = self.replacing
+        if reason == "child_exited" and replacing is not None and replacing.home == thread.home:
+            if thread not in replacing.successors:
+                replacing.successors.append(thread)
+            return
         thread.attaching = False
         waiters, thread.waiters = thread.waiters, []
         for ready, failed in waiters:
@@ -896,6 +925,13 @@ class Host:
 
     def _exited(self, child):
         """NOTE_EXIT on the captured PID: drain, reap, record, and hand the lost work back (design §6.2)."""
+        self.replacing = child if child.state == "stalled" else None
+        try:
+            self._handle_exit(child)
+        finally:
+            self.replacing = None
+
+    def _handle_exit(self, child):
         child.exiting = True
         if child.out in self.by_fd:
             self.on_readable(child.out)
@@ -939,6 +975,9 @@ class Host:
             if handler is None:
                 self.log.write("unexpected_response", pid=child.pid)
                 return
+            if child.suspect is not None and message["id"] > child.suspect:
+                child.suspect = None
+                self.log.write("child_recovered", pid=child.pid)
             error = message.get("error")
             handler(message.get("result") if error is None else None, error)
         elif kind == "request":

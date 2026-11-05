@@ -628,6 +628,11 @@ class AbandonedDispatchCase(HostCase):
         self.assertEqual(sent, ["thread/turns/list", "turn/start", "thread/turns/list", "turn/steer"])
         self.assertEqual(self.replies(), ["late but whole"])
         self.assertEqual(self.pending(), [])
+        # The unanswered start made the child suspect; its answered re-read cleared that, so it was kept.
+        names = [event.get("event") for event in runner.events]
+        self.assertLess(names.index("host_child_suspect"), names.index("host_child_recovered"))
+        self.assertNotIn("host_child_unresponsive", names)
+        self.assertEqual(names.count("host_spawn"), 1)
         self.stopped_cleanly(runner)
 
 
@@ -777,6 +782,49 @@ class InputStallCase(HostCase):
                          [(abandoned["attempt"], "expired"), (handed["attempt"], "handed")])
         self.stopped_cleanly(runner)
 
+    def test_input_space_that_frees_after_the_lease_ends_never_delivers_the_dead_claims_input(self):
+        gate = self.gated()
+        self.flood()
+        runner = self.runner()
+        runner.event("host_input_waiting")
+        expired = self.sql("SELECT id,lease_until_ms FROM wake_attempts ORDER BY started_ms DESC LIMIT 1")[0]
+        # Held still, the runner cannot act until the child has room again and the lease has ended.
+        os.kill(runner.pid, signal.SIGSTOP)
+        self.addCleanup(lambda: runner.process.poll() is None and os.kill(runner.pid, signal.SIGCONT))
+        with open(str(gate), "w"):
+            pass
+        # The only wait in this test: the runner is stopped, so nothing races the deadline.
+        time.sleep(max(0.0, expired[1] / 1000 - time.time()) + 0.25)
+        os.kill(runner.pid, signal.SIGCONT)
+        abandoned = runner.event("host_dispatch_abandoned")
+        self.assertEqual(abandoned["attempt"], expired[0])
+        runner.event("host_input_stalled")
+        handed = runner.event("host_dispatch", outcome="handed", mode="start")
+        runner.event("host_turn_end", status="completed")
+        self.assertEqual(self.turn_rpcs(), [("turn/start", "theseus:" + handed["attempt"])],
+                         "the expired claim's turn/start never reached a child")
+        self.stopped_cleanly(runner)
+
+    def test_a_child_that_ignores_its_term_for_a_lease_is_killed_and_the_work_goes_to_its_successor(self):
+        self.gated()
+        script = dict(self.script, ignore_term_once=True, turns=self.turns)
+        (self.home / "fake-script.json").write_text(json.dumps(script))
+        self.flood()
+        runner = self.runner()
+        first = runner.event("host_dispatch_abandoned")
+        stalled = runner.event("host_input_stalled")
+        runner.event("host_attach_waits", pid=stalled["pid"])
+        # The waiting claim's own lease ends with the child still alive.
+        second = runner.event("host_dispatch_abandoned")
+        runner.event("host_child_killed", pid=stalled["pid"])
+        exit_event = runner.event("host_child_exit", pid=stalled["pid"])
+        self.assertEqual(exit_event["status"], -signal.SIGKILL)
+        handed = runner.event("host_dispatch", outcome="handed", mode="start")
+        runner.event("host_turn_end", status="completed")
+        self.assertEqual(self.sql("SELECT attempt_id,outcome FROM wake_results ORDER BY finished_ms"),
+                         [(first["attempt"], "expired"), (second["attempt"], "expired"), (handed["attempt"], "handed")])
+        self.stopped_cleanly(runner)
+
     def test_a_claim_that_arrives_while_the_ended_child_is_still_exiting_goes_to_its_successor(self):
         self.gated()
         term = self.gated("term-gate")
@@ -797,6 +845,29 @@ class InputStallCase(HostCase):
         # No claim was answered unavailable while the replacement was under way.
         self.assertEqual(self.sql("SELECT attempt_id,outcome FROM wake_results ORDER BY finished_ms"),
                          [(abandoned["attempt"], "expired"), (handed["attempt"], "handed")])
+        self.stopped_cleanly(runner)
+
+
+class UnansweredRequestCase(HostCase):
+    """A child that reads its input but answers nothing gets one recovery chance, then is ended."""
+    script = {"mute_after_resume_once": True}
+    turns = [{"reply": "after the silence"}]
+
+    def test_a_child_that_answers_no_request_through_its_recovery_lease_is_ended(self):
+        runner = self.runner()
+        self.open_topic("Please process this work.")
+        first = runner.event("host_dispatch_abandoned")
+        suspect = runner.event("host_child_suspect")
+        # The second claim re-reads the thread on the same child; no answer comes.
+        second = runner.event("host_dispatch_abandoned")
+        runner.event("host_child_unresponsive", pid=suspect["pid"])
+        runner.event("host_child_exit", pid=suspect["pid"])
+        handed = runner.event("host_dispatch", outcome="handed", mode="start")
+        runner.event("host_turn_end", status="completed")
+        self.assertEqual(self.replies(), ["after the silence"])
+        self.assertEqual(self.sql("SELECT attempt_id,outcome FROM wake_results ORDER BY finished_ms"),
+                         [(first["attempt"], "expired"), (second["attempt"], "expired"), (handed["attempt"], "handed")])
+        self.assertNotIn("host_child_recovered", [event.get("event") for event in runner.events])
         self.stopped_cleanly(runner)
 
 

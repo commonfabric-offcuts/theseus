@@ -20,6 +20,9 @@ The script may also set:
                        closes the FIFO CODEX_HOME/gate (an event, never a timer)
   gate_turns_list_once  after answering the first thread/turns/list, stop reading
                        input the same way, so the host's writes back up
+  mute_after_resume_once  once the first thread/resume is answered, read every
+                       later line but answer no request
+  ignore_term_once     the first spawned fake ignores SIGTERM
   linger_on_term       the first spawned fake, on SIGTERM, waits for the FIFO
                        CODEX_HOME/term-gate the same way before it dies by that signal
   bad_resume_once      the first thread/resume answers a thread that is not an object
@@ -84,8 +87,11 @@ class Fake:
         self.asked = {}
         self.server_ids = 0
         self.wire({"spawn": os.getpid(), "argv": sys.argv[1:], "path": os.environ.get("PATH")})
+        self.muted = False
         if self.once("linger_on_term"):
             signal.signal(signal.SIGTERM, self.linger)
+        if self.once("ignore_term_once"):
+            signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
     def linger(self, number, frame):
         self.wire({"lingering": number})
@@ -129,7 +135,7 @@ class Fake:
                 self.answered(message)
                 continue
             handler = getattr(self, "on_" + re.sub(r"\W", "_", message["method"]), None)
-            if "id" not in message:
+            if "id" not in message or self.muted:
                 continue
             if handler is None:
                 self.error(message, -32601, "method not found")
@@ -209,6 +215,8 @@ class Fake:
         self.save()
         self.load(thread_id, params.get("developerInstructions") or record["instructions"])
         self.send({"id": request["id"], "result": self.settings(params, thread_id, self.script.get("resume_status"))})
+        if self.once("mute_after_resume_once"):
+            self.muted = True
 
     def on_thread_turns_list(self, request, params):
         if self.once("bad_turns_list_once"):
