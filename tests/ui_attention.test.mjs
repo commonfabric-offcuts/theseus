@@ -187,7 +187,6 @@ test('a message in a topic the reader has lost can be read whole where it is lis
     'a topic the reader can open is read there, not here');
   const pressed = button('Read it here').onclick();
   assert.equal(button('Read it here'), undefined, 'while it reads, the button says so');
-  assert.equal(button('Reading…').getAttribute('aria-busy'), 'true');
   button('Reading…').onclick();
   assert.equal(reads, 1, 'a second press while reading asks nothing more');
   paintSent(host, answer, actions);
@@ -263,8 +262,12 @@ test('a read survives the list being drawn again, keeps its focus, and ends on t
   assert.equal(controls.length, 2, 'each attachment control is made once');
   assert.equal(closed().all().includes(opened), true, 'and is kept, with whatever it opened');
   assert.equal(document.activeElement, opened, 'keeping its focus');
+  notices[0]('This attachment is unavailable.');
+  notices[1]('This attachment is unavailable.');
+  assert.match(closed().text, /plan\.txt: This attachment is unavailable\. notes\.txt: This attachment is unavailable\./, 'each attachment\'s refusal is said on its row, by name');
+  notices[1]('');
   notices[0]('The attachment could not be read');
-  assert.match(closed().text, /The attachment could not be read/, 'an attachment\'s refusal is said on its row');
+  assert.match(closed().text, /The attachment could not be read/);
   notices[1]('');
   assert.match(closed().text, /could not be read/, 'another attachment opening leaves it said');
   notices[0]('');

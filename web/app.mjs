@@ -436,8 +436,15 @@ function attachmentControl(attachment, sourceRef, current, notice) {
 function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);
   const current = () => registry.isSourceCurrent(presentation) && !registry.current.sourceUnavailable && !registry.current.availabilityUnconfirmed;
-  for (const attachment of presentation.source.attachments ?? [])
-    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, message => { if (message) reader.notice(message); }));
+  for (const attachment of presentation.source.attachments ?? []) {
+    // An open clears this attachment's refusal only while the notice still
+    // says it, so it never wipes what something else has said since.
+    let said = '';
+    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, message => {
+      if (message) reader.notice(said = message);
+      else if (said && $('reader-notice').textContent === said) { reader.notice(''); said = ''; }
+    }));
+  }
 }
 async function openSource(ref, opener) {
   const request = ++opening;

@@ -242,6 +242,40 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
+  // A Reader attachment that is refused and then opens leaves no refusal on
+  // the screen, and never clears what something else has said since.
+  await check('live a Reader attachment refused then opened shows no refusal, and leaves other notices', async () => {
+    const p = await page('live-reader-attachment', null, true);
+    await settled(p);
+    await p.open(0);
+    const named = "[...document.querySelectorAll('#source-attachments button')].find(b => b.textContent === 'Open passive.png')";
+    await until(() => p.evaluate(`document.querySelector('#reader').open && Boolean(${named})`), 'the Reader offers the attachment');
+    const notice = () => p.evaluate("document.querySelector('#reader-notice').hidden ? '' : document.querySelector('#reader-notice').textContent");
+    const press = () => p.evaluate(`${named}.focus()`).then(() => p.key('Enter'));
+    const refuse = async () => {
+      p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
+      await press();
+      const held = await until(() => p.held.find(h => !h.done && h.event.request.url.endsWith('/api/media/read')), 'the attachment read is held');
+      held.done = true; p.intercept(null); await p.fail(held);
+      await until(async () => (await notice()) !== '', 'the refusal is shown');
+    };
+    await refuse();
+    await p.evaluate("document.querySelector('#reader-notice').textContent = 'Something else said this'");
+    await press();
+    await until(() => p.evaluate(`Boolean(document.querySelector('#source-attachments a[download="passive.png"]'))`), 'the attachment opens');
+    assert.equal(await notice(), 'Something else said this', 'a notice it did not write stays');
+    await p.point('#reader-close');
+    await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes');
+    await p.open(0);
+    await until(() => p.evaluate(`document.querySelector('#reader').open && Boolean(${named})`), 'the Reader offers it again');
+    await refuse();
+    await press();
+    await until(() => p.evaluate(`Boolean(document.querySelector('#source-attachments a[download="passive.png"]'))`), 'the attachment opens');
+    assert.equal(await notice(), '', 'its own refusal is gone once it opens');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
   // On a wide, short window the rail scrolls on its own; a long rail's last
   // row can still be reached by scrolling over the rail, though the page beside
   // it is short.

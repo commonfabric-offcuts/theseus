@@ -98,7 +98,7 @@ export function paintSent(host, answer, actions) {
         // Each attachment's latest refusal, until it opens.
         entry.refusals = [];
         entry.controls = (source.attachments ?? []).map((ref, index) => attachment(ref, item.source_ref, message => {
-          entry.refusals[index] = message;
+          entry.refusals[index] = message && `${ref.name ?? 'Attachment'}: ${message}`;
           repaint();
         }));
         entry.source = source;
@@ -134,7 +134,6 @@ export function paintSent(host, answer, actions) {
         element('p', { className: 'sent-whole', textContent: `${item.message.author_id}: ${entry.source.body}` }), ...entry.controls, mark, said);
     }
     const more = part(element('button', { type: 'button', textContent: entry?.pending ? 'Reading…' : 'Read it here' }), id, 'more');
-    more.setAttribute?.('aria-busy', String(Boolean(entry?.pending)));
     more.onclick = () => readWhole(item);
     return element('li', { className: 'closed-topic' }, ...head, words, ' ', more, ' ', mark, said);
   }));
