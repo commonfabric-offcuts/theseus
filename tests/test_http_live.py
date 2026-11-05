@@ -4,6 +4,7 @@ import hashlib
 import http.client
 import json
 import os
+import select
 import socket
 from pathlib import Path
 import sqlite3
@@ -372,10 +373,10 @@ class LiveStreamTests(unittest.TestCase):
         finally:
             db.close()
 
-    def spill_under_lock(self, client):
+    def spill_under_lock(self, client, settled=lambda: None):
         """Another connection that holds the writer's exclusive lock, having written pages into the file.
 
-        The feed has read every earlier commit when this returns."""
+        The feed has read every earlier commit, and settled() has run, before the lock is taken."""
         holder = sqlite3.connect(str(self.db), isolation_level=None)
         holder.execute("BEGIN IMMEDIATE")
         holder.execute("CREATE TABLE spill(v TEXT)")
@@ -383,6 +384,7 @@ class LiveStreamTests(unittest.TestCase):
         holder.execute("COMMIT")
         self.commit()
         self.assertEqual(self.line(client), {"seq": self.seq()})
+        settled()
         opens, opened = self.count_opens()
         holder.execute("PRAGMA cache_size=2")
         holder.execute("PRAGMA cache_spill=1")
@@ -430,6 +432,37 @@ class LiveStreamTests(unittest.TestCase):
         for descriptor in (feed.stop_read, feed.stop_write):
             with self.assertRaises(OSError):
                 os.fstat(descriptor)
+
+    def test_a_feed_stopped_just_before_its_read_does_not_begin_it(self):
+        # Stopping joins a thread that is not reading; that thread must not
+        # then begin a read the writer's lock would hold.
+        client = self.open()
+        self.line(client)
+        feed, entered, release = self.server.live_feed, threading.Event(), threading.Event()
+        settled = feed._settled_seq
+        def paused():
+            entered.set()
+            release.wait(5)
+            return settled()
+        holder, opens, _ = self.spill_under_lock(client, lambda: setattr(feed, "_settled_seq", paused))
+        stopper = None
+        try:
+            self.assertTrue(entered.wait(5), "the feed never read after the writer's pages")
+            stopped = threading.Event()
+            stopper = threading.Thread(target=lambda: (self.stop(), stopped.set()), daemon=True)
+            stopper.start()
+            # The paused thread does not read its stop pipe; stop() has written it.
+            self.assertEqual(select.select([feed.stop_read], [], [], 5)[0], [feed.stop_read])
+            release.set()
+            self.assertTrue(stopped.wait(5), "stopping waited for the writer's lock")
+            self.assertEqual(opens, [])
+        finally:
+            release.set()
+            holder.execute("ROLLBACK")
+            holder.close()
+            if stopper is not None:
+                stopper.join()
+        self.assertEqual(self.line(client), {"end": "stopped"})
 
     def test_a_writer_that_holds_its_lock_at_start_delays_the_feed_on_one_connection(self):
         self.stop()

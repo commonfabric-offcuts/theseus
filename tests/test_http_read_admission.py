@@ -380,8 +380,8 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         now[0] += 0.4
         joiner = self.pool.submit(self.request, "attention", "background")
         self.joined(2)
-        # The first page's window runs out; the second has 0.4 s of its own left.
-        now[0] += 0.1
+        # The first page's window runs out; the second has 0.35 s of its own left.
+        now[0] += 0.15
         self.assertEqual(leader.result(timeout=2)[0], 503)
         return now, release, first, joiner
 
@@ -395,7 +395,7 @@ class HTTPReadAdmissionTests(unittest.TestCase):
     def test_a_page_that_joins_a_read_has_its_window_counted_from_its_own_arrival(self):
         now, release, first, joiner = self.joined_late()
         self.queued("background", 1)
-        now[0] += 0.4
+        now[0] += 0.4  # past the second page's own window, not past a new one from 0.55
         self.assertEqual(joiner.result(timeout=2)[0], 503)
         release.set()
         self.assertEqual(first.result()[0], 200)
