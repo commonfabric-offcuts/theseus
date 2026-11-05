@@ -5,6 +5,8 @@ import { Uploads } from './uploads.mjs';
 import { uploadWork, readableUploads, copyNeedsImageReview, refusedCopyAtDraft, copyChoiceKey } from './upload-state.mjs';
 
 const copy = value => structuredClone(value);
+// A listed copy that holds the reply for image review until it is resolved.
+const imageCopy = item => item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable';
 const same = (a, b) => {
   if (a === b) return true;
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
@@ -304,19 +306,23 @@ export class EditorRegistry {
     }));
   }
 
-  async recoveryCandidates(editor, options) {
+  // `shown` receives the checked page inside the cleanup task that read it, so
+  // a later recheck's patch always lands after it.
+  async recoveryCandidates(editor, options, shown = () => {}) {
     const limit = options?.limit ?? 10;
     if (!Number.isInteger(limit) || limit < 1 || limit > 10) throw Error('Recovery cleanup reads one page of at most ten versions.');
     const result = await this.cleanup.discover(this.sessionFor(editor), async () => {
       const page = await this.journal.candidates(editor.key, { ...options, limit });
       return Array.isArray(page) ? { items: page, nextCursor: null } : page;
+    }, page => {
+      if (editor.context.kind === 'reply') {
+        if (!options?.cursor) editor.imageCopies = new Map();
+        for (const item of page.items) if (imageCopy(item)) editor.imageCopies.set(item.id, item);
+        editor.imageCopiesNext = page.nextCursor;
+      }
+      shown(page);
     });
     if (editor.context.kind === 'reply') {
-      if (!options?.cursor) editor.imageCopies = new Map();
-      for (const item of result.items) {
-        if (item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable') editor.imageCopies.set(item.id, item);
-      }
-      editor.imageCopiesNext = result.nextCursor;
       if ([...editor.imageCopies.values()].some(row => refusedCopyAtDraft(row, undefined))) {
         // Until this scoped read succeeds the old slot cannot dismiss a newly
         // discovered refusal. Retry can establish the exact revision later.
@@ -333,18 +339,15 @@ export class EditorRegistry {
   }
 
   // A recheck of deferred rows replaces just those rows among the editor's
-  // image copies; false when the editor is no longer this registry's.
-  async applyRecheck(editor, ids, page) {
-    if (this.disposed || this.sessions.get(editor.key)?.editor !== editor) return false;
-    if (editor.context.kind === 'reply' && editor.imageCopies) {
-      for (const id of ids) editor.imageCopies.delete(id);
-      for (const item of page.items) {
-        if (item.uploadPresent || item.snapshot?.format === 2 || item.availability === 'unreadable') editor.imageCopies.set(item.id, item);
-      }
-      this.updateImageBarrier(editor);
-      await this.sessionFor(editor).uploads.validateRetained();
-    }
-    return true;
+  // image copies, at once; it returns the retained-image validation that
+  // follows, or null when the editor is no longer this registry's.
+  applyRecheck(editor, ids, page) {
+    if (this.disposed || this.sessions.get(editor.key)?.editor !== editor) return null;
+    if (editor.context.kind !== 'reply' || !editor.imageCopies) return Promise.resolve();
+    for (const id of ids) editor.imageCopies.delete(id);
+    for (const item of page.items) if (imageCopy(item)) editor.imageCopies.set(item.id, item);
+    this.updateImageBarrier(editor);
+    return this.sessionFor(editor).uploads.validateRetained();
   }
 
   updateImageBarrier(editor) {
@@ -353,11 +356,20 @@ export class EditorRegistry {
     this.changed(editor);
   }
 
-  async removeCandidateImages(editor, candidate) {
-    const row = await this.journal.changeCandidateImages(editor.key, candidate, { kind: 'remove' });
-    editor.imageCopies.set(row.id, { ...row, availability: 'available' });
-    this.updateImageBarrier(editor);
-    await this.sessionFor(editor).uploads.validateRetained();
+  // Removing a copy's image selections or discarding one retained file runs in
+  // the editor's cleanup queue, so a recheck either sees the changed row or has
+  // already been applied.
+  async changeCandidateImages(editor, candidate, action) {
+    const session = this.sessionFor(editor);
+    const row = await this.cleanup.enqueue(editor.key, async () => {
+      const row = await this.journal.changeCandidateImages(editor.key, candidate, action);
+      if (editor.imageCopies && this.sessions.get(editor.key) === session) {
+        editor.imageCopies.set(row.id, { ...row, availability: 'available' });
+        this.updateImageBarrier(editor);
+      }
+      return row;
+    });
+    await session.uploads.validateRetained();
     return row;
   }
 

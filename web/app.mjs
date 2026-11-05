@@ -139,9 +139,8 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
   comparison = { editor, presentation, localVersion, authority: JSON.stringify(editor.authorityRecovery) };
   const list = node('div'); $('review-content').append(list);
   const appendCandidates = async cursor => {
-    const page = await registry.recoveryCandidates(editor, { cursor, limit: 10 });
+    const page = await registry.recoveryCandidates(editor, { cursor, limit: 10 }, shown => { if (current()) { candidates.set(editor.key, shown); changed(editor); } });
     if (!current()) return;
-    candidates.set(editor.key, page); changed(editor);
     for (const candidate of page.items) {
       const section = version(candidate.availability === 'open-in-another-tab' ? 'Open in another tab' : 'Writing kept on this device',
         candidate.snapshot?.draft.body ?? 'Close the other tab, then Retry to review its writing.',
@@ -166,7 +165,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
           }));
         }
         if (candidate.snapshot.format === 2 && candidate.snapshot.uploadState.entries.some(e => e.selected && e.owner.kind === 'cycle')) {
-          section.append(make('Remove saved image selections', async () => { await registry.removeCandidateImages(editor, candidate); if (current()) await showVersions(editor, opener, presentation); }));
+          section.append(make('Remove saved image selections', async () => { await registry.changeCandidateImages(editor, candidate, { kind: 'remove' }); if (current()) await showVersions(editor, opener, presentation); }));
         }
         for (const e of candidate.snapshot.uploadState?.entries ?? []) if (!e.selected || e.owner.kind === 'submission') {
           const label = node('p', e.file?.name ?? e.ready_descriptor?.name ?? 'Earlier image'); section.append(label);
@@ -178,7 +177,7 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
             if (current()) label.textContent = `${e.file?.name ?? 'Earlier image'} · ${r.recorded === true ? r.status : 'Confirmation unknown'}`;
           }));
           if (e.bytes_ref) section.append(make('Discard retained file', async () => {
-            await journal.changeCandidateImages(editor.key, candidate, { kind: 'discard', selectionId: e.selection_id });
+            await registry.changeCandidateImages(editor, candidate, { kind: 'discard', selectionId: e.selection_id });
             if (current()) await showVersions(editor, opener, presentation);
           }));
         }
@@ -359,22 +358,23 @@ async function present(presentation) {
   sourceAttachments(presentation);
 }
 function discover(presentation, editor) {
-  return registry.recoveryCandidates(editor, { limit: 10 }).then(page => { candidates.set(editor.key, page); changed(editor); })
+  return registry.recoveryCandidates(editor, { limit: 10 }, page => { candidates.set(editor.key, page); changed(editor); })
     .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
 }
 // Rows a foreground read deferred were checked again: what the page lists for
 // exactly those rows is replaced, and every other listed copy stays.
-async function rechecked(session, ids, page) {
-  const editor = session.editor;
-  try {
-    if (!await registry.applyRecheck(editor, ids, page)) return;
-    const known = candidates.get(editor.key), kept = new Map(page.items.map(row => [row.id, row]));
-    if (known) candidates.set(editor.key, { ...known, items: known.items.flatMap(row => !ids.includes(row.id) ? [row] : kept.has(row.id) ? [kept.get(row.id)] : []) });
-    changed(editor);
-  } catch (error) {
+// It runs inside the cleanup task that rechecked them, so no discovery or
+// image change lands between the recheck and this patch.
+function rechecked(session, ids, page) {
+  const editor = session.editor, validated = registry.applyRecheck(editor, ids, page);
+  if (!validated) return;
+  const known = candidates.get(editor.key), kept = new Map(page.items.map(row => [row.id, row]));
+  if (known) candidates.set(editor.key, { ...known, items: known.items.flatMap(row => !ids.includes(row.id) ? [row] : kept.has(row.id) ? [kept.get(row.id)] : []) });
+  changed(editor);
+  validated.catch(error => {
     const presentation = presentationFor(editor);
     if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message);
-  }
+  });
 }
 function sourceAttachments(presentation) {
   reader.drawAttachments($('source-attachments'), presentation.source.attachments);

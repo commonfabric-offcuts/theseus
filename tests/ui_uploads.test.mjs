@@ -69,6 +69,7 @@ export function memoryBackend(writerId = 'fixture-writer', rows = new Map()) {
     put: async (row, guard = () => true) => { assert.ok(guard()); puts.push({ kind: row.kind, bytes: countBlobs(row) }); rows.set(row.id, copy(row)); },
     get: async id => copy(rows.get(id)),
     forEditor: async key => ({ items: [...rows.values()].filter(r => r.editorKey === key && r.active === 1 && r.writerId !== writerId).map(r => ({ ...copy(r), availability: 'available' })), nextCursor: null }),
+    currentCandidates: async (key, ids) => ids.map(id => rows.get(id)).filter(r => r?.editorKey === key && r.active === 1 && r.writerId !== writerId).map(r => ({ ...copy(r), availability: 'available' })),
     history: async () => ({ items: [], nextCursor: null }),
     capture: async (row, bytes, guard) => { assert.ok(guard()); if (backend.failCapture) throw Error('Byte quota'); assert.ok(!rows.has(bytes.id)); await backend.put(bytes); await backend.put(row); },
     readBytes: async (editorId, id) => { const row = rows.get(editorId); assert.ok(row?.snapshot.uploadState.entries.some(e => e.bytes_ref === id)); return copy(rows.get(id)); },
@@ -400,17 +401,17 @@ test('a recheck replaces only its rows among saved image copies and keeps what o
   f.rows.set(kept.id, copy(kept));
   f.editor.imageCopies = new Map([[kept.id, kept], [locked.id, locked]]); f.registry.updateImageBarrier(f.editor);
   const stale = { ...f.editor, imageCopies: new Map(f.editor.imageCopies) };
-  assert.equal(await f.registry.applyRecheck(stale, [locked.id], { items: [] }), false);
+  assert.equal(f.registry.applyRecheck(stale, [locked.id], { items: [] }), null);
   assert.deepEqual([...stale.imageCopies.keys()], ['u2', 'r2'], 'an editor the registry does not hold is left as it is');
-  assert.equal(await f.registry.applyRecheck(f.editor, [locked.id], { items: [] }), true);
+  await f.registry.applyRecheck(f.editor, [locked.id], { items: [] });
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2']);
-  assert.equal(await f.registry.applyRecheck(f.editor, [kept.id], { items: [kept] }), true);
+  await f.registry.applyRecheck(f.editor, [kept.id], { items: [kept] });
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2'], 'a rechecked row that is still retained stays');
   assert.throws(() => prepare(f.editor), /saved image/i);
   await f.registry.waiveUnreadable(f.editor, kept);
   prepare(f.editor);
   f.registry.dispose();
-  assert.equal(await f.registry.applyRecheck(f.editor, [kept.id], { items: [] }), false);
+  assert.equal(f.registry.applyRecheck(f.editor, [kept.id], { items: [] }), null);
   assert.deepEqual([...f.editor.imageCopies.keys()], ['u2'], 'a disposed registry changes nothing');
 });
 test('continuation and locked saved-image copies are barriers even without visible file refs', async t => {
@@ -477,7 +478,7 @@ test('X1 discovery removal exposes and validates canonical refs without a passiv
   assert.equal(u.current()[0].retained_ref.id, remote.attachments[0].id);
   const original = f.api.view.bind(f.api), entered = deferred(), release = deferred(); t.after(() => release.resolve());
   f.api.view = async (name, args) => { if (name === 'media') { entered.resolve(); await release.promise; } return original(name, args); };
-  const removing = f.registry.removeCandidateImages(e, row); await entered.promise;
+  const removing = f.registry.changeCandidateImages(e, row, { kind: 'remove' }); await entered.promise;
   assert.throws(() => prepare(e), /image|attachment/i, 'the clear discovery flag cannot bypass validation');
   release.resolve(); await removing;
   assert.equal(u.pending(), false); assert.equal(await f.journal.own(e.key), undefined, 'validation is not user writing');

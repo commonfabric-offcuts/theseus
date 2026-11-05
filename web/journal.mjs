@@ -83,6 +83,7 @@ export class RecoveryJournal {
   }
   own(editorKey) { return this.enqueue(editorKey, () => this.backend.get(this.id(editorKey))); }
   candidates(editorKey, options) { return this.backend.forEditor(editorKey, options); }
+  current(editorKey, ids) { return this.backend.currentCandidates(editorKey, ids); }
   async inspectCandidate(editorKey, candidate) {
     const row = this.backend.inspectCandidate ? await this.backend.inspectCandidate(editorKey, candidate) : await this.backend.get(candidate.id);
     if (!row || row.id !== candidate.id || row.stamp !== candidate.stamp || row.editorKey !== editorKey) throw Error('This saved copy changed. Review it again.');
@@ -193,15 +194,20 @@ export async function openJournal({ instanceId, actor } = {}) {
     });
     const selected = rows.slice(0, limit), items = [];
     for (const row of selected) {
-      if (active === 1 && (row.superseded_by || row.writerId === writerId)) continue;
-      if (!valid(row, key)) {
-        if (row.snapshot?.context && (row.snapshot.context.instanceId !== instanceId || row.snapshot.context.actor !== actor)) continue;
-        items.push({ id: row.id, editorKey: key, stamp: row.stamp, availability: 'unreadable', uploadPresent: row.snapshot?.format === 2 }); continue;
-      }
-      if (active === 0 || await lock(row.writerId, false)) items.push({ ...row, availability: 'available' });
-      else items.push({ id: row.id, editorKey: row.editorKey, writerId: row.writerId, stamp: row.stamp, availability: 'open-in-another-tab', uploadPresent: row.snapshot.format === 2 });
+      const item = await listed(row, key, active);
+      if (item) items.push(item);
     }
     return { items, nextCursor: rows.length > limit ? selected.at(-1).id : null };
+  };
+  // How a stored row is listed for an editor, or null when it is not listed.
+  const listed = async (row, key, active) => {
+    if (active === 1 && (row.superseded_by || row.writerId === writerId)) return null;
+    if (!valid(row, key)) {
+      if (row.snapshot?.context && (row.snapshot.context.instanceId !== instanceId || row.snapshot.context.actor !== actor)) return null;
+      return { id: row.id, editorKey: key, stamp: row.stamp, availability: 'unreadable', uploadPresent: row.snapshot?.format === 2 };
+    }
+    if (active === 0 || await lock(row.writerId, false)) return { ...row, availability: 'available' };
+    return { id: row.id, editorKey: row.editorKey, writerId: row.writerId, stamp: row.stamp, availability: 'open-in-another-tab', uploadPresent: row.snapshot.format === 2 };
   };
   const validBytes = (bytes, row) => {
     if (!bytes || row.active !== 1 || row.superseded_by || bytes.kind !== 'upload-bytes-v1' ||
@@ -229,6 +235,24 @@ export async function openJournal({ instanceId, actor } = {}) {
       });
     }),
     forEditor: (key, options) => page(key, 1, options),
+    // The active candidates among these IDs, listed as a page lists them now.
+    currentCandidates: async (key, ids) => {
+      scopedKey(key);
+      if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string')) throw Error('Invalid recovery IDs.');
+      const rows = await transact('readonly', (store, finish) => {
+        const found = [];
+        let left = ids.length;
+        if (!left) finish(found);
+        for (const id of ids) store.get(id).onsuccess = event => { found.push(event.target.result); if (!--left) finish(found); };
+      });
+      const items = [];
+      for (const row of rows) {
+        if (!row || row.scope !== scope || row.editorKey !== key || row.active !== 1) continue;
+        const item = await listed(row, key, 1);
+        if (item) items.push(item);
+      }
+      return items;
+    },
     inspectCandidate: async (key, candidate) => {
       scopedKey(key);
       const row = await transact('readonly', (_store, finish, get) => get(candidate.id, finish));

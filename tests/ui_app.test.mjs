@@ -370,6 +370,7 @@ async function fixture(t, options = {}) {
     put: async row => { rows.set(row.id, copy(row)); },
     get: async id => copy(rows.get(id)),
     forEditor: async key => [...rows.values()].filter(row => row.editorKey === key).map(copy),
+    currentCandidates: async (key, ids) => ids.map(id => rows.get(id)).filter(row => row?.editorKey === key).map(copy),
     removeExact: async (id, stamp) => rows.get(id)?.stamp === stamp ? rows.delete(id) : false,
   };
   const journal = new RecoveryJournal(backend, 'fixture-document');

@@ -109,6 +109,7 @@ const memory = () => {
     async put(row) { rows.set(row.id, structuredClone(row)); },
     async get(id) { return structuredClone(rows.get(id) ?? null); },
     async forEditor(key) { return [...rows.values()].filter(row => row.editorKey === key).map(row => structuredClone(row)); },
+    async currentCandidates(key, ids) { return ids.map(id => rows.get(id)).filter(row => row?.editorKey === key).map(row => structuredClone(row)); },
     async removeExact(id, stamp) { if (rows.get(id)?.stamp === stamp) rows.delete(id); },
   };
 };

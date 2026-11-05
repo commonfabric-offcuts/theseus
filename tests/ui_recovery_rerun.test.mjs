@@ -24,17 +24,19 @@ const acknowledgedRow = { id: JSON.stringify([key, 'w1']), availability: 'availa
 const busy = cleanup => cleanup.read(async () => { throw new AttemptError('busy', 503, { error: { code: 'SERVER_BUSY' } }); });
 
 // `check` answers each journal call; a check that is not deferred retires its row.
-function fixture({ check, stopped = () => false } = {}) {
-  const rechecks = [], calls = [];
+// The journal holds every row it was asked about, unless `current` says otherwise.
+function fixture({ check, stopped = () => false, current } = {}) {
+  const rechecks = [], calls = [], checked = [], held = new Map();
   const journal = {
-    retireImageCandidate: async (key, row) => { calls.push(row.id); await check(cleanup, row); return { retired: true }; },
-    retireAcknowledged: async (key, row) => { calls.push(row.id); await check(cleanup, row); return true; },
+    retireImageCandidate: async (key, row) => { calls.push(row.id); checked.push(row); held.set(row.id, row); await check(cleanup, row); return { retired: true }; },
+    retireAcknowledged: async (key, row) => { calls.push(row.id); checked.push(row); held.set(row.id, row); await check(cleanup, row); return true; },
     own: async () => { calls.push('own'); await check(cleanup, null); return null; },
+    current: async (key, ids) => current ? current(ids) : ids.map(id => held.get(id)).filter(Boolean),
   };
   const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal, runtime: { readTimeoutMs: 5000 }, changed: () => {}, stopped });
   cleanup.resumeListeners.add((session, ids, page) => rechecks.push({ session, ids, kept: page.items.map(row => row.id) }));
   const session = { editor: { key, context } };
-  return { cleanup, session, rechecks, calls };
+  return { cleanup, session, rechecks, calls, checked };
 }
 // The first journal call of each row waits inside its read until released.
 function held() {
@@ -197,6 +199,73 @@ test('a row answered after a foreground deferral leaves a later busy deferral wa
   assert.deepEqual(rechecks, [{ session, ids: ['r2'], kept: [] }]);
 });
 
+test('a recheck checks the row as the journal holds it now, and drops a row that left the journal', async () => {
+  let answer = busy, now = new Map([['r1', { ...imageRow, stamp: 's2' }]]);
+  const { cleanup, session, rechecks, calls, checked } = fixture({ check: cleanup => answer(cleanup), current: ids => ids.map(id => now.get(id)).filter(Boolean) });
+  await cleanup.candidates(session, { items: [{ ...imageRow, stamp: 's1' }, { ...imageRow, id: 'r2' }], nextCursor: null });
+  answer = cleanup => cleanup.read(async () => null);
+  cleanup.foreground().release(); await tick();
+  assert.deepEqual(calls, ['r1', 'r2', 'r1']);
+  assert.equal(checked.at(-1).stamp, 's2', 'the changed row is checked at its current stamp');
+  assert.deepEqual(rechecks, [{ session, ids: ['r1', 'r2'], kept: [] }], 'r2 left the journal, so the page omits it');
+});
+
+test('a journal that cannot read the deferred rows reports it and applies nothing', async () => {
+  let answer = busy;
+  const { cleanup, session, rechecks } = fixture({ check: cleanup => answer(cleanup), current: async () => { throw Error('closed'); } });
+  await cleanup.candidates(session, { items: [imageRow], nextCursor: null });
+  answer = cleanup => cleanup.read(async () => null);
+  cleanup.foreground().release(); await tick();
+  assert.deepEqual(rechecks, []);
+  assert.match(session.editor.cleanupError, /could not finish/);
+});
+
+test('rows a replaced session deferred are never checked for the session that replaced it', async () => {
+  let answer = busy;
+  const { cleanup, session, rechecks, calls } = fixture({ check: cleanup => answer(cleanup) });
+  await cleanup.candidates(session, { items: [imageRow], nextCursor: null });
+  // The editor is replaced under the same key; the new session's own copy is deferred.
+  const replaced = { editor: { key, context } };
+  cleanup.request(replaced); await cleanup.idle(key);
+  answer = cleanup => cleanup.read(async () => null);
+  cleanup.foreground().release(); await tick();
+  assert.deepEqual([calls, rechecks], [['r1', 'own', 'own'], []]);
+});
+
+test('a session that is no longer registered leaves nothing to check again', async () => {
+  let answer = busy, registered = true;
+  const { cleanup, rechecks, calls } = fixture({ check: cleanup => answer(cleanup) });
+  const session = { editor: { key, context }, registered: () => registered };
+  await cleanup.candidates(session, { items: [imageRow], nextCursor: null });
+  registered = false; answer = cleanup => cleanup.read(async () => null);
+  cleanup.foreground().release(); await tick();
+  assert.deepEqual([calls, rechecks], [['r1'], []]);
+  registered = true; cleanup.foreground().release(); await tick();
+  assert.deepEqual(calls, ['r1'], 'the dropped deferral does not return');
+});
+
+test('a listener that fails is reported and the others still receive the recheck', async () => {
+  let answer = busy;
+  const { cleanup, session, rechecks } = fixture({ check: cleanup => answer(cleanup) });
+  const first = new Set([() => { throw Error('listener failed'); }, ...cleanup.resumeListeners]);
+  cleanup.resumeListeners.clear(); for (const listener of first) cleanup.resumeListeners.add(listener);
+  await cleanup.candidates(session, { items: [imageRow], nextCursor: null });
+  answer = cleanup => cleanup.read(async () => null);
+  cleanup.foreground().release(); await tick();
+  assert.deepEqual(rechecks, [{ session, ids: ['r1'], kept: [] }]);
+  assert.match(session.editor.cleanupError, /could not finish/);
+});
+
+test('a reservation with two reads in flight holds background reads until both settle', async () => {
+  const { cleanup } = fixture({ check: cleanup => cleanup.read(async () => null) });
+  const fg = cleanup.foreground(), slow = deferred();
+  const first = fg.read(async () => 'first'), second = fg.read(() => slow.promise);
+  await first; fg.release(); await tick();
+  await assert.rejects(cleanup.read(async () => 'background'), { code: 'CLEANUP_DEFERRED' });
+  slow.resolve('second'); await second; await tick();
+  assert.equal(await cleanup.read(async () => 'background'), 'background');
+});
+
 test('no recheck runs between discovery reading its page and checking it', async () => {
   const { hold, entered, check } = held();
   const { cleanup, session, rechecks, calls } = fixture({ check });
@@ -205,11 +274,11 @@ test('no recheck runs between discovery reading its page and checking it', async
   cleanup.foreground().release();
   // r1 is deferred and ready once its read settles; discovery is queued first.
   const read = deferred(), reading = deferred();
-  const found = cleanup.discover(session, async () => { reading.resolve(); await read.promise; calls.push('read'); return { items: [], nextCursor: null }; });
+  const found = cleanup.discover(session, async () => { reading.resolve(); await read.promise; calls.push('read'); return { items: [], nextCursor: null }; }, () => calls.push('applied'));
   hold.resolve(); await page;
   await reading.promise; await tick();
   assert.deepEqual(calls, ['r1', 'own']);
   read.resolve(); await found; await tick();
-  assert.deepEqual(calls, ['r1', 'own', 'read', 'r1']);
+  assert.deepEqual(calls, ['r1', 'own', 'read', 'applied', 'r1']);
   assert.deepEqual(rechecks, [{ session, ids: ['r1'], kept: [] }]);
 });

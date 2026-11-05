@@ -60,40 +60,50 @@ export class RecoveryCleanup {
     this.readTail = Promise.resolve(); this.activeRead = null; this.foregroundCount = 0;
     this.partitioned = supportsAdmission(bootstrap); this.readEpoch = 0; this.readController = null;
     this.foregroundListeners = new Set();
-    // The rows (and own copy) whose check a read deferred, per editor. They are
-    // checked again once no foreground read remains and the editor's queue has
-    // drained; rows deferred only by a busy server wait for the next foreground
-    // release. A later check of a row answers for it.
+    // The row IDs (and own copy) whose check a read deferred, per editor and
+    // bound to the session that deferred them. They are checked again once no
+    // foreground read remains and the editor's queue has drained; rows deferred
+    // only by a busy server wait for the next foreground release. A later check
+    // of a row answers for it, and a session that is no longer registered
+    // leaves nothing to check.
     this.waiting = new Map(); this.resumeListeners = new Set();
   }
   deferred(cause) { return Object.assign(Error('Background reading is deferred; the recovery copy is retained.'), { code: 'CLEANUP_DEFERRED', ...(cause ? { cause } : {}) }); }
   defer(session, error, row) {
-    const key = session.editor.key, entry = this.waiting.get(key) ?? { rows: new Map(), own: false, ready: false };
-    if (row) entry.rows.set(row.id, row); else entry.own = true;
-    entry.session = session; entry.ready ||= !error.cause;
+    const key = session.editor.key, held = this.waiting.get(key);
+    const entry = held?.session === session ? held : { session, ids: new Set(), own: false, ready: false };
+    if (row) entry.ids.add(row.id); else entry.own = true;
+    entry.ready ||= !error.cause;
     this.waiting.set(key, entry);
   }
   checking(session, rowId) {
     const key = session.editor.key, entry = this.waiting.get(key);
     if (!entry) return;
-    if (rowId === undefined) entry.own = false; else entry.rows.delete(rowId);
-    if (!entry.own && !entry.rows.size) this.waiting.delete(key);
+    if (rowId === undefined) entry.own = false; else entry.ids.delete(rowId);
+    if (!entry.own && !entry.ids.size) this.waiting.delete(key);
   }
   resume() {
     if (this.foregroundCount || this.stopped()) return;
     for (const [key, entry] of [...this.waiting]) {
+      if (entry.session.registered?.() === false) { this.waiting.delete(key); continue; }
       if (!entry.ready || this.queues.has(key)) continue;
       this.waiting.delete(key);
       this.enqueue(key, () => this.recheck(entry)).catch(() => {});
     }
   }
-  // Only the deferred rows are checked again; listeners patch what the page
-  // shows for exactly those rows, leaving every loaded page in place.
-  async recheck({ session, rows, own }) {
+  // Only the deferred rows are checked again, as the journal holds them now: a
+  // row that changed is checked at its current stamp, and one that left the
+  // journal is absent from the page. Listeners patch what the editor shows for
+  // exactly those IDs inside this task, leaving every loaded page in place.
+  async recheck({ session, ids, own }) {
     if (own) await this.retireOwn(session);
-    if (!rows.size) return;
-    const ids = [...rows.keys()], page = await this.check(session, { items: [...rows.values()], nextCursor: null });
-    for (const listener of this.resumeListeners) listener(session, ids, page);
+    if (!ids.size || this.stopped()) return;
+    let items;
+    try { items = await this.journal.current(session.editor.key, [...ids]); } catch (error) { this.report(session, error); return; }
+    const page = await this.check(session, { items, nextCursor: null });
+    for (const listener of this.resumeListeners) {
+      try { listener(session, [...ids], page); } catch (error) { this.report(session, error); }
+    }
   }
   read(operation) {
     if (this.foregroundCount) return Promise.reject(this.deferred());
@@ -131,8 +141,8 @@ export class RecoveryCleanup {
       for (const listener of this.foregroundListeners) listener();
     }
     const deadline = Date.now() + this.runtime.readTimeoutMs;
-    let released = false, finished = true, counted = true;
-    const releaseCount = () => { if (released && finished && counted) { counted = false; if (!--this.foregroundCount) { for (const entry of this.waiting.values()) entry.ready = true; this.resume(); } } };
+    let released = false, inFlight = 0, counted = true;
+    const releaseCount = () => { if (released && !inFlight && counted) { counted = false; if (!--this.foregroundCount) { for (const entry of this.waiting.values()) entry.ready = true; this.resume(); } } };
     const bounded = async (promise, controller = null) => {
       const remaining = deadline - Date.now();
       if (remaining <= 0) { controller?.abort(); throw Error('Reader request timed out. Your writing is kept.'); }
@@ -145,9 +155,9 @@ export class RecoveryCleanup {
       read: async operation => {
         if (!this.partitioned && this.activeRead) await bounded(this.activeRead.catch(() => {}));
         if (released || Date.now() >= deadline) throw Error('Reader request timed out. Your writing is kept.');
-        const controller = new AbortController(); finished = false;
+        const controller = new AbortController(); ++inFlight;
         const transport = Promise.resolve().then(() => operation({ signal: controller.signal }));
-        const done = () => { finished = true; releaseCount(); };
+        const done = () => { --inFlight; releaseCount(); };
         transport.then(done, done);
         return bounded(transport, controller);
       },
@@ -174,10 +184,14 @@ export class RecoveryCleanup {
     }).catch(() => {});
   }
   own(session) { return this.enqueue(session.editor.key, () => this.retireOwn(session)); }
-  // Discovery retires the own copy, reads a page and checks it in one task, so
-  // no recheck runs between the read and the check of what it read.
-  discover(session, readPage) {
-    return this.enqueue(session.editor.key, async () => { await this.retireOwn(session); return this.check(session, await readPage()); });
+  // Discovery retires the own copy, reads a page, checks it and applies it in
+  // one task, so no recheck runs between the read and what it shows.
+  discover(session, readPage, apply) {
+    return this.enqueue(session.editor.key, async () => {
+      await this.retireOwn(session);
+      const page = await this.check(session, await readPage());
+      apply(page); return page;
+    });
   }
   report(session, error) {
     session.editor.cleanupError = error ? 'Saved; recovery-copy cleanup could not finish. Retry from Review versions.' : null;

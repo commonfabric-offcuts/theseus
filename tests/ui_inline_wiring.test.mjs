@@ -171,21 +171,22 @@ test('optional outcome and topic rail reads begin after the primary composer is 
   assert.ok(order.indexOf('composer')<order.indexOf('workspaces'));
   assert.ok(order.indexOf('composer')<order.indexOf('workspace_topics'));
 });
-test('a recheck replaces only the rechecked rows the page lists, and only for an editor the registry still holds',async()=>{
-  const f=fixture(),applied=[];let holds=true;
+test('a recheck replaces only the rechecked rows the page lists, at once, and only for an editor the registry still holds',async()=>{
+  const f=fixture(),applied=[],validation=new Promise(()=>{});let holds=true;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
   f.registry.recoveryCandidates=async()=>({items:[],nextCursor:null});
-  f.registry.applyRecheck=async(editor,ids,page)=>{applied.push([editor.key,ids,page.items.map(row=>row.id)]);return holds;};
+  f.registry.applyRecheck=(editor,ids,page)=>{applied.push([editor.key,ids,page.items.map(row=>row.id)]);return holds?validation:null;};
   await f.initialize();await new Promise(resolve=>setImmediate(resolve));
   const listeners=[...f.registry.cleanup.resumeListeners];assert.equal(listeners.length,1);
   const {candidates}=f.owners(),row=id=>({id,stamp:id});
   candidates.set(f.editor.key,{items:[row('a'),row('r2'),row('u2'),row('r3')],nextCursor:'c3'});
-  await listeners[0]({editor:f.editor},['r2','r3'],{items:[{...row('r3'),stamp:'released'}],nextCursor:null});
+  // The patch lands inside the listener call, before the image validation that follows it settles.
+  listeners[0]({editor:f.editor},['r2','r3'],{items:[{...row('r3'),stamp:'released'}],nextCursor:null});
   assert.deepEqual(applied,[['inline',['r2','r3'],['r3']]]);
   assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))),{items:[row('a'),row('u2'),{...row('r3'),stamp:'released'}],nextCursor:'c3'},
     'retired rows leave, rechecked rows are replaced, and other rows and the next page stay');
   holds=false;
-  await listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
+  listeners[0]({editor:f.editor},['a'],{items:[],nextCursor:null});
   assert.equal(candidates.get(f.editor.key).items.length,3,'an editor the registry no longer holds is left as it is');
 });
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
