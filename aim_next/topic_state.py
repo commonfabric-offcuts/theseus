@@ -40,6 +40,24 @@ READABLE = ("(w.owner_id=:actor OR t.creator_id=:actor "
             "OR EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id=t.workspace_id AND m.actor_id=:actor) "
             "OR EXISTS (SELECT 1 FROM topic_participants p WHERE p.topic_id=t.id AND p.actor_id=:actor AND p.active=1))")
 
+# Version 12: each waiting row copies its topic's state time and archive flag, so what
+# waits on a reader is counted and listed, newest first, from one index. Rows exist only
+# while the topic waits and only for someone who can read it (topic.update and _unwait
+# keep that true), so the read needs no per-row check. The upgrade drops rows left by
+# earlier code for someone who had already lost the topic.
+WAITING_ORDER_SCHEMA = [
+    "ALTER TABLE topic_waiting ADD COLUMN state_ms INTEGER",
+    "ALTER TABLE topic_waiting ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK(archived IN (0,1))",
+    "UPDATE topic_waiting SET state_ms=(SELECT t.state_ms FROM topics t WHERE t.id=topic_waiting.topic_id),"
+    "archived=(SELECT t.archived FROM topics t WHERE t.id=topic_waiting.topic_id)",
+    "DELETE FROM topic_waiting WHERE NOT EXISTS (SELECT 1 FROM topics t JOIN workspaces w ON w.id=t.workspace_id "
+    "WHERE t.id=topic_waiting.topic_id AND " + READABLE.replace(":actor", "topic_waiting.actor_id") + ")",
+    "DROP INDEX actor_waiting",
+    "CREATE INDEX reader_waiting ON topic_waiting(actor_id,archived,state_ms DESC,topic_id)",
+]
+WAITING_ORDER_DOWN = ("DROP INDEX reader_waiting", "CREATE INDEX actor_waiting ON topic_waiting(actor_id,topic_id)",
+                      "ALTER TABLE topic_waiting DROP COLUMN archived", "ALTER TABLE topic_waiting DROP COLUMN state_ms")
+
 
 class TopicState:
     def _command_topic_update(self, db, actor, envelope):
@@ -65,6 +83,7 @@ class TopicState:
             if not isinstance(args["archived"], bool):
                 raise Refusal("INVALID_ARGUMENT", "Archived is true or false")
             db.execute("UPDATE topics SET archived=? WHERE id=?", (int(args["archived"]), topic["id"]))
+            db.execute("UPDATE topic_waiting SET archived=? WHERE topic_id=?", (int(args["archived"]), topic["id"]))
         old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? ORDER BY actor_id", (topic["id"],))]
         if args.keys() & {"state", "note", "waiting_on"}:
             if not manager and not db.execute("SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1",
@@ -85,7 +104,8 @@ class TopicState:
             db.execute("UPDATE topics SET state=?,state_note=?,state_by=?,state_ms=? WHERE id=?",
                        (state, note, actor, _now_ms(), topic["id"]))
             db.execute("DELETE FROM topic_waiting WHERE topic_id=?", (topic["id"],))
-            db.executemany("INSERT INTO topic_waiting VALUES (?,?)", [(topic["id"], member) for member in waiting])
+            db.executemany("INSERT INTO topic_waiting(topic_id,actor_id,state_ms,archived) SELECT id,?,state_ms,archived FROM topics WHERE id=?",
+                           [(member, topic["id"]) for member in waiting])
         else:
             waiting = old_waiting
         version = self._touch_topic(db, topic)
@@ -130,12 +150,15 @@ class TopicState:
         return waiting
 
     def _waiting_on_reader(self, db, actor, limit=5):
-        """(count, newest first) of readable topics that wait on this reader."""
-        readable = ("FROM topic_waiting q JOIN topics t ON t.id=q.topic_id JOIN workspaces w ON w.id=t.workspace_id "
-                    "WHERE q.actor_id=:actor AND t.state='waiting' AND " + READABLE)
-        count = db.execute("SELECT count(*) " + readable, {"actor": actor}).fetchone()[0]
+        """(count, newest first) of the topics that wait on this reader, archived ones left out.
+
+        The count walks the reader's rows in a covering index; the list reads the
+        newest few in that index's order."""
+        count = db.execute("SELECT count(*) FROM topic_waiting INDEXED BY reader_waiting WHERE actor_id=? AND archived=0",
+                           (actor,)).fetchone()[0]
         rows = db.execute("SELECT t.id,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,t.state_note,t.state_by,t.state_ms "
-                          + readable + " ORDER BY t.state_ms DESC,t.id LIMIT :limit", {"actor": actor, "limit": limit}).fetchall()
+                          "FROM topic_waiting q INDEXED BY reader_waiting CROSS JOIN topics t ON t.id=q.topic_id "
+                          "WHERE q.actor_id=? AND q.archived=0 ORDER BY q.state_ms DESC,q.topic_id LIMIT ?", (actor, limit)).fetchall()
         items = []
         for row in rows:
             title, truncated = _prefix(row["title_prefix"])

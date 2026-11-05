@@ -9,7 +9,7 @@ from .authority import Authority, AuthorityError, GuardBusy
 from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
 from .runner import HOSTED_DOWN, HOSTED_OCCUPIED, HOSTED_SCHEMA
-from .topic_state import TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA
+from .topic_state import TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA, WAITING_ORDER_DOWN, WAITING_ORDER_SCHEMA
 from .conversation import MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA
 
 
@@ -20,7 +20,8 @@ STEPS = (
      "SELECT EXISTS (SELECT 1 FROM openings)"),
     ("9", "10", HOSTED_SCHEMA, HOSTED_DOWN, HOSTED_OCCUPIED),
     ("10", "11", TOPIC_STATE_SCHEMA, TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED),
-    ("11", "12", MESSAGE_TIME_SCHEMA, MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED),
+    # Version 12 times each message and orders what waits on each reader.
+    ("11", "12", MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA, WAITING_ORDER_DOWN + MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED),
 )
 
 

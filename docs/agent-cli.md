@@ -146,7 +146,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `publish OPENING` | Publishes a saved opening at its current revision. |
 | `state TOPIC active\|waiting\|review\|done [--note TEXT] [--waiting-on A,B]` | Says where a topic stands (`topic.update`). A new state clears the note and who it waits on unless they are given; only a waiting topic waits on someone, and only on people and agents who can read it; someone who loses the topic, by leaving it or the outcome, is taken off the list. Its participants, its creator and the outcome's owner can say it. |
 | `rename TOPIC TITLE` | Renames a topic; its creator and the outcome's owner can. |
-| `archive TOPIC`, `unarchive TOPIC` | Takes a topic out of its outcome's list, or puts it back, without changing where it stands; its creator and the outcome's owner can. |
+| `archive TOPIC`, `unarchive TOPIC` | Takes a topic out of its outcome's list, or puts it back, without changing where it stands; its creator and the outcome's owner can. While archived it counts toward no outcome, total or waiting list (see [attention.md](attention.md)). |
 | `ack DELIVERY...` | Sends one `delivery.ack` per delivery. |
 | `read-through TOPIC SEQ` | Sends `topic.read_through`. |
 | `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM (exit 0, even while blocked writing to a reader that is not draining); ends with a refusal when the authority changes, reported with its exit code even if a stop came too. |

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
+from unittest import mock
 
+from aim_next import store as store_module, topic_state
 import reader_fixture as fixtures
 
 
@@ -197,6 +199,40 @@ class TopicStateCase(fixtures.ReaderCase):
         self.member_set("agent-a", False)
         self.assertEqual(self.topic()["waiting_on"], ["agent-a"])
 
+    def attention_statements(self, actor):
+        """The reads of topic_waiting that one attention view runs, with their values."""
+        original, statements = store_module._connect, []
+
+        class Connection:
+            def __init__(self, db): self.db = db
+            def __getattr__(self, name): return getattr(self.db, name)
+            def execute(self, sql, values=()):
+                if "topic_waiting" in sql:
+                    statements.append((sql, values))
+                return self.db.execute(sql, values)
+
+        def connect(path):
+            db, facts = original(path)
+            return Connection(db), facts
+        with mock.patch.object(store_module, "_connect", connect):
+            answer = self.store.view(actor, "attention", {})
+        self.assertNotIn("error", answer, answer)
+        return answer, statements
+
+    def test_attention_reads_what_waits_on_the_reader_in_index_order(self):
+        self.committed(self.update({"state": "waiting", "waiting_on": ["owner"]}, actor="agent-a"))
+        answer, statements = self.attention_statements("owner")
+        self.assertEqual((answer["waiting_on_me"], [item["id"] for item in answer["latest_waiting"]]), (1, ["t1"]))
+        self.assertTrue(statements)
+        with sqlite3.connect(str(self.path)) as db:
+            for sql, values in statements:
+                plan = " | ".join(row[3] for row in db.execute("EXPLAIN QUERY PLAN " + sql, values))
+                with self.subTest(sql=sql):
+                    # Neither a sort of every waiting row nor a readability check per row.
+                    self.assertNotIn("TEMP B-TREE", plan)
+                    self.assertNotIn("CORRELATED", plan)
+                    self.assertIn("USING COVERING INDEX" if sql.startswith("SELECT count(*)") else "USING INDEX", plan)
+
     def test_waiting_on_is_bounded_as_given_before_any_name_is_looked_up(self):
         # The limit applies to the list as sent, so an unknown 33rd name is never looked up.
         self.rejected(self.update({"state": "waiting", "waiting_on": ["owner"] * 32 + ["nobody-here"]}, actor="agent-a"), "TOO_MANY_RECIPIENTS")
@@ -242,11 +278,17 @@ class TopicStateCase(fixtures.ReaderCase):
                                                          "participants": ["agent-a"], "body": "Opening", "attachments": []},
                                         target={"opening_id": "o-" + topic}, expected={"opening_revision": 0}))
             self.committed(self.command("opening.publish", {}, target={"opening_id": "o-" + topic}, expected={"opening_revision": 1}))
-            self.committed(self.update({"state": "waiting", "waiting_on": ["owner"]}, actor="agent-a", topic=topic,
-                                       expected=self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]))
-            self.sql("UPDATE topics SET state_ms=? WHERE id=?", (1000 + n, topic))
+            # Later topics are said to wait earlier, so the order is by when, not by name or creation.
+            with mock.patch.object(topic_state, "_now_ms", return_value=2000 - n):
+                self.committed(self.update({"state": "waiting", "waiting_on": ["owner"]}, actor="agent-a", topic=topic,
+                                           expected=self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]))
         count, latest = self.waiting_on("owner")
-        self.assertEqual((count, latest), (7, ["tw6", "tw5", "tw4", "tw3", "tw2"]))
+        self.assertEqual((count, latest), (7, ["tw0", "tw1", "tw2", "tw3", "tw4"]))
+        # Saying it again makes a topic the newest.
+        with mock.patch.object(topic_state, "_now_ms", return_value=3000):
+            self.committed(self.update({"note": "Still waiting"}, actor="agent-a", topic="tw6",
+                                       expected=self.store.view("owner", "topic", {"topic_id": "tw6"})["topic"]["version"]))
+        self.assertEqual(self.waiting_on("owner"), (7, ["tw6", "tw0", "tw1", "tw2", "tw3"]))
 
 
 if __name__ == "__main__":

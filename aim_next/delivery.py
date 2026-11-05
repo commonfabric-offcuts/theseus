@@ -115,6 +115,11 @@ class Delivery:
         list view passes the topics or outcomes on its page: their subscription
         groups are found by index, and only the direct group's pending rows are
         walked whatever the page.
+
+        A page of topics, archived or not, counts each of its own. Outcome and
+        total counts leave archived topics out, as the outcome's list does, so
+        no count points at a topic the reader cannot find in a list; nothing is
+        settled, and the counts return when the topic is unarchived.
         """
         counts, scope, direct_scope, values = {}, "", "", ()
         if topics == [] or workspaces == []:
@@ -125,6 +130,8 @@ class Delivery:
         elif workspaces is not None:
             scope = direct_scope = " AND t.workspace_id IN (%s)" % ",".join("?" * len(workspaces))
             values = tuple(workspaces)
+        if topics is None:
+            scope, direct_scope = scope + " AND t.archived=0", direct_scope + " AND t.archived=0"
         if topics is not None:
             subscriptions = db.execute("SELECT g.topic_id,t.workspace_id,SUM(g.pending_count) AS pending "
                                        "FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 CROSS JOIN topics t ON t.id=g.topic_id "
@@ -150,7 +157,7 @@ class Delivery:
 
     def _view_attention(self, db, actor, args):
         """What waits for this actor: unread and addressed totals, the newest addressed
-        deliveries, and the topics that say they wait on this actor.
+        deliveries, and the topics that say they wait on this actor, archived topics left out.
 
         Each delivery says whether its topic can be opened: a person sent a
         message by name keeps reading it after they lose the topic, and then
@@ -160,8 +167,10 @@ class Delivery:
         waiting, waiting_topics = self._waiting_on_reader(db, actor)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 AND active=1",
                            (actor,)).fetchone()
+        # Newest first in index order, passing over messages in archived topics as the totals do.
         rows = [] if group is None else db.execute(
-            "SELECT * FROM deliveries INDEXED BY pending_group_deliveries WHERE group_id=? AND state='pending' ORDER BY seq DESC LIMIT 5",
+            "SELECT d.* FROM deliveries d INDEXED BY pending_group_deliveries CROSS JOIN messages m ON m.id=d.message_id "
+            "CROSS JOIN topics t ON t.id=m.topic_id WHERE d.group_id=? AND d.state='pending' AND t.archived=0 ORDER BY d.seq DESC LIMIT 5",
             (group["id"],)).fetchall()
         items = []
         for row in rows:
