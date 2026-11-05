@@ -53,20 +53,22 @@ SCHEMA = [
 ]
 
 
-def _connect(path):
+def _connect(path, busy_ms=250):
     # Explicit rw prevents a typo from silently creating a second authority.
+    # busy_ms is how long a statement waits on another connection's lock; only
+    # the live feed, which reads off any request's path, asks for longer.
     db = sqlite3.connect(Path(path).absolute().as_uri() + "?mode=rw", uri=True,
-                         isolation_level=None, timeout=0.25)
+                         isolation_level=None, timeout=busy_ms / 1000.0)
     try:
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA synchronous=EXTRA")
         db.execute("PRAGMA fullfsync=ON")
         db.execute("PRAGMA foreign_keys=ON")
-        db.execute("PRAGMA busy_timeout=250")
+        db.execute("PRAGMA busy_timeout=%d" % busy_ms)
         actual = {key: db.execute("PRAGMA " + key).fetchone()[0] for key in (
             "journal_mode", "synchronous", "fullfsync", "foreign_keys", "busy_timeout")}
         if actual != {"journal_mode": "delete", "synchronous": 3, "fullfsync": 1,
-                      "foreign_keys": 1, "busy_timeout": 250}:
+                      "foreign_keys": 1, "busy_timeout": busy_ms}:
             raise StoreError("The selected durability settings are not active")
         return db, actual
     except BaseException as error:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import select
 from pathlib import Path
 import sqlite3
 import threading
@@ -9,6 +8,11 @@ import threading
 from .contract import StoreError
 from .effects_watch import NativeWatch, WatchError
 from .store import _connect
+
+
+# The longest busy wait SQLite takes (milliseconds): the feed's read waits out
+# a writer's lock for as long as the writer holds it.
+LOCK_WAIT_MS = 2 ** 31 - 1
 
 
 class LiveFeed:
@@ -25,6 +29,12 @@ class LiveFeed:
     holds its lock while the server starts delays the first message rather
     than keeping the feed from starting; until then a stream waits.
 
+    Each read waits for the lock in SQLite's own busy wait, on one
+    connection, however long a writer holds it. Nothing ends that wait
+    early (sqlite3_interrupt does not reach it), so stopping does not wait
+    for it: the streams end at once, and the thread closes the watch and
+    the stop pipe itself once the lock goes.
+
     The feed ends, and says why, when the database or the authority anchor is
     moved, when the commit number cannot be read, or when the server stops.
     """
@@ -37,6 +47,8 @@ class LiveFeed:
         self.seq = None  # until the thread's first read
         self.ended = None
         self.stopped = False
+        self.reading = False  # the thread is in a read that may wait on a writer's lock
+        self.detached = False  # stop() left the thread to close what it holds
         self.stop_read, self.stop_write = os.pipe()
         self.watch = None
         try:
@@ -58,7 +70,7 @@ class LiveFeed:
         # read-only connection in the same process holds a shared lock. And it
         # may still write: if another process died mid-commit, the first reader
         # rolls its journal back, and does so with the store's full sync.
-        db, _ = _connect(self.db_path)
+        db, _ = _connect(self.db_path, LOCK_WAIT_MS)
         try:
             db.execute("PRAGMA query_only=ON")
             row = db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()
@@ -71,18 +83,20 @@ class LiveFeed:
     def _settled_seq(self):
         """The commit number once no writer holds the lock, or None if the feed is stopping.
 
-        Each read waits on the writer's lock. A writer that holds it longer
-        than one read waits is still writing, so the read is asked again; the
-        feed never ends, or fails to start, because a commit was slow. Releasing
-        a lock writes nothing to watch, so this read is what sees it go."""
-        while True:
-            try:
-                return self._read_seq()
-            except sqlite3.OperationalError as error:
-                if "locked" not in str(error).lower() and "busy" not in str(error).lower():
-                    raise
-            if self.stop_read in select.select([self.stop_read], [], [], 0)[0]:
+        The read waits on the writer's lock for as long as it is held, so the
+        feed never ends, or fails to start, because a commit was slow.
+        Releasing a lock writes nothing to watch, so this read is what sees it go."""
+        with self.lock:
+            if self.stopped:
                 return None
+            self.reading = True
+        try:
+            seq = self._read_seq()
+        finally:
+            with self.lock:
+                self.reading = False
+                stopped = self.stopped
+        return None if stopped else seq
 
     def _run(self):
         reason = "stopped"
@@ -111,9 +125,13 @@ class LiveFeed:
             reason = "unconfirmed"
         finally:
             with self.lock:
-                self.ended = reason
+                if self.ended is None:
+                    self.ended = reason
                 self._wake_all()
+                detached = self.detached
             self._close_watch()
+            if detached:
+                self._close_pipe()
 
     def _wake_all(self):
         for waker in self.wakers.values():
@@ -169,11 +187,21 @@ class LiveFeed:
         self.slots.release()
 
     def stop(self):
-        """End the feed and every stream; the stop pipe stays open until the thread is joined."""
+        """End the feed and every stream.
+
+        The thread is joined, and the stop pipe stays open until it is, unless
+        it is in a read that a writer's lock may hold: then the streams end
+        now, and the thread closes the watch and the pipe when that read returns."""
         with self.lock:
             if self.stopped:
                 return
             self.stopped = True
+            self.detached = self.reading
+            if self.detached:
+                self.ended = "stopped"
+                self._wake_all()
+        if self.detached:
+            return
         os.write(self.stop_write, b"!")
         self.thread.join()
         self._close_pipe()

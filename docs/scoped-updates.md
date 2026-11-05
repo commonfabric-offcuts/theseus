@@ -48,11 +48,14 @@ client that pings without reading is owed one answer, not one per ping.
 
 The feed reads the commit number through the store's own connection settings,
 kept from SQL writes. If another process died partway through a commit, that
-read is what rolls its journal back, with the store's full sync. A read that
-waits on a writer's lock is asked again, and a stopping server ends that wait; a
-slow commit never ends the feed. The first number is read the same way, on the
-feed's own thread, so a writer holding its lock while the server starts delays
-the first message rather than leaving the instance without a stream.
+read is what rolls its journal back, with the store's full sync. A read waits on
+a writer's lock, in SQLite's own busy wait on one connection, for as long as the
+writer holds it, so a slow commit never ends the feed. Nothing ends that wait
+early, so a stopping server does not wait for it: the streams end at once, and
+the feed's thread closes what it holds when the lock goes. The first number is
+read the same way, on the feed's own thread, so a writer holding its lock while
+the server starts delays the first message rather than leaving the instance
+without a stream.
 
 While the stream is up, the page reads only after a commit, so an idle page
 reads nothing and a new message shows as soon as it is saved. A pass that fails
@@ -117,7 +120,11 @@ same view, with the same arguments and read class, while a read of it still
 waits for its lane share that read: a commit announced to many open pages takes
 one waiting place per view, not one per page. A read that has begun is never
 joined, since it may not show the commit the later request follows, and a shared
-read is withdrawn only once every page in it has gone. Slow storage, foreground overload and browser connection
+read is withdrawn only once every page in it has gone. Each page keeps its own
+queue window, counted from when it asked, so it joins only a read asked for no
+later than itself; if the lane refuses a shared read before it begins, because
+the first page's window ran out or every page in it had gone, a page that joined
+it later asks for itself. Slow storage, foreground overload and browser connection
 limits can still delay work. Sends retain their separate command path.
 
 The reviewed workload measured the cost of that partition with an artificial

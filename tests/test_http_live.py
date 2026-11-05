@@ -352,81 +352,100 @@ class LiveStreamTests(unittest.TestCase):
         self.closed(client)
         self.assertNotIn("live", self.bootstrap().get("transport", {}))
 
-    def test_a_writer_that_holds_its_lock_long_is_waited_for(self):
-        client = self.open()
-        self.line(client)
-        feed, read, calls = self.server.live_feed, self.server.live_feed._read_seq, []
-        def busy_twice():
-            calls.append(1)
-            if len(calls) <= 2:
-                raise sqlite3.OperationalError("database is locked")
-            return read()
-        feed._read_seq = busy_twice
-        self.commit()
-        self.assertEqual(self.line(client), {"seq": self.seq()})
-        self.assertGreaterEqual(len(calls), 3)
-        self.assertIsNone(feed.state()[1])
+    def count_opens(self):
+        """Every connection the feed opens from now on, and an event set once it begins one."""
+        opens, opened, connect = [], threading.Event(), live_module._connect
+        def counted(*args, **kwargs):
+            opens.append(1)
+            opened.set()
+            return connect(*args, **kwargs)
+        live_module._connect = counted
+        self.addCleanup(setattr, live_module, "_connect", connect)
+        return opens, opened
 
-    def spill_under_lock(self):
-        """Another connection that holds the writer's exclusive lock, having written pages into the file."""
+    def outwait_a_store_read(self):
+        """Returns once a read that waits more than twice the store's own busy wait has given up on the lock."""
+        db = sqlite3.connect(str(self.db), isolation_level=None, timeout=0.6)
+        try:
+            with self.assertRaisesRegex(sqlite3.OperationalError, "locked"):
+                db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()
+        finally:
+            db.close()
+
+    def spill_under_lock(self, client):
+        """Another connection that holds the writer's exclusive lock, having written pages into the file.
+
+        The feed has read every earlier commit when this returns."""
         holder = sqlite3.connect(str(self.db), isolation_level=None)
         holder.execute("BEGIN IMMEDIATE")
         holder.execute("CREATE TABLE spill(v TEXT)")
         holder.executemany("INSERT INTO spill VALUES (?)", [("x" * 200,)] * 5000)
         holder.execute("COMMIT")
+        self.commit()
+        self.assertEqual(self.line(client), {"seq": self.seq()})
+        opens, opened = self.count_opens()
         holder.execute("PRAGMA cache_size=2")
         holder.execute("PRAGMA cache_spill=1")
         holder.execute("BEGIN IMMEDIATE")
         holder.execute("UPDATE spill SET v = v || 'y'")
-        return holder
+        return holder, opens, opened
 
-    def watch_locked_reads(self, cls_or_feed, wanted):
-        """An event set once the feed's read has found the database locked `wanted` times."""
-        read, seen, locked = cls_or_feed._read_seq, [], threading.Event()
-        def counted(*args):
-            try:
-                return read(*args)
-            except sqlite3.OperationalError as error:
-                if "locked" in str(error):
-                    seen.append(1)
-                    if len(seen) >= wanted:
-                        locked.set()
-                raise
-        cls_or_feed._read_seq = counted
-        return locked, read
+    def test_a_writer_that_holds_its_lock_long_is_waited_for_on_one_connection(self):
+        client = self.open()
+        self.line(client)
+        holder, opens, opened = self.spill_under_lock(client)
+        try:
+            self.assertTrue(opened.wait(5), "the feed never read after the writer's pages")
+            self.outwait_a_store_read()
+            self.assertEqual(len(opens), 1, "the feed's read was asked again while the lock was held")
+        finally:
+            holder.execute("ROLLBACK")
+            holder.close()
+        self.commit()
+        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertIsNone(self.server.live_feed.state()[1])
 
     def test_stopping_does_not_wait_for_a_writer_that_holds_its_lock(self):
         client = self.open()
         self.line(client)
         feed = self.server.live_feed
-        locked, _ = self.watch_locked_reads(feed, 1)
-        holder, stopper = self.spill_under_lock(), None
+        holder, _, opened = self.spill_under_lock(client)
+        stopper = None
         try:
-            self.assertTrue(locked.wait(5), "the feed's read never met the lock")
+            self.assertTrue(opened.wait(5), "the feed's read never met the lock")
             stopped = threading.Event()
             stopper = threading.Thread(target=lambda: (self.stop(), stopped.set()), daemon=True)
             stopper.start()
             self.assertTrue(stopped.wait(5), "stopping waited for the writer's lock")
+            self.assertEqual(self.line(client), {"end": "stopped"})
         finally:
             holder.execute("ROLLBACK")
             holder.close()
             if stopper is not None:
                 stopper.join()
-        self.assertEqual(self.line(client), {"end": "stopped"})
+        # The read the lock held ends when the lock goes, and the feed's thread
+        # then closes its watch and its stop pipe.
+        feed.thread.join()
+        self.assertIsNone(feed.watch)
+        for descriptor in (feed.stop_read, feed.stop_write):
+            with self.assertRaises(OSError):
+                os.fstat(descriptor)
 
-    def test_a_writer_that_holds_its_lock_at_start_delays_the_feed_and_does_not_end_it(self):
+    def test_a_writer_that_holds_its_lock_at_start_delays_the_feed_on_one_connection(self):
         self.stop()
         holder = sqlite3.connect(str(self.db), isolation_level=None)
         holder.execute("BEGIN EXCLUSIVE")
-        # The first read is asked again while the lock is held, longer than one read waits.
-        locked, read = self.watch_locked_reads(live_module.LiveFeed, 2)
+        opens, opened = self.count_opens()
         try:
+            # Starting does not wait on the lock: the feed's thread does.
             self.start()
             self.assertIsNotNone(self.server.live_feed)
             client = self.open()
-            self.assertTrue(locked.wait(5), "the feed's first read never met the lock")
+            self.assertTrue(opened.wait(5), "the feed's first read never began")
+            self.outwait_a_store_read()
+            self.assertEqual(len(opens), 1, "the feed's first read was asked again while the lock was held")
+            self.assertEqual(self.server.live_feed.state(), (None, None))
         finally:
-            live_module.LiveFeed._read_seq = read
             holder.execute("ROLLBACK")
             holder.close()
         # Releasing a lock writes nothing; the waiting read sees it go.
