@@ -678,12 +678,12 @@ try {
 
       await check('cleanup close ends every lock this document holds or was granted, and a refused cleanup lists the copy as another tab\'s', async () => {
         const source = async () => { const p = await page('cleanup-close'); await p.evaluate('j.save(snapshot)'); const row = await p.evaluate('j.own(editor.key)'); await p.close(); return row; };
-        const first = await source(), second = await source();
+        const first = await source(), second = await source(), third = await source();
         const b = await page('cleanup-close');
         const result = await b.evaluate(`(async()=>{
           const fake=${fakeLocks},open=()=>import('/journal.mjs').then(m=>m.openJournal({instanceId:context.instanceId,actor:context.actor}));
           const named=writer=>[...fake.holders].some(name=>name.includes(writer));
-          const first=${JSON.stringify(first)},second=${JSON.stringify(second)},out={};
+          const first=${JSON.stringify(first)},second=${JSON.stringify(second)},third=${JSON.stringify(third)},out={};
           // An adopted source and the document's own writer are ended by close.
           const k1=await open();
           await k1.adopt(editor.key,{id:first.id,stamp:first.stamp});
@@ -697,7 +697,7 @@ try {
           await inside;
           k2.close();await fake.flush();
           out.cleanupHeldAfterClose=named(second.writerId);
-          open2();out.retire=await retire;
+          open2();out.retire=await retire;await fake.flush();
           // A lock granted just as the journal closes is released, not kept.
           const k3=await open();
           fake.hooks.granted=name=>{if(name.includes(second.writerId))k3.close();};
@@ -724,10 +724,23 @@ try {
           out.refused=await refused;
           out.listed=(await listing).map(row=>row?.availability);
           IDBDatabase.prototype.transaction=realTransaction;
+          // A cleanup whose delete was created just before close keeps the row,
+          // because close has already ended the lock that delete needs.
+          fake.hooks.defer=null;await fake.flush();
+          const k5=await open();let closing=true;
+          IDBDatabase.prototype.transaction=function(...args){
+            const tx=realTransaction.apply(this,args);
+            if(closing&&args[1]==='readwrite'){closing=false;k5.close();}
+            return tx;
+          };
+          out.retireQueuedAtClose=await k5.retireAcknowledged(editor.key,third,async()=>true).then(v=>v,()=>'refused');
+          IDBDatabase.prototype.transaction=realTransaction;
+          out.queuedRowKept=(await readRow(third.id))?.stamp===third.stamp;
           return out;
         })()`);
         assert.deepEqual(result, { adoptedHeld: true, afterClose: [false, false], cleanupHeldAfterClose: false, retire: 'refused',
-          adoptAsClosing: 'Open in another tab. Close that tab before retrying recovery.', heldAfterClosingAdoption: false, refused: false, listed: ['open-in-another-tab'] });
+          adoptAsClosing: 'Open in another tab. Close that tab before retrying recovery.', heldAfterClosingAdoption: false, refused: false, listed: ['open-in-another-tab'],
+          retireQueuedAtClose: false, queuedRowKept: true });
       });
 
       await check('cleanup a writer this document just released is taken again, never refused by its own release', async () => {
