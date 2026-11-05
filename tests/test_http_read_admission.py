@@ -368,6 +368,66 @@ class HTTPReadAdmissionTests(unittest.TestCase):
         self.assertEqual(joiner.result()[0], 200)
         self.assertEqual(self.callbacks("attention"), ["attention"])
 
+    def joined_late(self):
+        """A held background lane; a first page asks for attention at t0 and a second joins it at t0+0.4."""
+        now = [time.monotonic()]
+        self.admission().clock = lambda: now[0]
+        entered, release = self.probe.hold("held")
+        first = self.pool.submit(self.request, "held", "background")
+        self.assertTrue(entered.wait(1))
+        leader = self.pool.submit(self.request, "attention", "background")
+        self.queued("background", 1)
+        now[0] += 0.4
+        joiner = self.pool.submit(self.request, "attention", "background")
+        self.joined(2)
+        # The first page's window runs out; the second has 0.4 s of its own left.
+        now[0] += 0.1
+        self.assertEqual(leader.result(timeout=2)[0], 503)
+        return now, release, first, joiner
+
+    def test_a_page_that_joins_a_read_keeps_its_own_queue_window(self):
+        now, release, first, joiner = self.joined_late()
+        release.set()
+        self.assertEqual(first.result()[0], 200)
+        self.assertEqual(joiner.result(timeout=2)[0], 200)
+        self.assertEqual(self.callbacks("attention"), ["attention"])
+
+    def test_a_page_that_joins_a_read_has_its_window_counted_from_its_own_arrival(self):
+        now, release, first, joiner = self.joined_late()
+        self.queued("background", 1)
+        now[0] += 0.4
+        self.assertEqual(joiner.result(timeout=2)[0], 503)
+        release.set()
+        self.assertEqual(first.result()[0], 200)
+        self.assertEqual(self.callbacks("attention"), [])
+
+    def test_a_page_that_joins_a_read_its_lane_has_just_withdrawn_reads_for_itself(self):
+        # Every page in the read had gone when the lane withdrew it; a page that
+        # joins before that read has unwound is still here, and gets its answer.
+        decided, resume = threading.Event(), threading.Event()
+
+        def observe(event):
+            self.transitions.append(event)
+            if event["event"] == "withdrawn":
+                # Holds the withdrawal's decision open while the next page joins.
+                decided.set()
+                resume.wait(5)
+        self.admission().observer = observe
+        entered, release = self.probe.hold("held")
+        first = self.pool.submit(self.request, "held")
+        self.assertTrue(entered.wait(1))
+        leader = self.raw_view("attention", "foreground")
+        self.queued("foreground", 1)
+        self.reset_socket(leader)
+        self.assertTrue(decided.wait(2))
+        joiner = self.pool.submit(self.request, "attention", "foreground")
+        self.joined(2)
+        resume.set()
+        release.set()
+        self.assertEqual(first.result()[0], 200)
+        self.assertEqual(joiner.result(timeout=5)[0], 200)
+        self.assertEqual(self.callbacks("attention"), ["attention"])
+
     def test_read_half_close_still_receives_its_response(self):
         entered, release = self.probe.hold("first")
         first = self.pool.submit(self.request, "first", "background")
@@ -384,6 +444,36 @@ class HTTPReadAdmissionTests(unittest.TestCase):
             self.assertEqual(first.result()[0], 200)
         finally:
             sock.close()
+
+
+class SharedReadsTests(unittest.TestCase):
+    def test_a_request_joins_only_a_read_asked_for_no_later_than_itself(self):
+        # A request that asks again after its first read was refused can find a
+        # read asked for after it; that read's window would hold it past its own.
+        reads, waiting, release = http_server.SharedReads(), threading.Event(), threading.Event()
+        runs = []
+
+        def read_as(name, hold=False):
+            def run(begun, disconnected):
+                runs.append(name)
+                if hold:
+                    waiting.set()
+                    release.wait(5)
+                begun()
+                return name
+            return run
+        pool = ThreadPoolExecutor(max_workers=3)
+        self.addCleanup(pool.shutdown, True)
+        self.addCleanup(release.set)
+        later = pool.submit(reads.read, "attention", read_as("asked at 10.45", True), lambda: False, 10.45)
+        self.assertTrue(waiting.wait(1))
+        last = pool.submit(reads.read, "attention", read_as("asked at 10.5"), lambda: False, 10.5)
+        eventually(lambda: len(reads.waiting["attention"].disconnected) == 2)
+        earlier = pool.submit(reads.read, "attention", read_as("asked at 10.4"), lambda: False, 10.4)
+        self.assertEqual(earlier.result(timeout=2), "asked at 10.4")
+        release.set()
+        self.assertEqual([later.result(timeout=2), last.result(timeout=2)], ["asked at 10.45"] * 2)
+        self.assertEqual(runs, ["asked at 10.45", "asked at 10.4"])
 
 
 class DeterministicReadAdmissionTests(unittest.TestCase):

@@ -103,13 +103,15 @@ class ReadAdmission:
         if lane["active"] is None and lane["queue"]:
             self._grant(lane, lane["queue"].pop(0))
 
-    def acquire(self, read_class, request_deadline, disconnected=lambda: False):
+    def acquire(self, read_class, request_deadline, disconnected=lambda: False, arrived=None):
+        """arrived (on this clock) starts the queue window; it defaults to now."""
         with self.lock:
             lane = self.lanes[read_class]
             now = self.clock()
             self.number += 1
             ticket = ReadTicket(self.number, read_class,
-                                min(request_deadline, now + lane["queue_timeout_ms"] / 1000.0),
+                                min(request_deadline, (now if arrived is None else arrived)
+                                    + lane["queue_timeout_ms"] / 1000.0),
                                 disconnected, self.event_factory())
             self._advance(lane)
             if disconnected():
@@ -152,10 +154,12 @@ class ReadAdmission:
 
 
 class SharedRead:
-    def __init__(self, disconnected):
+    def __init__(self, disconnected, arrived):
         self.done = threading.Event()
+        self.arrived = arrived
         self.disconnected = (disconnected,)
         self.result = self.error = None
+        self.began = False
 
 
 class SharedReads:
@@ -171,30 +175,48 @@ class SharedReads:
     the answer it gets was read after it arrived. A read that has begun is
     never joined: it may not show a commit the request was asked for. The
     shared read is withdrawn only when every request in it has gone.
+
+    Each request keeps its own queue window, counted from its arrival, so it
+    joins only a read that was asked for no later than itself. If the lane
+    refuses a shared read before it begins, it refused it for the requests it
+    had weighed: the first one's window ran out, or every one had gone. A
+    request that joined later asks for itself, within its own window.
     """
     def __init__(self):
         self.lock = threading.Lock()
         self.waiting = {}
 
-    def read(self, key, run, disconnected):
-        """run(begun, disconnected) reads, calling begun() once its lane is granted."""
-        with self.lock:
-            shared = self.waiting.get(key)
-            joined = shared is not None
-            if joined:
-                shared.disconnected += (disconnected,)
-            else:
-                shared = self.waiting[key] = SharedRead(disconnected)
-        if joined:
-            shared.done.wait()
-            if shared.error is not None:
-                raise shared.error
-            return shared.result
+    def read(self, key, run, disconnected, arrived=None):
+        """run(begun, disconnected) reads, calling begun() once its lane is granted.
 
-        def begun():
+        arrived orders requests on the admission clock; None joins any read."""
+        while True:
+            with self.lock:
+                shared = self.waiting.get(key)
+                joined = shared is not None and (arrived is None or shared.arrived is None
+                                                 or shared.arrived <= arrived)
+                if joined:
+                    shared.disconnected += (disconnected,)
+                else:
+                    # A read asked for later than this request may wait past its
+                    # window; later requests join this one instead.
+                    shared = self.waiting[key] = SharedRead(disconnected, arrived)
+            if not joined:
+                break
+            shared.done.wait()
+            if shared.began:
+                if shared.error is not None:
+                    raise shared.error
+                return shared.result
+
+        def leave():
             with self.lock:
                 if self.waiting.get(key) is shared:
                     del self.waiting[key]
+
+        def begun():
+            shared.began = True
+            leave()
         try:
             shared.result = run(begun, lambda: all(gone() for gone in shared.disconnected))
             return shared.result
@@ -202,7 +224,7 @@ class SharedReads:
             shared.error = error
             raise
         finally:
-            begun()
+            leave()
             shared.done.set()
 
 
@@ -440,13 +462,13 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def _store_call(self, callback: Callable, command=False, lane=None, begun=lambda: None,
-                    disconnected=None):
+                    disconnected=None, arrived=None):
         admission = None if command else self.server.read_admission
         ticket = None
         slots = lane or (self.server.command_slots if command else self.server.read_slots)
         read_class = None if command else self._read_class()
         if admission is not None:
-            ticket = admission.acquire(read_class, self.deadline, disconnected or self._read_disconnected)
+            ticket = admission.acquire(read_class, self.deadline, disconnected or self._read_disconnected, arrived)
         elif not slots.acquire(blocking=False):
             raise RequestError(503, "SERVER_BUSY", "This request lane is busy; retain its operation.")
         begun()
@@ -521,9 +543,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise RequestError(400, "INVALID_VIEW", "A view name and argument object are required.")
             # Canonical JSON is the key: the same view and arguments in any key order.
             key = (self._read_class(), json.dumps(value, sort_keys=True, separators=(",", ":")))
+            # A request keeps the queue window it started with, even when it
+            # joins a shared read and then asks for itself.
+            admission = self.server.read_admission
+            arrived = None if admission is None else admission.clock()
             result = self.server.shared_reads.read(key, lambda begun, disconnected: self._store_call(
                 lambda store: store.view(self.server.actor, value["name"], value["args"]),
-                begun=begun, disconnected=disconnected), self._read_disconnected)
+                begun=begun, disconnected=disconnected, arrived=arrived), self._read_disconnected, arrived)
         self._json_response(200, result)
 
     def _upload_framing(self):
