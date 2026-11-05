@@ -5,6 +5,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
   await check('colors reading colors distinguish authors and preserve source geometry', async () => {
     const failures=[];
     const expect=(ok,why)=>{if(!ok)failures.push(why);};
+    const rgb=s=>s.match(/[\d.]+/g).slice(0,3).map(Number);
     const contrast=(a,b)=>{
       const luminance=color=>color.match(/[\d.]+/g).slice(0,3).map(Number).map(c=>{c/=255;return c<=.04045?c/12.92:((c+.055)/1.055)**2.4;}).reduce((s,c,i)=>s+c*[.2126,.7152,.0722][i],0);
       const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);
@@ -43,6 +44,15 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       const geometry=()=>p.evaluate(`['#source-body','#writing-body'].map(s=>{const e=document.querySelector(s),r=e.getBoundingClientRect();return {s,x:r.x,y:r.y,width:r.width,height:r.height,scrollHeight:e.scrollHeight,text:e.value??e.textContent}})`);
       const before=await geometry(),writing=await style('#writing-body'),source=await style('.reading-pane');
       expect(source.background===topicHover.background,theme+': Reader source uses topic-hover background');
+      // Sample a real space between source words: an opaque article background
+      // can hide the pane's correct computed color.
+      const backgroundPoint=await p.evaluate(`(()=>{const t=document.querySelector('#source-body [data-start]').firstChild,n=t.textContent.indexOf(' '),r=document.createRange();r.setStart(t,n);r.setEnd(t,n+1);const b=r.getBoundingClientRect();return {x:Math.floor(b.x+b.width/2),y:Math.floor(b.y+b.height/2)}})()`);
+      const sourcePixels=pngPixels(Buffer.from((await p.send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+      assert.ok(backgroundPoint.x>=0&&backgroundPoint.x<sourcePixels.width&&backgroundPoint.y>=0&&backgroundPoint.y<sourcePixels.height,'source background sample is inside the screenshot');
+      const sourcePixel=sourcePixels.pixel(backgroundPoint.x,backgroundPoint.y);
+      expect(sourcePixel.length===3&&sourcePixel.every((v,i)=>v===rgb(topicHover.background)[i]),theme+': painted background behind source words matches topic hover');
+      const hint=await style('.source-actions .muted'),hintContrast=contrast(hint.color,source.background);
+      expect(hintContrast>=4.5,theme+': source action hint contrast is at least 4.5:1');
       const target=await p.evaluate(`(()=>{const spans=[...document.querySelectorAll('#source-body [data-start]')];const s=spans.find(e=>e.getClientRects().length>1&&e.getBoundingClientRect().bottom<innerHeight/2)||spans[0];const range=document.createRange();range.selectNodeContents(s);const r=range.getClientRects()[0];return {start:s.dataset.start,x:r.x+2,y:r.y+r.height/2}})()`);
       await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:target.x,y:target.y});
       const hovered=await style('#source-body .hover-quote');
@@ -62,12 +72,14 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       assert.ok(selection.text.length>5,'native selection instrument selected source text');
       const selectionColor=await p.evaluate(`getComputedStyle(document.querySelector('#source-body [data-start]'),'::selection').backgroundColor`);
       const selectionPixels=pngPixels(Buffer.from((await p.send('Page.captureScreenshot',{format:'png'})).data,'base64'));
-      const rgb=s=>s.match(/[\d.]+/g).slice(0,3).map(Number),bands=[];
+      const bands=[];
       for(const rect of coverage.textRange.filter(r=>r.width>10)) {
         const shared=selection.rects.find(r=>Math.abs(r.y-rect.y)<1&&Math.min(r.x+r.width,rect.x+rect.width)-Math.max(r.x,rect.x)>10);
         if(!shared)continue;
         const x=(Math.max(shared.x,rect.x)+Math.min(shared.x+shared.width,rect.x+rect.width))/2;
-        const top=rect.y-5,bottom=rect.y+rect.height+5;
+        // Look beyond adjacent lines so excessive paint cannot pass merely
+        // because the scan clipped it to the desired selection height.
+        const margin=2*parseFloat(coverage.lineHeight),top=rect.y-margin,bottom=rect.y+rect.height+margin;
         const hover=paintedBand(hoverPixels,x,top,bottom,rgb(hovered.background));
         const selected=paintedBand(selectionPixels,x,top,bottom,rgb(selectionColor));
         assert.ok(hover&&selected,'pixel instrument finds both native paint bands');
@@ -104,7 +116,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       assert.deepEqual(await geometry(),phoneBefore,'source touch keeps phone writing geometry');
       assert.equal(await p.evaluate('document.querySelector("#reader").scrollWidth<=innerWidth'),true,'phone Reader does not overflow horizontally');
       await shot(p,'reading-colors-'+theme+'-phone-reader');
-      observations.push({name:'reading colors',theme,initialOwn,initialOther,ownRest,ownHover,otherRest,secondary,topicHover,source,writing,hovered,coverage,selection,bands});
+      observations.push({name:'reading colors',theme,initialOwn,initialOther,ownRest,ownHover,otherRest,secondary,topicHover,source,backgroundPoint,sourcePixel,hint,hintContrast,writing,hovered,coverage,selection,bands});
       assert.deepEqual(p.errors,[]);
       await p.close();
     }
