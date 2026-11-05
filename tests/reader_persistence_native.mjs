@@ -256,9 +256,10 @@ try {
     if (mode === '--navigation' && !name.startsWith('navigation ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
     const timing = { name, started: Date.now() };
-    // These recovery cases deliberately leave abandoned copies behind. Each
-    // gets a fresh owned storage context, shared only by that case's tabs.
-    if (/^images X[1234] /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
+    // Image cases leave copies, layout preferences and abandoned recovery rows
+    // behind, some deliberately. Each gets a fresh owned storage context,
+    // shared only by that case's tabs.
+    if (/^images /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
     try {
       timing.actionStarted = Date.now();
       await action();
@@ -524,7 +525,7 @@ try {
     } else if (mode === '--freshness') {
       await freshnessChecks({check,page,until,root,facts,view,control,replace,field,shot,observations,baseline,legacyAdmission});
     } else if (mode === '--images') {
-      await imageChecks({check,page,until,root,facts,view,replace,field,shot,observations});
+      await imageChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});
     } else if (mode === '--cleanup') {
       const rows = p => p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors');t.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result);t.oncomplete=()=>d.close()}})`);
       const scoped = async p => (await rows(p)).filter(row => row.scope === JSON.stringify([facts.instance_id, facts.actor]) && row.snapshot.sourceRef.id === facts.sources[1].id && row.active === 1);

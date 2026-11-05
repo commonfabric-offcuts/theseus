@@ -524,6 +524,21 @@ def main():
                                            [(prefix + "-unrelated-%d" % n,) for n in range(request.get("unrelated_records", 0))])
                             unrelated = db.execute("SELECT count(*) FROM changes WHERE scope_id='fixture-unrelated'").fetchone()[0]
                         answer = {"message_ids": message_ids, "item_ids": item_ids, "unrelated_changes": unrelated}
+                    elif "--images" in sys.argv and request["method"] == "reset_drafts":
+                        # Each image case starts from the seeded writing. Every
+                        # draft the person left is emptied at its revision through
+                        # the real Store, as a send leaves it.
+                        with sqlite3.connect(str(path)) as db:
+                            rows = db.execute("SELECT id,revision,generation,topic_id,payload FROM drafts WHERE actor_id=?", (actor,)).fetchall()
+                        answer = []
+                        for draft_id, revision, generation, topic_id, payload in rows:
+                            payload = json.loads(payload)
+                            if not payload["body"] and not payload["attachments"] and not payload["quotes"] and not payload["addressees"]:
+                                continue
+                            command("draft.save", "fixture-reset-%s-%d" % (draft_id, revision), {
+                                "source_ref": payload["source_ref"], "topic_id": topic_id,
+                                "generation": generation, "body": ""}, {"draft_id": draft_id}, {"draft_revision": revision})
+                            answer.append(draft_id)
                     elif request["method"] == "epoch":
                         # Test-only controlled history boundary. No activation
                         # claim: the real runtime cutover is lead-owned.

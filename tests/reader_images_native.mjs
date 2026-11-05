@@ -9,7 +9,11 @@ export const imageInstrumentation = `(()=>{
   IDBObjectStore.prototype.put=function(value,...rest){if(this.name==='editors')imagePuts.push({kind:value.kind,bytes:bytes(value),id:value.id});return put.call(this,value,...rest)};
   window.imageRows=()=>new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors');t.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result.map(v=>({...v,blob:v.blob?{size:v.blob.size}:undefined})));t.oncomplete=()=>d.close()}});
 })()`;
-export async function imageChecks({ check, page, until, root, facts, view, replace, field, shot, observations }) {
+export async function imageChecks({ check: harnessCheck, page, until, root, facts, view, control, replace, field, shot, observations }) {
+  // Every case owns its writing: the drafts an earlier case left (recovery
+  // copies' text, retained attachments) are emptied before it starts, as a
+  // send leaves them. Its browser storage is a fresh context (the harness).
+  const check = (name, action) => harnessCheck(name, async () => { await control({ method: 'reset_drafts' }); await action(); });
   const png = (await readFile(path.join(root, 'tests/fixtures/media/screen.png'))).toString('base64');
   // Page-owned clipboard payload only: never read/write the OS pasteboard or
   // dispatch Cmd+V. This proves the paste event boundary, not OS ingestion.
