@@ -40,7 +40,7 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
     $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id],
     callbacks: { edit() {}, reach: name => name === 'stranger' && !inTopic ? { reachable: false, add: async () => answer } : { reachable: true } },
   });
-  const chip = name => chips.children.find(node => node.dataset.name === name);
+  const chip = name => chips.children.find(node => node.textContent === name);
   const offer = () => chip('stranger').children.find(node => node.textContent.startsWith('Add to topic'));
   const said = () => chip('stranger').children.find(node => node.className === 'reach-notice');
   reader.paintRecipients();
