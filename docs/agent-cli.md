@@ -199,6 +199,7 @@ lists your unfinished ones, optionally within one workspace. A workspace
 owner changes membership with `workspace.member_set` (`target:
 {workspace_id}`, `expected: {workspace_revision}`, `args: {actor_id,
 present}`), and anyone with workspace access reads `workspace_members`.
+The `actors` view lists every enabled person and agent who can be named.
 Retain an opening's publish request before sending it; on uncertainty look up
 that operation, and resend the identical request only.
 

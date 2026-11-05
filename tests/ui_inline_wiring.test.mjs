@@ -18,7 +18,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
-    append(...items) { for (const item of items) { item.parent = this; this.children.push(item); } }
+    append(...items) { for (const item of items) { if (typeof item === 'object') item.parent = this; this.children.push(item); } }
     replaceChildren(...items) { this.children = []; this.append(...items); }
     get firstElementChild() { return this.children[0]; }
     querySelector(selector) { return get(selector.slice(1)); }
@@ -80,6 +80,8 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const context = vm.createContext(scope);
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState}; })())', context);
+  const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers}; })())', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
@@ -90,6 +92,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
   vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
+    useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
@@ -594,4 +597,84 @@ test('a message sent by name opens where it can even when the page never started
   await f.openSent({ id: 'd1', topic_readable: true, topic: { id: 't9', title: 'Plans' } });
   await f.openSent({ id: 'd2', topic_readable: false, topic: { id: 't8', title: 'Lost' } });
   assert.deepEqual(f.events.filter(event => event[0] === 'navigate').map(event => event[1]), ['?topic=t9', '/']);
+});
+
+// The pickers: who may change a topic's participants or an outcome's team gets
+// a field fed by the directory, and the composer offers who can be sent to.
+const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
+const pickerApi = (f, { topic = {}, workspace = {} } = {}) => {
+  f.api.view = async (name, args) => {
+    f.calls.push({ name, args });
+    if (name === 'topic') return { instance_id: 'fixture', topic: { ...f.topic, version: 3, owner_id: 'fixture-person', creator_id: 'other', ...topic },
+      participants: [{ actor_id: 'fixture-person' }, { actor_id: 'fable', kind: 'agent' }] };
+    if (name === 'workspace') return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Outcome', owner_id: 'fixture-person', version: 5, ...workspace } };
+    if (name === 'workspace_members') return { instance_id: 'fixture', items: [{ actor_id: 'fixture-person', kind: 'human' }, { actor_id: 'ally', kind: 'agent', name: 'Ally' }], next_cursor: null };
+    if (name === 'actors') return { instance_id: 'fixture', items: [{ id: 'tony', kind: 'human', name: 'Tony' }], next_cursor: null };
+    return { instance_id: 'fixture', items: [], next_cursor: null };
+  };
+  f.api.command = async envelope => { f.calls.push({ kind: envelope.kind, envelope }); return { status: 'committed', result: {} }; };
+};
+const add = async (host, id) => {
+  const nodes = walk(host), input = nodes.find(node => node.list === 'directory-names');
+  input.value = id; input.oninput();
+  await nodes.find(node => node.textContent === 'Add').onclick();
+};
+
+test('a topic\'s manager adds a participant from the directory, and the composer offers participants and the team', async () => {
+  const f = fixture();
+  pickerApi(f);
+  await f.initialize();
+  await new Promise(setImmediate);
+  assert.deepEqual(f.get('directory-names').children.map(option => [option.value, option.label]), [['tony', 'Tony · human']]);
+  assert.deepEqual(f.get('addressable-names').children.map(option => option.value), ['fixture-person', 'fable', 'ally']);
+  assert.ok(walk(f.get('participants')).some(node => node.textContent === '×'), 'the manager may remove a participant');
+  await add(f.get('participants'), 'tony');
+  // Envelopes come from the page's realm; compare them as data.
+  const sent = JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'participation.set').map(call => [call.envelope.target, call.envelope.expected.topic_revision, call.envelope.args])));
+  assert.deepEqual(sent, [[{ topic_id: 't1' }, 3, { actor_id: 'tony', present: true }]]);
+  assert.ok(f.events.some(([kind]) => kind === 'request'), 'a committed change asks for fresh views');
+});
+
+test('a participant who does not manage the topic sees who is there but no field', async () => {
+  const f = fixture();
+  pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
+  await f.initialize();
+  const nodes = walk(f.get('participants'));
+  assert.deepEqual([nodes.some(node => node.list), nodes.some(node => node.textContent === '×')], [false, false]);
+  assert.deepEqual(nodes.filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'fable']);
+});
+
+test('an outcome\'s owner changes its team on the outcome page; the owner cannot be removed there', async () => {
+  const f = fixture('https://fixture/?workspace=w1');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  pickerApi(f);
+  await f.initialize();
+  const team = f.get('team-people');
+  assert.equal(f.get('outcome-team').hidden, false);
+  assert.deepEqual(walk(team).filter(node => node.textContent === '×').map(node => node['aria-label']), ['Remove ally']);
+  await add(team, 'tony');
+  await new Promise(setImmediate);
+  // Envelopes come from the page's realm; compare them as data.
+  const sent = JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'workspace.member_set').map(call => [call.envelope.target, call.envelope.expected.workspace_revision, call.envelope.args])));
+  assert.deepEqual(sent, [[{ workspace_id: 'w1' }, 5, { actor_id: 'tony', present: true }]]);
+  assert.ok(f.calls.filter(call => call.name === 'workspace').length >= 2, 'a committed change rereads the outcome and its team');
+
+  // Someone else's commit: the page rereads the outcome, so its revision and team stay current.
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  const watched = fixture('https://fixture/?workspace=w1');
+  watched.inject({ api: watched.api, bootstrap: watched.bootstrap });
+  pickerApi(watched);
+  watched.useLive(live);
+  await watched.initialize();
+  const reads = () => watched.calls.filter(call => call.name === 'workspace_members').length;
+  const before = reads();
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await new Promise(setImmediate); await new Promise(setImmediate);
+  assert.equal(reads(), before + 1, 'a commit rereads the team');
+
+  const other = fixture('https://fixture/?workspace=w1');
+  other.inject({ api: other.api, bootstrap: other.bootstrap });
+  pickerApi(other, { workspace: { owner_id: 'tony' } });
+  await other.initialize();
+  assert.equal(walk(other.get('team-people')).some(node => node.list || node.textContent === '×'), false, 'a member who is not the owner only sees the team');
 });

@@ -439,6 +439,24 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                     "unread": unread, "addressed": addressed}
         return _bounded_page({"instance_id": self.instance_id}, rows, limit, item, "id")
 
+    def _view_actors(self, db, actor, args):
+        """The instance's enabled people and agents, in id order: who can be added to a team or topic.
+
+        Everyone in the instance may read it; what someone can then do with a
+        name is decided by the command that adds them."""
+        limit = _page_size(args)
+        kind = args.get("kind")
+        if kind is not None and kind not in ("human", "agent"):
+            raise Refusal("INVALID_ARGUMENT", "An actor is a human or an agent")
+        rows = db.execute("SELECT id,kind,substr(CAST(name AS BLOB),1,1025) AS name_prefix FROM actors "
+                          "WHERE enabled=1 AND id>?" + (" AND kind=?" if kind else "") + " ORDER BY id LIMIT ?",
+                          (args.get("cursor", ""),) + ((kind,) if kind else ()) + (limit + 1,)).fetchall()
+
+        def item(row):
+            name, truncated = _prefix(row["name_prefix"])
+            return {"id": row["id"], "kind": row["kind"], "name": name, "name_truncated": truncated}
+        return _bounded_page({"instance_id": self.instance_id}, rows, limit, item, "id")
+
     def _view_workspace_members(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))
         limit = _page_size(args)

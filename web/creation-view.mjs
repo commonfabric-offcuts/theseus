@@ -14,7 +14,7 @@ export function protectTouchBounds(host) {
 export class ActorChoices {
   constructor({host,label,owner,get,set,readOnly,limit,notice}) {
     Object.assign(this,{host,owner,get,set,readOnly,limit,notice});
-    this.chips=el('div');this.chips.className='chips';this.input=el('input');this.input.placeholder='Known actor ID';this.input.autocomplete='off';
+    this.chips=el('div');this.chips.className='chips';this.input=el('input');this.input.placeholder='Add a name';this.input.autocomplete='off';this.input.setAttribute('list','directory-names');
     this.input.setAttribute('aria-label',label);this.add=button('Add',()=>this.addActor());
     this.input.onkeydown=event=>{if(event.key==='Enter'&&!event.isComposing){event.preventDefault();if(!event.repeat)this.addActor();}};
     host.append(this.chips,this.input,this.add);this.paint();
@@ -51,7 +51,7 @@ export class CreateOutcomeView {
     this.team=new ActorChoices({host:team,label:'Add outcome team member',owner:creation.row.actor,get:()=>creation.row.form.team,
       set:team=>this.run(()=>creation.edit({team})),readOnly:()=>creation.readOnly,limit:creation.bootstrap.limits.workspace_members,notice:text=>this.message(text)});
     host.append(el('p','Team members can access this outcome. Choose topic participants separately to receive its messages.'),
-      el('p','Choose already-registered agents. Changing the outcome team after creation is not available yet.'));
+      el('p','Choose registered people and agents. The owner can change the team later on the outcome page.'));
     this.saveState=el('p');this.saveState.className='muted';this.saveState.setAttribute('role','status');
     this.create=button('Create outcome',()=>this.run(()=>creation.create()));this.create.id='create-outcome';this.create.className='primary';
     this.check=button('Check confirmation',()=>this.run(()=>creation.check()));this.check.id='check-outcome';

@@ -19,6 +19,7 @@ import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention, paintSent } from './attention.mjs';
 import { TopicStatePanel, paintWaiting } from './topic-state.mjs';
+import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -33,7 +34,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null, sentHost = null;
+let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = [];
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
@@ -456,7 +457,7 @@ function paintViews(kind) {
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
     $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
     topicRail?.updateCurrent(topic);
-    $('participants').replaceChildren(...views.participants.map(p => node('span', p.actor_id, 'chip')));
+    paintParticipants(topic, views.participants);
     for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = false;
     noteRead(); return;
   }
@@ -756,6 +757,8 @@ async function initialize() {
     attention.refresh();
   }
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
+  refreshDirectory();
+  document.addEventListener('focusin', event => { if (event.target?.getAttribute?.('list') === 'directory-names') refreshDirectory(); });
   const route = parseRoute(new URL(location.href));
   if (route.kind !== 'topic') {
     await initializeOutcomePage(route);
@@ -774,7 +777,12 @@ async function initialize() {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
-  $('participants').replaceChildren(...result.participants.map(participant => node('span', participant.actor_id, 'chip')));
+  participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add a participant to this topic', names: 'directory-names',
+    add: id => setParticipation(id, true), remove: id => setParticipation(id, false) });
+  // Who can be sent a message here: the topic's participants and the outcome's
+  // members. A reader outside the outcome cannot list its members.
+  outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => []);
+  paintParticipants(topic, result.participants);
   topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, saved: () => freshness?.request(),
     send: (current, args) => {
       const { authority_id, authority_epoch } = bootstrap.authority;
@@ -882,6 +890,27 @@ async function acknowledgeSent(item) {
   if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'Marking it read was not confirmed.');
   await attention.refresh();
 }
+// The topic's participants, which its outcome's owner and its creator may
+// change, and the names the composer offers.
+function paintParticipants(current, participants) {
+  participantsPanel?.paint(participants, [current.owner_id, current.creator_id].includes(bootstrap.actor));
+  fillNames($('addressable-names'), [...participants, ...outcomeMembers].map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })));
+}
+async function setParticipation(id, present) {
+  const { authority_id, authority_epoch } = bootstrap.authority;
+  const receipt = await api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'participation.set',
+    target: { topic_id: topic.id }, expected: { topic_revision: topic.version, authority: { authority_id, authority_epoch } }, args: { actor_id: id, present } });
+  if (receipt?.status === 'committed') freshness?.request();
+  return receipt;
+}
+// The directory feeds every field that adds someone to a team or topic; it is
+// read at start and again whenever such a field is focused.
+let directoryRead = null;
+function refreshDirectory() {
+  directoryRead ??= readDirectory(api, bootstrap.instance_id).then(({ items }) => fillNames($('directory-names'), items))
+    .catch(() => {}).finally(() => { directoryRead = null; });
+  return directoryRead;
+}
 // A visible page reloads its lists after each commit, and when shown again;
 // a hidden one waits, as its reads do.
 function followCommits(load) {
@@ -968,6 +997,7 @@ async function initializeOutcomePage(route) {
       $('topic-navigation').hidden=false;
       $('topic-title').textContent=workspace.title;$('topic-description').textContent=workspace.purpose||'Choose a topic, or start a new one.';
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);
+      await paintTeam(workspace,()=>refresh());
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
@@ -976,9 +1006,30 @@ async function initializeOutcomePage(route) {
       await topicRail.load();
     };
     $('refresh').onclick=()=>run(refresh);await refresh();
-    followCommits(()=>topicRail?.load());
+    // A commit may change the team or the outcome's revision as well as its topics.
+    followCommits(refresh);
   }
   document.body.dataset.ready='true';
+}
+// An outcome's team, which its owner may change.
+let teamPanel=null;
+async function paintTeam(workspace,refresh) {
+  const send=(id,present)=>{
+    const {authority_id,authority_epoch}=bootstrap.authority;
+    return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'workspace.member_set',
+      target:{workspace_id:workspace.id},expected:{workspace_revision:workspace.version,authority:{authority_id,authority_epoch}},args:{actor_id:id,present}})
+      .then(receipt=>{if(receipt?.status==='committed')run(refresh);return receipt;});
+  };
+  if(!teamPanel){
+    const section=$('outcome-team');$('outcome-page').append(section);
+    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',names:'directory-names',fixed:()=>[teamPanel.owner]});
+  }
+  Object.assign(teamPanel,{owner:workspace.owner_id,add:id=>send(id,true),remove:id=>send(id,false)});
+  let members;
+  try { members=await readMembers(api,bootstrap.instance_id,workspace.id); }
+  catch(error) { teamPanel.error=`The team could not be read: ${error.message}`;members=teamPanel.people; }
+  teamPanel.paint(members,workspace.owner_id===bootstrap.actor);teamPanel.error='';
+  $('outcome-team').hidden=false;
 }
 function enableNewTopic(workspace) {
   $('new-topic').disabled=false;

@@ -140,6 +140,12 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
   as `{actor_id, kind, name, name_truncated}` with a 1024-byte name prefix,
   bounded by `summary_utf8_bytes`, with `relevant_versions: {workspace}`.
   `next_cursor` is the last returned actor ID or `null`.
+- `actors` with optional `{kind, cursor, limit}` lists the instance's enabled
+  people and agents, ordered by ID, as `{id, kind, name, name_truncated}`
+  with a 1024-byte name prefix, bounded by `summary_utf8_bytes`. Anyone in
+  the instance may read it; `kind` is `human` or `agent`. It is the list a
+  team or topic picker offers. The command that adds a name decides whether
+  it may be added. `next_cursor` is the last returned ID or `null`.
 
 ## Earlier prepared openings
 
