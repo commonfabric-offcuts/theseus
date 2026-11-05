@@ -112,58 +112,81 @@ export async function openJournal({ instanceId, actor } = {}) {
   if (!instanceId || !actor) throw Error('Recovery needs the confirmed instance and actor.');
   if (!navigator.locks?.request) throw Error('Recovery ownership is unavailable in this browser. Keep this page open.');
   const scope = JSON.stringify([instanceId, actor]), writerId = crypto.randomUUID();
-  const held = new Map(), borrowed = new Map();
+  const held = new Map(), leases = new Map(), releasing = new Map();
   let closed = false;
   const lockName = writer => 'aim-next-recovery-writer:' + JSON.stringify([instanceId, actor, writer]);
-  // Take a writer's lock if no document holds it, and hold it until end() is called.
-  const take = writer => new Promise((resolve, reject) => {
-    navigator.locks.request(lockName(writer), { mode: 'exclusive', ifAvailable: true }, granted => {
-      if (!granted || closed) { resolve(null); return; }
-      let end; const lifetime = new Promise(release => { end = release; });
-      resolve(end); return lifetime;
-    }).catch(reject);
-  });
+  // One lease per writer this document is taking or using for a cleanup. Its
+  // users share it, and the last to leave releases it unless an adoption kept
+  // it. A new take waits until this document's previous release of that
+  // writer has completed, so it is never refused by its own lock.
+  const share = writer => {
+    let lease = leases.get(writer);
+    if (!lease) {
+      lease = { users: 0, kept: false, release: null, released: null };
+      lease.end = (releasing.get(writer) ?? Promise.resolve()).then(() => new Promise((resolve, reject) => {
+        lease.released = navigator.locks.request(lockName(writer), { mode: 'exclusive', ifAvailable: true }, granted => {
+          if (!granted || closed) { resolve(null); return; }
+          const lifetime = new Promise(release => { lease.release = release; });
+          resolve(lease.release); return lifetime;
+        });
+        lease.released.catch(reject);
+      }));
+      leases.set(writer, lease);
+    }
+    lease.users++;
+    return lease;
+  };
+  const leave = (writer, lease) => {
+    if (--lease.users) return;
+    leases.delete(writer);
+    if (lease.kept || !lease.release) return;
+    const done = lease.released.then(() => {}, () => {});
+    releasing.set(writer, done);
+    done.then(() => { if (releasing.get(writer) === done) releasing.delete(writer); });
+    lease.release();
+  };
   // Take this writer's lock and hold it until the journal closes.
   const lock = async writer => {
     if (closed) throw Error('Recovery storage is closed.');
     if (held.has(writer)) return true;
-    const lease = borrowed.get(writer);
-    const end = lease ? await lease.end : await take(writer);
-    if (!end) return false;
-    if (lease) lease.kept = true;
-    if (closed) { end(); return false; }
-    held.set(writer, end); return true;
+    const lease = share(writer);
+    try {
+      const end = await lease.end;
+      if (!end || closed) return false;
+      lease.kept = true; held.set(writer, end); return true;
+    } finally { leave(writer, lease); }
   };
   // Hold another writer's lock only while run() works on its rows, so a
   // cleanup that is declined or fails never leaves that writer looking open
-  // in another tab. Overlapping operations in this document share the lock.
+  // in another tab.
   const borrow = async (writer, run) => {
     if (closed) throw Error('Recovery storage is closed.');
     if (held.has(writer)) return run(true);
-    let lease = borrowed.get(writer);
-    if (!lease) { lease = { users: 0, end: take(writer) }; borrowed.set(writer, lease); }
-    lease.users++;
+    const lease = share(writer);
     try { return await run(Boolean(await lease.end)); }
-    finally {
-      if (!--lease.users) {
-        const end = await lease.end.catch(() => null);
-        if (!lease.users) { borrowed.delete(writer); if (!lease.kept) end?.(); }
-      }
-    }
+    finally { leave(writer, lease); }
   };
-  const holds = writer => held.has(writer) || borrowed.has(writer);
+  const holds = writer => held.has(writer) || leases.has(writer);
   // Whether no document holds this writer now. It takes no lock, so probes of
   // one writer, in this tab or another, never see each other as its holder.
   const free = async writer => {
     if (closed) throw Error('Recovery storage is closed.');
     if (held.has(writer)) return true;
-    const lease = borrowed.get(writer);
+    const lease = leases.get(writer);
     if (lease && await lease.end) return true;
+    await releasing.get(writer);
     const name = lockName(writer);
     return !(await navigator.locks.query()).held.some(lock => lock.name === name);
   };
   if (!await lock(writerId)) throw Error('This document could not acquire recovery ownership.');
-  const release = () => { closed = true; for (const end of held.values()) end(); held.clear(); };
+  // Closing ends every lock this document holds, and every lease a cleanup
+  // was granted: no transaction runs after close, so none relies on it.
+  const release = () => {
+    closed = true;
+    for (const end of held.values()) end();
+    for (const lease of leases.values()) lease.release?.();
+    held.clear();
+  };
   let database;
   try { database = await new Promise((resolve, reject) => {
     let failed = false;
