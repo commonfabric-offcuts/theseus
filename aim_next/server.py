@@ -12,7 +12,6 @@ import secrets
 import re
 import select
 import socket
-import sqlite3
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,7 +20,7 @@ from typing import Any, Callable
 from urllib.parse import quote, unquote, urlsplit
 
 from .authority import AuthorityError
-from .contract import LIMITS, Refusal, StoreError
+from .contract import LIMITS, Refusal
 from .effects_watch import WatchError
 from .live import LiveFeed
 from .media import INLINE_TYPES
@@ -666,14 +665,18 @@ class Handler(BaseHTTPRequestHandler):
         the same way, reads the views it shows, and reconnects. The stream is a
         WebSocket because a browser keeps those apart from its few HTTP
         connections per host, so open pages never queue their reads behind
-        their streams. Writes never block: at most one message is in flight, a
-        later number replaces one not yet started, and a client that is not
+        their streams. Writes never block: at most one frame is in flight; a
+        later number replaces one not yet started, and a later ping replaces
+        one not yet answered (RFC 6455 5.5.3), so a client that pings without
+        reading holds one answer, not one per ping. A client that is not
         reading when the feed ends is simply closed.
         """
+        # The session and Origin come first: a caller without them learns
+        # nothing, not even whether this instance has a feed.
+        accept = self._live_handshake()
         feed = self.server.live_feed
         if feed is None:
             raise RequestError(503, "LIVE_UNAVAILABLE", "This instance has no live updates; read the views instead.")
-        accept = self._live_handshake()
         stream = feed.subscribe()
         if stream is None:
             raise RequestError(503, "SERVER_BUSY", "Every live stream slot is taken.")
@@ -684,10 +687,12 @@ class Handler(BaseHTTPRequestHandler):
                               "Sec-WebSocket-Accept: %s\r\nSec-WebSocket-Protocol: %s\r\n\r\n" % (accept, LIVE_PROTOCOL)).encode("ascii"))
             self.wfile.flush()
             self.connection.setblocking(False)
-            sent, pending, received = None, b"", b""
+            sent, pending, ping, received = None, b"", None, b""
             while True:
                 seq, ended = feed.state()
-                if not pending and seq != sent:
+                if not pending and ping is not None:
+                    pending, ping = _ws_frame(ping, 10), None
+                elif not pending and seq != sent:
                     pending, sent = _ws_frame(b'{"seq":%d}' % seq), seq
                 if ended:
                     pending += _ws_frame(json.dumps({"end": ended}, separators=(",", ":")).encode("ascii")) + _ws_frame(b"\x03\xe8", 8)
@@ -719,7 +724,7 @@ class Handler(BaseHTTPRequestHandler):
                             break
                         opcode, payload, received = frame
                         if opcode == 9:
-                            pending += _ws_frame(payload, 10)
+                            ping = payload
                         elif opcode != 10:
                             if opcode == 8:
                                 try:
@@ -762,11 +767,12 @@ def _ws_frame(payload, opcode=1):
 def _ws_read(data):
     """(opcode, payload, rest) for the first whole frame from a client, or None while it is incomplete.
 
-    A client frame must be masked and small; anything else reads as a close."""
+    A client frame must be final, masked, small and have no reserved bit set,
+    since no extension is agreed; anything else reads as a close."""
     if len(data) < 2:
         return None
     opcode, masked, size = data[0] & 0x0F, data[1] & 0x80, data[1] & 0x7F
-    if not masked or size > 125 or not data[0] & 0x80:
+    if not masked or size > 125 or data[0] & 0xF0 != 0x80:
         return 8, b"", b""
     if len(data) < 6 + size:
         return None
@@ -818,11 +824,12 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     if external_authority is not None:
         server.origins_by_authority[external_authority] = tailnet_origin
     if live is not None:
-        # live is (database path, companion paths). Without a native watch, or
-        # when the commit number cannot be read at start, the instance still
-        # serves; the browser reads on its own schedule.
+        # live is (database path, companion paths). Without a native watch the
+        # instance still serves; the browser reads on its own schedule. The
+        # feed reads the commit number on its own thread, so a writer's lock
+        # at start delays its first message and never disables it.
         try:
             server.live_feed = LiveFeed(*live)
-        except (WatchError, sqlite3.Error, StoreError, ValueError, OSError):
+        except (WatchError, OSError):
             server.live_feed = None
     return server
