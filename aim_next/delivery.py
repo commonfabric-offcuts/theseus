@@ -105,6 +105,76 @@ class Delivery:
         self._eligibility_changed(db, actor, -1)
         self._change(db, "actor", actor, "delivery", row["id"], 2)
 
+    def _unread(self, db, actor, topics=None, workspaces=None):
+        """{topic_id: [unread, addressed, workspace_id]} for this actor's pending deliveries.
+
+        Unread is what has not been acknowledged, which for a person means not
+        yet seen on screen; addressed is the part sent to them by name. The
+        subscription groups carry their own counters; the one direct group per
+        recipient spans topics, so its pending rows are counted by topic. A
+        list view passes the topics or outcomes on its page: their subscription
+        groups are found by index, and only the direct group's pending rows are
+        walked whatever the page.
+        """
+        counts, scope, direct_scope, values = {}, "", "", ()
+        if topics == [] or workspaces == []:
+            return counts
+        if topics is not None:
+            places = ",".join("?" * len(topics))
+            scope, direct_scope, values = " AND g.topic_id IN (%s)" % places, " AND m.topic_id IN (%s)" % places, tuple(topics)
+        elif workspaces is not None:
+            scope = direct_scope = " AND t.workspace_id IN (%s)" % ",".join("?" * len(workspaces))
+            values = tuple(workspaces)
+        if topics is not None:
+            subscriptions = db.execute("SELECT g.topic_id,t.workspace_id,SUM(g.pending_count) AS pending "
+                                       "FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 CROSS JOIN topics t ON t.id=g.topic_id "
+                                       "WHERE g.recipient_id=? AND g.kind='subscription' AND g.active=1 AND g.pending_count>0" + scope + " GROUP BY g.topic_id",
+                                       (actor,) + values)
+        else:
+            subscriptions = db.execute("SELECT g.topic_id,t.workspace_id,SUM(g.pending_count) AS pending FROM delivery_groups g INDEXED BY eligible_groups "
+                                       "CROSS JOIN topics t ON t.id=g.topic_id "
+                                       "WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND g.kind='subscription'" + scope + " GROUP BY g.topic_id",
+                                       (actor,) + values)
+        for row in subscriptions:
+            counts[row["topic_id"]] = [row["pending"], 0, row["workspace_id"]]
+        for row in db.execute("SELECT m.topic_id,t.workspace_id,COUNT(*) AS pending FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
+                              "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
+                              "CROSS JOIN messages m ON m.id=d.message_id CROSS JOIN topics t ON t.id=m.topic_id "
+                              "WHERE g.recipient_id=? AND g.kind='direct' AND g.topic_id='' AND g.participant_epoch=0 AND g.active=1 AND g.pending_count>0"
+                              + direct_scope + " GROUP BY m.topic_id",
+                              (actor,) + values):
+            entry = counts.setdefault(row["topic_id"], [0, 0, row["workspace_id"]])
+            entry[0] += row["pending"]
+            entry[1] += row["pending"]
+        return counts
+
+    def _view_attention(self, db, actor, args):
+        """What waits for this actor: unread and addressed totals, and the newest addressed deliveries.
+
+        Each delivery says whether its topic can be opened: a person sent a
+        message by name keeps reading it after they lose the topic, and then
+        acknowledges it directly rather than by reading through the topic.
+        """
+        counts = self._unread(db, actor)
+        group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 AND active=1",
+                           (actor,)).fetchone()
+        rows = [] if group is None else db.execute(
+            "SELECT * FROM deliveries INDEXED BY pending_group_deliveries WHERE group_id=? AND state='pending' ORDER BY seq DESC LIMIT 5",
+            (group["id"],)).fetchall()
+        items = []
+        for row in rows:
+            item = self._delivery_item(db, row)
+            try:
+                self._topic(db, actor, item["topic"]["id"])
+                item["topic_readable"] = True
+            except Refusal:
+                item["topic_readable"] = False
+            items.append(item)
+        return {"instance_id": self.instance_id,
+                "unread": sum(entry[0] for entry in counts.values()),
+                "addressed": sum(entry[1] for entry in counts.values()),
+                "latest_addressed": items}
+
     def _delivery_item(self, db, row, active=True):
         # The message's own sequence and its topic's title prefix let an inbox
         # line or a wake notice name the place without another read.

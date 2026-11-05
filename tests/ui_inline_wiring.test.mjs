@@ -10,6 +10,7 @@ import { currentImages } from '../web/upload-state.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
 import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
+import { Attention } from '../web/attention.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 function fixture(href = 'https://fixture/?topic=t1') {
@@ -63,7 +64,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, WritingInput, ReadThrough, Live, liveOffered, reloader, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -78,14 +79,14 @@ function fixture(href = 'https://fixture/?topic=t1') {
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(scope);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
   vm.runInContext('globalThis.OutcomeRail = (()=>{' + outcomeSource + '; return OutcomeRail; })()', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates}; } };`, context);
@@ -583,4 +584,12 @@ test('a card taller than four viewports is read when the person scrolls through 
   assert.deepEqual(ranges()[0], [30, 30], 'the short card on screen at the start is read alone');
   // It covers half the 600-pixel viewport once scrolled 100 pixels.
   assert.deepEqual(reads.filter(([top]) => top <= 100), [[0, false], [50, false], [100, true]], 'the tall card is read once it covers half the viewport, not before');
+});
+
+test('a message sent by name opens where it can even when the page never started', async () => {
+  const f = fixture();
+  // No initialize: the page's start failed, so it has no navigation of its own.
+  await f.openSent({ id: 'd1', topic_readable: true, topic: { id: 't9', title: 'Plans' } });
+  await f.openSent({ id: 'd2', topic_readable: false, topic: { id: 't8', title: 'Lost' } });
+  assert.deepEqual(f.events.filter(event => event[0] === 'navigate').map(event => event[1]), ['?topic=t9', '/']);
 });

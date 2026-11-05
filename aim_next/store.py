@@ -424,10 +424,18 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                           "WHERE m.actor_id=? AND m.workspace_id>? ORDER BY m.workspace_id LIMIT ?",
                           (actor, args.get("cursor", ""), limit + 1)).fetchall()
 
+        totals = {}
+        for unread, addressed, workspace_id in self._unread(db, actor, workspaces=[row["id"] for row in rows[:limit]]).values():
+            total = totals.setdefault(workspace_id, [0, 0])
+            total[0] += unread
+            total[1] += addressed
+
         def item(row):
             title, truncated = _prefix(row["title_prefix"])
+            unread, addressed = totals.get(row["id"], (0, 0))
             return {"id": row["id"], "owner_id": row["owner_id"], "title": title,
-                    "title_truncated": truncated, "version": row["version"]}
+                    "title_truncated": truncated, "version": row["version"],
+                    "unread": unread, "addressed": addressed}
         return _bounded_page({"instance_id": self.instance_id}, rows, limit, item, "id")
 
     def _view_workspace_members(self, db, actor, args):
@@ -486,6 +494,9 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                           "LEFT JOIN messages m ON m.id=s.latest_message_id WHERE t.workspace_id=? AND t.id>? ORDER BY t.id LIMIT ?",
                           (workspace["id"], args.get("cursor", ""), limit + 1)).fetchall()
         items = [dict(row) for row in rows[:limit]]
+        counts = self._unread(db, actor, topics=[item["id"] for item in items])
+        for item in items:
+            item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
         return {"instance_id": self.instance_id, "items": items,
                 "next_cursor": items[-1]["id"] if len(rows) > limit else None,
                 "relevant_versions": {"workspace": workspace["version"]}}

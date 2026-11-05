@@ -47,8 +47,8 @@ class WorkspacesCase(fixtures.StoreCase):
         self.assertIn("topic", self.store.view("owner", "topic", {"topic_id": "t-private"}))
         before = self.records()
         expected = [
-            {"id": "w-b", "owner_id": "owner", "title": "Same title", "title_truncated": False, "version": 1},
-            {"id": "w-d", "owner_id": "agent-a", "title": "Same title", "title_truncated": False, "version": 1},
+            {"id": "w-b", "owner_id": "owner", "title": "Same title", "title_truncated": False, "version": 1, "unread": 0, "addressed": 0},
+            {"id": "w-d", "owner_id": "agent-a", "title": "Same title", "title_truncated": False, "version": 1, "unread": 0, "addressed": 0},
         ]
         self.assertEqual(self.listing()["items"], expected)
         self.assertEqual(self.listing("agent-a")["items"], expected)

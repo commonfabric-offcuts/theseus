@@ -1,4 +1,4 @@
-import { WorkspacePages, routeHref } from './topic-navigation.mjs';
+import { WorkspacePages, routeHref, paintUnread } from './topic-navigation.mjs';
 
 export class OutcomeRail {
   constructor({instanceId,current,host,more,retry,message,empty,read,open,denied}) {
@@ -30,6 +30,7 @@ export class OutcomeRail {
       }
       link.children[0].textContent=item.title+(item.title_truncated?'…':'');
       link.children[1].textContent=item.id+(item.title_truncated?' · title shortened':'');
+      paintUnread(link.children[0],item);
       if(item.id===this.current)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
       if(this.host.children[index]!==link)this.host.insertBefore(link,this.host.children[index]??null);
     });

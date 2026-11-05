@@ -186,6 +186,7 @@ export class TopicRail {
         };
       }
       link.textContent = item.title;
+      paintUnread(link, item);
       if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
       // Moving a focused link can blur it. Leave unchanged rows in place.
@@ -227,4 +228,18 @@ export class TopicRail {
       }).finally(() => { this.loading = null; this.more.removeAttribute('aria-disabled'); this.retry.removeAttribute('aria-disabled'); this.updated?.(); });
     return this.loading;
   }
+}
+
+// A count of what waits unread in a topic or outcome, marked when part of it
+// was sent to the reader by name. The caller has just set the row's text, so
+// the row holds no earlier count; a row without unread messages gets none.
+export function paintUnread(host, item) {
+  if (!(Number.isSafeInteger(item.unread) && item.unread > 0)) return;
+  const addressed = Number.isSafeInteger(item.addressed) && item.addressed > 0 ? item.addressed : 0;
+  const badge = document.createElement('span'), spoken = document.createElement('span');
+  badge.className = addressed ? 'unread-count addressed' : 'unread-count';
+  badge.textContent = String(item.unread); badge.setAttribute('aria-hidden', 'true');
+  spoken.className = 'sr-only';
+  spoken.textContent = `, ${item.unread} unread` + (addressed ? `, ${addressed} sent to you by name` : '');
+  host.append(badge, spoken);
 }

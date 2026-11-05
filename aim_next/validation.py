@@ -47,6 +47,7 @@ VIEWS = {
     "deliveries": {"cursor", "limit"}, "delivery": {"delivery_id"},
     "opening": {"opening_id"}, "openings": {"workspace_id", "cursor", "limit"},
     "workspace_members": {"workspace_id", "cursor", "limit"},
+    "attention": set(),
 }
 
 

@@ -17,6 +17,7 @@ import { OutcomeCreation } from './creation.mjs';
 import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
+import { Attention, paintSent } from './attention.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -26,12 +27,12 @@ const node = (tag, text, className) => {
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
 const status = message => { $('app-status').textContent = message; $('app-status').hidden = !message; };
 const run = action => { try { return Promise.resolve(action()).catch(error => { status(error.message); return null; }); } catch (error) { status(error.message); return Promise.resolve(null); } };
-let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null;
+let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null;
 let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null;
+let topicRail, topicNavigation, outcomeRail, inlineDiscovery = null, sentHost = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
@@ -741,6 +742,16 @@ async function initialize() {
     window.addEventListener('online', () => live.wake());
     live.start();
   }
+  if (!attention) {
+    attention = new Attention({ api: { view: (...args) => api.view(...args) }, instanceId: bootstrap.instance_id, doc: document, open: openSent });
+    attention.listen(answer => { if (sentHost) paintSent(sentHost, answer, { open: openSent, acknowledge: acknowledgeSent }); });
+    const ask = $('notify'), offer = () => { ask.hidden = !attention.canAsk; };
+    ask.onclick = () => run(async () => { await attention.ask(); offer(); });
+    offer();
+    live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') attention.refresh(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') attention.refresh(); });
+    attention.refresh();
+  }
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
   const route = parseRoute(new URL(location.href));
   if (route.kind !== 'topic') {
@@ -834,6 +845,7 @@ async function initialize() {
     open: id => openDestination({kind:'topic',id},topicRail.pages.items.find(item => item.id === id)?.title ?? id),
   });
   topicRail.load();
+  followCommits(async () => { await outcomeRail?.load(); await topicRail?.load(); });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);
   $('updates-retry').onclick = () => run(async () => {
@@ -848,7 +860,29 @@ async function initialize() {
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint);
 }
+// A message sent by name opens its topic, or, where the reader has lost the
+// topic, the outcomes page that lists it to be marked read.
+function openSent(item) {
+  return item.topic_readable ? openDestination({ kind: 'topic', id: item.topic.id }, item.topic.title) : openDestination({ kind: 'root' }, 'Outcomes');
+}
+async function acknowledgeSent(item) {
+  const { authority_id, authority_epoch } = bootstrap.authority;
+  const receipt = await api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'delivery.ack',
+    target: { delivery_id: item.id }, expected: { authority: { authority_id, authority_epoch } }, args: {} });
+  if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'Marking it read was not confirmed.');
+  await attention.refresh();
+}
+// A visible page reloads its lists after each commit, and when shown again;
+// a hidden one waits, as its reads do.
+function followCommits(load) {
+  if (!live) return;
+  const reload = reloader(load);
+  live.listen(event => { if (event.kind === 'commit' && document.visibilityState === 'visible') run(reload); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(reload); });
+}
 async function openDestination(target, title) {
+  // A page whose start failed has no navigation; leave it for the destination.
+  if (!topicNavigation) { location.assign(routeHref(target)); return; }
   const notice=$('topic-navigation-status');notice.hidden=true;
   const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
   try { return await pending; }
@@ -889,14 +923,15 @@ async function initializeOutcomePage(route) {
   for(const id of ['notebook','participants','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('outcome-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
+  sentHost=$('sent-to-you');
+  if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:acknowledgeSent});
   if(route.kind==='root') {
     $('topic-title').textContent='Outcomes';$('topic-description').textContent='Choose an outcome to see its topics.';
     $('outcomes-heading').textContent='Your outcomes';
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
     await initializeOutcomeNavigation();
     $('refresh').onclick=()=>run(()=>outcomeRail.load());
-    const reload=reloader(()=>outcomeRail.load());
-    live?.listen(event=>{if(event.kind==='commit')run(reload);});
+    followCommits(()=>outcomeRail.load());
   } else {
     $('outcome-page').append($('topic-navigation'));
     await initializeOutcomeNavigation(route.id);
@@ -928,8 +963,7 @@ async function initializeOutcomePage(route) {
       await topicRail.load();
     };
     $('refresh').onclick=()=>run(refresh);await refresh();
-    const reload=reloader(()=>topicRail?.load());
-    live?.listen(event=>{if(event.kind==='commit')run(reload);});
+    followCommits(()=>topicRail?.load());
   }
   document.body.dataset.ready='true';
 }
