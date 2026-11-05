@@ -38,6 +38,38 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.equal(p.calls.some(c=>['message.send','submission.prepare'].includes(c.payload?.kind)),false,'editing and Undo do not send');
     await shot(p,'shared-writing-reader');assert.deepEqual(p.errors,[]);
   });
+  await check('inline nothing lights while writing; a clicked passage lights and Return quotes it', async () => {
+    const p=await page('quote-while-writing',null,true);
+    await p.open(1);
+    const lit=()=>p.evaluate('document.querySelectorAll("#source-body .hover-quote").length');
+    const focused=()=>p.evaluate('document.activeElement.id');
+    const quotes=async()=>((await field(p)).match(/> Source 1 exact passage/g)??[]).length;
+    const before=await field(p), already=await quotes();
+    await p.point('#source-body [data-start="0"]','move');
+    assert.ok(await lit(),'away from the writing, the passage under the pointer lights');
+    await p.point('#writing-body');
+    assert.equal(await lit(),0,'putting the caret in the writing puts the light out');
+    await p.evaluate('(f=>f.setSelectionRange(f.value.length,f.value.length))(document.querySelector("#writing-body"))');
+    await p.send('Input.insertText',{text:'My reply'});
+    await p.point('#source-body [data-start="0"]','move');
+    assert.equal(await lit(),0,'nothing lights while the caret is in the writing');
+    assert.equal(await focused(),'writing-body');
+    await p.key('Enter');
+    assert.equal(await field(p),before+'My reply\n','in the writing, Return is a new line');
+    await p.point('#source-body [data-start="0"]');
+    assert.ok(await lit(),'clicking a passage lights it');
+    assert.notEqual(await focused(),'writing-body');
+    await p.key('Enter');
+    assert.equal(await quotes(),already+1,'Return quotes the clicked passage');
+    assert.equal(await focused(),'writing-body','the caret returns to the writing');
+    assert.equal(await lit(),0);
+    // Leave the shared draft as it was found.
+    await p.key('a',4);await p.key('k',2);
+    if(before)await p.send('Input.insertText',{text:before});
+    assert.equal(await field(p),before);
+    await until(async()=>(await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id})).draft?.body===before,'restored draft saved');
+    assert.deepEqual(p.errors,[]);
+  });
   await check('inline correction unavailable startup remains readable and Retry restores its composer', async () => {
     await control({ method: 'read_fault', name: 'editor_state', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'Composer is temporarily unavailable', retryable: true } }, count: 1 });
     const p = await page('inline-startup-refusal', null, true);

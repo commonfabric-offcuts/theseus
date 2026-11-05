@@ -76,7 +76,13 @@ export class Reader {
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),
       beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();}});
     this.field.addEventListener('paste', event => this.paste(event));
-    this.sourceBody.addEventListener('pointerdown', () => this.sourceBody.focus({ preventScroll: true }));
+    // Clicking a passage lights it for Return, as moving over it does once the
+    // caret has left the writing.
+    this.sourceBody.addEventListener('pointerdown', event => {
+      this.sourceBody.focus({ preventScroll: true });
+      if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey);
+    });
+    this.field.addEventListener('focus', () => this.disarm());
     this.sourceBody.addEventListener('pointermove', event => this.point(event));
     this.dialog.addEventListener('keydown', event => this.key(event));
   }
@@ -226,13 +232,20 @@ export class Reader {
 
   point(event) {
     if (event.pointerType === 'touch' || event.buttons || !this.source) return;
+    // With the caret in the writing, Return makes a new line, so nothing lights
+    // to promise a quote.
+    if (document.activeElement === this.field) return;
     const current = { x: event.clientX, y: event.clientY };
     if (this.pointer && Math.hypot(current.x - this.pointer.x, current.y - this.pointer.y) < 2) return;
     this.pointer = current;
-    const span = event.target.closest('[data-start]');
+    this.light(event.target, event.shiftKey);
+  }
+
+  light(target, extend) {
+    const span = target.closest('[data-start]');
     if (!span || !this.sourceBody.contains(span)) return;
     const start = Number(span.dataset.start), end = Number(span.dataset.end);
-    const anchor = event.shiftKey && this.hover ? this.hover.anchor : { start, end };
+    const anchor = extend && this.hover ? this.hover.anchor : { start, end };
     this.hover = { anchor, start: Math.min(anchor.start, start), end: Math.max(anchor.end, end) };
     for (const part of this.sourceBody.children) part.classList.toggle('hover-quote', Number(part.dataset.start) < this.hover.end && Number(part.dataset.end) > this.hover.start);
   }
