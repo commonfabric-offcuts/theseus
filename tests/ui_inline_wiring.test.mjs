@@ -253,6 +253,22 @@ test('a More versions page the registry applied is drawn even when its settle fa
   assert.deepEqual(asked,[null,'c1','c2'],'the next page continues from the applied page\'s cursor');
   assert.deepEqual(JSON.parse(JSON.stringify(candidates.get(f.editor.key))).items.map(item=>item.id),['a','b','c']);
 });
+test('a More versions page that fails after its review was replaced leaves the new review alone',async()=>{
+  const f=fixture(),row=id=>({id,stamp:id,availability:'open-in-another-tab'});let fail;
+  f.get('version-review').showModal=function(){this.open=true;};
+  f.registry.recoveryCandidates=async(editor,options,shown)=>{
+    if(options.cursor)return new Promise((_resolve,reject)=>{fail=reject;});
+    const page={items:[row('a')],nextCursor:'c1'};shown(page,false);return page;
+  };
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  const find=(element,text)=>element.textContent===text?element:element.children.map(child=>find(child,text)).find(Boolean);
+  const pending=find(f.get('review-content'),'More versions').onclick();
+  await f.showVersions(f.editor,f.get('opener'),f.p);
+  f.get('review-retry').hidden=true;
+  fail(Error('old page failed'));await pending;
+  assert.equal(f.get('review-status').textContent,'','the new review shows no error from the old one');
+  assert.equal(f.get('review-retry').hidden,true);
+});
 test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};

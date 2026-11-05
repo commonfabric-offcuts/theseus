@@ -334,6 +334,20 @@ test('a note\'s More versions page continues its list', async t => {
   assert.deepEqual(listed, [false, true]);
 });
 
+test('a note\'s More versions page from a replaced list is refused and changes nothing', async t => {
+  const f = await fixture(t);
+  const listed = [];
+  const list = (page, continued) => listed.push(continued);
+  f.backend.next = 'note-1';
+  await f.registry.recoveryCandidates(f.note, { limit: 10 }, list);
+  f.backend.next = 'note-2';
+  await f.registry.recoveryCandidates(f.note, { limit: 10 }, list);
+  f.backend.next = null;
+  await assert.rejects(f.registry.recoveryCandidates(f.note, { cursor: 'note-1', limit: 10 }, list), /changed/);
+  assert.deepEqual(listed, [false, false], 'the stale page is not shown');
+  assert.equal(f.note.candidatesNext, 'note-2', 'the list keeps its own cursor');
+});
+
 test('a settle whose read is superseded finishes with the latest settle, whether its own read answered or failed', async t => {
   for (const older of ['answered', 'failed']) {
     const { f, editor, before, later, held, reads } = await refusalAtLaterRevision(t);
