@@ -468,9 +468,74 @@ class WatchReadingCase(AgentVerbCase):
         agent.watch_changes(watch)
         self.assertTrue(blocker.in_transaction, "the lock was never released")
         blocker.rollback()
-        self.assertEqual(reads, [None, "DATABASE_BUSY"])
+        # The baseline and the pending deliveries are read, then the locked read.
+        self.assertEqual(reads, [None, None, "DATABASE_BUSY"])
         self.assertEqual(self.stdout.getvalue(), "watching agent-b from change %s\n" % self.store.view(
             "agent-b", "changes", {"scope": {"kind": "actor", "id": "agent-b"}})["checkpoint"]["after_seq"])
+
+    def test_a_restarted_watch_names_what_is_pending_before_it_reports_watching(self):
+        self.run_cli("post", "t1", "--to", "agent-b", "Sent while the watch was down")
+        first = self.latest()
+        self.run_cli("post", "t1", "--to", "agent-b", "Also sent while it was down")
+        second = self.latest()
+        settled = self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'", (first[0],))[0][0]
+        self.run_cli("post", "t1", "--to", "agent-b", "Read before the watch started")
+        read = self.latest()
+        self.assertEqual(self.run_cli("ack", self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'",
+                                                      (read[0],))[0][0], actor="agent-b")[0], 0)
+        agent = self.agent()
+        agent.watch_changes(FakeWatch(dict(dirty=False, stop=True)))
+        pending = [self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'", (message[0],))[0][0]
+                   for message in (first, second)]
+        checkpoint = self.store.view("agent-b", "changes", {"scope": {"kind": "actor", "id": "agent-b"}})["checkpoint"]["after_seq"]
+        self.assertEqual(settled, pending[0])
+        self.assertEqual(self.stdout.getvalue().splitlines(), [
+            'delivery "Topic" #%s agent-a: Sent while the watch was down  [%s in t1]' % (first[1], pending[0]),
+            'delivery "Topic" #%s agent-a: Also sent while it was down  [%s in t1]' % (second[1], pending[1]),
+            "watching agent-b from change %s" % checkpoint])
+
+    def test_a_stop_ends_the_watch_while_the_pending_read_finds_the_database_locked(self):
+        agent = self.agent()
+        watch = FakeWatch()
+        blocker = sqlite3.connect(str(self.path), isolation_level=None)
+        self.addCleanup(blocker.close)
+        original = agent.store.view
+
+        def view(actor, name, args):
+            if name == "deliveries" and not blocker.in_transaction:
+                blocker.execute("BEGIN EXCLUSIVE")
+                watch.stopped = True  # SIGTERM arrives while the lock is held
+            return original(actor, name, args)
+        agent.store.view = view
+        agent.watch_changes(watch)
+        self.assertTrue(blocker.in_transaction, "the lock was never taken")
+        blocker.rollback()
+        self.assertEqual((self.stdout.getvalue(), self.stderr.getvalue()), ("", ""))
+
+    def test_a_delivery_made_after_the_checkpoint_is_reported_once(self):
+        agent = self.agent()
+        original, posted = agent.store.view, []
+
+        def view(actor, name, args):
+            if name == "deliveries" and not posted:
+                # Made after the baseline was read and before the pending read.
+                posted.append(self.run_cli("post", "t1", "--to", "agent-b", "Between the two reads"))
+            return original(actor, name, args)
+        agent.store.view = view
+        watch = FakeWatch(dict(dirty=True, stop=False), dict(dirty=False, stop=True))
+        agent.watch_changes(watch)
+        message = self.latest()
+        delivery = self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'", (message[0],))[0][0]
+        lines = self.stdout.getvalue().splitlines()
+        self.assertEqual(lines[0], 'delivery "Topic" #%s agent-a: Between the two reads  [%s in t1]' % (message[1], delivery))
+        self.assertTrue(lines[1].startswith("watching agent-b from change "))
+        self.assertEqual(len(lines), 2, lines)
+        # One made later is still reported from its change.
+        later = self.delivery_change(agent, "After the watch began")
+        self.stdout.truncate(0), self.stdout.seek(0)
+        agent.report(FakeWatch(), later)
+        self.assertEqual(self.stdout.getvalue(), 'delivery "Topic" #%s agent-a: After the watch began  [%s in t1]\n' % (
+            self.latest()[1], later["resource_id"]))
 
     def delivery_change(self, agent, body, **args):
         cursor = agent.changes(FakeWatch(), None)["checkpoint"]
@@ -676,6 +741,9 @@ class WatchVerbCase(AgentVerbCase):
         interpreter = [sys.executable, "-I"] + (["-X", "pycache_prefix=" + prefix] if prefix else [])
         for number in (signal.SIGTERM, signal.SIGINT):
             with self.subTest(signal=number):
+                # The last case's delivery is settled, so this watch starts with nothing pending.
+                for item in self.store.view("agent-b", "deliveries", {})["items"]:
+                    self.assertEqual(self.run_cli("ack", item["id"], actor="agent-b")[0], 0)
                 read_fd, write_fd = os.pipe()
                 self.addCleanup(os.close, read_fd)
                 process = subprocess.Popen(interpreter + [str(ROOT / "bin" / "aim-next"), "--profile", str(self.profiles["agent-b"]), "--json", "watch"],

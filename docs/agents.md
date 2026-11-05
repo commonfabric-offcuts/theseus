@@ -126,9 +126,13 @@ output; the exit codes are those of `command`.
   topic through `SEQ`).
 - `watch`: runs until SIGINT or SIGTERM, then exits 0. It arms the native
   watch on the database file and on the authority anchor, establishes a
-  checkpoint for the actor's scope, prints `watching ACTOR from change N`,
-  then waits on the watch alone (no timer) and reads the actor's changes
-  after the checkpoint on each event. It prints one flushed line per new
+  checkpoint for the actor's scope, prints a line for each delivery already
+  pending (oldest first, so a watch restarted after a gap names what arrived
+  while it was down), prints `watching ACTOR from change N`, then waits on
+  the watch alone (no timer) and reads the actor's changes after the
+  checkpoint on each event. A delivery made between the checkpoint and the
+  pending read is printed once. The `watching` line means the watch is idle
+  and waiting. It prints one flushed line per new
   delivery, `delivery "TITLE" #SEQ AUTHOR: preview  [DELIVERY in TOPIC]`
   (followed by `  (cancelled)` if its subscription was cancelled before the
   watch read it), or `delivery unavailable (CODE)  [DELIVERY]` when the

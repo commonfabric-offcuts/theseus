@@ -291,6 +291,8 @@ class Agent:
         self.exit = 0
         # The saved request being sent, named by every unconfirmed outcome.
         self.operation = None
+        # Deliveries a watch reported as already pending, so their creation is not reported again.
+        self.shown = set()
 
     # Reads -----------------------------------------------------------------
 
@@ -620,6 +622,22 @@ class Agent:
             self.fail(error)
         return result
 
+    def pending(self, watch):
+        """The actor's pending deliveries, oldest first, or None when a stop came while the database was locked."""
+        cursor, items = None, []
+        while True:
+            result = self.read(watch, "deliveries", {} if cursor is None else {"cursor": cursor})
+            error = result.get("error")
+            if error and error.get("code") == "DATABASE_BUSY":
+                return None
+            if error:
+                self.out.raw(result)
+                self.fail(error)
+            items.extend(result["items"])
+            cursor = result.get("next_cursor")
+            if cursor is None:
+                return sorted(items, key=lambda item: item["seq"])
+
     def watch_changes(self, watch):
         # The watch is armed before the baseline, so a write after the
         # checkpoint always produces another event.
@@ -627,6 +645,16 @@ class Agent:
         if page is None:
             return
         cursor = page["checkpoint"]
+        # What is already waiting is reported first, so a watch restarted after
+        # a gap names the deliveries made while it was down. The checkpoint was
+        # taken before: a delivery made in between is also a change after it,
+        # and is reported once. The watching line then means the watch is idle.
+        pending = self.pending(watch)
+        if pending is None:
+            return
+        for item in pending:
+            self.notice(watch, {"event": "delivery", "item": item}, self.delivery_line(item))
+            self.shown.add(item["id"])
         self.notice(watch, {"event": "watching", "actor_id": self.actor, "checkpoint": cursor},
                     "watching %s from change %s" % (self.actor, cursor["after_seq"]))
         while True:
@@ -663,6 +691,9 @@ class Agent:
     def report(self, watch, change):
         kind, identity, version = change["resource_kind"], change["resource_id"], change["version"]
         if kind == "delivery" and version == 1:
+            if identity in self.shown:
+                self.shown.discard(identity)
+                return
             result = self.read(watch, "delivery", {"delivery_id": identity})
             error = result.get("error")
             if error:
