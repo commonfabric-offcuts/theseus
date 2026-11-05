@@ -178,27 +178,30 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           for (const row of [null, ...rows]) {
             let box = null;
             const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, hovered: row.matches(':hover') }; })()`;
-            if (row !== null) {
-              assert.ok(await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); row?.scrollIntoView({ block: 'center', inline: 'center' }); return Boolean(row); })()`), `${row} is drawn on the ${route} page`);
-              // The page may still be settling, as counts change while it reads:
-              // the pointer follows the row until the row stays put under it.
-              await until(async () => {
-                const now = await p.evaluate(placed);
-                if (now.hovered && JSON.stringify(now) === JSON.stringify(box)) return true;
-                box = now;
-                if (!now.hovered) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: (now.left + now.right) / 2, y: (now.top + now.bottom) / 2 });
-                return false;
-              }, `${row} stays under the pointer`);
-            }
+            if (row !== null) assert.ok(await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); row?.scrollIntoView({ block: 'center', inline: 'center' }); return Boolean(row); })()`), `${row} is drawn on the ${route} page`);
             const state = `${route}-${scheme}-${layout}-${row === null ? 'rest' : 'hover-' + row.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
-            const answer = await p.evaluate(audit);
+            // The page may still be settling, as a count changes while it reads
+            // and its row is drawn anew: the pointer follows the row, and the
+            // measures and screenshot count only once the row stayed put under
+            // it from before the measures until after the screenshot.
+            const { answer, image } = await until(async () => {
+              if (row !== null) {
+                const now = await p.evaluate(placed);
+                if (!now.hovered || JSON.stringify(now) !== JSON.stringify(box)) {
+                  box = now;
+                  if (!now.hovered) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: (now.left + now.right) / 2, y: (now.top + now.bottom) / 2 });
+                  return false;
+                }
+              }
+              const answer = await p.evaluate(audit);
+              const image = Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64');
+              if (row !== null && JSON.stringify(await p.evaluate(placed)) !== JSON.stringify(box)) return false;
+              return { answer, image };
+            }, `${state}: ${row} stays under the pointer through its screenshot`, 30000);
             // The row under the pointer is in view, so the sweep judges its pills.
             if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left - 1 && pill.top >= box.top - 1 && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
-            const image = Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64');
             writeFileSync(join(shots, state + '.png'), image);
             writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
-            // What was measured is what the screenshot shows.
-            if (box) assert.deepEqual(await p.evaluate(placed), box, `${state}: the row stayed under the pointer while it was captured`);
             for (const problem of [...answer.problems, ...judgePixels(image, answer)]) found.push({ state, ...problem });
           }
           await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
