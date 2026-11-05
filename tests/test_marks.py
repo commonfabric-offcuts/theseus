@@ -2,7 +2,9 @@ from __future__ import annotations
 
 """Marked unread: a person's own durable reminder, counted once, cleared only by message.mark."""
 
+import concurrent.futures
 import sqlite3
+import threading
 import unittest
 from unittest import mock
 
@@ -360,6 +362,74 @@ class MarkCostCase(MarkCase):
                 self.assertLess(after, before[name] + 500, "%s grew from %d to %d steps" % (name, before[name], after))
         self.assertEqual(self.unread("owner"), 1)
         self.assertEqual(len(self.store.view("owner", "marks", {"topic_id": "t1"})["items"]), 1)
+
+
+
+class MarkRaceAndRecoveryCase(MarkCase):
+    """Concurrent, interrupted and reopened marks (cases from the server review)."""
+
+    def concurrent(self, envelopes):
+        barrier = threading.Barrier(len(envelopes))
+        def call(envelope):
+            other = store_module.Store(self.path, "test-instance", expected_binding=self.binding)
+            barrier.wait()
+            return other.command("owner", envelope)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(envelopes)) as pool:
+            return list(pool.map(call, envelopes))
+
+    def test_distinct_concurrent_marks_have_one_winner_and_one_recorded_conflict(self):
+        message = self.read()
+        envelopes = [self.envelope("message.mark", {"message_id": message}, {"marked": True},
+                                   {"mark_revision": 0}, op="race-"+str(n)) for n in range(2)]
+        receipts = self.concurrent(envelopes)
+        self.assertEqual(sum(r["status"] == "committed" for r in receipts), 1, receipts)
+        loser = next(r for r in receipts if r["status"] != "committed")
+        self.assertEqual(loser["error"]["code"], "REVISION_CONFLICT")
+        self.assertTrue(loser["recorded"])
+        self.assertEqual(self.revision(message), 1)
+        for envelope, receipt in zip(envelopes, receipts):
+            self.assertEqual(self.store.command("owner", envelope), receipt)
+
+    def test_duplicate_concurrent_mark_has_one_receipt_one_change_and_survives_reopen(self):
+        message = self.read()
+        envelope = self.envelope("message.mark", {"message_id": message}, {"marked": True},
+                                 {"mark_revision": 0}, op="duplicate-race")
+        receipts = self.concurrent([envelope, envelope])
+        self.assertEqual(receipts[0], receipts[1])
+        self.committed(receipts[0])
+        self.assertEqual(self.revision(message), 1)
+        self.assertEqual(self.sql("SELECT count(*) FROM changes WHERE resource_kind='mark'"), [(1,)])
+        self.store = store_module.Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.editor_mark(message), {"marked": True, "mark_revision": 1})
+        self.assertEqual(self.store.command("owner", envelope), receipts[0])
+
+    def test_failure_after_mark_write_rolls_back_and_exact_retry_can_commit(self):
+        message = self.read()
+        envelope = self.envelope("message.mark", {"message_id": message}, {"marked": True},
+                                 {"mark_revision": 0}, op="interrupted-mark")
+        before = self.records()
+        def fail(db, *args):
+            self.assertEqual(db.execute("SELECT revision FROM message_marks WHERE message_id=?", (message,)).fetchone()[0], 1)
+            raise sqlite3.OperationalError("review injected write failure")
+        with mock.patch.object(self.store, "_change", side_effect=fail):
+            with self.assertRaises(store_module.StoreError):
+                self.store.command("owner", envelope)
+        self.assertEqual(self.records(), before)
+        self.committed(self.store.command("owner", envelope))
+        self.assertEqual(self.revision(message), 1)
+
+    def test_archived_external_participant_mark_is_retained_without_global_unread(self):
+        self.participation("other-reader", True)
+        message = self.committed(self.post())["message_id"]
+        self.committed(self.through(message, actor="other-reader"))
+        self.committed(self.mark(message, True, 0, actor="other-reader"))
+        self.assertEqual(self.unread("other-reader"), 1)
+        self.committed(self.command("topic.update", {"archived": True}, target={"topic_id": "t1"},
+                                    expected={"topic_revision": self.store.view("owner","topic",{"topic_id":"t1"})["topic"]["version"]}))
+        self.assertEqual(self.unread("other-reader"), 0)
+        self.assertEqual(self.store.view("other-reader","marks",{"topic_id":"t1"})["items"],
+                         [{"message_id": message, "seq": self.seq(message), "mark_revision": 1}])
+        self.assertEqual(self.revision(message, "other-reader"), 1)
 
 
 if __name__ == "__main__":
