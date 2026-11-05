@@ -10,6 +10,7 @@ from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
 from .runner import HOSTED_DOWN, HOSTED_OCCUPIED, HOSTED_SCHEMA
 from .topic_state import TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA
+from .conversation import MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -19,6 +20,7 @@ STEPS = (
      "SELECT EXISTS (SELECT 1 FROM openings)"),
     ("9", "10", HOSTED_SCHEMA, HOSTED_DOWN, HOSTED_OCCUPIED),
     ("10", "11", TOPIC_STATE_SCHEMA, TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED),
+    ("11", "12", MESSAGE_TIME_SCHEMA, MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED),
 )
 
 

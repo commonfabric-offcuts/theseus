@@ -12,7 +12,7 @@ from typing import Any
 from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body, _bounded_page, _page_size, _prefix, _revision
 from .drafts import Drafts, DRAFT_SCHEMA
 from .openings import Openings, OPENING_SCHEMA
-from .conversation import Conversation, CONVERSATION_SCHEMA
+from .conversation import Conversation, CONVERSATION_SCHEMA, MESSAGE_TIME_SCHEMA
 from .validation import COMMANDS, _command_envelope, _view_arguments
 from .authority import Authority, AuthorityError, prepare_authority, publish_initial
 from .delivery import Delivery, DELIVERY_SCHEMA
@@ -25,7 +25,7 @@ from .changes import Changes
 from .topic_state import TopicState, TOPIC_STATE_SCHEMA
 
 
-SCHEMA_VERSION = "11"
+SCHEMA_VERSION = "12"
 
 
 SCHEMA = [
@@ -88,7 +88,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))

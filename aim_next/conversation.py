@@ -4,6 +4,7 @@ import json
 import uuid
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
+from .delivery import _now_ms
 
 
 CONVERSATION_SCHEMA = [
@@ -21,6 +22,12 @@ CONVERSATION_SCHEMA = [
     "CREATE TRIGGER immutable_messages_update BEFORE UPDATE ON messages BEGIN SELECT RAISE(ABORT, 'immutable message'); END",
     "CREATE TRIGGER immutable_messages_delete BEFORE DELETE ON messages BEGIN SELECT RAISE(ABORT, 'immutable message'); END",
 ]
+
+# When a message was sent, in milliseconds since the epoch. Messages sent
+# before this column existed have none.
+MESSAGE_TIME_SCHEMA = ["ALTER TABLE messages ADD COLUMN sent_ms INTEGER"]
+MESSAGE_TIME_DOWN = ("ALTER TABLE messages DROP COLUMN sent_ms",)
+MESSAGE_TIME_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM messages WHERE sent_ms IS NOT NULL)"
 
 
 POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes"}
@@ -245,9 +252,9 @@ class Conversation:
             raise Refusal("TOO_MANY_RECIPIENTS", "Resolved recipients exceed the limit; nobody was sent a partial message")
         self._recipients(db, list(audience))
         message_id = "m-" + uuid.uuid4().hex
-        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
-                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id)).lastrowid
+                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, _now_ms())).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
@@ -281,7 +288,7 @@ class Conversation:
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
                 "author": row["author_id"], "seq": row["seq"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),
                 "quotes": json.loads(row["quotes"]), "addressees": json.loads(row["addressees"]),
-                "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "version": 1, "current_revision": 1,
+                "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "version": 1, "current_revision": 1,
                 "allowed_actions": ["quote", "note.save"]}
 
     def _view_source(self, db, actor, args):
@@ -301,7 +308,7 @@ class Conversation:
         backwards = args.get("direction", "after") == "before"
         relation, order = ("<", "DESC") if backwards else (">", "ASC")
         cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
-        columns = "m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees"
+        columns = "m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms"
         if args.get("audience", "all") == "reader":
             unaddressed = db.execute("SELECT " + columns + " FROM messages m WHERE m.topic_id=? AND m.addressees='[]' AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
             addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=? AND actor_id=? AND seq" + relation + "? ORDER BY seq " + order + " LIMIT ?) a JOIN messages m ON m.seq=a.seq", (topic["id"], actor, cursor, limit + 1)).fetchall()

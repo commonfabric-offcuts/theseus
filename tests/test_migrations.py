@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import time
 import unittest
 from unittest import mock
 
@@ -22,6 +23,7 @@ import test_store as fixtures
 SCHEMA_8 = (Path(__file__).parent / "fixtures" / "schema_8.sql").read_text().splitlines()
 SCHEMA_9 = (Path(__file__).parent / "fixtures" / "schema_9.sql").read_text().splitlines()
 SCHEMA_10 = (Path(__file__).parent / "fixtures" / "schema_10.sql").read_text().splitlines()
+SCHEMA_11 = (Path(__file__).parent / "fixtures" / "schema_11.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -39,11 +41,14 @@ def frozen(statements):
 def step_back_by_hand(path, version):
     """Recover an older stored layout from a fresh instance with plain SQL, independent of migrations.py."""
     with sqlite3.connect(str(path)) as db:
-        # Version 11 adds where each topic stands: its state, archive flag, note, and who it waits on.
-        db.execute("DROP TABLE topic_waiting")
-        db.execute("DROP INDEX workspace_listed_topics")
-        for column in ("state_ms", "state_by", "state_note", "archived", "state"):
-            db.execute("ALTER TABLE topics DROP COLUMN " + column)
+        # Version 12 adds when each message was sent.
+        db.execute("ALTER TABLE messages DROP COLUMN sent_ms")
+        if version in ("8", "9", "10"):
+            # Version 11 adds where each topic stands: its state, archive flag, note, and who it waits on.
+            db.execute("DROP TABLE topic_waiting")
+            db.execute("DROP INDEX workspace_listed_topics")
+            for column in ("state_ms", "state_by", "state_note", "archived", "state"):
+                db.execute("ALTER TABLE topics DROP COLUMN " + column)
         if version in ("8", "9"):
             # Version 10 adds the hosted turn records and handed_seq (on the schedule and on each attempt).
             db.execute("DROP TABLE hosted_children")
@@ -78,9 +83,12 @@ class MigrationCase(fixtures.StoreCase):
 
     def records(self):
         with sqlite3.connect(str(self.path)) as db:
-            # Topics are compared on the columns every version has; version 11 adds where each stands.
-            return {table: db.execute("SELECT " + ("id,workspace_id,title,creator_id,version" if table == "topics" else "*")
-                                      + " FROM " + table + " ORDER BY rowid").fetchall() for table in TABLES}
+            # Topics and messages are compared on the columns every version has: version 11 adds
+            # where each topic stands, and version 12 when each message was sent.
+            columns = {"topics": "id,workspace_id,title,creator_id,version",
+                       "messages": "seq,id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id"}
+            return {table: db.execute("SELECT " + columns.get(table, "*") + " FROM " + table + " ORDER BY rowid").fetchall()
+                    for table in TABLES}
 
     def metadata(self):
         return dict(self.sql("SELECT key,value FROM metadata"))
@@ -222,7 +230,7 @@ class MigrationCase(fixtures.StoreCase):
         self.assertEqual(self.unchanged(), before)
 
     def test_unknown_and_newer_versions_refuse(self):
-        for version in ("7", "12", "", "8 "):
+        for version in ("7", str(int(SCHEMA_VERSION) + 1), "", "8 "):
             with self.subTest(version=version):
                 self.sql("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
                 before = self.unchanged()
@@ -383,7 +391,7 @@ class MigrationCase(fixtures.StoreCase):
             self.assertEqual(raised.exception.code, "DATABASE_BUSY")
         finally:
             writer.close()
-        for target in ("7", "12", "", "8 "):
+        for target in ("7", str(int(SCHEMA_VERSION) + 1), "", "8 "):
             with self.subTest(target=target):
                 with self.assertRaises(MigrationError) as raised:
                     migrate(self.path, "test-instance", self.binding, target)
@@ -470,7 +478,6 @@ class Schema9Case(MigrationCase):
     def test_upgrade_from_9_keeps_records_matches_a_fresh_instance_and_hosts(self):
         before, metadata = self.records(), self.metadata()
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "9", "schema_version": SCHEMA_VERSION, "migrated": True})
-        self.assertEqual(SCHEMA_VERSION, "11")
         self.assertEqual(int(self.metadata()["commit_seq"]), int(metadata["commit_seq"]) + 1)
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"}, {k: v for k, v in before.items() if k != "metadata"})
         fresh = Path(self.temp.name) / "fresh"
@@ -611,6 +618,58 @@ class Schema10Case(MigrationCase):
                 self.refused()
 
 
+class Schema11Case(MigrationCase):
+    """A schema-11 instance: version 12 records when each message is sent."""
+
+    VERSION, FIXTURE = "11", SCHEMA_11
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "11")
+
+    def send(self):
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        source = {"kind": "topic", "id": "t1"}
+        self.assertEqual(self.save_draft("after", source, "t1", "After the upgrade")["status"], "committed")
+        self.assertEqual(self.prepare("after", "t1", submission="after", send_op="send-after")["status"], "committed")
+        return self.command("message.send", {"submission_id": "after"}, target={"topic_id": "t1"}, op="send-after")
+
+    def test_upgrade_from_11_keeps_records_matches_a_fresh_instance_and_times_new_messages(self):
+        before = self.records()
+        self.assertTrue(before["messages"], "the fixture holds messages sent before times were kept")
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "11", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        # Earlier messages have no time to show.
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE sent_ms IS NOT NULL"), [(0,)])
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        start = int(time.time() * 1000)
+        self.assertEqual(self.send()["status"], "committed")
+        [(sent,)] = self.sql("SELECT sent_ms FROM messages WHERE body='After the upgrade'")
+        self.assertGreaterEqual(sent, start)
+        self.assertLessEqual(sent, int(time.time() * 1000))
+
+    def test_step_back_to_11_restores_its_frozen_layout_while_no_message_has_a_time(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_11))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_refuses_once_a_message_has_a_time(self):
+        self.upgrade()
+        self.assertEqual(self.send()["status"], "committed")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -621,6 +680,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema9Case, _name, None)
     if _name.startswith("test_") and _name not in Schema10Case.__dict__:
         setattr(Schema10Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema11Case.__dict__:
+        setattr(Schema11Case, _name, None)
 
 
 if __name__ == "__main__":

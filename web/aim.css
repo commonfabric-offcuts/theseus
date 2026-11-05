@@ -67,3 +67,4 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .chip.unreachable { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-bg); }
 .chip .reach { color: var(--warn); }
 .chip.unreachable button:not([aria-label]) { font-size: .75rem; color: var(--warn); text-decoration: underline; }
+.message-time { font-weight: 400; color: var(--muted); }

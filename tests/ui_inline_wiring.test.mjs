@@ -80,7 +80,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(scope);
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,readableTime}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach}; })())', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
@@ -729,4 +729,17 @@ test('a reader who cannot change the participants is told who could, and a team 
   showComposer(hidden);
   hidden.get('inline-recipient-input').value = 'stranger'; hidden.get('inline-add-recipient').onclick();
   assert.equal(hidden.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger').className, 'chip');
+});
+
+test('a card in the topic log says when its message was sent, and a message from before times were kept says nothing', async () => {
+  const f = fixture();
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  const sent = new Date(2026, 10, 5, 5, 44).getTime();
+  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'tony', body: 'Timed', topic_id: 't1', sent_ms: sent });
+  f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'fable', body: 'Untimed', topic_id: 't1', sent_ms: null });
+  f.paintViews('messages');
+  const author = id => f.get('messages').children.find(card => card.dataset.id === id).children[0];
+  assert.deepEqual([author('m1').textContent, author('m1').children.map(node => node.textContent)], ['tony', [' · 5:44 AM Thu Nov 5']]);
+  assert.deepEqual(author('m2').children, []);
 });

@@ -2,6 +2,7 @@ import { keyAction } from './editor.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { markReach } from './people.mjs';
+import { readableTime } from './topic-state.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
 
@@ -133,7 +134,8 @@ export class Reader {
     this.disarm();
     this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
     const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}` : 'Message';
-    this.$('reader-origin').textContent = [source.author, provenance].filter(Boolean).join(' · ');
+    const sent = Number.isInteger(source.sent_ms) ? readableTime(source.sent_ms) : '';
+    this.$('reader-origin').textContent = [source.author, provenance, sent].filter(Boolean).join(' · ');
     const destination = this.$('reply-destination');
     destination.replaceChildren();
     const choose = node('option', 'Choose a topic'); choose.value = ''; destination.append(choose);

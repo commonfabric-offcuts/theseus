@@ -53,6 +53,14 @@ refuses with `FORBIDDEN`, like the `source` view. A pending delivery whose
 subscription was cancelled can never be settled, so its `state` is
 `cancelled`.
 
+### When a message was sent
+
+`topic_messages` items and the `source` view of a message carry `sent_ms`:
+when it was sent, in milliseconds since the epoch, recorded once in the
+send's own transaction. A message sent before version 12 of the schema has
+`null`, since no time was kept for it. Version 12 steps back to 11 only while
+no message has a time.
+
 `workspace_topics` items also carry `message_count` and `latest_seq` (the
 sequence of the topic's newest message), so a client can order topics by
 activity.

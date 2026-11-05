@@ -18,7 +18,7 @@ import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention, paintSent } from './attention.mjs';
-import { TopicStatePanel, paintWaiting } from './topic-state.mjs';
+import { TopicStatePanel, paintWaiting, readableTime } from './topic-state.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
 
 const $ = id => document.getElementById(id);
@@ -467,7 +467,10 @@ function paintViews(kind) {
     if (!card) {
       const ref = { kind: 'message', id: item.id };
       card = button('', () => openSource(ref, card)); card.className = 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
-      card.append(node('span', item.author_id, 'message-author'), node('span', item.body, 'message-preview'));
+      const author = node('span', item.author_id, 'message-author');
+      // Messages sent before times were kept have none.
+      if (Number.isInteger(item.sent_ms)) author.append(node('span', ` · ${readableTime(item.sent_ms)}`, 'message-time'));
+      card.append(author, node('span', item.body, 'message-preview'));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
       $('messages').insertBefore(card, following ?? null);

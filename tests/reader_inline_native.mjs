@@ -38,6 +38,17 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.equal(p.calls.some(c=>['message.send','submission.prepare'].includes(c.payload?.kind)),false,'editing and Undo do not send');
     await shot(p,'shared-writing-reader');assert.deepEqual(p.errors,[]);
   });
+  await check('inline messages say when they were sent, in the log and in the reader', async () => {
+    const p=await page('message-times',null,true);
+    const readable=/^\d{1,2}:\d{2} (AM|PM) (Sun|Mon|Tue|Wed|Thu|Fri|Sat) [A-Z][a-z]{2} \d{1,2}$/;
+    const times=await p.evaluate('[...document.querySelectorAll("#messages .message-card .message-time")].map(node=>node.textContent)');
+    assert.ok(times.length>0,'the log shows times');
+    for(const time of times)assert.match(time.replace(/^ · /,''),readable);
+    await p.open(1);
+    const origin=await p.evaluate('document.querySelector("#reader-origin").textContent');
+    assert.match(origin.split(' · ').at(-1),readable,'the reader says when the message was sent');
+    assert.deepEqual(p.errors,[]);
+  });
   await check('inline nothing lights while writing; a clicked passage lights and Return quotes it', async () => {
     const p=await page('quote-while-writing',null,true);
     await p.open(1);
