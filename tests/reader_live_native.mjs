@@ -507,6 +507,20 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  await check('live Read it pressed from the keyboard hands focus to the page when it clears the last mark', async () => {
+    const topic = await markTopic('Marks: focus after the last');
+    await markAs([topic.message], true);
+    const p = await page('live-mark-last-focus', null, true, { url: topic.url }); await settled(p);
+    await until(async () => await line(p) === '1 message marked unread', 'the line shows');
+    await p.evaluate("document.querySelector('#read-mark').focus()");
+    await p.key('Enter');
+    await until(() => readerShows(p, 'Fixture conversation'), 'Read it opens');
+    await until(async () => await line(p) === '', 'the last mark clears and the line goes');
+    await p.key('Escape');
+    await until(() => p.evaluate("!document.querySelector('#reader').open && document.activeElement?.id === 'main'"), 'the Reader closes and the page holds focus');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('live Read it lands on a message older than the first page and clears it', async () => {
     const oldest = facts.sources[0].id;
     const [marked] = await markAs([oldest], true);

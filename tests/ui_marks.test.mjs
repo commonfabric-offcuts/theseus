@@ -132,6 +132,15 @@ test('a mark under another authority is a new envelope', async () => {
   assert.deepEqual(f.sent[1].expected.authority, { authority_id: 'a1', authority_epoch: 'e2' });
 });
 
+test('a clear at a newer revision is its own envelope, never the lost one at an older revision', async () => {
+  const lost = () => { throw new AttemptError('Connection interrupted.'); };
+  const f = offline([lost, lost]);
+  await assert.rejects(f.marks.send('m1', false, 1));
+  await assert.rejects(f.marks.send('m1', false, 3));
+  assert.notEqual(f.sent[1].operation_id, f.sent[0].operation_id);
+  assert.deepEqual(f.sent.map(envelope => envelope.expected.mark_revision), [1, 3]);
+});
+
 test('a refused mark adopts the revision Core names and is announced like a committed one', async () => {
   const f = offline([envelope => receiptFor(envelope, { status: 'rejected', recorded: true,
     error: { code: 'REVISION_CONFLICT', message: 'changed', retryable: false, current_versions: { mark_revision: 3 } } })]);

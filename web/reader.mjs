@@ -543,7 +543,10 @@ export class Reader {
     ++this.viewToken;
     this.dialog.close();
     this.disarm();
-    if (this.opener?.isConnected) this.opener.focus({ preventScroll: true });
+    // An opener the open itself hid (Read it, once the last mark clears)
+    // hands focus to the page rather than dropping it to the body.
+    const back = this.opener?.isConnected && this.opener.checkVisibility?.() !== false ? this.opener : document.getElementById('main');
+    back?.focus({ preventScroll: true });
   }
 
   async step(direction) { this.rememberPlace(); await this.callbacks.step(direction); }
