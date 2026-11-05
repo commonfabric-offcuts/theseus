@@ -146,10 +146,16 @@ try {
     await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
     await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
     const box = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height,viewportWidth:innerWidth,viewportHeight:innerHeight}})()`);
-    const point = async (selector, kind = 'click') => {
+    // A pointer action lands on its target: whatever covers the point (a
+    // dialog still closing, a backdrop, a neighbour) fails here by name rather
+    // than as a later wait. A check that means to press a covered target says so.
+    const point = async (selector, kind = 'click', { covered = false } = {}) => {
       const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
       const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);
       assert.ok(x >= 0 && y >= 0 && x < bounds.viewportWidth && y < bounds.viewportHeight, `target ${selector} is inside the viewport before a native pointer action`);
+      const hit = await evaluate(`(target => { const hit = document.elementFromPoint(${x}, ${y}); return target?.contains(hit) ? '' : hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') + (typeof hit.className === 'string' && hit.className ? '.' + hit.className.trim().split(/\\s+/).join('.') : '') + (hit.closest('dialog[open]') ? ' in ' + (hit.closest('dialog[open]').id ? '#' + hit.closest('dialog[open]').id : 'an open dialog') : '') : 'nothing'; })(document.querySelector(${JSON.stringify(selector)}))`);
+      if (covered) assert.notEqual(hit, '', `${selector} was meant to be covered at the point pressed`);
+      else assert.equal(hit, '', `${selector} is covered by ${hit} where it would be pressed`);
       await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
       if (kind === 'click') {
         await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });

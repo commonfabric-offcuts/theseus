@@ -828,7 +828,7 @@ export async function liveChecks({ check, page, until, control, observations, or
     const target = await p.box(notebook);
     const at = { x: target.x + Math.min(12, target.width / 2), y: target.y + Math.min(12, target.height / 2) };
     assert.equal(await p.evaluate(`Boolean(document.elementFromPoint(${at.x},${at.y})?.closest('#reader'))`), true, 'the press lands on the Reader');
-    await p.point(notebook);
+    await p.point(notebook, 'click', { covered: true });
     assert.equal(await p.evaluate('freshEvidence.opens.length'), opens, 'a card behind the open Reader opens nothing');
     await p.evaluate('releaseKeptWrites()');
     await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes once its writing is kept');
