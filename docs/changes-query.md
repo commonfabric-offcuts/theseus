@@ -56,10 +56,14 @@ Explicit resync captures a fresh baseline and rereads permitted dependent views;
 it must preserve writing and old operation identities through recovery.
 
 At this revision, topic keys are topic versions and scoped Notebook item
-versions. Workspace keys are workspace creation, topic versions and workspace
-Notebook items. Actor keys are private drafts, notes, submissions, media,
-participation and deliveries. A send changes the topic version; it does not emit
-a separate message change row. An actor's private draft or preparation emits no
+versions. Workspace keys are workspace creation and membership, topic versions
+and workspace Notebook items. Actor keys are private drafts, notes,
+submissions, media, openings, participation, deliveries, workspace membership
+(`workspace`, keyed by the workspace, when the actor is added or removed) and
+`waiting` (keyed by the topic, at its new version, when a topic starts or
+stops waiting on the actor, including when they lose the topic). A `waiting`
+key does not say which; the `attention` view or the topic does. A send changes
+the topic version; it does not emit a separate message change row. An actor's private draft or preparation emits no
 topic/workspace key. Consumers invalidate affected lists/items and compare their
 existing `relevant_versions`; they retain the current message/Notebook revision,
 selection, quote and writing, offering a newer Notebook revision explicitly.
