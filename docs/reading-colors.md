@@ -90,3 +90,27 @@ Run the focused check with `node tests/reader_persistence_native.mjs` followed
 by the Chrome for Testing executable, an absolute evidence directory, and
 `--colors`. All retained final checks pass; review and release remain Fable's.
 Mobile evidence uses emulated native touch in CFT, not a physical phone or Safari.
+
+## Release review corrections
+
+Fable's independent implementation review (#292, on cherry-pick d0bd2af)
+found two inadequate measurements and one contrast regression. The old paint
+scan stopped five pixels outside the glyph box, so it could not see paint
+spilling farther into the next line. The source check read its container's
+computed background even if an opaque article hid that background. Neither
+measurement fully enforced the existing intended appearance.
+
+The correction scans two line heights above/below each measured text rectangle
+and samples an actual pixel in whitespace between source words. Both reviewer
+mutants (overhang multiplied by two, and an opaque article background) must fail.
+The small source-actions hint must meet 4.5:1 on the newly colored pane in both
+themes; darken only that hint in light mode, keeping dark mode's passing color.
+No native-input expectations change. Optional hover treatments and additional
+arrival coverage remain separate from these three requested corrections.
+
+The corrective evidence is in `work/evidence/reading-colors/review-corrections/`.
+`red-hint` fails the old 4.15:1 light hint; `tall-highlight` and `opaque-source`
+catch both applied reviewer mutants in both themes. Each mutant is restored
+byte-for-byte. `green` passes with the hint at 4.75:1 in light and 4.87:1 in dark;
+all four runs close their browser and fixture cleanly. The local report and
+verification manifest retain the exact sources, pixel readings and screenshots.

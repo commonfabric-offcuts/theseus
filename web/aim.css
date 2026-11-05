@@ -71,6 +71,9 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 
 /* Reading colors: paint only; passage bounds and writing geometry stay put. */
 .reading-pane { background: var(--soft); }
+@media (prefers-color-scheme: light) {
+  .source-actions .muted { color: #5f6b73; }
+}
 .hover-quote {
   background: #000;
   color: #fff;
