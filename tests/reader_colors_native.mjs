@@ -92,13 +92,17 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       const previous=await field(p);await p.key('Enter');
       assert.equal(await field(p),previous+'> '+selection.text.split('\n').join('\n> ')+'\n\n','native partial selection quotes exactly');
       await p.key('z',4);assert.equal(await field(p),previous,'Undo restores the draft');
+      // The Reader closes once its writing is kept on this device; until then
+      // it is modal and a press on the card behind it lands on the Reader.
       await p.point('#reader-close');
+      await until(()=>p.evaluate('!document.querySelector("#reader").open'),'Reader closed');
       await p.evaluate(`document.querySelector('#memory-items .memory-card').scrollIntoView({block:'center'})`);
       await p.point('#memory-items .memory-card');
       await until(()=>p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#reader-origin').textContent.includes('Notebook')`),'Notebook source open');
       expect((await style('.reading-pane')).background===topicHover.background,theme+': Notebook uses the same source background');
       assert.match(await p.evaluate(`document.querySelector('#reader-origin').textContent`),/Notebook · revision/,'Notebook provenance intact');
       await p.point('#reader-close');
+      await until(()=>p.evaluate('!document.querySelector("#reader").open'),'Notebook Reader closed');
       await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
       await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
       await p.evaluate(`document.querySelector(${JSON.stringify(own)}).scrollIntoView({block:'center'})`);
