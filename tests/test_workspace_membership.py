@@ -49,10 +49,10 @@ class MembershipCase(fixtures.StoreCase):
         listing = self.members("outsider")
         self.assertEqual(listing["relevant_versions"], {"workspace": version})
         self.assertEqual(listing["items"], [
-            {"actor_id": "agent-a", "kind": "agent", "name": "agent-a", "name_truncated": False},
-            {"actor_id": "agent-b", "kind": "agent", "name": "agent-b", "name_truncated": False},
-            {"actor_id": "outsider", "kind": "agent", "name": "Outside fixture agent", "name_truncated": False},
-            {"actor_id": "owner", "kind": "human", "name": "owner", "name_truncated": False}])
+            {"actor_id": "agent-a", "kind": "agent", "name": "agent-a", "name_truncated": False, "enabled": True},
+            {"actor_id": "agent-b", "kind": "agent", "name": "agent-b", "name_truncated": False, "enabled": True},
+            {"actor_id": "outsider", "kind": "agent", "name": "Outside fixture agent", "name_truncated": False, "enabled": True},
+            {"actor_id": "owner", "kind": "human", "name": "owner", "name_truncated": False, "enabled": True}])
 
     def test_removal_ends_workspace_access_but_keeps_topic_participation(self):
         self.assertEqual(self.sql("SELECT active FROM topic_participants WHERE topic_id='t1' AND actor_id='agent-a'"), [(1,)])
