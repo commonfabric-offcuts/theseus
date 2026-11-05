@@ -82,8 +82,8 @@ export class TopicPages {
 }
 
 export class TopicNavigation {
-  constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget }) {
-    Object.assign(this, { registry, topicId, current, navigate, navigateTarget }); this.serial = 0;
+  constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget, beforeLeave }) {
+    Object.assign(this, { registry, topicId, current, navigate, navigateTarget, beforeLeave }); this.serial = 0;
   }
   open(topicId, title = topicId) { return this.openTarget({kind:'topic',id:topicId},title); }
   async openTarget(destination, title = destination.kind) {
@@ -91,6 +91,7 @@ export class TopicNavigation {
     const request = ++this.serial;
     const previousChoice = this.departureChoice; this.departureChoice = null;
     if (destinationKey === routeKey(this.current)) return false;
+    if(this.beforeLeave){await this.beforeLeave(destinationKey,title);if(request!==this.serial)return false;}
     const navigate = () => this.navigateTarget ? this.navigateTarget(structuredClone(destination)) :
       destination.kind==='topic' ? this.navigate(destination.id) : badRoute();
     const registry = this.registry;

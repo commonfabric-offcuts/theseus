@@ -50,7 +50,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of [...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
+for (const filename of [...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs'] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -136,7 +136,7 @@ try {
             responses.push({ payload, url: event.request.url, status: event.responseStatusCode, body, at: Date.now() });
           }
           if (await intercept?.(payload, event)) { held.push({ event, payload }); return; }
-          await send('Fetch.continueResponse', { requestId: event.requestId });
+          await send(event.responseStatusCode===undefined?'Fetch.continueRequest':'Fetch.continueResponse', { requestId: event.requestId });
         }; handle().catch(error => errors.push({ message: error.message }));
       }
     });
@@ -198,7 +198,7 @@ try {
         await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, ...(mode === '--freshness' ? [{ urlPattern: facts.origin + '/app.mjs', requestStage: 'Response' }, { urlPattern: facts.origin + '/upload-cleanup.mjs', requestStage: 'Response' }] : [])] });
         await setup.beforeNavigate?.(connectedPage);
       }
-      await send('Page.navigate', { url: facts.origin + '/?topic=t1' });
+      await send('Page.navigate', { url: setup.url ?? facts.origin + '/?topic=t1' });
       await until(() => evaluate('document.body?.dataset.ready === "true" || Boolean(document.querySelector("#app-status") && !document.querySelector("#app-status").hidden)'), 'application bootstrap');
       if (!setup.allowStartupError) assert.equal(await evaluate('document.body.dataset.ready'), 'true', await evaluate('document.querySelector("#app-status").textContent'));
       if (!liveUpdatesFixture) await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }] });
@@ -279,6 +279,43 @@ try {
   };
 
   if (mode === '--journal') {
+  await check('journal private creation uses strict scoped intents without upgrading editor recovery',async()=>{
+    const p=await page('intent-storage');
+    await p.evaluate(`(async()=>{
+      window.b={instance_id:context.instanceId,actor:context.actor,authority:{authority_id:'a',authority_epoch:'e',continuity:'initial'},limits:{body_utf8_bytes:1048576,workspace_members:128}};
+      window.openIntents=(await import('/intent-journal.mjs')).openIntentJournal;
+      window.creation=await import('/creation.mjs');
+      await j.save(snapshot);window.before=await j.own(editor.key);
+      window.intents=await openIntents({instanceId:b.instance_id,actor:b.actor});
+      for(let n=0;n<45;n++){
+        const id='intent-'+String(n).padStart(2,'0');await intents.claim(id);
+        await intents.put({format:1,id,kind:'create',instanceId:b.instance_id,actor:b.actor,authority:{authority_id:'a',authority_epoch:'e'},workspace:n<25?'w1':'w2',phase:n<20?'confirmed':'draft',form:{title:'🙂'.repeat(5000),purpose:'private purpose',team:[]},envelope:null,receipt:null,history:[]});
+      }
+      window.other=await openIntents({instanceId:b.instance_id,actor:'other'});
+      await other.claim('intent-20');await other.put({format:1,id:'intent-20',kind:'create',instanceId:b.instance_id,actor:'other',authority:{authority_id:'a',authority_epoch:'e'},workspace:'w1',phase:'draft',form:{title:'Other actor secret',purpose:'secret',team:[]}});
+    })()`);
+    const first=await p.evaluate('intents.page()');assert.deepEqual(first.items,[]);assert.equal(first.examined,20);assert.equal(first.nextCursor,'intent-19');
+    const second=await p.evaluate(`intents.page({cursor:${JSON.stringify(first.nextCursor)}})`);assert.equal(second.items.length,20);assert.equal(second.nextCursor,'intent-39');
+    assert.ok(Buffer.byteLength(JSON.stringify(second.items))<=16384);assert.equal(second.items.some(x=>JSON.stringify(x).includes('secret')||Object.hasOwn(x,'form')),false);
+    const workspace=await p.evaluate(`intents.page({workspace:'w1',cursor:'intent-19'})`);assert.equal(workspace.items.length,5);assert.equal(workspace.nextCursor,null);
+    assert.equal(await p.evaluate(`(await j.own(editor.key)).stamp===before.stamp`),true,'editor recovery remains open and unchanged');
+    const other=await page('intent-other-tab');
+    await other.evaluate(`window.intents=await (await import('/intent-journal.mjs')).openIntentJournal({instanceId:'ux-http-fixture',actor:'fixture-person'})`);
+    assert.equal(await other.evaluate(`intents.claim('intent-20')`),false,'a competing tab cannot own the intent');
+    const failure=await other.evaluate(`(async()=>{try{const row=await intents.get('intent-20');await intents.put({...row,phase:'confirmed'});return '';}catch(error){return error.message}})()`);assert.match(failure,/another tab|read.only/i);
+    const blocked=await p.evaluate(`(async()=>{
+      window.dispatches=0;const api={bootstrap:async()=>b,command:async()=>{dispatches++;throw Error('must not dispatch');}};
+      const c=new creation.OutcomeCreation({api,bootstrap:b,journal:intents,intentId:'failure'});await c.load();await c.edit({title:'Kept intent'});
+      const original=IDBObjectStore.prototype.put;IDBObjectStore.prototype.put=function(value){if(this.name==='intents')throw Error('Injected disk failure');return original.call(this,value);};
+      let message;try{await c.create();}catch(error){message=error.message;}finally{IDBObjectStore.prototype.put=original;}
+      return {message,dispatches,durable:await intents.get('failure')};
+    })()`);assert.match(blocked.message,/Injected disk failure/);assert.equal(blocked.dispatches,0);assert.equal(blocked.durable.envelope,null);
+    const pointer=await p.evaluate(`creation.retainOpening({journal:intents,bootstrap:b,workspace:'w1',opening:'opening-kept',topic:'reserved-topic'})`);
+    await p.evaluate('j.removeExact(editor.key,before.stamp)');assert.equal(await p.evaluate('j.own(editor.key)'),null);
+    assert.deepEqual((await p.evaluate(`creation.retainOpening({journal:intents,bootstrap:b,workspace:'w1',opening:'opening-kept',topic:'reserved-topic'})`)).row,pointer.row);
+    assert.equal(await p.evaluate('durability.every(x=>x.requested===\'strict\'&&x.actual===\'strict\')'),true);
+    await p.evaluate('(intents.close(),other.close())');await other.evaluate('intents.close()');
+  });
   await check('duplicated session hint never shares a live document writer', async () => {
     const a = await page('duplicate'), id = await a.evaluate('j.writerId');
     await a.evaluate('j.save(snapshot)');
@@ -405,7 +442,7 @@ try {
     if (mode === '--inline') {
       await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});
     } else if (mode === '--navigation') {
-      await navigationChecks({ check, page, until, root, facts, view, control, replace, field, shot, observations });
+      await navigationChecks({ check, page, until, root, evidencePath, facts, view, control, replace, field, shot, observations });
       await departureChecks({ check, page, until, facts, view, control, shot, observations });
     } else if (mode === '--freshness') {
       await freshnessChecks({check,page,until,root,facts,view,control,replace,field,shot,observations,baseline,legacyAdmission});

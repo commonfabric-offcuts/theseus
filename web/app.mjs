@@ -9,6 +9,9 @@ import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './
 import { TopicViews } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
+import { openIntentJournal } from './intent-journal.mjs';
+import { OutcomeCreation } from './creation.mjs';
+import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -24,6 +27,7 @@ let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 let topicRail, topicNavigation, outcomeRail;
+let intentJournal, intentOpening, outcomeCreation;
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
@@ -638,7 +642,11 @@ async function initialize() {
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
   const route = parseRoute(new URL(location.href));
-  if (route.kind !== 'topic') return initializeOutcomePage(route);
+  if (route.kind !== 'topic') {
+    await initializeOutcomePage(route);
+    if(['root','workspace'].includes(route.kind))run(()=>initializeUnfinished(route));
+    return;
+  }
   const topicId = route.id;
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
@@ -698,6 +706,7 @@ async function initialize() {
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } } });
   topicNavigation = new TopicNavigation({ registry, current:route,
     navigateTarget: target => location.assign(routeHref(target)) });
+  await initializeInlineComposer();
   initializeOutcomeNavigation(topic.workspace_id);
   topicRail = new TopicRail({ pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
     host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'),
@@ -714,7 +723,6 @@ async function initialize() {
     open: id => openDestination({kind:'topic',id},topicRail.pages.items.find(item => item.id === id)?.title ?? id),
   });
   topicRail.load();
-  await initializeInlineComposer();
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);
   $('updates-retry').onclick = () => run(async () => {
@@ -745,6 +753,8 @@ function initializeOutcomeNavigation(current=null) {
     event.preventDefault();return openDestination({kind:'root'},'Outcomes');
   };
   $('outcomes-home').onclick=home;document.querySelector('.wordmark').onclick=home;
+  $('new-outcome').disabled=false;
+  $('new-outcome').onclick=()=>openDestination({kind:'create',intent:crypto.randomUUID()},'New outcome');
   const read=async args=>{
     if(registry&&authorityReviewPending())throw Error('The runtime changed. Review saved writing before reloading.');
     const foreground=registry?.cleanup.foreground();
@@ -762,7 +772,8 @@ function initializeOutcomeNavigation(current=null) {
 }
 async function initializeOutcomePage(route) {
   // There is no topic, implicit composer or source in a selection-only view.
-  if(!['root','workspace'].includes(route.kind))throw Error('This creation link is not available yet. Open Outcomes to choose a place.');
+  if(route.kind==='create')return initializeCreationPage(route);
+  if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   status('');
   for(const id of ['notebook','participants','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('outcome-page').hidden=false;
@@ -776,17 +787,21 @@ async function initializeOutcomePage(route) {
   } else {
     $('outcome-page').append($('topic-navigation'));
     await initializeOutcomeNavigation(route.id);
+    let refreshSerial=0;
     const refresh=async()=>{
+      const serial=++refreshSerial;
       status('');
       let answer;
       try { answer=checkedView(await api.view('workspace',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id); }
       catch(error) {
+        if(serial!==refreshSerial)return;
         if(readFailure(error).kind==='forbidden') {
           $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';
           $('topic-navigation').hidden=true;
         }
         throw error;
       }
+      if(serial!==refreshSerial)return;
       const workspace=answer.workspace;
       if(workspace?.id!==route.id||typeof workspace.title!=='string')throw Error('The outcome identity could not be confirmed.');
       $('topic-navigation').hidden=false;
@@ -802,6 +817,35 @@ async function initializeOutcomePage(route) {
     $('refresh').onclick=()=>run(refresh);await refresh();
   }
   document.body.dataset.ready='true';
+}
+async function ensureIntentJournal() {
+  if(intentJournal)return intentJournal;
+  if(!intentOpening)intentOpening=openIntentJournal({instanceId:bootstrap.instance_id,actor:bootstrap.actor}).then(value=>{
+    intentJournal=value;window.addEventListener('pagehide',()=>value.close());return value;
+  }).finally(()=>intentOpening=null);
+  return intentOpening;
+}
+async function initializeUnfinished(route) {
+  const host=$('unfinished-work');host.hidden=false;
+  try{await showUnfinished({host,journal:await ensureIntentJournal(),workspace:route.kind==='workspace'?route.id:null,open:openDestination});}
+  catch(error){host.textContent='Unfinished work on this browser is unavailable. '+error.message;}
+}
+async function initializeCreationPage(route) {
+  for(const id of ['notebook','participants','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
+  $('outcome-page').hidden=false;$('topic-title').textContent='New outcome';$('topic-description').textContent='Create a place for related topics.';
+  const intents=await ensureIntentJournal();
+  outcomeCreation=new OutcomeCreation({api,bootstrap,journal:intents,intentId:route.intent});await outcomeCreation.load();
+  topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>outcomeCreation.leave(target,title),navigateTarget:target=>location.assign(routeHref(target))});
+  const confirmed=async row=>{
+    const answer=checkedView(await api.view('workspace',{workspace_id:row.workspace},{readClass:'foreground'}),bootstrap.instance_id);
+    if(answer.workspace?.id!==row.workspace||answer.workspace.owner_id!==bootstrap.actor)throw Error('The created outcome detail could not be confirmed. Keep its original receipt.');
+    $('workspace-name').textContent=answer.workspace.title;
+  };
+  const form=new CreateOutcomeView({host:$('outcome-page'),creation:outcomeCreation,open:openDestination,confirmed});
+  if(outcomeCreation.row.phase==='confirmed')await form.run(()=>confirmed(outcomeCreation.row));
+  $('refresh').onclick=()=>form.run(()=>outcomeCreation.row.envelope?outcomeCreation.check():outcomeCreation.persist());
+  window.addEventListener('beforeunload',event=>{if(outcomeCreation.pending||outcomeCreation.dirty||outcomeCreation.storageError){event.preventDefault();event.returnValue='';}});
+  await initializeOutcomeNavigation();document.body.dataset.ready='true';
 }
 $('refresh').onclick = () => run(start);
 run(start);

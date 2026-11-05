@@ -24,6 +24,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     insertBefore(child, before) { child.remove(); const index = before ? this.children.indexOf(before) : this.children.length; this.children.splice(index, 0, child); child.parent = this; }
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }
+    scrollIntoView() {}
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
@@ -54,7 +55,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [] };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
   const scope = { ...writing, WritingInput, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
-    window: { addEventListener() {} }, location: { href },
+    window: { addEventListener() {} }, location: { href,assign:url=>events.push(['navigate',url]) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
     Reader: class { constructor() { return reader; } },
@@ -147,6 +148,43 @@ test('inline startup failure disables ownerless input but paints lists, enables 
   assert.equal(f.get('inline-writing-body').disabled, false); assert.equal(f.get('inline-writing-body').value, 'kept');
   assert.equal(f.get('inline-retry').hidden, true);
   assert.equal(f.events.filter(e => e[0] === 'registry').length, 1); assert.equal(f.events.filter(e => e[0] === 'journal').length, 1);
+});
+test('optional outcome and topic rail reads begin after the primary composer is initialized',async()=>{
+  const f=fixture(),order=[],read=f.api.view;
+  f.api.view=async(name,args)=>{order.push(name);return read(name,args);};
+  f.registry.initializeInline=async()=>{order.push('composer');f.registry.inline=f.p;return f.p;};
+  await f.initialize();await new Promise(resolve=>setImmediate(resolve));
+  assert.ok(order.indexOf('composer')<order.indexOf('workspaces'));
+  assert.ok(order.indexOf('composer')<order.indexOf('workspace_topics'));
+});
+test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
+  const f=fixture(),read=f.api.view;
+  f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
+  f.registry.keepEditorsLocal=async()=>{};f.registry.unconfirmedSends=[];
+  Object.assign(f.editor,{localVersion:1,ackVersion:0});Object.defineProperty(f.editor,'dirty',{get:()=>f.editor.ackVersion<f.editor.localVersion});
+  f.registry.flush=async()=>({recorded:false,status:'unknown'});
+  f.api.view=async(name,args)=>name==='workspaces'?{instance_id:'fixture',items:[{id:'w2',owner_id:'fixture-person',title:'Second',title_truncated:false,version:1}],next_cursor:null}:read(name,args);
+  await f.initialize();await new Promise(resolve=>setImmediate(resolve));
+  for(const control of [f.get('outcomes-home'),f.get('wordmark'),f.get('workspaces').children[0]]){
+    assert.ok(control);let prevented=false;await control.onclick({button:0,preventDefault(){prevented=true;}});
+    assert.equal(prevented,true);assert.equal(f.events.some(e=>e[0]==='navigate'),false);assert.equal(f.editor.draft.body,'kept');
+    assert.match(f.get('topic-navigation-status').textContent,/not confirmed saved/);
+    await control.onclick({button:0,metaKey:true,preventDefault(){throw Error('modified link intercepted');}});
+  }
+  f.registry.flush=async()=>{f.editor.ackVersion=1;return {recorded:true,status:'committed'};};
+  await f.get('workspaces').children[0].onclick({button:0,preventDefault(){}});
+  assert.deepEqual(f.events.filter(e=>e[0]==='navigate'),[['navigate','?workspace=w2']]);
+});
+test('outcome Refresh sequences reads so an older denial cannot repaint a newer result',async()=>{
+  const f=fixture('https://fixture/?workspace=w1'),held=defer();let count=0;
+  f.inject({api:f.api,bootstrap:f.bootstrap});
+  f.api.view=async name=>{
+    if(name==='workspace'){count++;if(count===2)return held.promise;return {instance_id:'fixture',workspace:{id:'w1',title:count===1?'Initial':'New title',purpose:''}};}
+    return {instance_id:'fixture',items:[],next_cursor:null};
+  };
+  await f.initialize();const first=f.get('refresh').onclick(),second=f.get('refresh').onclick();
+  held.resolve({instance_id:'fixture',error:{code:'FORBIDDEN',message:'Old denial'}});await Promise.all([first,second]);
+  assert.equal(f.get('topic-title').textContent,'New title');assert.equal(f.get('topic-navigation').hidden,false);assert.equal(f.get('app-status').hidden,true);
 });
 
 test('failed inline-origin open is global; failed Reader step remains in its Reader notice', async () => {

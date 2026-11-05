@@ -37,10 +37,17 @@ export class OutcomeRail {
     this.empty.hidden=this.denied||!this.pages.started||items.length>0;
   }
   load(more=false) {
-    if(this.loading)return this.loading;
+    if(this.loading){
+      if(!more&&this.loadingMore){
+        if(!this.refreshQueued)this.refreshQueued=this.loading.then(()=>{this.refreshQueued=null;return this.load();});
+        return this.refreshQueued;
+      }
+      return this.loading;
+    }
     const cursor=more?this.pages.next:null;
     if(more&&cursor===null)return Promise.resolve();
     const prior=new Set(this.pages.items.map(x=>x.id));
+    this.loadingMore=more;
     this.more.setAttribute('aria-disabled','true');this.retry.setAttribute('aria-disabled','true');
     this.loading=this.read({limit:20,...(cursor===null?{}:{cursor})}).then(answer=>{
       const focused=document.activeElement;

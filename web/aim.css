@@ -38,3 +38,14 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 @media(max-width:760px){.rail #workspaces a.nav-item{flex:0 0 auto;max-width:15rem;width:auto}.rail #workspaces{padding:.25rem;scroll-padding:.25rem}#outcome-navigation{margin-bottom:.7rem}.selection-page #workspaces,.selection-page #topics{padding:0}}
 .rail #workspaces{max-height:14rem;overflow:auto}.workspace-layout:has(.selection-page:not([hidden])){align-content:start}
 @media(max-width:760px){.rail #workspaces{max-height:none}}
+/* Outcome metadata sits outside the shared message-writing surface. */
+.creation-form { max-width: 54rem; display: grid; gap: 1rem; }
+.creation-form > label { display: grid; gap: .4rem; }
+.creation-form input, .creation-form textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: .5rem; background: var(--panel); padding: .6rem .75rem; min-height: 44px; }
+.creation-form textarea { min-height: 6rem; resize: vertical; }
+.creation-form p { margin: 0; }
+.actor-choices { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.actor-choices input { flex: 1; width: auto; min-width: 10rem; }
+.actor-choices .chips { display: flex; flex-wrap: wrap; gap: .4rem; flex-basis: 100%; }
+.creation-actions { display: flex; flex-wrap: wrap; gap: .6rem; }
+#unfinished-work { margin-top: 2rem; }
