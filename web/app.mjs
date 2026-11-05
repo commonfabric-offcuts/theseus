@@ -496,7 +496,7 @@ function paintViews(kind) {
     let card = [...$('messages').children].find(child => child.dataset.id === item.id);
     if (!card) {
       const ref = { kind: 'message', id: item.id };
-      card = button('', () => openSource(ref, card)); card.className = 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
+      card = button('', () => openSource(ref, card)); card.className = item.author_id === bootstrap.actor ? 'message-card own-message' : 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
       const author = node('span', item.author_id, 'message-author');
       // Messages sent before times were kept have none.
       if (Number.isInteger(item.sent_ms)) author.append(node('span', ` · ${readableTime(item.sent_ms)}`, 'message-time'));

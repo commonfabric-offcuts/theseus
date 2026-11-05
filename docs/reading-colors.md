@@ -1,0 +1,92 @@
+# Reading colors
+
+Owner: aim-ux. Integration and release: fable. Request: Tony, Friction log
+message `m-ca18c51f98ef4147a1e694c552ff84e8` (#267). Base:
+`8a19ea8bd450bc1e90917536ac8dfcf9ffb0a915` (`origin/fable/rail-scroll`).
+
+At that base, `web/aim.css:2` paints a hovered topic message with `--soft`;
+`:18` leaves the reading pane on the dialog background and paints passage
+hover with that same `--soft` using an ordinary inline background. Native
+selection has its own color. `web/app.mjs:494-505` renders message cards
+without an own-author style. `web/reader.mjs:225-315` owns passage boundaries,
+hover/range arming and the exact excerpt; this change preserves that behavior.
+
+## Trigger and result
+
+- Opening a message in the Reader shows its source text against the existing
+  topic-card hover color (`--soft`). The writing field keeps its background,
+  dimensions and contrast. The shared source-text surface uses the same colors
+  for Notebook reading.
+- Hovering an eligible passage paints black behind light, readable text, with
+  the same vertical coverage as selecting that text natively (within one device
+  pixel for rasterization). Wrapped lines
+  remain distinct and the paint must not change wrapping, spacing or hit areas.
+  Native selection stays visually distinct from passage hover.
+- A topic message authored by the current actor has a black background and
+  light text. Ownership is derived from `item.author_id === bootstrap.actor`,
+  never a hard-coded name. Other authors retain their current appearance.
+  An own message stays distinguishable when hovered, with a visible border
+  treatment; keyboard focus keeps its existing outline.
+- These results apply in light/dark themes and laptop/mobile layouts. No new
+  control or gesture is introduced. Reader dimensions, writing space, hover
+  eligibility, Shift-click range, Return quoting, newline, send and Undo remain
+  intact. Nearby writing/control interactions must not arm a passage or send.
+
+## Evidence
+
+Use an isolated instance, origin, actors and Chrome for Testing, after Fable
+confirms the test slot. First capture the current failure against these visual
+requirements. Verify native pointer hover and native drag selection on the same
+single- and multi-line source text, with screenshots comparing their painted
+height. Assert source and writing geometry are unchanged. Check own/other cards
+at rest, hover and keyboard focus in both color schemes; repeat at phone width
+with native touch and no horizontal overflow. Exercise quote/Undo/newline and
+existing send behavior using the current native fixture. Inspect redraw after a
+new message and confirm author styling on both old and new cards.
+
+The visual change itself does not change records; red visual evidence is its
+regression control. Any new load-bearing test instrument receives an applied
+negative control. Existing assertions change only if the intended behavior
+explains why their prior expectation is wrong. No unrelated punch-list changes
+or live traffic belong in this slice.
+
+## Critique and implementation
+
+Fable reviewed the contract in Friction log #274, and aim-spec in #275 and
+#277, before the build. Their concrete constraints are included: preserve the
+source's direct text children and passage boundaries; use its computed 1.7 line
+height; keep secondary own-card text readable in light mode; use a distinct
+border in dark mode; and keep the existing native input checks.
+
+The source pane uses `--soft`. Passage hover uses a black inline background
+and two vertical shadows, extending only paint by half the difference between
+the source line height and its inline text height. `Reader.applyLayout` measures
+those existing boxes; it adds no padding, children or input behavior. Own cards
+receive a class from the current actor comparison and use black with light body,
+time and excerpt text. Their border changes on hover; native focus stays visible.
+
+`tests/reader_colors_native.mjs` adds one focused check, run by the existing
+native fixture with `--colors`. It covers initial paint and automatic WebSocket
+arrival, own/other cards at rest and hover, native Tab focus, dark/light contrast,
+wrapped passage paint versus actual partial drag selection, exact Return quoting
+and Undo, Notebook provenance, and phone-width colors/touch/overflow. Screenshot
+pixel bands, rather than DOM rectangles alone, measure the painted height.
+
+The test helper deliberately rejects unsupported PNGs. Its wrong-color control
+must return no band; an applied mutant returning a constant band was caught by
+that assertion and then restored byte-for-byte. Red and green runs retain their
+source snapshots, screenshots and fixture/browser cleanup evidence.
+
+## Verification handoff
+
+Final evidence is under `work/evidence/reading-colors/`: `green-04-final`
+(the focused dark/light laptop/phone check), `inline-02-final` (9 existing
+native checks), `reader-final` (5 existing native checks), and `unit-final.txt`
+(69 existing component checks). `red-03-live` is the failing base UI control;
+`mutant-band` is the applied instrument control. `verification.json` binds the
+passing source snapshots to current bytes; `REPORT.md` lists checks and limits.
+
+Run the focused check with `node tests/reader_persistence_native.mjs` followed
+by the Chrome for Testing executable, an absolute evidence directory, and
+`--colors`. All retained final checks pass; review and release remain Fable's.
+Mobile evidence uses emulated native touch in CFT, not a physical phone or Safari.
