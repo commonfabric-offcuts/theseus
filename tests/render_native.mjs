@@ -207,9 +207,10 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             if (row !== null) assert.ok(await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); row?.scrollIntoView({ block: 'center', inline: 'center' }); return Boolean(row); })()`), `${row} is drawn on the ${route} page`);
             const state = `${route}-${scheme}-${layout}-${row === null ? 'rest' : 'hover-' + row.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
             // The page may still be settling, as a count changes while it reads
-            // and its row is drawn anew: the pointer follows the row, and the
-            // measures and screenshot count only once the row stayed put under
-            // it from before the measures until after the screenshot.
+            // and its row is drawn anew, or as messages load: the pointer follows
+            // the row, and the measures and screenshot count only once the row
+            // stayed put under it, and every pill where it was, from before the
+            // measures until after the screenshot.
             const { answer, image } = await until(async () => {
               if (row !== null) {
                 const now = await p.evaluate(placed);
@@ -223,6 +224,9 @@ export async function renderChecks({ check, page, until, control, origin, eviden
               const answer = await p.evaluate(audit);
               const image = Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64');
               if (row !== null && JSON.stringify(await p.evaluate(placed)) !== JSON.stringify(box)) return false;
+              // The page as measured is the page in the screenshot: every pill
+              // stands where it stood, so a page still laying out is taken again.
+              if (JSON.stringify((await p.evaluate(audit)).pills) !== JSON.stringify(answer.pills)) return false;
               return { answer, image };
             }, `${state}: ${row} stays under the pointer through its screenshot`, 30000);
             // The row under the pointer is in view, so the sweep judges its pills.
