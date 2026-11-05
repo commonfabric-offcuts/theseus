@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Live, liveOffered } from '../web/live.mjs';
+import { Live, liveOffered, reloader } from '../web/live.mjs';
 import { Freshness } from '../web/freshness.mjs';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
@@ -10,125 +10,124 @@ function clock() {
   return { jobs, setTimeout(fn, ms) { jobs.set(++serial, { fn, ms }); return serial; }, clearTimeout(id) { jobs.delete(id); },
     run() { const [[id, job]] = jobs; jobs.delete(id); job.fn(); return job.ms; } };
 }
-// A response whose body the test writes line by line, and closes.
-function stream() {
-  let controller;
-  const body = new ReadableStream({ start(c) { controller = c; } });
-  const encoder = new TextEncoder();
-  return { response: new Response(body, { status: 200, headers: { 'Content-Type': 'application/x-ndjson' } }),
-    send(value) { controller.enqueue(encoder.encode(typeof value === 'string' ? value : JSON.stringify(value) + '\n')); },
-    close() { controller.close(); } };
+// A WebSocket the test drives: it opens, delivers messages, errors and closes.
+function socket(url, protocols) {
+  const s = { url, protocols, closed: false, onmessage: null, onclose: null, onerror: null,
+    close() { s.closed = true; },
+    send(value) { s.onmessage?.({ data: typeof value === 'string' ? value : JSON.stringify(value) }); },
+    drop() { s.onclose?.({ code: 1006 }); },
+    refuse() { s.onerror?.({}); s.onclose?.({ code: 1006 }); } };
+  return s;
 }
-function fixture(answers) {
-  const calls = [], events = [], times = clock();
-  const fetcher = async (url, options) => {
-    calls.push({ url, options });
-    const answer = answers.shift();
-    if (answer instanceof Error) throw answer;
-    return answer;
-  };
-  const live = new Live({ token: 'secret', fetcher, timers: times, random: () => 0 });
+function fixture({ throws = 0 } = {}) {
+  const sockets = [], events = [], times = clock();
+  let refusals = throws;
+  const live = new Live({ token: 'secret', origin: 'http://127.0.0.1:5192', timers: times, random: () => 0,
+    socket: (url, protocols) => { if (refusals-- > 0) throw Error('blocked'); const s = socket(url, protocols); sockets.push(s); return s; } });
   live.listen(event => events.push(event));
-  return { live, calls, events, times };
+  return { live, sockets, events, times };
 }
 
-test('only the advertised version 1 stream is used', () => {
-  assert.equal(liveOffered({ transport: { live: { version: 1, path: '/api/live' } } }), true);
-  for (const transport of [undefined, {}, { live: { version: 2, path: '/api/live' } }, { live: { version: 1, path: '/elsewhere' } }]) {
+test('only the advertised version 2 WebSocket is used', () => {
+  assert.equal(liveOffered({ transport: { live: { version: 2, path: '/api/live', protocol: 'theseus-live.v1' } } }), true);
+  for (const transport of [undefined, {}, { live: { version: 1, path: '/api/live' } }, { live: { version: 2, path: '/api/live' } },
+    { live: { version: 2, path: '/elsewhere', protocol: 'theseus-live.v1' } }]) {
     assert.equal(liveOffered({ transport }), false);
   }
 });
 
-test('each new commit number is announced once, with the session token, and nothing for a repeat', async () => {
-  const s = stream(), { live, calls, events } = fixture([s.response]);
-  live.start(); await tick();
-  assert.equal(calls[0].url, '/api/live');
-  assert.equal(calls[0].options.headers.Authorization, 'Bearer secret');
-  s.send({ seq: 4 }); await tick();
+test('each new commit number is announced once, over the page origin, with the session token as a subprotocol', () => {
+  const { live, sockets, events } = fixture();
+  live.start();
+  assert.equal(sockets[0].url, 'ws://127.0.0.1:5192/api/live');
+  assert.deepEqual(sockets[0].protocols, ['theseus-live.v1', 'bearer.secret']);
+  sockets[0].send({ seq: 4 });
   assert.equal(live.connected, true);
-  s.send({ seq: 4 }); s.send('{"seq":5}\n{"se'); await tick();
-  s.send('q":6}\n'); await tick();
+  sockets[0].send({ seq: 4 }); sockets[0].send({ seq: 5 }); sockets[0].send({ seq: 6 });
   assert.deepEqual(events, [{ kind: 'state', state: 'live' }, { kind: 'commit', seq: 4 }, { kind: 'commit', seq: 5 }, { kind: 'commit', seq: 6 }]);
+  const secure = new Live({ token: 't', origin: 'https://box.tail.ts.net', socket: url => ({ url }), timers: clock() });
+  secure.start();
+  assert.equal(secure.current.socket.url, 'wss://box.tail.ts.net/api/live');
 });
 
-test('a server that stops reconnects after a second; a feed that ended for another reason backs off', async () => {
-  const first = stream(), second = stream(), { live, events, times } = fixture([first.response, second.response]);
-  live.start(); await tick();
-  first.send({ seq: 1 }); first.send({ end: 'stopped' }); await tick(); await tick();
+test('a server that stops reconnects after a second; a feed that ended for another reason backs off', () => {
+  const { live, sockets, events, times } = fixture();
+  live.start();
+  sockets[0].send({ seq: 1 }); sockets[0].send({ end: 'stopped' });
   assert.equal(live.connected, false);
+  assert.equal(sockets[0].closed, true);
   assert.deepEqual(events.slice(-1), [{ kind: 'state', state: 'down' }]);
   assert.equal(times.run(), 1000);
-  await tick();
-  second.send({ seq: 2 }); second.send({ end: 'database_moved' }); await tick(); await tick();
+  sockets[1].send({ seq: 2 }); sockets[1].send({ end: 'database_moved' });
   assert.equal(times.run(), 1000);
   assert.deepEqual(events.filter(e => e.kind === 'commit').map(e => e.seq), [1, 2]);
 });
 
-test('a broken feed is not asked in a loop: each delivered-then-ended stream waits longer', async () => {
-  const streams = [stream(), stream(), stream()], { live, times } = fixture(streams.map(s => s.response));
+test('a broken feed is not asked in a loop: each delivered-then-ended socket waits longer', () => {
+  const { live, sockets, times } = fixture();
   const waits = [];
-  live.start(); await tick();
-  for (const s of streams) {
-    s.send({ seq: 3 }); s.send({ end: 'unconfirmed' }); await tick(); await tick();
-    waits.push(times.run()); await tick();
+  live.start();
+  for (let n = 0; n < 3; n++) {
+    sockets[n].send({ seq: 3 }); sockets[n].send({ end: 'unconfirmed' });
+    waits.push(times.run());
   }
   assert.deepEqual(waits, [1000, 2000, 4000]);
 });
 
-test('refused connections back off to at most thirty seconds; a clean stream resets that', async () => {
-  const refused = () => new Response('{"error":{"code":"SERVER_BUSY"}}', { status: 503 });
-  const answers = [...Array.from({ length: 7 }, refused)], s = stream();
-  answers.push(s.response, refused());
-  const { live, times } = fixture(answers);
+test('refused sockets back off to at most thirty seconds; a socket that delivered resets that', () => {
+  const { live, sockets, times } = fixture({ throws: 1 });
   const waits = [];
-  live.start(); await tick(); await tick();
-  for (let n = 0; n < 7; n++) { waits.push(times.run()); await tick(); await tick(); }
+  live.start();
+  waits.push(times.run());
+  for (let n = 0; n < 6; n++) { sockets[n].refuse(); waits.push(times.run()); }
   assert.deepEqual(waits, [1000, 2000, 4000, 8000, 16000, 30000, 30000]);
-  // The seventh wait ended with the stream that now delivers.
-  s.send({ seq: 9 }); s.close(); await tick(); await tick();
+  sockets[6].send({ seq: 9 }); sockets[6].drop();
   assert.equal(times.run(), 1000);
-  await tick(); await tick();
+  // A socket that closes before any message is a refusal, even right after a clean one.
+  sockets[7].drop();
   assert.equal(times.run(), 1000);
+  sockets[8].drop();
+  assert.equal(times.run(), 2000);
 });
 
-test('an instance without live updates is asked once and never again', async () => {
-  const { live, calls, events, times } = fixture([new Response('{"error":{"code":"LIVE_UNAVAILABLE"}}', { status: 503 })]);
-  live.start(); await tick(); await tick();
-  assert.deepEqual(events, [{ kind: 'state', state: 'unavailable' }]);
+test('an unreadable or unknown message closes the socket and backs off', () => {
+  for (const bad of ['not json', { seq: -1 }, { hello: 1 }, { seq: 1.5 }]) {
+    const { live, sockets, times } = fixture();
+    live.start();
+    sockets[0].send({ seq: 1 }); sockets[0].send(bad);
+    assert.equal(live.connected, false, JSON.stringify(bad));
+    assert.equal(sockets[0].closed, true, 'the dropped socket is closed, not left open');
+    assert.equal(times.run(), 1000);
+    sockets[1].send(bad);
+    assert.equal(times.run(), 2000, 'a second bad socket waits longer');
+  }
+});
+
+test('stop closes the socket and schedules nothing', () => {
+  const { live, sockets, times } = fixture();
+  live.start();
+  sockets[0].send({ seq: 1 });
+  live.stop();
+  assert.equal(sockets[0].closed, true);
   assert.equal(times.jobs.size, 0);
-  live.wake(); live.start(); await tick();
-  assert.equal(calls.length, 1);
+  sockets[0].drop?.();
+  live.wake();
+  assert.equal(sockets.length, 1);
 });
 
-test('an unreadable line drops the stream and backs off', async () => {
-  const s = stream(), { live, times } = fixture([s.response]);
-  live.start(); await tick();
-  s.send({ seq: 1 }); s.send('not json\n'); await tick(); await tick();
-  assert.equal(live.connected, false);
-  assert.equal(times.run(), 1000);
-});
-
-test('stop aborts the stream and schedules nothing', async () => {
-  const s = stream(), { live, calls, times } = fixture([s.response]);
-  live.start(); await tick();
-  s.send({ seq: 1 }); await tick();
-  live.stop(); await tick(); await tick();
-  assert.equal(calls[0].options.signal.aborted, true);
+test('wake reconnects at once only while down, and never opens a second socket', () => {
+  const { live, sockets, times } = fixture();
+  live.start();
+  live.wake();
+  assert.equal(sockets.length, 1, 'a socket still connecting is not doubled');
+  sockets[0].send({ seq: 1 });
+  live.wake();
+  assert.equal(sockets.length, 1);
+  sockets[0].drop();
+  live.wake();
+  assert.equal(sockets.length, 2);
   assert.equal(times.jobs.size, 0);
-  live.wake(); await tick();
-  assert.equal(calls.length, 1);
-});
-
-test('wake reconnects at once only while down', async () => {
-  const first = stream(), second = stream(), { live, calls, times } = fixture([first.response, second.response]);
-  live.start(); await tick();
-  first.send({ seq: 1 }); await tick();
-  live.wake(); await tick();
-  assert.equal(calls.length, 1);
-  first.close(); await tick(); await tick();
-  live.wake(); await tick();
-  assert.equal(calls.length, 2);
-  assert.equal(times.jobs.size, 0);
+  assert.equal(live.opened, 2);
 });
 
 // Freshness with a live stream: no timer while it is up, a pass on each commit, the timer again when it drops.
@@ -175,4 +174,57 @@ test('a failed pass keeps its retry timer even while the stream is up', async ()
   assert.equal(times.jobs.size, 1);
   times.run(); await tick(); await tick();
   assert.equal(times.jobs.size, 0);
+});
+
+test('while the stream is up, a pass interrupted after a commit asked for it keeps its timer', async () => {
+  let release;
+  const { f, calls, times } = freshness({ connected: true }, name => name === 'changes' && calls.length === 1 ? new Promise(resolve => { release = () => resolve(page(0)); }) : page(0));
+  const first = f.start();
+  await tick();
+  f.request();
+  f.interrupt();
+  release(); await first; await tick();
+  assert.equal(times.jobs.size, 1, 'the interrupted pass leaves a timer');
+  times.run(); await tick(); await tick();
+  assert.equal(calls.filter(name => name === 'changes').length >= 2, true);
+  assert.equal(times.jobs.size, 0, 'a settled pass leaves none');
+});
+
+test('while the stream is up, a resync whose re-read is busy keeps a retry timer', async () => {
+  const busy = Object.assign(Error('busy'), { status: 503, details: { error: { code: 'SERVER_BUSY', retryable: true } } });
+  const resync = Object.assign(Error('resync'), { status: 409, details: { error: { code: 'RESYNC_REQUIRED', retryable: false } } });
+  let step = 0;
+  const calls = [], times = clock();
+  const f = new Freshness({ api: { view: async name => { calls.push(name); if (step++ === 0) throw resync; return page(0); }, bootstrap: async () => { calls.push('bootstrap'); throw busy; } },
+    bootstrap, topicId: 't1', checkpoint: cursor(0), timers: times, random: () => 0, read: action => action({ readClass: 'background' }),
+    binding: () => bootstrap, keys: () => [], refresh: async () => true, status: () => {}, yieldRead: async () => {}, live: { connected: true } });
+  await f.start();
+  assert.deepEqual(calls, ['changes', 'bootstrap']);
+  assert.equal(times.jobs.size, 1, 'the promised retry is scheduled');
+});
+
+test('while the stream is up, work left dirty by an interruption keeps the timer', async () => {
+  const { f, times } = freshness({ connected: true });
+  await f.start();
+  assert.equal(times.jobs.size, 0);
+  f.invalidate('topic', 3);
+  f.schedule();
+  assert.equal(times.jobs.size, 1);
+});
+
+test('a commit during a list load asks for one more load, however many arrive', async () => {
+  const releases = [];
+  let loads = 0;
+  const reload = reloader(() => { loads++; return new Promise(resolve => releases.push(resolve)); });
+  const first = reload();
+  assert.equal(loads, 1);
+  assert.equal(reload(), first, 'an ask during a load joins it');
+  reload(); reload();
+  releases.shift()(); await tick();
+  assert.equal(loads, 2, 'the asks made while it ran make exactly one more load');
+  releases.shift()(); await first;
+  assert.equal(loads, 2);
+  reload();
+  assert.equal(loads, 3, 'a later ask starts a new load');
+  releases.shift()();
 });

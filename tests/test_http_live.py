@@ -1,20 +1,68 @@
 from __future__ import annotations
 
+import hashlib
 import http.client
 import json
 import os
+import socket
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import textwrap
 import threading
 import unittest
 
 from aim_next import initialize, Store
+from aim_next import live as live_module
+from aim_next.effects_watch import WatchError
 from aim_next.server import create_server
 
 
+class LiveClient:
+    """The browser's side of the live WebSocket: masked frames out, plain frames in."""
+
+    def __init__(self, connection):
+        self.connection, self.buffer = connection, b""
+
+    def exactly(self, size):
+        while len(self.buffer) < size:
+            data = self.connection.recv(4096)
+            if not data:
+                raise EOFError("the server closed the socket")
+            self.buffer += data
+        data, self.buffer = self.buffer[:size], self.buffer[size:]
+        return data
+
+    def until(self, marker):
+        while marker not in self.buffer:
+            data = self.connection.recv(4096)
+            if not data:
+                raise EOFError("the server closed the socket")
+            self.buffer += data
+        data, _, self.buffer = self.buffer.partition(marker)
+        return data
+
+    def frame(self):
+        first, second = self.exactly(2)
+        assert first & 0x80 and not second & 0x80, "a server frame is final and unmasked"
+        size = second & 0x7F
+        if size == 126:
+            size = int.from_bytes(self.exactly(2), "big")
+        return first & 0x0F, self.exactly(size)
+
+    def send(self, opcode, payload=b"", masked=True):
+        mask = b"\x01\x02\x03\x04"
+        if masked:
+            body = bytes([0x80 | opcode, 0x80 | len(payload)]) + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        else:
+            body = bytes([0x80 | opcode, len(payload)]) + payload
+        self.connection.sendall(body)
+
+
 class LiveStreamTests(unittest.TestCase):
-    """GET /api/live: one line per new commit number, over real files and a real native watch."""
+    """GET /api/live: a WebSocket message per new commit number, over real files and a real native watch."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -49,14 +97,39 @@ class LiveStreamTests(unittest.TestCase):
             self.stop()
         self.tmp.cleanup()
 
-    def open(self, token="live-session"):
-        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+    def open(self, token="live-session", origin=None, protocols=None, upgrade=True):
+        """A live WebSocket, or the JSON refusal (status, body) when the server refuses one."""
+        address = "%s:%d" % self.server.server_address
+        connection = socket.create_connection(self.server.server_address, timeout=5)
         self.connections.append(connection)
-        connection.request("GET", "/api/live", headers={"Authorization": "Bearer " + token})
-        return connection.getresponse()
+        if protocols is None:
+            protocols = "theseus-live.v1, bearer." + token
+        lines = ["GET /api/live HTTP/1.1", "Host: " + address, "Origin: " + (origin or self.server.origin),
+                 "Sec-WebSocket-Protocol: " + protocols, "Sec-WebSocket-Version: 13",
+                 "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="]
+        if upgrade:
+            lines += ["Upgrade: websocket", "Connection: Upgrade"]
+        connection.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+        client = LiveClient(connection)
+        head = client.until(b"\r\n\r\n").decode("latin-1").split("\r\n")
+        status = int(head[0].split()[1])
+        headers = dict(line.split(": ", 1) for line in head[1:] if line)
+        if status != 101:
+            return status, json.loads(client.exactly(int(headers["Content-Length"])))
+        self.assertEqual(headers["Sec-WebSocket-Protocol"], "theseus-live.v1")
+        # RFC 6455's own example key and answer.
+        self.assertEqual(headers["Sec-WebSocket-Accept"], "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+        return client
 
-    def line(self, response):
-        return json.loads(response.readline())
+    def line(self, client):
+        opcode, payload = client.frame()
+        self.assertEqual(opcode, 1)
+        return json.loads(payload)
+
+    def closed(self, client):
+        """The server's close frame, then nothing more."""
+        self.assertEqual(client.frame(), (8, b"\x03\xe8"))
+        self.assertEqual(client.connection.recv(1), b"")
 
     def commit(self, title="Live"):
         self.revision += 1
@@ -80,17 +153,14 @@ class LiveStreamTests(unittest.TestCase):
             connection.close()
 
     def test_a_stream_starts_at_the_current_commit_and_announces_each_new_one(self):
-        response = self.open()
-        self.assertEqual(response.status, 200)
-        self.assertEqual(response.getheader("Content-Type"), "application/x-ndjson; charset=utf-8")
-        self.assertIsNone(response.getheader("Content-Length"))
-        self.assertEqual(self.line(response), {"seq": self.seq()})
+        client = self.open()
+        self.assertEqual(self.line(client), {"seq": self.seq()})
         other = self.open()
         self.assertEqual(self.line(other), {"seq": self.seq()})
         for _ in range(3):
             self.commit()
             expected = {"seq": self.seq()}
-            self.assertEqual(self.line(response), expected)
+            self.assertEqual(self.line(client), expected)
             self.assertEqual(self.line(other), expected)
 
     def test_the_feed_never_fails_a_writer_in_its_own_process(self):
@@ -101,69 +171,214 @@ class LiveStreamTests(unittest.TestCase):
         self.assertIsNone(self.server.live_feed.state()[1])
 
     def test_a_read_announces_nothing(self):
-        response = self.open()
-        start = self.line(response)["seq"]
+        client = self.open()
+        start = self.line(client)["seq"]
         self.assertEqual(self.store.view("test-human", "workspaces", {}).get("error"), None)
         self.commit()
-        # The next line is the commit's number, so the read sent none of its own.
-        self.assertEqual(self.line(response), {"seq": start + 1})
+        # The next message is the commit's number, so the read sent none of its own.
+        self.assertEqual(self.line(client), {"seq": start + 1})
 
     def test_bootstrap_offers_live_only_when_the_instance_has_it(self):
-        self.assertEqual(self.bootstrap()["transport"]["live"], {"version": 1, "path": "/api/live"})
+        self.assertEqual(self.bootstrap()["transport"]["live"], {"version": 2, "path": "/api/live", "protocol": "theseus-live.v1"})
         self.stop()
         self.start(live=False)
         self.assertNotIn("live", self.bootstrap().get("transport", {}))
-        response = self.open()
-        self.assertEqual(response.status, 503)
-        self.assertEqual(json.loads(response.read())["error"]["code"], "LIVE_UNAVAILABLE")
+        status, body = self.open()
+        self.assertEqual((status, body["error"]["code"]), (503, "LIVE_UNAVAILABLE"))
 
-    def test_a_stream_needs_the_instance_session(self):
-        response = self.open(token="wrong")
-        self.assertEqual(response.status, 401)
-        self.assertEqual(json.loads(response.read())["error"]["code"], "SESSION_REQUIRED")
+    def test_a_stream_needs_the_page_origin_the_session_and_a_websocket(self):
+        for kwargs, expected in (({"token": "wrong"}, (401, "SESSION_REQUIRED")),
+                                 ({"protocols": "theseus-live.v1"}, (401, "SESSION_REQUIRED")),
+                                 ({"protocols": "bearer.live-session"}, (401, "SESSION_REQUIRED")),
+                                 ({"protocols": "theseus-live.v1, bearer.live-session, bearer.live-session"}, (401, "SESSION_REQUIRED")),
+                                 ({"origin": "http://elsewhere.example"}, (403, "ORIGIN_REFUSED")),
+                                 ({"upgrade": False}, (400, "WEBSOCKET_REQUIRED"))):
+            with self.subTest(kwargs=kwargs):
+                status, body = self.open(**kwargs)
+                self.assertEqual((status, body["error"]["code"]), expected)
+        # An ordinary request with the session header is not a stream either.
+        connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
+        try:
+            connection.request("GET", "/api/live", headers={"Authorization": "Bearer live-session", "Origin": self.server.origin})
+            response = connection.getresponse()
+            self.assertEqual((response.status, json.loads(response.read())["error"]["code"]), (401, "SESSION_REQUIRED"))
+        finally:
+            connection.close()
+        self.assertEqual(len(self.server.live_feed.wakers), 0)
+
+    def test_a_ping_is_answered_and_a_close_is_echoed_and_frees_the_slot(self):
+        self.stop()
+        self.start(streams=1)
+        client = self.open()
+        self.line(client)
+        client.send(9, b"hi")
+        self.assertEqual(client.frame(), (10, b"hi"))
+        self.commit()
+        self.assertEqual(self.line(client), {"seq": self.seq()})
+        client.send(8, b"\x03\xe8bye")
+        self.assertEqual(client.frame(), (8, b"\x03\xe8"))
+        self.assertEqual(client.connection.recv(1), b"")
+        self.assertEqual(self.line(self.open()), {"seq": self.seq()})
+
+    def test_anything_but_a_control_frame_ends_the_stream(self):
+        for opcode, masked in ((1, True), (2, True), (9, False)):
+            with self.subTest(opcode=opcode, masked=masked):
+                client = self.open()
+                self.line(client)
+                client.send(opcode, b"{}", masked=masked)
+                frames = []
+                try:
+                    while True:
+                        frames.append(client.frame())
+                except EOFError:
+                    pass
+                self.assertTrue(all(opcode == 8 for opcode, _ in frames), frames)
+        self.assertEqual(len(self.server.live_feed.wakers), 0)
 
     def test_streams_are_bounded_and_a_closed_stream_frees_its_slot(self):
         self.stop()
         self.start(streams=1)
         first = self.open()
         self.assertEqual(self.line(first), {"seq": self.seq()})
-        refused = self.open()
-        self.assertEqual(refused.status, 503)
-        self.assertEqual(json.loads(refused.read())["error"]["code"], "SERVER_BUSY")
+        status, body = self.open()
+        self.assertEqual((status, body["error"]["code"]), (503, "SERVER_BUSY"))
         feed, released = self.server.live_feed, threading.Event()
         unsubscribe = feed.unsubscribe
         feed.unsubscribe = lambda stream: (unsubscribe(stream), released.set())
-        # The response holds the socket open after its connection closes.
-        first.close()
-        self.connections[0].close()
+        first.connection.close()
         self.assertTrue(released.wait(5))
-        second = self.open()
-        self.assertEqual(self.line(second), {"seq": self.seq()})
+        self.assertEqual(self.line(self.open()), {"seq": self.seq()})
+
+    def test_a_failed_subscription_gives_its_slot_back(self):
+        self.stop()
+        self.start(streams=1)
+        pipe = live_module.os.pipe
+        live_module.os.pipe = lambda: (_ for _ in ()).throw(OSError("out of descriptors"))
+        try:
+            with self.assertRaises(OSError):
+                self.server.live_feed.subscribe()
+        finally:
+            live_module.os.pipe = pipe
+        self.assertEqual(self.line(self.open()), {"seq": self.seq()})
 
     def test_stopping_the_server_ends_every_stream_with_a_reason(self):
-        responses = [self.open(), self.open()]
-        for response in responses:
-            self.line(response)
+        clients = [self.open(), self.open()]
+        for client in clients:
+            self.line(client)
         self.stop()
-        for response in responses:
-            self.assertEqual(self.line(response), {"end": "stopped"})
-            self.assertEqual(response.readline(), b"")
+        for client in clients:
+            self.assertEqual(self.line(client), {"end": "stopped"})
+            self.closed(client)
 
     def test_a_replaced_authority_anchor_ends_the_stream(self):
-        response = self.open()
-        self.line(response)
+        client = self.open()
+        self.line(client)
         replacement = self.root / "authority.json.next"
         replacement.write_bytes(self.authority.read_bytes())
         os.replace(replacement, self.authority)
-        self.assertEqual(self.line(response), {"end": "binding_changed"})
-        self.assertEqual(response.readline(), b"")
+        self.assertEqual(self.line(client), {"end": "binding_changed"})
+        self.closed(client)
+        self.assertNotIn("live", self.bootstrap().get("transport", {}))
 
     def test_a_moved_database_ends_the_stream(self):
-        response = self.open()
-        self.line(response)
+        client = self.open()
+        self.line(client)
         os.replace(self.db, self.root / "moved.sqlite3")
-        self.assertEqual(self.line(response), {"end": "database_moved"})
+        self.assertEqual(self.line(client), {"end": "database_moved"})
 
+    def test_an_unreadable_commit_number_ends_the_stream_and_live_is_no_longer_offered(self):
+        client = self.open()
+        self.line(client)
+        def unreadable():
+            raise ValueError("commit_seq is unreadable")
+        self.server.live_feed._read_seq = unreadable
+        self.commit()
+        self.assertEqual(self.line(client), {"end": "unconfirmed"})
+        self.closed(client)
+        self.assertNotIn("live", self.bootstrap().get("transport", {}))
+
+    def test_a_writer_that_holds_its_lock_long_is_waited_for(self):
+        client = self.open()
+        self.line(client)
+        feed, read, calls = self.server.live_feed, self.server.live_feed._read_seq, []
+        def busy_twice():
+            calls.append(1)
+            if len(calls) <= 2:
+                raise sqlite3.OperationalError("database is locked")
+            return read()
+        feed._read_seq = busy_twice
+        self.commit()
+        self.assertEqual(self.line(client), {"seq": self.seq()})
+        self.assertGreaterEqual(len(calls), 3)
+        self.assertIsNone(feed.state()[1])
+
+    def test_a_writer_that_died_mid_commit_is_rolled_back_and_the_feed_carries_on(self):
+        client = self.open()
+        start = self.line(client)["seq"]
+        # Another process writes through the store's connection, spills pages
+        # into the database file, and dies before it commits.
+        child = textwrap.dedent("""
+            import os, sys
+            sys.path.insert(0, sys.argv[2])
+            from aim_next.store import _connect
+            db, _ = _connect(sys.argv[1])
+            if sys.argv[3] == "grow":
+                db.execute("BEGIN IMMEDIATE")
+                db.execute("CREATE TABLE spill(v TEXT)")
+                db.executemany("INSERT INTO spill VALUES (?)", [("x" * 200,)] * 5000)
+                db.execute("COMMIT")
+                sys.exit(0)
+            db.execute("PRAGMA cache_size=2")
+            db.execute("PRAGMA cache_spill=1")
+            db.execute("BEGIN IMMEDIATE")
+            db.execute("UPDATE spill SET v = v || 'y'")
+            db.execute("UPDATE metadata SET value='999999' WHERE key='commit_seq'")
+            os._exit(0)
+            """)
+        feed, entered, release, done = self.server.live_feed, threading.Event(), threading.Event(), threading.Event()
+        settled = feed._settled_seq
+        def held():
+            # The feed thread waits here until the test has seen the dead writer's journal.
+            entered.set()
+            release.wait()
+            try:
+                return settled()
+            finally:
+                done.set()
+        for step in ("grow", "die"):
+            subprocess.run([sys.executable, "-I", "-c", child, str(self.db), str(Path(__file__).resolve().parents[1]), step], check=True)
+            if step == "grow":
+                before = hashlib.sha256(self.db.read_bytes()).digest()
+                feed._settled_seq = held
+        self.assertTrue(entered.wait(5))
+        self.assertTrue(Path(str(self.db) + "-journal").exists())
+        self.assertNotEqual(hashlib.sha256(self.db.read_bytes()).digest(), before)
+        release.set()
+        # The feed's read rolls the journal back rather than end the feed.
+        self.assertTrue(done.wait(5))
+        self.assertFalse(Path(str(self.db) + "-journal").exists())
+        self.assertEqual(hashlib.sha256(self.db.read_bytes()).digest(), before)
+        self.assertIsNone(feed.state()[1])
+        self.commit()
+        self.assertEqual(self.line(client), {"seq": start + 1})
+        self.assertIsNone(self.server.live_feed.state()[1])
+
+    def test_without_a_native_watch_the_instance_serves_and_leaks_nothing(self):
+        self.stop()
+        watch = live_module.NativeWatch
+        def refused(*args, **kwargs):
+            raise WatchError("no watch here")
+        live_module.NativeWatch = refused
+        try:
+            before = len(os.listdir("/dev/fd"))
+            self.start()
+            self.assertIsNone(self.server.live_feed)
+            self.assertEqual(len(os.listdir("/dev/fd")), before + 1, "only the listening socket is new")
+        finally:
+            live_module.NativeWatch = watch
+        self.assertNotIn("live", self.bootstrap().get("transport", {}))
+        status, body = self.open()
+        self.assertEqual((status, body["error"]["code"]), (503, "LIVE_UNAVAILABLE"))
 
 if __name__ == "__main__":
     unittest.main()

@@ -107,8 +107,8 @@ export class Freshness {
     refreshKeys = () => [], timers: clock = timers, random = Math.random, yieldRead = () => new Promise(resolve => setTimeout(resolve, 0)),
     live = null }) {
     Object.assign(this, { api, bootstrap: copy(bootstrap), topicId, read, keys, refresh, binding, status, authorityLost, denied, rebuild, refreshKeys, timers: clock, random, yieldRead, live });
-    // retrying: the last pass failed in a way that is retried on a schedule.
-    this.retrying = false;
+    // settled: the last pass ran to its end and found nothing left to read.
+    this.settled = false;
     this.checkpoint = copy(checkpoint); this.continuation = null;
     this.dirty = new Map(); this.serial = 0; this.epoch = 0; this.visible = true;
     this.enabled = supportsAdmission(bootstrap) && Boolean(checkpoint);
@@ -121,9 +121,11 @@ export class Freshness {
   clearTimer() { if (this.timer !== null) this.timers.clearTimeout(this.timer); this.timer = null; }
   schedule(delay = 500) {
     this.clearTimer();
-    // While the live stream is up, each new commit asks for a pass; a timer is
-    // left only for a retry or for work the last pass could not finish.
-    if (this.live?.connected && !this.retrying && !this.dirty.size && !this.continuation) return;
+    // While the live stream is up, each new commit asks for a pass, so no timer
+    // is needed once a pass has settled with nothing asked for since. Every
+    // other ending (a failure, a retry, an interrupted or superseded pass, work
+    // left over) keeps the timer.
+    if (this.live?.connected && this.settled && !this.requested && !this.dirty.size && !this.continuation) return;
     if (this.enabled && this.visible && !this.stopped && !this.disposed) this.timer = this.timers.setTimeout(() => { this.timer = null; this.request(); }, delay);
   }
   start() { if (this.visible) return this.request(); }
@@ -178,7 +180,7 @@ export class Freshness {
     const epoch = this.epoch;
     const read = (name, args) => this.readAt(epoch, name, args);
     const current = () => this.current(epoch);
-    this.delay = 500; this.retrying = false;
+    this.delay = 500; this.settled = false;
     try {
       while (current() && (this.requested || this.continuation || this.dirty.size)) {
         if (this.requested || this.continuation) {
@@ -205,7 +207,7 @@ export class Freshness {
           await this.yieldRead();
         }
       }
-      if (current()) { this.failures = 0; this.status({ kind: 'current', message: '' }); }
+      if (current()) { this.failures = 0; this.settled = true; this.status({ kind: 'current', message: '' }); }
     } catch (error) {
       if (!current()) return;
       const failure = readFailure(error);
@@ -235,7 +237,6 @@ export class Freshness {
         await this.stopDenied(failure, read, current);
       } else if (['retry', 'defer'].includes(failure.kind)) {
         this.delay = failure.kind === 'defer' ? 500 : Math.min(5000, 500 * 2 ** Math.min(this.failures++, 4) + Math.floor(this.random() * 100));
-        this.retrying = true;
         this.status(failure);
       } else { this.stopped = true; this.clearTimer(); this.status(failure); }
     } finally {

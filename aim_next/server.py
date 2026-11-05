@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import hmac
 import html
 import io
@@ -10,6 +12,7 @@ import secrets
 import re
 import select
 import socket
+import sqlite3
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,7 +21,7 @@ from typing import Any, Callable
 from urllib.parse import quote, unquote, urlsplit
 
 from .authority import AuthorityError
-from .contract import LIMITS, Refusal
+from .contract import LIMITS, Refusal, StoreError
 from .effects_watch import WatchError
 from .live import LiveFeed
 from .media import INLINE_TYPES
@@ -600,12 +603,12 @@ class Handler(BaseHTTPRequestHandler):
                       "limits": capabilities["limits"], "authority": authority}
             if self.server.read_admission is not None:
                 result["transport"] = {"read_admission": self.server.read_admission.capability()}
-            if self.server.live_feed is not None:
-                result.setdefault("transport", {})["live"] = {"version": 1, "path": "/api/live"}
+            # Offered only while the feed runs: an ended feed would only say so.
+            if self.server.live_feed is not None and self.server.live_feed.state()[1] is None:
+                result.setdefault("transport", {})["live"] = {"version": 2, "path": "/api/live", "protocol": LIVE_PROTOCOL}
             self._json_response(200, result)
             return
         if path == "/api/live":
-            self._authorize()
             self._live()
             return
         if path in ("/api/command", "/api/view", "/api/media/upload", "/api/media/read"):
@@ -628,45 +631,104 @@ class Handler(BaseHTTPRequestHandler):
             body = body.replace(b"__AIM_SESSION_TOKEN__", html.escape(self.server.session_token, quote=True).encode())
         self._send(200, body, mimetypes.guess_type(str(candidate))[0] or "application/octet-stream")
 
-    def _live(self):
-        """One line of JSON per new commit number, until the feed ends or the client leaves.
+    def _live_handshake(self):
+        """Accept a WebSocket for the live feed, or refuse it with the usual JSON error.
 
-        The first line is the current number. A last line {"end": reason} says
-        the feed stopped; a client treats a closed stream the same way, reads
-        the views it shows, and reconnects. Writes never block: at most one
-        line is in flight, a later number replaces one not yet started, and
-        a client that is not reading when the feed ends is simply closed.
+        A browser cannot set Authorization on a WebSocket, so the session token
+        travels as a second offered subprotocol, bearer.TOKEN, beside
+        theseus-live.v1; the answer names only theseus-live.v1. The page's own
+        Origin is required, as it is for every write.
+        """
+        origin = self._host()
+        if self.headers.get_all("Origin", []) != [origin]:
+            raise RequestError(403, "ORIGIN_REFUSED", "This request is not from the instance.")
+        offered = [name.strip() for value in self.headers.get_all("Sec-WebSocket-Protocol", []) for name in value.split(",")]
+        tokens = [name[len("bearer."):] for name in offered if name.startswith("bearer.")]
+        if (LIVE_PROTOCOL not in offered or len(tokens) != 1
+                or not hmac.compare_digest(tokens[0].encode("utf-8"), self.server.session_token.encode("utf-8"))):
+            raise RequestError(401, "SESSION_REQUIRED", "Open this instance to establish a session.")
+        keys = self.headers.get_all("Sec-WebSocket-Key", [])
+        try:
+            key_bytes = base64.b64decode(keys[0], validate=True) if len(keys) == 1 else b""
+        except ValueError:
+            key_bytes = b""
+        upgrade = [value.strip().lower() for value in ",".join(self.headers.get_all("Connection", [])).split(",")]
+        if (self.headers.get("Upgrade", "").lower() != "websocket" or "upgrade" not in upgrade
+                or self.headers.get_all("Sec-WebSocket-Version", []) != ["13"] or len(key_bytes) != 16):
+            raise RequestError(400, "WEBSOCKET_REQUIRED", "Live updates are a WebSocket at this address.")
+        return base64.b64encode(hashlib.sha1((keys[0] + WEBSOCKET_GUID).encode("ascii")).digest()).decode("ascii")
+
+    def _live(self):
+        """One WebSocket text message per new commit number, until the feed ends or the client leaves.
+
+        The first message is the current number. A last message {"end": reason}
+        says the feed stopped, followed by a close; a client treats any close
+        the same way, reads the views it shows, and reconnects. The stream is a
+        WebSocket because a browser keeps those apart from its few HTTP
+        connections per host, so open pages never queue their reads behind
+        their streams. Writes never block: at most one message is in flight, a
+        later number replaces one not yet started, and a client that is not
+        reading when the feed ends is simply closed.
         """
         feed = self.server.live_feed
         if feed is None:
             raise RequestError(503, "LIVE_UNAVAILABLE", "This instance has no live updates; read the views instead.")
+        accept = self._live_handshake()
         stream = feed.subscribe()
         if stream is None:
             raise RequestError(503, "SERVER_BUSY", "Every live stream slot is taken.")
         try:
-            self._headers(200, "application/x-ndjson; charset=utf-8")
-            self.wfile.flush()
+            self.close_connection = True
             self.binary_headers_started = True
+            self.wfile.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                              "Sec-WebSocket-Accept: %s\r\nSec-WebSocket-Protocol: %s\r\n\r\n" % (accept, LIVE_PROTOCOL)).encode("ascii"))
+            self.wfile.flush()
             self.connection.setblocking(False)
-            sent, pending = None, b""
+            sent, pending, received = None, b"", b""
             while True:
                 seq, ended = feed.state()
                 if not pending and seq != sent:
-                    pending, sent = b'{"seq":%d}\n' % seq, seq
+                    pending, sent = _ws_frame(b'{"seq":%d}' % seq), seq
                 if ended:
-                    pending += json.dumps({"end": ended}, separators=(",", ":")).encode("ascii") + b"\n"
+                    pending += _ws_frame(json.dumps({"end": ended}, separators=(",", ":")).encode("ascii")) + _ws_frame(b"\x03\xe8", 8)
                 if pending:
                     try:
                         pending = pending[self.connection.send(pending):]
                     except BlockingIOError:
                         pass
+                    except OSError:
+                        return
                 if ended:
                     return
                 readable, _, _ = select.select([self.connection, stream], [self.connection] if pending else [], [])
                 if self.connection in readable:
-                    # The client sends nothing after its request: anything
-                    # readable is its close, a reset, or bytes it should not send.
-                    return
+                    try:
+                        data = self.connection.recv(4096)
+                    except BlockingIOError:
+                        data = None
+                    except OSError:
+                        return
+                    if data == b"":
+                        return
+                    received += data or b""
+                    # The client sends nothing but control frames: a ping is
+                    # answered, and a close, data or an unreadable frame ends it.
+                    while True:
+                        frame = _ws_read(received)
+                        if frame is None:
+                            break
+                        opcode, payload, received = frame
+                        if opcode == 9:
+                            pending += _ws_frame(payload, 10)
+                        elif opcode != 10:
+                            if opcode == 8:
+                                try:
+                                    self.connection.send(_ws_frame(payload[:2], 8))
+                                except OSError:
+                                    pass
+                            return
+                    if len(received) > 4096:
+                        return
                 if stream in readable:
                     os.read(stream, 4096)
         finally:
@@ -679,6 +741,37 @@ class Handler(BaseHTTPRequestHandler):
     do_DELETE = do_OPTIONS
     do_PATCH = do_OPTIONS
     do_HEAD = do_OPTIONS
+
+
+LIVE_PROTOCOL = "theseus-live.v1"
+WEBSOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+
+def _ws_frame(payload, opcode=1):
+    """One unmasked, final WebSocket frame from the server."""
+    size = len(payload)
+    if size < 126:
+        head = bytes([0x80 | opcode, size])
+    elif size < 65536:
+        head = bytes([0x80 | opcode, 126]) + size.to_bytes(2, "big")
+    else:
+        head = bytes([0x80 | opcode, 127]) + size.to_bytes(8, "big")
+    return head + payload
+
+
+def _ws_read(data):
+    """(opcode, payload, rest) for the first whole frame from a client, or None while it is incomplete.
+
+    A client frame must be masked and small; anything else reads as a close."""
+    if len(data) < 2:
+        return None
+    opcode, masked, size = data[0] & 0x0F, data[1] & 0x80, data[1] & 0x7F
+    if not masked or size > 125 or not data[0] & 0x80:
+        return 8, b"", b""
+    if len(data) < 6 + size:
+        return None
+    mask = data[2:6]
+    return opcode, bytes(byte ^ mask[index % 4] for index, byte in enumerate(data[6:6 + size])), data[6 + size:]
 
 
 def tailnet_authority(origin):
@@ -725,10 +818,11 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     if external_authority is not None:
         server.origins_by_authority[external_authority] = tailnet_origin
     if live is not None:
-        # live is (database path, companion paths). Without a native watch the
-        # instance still serves; the browser reads on its own schedule.
+        # live is (database path, companion paths). Without a native watch, or
+        # when the commit number cannot be read at start, the instance still
+        # serves; the browser reads on its own schedule.
         try:
             server.live_feed = LiveFeed(*live)
-        except WatchError:
+        except (WatchError, sqlite3.Error, StoreError, ValueError, OSError):
             server.live_feed = None
     return server

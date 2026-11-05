@@ -16,7 +16,7 @@ import { openOpeningStore } from './opening-store.mjs';
 import { OutcomeCreation } from './creation.mjs';
 import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
-import { Live, liveOffered } from './live.mjs';
+import { Live, liveOffered, reloader } from './live.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -895,7 +895,8 @@ async function initializeOutcomePage(route) {
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
     await initializeOutcomeNavigation();
     $('refresh').onclick=()=>run(()=>outcomeRail.load());
-    live?.listen(event=>{if(event.kind==='commit')run(()=>outcomeRail.load());});
+    const reload=reloader(()=>outcomeRail.load());
+    live?.listen(event=>{if(event.kind==='commit')run(reload);});
   } else {
     $('outcome-page').append($('topic-navigation'));
     await initializeOutcomeNavigation(route.id);
@@ -927,7 +928,8 @@ async function initializeOutcomePage(route) {
       await topicRail.load();
     };
     $('refresh').onclick=()=>run(refresh);await refresh();
-    live?.listen(event=>{if(event.kind==='commit')run(()=>topicRail?.load());});
+    const reload=reloader(()=>topicRail?.load());
+    live?.listen(event=>{if(event.kind==='commit')run(reload);});
   }
   document.body.dataset.ready='true';
 }

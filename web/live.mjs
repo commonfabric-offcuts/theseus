@@ -1,22 +1,26 @@
-// One stream from the server that names each new commit number as soon as it
-// is saved. It carries no records: whoever listens reads the views it shows.
-// While the stream is down, listeners fall back to their own schedule.
+// One WebSocket from the server that names each new commit number as soon as
+// it is saved. It carries no records: whoever listens reads the views it shows.
+// While it is down, listeners fall back to their own schedule. A WebSocket
+// rather than a streamed fetch, because the browser keeps WebSockets apart from
+// its few HTTP connections per host: open pages never queue reads behind it.
 const timers = { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: t => clearTimeout(t) };
+const PROTOCOL = 'theseus-live.v1';
 
 export function liveOffered(bootstrap) {
   const live = bootstrap?.transport?.live;
-  return live?.version === 1 && live.path === '/api/live';
+  return live?.version === 2 && live.path === '/api/live' && live.protocol === PROTOCOL;
 }
 
 export class Live {
-  constructor({ token, fetcher = globalThis.fetch.bind(globalThis), timers: clock = timers, random = Math.random }) {
-    Object.assign(this, { token, fetcher, timers: clock, random });
+  constructor({ token, socket = (url, protocols) => new WebSocket(url, protocols), origin = globalThis.location?.origin,
+    timers: clock = timers, random = Math.random }) {
+    Object.assign(this, { token, socket, origin, timers: clock, random });
     this.listeners = new Set();
     this.connected = false; this.seq = null; this.state = 'idle';
-    this.failures = 0; this.timer = null; this.controller = null; this.running = null; this.stopped = false;
+    this.failures = 0; this.timer = null; this.current = null; this.stopped = false; this.opened = 0;
   }
   // listener({ kind: 'commit', seq }) on each new number, and
-  // listener({ kind: 'state', state }) with 'live', 'down' or 'unavailable'.
+  // listener({ kind: 'state', state }) with 'live' or 'down'.
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   emit(event) { for (const listener of [...this.listeners]) listener(event); }
   setState(state) {
@@ -24,63 +28,66 @@ export class Live {
     if (state !== this.state) { this.state = state; this.emit({ kind: 'state', state }); }
   }
   start() {
-    if (this.stopped || this.running || this.state === 'unavailable') return this.running;
+    if (this.stopped || this.current) return;
     if (this.timer !== null) { this.timers.clearTimeout(this.timer); this.timer = null; }
-    this.running = this.run().finally(() => { this.running = null; });
-    return this.running;
-  }
-  stop() {
-    this.stopped = true;
-    if (this.timer !== null) this.timers.clearTimeout(this.timer);
-    this.timer = null; this.controller?.abort(); this.setState('down');
-  }
-  async run() {
-    const controller = this.controller = new AbortController();
-    // clean: the stream delivered and then closed or said the server stopped,
+    const url = new URL('/api/live', this.origin); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    let socket;
+    try { socket = this.socket(url.href, [PROTOCOL, `bearer.${this.token}`]); }
+    catch { this.retry(false); return; }
+    this.opened++;
+    // clean: the socket delivered and then closed or said the server stopped,
     // as a restart does. Anything else (refused, unreadable, the feed ended
     // for another reason) backs off, so a broken feed is not asked in a loop.
-    let lines = 0, clean = false;
-    try {
-      const response = await this.fetcher('/api/live', { method: 'GET', credentials: 'same-origin', cache: 'no-store',
-        headers: { Authorization: `Bearer ${this.token}` }, signal: controller.signal });
-      if (!response.ok) {
-        let code = null;
-        try { code = (await response.json())?.error?.code ?? null; } catch { /* the status still decides */ }
-        // An instance without live updates says so; asking again cannot change that.
-        if (code === 'LIVE_UNAVAILABLE') { this.setState('unavailable'); return; }
-        throw Error(`Live updates were refused (${response.status}).`);
+    const attempt = this.current = { socket, lines: 0, clean: false, done: false };
+    const finish = () => {
+      if (attempt.done) return;
+      attempt.done = true;
+      if (this.current === attempt) this.current = null;
+      socket.onmessage = socket.onclose = socket.onerror = null;
+      // Leave nothing open behind a socket this page has stopped listening to.
+      try { socket.close(); } catch { /* already closing */ }
+      if (!this.stopped) this.retry(attempt.clean);
+    };
+    socket.onmessage = event => {
+      let message = null;
+      try { message = typeof event.data === 'string' ? JSON.parse(event.data) : null; } catch { /* unreadable: below */ }
+      if (Number.isSafeInteger(message?.seq) && message.seq >= 0) {
+        attempt.lines++; this.setState('live');
+        if (message.seq !== this.seq) { this.seq = message.seq; this.emit({ kind: 'commit', seq: message.seq }); }
+      } else {
+        attempt.clean = attempt.lines > 0 && message?.end === 'stopped';
+        finish();
       }
-      const reader = response.body.getReader(), decoder = new TextDecoder();
-      let buffered = '';
-      stream: for (;;) {
-        const { value, done } = await reader.read();
-        if (done) { clean = lines > 0; break; }
-        buffered += decoder.decode(value, { stream: true });
-        let end;
-        while ((end = buffered.indexOf('\n')) >= 0) {
-          const line = JSON.parse(buffered.slice(0, end));
-          buffered = buffered.slice(end + 1);
-          if (Number.isSafeInteger(line?.seq) && line.seq >= 0) {
-            lines++; this.setState('live');
-            if (line.seq !== this.seq) { this.seq = line.seq; this.emit({ kind: 'commit', seq: line.seq }); }
-          } else if (typeof line?.end === 'string') {
-            clean = lines > 0 && line.end === 'stopped';
-            controller.abort();
-            break stream;
-          } else break stream;
-        }
-      }
-    } catch {
-      // A refused connection, a dropped stream or an unreadable line: below.
-    } finally {
-      if (this.controller === controller) this.controller = null;
-    }
-    if (this.stopped || this.state === 'unavailable') return;
+    };
+    // A close after messages is a restart or a network change; a close before any is a refusal.
+    socket.onclose = () => { attempt.clean = attempt.lines > 0; finish(); };
+    socket.onerror = () => finish();
+  }
+  retry(clean) {
     this.setState('down');
     if (clean) this.failures = 0;
     const delay = clean ? 1000 : Math.min(30000, 1000 * 2 ** Math.min(this.failures++, 5));
     this.timer = this.timers.setTimeout(() => { this.timer = null; this.start(); }, delay + Math.floor(this.random() * 250));
   }
+  stop() {
+    this.stopped = true;
+    if (this.timer !== null) this.timers.clearTimeout(this.timer);
+    this.timer = null;
+    const socket = this.current?.socket; this.current = null;
+    if (socket) { socket.onmessage = socket.onclose = socket.onerror = null; try { socket.close(); } catch { /* closing */ } }
+    this.setState('down');
+  }
   // A page that becomes visible or comes back online tries at once.
-  wake() { if (!this.stopped && this.state === 'down' && !this.running) this.start(); }
+  wake() { if (!this.stopped && this.state !== 'live' && !this.current) this.start(); }
+}
+
+// A load asked for while one runs is run once more after it, so a commit that
+// lands during a load is still read; any number of such asks make one more.
+export function reloader(load) {
+  let running = null, again = false;
+  return () => {
+    if (running) { again = true; return running; }
+    running = (async () => { do { again = false; await load(); } while (again); })().finally(() => { running = null; });
+    return running;
+  };
 }

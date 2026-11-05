@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import os
+import select
 from pathlib import Path
 import sqlite3
 import threading
 
+from .contract import StoreError
 from .effects_watch import NativeWatch, WatchError
+from .store import _connect
 
 
 class LiveFeed:
@@ -45,12 +48,13 @@ class LiveFeed:
     def _read_seq(self):
         # A write event arrives while its writer still holds the lock; this
         # read waits for the commit to finish rather than see the old number.
-        # The connection opens read-write, as the store's own do, and is kept
-        # from writing by query_only: a read-only connection inside the process
-        # that writes the database made that process's writers fail now and
-        # then with "disk I/O error" (SQLite 3.51.0).
-        db = sqlite3.connect(self.db_path.absolute().as_uri() + "?mode=rw", uri=True, timeout=5.0,
-                             isolation_level=None)
+        # The connection is the store's own (read-write, with its durability
+        # settings), kept from SQL writes by query_only. It is not read-only:
+        # Apple's SQLite fails a writer's lock with "disk I/O error" while a
+        # read-only connection in the same process holds a shared lock. And it
+        # may still write: if another process died mid-commit, the first reader
+        # rolls its journal back, and does so with the store's full sync.
+        db, _ = _connect(self.db_path)
         try:
             db.execute("PRAGMA query_only=ON")
             row = db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()
@@ -59,6 +63,21 @@ class LiveFeed:
         if row is None or not isinstance(row[0], str) or not row[0].isascii() or not row[0].isdigit():
             raise ValueError("commit_seq is unreadable")
         return int(row[0])
+
+    def _settled_seq(self):
+        """The commit number once the writer that fired the event is done, or None if the feed is stopping.
+
+        Each read waits on the writer's lock. A writer that holds it longer
+        than one read waits is still writing, so the read is asked again; the
+        feed never ends because a commit was slow."""
+        while True:
+            try:
+                return self._read_seq()
+            except sqlite3.OperationalError as error:
+                if "locked" not in str(error).lower() and "busy" not in str(error).lower():
+                    raise
+            if self.stop_read in select.select([self.stop_read], [], [], 0)[0]:
+                return None
 
     def _run(self):
         reason = "stopped"
@@ -71,14 +90,16 @@ class LiveFeed:
                     reason = "binding_changed"
                     break
                 if result["dirty"]:
-                    seq = self._read_seq()
+                    seq = self._settled_seq()
+                    if seq is None:
+                        break
                     with self.lock:
                         if seq != self.seq:
                             self.seq = seq
                             self._wake_all()
         except WatchError:
             reason = "database_moved"
-        except (sqlite3.Error, ValueError, OSError):
+        except (sqlite3.Error, StoreError, ValueError, OSError):
             reason = "unconfirmed"
         finally:
             with self.lock:
@@ -114,8 +135,18 @@ class LiveFeed:
         or None when every stream slot is taken."""
         if not self.slots.acquire(blocking=False):
             return None
-        read, write = os.pipe()
-        os.set_blocking(write, False)
+        try:
+            read, write = os.pipe()
+        except OSError:
+            self.slots.release()
+            raise
+        try:
+            os.set_blocking(write, False)
+        except OSError:
+            os.close(read)
+            os.close(write)
+            self.slots.release()
+            raise
         with self.lock:
             self.wakers[read] = write
             if self.ended is not None:
