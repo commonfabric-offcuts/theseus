@@ -8,8 +8,8 @@ import { PAGE } from './topic-navigation.mjs';
 // topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
 export class OutcomeReferences {
-  constructor({ host, count, list, more, message, read, open, denied, seen = () => {}, pageMax = PAGE }) {
-    Object.assign(this, { host, count, list, more, message, read, open, isDenied: denied, seen, pageMax });
+  constructor({ scope, host, count, list, more, message, read, open, denied, seen = () => {}, pageMax = PAGE }) {
+    Object.assign(this, { scope, host, count, list, more, message, read, open, isDenied: denied, seen, pageMax });
     this.items = []; this.next = null; this.loading = null; this.queued = null;
     more.onclick = () => this.load(true);
   }
@@ -40,30 +40,51 @@ export class OutcomeReferences {
       return this.queued;
     }
     if (more && this.next === null) return Promise.resolve(true);
-    this.loading = (more ? this.page(this.next).then(answer => ({ items: [...this.items, ...answer.items], next: answer.next_cursor }))
+    const prior = new Set(this.items.map(item => item.id));
+    this.more.setAttribute('aria-disabled', 'true');
+    this.loading = (more ? this.page(this.next, PAGE, this.items).then(answer => ({ items: [...this.items, ...answer.items], next: answer.next_cursor }))
       : this.reread()).then(({ items, next }) => {
+      const focused = document.activeElement;
       this.items = items; this.next = next;
       this.message.hidden = true; this.paint(); this.seen(items);
+      // More, once it has nothing left to bring, hands focus to what it brought.
+      if (focused === this.more && this.more.hidden) [...this.list.children].find(row => !prior.has(row.dataset.id))?.focus();
       return true;
     }).catch(error => {
-      if (this.isDenied(error)) { this.items = []; this.next = null; this.message.hidden = true; }
+      // Someone outside the outcome cannot list its Notebook: an answer, not a failure.
+      const denied = this.isDenied(error);
+      if (denied) { this.items = []; this.next = null; this.message.hidden = true; }
       else { this.message.textContent = `${error.message} The outcome references could not be read.`; this.message.hidden = false; }
       this.paint();
-      return false;
-    }).finally(() => { this.loading = null; });
+      return denied;
+    }).finally(() => { this.loading = null; this.more.removeAttribute('aria-disabled'); });
     return this.loading;
   }
-  async page(cursor, limit) {
-    const answer = await this.read({ ...(limit ? { limit } : {}), ...(cursor === null ? {} : { cursor }) });
-    if (!Array.isArray(answer?.items) || answer.items.some(item => !Number.isSafeInteger(item?.seq) || item.source_ref?.kind !== 'memory') ||
-        !(answer.next_cursor === null || Number.isSafeInteger(answer.next_cursor))) throw Error('The outcome references are malformed.');
+  // A page follows its cursor and the items before it: each item is the
+  // outcome's own, names its exact current revision, and comes later than
+  // the last; a continuation moves forward.
+  async page(cursor, limit, before) {
+    const answer = await this.read({ limit, ...(cursor === null ? {} : { cursor }) });
+    const ids = new Set(before.map(item => item.id));
+    let previous = cursor ?? 0;
+    for (const item of Array.isArray(answer?.items) ? answer.items : [null]) {
+      if (typeof item?.id !== 'string' || ids.has(item.id) || !Number.isSafeInteger(item.seq) || item.seq <= previous ||
+          !Number.isSafeInteger(item.revision) || item.revision < 1 || item.owner_scope?.kind !== 'workspace' || item.owner_scope.id !== this.scope ||
+          item.source_ref?.kind !== 'memory' || item.source_ref.id !== item.id || item.source_ref.revision !== item.revision) {
+        throw Error('The outcome references are malformed.');
+      }
+      ids.add(item.id); previous = item.seq;
+    }
+    if (!(answer.next_cursor === null || Number.isSafeInteger(answer.next_cursor) && answer.next_cursor >= previous && answer.next_cursor > (cursor ?? 0))) {
+      throw Error('The outcome references are malformed.');
+    }
     return answer;
   }
   async reread() {
     const last = this.items.at(-1)?.seq ?? null, items = [];
     let next = null;
     do {
-      const answer = await this.page(next, Math.min(this.pageMax, Math.max(PAGE, this.items.length)));
+      const answer = await this.page(next, Math.min(this.pageMax, Math.max(PAGE, this.items.length)), items);
       items.push(...answer.items); next = answer.next_cursor;
     } while (next !== null && last !== null && next < last);
     return { items, next };

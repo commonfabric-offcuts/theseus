@@ -415,7 +415,7 @@ export async function liveChecks({ check, page, until, control, observations, or
     await control({ method: 'outcome_reference', operation_id: 'live-outcome-reference', item_id: 'live-outcome-reference',
       title: 'Architecture', body: 'The outcome passage every topic stands on.' });
     await until(() => p.evaluate("!document.querySelector('#outcome-references').hidden"), 'the outcome Notebook appears without a reload');
-    assert.equal(await p.evaluate("document.querySelector('#outcome-references').open"), false, 'it starts closed');
+    assert.equal(await p.evaluate("document.querySelector('#outcome-references details').open"), false, 'it starts closed');
     assert.equal(await p.evaluate("document.querySelector('#outcome-references-count').textContent"), '1');
     await p.point('#outcome-references summary');
     assert.deepEqual(await rows(), ['Architecture']);
