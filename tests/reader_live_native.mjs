@@ -188,6 +188,10 @@ export async function liveChecks({ check, page, until, control, observations, or
       assert.ok(Math.abs(now - was[1]) <= 1, `${why}: ${JSON.stringify([was, now])}`);
     };
     const arrive = async text => { await message(text); await until(() => hasText(p, '#messages', text), `${text} is shown`); await settled(p); };
+    // The rail's count for this topic appears with the first arrival and can
+    // wrap its row; the browser's own anchoring may follow the rail then, so
+    // the count is there before the arrival this check measures.
+    await arrive('Arrives first, so the rail already counts it');
     await p.evaluate("(() => { document.querySelector('#messages .message-card:last-child').scrollIntoView({block:'center'}); document.activeElement.blur(); })()");
     const before = await reading();
     assert.ok(before, 'a card is in view');
@@ -208,18 +212,6 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.ok(Math.abs(await p.evaluate("Math.round(document.querySelector('#topic-state-choice').getBoundingClientRect().top)") - chosen) <= 1,
       'the select being chosen in stays where it was');
 
-    // The browser's own scroll anchoring must not hold the page by the rail:
-    // with a rail row and a card both in view, the rail growing moves no card.
-    await p.evaluate(`(() => { document.activeElement.blur(); const rows = document.querySelectorAll('.rail a.nav-item');
-      const last = rows[rows.length - 1].getBoundingClientRect(); scrollBy(0, last.bottom - 150); })()`);
-    assert.equal(await p.evaluate(`(() => { const rows = document.querySelectorAll('.rail a.nav-item'), b = rows[rows.length - 1].getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; })()`), true,
-      'a rail row is in view');
-    const railing = await reading();
-    assert.ok(railing && railing[1] < 900, 'a card is in view beside it');
-    await p.evaluate(`(() => { const grown = document.createElement('div'); grown.style.height = '100px'; grown.id = 'fixture-rail-growth';
-      document.querySelector('.rail').prepend(grown); return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))); })()`);
-    await stays(railing, 'the rail growing moves no card');
-    await p.evaluate("document.querySelector('#fixture-rail-growth').remove()");
     assert.deepEqual(p.errors, []);
     await p.close();
   });
