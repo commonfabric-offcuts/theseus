@@ -188,7 +188,10 @@ class LiveStreamTests(unittest.TestCase):
             self.assertEqual(result.get("status"), "committed", result)
         message = result["result"]["message_id"]
         client = self.open()
-        start = self.line(client)["seq"]
+        # The stream may begin before the feed has read the commits above; it announces each in turn.
+        start = self.seq()
+        while self.line(client)["seq"] != start:
+            pass
         connection = http.client.HTTPConnection(*self.server.server_address, timeout=5)
         try:
             connection.request("POST", "/api/command", body=json.dumps({
@@ -200,7 +203,7 @@ class LiveStreamTests(unittest.TestCase):
         finally:
             connection.close()
         self.assertEqual((receipt["status"], receipt["result"]["mark_revision"]), ("committed", 1), receipt)
-        self.assertEqual(self.line(client), {"seq": start + 1})
+        self.assertEqual((self.line(client), self.seq()), ({"seq": start + 1}, start + 1))
 
     def test_a_read_announces_nothing(self):
         client = self.open()
