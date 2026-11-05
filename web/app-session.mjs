@@ -76,6 +76,38 @@ export class EditorRegistry {
     try { return await this.initializingInline; } finally { this.initializingInline = null; }
   }
 
+  async initializeOpening(retained, workspace, { writable = false } = {}) {
+    if (this.disposed || retained?.kind !== 'opening' || retained.instanceId !== this.bootstrap.instance_id ||
+        retained.actor !== this.bootstrap.actor || retained.workspace !== workspace?.id ||
+        !same(retained.authority, { authority_id: this.bootstrap.authority.authority_id, authority_epoch: this.bootstrap.authority.authority_epoch }) ||
+        !same(retained.sourceRef, { kind: 'new_topic', id: retained.id, workspace_id: workspace.id }) || !retained.topic) {
+      throw Error('The retained opening does not match this outcome, actor or authority.');
+    }
+    const sourceRef = retained.sourceRef, topicId = retained.topic, foreground = this.cleanup.foreground();
+    try {
+      const state = await foreground.read(options => this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId, limit: this.pendingPageSize }, options));
+      this.validateState(state, sourceRef, topicId);
+      if (state.note !== null) throw Error('A private opening cannot hold a source note.');
+      const reply = await this.register({ instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, kind: 'reply', sourceRef, topicId }, state.draft);
+      if (this.disposed) return null;
+      reply.unavailable = !state.source_available || !state.destination_available;
+      reply.openingReadOnly = !writable;
+      reply.openingBinding = copy(retained.authority);
+      this.pages.set(reply.key, copy(state.submissions));
+      this.updateOpeningHistory(reply);
+      if (writable && !reply.openingLocked && !reply.draft.opening) reply.editOpening({ title: '', participants: [] });
+      const p = { surface: 'opening', workspace: copy(workspace), retained: copy(retained), writable,
+        editors: { reply }, mode: 'reply', destinationAvailable: !reply.unavailable };
+      this.current = p; this.present(p); this.activity(); return p;
+    } finally { foreground.release(); }
+  }
+
+  updateOpeningHistory(editor) {
+    if (editor.context.sourceRef.kind !== 'new_topic') return;
+    const page = this.pending(editor);
+    editor.openingHistoryPending = page.next_cursor !== null || page.items.some(row => !editor.submissions.some(item => item.id === row.id));
+  }
+
   validateState(state, sourceRef, topicId) {
     if (state?.error || state?.instance_id !== this.bootstrap.instance_id || !same(state.source_ref, sourceRef) ||
         !same(state.destination, { topic_id: topicId ?? null })) throw Error('The source or destination identity could not be confirmed.');
@@ -370,7 +402,7 @@ export class EditorRegistry {
 
   async adoptCandidate(editor, candidate, presentation) {
     const previous = this.sessionFor(editor);
-    if (!this.isCurrent(presentation, editor) || editor.localVersion || previous.attempts.length || editor.submissions.length || uploadWork(editor)) throw Error('This page has current writing. Keep both versions and copy deliberately.');
+    if (editor.openingReadOnly || !this.isCurrent(presentation, editor) || editor.localVersion || previous.attempts.length || editor.submissions.length || uploadWork(editor)) throw Error('This page has current writing. Keep both versions and copy deliberately.');
     const revision = editor.uploadState?.revision;
     const current = () => this.sessions.get(editor.key) === previous && this.isCurrent(presentation, editor) && !editor.localVersion &&
       editor.uploadState?.revision === revision && !editor.imageReservation && !editor.imageBusy;
@@ -382,6 +414,7 @@ export class EditorRegistry {
       await this.journal.adopt(editor.key, { id: candidate.id, stamp: candidate.stamp }, current);
       this.sessions.delete(editor.key);
       const restored = await this.register(editor.context, editor.context.kind === 'note' ? state.note : state.draft);
+      if(presentation.surface==='opening'){restored.openingReadOnly=editor.openingReadOnly;restored.openingBinding=copy(editor.openingBinding);this.updateOpeningHistory(restored);}
       presentation.editors[editor.context.kind] = restored;
       if (this.isCurrent(presentation)) this.present(presentation);
       return restored;
@@ -398,12 +431,19 @@ export class EditorRegistry {
         detail.send_operation_id !== item.send_operation_id || detail.prepare_operation_id !== item.prepare_operation_id ||
         !same(detail.authority, item.authority)) throw Error('The pending source identity could not be confirmed.');
     this.pendingDetails.set(id, copy(detail));
+    if (editor.context.sourceRef.kind === 'new_topic') {
+      await this.sessionFor(editor).retainOpeningSubmission(detail); this.updateOpeningHistory(editor);
+    }
     this.rememberPendingReceipt(editor, item, detail.send_receipt);
     return detail;
   }
 
   async checkPending(editor, id) {
-    if (editor.submissions.some(item => item.id === id)) return this.checkConfirmation(editor);
+    const local = editor.submissions.find(item => item.id === id);
+    if (local) {
+      if (local.serverObserved) return this.sessionFor(editor).originalPublication(local);
+      return this.checkConfirmation(editor);
+    }
     const item = this.pending(editor).items.find(item => item.id === id);
     if (!item) throw Error('This pending reply is not on the selected page.');
     const receipt = await this.api.view('operation', { operation_id: item.send_operation_id });
@@ -420,7 +460,7 @@ export class EditorRegistry {
   rememberPendingReceipt(editor, item, receipt) {
     const operation = item.send_operation_id;
     if (receipt?.recorded === true && receipt.instance_id === editor.context.instanceId && receipt.operation_id === operation &&
-        receipt.kind === 'message.send' && receipt.status === 'rejected' && typeof receipt.error?.message === 'string' && receipt.error.message.trim()) {
+        receipt.kind === (editor.context.sourceRef.kind === 'new_topic' ? 'topic.create_and_send' : 'message.send') && receipt.status === 'rejected' && typeof receipt.error?.message === 'string' && receipt.error.message.trim()) {
       this.pendingReceipts.set(JSON.stringify([editor.key, item.id, operation]), copy(receipt));
     }
   }
@@ -428,7 +468,7 @@ export class EditorRegistry {
   pendingReason(editor, item) {
     const receipt = item.receipt ?? this.pendingReceipts.get(JSON.stringify([editor.key, item.id, item.send_operation_id]));
     const correct = receipt?.kind === 'submission.prepare' ? receipt.operation_id === item.prepareOperationId
-      : receipt?.kind === (item.snapshot?.opening ? 'topic.create_and_send' : 'message.send') && receipt.operation_id === (item.sendOperationId ?? item.send_operation_id);
+      : receipt?.kind === (editor.context.sourceRef.kind === 'new_topic' ? 'topic.create_and_send' : 'message.send') && receipt.operation_id === (item.sendOperationId ?? item.send_operation_id);
     return receipt?.recorded === true && correct && receipt.instance_id === editor.context.instanceId && receipt.status === 'rejected' &&
       typeof receipt.error?.message === 'string' && receipt.error.message.trim() ? receipt.error.message : null;
   }
@@ -443,14 +483,18 @@ export class EditorRegistry {
     if (this.pages.get(editor.key) !== previous) return this.pending(editor);
     const ids = new Set(previous.items.map(item => item.id));
     const result = { ...page, items: [...previous.items, ...page.items.filter(item => !ids.has(item.id))] };
-    this.pages.set(editor.key, result); this.changed(editor); return result;
+    this.pages.set(editor.key, result); this.updateOpeningHistory(editor); this.changed(editor); return result;
   }
 
   get hasInFlightSend() { return [...this.sessions.values()].some(session => session.sends.size > 0); }
   get unconfirmedSends() {
-    return [...this.sessions.values()].flatMap(session => session.editor.submissions
-      .filter(item => !item.detached && ['preparing', 'prepared'].includes(item.status))
-      .map(item => ({ session, editor: session.editor, item })));
+    return [...this.sessions.values()].flatMap(session => {
+      const editor = session.editor;
+      const local = editor.submissions.filter(item => !item.detached && ['preparing', 'prepared'].includes(item.status));
+      const server = editor.context?.sourceRef?.kind === 'new_topic' ? this.pending(editor).items.filter(item =>
+        item.send_status === 'unknown' && !editor.submissions.some(local => local.id === item.id)) : [];
+      return [...local, ...server].map(item => ({ session, editor, item }));
+    });
   }
   get hasUnprotectedWriting() {
     return this.hasInFlightSend || [...this.sessions.values()].some(({ editor }) => this.localWrites.get(editor.key)?.pending ||

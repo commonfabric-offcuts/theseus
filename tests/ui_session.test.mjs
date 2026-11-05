@@ -1575,3 +1575,103 @@ test('original publication lookup rechecks a locally arrived confirmation before
   assert.equal(f.item.status, 'confirmed'); assert.equal(f.calls.length, count); assert.deepEqual(liveWriting(f), before);
   assert.equal(f.item.correctedBy, undefined);
 });
+
+async function openingFixture(t, participants = ['missing-agent']) {
+  const f = await fixture(t), sourceRef = { kind:'new_topic', id:'correctable-opening', workspace_id:'w1' };
+  const editor = new Editor({...f.context, sourceRef, topicId:'reserved-topic'}, {id:'opening-draft', revision:0, generation:'opening-generation', body:''});
+  editor.editOpening({title:'Opening title',participants});editor.edit({body:'Exact opening body\nSecond line'});
+  const session = new EditorSession(editor,{authority:f.authority,runtime:f.runtime,api:f.transport,journal:f.storage});
+  const state=()=>f.api.view('editor_state',{source_ref:sourceRef,topic_id:'reserved-topic'});
+  return {...f,editor,session,state};
+}
+test('opening participant refusal restores exact A for explicit editing and one fresh same-O/T publication',async t=>{
+  const f=await openingFixture(t);await f.session.send();
+  const original=f.editor.submissions[0],receipt=copy(original.receipt);
+  assert.equal(receipt.error.code,'INVALID_RECIPIENT');
+  const remote=(await f.state()).draft,before=f.calls.length;
+  await f.session.correctOpening(original,remote,f.editor.localVersion);
+  assert.equal(f.calls.length,before,'Edit opening reads and retains, never sends');
+  assert.equal(f.editor.draft.body,'Exact opening body\nSecond line');assert.equal(f.editor.draft.opening.title,'Opening title');
+  assert.deepEqual(original.receipt,receipt);assert.equal(original.snapshot.opening.participants[0],'missing-agent');
+  assert.equal(f.editor.context.topicId,'reserved-topic');assert.equal(f.editor.sourceRef.id,'correctable-opening');
+  assert.equal(f.editor.draft.generation,remote.generation);
+  f.editor.editOpening({participants:[]});await f.session.save();await f.session.send();
+  const sent=f.editor.submissions[1];assert.equal(sent.status,'confirmed');
+  assert.notEqual(sent.sendOperationId,original.sendOperationId);assert.notEqual(sent.prepareOperationId,original.prepareOperationId);assert.notEqual(sent.id,original.id);
+  const detail=await f.api.view('topic',{topic_id:'reserved-topic'});assert.equal(detail.topic.title,'Opening title');
+  assert.deepEqual(detail.participants.map(x=>x.actor_id),['fixture-person']);
+  const messages=await f.api.view('topic_messages',{topic_id:'reserved-topic'});assert.equal(messages.items.length,1);assert.equal(messages.items[0].body,'Exact opening body\nSecond line');
+  assert.equal(f.calls.filter(x=>x.kind==='message.send').length,0);assert.throws(()=>f.session.send(),/opening|frozen/i);
+});
+test('opening correction preserves newer local writing and changed remote draft',async t=>{
+  const f=await openingFixture(t);await f.session.send();const a=f.editor.submissions[0],remote=(await f.state()).draft;
+  f.editor.edit({body:'Newer local writing'});const local=copy(f.editor.draft),count=f.calls.length;
+  await assert.rejects(f.session.correctOpening(a,remote,f.editor.localVersion),/newer|writing/i);
+  assert.deepEqual(f.editor.draft,local);assert.equal(f.calls.length,count);
+  // Reset only this fixture local successor to test a genuinely changed canonical version.
+  f.editor.draft={...copy(remote),caret:{start:0,end:0}};f.editor.ackVersion=f.editor.localVersion;
+  const receipt=await f.api.command(f.command('draft.save','external-newer-opening',{source_ref:f.editor.sourceRef,topic_id:f.editor.context.topicId,generation:remote.generation,body:'Other tab writing'}, {draft_id:remote.id},{draft_revision:remote.revision}));assert.equal(receipt.status,'committed');
+  await assert.rejects(f.session.correctOpening(a,remote,f.editor.localVersion),/changed|writing/i);
+  assert.equal((await f.state()).draft.body,'Other tab writing');assert.equal(f.editor.draft.body,'');assert.equal(a.openingCorrected,undefined);
+});
+test('opening correction refuses unknown malformed collision access and committed outcomes',async t=>{
+  const f=await openingFixture(t);await f.session.send();const a=f.editor.submissions[0],remote=(await f.state()).draft,originalView=f.transport.view;
+  for(const answer of [
+    {instance_id:'ux-fixture',operation_id:a.sendOperationId,status:'unknown',recorded:false},
+    {...a.receipt,operation_id:'wrong'},
+    ...['REVISION_CONFLICT','FORBIDDEN','INVALID_ARGUMENT','AUTHORITY_CHANGED'].map(code=>({...a.receipt,error:{code,message:'Refused'}})),
+    {instance_id:'ux-fixture',operation_id:a.sendOperationId,recorded:true,kind:'topic.create_and_send',status:'committed',result:{submission_id:a.id,topic:{id:'reserved-topic',version:1}}}
+  ]){
+    a.receipt=copy((await originalView('operation',{operation_id:a.sendOperationId})));a.status='refused';
+    f.transport.view=(name,args)=>name==='operation'&&args.operation_id===a.sendOperationId?Promise.resolve(copy(answer)):originalView(name,args);
+    const before=copy(f.editor.draft),count=f.calls.length;
+    await assert.rejects(f.session.correctOpening(a,remote,f.editor.localVersion));
+    assert.deepEqual(f.editor.draft,before);assert.equal(f.calls.length,count);assert.equal(a.openingCorrected,undefined);
+  }
+});
+test('opening correction refuses authority drift and never rebinds the opening',async t=>{
+  const f=await openingFixture(t);await f.session.send();const a=f.editor.submissions[0],remote=(await f.state()).draft,identity=copy(f.editor.context),before=copy(f.editor.draft);
+  await f.advance({epoch:'new-epoch',complete:true});
+  await assert.rejects(f.session.correctOpening(a,remote,f.editor.localVersion),/runtime|authority/i);
+  assert.deepEqual(f.editor.context,identity);assert.deepEqual(f.editor.draft,before);assert.equal(a.openingCorrected,undefined);
+});
+test('opening reload cannot use generic Send to restart an unconfirmed preparation',async t=>{
+  const f=await openingFixture(t,[]),view=f.transport.view;
+  f.transport.command=async envelope=>{f.calls.push(copy(envelope));if(envelope.kind==='submission.prepare')throw Error('before commit');return f.api.command(envelope);};
+  await f.session.send();const saved=(await f.storage.own(f.editor.key)).snapshot,server=await f.state();
+  const editor=restoreEditor(f.editor.context,server.draft,saved),session=new EditorSession(editor,{authority:f.authority,runtime:f.runtime,api:f.transport,journal:f.storage,snapshot:saved});
+  const count=f.calls.length;assert.throws(()=>session.send(),/original opening|Review/i);assert.equal(f.calls.length,count);assert.equal(editor.submissions.length,1);
+});
+test('opening server-only refusal is explicitly read before same-identity correction with no replay',async t=>{
+  const f=await openingFixture(t);await f.session.send();const original=f.editor.submissions[0],count=f.calls.length;
+  const registry=new EditorRegistry({api:f.transport,bootstrap:{instance_id:'ux-fixture',actor:'fixture-person',authority:f.authority},journal:journal()});t.after(()=>registry.dispose());
+  const retained={kind:'opening',id:'correctable-opening',workspace:'w1',topic:'reserved-topic',instanceId:'ux-fixture',actor:'fixture-person',authority:f.pin(),sourceRef:f.editor.sourceRef};
+  const p=await registry.initializeOpening(retained,{id:'w1',title:'Outcome'},{writable:true}),e=p.editors.reply;
+  assert.equal(e.submissions.length,0);assert.equal(e.openingLocked,true);assert.throws(()=>registry.send(e),/opening/i);
+  await registry.inspectPending(e,original.id);assert.equal(e.submissions.length,1);assert.equal(e.submissions[0].snapshot.body,'Exact opening body\nSecond line');
+  assert.equal(f.calls.length,count,'reading original submission cannot dispatch');
+  const session=registry.sessionFor(e);await session.correctOpening(e.submissions[0],(await f.state()).draft,e.localVersion);
+  assert.equal(e.context.topicId,'reserved-topic');assert.equal(e.draft.body,'Exact opening body\nSecond line');assert.equal(f.calls.length,count);
+});
+test('opening ownership refuses private saves and sends while server-only unknown sends protect departure',async t=>{
+  const f=await openingFixture(t,[]);f.editor.openingReadOnly=true;const count=f.calls.length;
+  await assert.rejects(f.session.save(),/read.only|another tab/i);assert.throws(()=>f.session.send(),/read.only|another tab/i);assert.equal(f.calls.length,count);
+  f.editor.openingReadOnly=false;f.transport.command=async envelope=>{f.calls.push(copy(envelope));if(envelope.kind==='topic.create_and_send')throw Error('offline before commit');return f.api.command(envelope);};await f.session.send();
+  const registry=new EditorRegistry({api:f.transport,bootstrap:{instance_id:'ux-fixture',actor:'fixture-person',authority:f.authority},journal:journal()});t.after(()=>registry.dispose());
+  await registry.initializeOpening({kind:'opening',id:'correctable-opening',workspace:'w1',topic:'reserved-topic',instanceId:'ux-fixture',actor:'fixture-person',authority:f.pin(),sourceRef:f.editor.sourceRef},{id:'w1',title:'Outcome'},{writable:true});
+  assert.equal(registry.unconfirmedSends.length,1);
+  const paths=[],nav=new TopicNavigation({registry,current:{kind:'opening',workspace:'w1',opening:'correctable-opening',topic:'reserved-topic'},navigateTarget:p=>paths.push(p)});
+  await assert.rejects(nav.openTarget({kind:'workspace',id:'w1'},'Outcome'),/again|unconfirmed/i);assert.equal(paths.length,0);
+  await nav.openTarget({kind:'workspace',id:'w1'},'Outcome');assert.equal(paths.length,1);
+});
+
+test('private opening cannot use ordinary runtime recovery to rebind its authority',async t=>{
+  const f=await openingFixture(t,[]),before=copy(f.editor.draft),pin=copy(f.session.authority);
+  f.editor.openingBinding=f.pin(); // The retained opening intent owns this pin.
+  await f.advance({epoch:'opening-different-epoch',complete:true});
+  await f.session.parkAuthority(pin);await f.session.retryAuthority();
+  assert.equal(f.session.recovery.phase,'ready');
+  const count=f.calls.length;
+  await assert.rejects(f.session.resumePrivate(f.session.recovery,f.editor.localVersion),/opening|rebind/i);
+  assert.deepEqual(f.session.authority,pin);assert.deepEqual(f.editor.draft,before);assert.equal(f.calls.length,count);
+});

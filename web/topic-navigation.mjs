@@ -195,10 +195,17 @@ export class TopicRail {
     this.more.hidden = this.denied || this.pages.next === null;
   }
   load(more = false) {
-    if (this.loading) return this.loading;
+    if (this.loading) {
+      if (!more && this.loadingMore) {
+        if (!this.refreshQueued) this.refreshQueued = this.loading.then(() => { this.refreshQueued = null; return this.load(); });
+        return this.refreshQueued;
+      }
+      return this.loading;
+    }
     const cursor = more ? this.pages.next : null;
     if (more && cursor === null) return Promise.resolve();
     const previousIds = new Set(this.pages.items.map(item => item.id));
+    this.loadingMore = more;
     // Keep busy controls focusable; repeated activation shares this read.
     this.more.setAttribute('aria-disabled', 'true'); this.retry.setAttribute('aria-disabled', 'true');
     this.loading = this.read({ workspace_id: this.pages.workspaceId, limit: 20, ...(cursor === null ? {} : { cursor }) })

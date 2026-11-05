@@ -354,4 +354,133 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   });
 
 
+  await check('navigation private opening keyboard resume refusal correction and unchanged Reader',async()=>{
+    await control({method:'navigation_workspaces',workspaces:[{id:'opening-workspace',title:'Opening outcome',purpose:'Native opening proof'}]});
+    const p=await page('private-opening',null,true,{url:facts.origin+'/?workspace=opening-workspace'});
+    const click=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await p.point(selector);};
+    assert.equal(await p.evaluate('document.querySelector("#new-topic").disabled'),false,'New topic must be discoverable and enabled');
+    await click('#new-topic');await until(()=>p.evaluate('Boolean(document.querySelector("#opening-title-input"))'),'private opening form');
+    const url=await p.evaluate('location.href'),route=new URL(url).searchParams,source={kind:'new_topic',id:route.get('opening'),workspace_id:route.get('workspace')},topicId=route.get('opening_topic');
+    assert.equal(await p.evaluate('document.activeElement.id'),'opening-title-input');
+    await p.send('Input.insertText',{text:'Native opening title'});
+    await click('[aria-label="Add topic participant"]');await p.send('Input.insertText',{text:'missing-native-agent'});await p.key('Enter');
+    assert.equal(p.calls.some(c=>['topic.create_and_send','message.send','submission.prepare'].includes(c.payload?.kind)),false,'Enter only adds participant metadata');
+    await click('#inline-writing-body');await p.send('Input.insertText',{text:'Opening line one'});await p.key('Enter');await p.send('Input.insertText',{text:'Opening line two'});
+    const body='Opening line one\nOpening line two';assert.equal(await p.evaluate('document.querySelector("#inline-writing-body").value'),body);
+    await p.send('Page.setInterceptFileChooserDialog',{enabled:true});await click('#inline-add-image');
+    const chooser=await until(()=>p.events.find(e=>e.method==='Page.fileChooserOpened'),'opening image picker');
+    await p.send('DOM.setFileInputFiles',{backendNodeId:chooser.params.backendNodeId,files:[path.join(root,'tests/fixtures/media/screen.png')]});
+    await until(()=>p.evaluate('document.querySelector("#inline-attachments").textContent.includes("Ready")'),'opening image ready');
+    await shot(p,'private-opening-writing');await click('#opening-later');
+    await until(()=>p.evaluate('document.body.dataset.ready==="true" && Boolean(document.querySelector("#unfinished-work a"))'),'opening Resume available');
+    assert.equal((await view('workspace_topics',{workspace_id:'opening-workspace',limit:20})).items.length,0,'Later creates no public topic');
+    await click('#unfinished-work a');await until(()=>p.evaluate('Boolean(document.querySelector("#opening-title-input"))'),'opening resumed');
+    assert.equal(await p.evaluate('location.href'),url);assert.equal(await p.evaluate('document.querySelector("#inline-writing-body").value'),body);
+    assert.equal(await p.evaluate('document.querySelector("#opening-title-input").value'),'Native opening title');
+    if(await p.evaluate('document.querySelector("#inline-save-state").textContent.includes("Check saved image copies")')){
+      await click('#inline-review-versions');
+      const reviewChoice=await until(()=>p.evaluate(`(()=>{const b=[...document.querySelectorAll('#review-content button')].find(b=>b.textContent==='Recover this version');if(b){b.id='opening-recover';return 'recover';}return !document.querySelector('#inline-send').disabled?'checked':null;})()`),'saved image check or explicit recovery');
+      // A canonically acknowledged copy may be retired during this review.
+      // Recover only when a separate retained copy still needs that choice.
+      await click(reviewChoice==='recover'?'#opening-recover':'#review-close');
+      await until(()=>p.evaluate('!document.querySelector("#version-review").open'),'reviewed original image writing');
+    }
+    await until(()=>p.evaluate('!document.querySelector("#inline-send").disabled'),'resumed opening send available');
+    await click('#inline-writing-body');await p.key('Enter',4);
+    await until(()=>p.evaluate('document.querySelector("#opening-history").textContent.includes("unavailable")'),'participant refusal visible');
+    const publications=p.calls.filter(c=>c.payload?.kind==='topic.create_and_send');assert.equal(publications.length,1);
+    const first=publications[0].payload;assert.equal((await view('operation',{operation_id:first.operation_id})).error.code,'INVALID_RECIPIENT');
+    assert.equal(await p.evaluate('document.querySelector("#inline-send").disabled'),true);
+    assert.equal(await p.evaluate('document.activeElement.id'),'opening-edit','keyboard send hands focus to the available correction');
+    const before=p.calls.filter(c=>c.payload?.kind).length;
+    await click('#opening-edit');await until(()=>p.evaluate('!document.querySelector("#opening-title-input").readOnly'),'explicit correction restored editing');
+    assert.equal(p.calls.filter(c=>['topic.create_and_send','message.send'].includes(c.payload?.kind)).length,1,'Edit opening does not send');
+    assert.equal(await p.evaluate('document.querySelector("#inline-writing-body").value'),body);
+    await click('[aria-label="Remove missing-native-agent"]');
+    await click('[aria-label="Add topic participant"]');await p.send('Input.insertText',{text:'fixture-notebook-agent'});await p.key('Enter');
+    await until(()=>p.evaluate('!document.querySelector("#inline-send").disabled'),'corrected ready attachments retained');
+    await control({method:'read_fault',name:'topic',status:503,body:{error:{code:'DATABASE_BUSY',message:'Created topic detail temporarily unavailable',retryable:true}},count:1});
+    await click('#inline-writing-body');await p.key('Enter',4);
+    await until(()=>p.evaluate('Boolean(document.querySelector("#opening-open-topic"))'),'confirmed opening offers deliberate Open topic');
+    assert.equal(await p.evaluate('location.href'),url,'confirmation never navigates without the person');
+    const phase=()=>p.evaluate(`(async()=>{const j=await (await import('/intent-journal.mjs')).openIntentJournal({instanceId:${JSON.stringify(facts.instance_id)},actor:${JSON.stringify(facts.actor)}});try{return (await j.get(${JSON.stringify(source.id)})).phase;}finally{j.close();}})()`);
+    await until(()=>p.evaluate('document.querySelector("#app-status").textContent.includes("Created topic detail temporarily unavailable")'),'detail failure is visible');
+    assert.equal(await phase(),'private','failed detail read retains unfinished pointer and original receipt');
+    await click('#refresh');await until(async()=>await phase()==='confirmed','explicit Refresh retries created topic detail');
+    const sent=p.calls.filter(c=>c.payload?.kind==='topic.create_and_send');assert.equal(sent.length,2);assert.notEqual(sent[1].payload.operation_id,first.operation_id);
+    assert.equal(p.calls.some(c=>c.payload?.kind==='message.send'),false);
+    const topics=await view('workspace_topics',{workspace_id:'opening-workspace',limit:20});assert.equal(topics.items.length,1);assert.equal(topics.items[0].id,topicId);
+    const detail=await view('topic',{topic_id:topicId});assert.deepEqual(detail.participants.map(x=>x.actor_id).sort(),[facts.actor,'fixture-notebook-agent'].sort());
+    const messages=await view('topic_messages',{topic_id:topicId,limit:20});assert.equal(messages.items.length,1);
+    const full=await view('source',{kind:'message',id:messages.items[0].id});assert.equal(full.body,body);assert.equal(full.author,facts.actor);assert.equal(full.attachments.length,1);
+    const receipt=await view('operation',{operation_id:sent[1].payload.operation_id});assert.equal(receipt.result.delivery.queued,1);
+    await shot(p,'opening-confirmed');await click('#opening-open-topic');await ready(p,topicId);
+    await click('#messages .message-card');await until(()=>p.evaluate('document.querySelector("#reader").open'),'real Reader opened');
+    assert.equal(await p.evaluate('document.querySelector("#source-body").textContent'),body);await shot(p,'opening-real-reader');
+    assert.deepEqual(p.errors,[]);noPrompt(p);
+    observations.push({name:'opening exact record',source,topicId,firstOperation:first.operation_id,finalOperation:sent[1].payload.operation_id,message:full.source_ref,queued:receipt.result.delivery.queued});
+  });
+
+  await check('navigation creation actual pending departure unknown return and read-only Refresh',async()=>{
+    const p=await page('creation-departure',null,true,{url:facts.origin+'/?new=outcome&intent=departure-intent'});
+    const click=async(q,selector)=>{await q.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await q.point(selector);};
+    await click(p,'#outcome-title-input');await p.send('Input.insertText',{text:'Guarded outcome'});
+    await until(()=>p.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'guarded form saved');
+    const route=await p.evaluate('location.href');
+    const other=await page('creation-competing',null,true,{url:route});
+    assert.match(await other.evaluate('document.querySelector("#outcome-page").textContent'),/read-only/);
+    await click(other,'#refresh');
+    await until(()=>other.evaluate('document.querySelector("#outcome-page").textContent.includes("read-only")'),'read-only Refresh settled');
+    assert.equal(other.calls.some(c=>c.payload?.kind),false,'read-only Refresh cannot dispatch a write');
+    await click(other,'#creation-later');await until(()=>other.evaluate('document.body.dataset.ready==="true" && location.search===""'),'competing tab can leave');
+    noPrompt(other);await other.close();
+    p.intercept(payload=>payload?.kind==='workspace.create');await click(p,'#create-outcome');
+    const held=await until(()=>p.held.find(h=>h.payload?.kind==='workspace.create'),'creation response held after effect');
+    await click(p,'#outcomes-home');
+    await until(()=>p.evaluate('document.querySelector("#topic-navigation-status").textContent.includes("Wait for creation")'),'pending departure protected by app beforeLeave');
+    assert.equal(await p.evaluate('location.href'),route);
+    p.intercept(null);await p.fail(held);
+    await until(()=>p.evaluate('document.querySelector("#outcome-page").textContent.includes("Creation not confirmed")'),'uncertain creation visible');
+    assert.equal((await view('operation',{operation_id:held.payload.operation_id})).status,'committed','response loss leaves a real committed effect unknown to the page');
+    await click(p,'#outcomes-home');
+    await until(()=>p.evaluate('document.querySelector("#topic-navigation-status").textContent.includes("again")'),'named informed departure');
+    assert.equal(await p.evaluate('location.href'),route);
+    await click(p,'#outcomes-home');await until(()=>p.evaluate('document.body.dataset.ready==="true" && location.search===""'),'second explicit choice leaves');
+    await click(p,'#unfinished-work a');await until(()=>p.evaluate('Boolean(document.querySelector("#check-outcome"))'),'retained creation resumed');
+    assert.equal(await p.evaluate('location.href'),route);assert.equal(await p.evaluate('document.querySelector("#outcome-title-input").value'),'Guarded outcome');
+    assert.equal(p.calls.filter(c=>c.payload?.kind==='workspace.create').length,1,'Resume cannot replay uncertain creation');
+    await click(p,'#check-outcome');await until(()=>p.evaluate('!document.querySelector("#start-first-topic").hidden'),'Check reads the original committed result');
+    assert.equal(p.calls.filter(c=>c.payload?.kind==='workspace.create').length,1);noPrompt(p);assert.deepEqual(p.errors,[]);
+    await shot(p,'creation-guarded-return');
+  });
+
+  await check('navigation opening mobile touch boundaries competing owner and one deliberate publication',async()=>{
+    await control({method:'navigation_workspaces',workspaces:[{id:'mobile-opening-workspace',title:'Mobile opening outcome',purpose:''}]});
+    const route=facts.origin+'/?workspace=mobile-opening-workspace&opening=mobile-opening&opening_topic=mobile-reserved-topic';
+    const p=await page('mobile-opening',null,true,{url:route});
+    await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+    await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
+    const tap=async(x,y)=>{await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});};
+    const touch=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);const b=await p.box(selector);await tap(b.x+b.width/2,b.y+b.height/2);return b;};
+    await touch('#opening-title-input');await p.send('Input.insertText',{text:'Touch opening'});
+    await touch('#inline-writing-body');await p.send('Input.insertText',{text:'Preserve mobile writing'});
+    await until(()=>p.evaluate('document.querySelector("#inline-save-state").textContent.includes("Saved to Theseus")'),'mobile writing saved');
+    const other=await page('opening-competing',null,true,{url:route});
+    assert.match(await other.evaluate('document.querySelector("#outcome-page").textContent'),/read-only/);
+    assert.equal(await other.evaluate('document.querySelector("#inline-writing-body").readOnly'),true);
+    assert.equal(await other.evaluate('document.querySelector("#inline-send").disabled'),true);
+    assert.equal(await other.evaluate('document.querySelector("#opening-title-input").readOnly'),true);
+    assert.equal(other.calls.some(c=>c.payload?.kind),false);await other.close();
+    await p.send('Page.bringToFront');
+    await p.evaluate('document.querySelector("#inline-send").scrollIntoView({block:"center"})');const b=await p.box('#inline-send');assert.ok(b.height>=44);
+    await tap(b.x+b.width+3,b.y+b.height/2);await p.evaluate('new Promise(r=>setTimeout(r,100))');
+    assert.equal(p.calls.some(c=>c.payload?.kind==='topic.create_and_send'),false,'nearby gap tap creates nothing');
+    assert.equal(await p.evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'390px opening has no horizontal overflow');
+    await shot(p,'opening-mobile-writing');await touch('#inline-send');
+    await until(()=>p.evaluate('Boolean(document.querySelector("#opening-open-topic"))'),'mobile deliberate send confirmed');
+    const messages=await view('topic_messages',{topic_id:'mobile-reserved-topic',limit:20});assert.equal(messages.items.length,1);assert.equal(messages.items[0].body,'Preserve mobile writing');
+    assert.equal(p.calls.filter(c=>c.payload?.kind==='topic.create_and_send').length,1);assert.equal(await p.evaluate('location.href'),route);
+    noPrompt(p);assert.deepEqual(p.errors,[]);await shot(p,'opening-mobile-confirmed');
+  });
+
 }

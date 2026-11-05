@@ -52,3 +52,11 @@ test('rail coalesces repeated More and preserves native modified-link activation
   f.host.handlers.touchend(touch(45));assert.equal(prevented,1);
   f.host.handlers.touchend(touch(75));assert.equal(prevented,1,'an actual tap inside the link keeps its native click');
 });
+
+test('topic Refresh during More queues exactly one first-page reread',async t=>{
+  const f=fixture(t);f.queue.push(f.page(['a'],'a'));await f.rail.load();let release;
+  f.queue.push(()=>new Promise(resolve=>release=resolve));const more=f.rail.load(true);
+  const first=f.rail.load(),second=f.rail.load();assert.equal(first,second);f.queue.push(f.page(['a','b'],'b'));
+  release(f.page(['b','c']));await more;await first;
+  assert.deepEqual(f.calls.map(x=>x.cursor??null),[null,'a',null]);assert.deepEqual(f.rail.pages.items.map(x=>x.id),['z','a','b']);
+});

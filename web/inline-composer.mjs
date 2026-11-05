@@ -9,8 +9,8 @@ const node = (tag, text, className) => {
 // The inline DOM adapter shares the existing registry/session/upload owners.
 // It has no source body, note editor, storage or retry scheduler of its own.
 export class InlineComposer {
-  constructor(callbacks) {
-    this.callbacks = callbacks; this.root = document.querySelector('#inline-composer');
+  constructor(callbacks, {root=document.querySelector('#inline-composer'), prefix='inline', destination=p=>`To ${p.topic.title}`, readOnly=()=>false} = {}) {
+    Object.assign(this,{callbacks,root,prefix,destination,surfaceReadOnly:readOnly});
     this.field = this.$('writing-body');
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
       changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();}});
@@ -53,15 +53,19 @@ export class InlineComposer {
       try { await this.callbacks.retry(); } finally { this.$('retry').disabled = false; }
     };
   }
-  $(name) { return this.root.querySelector(`#inline-${name}`); }
+  $(name) { return this.root.querySelector(`#${this.prefix}-${name}`); }
   get editor() { return this.presentation?.editors.reply; }
   admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
-  state() { return writingState(this.editor, { active: this.admits(), status: this.callbacks.status }); }
+  state() {
+    const state = writingState(this.editor, { active: this.admits(), status: this.callbacks.status });
+    const locked = this.surfaceReadOnly(this.presentation, this.editor);
+    return {...state, readOnly:state.readOnly||locked, sendDisabled:state.sendDisabled||locked, addDisabled:state.addDisabled||locked};
+  }
   caret() { return this.input.caret(); }
   show(p) {
     this.presentation = p; this.root.hidden = false;
     this.field.disabled = false; this.$('notice').hidden = true;
-    this.$('destination').textContent = `To ${p.topic.title}`;
+    this.$('destination').textContent = this.destination(p);
     this.drawEditor(); this.paintRecipients(); this.paintStatus();
   }
   fail(message) {
@@ -108,7 +112,7 @@ export class InlineComposer {
   }
   paintImages() {
     const p = this.presentation, editor = this.editor, uploads = this.callbacks.uploads(editor), host = this.$('attachments');
-    const active = this.admits(p, editor), choices = imageChoices(uploads, active), ids = new Set(choices.map(e => e.id));
+    const active = this.admits(p, editor) && !this.state().readOnly, choices = imageChoices(uploads, active), ids = new Set(choices.map(e => e.id));
     for (const row of [...host.children]) if (!ids.has(row.dataset.selection)) row.remove();
     for (const choice of choices) {
       let row = [...host.children].find(el => el.dataset.selection === choice.id);
@@ -118,11 +122,11 @@ export class InlineComposer {
       for (const action of choice.actions) {
         const control = node('button', action.label); control.type = 'button'; control.disabled = !active;
         control.onclick = async () => {
-          if (!this.admits(p, editor)) return;
+          if (!this.admits(p, editor) || this.state().readOnly) return;
           control.disabled = true;
           try { await uploads[action.method](choice.id); if (action.method === 'remove' && this.admits(p, editor)) this.$('add-image').focus(); }
           catch (error) { this.notice(error.message, p, editor); }
-          finally { if (control.isConnected) control.disabled = !this.admits(p, editor); this.paintStatus(); }
+          finally { if (control.isConnected) control.disabled = !this.admits(p, editor) || this.state().readOnly; this.paintStatus(); }
         }; row.append(control);
       }
     }

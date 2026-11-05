@@ -55,7 +55,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [] };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
   const scope = { ...writing, WritingInput, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
-    window: { addEventListener() {} }, location: { href,assign:url=>events.push(['navigate',url]) },
+    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
     Reader: class { constructor() { return reader; } },
@@ -72,7 +72,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
   vm.runInContext(source + `\nglobalThis.wiring = { initialize, openSource, retrySource, checkInlineAvailability, changed,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
-    inline(callbacks) { return new InlineComposer(callbacks); },
+    inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
     edit: editor => events.push(['inline-edit',editor.key]),
@@ -81,7 +81,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   inline.show(p);
   context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh });
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
-  return { ...context.wiring, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap };
+  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap };
 }
 
 test('inline Ctrl-W uses the shared writing input path and preserves readonly writing', () => {
@@ -260,4 +260,29 @@ test('inline pending stays beside inline only; modal pending remains in the topi
   const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [{ id: 'modal-submission' }] };
   f.registry.current = { editors: { reply: modal } }; f.changed(modal);
   assert.equal(f.get('topic-pending').children.length, 1); assert.equal(f.get('topic-pending').children[0].dataset.key, 'modal');
+});
+
+
+test('configured opening composer shares writing and enforces surface read-only without disabling review',()=>{
+  const f=fixture(),p={surface:'opening',workspace:{id:'w1',title:'Chosen outcome'},editors:{reply:f.editor}},actions=[];
+  f.registry.current=p;let locked=true;
+  const composer=f.makeInline({admits:()=>true,status:()=> 'Saved',uploads:()=>({current:()=>[]}),needsReview:()=>true,
+    renderPending:()=>{},edit:()=>actions.push('edit'),send:()=>actions.push('send'),review:()=>actions.push('review')},
+    {root:f.get('opening-composer'),prefix:'opening',destination:p=>'In '+p.workspace.title,readOnly:()=>locked});
+  f.editor.edit=patch=>Object.assign(f.editor.draft,patch);composer.show(p);
+  assert.equal(f.get('opening-destination').textContent,'In Chosen outcome');
+  assert.equal(f.get('opening-writing-body').readOnly,true);assert.equal(f.get('opening-composer').inert,false);
+  f.get('opening-writing-body').value='forbidden';f.get('opening-writing-body').handlers.input();
+  assert.equal(f.editor.draft.body,'kept');assert.equal(f.get('opening-send').disabled,true);assert.equal(f.get('opening-add-image').disabled,true);
+  f.get('opening-review-versions').onclick();assert.deepEqual(actions,['review']);
+  locked=false;composer.paintStatus();assert.equal(f.get('opening-writing-body').readOnly,false);
+  f.get('opening-writing-body').value='new writing';f.get('opening-writing-body').handlers.input();assert.equal(f.editor.draft.body,'new writing');
+});
+
+test('every application route reloads a restored closed document before accepting input',async()=>{
+  for(const suffix of ['', '?workspace=w1','?new=outcome&intent=i','?workspace=w1&opening=o&opening_topic=t','?topic=t1']){
+    const f=fixture('https://fixture/'+suffix),handler=f.events.find(e=>e[0]==='window-handler'&&e[1]==='pageshow');
+    assert.ok(handler,'common pageshow listener exists before route initialization');handler[2]({persisted:false});assert.equal(f.events.some(e=>e[0]==='reload'),false);
+    handler[2]({persisted:true});assert.equal(f.events.filter(e=>e[0]==='reload').length,1);
+  }
 });

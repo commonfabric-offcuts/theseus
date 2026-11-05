@@ -207,6 +207,7 @@ export class EditorSession {
   resumePrivate(reviewed, localVersion) {
     const review = copy(reviewed);
     return this.enqueue(async () => {
+      if (this.editor.openingBinding) throw Error('This opening is bound to its original runtime. Its writing is kept without rebinding.');
       if (!review || review.phase !== 'ready' || !same(review, this.recovery) || this.editor.localVersion !== localVersion) {
         throw new Error('Review the current versions before saving.');
       }
@@ -345,6 +346,7 @@ export class EditorSession {
 
   save() {
     return this.enqueue(async () => {
+      if (this.editor.openingReadOnly) throw Error('Open in another tab — this opening is read-only.');
       await this.persist();
       if (this.recovery) return null;
       const prior = this.unsettledSave();
@@ -357,11 +359,15 @@ export class EditorSession {
   }
 
   send(options = {}) {
+    if (this.editor.openingReadOnly) throw Error('Open in another tab — this opening is read-only.');
     if (this.editor.context.kind === 'note') throw new Error('A private note cannot be sent.');
     if (this.recovery) throw new Error('Review the runtime change before sending. Your writing is kept.');
     if (this.uploads?.current().some(e => !this.uploads.pinned(e))) throw new Error('Review the runtime change before sending these images.');
     const previous = this.editor.submissions.find(item => item.status === 'preparing' && !item.detached);
-    if (previous) return this.sends.get(previous.id) ?? this.start(previous, options, true);
+    if (previous) {
+      if (this.editor.context.sourceRef.kind === 'new_topic' && !this.sends.has(previous.id)) throw Error('Review the original opening confirmation. Sending again cannot resume it.');
+      return this.sends.get(previous.id) ?? this.start(previous, options, true);
+    }
     const item = this.editor.beginPrepare({ prepareOperationId: this.id(), sendOperationId: this.id(), submissionId: this.id() });
     item.authority = authorityPair(this.authority);
     this.changed(this.editor);
@@ -437,10 +443,34 @@ export class EditorSession {
   }
 
   async sendPrepared(item) {
-    if (!item.preparationConfirmed || item.status !== 'prepared' || item.detached) return null;
+    if (!item.preparationConfirmed || item.status !== 'prepared' || item.detached || item.serverObserved) return null;
     const kind = item.snapshot.opening ? 'topic.create_and_send' : 'message.send';
     return this.dispatch(this.attempt(this.envelope(kind, item.sendOperationId,
       { topic_id: item.topicId }, {}, { submission_id: item.id }, item.authority), { submissionId: item.id }));
+  }
+
+  async retainOpeningSubmission(detail) {
+    const editor = this.editor;
+    if (editor.context.sourceRef.kind !== 'new_topic' || detail?.instance_id !== editor.context.instanceId ||
+        !same(detail.source_ref, editor.context.sourceRef) || detail.topic_id !== editor.context.topicId ||
+        detail.opening?.workspace_id !== editor.context.sourceRef.workspace_id ||
+        ![detail.id, detail.draft_id, detail.draft_generation, detail.prepare_operation_id, detail.send_operation_id].every(x => typeof x === 'string' && x) ||
+        !Number.isInteger(detail.draft_revision) || detail.draft_revision < 1 || !authorityPair(detail.authority) ||
+        typeof detail.body !== 'string' || !['attachments', 'quotes', 'addressees'].every(key => Array.isArray(detail[key]))) {
+      throw Error('The submitted opening identity could not be confirmed.');
+    }
+    const existing = editor.submissions.find(item => item.id === detail.id);
+    if (existing) return existing;
+    const snapshot = { id: detail.draft_id, revision: detail.draft_revision, generation: detail.draft_generation, caret: {start:0,end:0} };
+    for (const field of writingFields) if (Object.hasOwn(detail, field)) snapshot[field] = copy(detail[field]);
+    const item = { id: detail.id, prepareOperationId: detail.prepare_operation_id, sendOperationId: detail.send_operation_id,
+      sourceRef: copy(detail.source_ref), topicId: detail.topic_id, authority: copy(detail.authority), snapshot,
+      localVersion: 0, savedVersion: 0, preparationConfirmed: true, status: 'prepared', receipt: null, serverObserved: true };
+    // A canonical full submission is evidence of preparation, not permission to
+    // recreate an unknown original envelope. Only receipt reads may follow it.
+    editor.submissions.push(item);
+    if (detail.send_receipt) editor.acceptSend(detail.send_receipt);
+    await this.persist(); return item;
   }
 
   async originalPublication(item) {
@@ -459,8 +489,51 @@ export class EditorSession {
       receipt?.status === 'rejected' && typeof receipt.error?.code === 'string' && receipt.error.code.length > 0;
     // The existing acceptance path checks the receipt identity, preparation and
     // committed submission, and journals A without changing the current draft B.
-    if (!validOutcome || !entry || entry.envelope.kind !== kind || !await this.apply(entry, receipt)) throw failure();
+    if (item.serverObserved) {
+      if (!validOutcome || !this.editor.acceptSend(receipt)) throw failure();
+      await this.persist();
+    } else if (!validOutcome || !entry || entry.envelope.kind !== kind || !await this.apply(entry, receipt)) throw failure();
     return receipt.status;
+  }
+
+  correctOpening(refused, reviewedRemote, reviewedLocalVersion) {
+    return this.enqueue(async () => {
+      const editor = this.editor;
+      const eligible = () => editor.context.sourceRef.kind === 'new_topic' && !editor.openingReadOnly &&
+        editor.submissions.includes(refused) && !refused.detached && !refused.openingCorrected && refused.preparationConfirmed &&
+        same(refused.sourceRef, editor.context.sourceRef) && refused.topicId === editor.context.topicId &&
+        refused.snapshot.opening?.workspace_id === editor.context.sourceRef.workspace_id &&
+        same(refused.authority, authorityPair(this.authority)) &&
+        editor.matches(refused.receipt, refused.sendOperationId, 'topic.create_and_send') &&
+        refused.receipt.status === 'rejected' && ['INVALID_RECIPIENT', 'TOO_MANY_PARTICIPANTS'].includes(refused.receipt.error?.code);
+      const empty = draft => draft && !draft.body && !(draft.attachments?.length || draft.quotes?.length || draft.addressees?.length) &&
+        !draft.opening && !draft.reply_to && !draft.exchange_id;
+      const unchanged = () => editor.localVersion === reviewedLocalVersion && !editor.dirty && !editor.conflict &&
+        !this.recovery && empty(editor.draft) && !this.unsettledSave() && !this.uploads?.current().length;
+      if (!eligible()) throw Error('Only an exact recorded participant refusal may return this opening to editing.');
+      if (!unchanged()) throw Error('Newer writing or an unresolved draft is kept. Review it before editing the refused opening.');
+      const authority = await this.readAuthority();
+      if (!same(authorityPair(authority), authorityPair(this.authority))) throw Error('The runtime authority changed. This opening has not been rebound.');
+      if (await this.originalPublication(refused) !== 'rejected' || !eligible()) throw Error('The original participant refusal could not be confirmed.');
+      const read = () => this.api.view('editor_state', { source_ref: editor.sourceRef, topic_id: editor.context.topicId });
+      const exact = state => this.validPrivateState(state) && state.draft && same(state.draft, reviewedRemote) &&
+        empty(state.draft) && state.draft.id === editor.draft.id && state.draft.generation === editor.draft.generation && state.draft.revision === editor.draft.revision;
+      if (!exact(await read()) || !unchanged()) throw Error('The saved or current writing changed. Neither version was replaced.');
+      if (refused.snapshot.attachments.length && !this.uploads) throw Error('The earlier attachments need their shared upload owner before editing.');
+      await this.uploads?.validateCorrection(refused);
+      const finalAuthority = await this.readAuthority();
+      if (!same(authorityPair(finalAuthority), authorityPair(this.authority))) throw Error('The runtime authority changed while checking the opening.');
+      if (!exact(await read()) || !unchanged() || !eligible()) throw Error('Writing changed while checking the opening. Neither version was replaced.');
+      // The normal successor has a new generation but no newer writing. Restore
+      // A into that exact private slot, keeping its frozen history and receipt.
+      const draft = { id: editor.draft.id, revision: editor.draft.revision, generation: editor.draft.generation };
+      for (const field of writingFields) if (Object.hasOwn(refused.snapshot, field)) draft[field] = copy(refused.snapshot[field]);
+      editor.draft = draft; editor.localVersion++; refused.openingCorrected = true;
+      this.uploads?.importRetained();
+      await this.persist();
+      await this.uploads?.validateRetained();
+      this.changed(editor); return editor;
+    });
   }
 
   correctPreparation(refused, reviewedRemote, reviewedLocalVersion, options = {}) {

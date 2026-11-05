@@ -50,7 +50,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of [...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs'] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
+for (const filename of [...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs'] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -263,7 +263,7 @@ try {
       results.push({ name, passed: false, error: error.stack });
       for (const [targetId, p] of freshnessPages) {
         let state;
-        try { state = await p.evaluate('({snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
+        try { state = await p.evaluate('({snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
         catch (error) { state = { diagnosticError: error.message }; }
         observations.push({ name: 'failed case diagnostics', case: name, targetId, state, errors: p.errors, calls: p.calls });
       }
@@ -291,8 +291,8 @@ try {
         const id='intent-'+String(n).padStart(2,'0');await intents.claim(id);
         await intents.put({format:1,id,kind:'create',instanceId:b.instance_id,actor:b.actor,authority:{authority_id:'a',authority_epoch:'e'},workspace:n<25?'w1':'w2',phase:n<20?'confirmed':'draft',form:{title:'🙂'.repeat(5000),purpose:'private purpose',team:[]},envelope:null,receipt:null,history:[]});
       }
-      window.other=await openIntents({instanceId:b.instance_id,actor:'other'});
-      await other.claim('intent-20');await other.put({format:1,id:'intent-20',kind:'create',instanceId:b.instance_id,actor:'other',authority:{authority_id:'a',authority_epoch:'e'},workspace:'w1',phase:'draft',form:{title:'Other actor secret',purpose:'secret',team:[]}});
+      window.other=await openIntents({instanceId:b.instance_id,actor:'aaa-foreign'});
+      await other.claim('intent-20');await other.put({format:1,id:'intent-20',kind:'create',instanceId:b.instance_id,actor:'aaa-foreign',authority:{authority_id:'a',authority_epoch:'e'},workspace:'w1',phase:'draft',form:{title:'Other actor secret',purpose:'secret',team:[]}});
     })()`);
     const first=await p.evaluate('intents.page()');assert.deepEqual(first.items,[]);assert.equal(first.examined,20);assert.equal(first.nextCursor,'intent-19');
     const second=await p.evaluate(`intents.page({cursor:${JSON.stringify(first.nextCursor)}})`);assert.equal(second.items.length,20);assert.equal(second.nextCursor,'intent-39');

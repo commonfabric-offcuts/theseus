@@ -64,11 +64,14 @@ export class CreateOutcomeView {
   message(text){this.notice.textContent=text;this.notice.hidden=!text;}
   async run(action){try{this.message('');await action();if(this.creation.row.phase==='confirmed')await this.confirmed(this.creation.row);}catch(error){this.message(error.message);}finally{this.paint();}}
   paint(){
+    const focused=document.activeElement;
     const c=this.creation,phase=c.row.phase;this.title.readOnly=this.purpose.readOnly=c.readOnly;this.team.paint();
     this.create.hidden=Boolean(c.row.envelope);this.create.disabled=c.readOnly;
     this.check.hidden=!c.row.envelope||phase==='confirmed';this.check.disabled=!c.writable||Boolean(c.pending)||c.parked;
     this.retry.hidden=!c.retryAllowed;this.retry.disabled=!c.writable||Boolean(c.pending)||c.parked;
     this.start.hidden=phase!=='confirmed';this.later.disabled=Boolean(c.pending);
+    if([this.create,this.retry,this.check].includes(focused)&&focused.hidden)(phase==='confirmed'?this.start:phase==='rejected'?this.title:this.check).focus();
+    if(c.notice)this.message(c.notice);
     if(phase==='rejected')this.message(c.row.receipt.error.message+' Edit the fields to make a new creation request.');
     this.saveState.textContent=c.parked?'Runtime changed — this act is kept without rebinding':!c.writable?'Open in another tab — read-only':c.storageError?'Keep this page open — '+c.storageError:
       c.pending?'Checking creation…':phase==='confirmed'?'Outcome created':phase==='uncertain'?'Creation not confirmed — the original request is kept on this browser':c.dirty?'Saving on this browser…':'Form saved on this browser';
