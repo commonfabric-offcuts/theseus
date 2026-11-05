@@ -204,7 +204,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             raise Refusal("INSTANCE_MISMATCH", "The selected instance does not match")
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
         stored = metadata.get("schema_version")
-        from .migrations import newer, upgradable
+        from .migrations import newer, unfinished, upgradable
         # The version comes first, as in recovery and migrate: a later layout
         # may keep its commit identity differently, so a database this code is
         # too old for is told so, whatever that identity looks like.
@@ -222,6 +222,9 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                 raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s and this code reads version %s; "
                               "move it with bin/aim-next-admin migrate. Nothing was changed" % (stored, SCHEMA_VERSION))
             raise Refusal("SCHEMA_MISMATCH", "This database schema is unsupported; no automatic migration was attempted")
+        if unfinished(db, stored):
+            raise Refusal("SCHEMA_MISMATCH", "This database was stamped schema version %s by an earlier form of that upgrade; "
+                          "finish it with bin/aim-next-admin migrate. Nothing was changed" % stored)
         if any(metadata.get(key) != value for key, value in self.binding.items()):
             raise AuthorityError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
 

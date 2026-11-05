@@ -47,6 +47,10 @@ time): `waiting_on_me` counts the reader's rows in that index, without reading
 the topics, and `latest_waiting` reads the newest five in index order.
 Schema version 12 adds those copies; the upgrade also drops any waiting row
 for someone who had already lost its topic, and stepping back keeps the rest.
+The first form of that upgrade timed messages without adding the copies, yet
+stamped its databases 12. The store knows such a database by its missing
+waiting index and refuses to open it; `bin/aim-next-admin migrate` finishes the
+step, and finishes it before stepping back too.
 
 ## In the browser
 

@@ -25,6 +25,19 @@ STEPS = (
 )
 
 
+def unfinished(db, stored):
+    """The statements that finish a step the stored stamp claims but the layout lacks, or ().
+
+    The first form of the 11->12 step timed messages without ordering what waits
+    on each reader, and stamped its databases 12 all the same. Such a database is
+    known by its missing reader_waiting index; migrate finishes the step before
+    moving it anywhere, and the store refuses it until then."""
+    if stored == "12" and not db.execute("SELECT EXISTS (SELECT 1 FROM sqlite_master "
+                                         "WHERE type='index' AND name='reader_waiting')").fetchone()[0]:
+        return WAITING_ORDER_SCHEMA
+    return ()
+
+
 class MigrationError(AuthorityError):
     """A refused upgrade. Nothing was committed."""
 
@@ -102,9 +115,10 @@ def migrate(db_path, instance_id, binding, target=None):
         if any(metadata.get(key) != value for key, value in authority.binding.items()):
             raise MigrationError("AUTHORITY_CHANGED", "Binding changed: activate a recovery copy at a new path")
         result = {"instance_id": instance_id, "from_version": stored, "schema_version": target}
-        if stored == target:
+        finish = unfinished(db, stored)
+        if stored == target and not finish:
             return dict(result, migrated=False)
-        for statements, occupied in _plan(stored, target):
+        for statements, occupied in [(finish, None)] + (_plan(stored, target) if stored != target else []):
             if occupied is not None and db.execute(occupied).fetchone()[0]:
                 raise MigrationError("RECORDS_WOULD_BE_LOST", "The older version cannot hold records that exist; nothing was changed")
             for statement in statements:
