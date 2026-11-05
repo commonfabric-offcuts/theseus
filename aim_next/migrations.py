@@ -32,9 +32,20 @@ def _unconfirmed(error):
     return StoreError("The upgrade could not be confirmed; read schema_version, or run migrate again, which reports a completed upgrade")
 
 
+def _versions():
+    return [STEPS[0][0]] + [upgraded for _, upgraded, _, _, _ in STEPS]
+
+
+def upgradable(stored):
+    """Whether this code can move a database stored at that version up to its own."""
+    from .store import SCHEMA_VERSION
+    versions = _versions()
+    return stored in versions and versions.index(stored) < versions.index(SCHEMA_VERSION)
+
+
 def _plan(stored, target):
     """The (statements, refusing query) pairs that move stored to target, in order."""
-    versions = [STEPS[0][0]] + [upgraded for _, upgraded, _, _, _ in STEPS]
+    versions = _versions()
     if stored not in versions or target not in versions or stored == target:
         raise MigrationError("SCHEMA_UNSUPPORTED", "This stored schema version has no path to the target; nothing was changed")
     start, end = versions.index(stored), versions.index(target)

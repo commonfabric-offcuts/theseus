@@ -195,10 +195,16 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         metadata = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('schema_version','commit_seq','commit_id','authority_id','authority_path','authority_epoch')"))
         sequence = metadata.get("commit_seq", "")
         commit_id = metadata.get("commit_id", "")
-        if metadata.get("schema_version") != SCHEMA_VERSION:
-            raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s and this code reads version %s; "
-                          "move it with bin/aim-next-admin migrate. Nothing was changed"
-                          % (metadata.get("schema_version"), SCHEMA_VERSION))
+        stored = metadata.get("schema_version")
+        if stored != SCHEMA_VERSION:
+            from .migrations import upgradable
+            # Migrate is the remedy only when this code can move the database
+            # up to its own version; otherwise this code is the one out of date.
+            if upgradable(stored):
+                raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s and this code reads version %s; "
+                              "move it with bin/aim-next-admin migrate. Nothing was changed" % (stored, SCHEMA_VERSION))
+            raise Refusal("SCHEMA_MISMATCH", "This database is at schema version %s, which this code (version %s) cannot "
+                          "read or migrate; run code that reads version %s. Nothing was changed" % (stored, SCHEMA_VERSION, stored))
         if (not sequence.isascii() or not sequence.isdigit()
                 or len(sequence) > 19 or int(sequence) >= 9223372036854775807
                 or len(commit_id) != 32 or any(c not in "0123456789abcdef" for c in commit_id)):
