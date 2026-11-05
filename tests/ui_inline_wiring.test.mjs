@@ -728,6 +728,31 @@ test('the directory and the team behind the composer are read again when someone
   assert.deepEqual(f.get('addressable-names').children.map(option => option.value), ['fixture-person', 'fable'], 'someone removed from the team is no longer offered');
 });
 
+test('a team read on focus that fails keeps the team the page had; one refused for want of permission drops it', async () => {
+  const f = fixture();
+  pickerApi(f);
+  await f.initialize();
+  await drain();
+  showComposer(f);
+  const offered = () => f.get('addressable-names').children.map(option => option.value);
+  const mark = name => {
+    f.get('inline-recipient-input').value = name; f.get('inline-add-recipient').onclick();
+    return f.get('inline-recipient-chips').children.find(node => node.textContent === name).className;
+  };
+  assert.deepEqual([offered(), mark('stranger')], [['fixture-person', 'ally', 'fable'], 'chip unreachable']);
+  // A busy server sheds the background read just as the person starts naming.
+  f.pickers.membersRefused = true;
+  focusIn(f, 'addressable-names');
+  await drain();
+  assert.deepEqual(offered(), ['fixture-person', 'ally', 'fable'], 'a busy read is not an empty team');
+  assert.equal(mark('outsider'), 'chip unreachable', 'reach is still known');
+  const view = f.api.view;
+  f.api.view = async (name, args) => name === 'workspace_members' ? { error: { code: 'FORBIDDEN', message: 'No permission for this workspace' } } : view(name, args);
+  focusIn(f, 'addressable-names');
+  await drain();
+  assert.deepEqual([offered(), mark('elsewhere')], [['fixture-person', 'fable'], 'chip'], 'a reader no longer allowed to list the team is offered no team and marks nobody');
+});
+
 test('an outcome\'s owner changes its team on the outcome page; the owner cannot be removed there', async () => {
   const f = fixture('https://fixture/?workspace=w1');
   f.inject({ api: f.api, bootstrap: f.bootstrap });

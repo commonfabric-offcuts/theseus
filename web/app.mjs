@@ -949,11 +949,14 @@ async function setPresence(kind, target, field, revision, args) {
   return { ...receipt, error: { ...receipt.error, message: 'Someone else changed this at the same moment. Try again.' } };
 }
 // The team behind the composer's names, read again whenever someone starts
-// naming a recipient, so a change to the team since the page opened shows.
+// naming a recipient, so a change to the team since the page opened shows. A
+// read that fails (busy, offline) keeps the team the page had; only a refusal
+// to list it says the reader can no longer know who is in it.
 let membersRead = null;
 function refreshMembers() {
   if (!topic) return null;
-  membersRead ??= readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null)
+  membersRead ??= readMembers(api, bootstrap.instance_id, topic.workspace_id)
+    .catch(error => error.details?.error?.code === 'FORBIDDEN' ? null : outcomeMembers)
     .then(members => { outcomeMembers = members; if (views?.participants) paintParticipants(topic, views.participants); })
     .finally(() => { membersRead = null; });
   return membersRead;
