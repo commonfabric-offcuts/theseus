@@ -7,6 +7,7 @@ class Element {
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
   setAttribute(key, value) { this.attributes[key] = value; }
+  removeAttribute(key) { delete this.attributes[key]; }
   getAttribute(key) { return this.attributes[key] ?? null; }
   focus() { globalThis.document.activeElement = this; }
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
@@ -172,6 +173,25 @@ test('Enter or Add sends the typed name once; a refusal or failure is said besid
   assert.equal(add().disabled, false);
 });
 
+test('a name typed while an add is out stays in the field when that add commits', async t => {
+  dom(t);
+  const host = new Element('div'), sent = [];
+  let release;
+  const panel = new PeoplePanel({ host, label: 'Add', names: 'n',
+    add: async id => { sent.push(id); await new Promise(resolve => { release = resolve; }); return { status: 'committed' }; } });
+  panel.paint(people(['tony']), true);
+  field(host).value = 'fable';
+  field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {} });
+  field(host).value = 'ally';
+  release();
+  await new Promise(setImmediate);
+  assert.deepEqual([sent, field(host).value], [['fable'], 'ally'], 'the next name the person typed is kept');
+  field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {} });
+  release();
+  await new Promise(setImmediate);
+  assert.deepEqual([sent, field(host).value], [['fable', 'ally'], ''], 'a field still holding what was sent is cleared');
+});
+
 test('a recipient outside the topic is marked, with an offer to add them only for a reader who may', async t => {
   dom(t);
   const chip = name => { const node = new Element('span'); node.className = 'chip'; node.classList = { add: c => { node.className += ' ' + c; } }; node.textContent = name; return node; };
@@ -184,18 +204,21 @@ test('a recipient outside the topic is marked, with an offer to add them only fo
   assert.deepEqual([unknown.className, unknown.children], ['chip', []], 'an unknown reach is not called a refusal');
 
   const added = [];
-  let finish;
+  const finishes = [];
   const offered = chip('stranger');
-  markReach(offered, 'stranger', name => ({ reachable: false, add: () => { added.push(name); return new Promise(resolve => { finish = resolve; }); } }));
+  markReach(offered, 'stranger', name => ({ reachable: false, add: () => { added.push(name); return new Promise(resolve => { finishes.push(resolve); }); } }));
   assert.equal(offered.className, 'chip unreachable');
   assert.equal(offered.find(node => node.className === 'reach').textContent, ' · not in this topic');
   assert.equal(offered.title, 'A message to stranger is refused until they are in this topic.', 'a manager is not sent to someone else');
   const button = offered.find(node => node.tag === 'button');
   assert.match(button.textContent, /Add to topic \(gets all its messages\)/);
   const clicked = button.onclick();
-  assert.equal(button.disabled, true);
-  finish({ status: 'committed' }); await clicked;
-  assert.deepEqual([added, button.disabled], [['stranger'], false]);
+  assert.equal(button.attributes['aria-disabled'], 'true', 'the button says the add is out');
+  assert.notEqual(button.disabled, true, 'it is not disabled, which would drop the focus it holds');
+  button.onclick();
+  for (const finish of finishes) finish({ status: 'committed' });
+  await clicked;
+  assert.deepEqual([added, button.attributes['aria-disabled']], [['stranger'], undefined], 'a second press while the add is out sends nothing');
   const said = offered.find(node => node.className === 'reach-notice');
   assert.deepEqual([said.hidden, said.attributes.role], [true, 'status']);
 
@@ -208,7 +231,7 @@ test('a recipient outside the topic is marked, with an offer to add them only fo
   assert.deepEqual([note.hidden, note.textContent], [false, ' · No permission for this topic'], 'a refusal is said on the chip, not behind the reader');
   reply = async () => { throw Error('offline'); };
   await offer.onclick();
-  assert.deepEqual([note.textContent, offer.disabled], [' · offline', false], 'a failure is caught and said');
+  assert.deepEqual([note.textContent, offer.attributes['aria-disabled']], [' · offline', undefined], 'a failure is caught and said');
   reply = async () => ({ status: 'unknown' });
   await offer.onclick();
   assert.equal(note.textContent, ' · Adding stranger was not confirmed.');

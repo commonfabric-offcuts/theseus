@@ -1,4 +1,4 @@
-import { markReach } from './people.mjs';
+import { markReach, replaceChips } from './people.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
 
@@ -87,17 +87,17 @@ export class InlineComposer {
     picker?.uploads.cancel(picker.token); this.$('image-file').value = ''; this.paintStatus();
   }
   paintRecipients() {
-    const host = this.$('recipient-chips'), p = this.presentation, editor = this.editor;
-    host.replaceChildren();
-    for (const { name, removeLabel } of recipientChoices(editor.draft.addressees)) {
+    const p = this.presentation, editor = this.editor;
+    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices(editor.draft.addressees).map(({ name, removeLabel }) => {
       const chip = node('span', name, 'chip'), remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
+      chip.dataset.name = name;
       remove.onclick = () => {
         if (!this.admits(p, editor) || this.state().readOnly) return;
         editor.edit({ addressees: editor.draft.addressees.filter(value => value !== name) });
         this.callbacks.edit(editor, p); this.paintRecipients();
       };
-      chip.append(remove); markReach(chip, name, this.callbacks.reach); host.append(chip);
-    }
+      chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
+    }));
   }
   addRecipient() {
     const p = this.presentation, editor = this.editor, input = this.$('recipient-input'), name = input.value.trim().replace(/^@/, '');

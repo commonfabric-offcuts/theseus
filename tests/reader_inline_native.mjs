@@ -111,6 +111,65 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await until(async()=>(await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id})).draft?.body===before,'restored draft saved');
     assert.deepEqual(p.errors,[]);
   });
+  await check('inline a Shift-click after a drag lights from the dragged passage, and Return quotes what lights', async () => {
+    const p=await page('quote-drag-extend',null,true);
+    await p.open(1);
+    const lit=()=>p.evaluate('[...document.querySelectorAll("#source-body .hover-quote")].map(s=>s.textContent).join("")');
+    const before=await field(p);
+    const starts=await p.evaluate('[...document.querySelectorAll("#source-body [data-start]")].map(s=>s.dataset.start)');
+    assert.ok(starts.length>=3,'the fixture source has three passages');
+    // A point inside a passage's first line, share of the way along it.
+    const inside=(start,share)=>p.evaluate(`(()=>{const r=document.querySelector('#source-body [data-start="${start}"]').getClientRects()[0];return {x:r.x+r.width*${share},y:r.y+r.height/2};})()`);
+    const from=await inside(starts[0],.5), to=await inside(starts[1],.5);
+    await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:from.x,y:from.y});
+    await p.send('Input.dispatchMouseEvent',{type:'mousePressed',x:from.x,y:from.y,button:'left',buttons:1,clickCount:1});
+    await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:to.x,y:to.y,button:'left',buttons:1});
+    await p.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:to.x,y:to.y,button:'left',clickCount:1});
+    const dragged=await p.evaluate('getSelection().toString()');
+    assert.ok(dragged&&!(await p.evaluate(`document.querySelector('#source-body [data-start="${starts[0]}"]').textContent`)).startsWith(dragged),'the drag selected from inside the first passage into the second');
+    const c=await inside(starts[2],.2);
+    await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:c.x,y:c.y,modifiers:8});
+    await p.send('Input.dispatchMouseEvent',{type:'mousePressed',x:c.x,y:c.y,button:'left',buttons:1,clickCount:1,modifiers:8});
+    await p.send('Input.dispatchMouseEvent',{type:'mouseReleased',x:c.x,y:c.y,button:'left',clickCount:1,modifiers:8});
+    const shown=await lit(), passages=await p.evaluate(`[...document.querySelectorAll("#source-body [data-start]")].slice(0,3).map(s=>s.textContent).join("")`);
+    assert.equal(shown,passages,'Shift-click lights from the dragged passages through the third');
+    assert.equal(await p.evaluate('getSelection().toString()'),'','the dragged selection gives way to the light');
+    await p.key('Enter');
+    const quote=shown.split('\n').map(line=>`> ${line}`).join('\n');
+    assert.ok((await field(p)).includes(quote),'Return quotes what lit, not the dragged text');
+    // Leave the shared draft as it was found.
+    await p.key('a',4);await p.key('k',2);
+    if(before)await p.send('Input.insertText',{text:before});
+    assert.equal(await field(p),before);
+    await until(async()=>(await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id})).draft?.body===before,'restored draft saved');
+    assert.deepEqual(p.errors,[]);
+  });
+  await check('inline Add to topic pressed from the keyboard on a recipient chip leaves focus in the recipient field', async () => {
+    const p=await page('reach-add-focus',null,true);
+    await p.open(1);
+    const name='fixture-outside-agent', focused=()=>p.evaluate('document.activeElement.id');
+    const chip=`[...document.querySelectorAll("#recipient-chips .chip")].find(c=>c.dataset.name===${JSON.stringify(name)})`;
+    const participants=async()=>(await view('topic',{topic_id:facts.topic_id})).participants.map(row=>row.actor_id);
+    assert.equal((await participants()).includes(name),false,'the fixture agent starts outside the topic');
+    await p.point('#recipient-input');await p.send('Input.insertText',{text:name});await p.key('Enter');
+    await until(()=>p.evaluate(`${chip}?.classList.contains('unreachable')`),'the chip says they are not in the topic');
+    await p.key('Tab',8);
+    assert.equal(await p.evaluate('document.activeElement.textContent'),'Add to topic (gets all its messages)','Shift-Tab from the field reaches the chip\'s offer');
+    await p.key('Enter');
+    await until(()=>p.evaluate(`!!${chip}&&!${chip}.classList.contains('unreachable')`),'the chip is repainted once they are in the topic');
+    assert.ok((await participants()).includes(name),'Return on the offer added them');
+    assert.equal(await focused(),'recipient-input','focus stays in the reader, on the recipient field');
+    await p.key('Tab',8);
+    assert.equal(await p.evaluate(`document.activeElement===${chip}.querySelector('button')`),true,'Shift-Tab reaches the chip\'s remove button');
+    await p.key('Enter');
+    assert.equal(await p.evaluate(`!${chip}`),true,'Return on it removes the recipient');
+    assert.equal(await focused(),'recipient-input','and focus goes back to the recipient field');
+    await until(async()=>(await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id})).draft?.addressees.length===0,'the draft keeps no recipient');
+    // Leave the topic's participants as they were found.
+    await p.evaluate(`document.querySelector('#participants button[aria-label="Remove ${name}"]').click()`);
+    await until(async()=>!(await participants()).includes(name),'the fixture agent is out of the topic again');
+    assert.deepEqual(p.errors,[]);
+  });
   await check('inline correction unavailable startup remains readable and Retry restores its composer', async () => {
     await control({ method: 'read_fault', name: 'editor_state', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'Composer is temporarily unavailable', retryable: true } }, count: 1 });
     const p = await page('inline-startup-refusal', null, true);
