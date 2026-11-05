@@ -9,11 +9,18 @@ export const imageInstrumentation = `(()=>{
   IDBObjectStore.prototype.put=function(value,...rest){if(this.name==='editors')imagePuts.push({kind:value.kind,bytes:bytes(value),id:value.id});return put.call(this,value,...rest)};
   window.imageRows=()=>new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors');t.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result.map(v=>({...v,blob:v.blob?{size:v.blob.size}:undefined})));t.oncomplete=()=>d.close()}});
 })()`;
-export async function imageChecks({ check: harnessCheck, page, until, root, facts, view, control, replace, field, shot, observations }) {
+export async function imageChecks({ check: harnessCheck, page: harnessPage, until, root, facts, view, control, replace, field, shot, observations }) {
   // Every case owns its writing: the drafts an earlier case left (recovery
   // copies' text, retained attachments) are emptied before it starts, as a
   // send leaves them. Its browser storage is a fresh context (the harness).
   const check = (name, action) => harnessCheck(name, async () => { await control({ method: 'reset_drafts' }); await action(); });
+  // Messages are newest first, so earlier cases' sends push a source below
+  // the fold. Position the actual card before its native press.
+  const page = async (...args) => {
+    const p = await harnessPage(...args);
+    if (p.open) { const open = p.open; p.open = async index => { await p.evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`); await open(index); }; }
+    return p;
+  };
   const png = (await readFile(path.join(root, 'tests/fixtures/media/screen.png'))).toString('base64');
   // Page-owned clipboard payload only: never read/write the OS pasteboard or
   // dispatch Cmd+V. This proves the paste event boundary, not OS ingestion.
@@ -478,6 +485,8 @@ export async function imageChecks({ check: harnessCheck, page, until, root, fact
   await check('images Notebook held Remove explicit download and recorded refusal cards', async () => {
     const p = await page('images-notebook', null, true);
     const notebook = '#memory-items [data-id="fixture-notebook"]';
+    // Notebook follows the conversation; position the actual card first.
+    await p.evaluate(`document.querySelector(${JSON.stringify(notebook)}).scrollIntoView({block:'center'})`);
     await p.point(notebook); await until(() => p.evaluate('document.querySelector("#reader-origin").textContent.includes("Notebook")'), 'Notebook Reader');
     await until(() => p.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled Notebook reader');
     const choose = async filename => {
