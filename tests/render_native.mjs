@@ -38,6 +38,11 @@ export const audit = `(() => {
   const inside = (box, outer) => box.left >= outer.left - 1 && box.right <= outer.right + 1 && box.top >= outer.top - 1 && box.bottom <= outer.bottom + 1;
   const meets = (box, outer) => box.right > outer.left && box.left < outer.right && box.bottom > outer.top && box.top < outer.bottom;
   const view = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+  // While a modal dialog is open, the page behind it is inert and painted
+  // under its backdrop, blurred and dimmed on purpose, or covered by the
+  // dialog itself: its pills keep their shape and place, judged as ever, but
+  // their colours are judged where the person can see them, with no dialog open.
+  const modal = document.querySelector('dialog:modal');
   const problems = [], pills = [];
   for (const element of document.querySelectorAll('body *')) {
     const box = element.getBoundingClientRect(), style = getComputedStyle(element);
@@ -50,7 +55,8 @@ export const audit = `(() => {
     // A topic's state is a label whether it is drawn as a pill or, on the
     // topic's own page, as a box its words may wrap in: its colours are judged
     // either way, and its shape only as a pill.
-    const pill = line <= 48 && parseFloat(style.borderTopLeftRadius) >= Math.min(box.height, line) / 2 - 1;
+    // A dialog is a window, not a pill, however round its corners.
+    const pill = element.tagName !== 'DIALOG' && line <= 48 && parseFloat(style.borderTopLeftRadius) >= Math.min(box.height, line) / 2 - 1;
     if (!element.textContent.trim() || !(pill || element.matches('.topic-state'))) continue;
     if (element.scrollWidth > element.clientWidth + 1 && style.overflowX !== 'visible' && style.textOverflow !== 'ellipsis') problems.push({ kind: 'its words are cut off', at: where(element) });
     if (pill) {
@@ -75,7 +81,7 @@ export const audit = `(() => {
     const clips = clippers(element);
     const cut = clips.find(({ style: s, box: outer }) => [s.overflowX, s.overflowY].some(o => o === 'hidden' || o === 'clip') && meets(box, outer) && !inside(box, outer));
     if (cut) problems.push({ kind: 'cut off by its box', at: where(element), by: where(cut.at) });
-    if (inside(box, view) && clips.every(({ box: outer }) => inside(box, outer))) {
+    if (inside(box, view) && clips.every(({ box: outer }) => inside(box, outer)) && !(modal && !modal.contains(element))) {
       pills.push({ at: where(element), left: box.left, top: box.top, width: box.width, height: box.height, border: parseFloat(style.borderTopWidth) });
     }
   }
@@ -219,8 +225,14 @@ export async function renderChecks({ check, page, until, control, origin, eviden
               await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
               await q.send('Emulation.setDeviceMetricsOverride', metrics);
             } });
-          // Every row named here carries its count, and its state where it has one.
-          await until(() => p.evaluate(ready), 'every counted row is drawn with its count');
+          // Every row named here carries its count, and its state where it has
+          // one. Topics left by earlier checks may sort before these, past the
+          // rail's first page: the person asks for more until every row is drawn.
+          await until(async () => {
+            if (await p.evaluate(ready)) return true;
+            if (await p.evaluate(`(more => Boolean(more && !more.hidden && more.getAttribute('aria-disabled') !== 'true') && (more.scrollIntoView({ block: 'center', inline: 'center' }), true))(document.querySelector('#more-topics'))`)) await p.point('#more-topics');
+            return false;
+          }, 'every counted row is drawn with its count');
           for (const row of [null, ...rows]) {
             let box = null;
             const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, hovered: row.matches(':hover') }; })()`;
