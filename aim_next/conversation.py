@@ -198,7 +198,7 @@ class Conversation:
         title = _body(title)
         if not title.strip():
             raise untitled
-        db.execute("INSERT INTO topics VALUES (?,?,?,?,0)", (topic_id, workspace_id, title, actor))
+        db.execute("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES (?,?,?,?,0)", (topic_id, workspace_id, title, actor))
         db.executemany("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES (?,?,1,1)", [(topic_id, member) for member in participants])
         db.execute("INSERT INTO topic_summaries VALUES (?,0,NULL)", (topic_id,))
 
@@ -291,7 +291,8 @@ class Conversation:
         topic = self._topic(db, actor, args.get("topic_id"))
         participants = [dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"])) for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(p.responsibility,1,256) AS responsibility,a.enabled FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?", (topic["id"], LIMITS["topic_participants"]))]
         summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
-        return {"instance_id": self.instance_id, "topic": dict(topic), "participants": participants, "summary": summary,
+        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=self._waiting_by_topic(db, [topic["id"]])[topic["id"]])
+        return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,
                 "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 
     def _view_topic_messages(self, db, actor, args):

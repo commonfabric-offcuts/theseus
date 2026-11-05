@@ -124,7 +124,7 @@ class OpeningsCase(fixtures.StoreCase):
         self.committed(self.command("workspace.create", {"id": "w-private", "title": "Private"}, actor="agent-b"))
         self.refused(self.save(opening="o2", topic_id="t-private", workspace_id="w-private"), "FORBIDDEN")
         self.refused(self.save(opening="o-out", topic_id="t-out", actor="outsider"), "FORBIDDEN")
-        self.sql("INSERT INTO topics VALUES ('t-existing','w1','Existing','owner',1)")
+        self.sql("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES ('t-existing','w1','Existing','owner',1)")
         for actor, opening, topic in (("owner", "o2", "t-existing"), ("owner", "o2", "t-new"),
                                       ("agent-a", "o1", "t-new"), ("agent-a", "o9", "t-existing")):
             with self.subTest(actor=actor, topic=topic):
@@ -252,7 +252,7 @@ class OpeningsCase(fixtures.StoreCase):
         refuse("INVALID_RECIPIENT", "p-disabled-untitled")
         resave(body="", attachments=[ready])
         self.sql("UPDATE actors SET enabled=1 WHERE id='agent-a'")
-        self.sql("INSERT INTO topics VALUES ('t-new','w1','Raced','agent-b',1)")
+        self.sql("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES ('t-new','w1','Raced','agent-b',1)")
         refuse("REVISION_CONFLICT", "p-raced")
         self.sql("DELETE FROM topics WHERE id='t-new'")
         self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])

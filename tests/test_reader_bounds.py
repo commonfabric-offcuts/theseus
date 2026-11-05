@@ -37,7 +37,7 @@ class ReaderBoundsCase(ReaderCase):
         with sqlite3.connect(str(self.path)) as db:
             # Bulk fixture represents exactly the send-maintained index; the
             # small public-send/duplicate/rollback tests prove maintenance.
-            db.execute("INSERT INTO topics VALUES ('unrelated','w1','Other','owner',0)")
+            db.execute("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES ('unrelated','w1','Other','owner',0)")
             for index in range(10000):
                 topic = "t1" if index < 5000 else "unrelated"
                 seq = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) VALUES (?,?,'owner','Skip me','[]','[]','[\"agent-a\"]',?)",

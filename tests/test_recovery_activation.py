@@ -22,6 +22,7 @@ from unittest import mock
 
 from aim_next import Store, StoreError, initialize
 from aim_next.authority import Authority, AuthorityError
+from aim_next.store import SCHEMA_VERSION
 
 
 def digest(path):
@@ -1052,11 +1053,11 @@ recovery.activate(request)
 
     def test_original_schema_is_checked_before_other_metadata(self):
         faults = {
-            'newer-missing-commit': ("UPDATE metadata SET value='11' WHERE key='schema_version'",
+            'newer-missing-commit': ("UPDATE metadata SET value='%d' WHERE key='schema_version'" % (int(SCHEMA_VERSION) + 1),
                                      "DELETE FROM metadata WHERE key='commit_id'"),
             'older-missing-commit': ("UPDATE metadata SET value='7' WHERE key='schema_version'",
                                      "DELETE FROM metadata WHERE key='commit_id'"),
-            'newer-blob-commit': ("UPDATE metadata SET value='11' WHERE key='schema_version'",
+            'newer-blob-commit': ("UPDATE metadata SET value='%d' WHERE key='schema_version'" % (int(SCHEMA_VERSION) + 1),
                                   "UPDATE metadata SET value=x'00' WHERE key='commit_id'"),
             'missing-version': ("DELETE FROM metadata WHERE key='schema_version'",),
             'blob-version': ("UPDATE metadata SET value=CAST(value AS BLOB) WHERE key='schema_version'",),

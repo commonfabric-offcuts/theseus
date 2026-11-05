@@ -137,12 +137,16 @@ above; `binding`, `view` and `command` are unchanged.
 | Verb | Does |
 | --- | --- |
 | `outcomes` | Lists the actor's outcomes. |
-| `topics OUTCOME` | Lists an outcome's topics, newest activity first. |
+| `new-outcome --title TITLE [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. |
+| `topics OUTCOME [--archived]` | Lists an outcome's topics, newest activity first, each with where it stands; `--archived` lists only its archived topics. |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees and full body. Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
 | `post TOPIC [--to A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. |
 | `start OUTCOME --title TITLE [--with A,B] TEXT\|-` | Saves and publishes an opening. If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
 | `publish OPENING` | Publishes a saved opening at its current revision. |
+| `state TOPIC active\|waiting\|review\|done [--note TEXT] [--waiting-on A,B]` | Says where a topic stands (`topic.update`). A new state clears the note and who it waits on unless they are given; only a waiting topic waits on someone. Its participants, its creator and the outcome's owner can say it. |
+| `rename TOPIC TITLE` | Renames a topic; its creator and the outcome's owner can. |
+| `archive TOPIC`, `unarchive TOPIC` | Takes a topic out of its outcome's list, or puts it back, without changing where it stands; its creator and the outcome's owner can. |
 | `ack DELIVERY...` | Sends one `delivery.ack` per delivery. |
 | `read-through TOPIC SEQ` | Sends `topic.read_through`. |
 | `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM (exit 0, even while blocked writing to a reader that is not draining); ends with a refusal when the authority changes, reported with its exit code even if a stop came too. |

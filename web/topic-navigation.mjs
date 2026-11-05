@@ -1,4 +1,5 @@
 import { currentImages } from './upload-state.mjs';
+import { paintState } from './topic-state.mjs';
 
 const validId = id => typeof id === 'string' && id.length > 0 && [...id].length <= 200 && !/[\x00-\x1f]/.test(id);
 const afterId = (id,previous) => {
@@ -157,8 +158,8 @@ export class TopicNavigation {
 }
 
 export class TopicRail {
-  constructor({ pages, host, more, retry, message, read, open, denied, updated }) {
-    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated });
+  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null }) {
+    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader });
     this.denied = false; this.loading = null; this.failedMore = false;
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore);
     // Mobile browsers can retarget a gap tap to a nearby link. Only accept a
@@ -187,6 +188,7 @@ export class TopicRail {
       }
       link.textContent = item.title;
       paintUnread(link, item);
+      paintState(link, item, this.reader);
       if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');
       // Moving a focused link can blur it. Leave unchanged rows in place.

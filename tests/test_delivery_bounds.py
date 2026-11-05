@@ -48,7 +48,7 @@ class DeliveryBoundsCase(DeliveryCase):
                 topic_id = "t1"
                 if new_groups:
                     topic_id = "bulk-topic-%s" % index
-                    db.execute("INSERT INTO topics VALUES (?,'w1','Bulk topic','owner',1)", (topic_id,))
+                    db.execute("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES (?,'w1','Bulk topic','owner',1)", (topic_id,))
                     db.execute("INSERT INTO topic_participants VALUES (?,'agent-a',1,1,'')", (topic_id,))
                     group_id = db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES ('agent-a','subscription',?,1)", (topic_id,)).lastrowid
                 mid, did = "bulk-message-%s" % index, "bulk-delivery-%s" % index

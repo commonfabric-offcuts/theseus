@@ -22,9 +22,10 @@ from .memory import Memory, MEMORY_SCHEMA
 from .media import Media, MEDIA_SCHEMA
 from .route_pins import RoutePins
 from .changes import Changes
+from .topic_state import TopicState, TOPIC_STATE_SCHEMA
 
 
-SCHEMA_VERSION = "10"
+SCHEMA_VERSION = "11"
 
 
 SCHEMA = [
@@ -87,7 +88,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -120,7 +121,7 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes):
+class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -490,13 +491,21 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             raise Refusal("INVALID_ARGUMENT", "Invalid page size")
         # latest_seq orders topics by activity; it is the sequence of the
         # topic's newest message, read through its one-row summary.
-        rows = db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t LEFT JOIN topic_summaries s ON s.topic_id=t.id "
-                          "LEFT JOIN messages m ON m.id=s.latest_message_id WHERE t.workspace_id=? AND t.id>? ORDER BY t.id LIMIT ?",
-                          (workspace["id"], args.get("cursor", ""), limit + 1)).fetchall()
+        archived = args.get("archived", False)
+        if not isinstance(archived, bool):
+            raise Refusal("INVALID_ARGUMENT", "Archived is true or false")
+        # A page lists either the outcome's topics or its archived ones, each in id order.
+        rows = db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t INDEXED BY workspace_listed_topics "
+                          "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
+                          "WHERE t.workspace_id=? AND t.archived=? AND t.id>? ORDER BY t.id LIMIT ?",
+                          (workspace["id"], int(archived), args.get("cursor", ""), limit + 1)).fetchall()
         items = [dict(row) for row in rows[:limit]]
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
+        waiting = self._waiting_by_topic(db, [item["id"] for item in items])
         for item in items:
             item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
+            item["archived"] = bool(item["archived"])
+            item["waiting_on"] = waiting[item["id"]]
         return {"instance_id": self.instance_id, "items": items,
                 "next_cursor": items[-1]["id"] if len(rows) > limit else None,
                 "relevant_versions": {"workspace": workspace["version"]}}

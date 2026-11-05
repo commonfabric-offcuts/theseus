@@ -149,13 +149,15 @@ class Delivery:
         return counts
 
     def _view_attention(self, db, actor, args):
-        """What waits for this actor: unread and addressed totals, and the newest addressed deliveries.
+        """What waits for this actor: unread and addressed totals, the newest addressed
+        deliveries, and the topics that say they wait on this actor.
 
         Each delivery says whether its topic can be opened: a person sent a
         message by name keeps reading it after they lose the topic, and then
         acknowledges it directly rather than by reading through the topic.
         """
         counts = self._unread(db, actor)
+        waiting, waiting_topics = self._waiting_on_reader(db, actor)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 AND active=1",
                            (actor,)).fetchone()
         rows = [] if group is None else db.execute(
@@ -173,7 +175,8 @@ class Delivery:
         return {"instance_id": self.instance_id,
                 "unread": sum(entry[0] for entry in counts.values()),
                 "addressed": sum(entry[1] for entry in counts.values()),
-                "latest_addressed": items}
+                "latest_addressed": items,
+                "waiting_on_me": waiting, "latest_waiting": waiting_topics}
 
     def _delivery_item(self, db, row, active=True):
         # The message's own sequence and its topic's title prefix let an inbox

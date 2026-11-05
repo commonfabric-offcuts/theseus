@@ -14,6 +14,7 @@ import uuid
 from .authority import AuthorityError
 from .contract import LIMITS, StoreError
 from .effects_watch import NativeWatch, WatchError, WatchStopped
+from .topic_state import STATES
 from .profile import ProfileError, load_profile
 from .store import StoreOpenError
 
@@ -165,8 +166,11 @@ def _output(stdout, stderr, result, code):
 
 LEGACY_VERBS = ("binding", "view", "command")
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
-         "{binding | view FILE|- | command FILE|- | outcomes | topics OUTCOME | read TOPIC [--after SEQ] [--limit N] "
+         "{binding | view FILE|- | command FILE|- | outcomes | new-outcome --title TITLE [--purpose TEXT] [--team A,B] "
+         "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | post TOPIC [--to A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] TEXT|- "
+         "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | rename TOPIC TITLE "
+         "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
@@ -193,7 +197,13 @@ def _parser():
     for name in LEGACY_VERBS:
         verb(name).add_argument("request", nargs="?")
     verb("outcomes")
-    verb("topics").add_argument("outcome")
+    outcome = verb("new-outcome")
+    outcome.add_argument("--title", required=True)
+    outcome.add_argument("--purpose", default="")
+    outcome.add_argument("--team", default="")
+    topics = verb("topics")
+    topics.add_argument("outcome")
+    topics.add_argument("--archived", action="store_true")
     read = verb("read")
     read.add_argument("topic")
     read.add_argument("--after", type=int, default=0)
@@ -209,6 +219,16 @@ def _parser():
     start.add_argument("--title", required=True)
     start.add_argument("--with", dest="participants", default="")
     start.add_argument("text")
+    state = verb("state")
+    state.add_argument("topic")
+    state.add_argument("state", choices=STATES)
+    state.add_argument("--note")
+    state.add_argument("--waiting-on")
+    rename = verb("rename")
+    rename.add_argument("topic")
+    rename.add_argument("title")
+    verb("archive").add_argument("topic")
+    verb("unarchive").add_argument("topic")
     verb("publish").add_argument("opening")
     verb("ack").add_argument("deliveries", nargs="+")
     through = verb("read-through")
@@ -443,14 +463,55 @@ class Agent:
         if not items:
             self.out.plain("no outcomes")
 
+    def do_new_outcome(self):
+        options = self.options
+        outcome = "w-" + uuid.uuid4().hex
+        self.command("workspace.create", {}, {"id": outcome, "title": options.title, "purpose": options.purpose,
+                                              "team": _names(options.team)}, {"workspace_revision": 0})
+        self.out.plain('created outcome %s "%s"' % (outcome, _one_line(options.title, 60)))
+
     def do_topics(self):
-        items = self.pages("workspace_topics", {"workspace_id": self.options.outcome})
+        items = self.pages("workspace_topics", {"workspace_id": self.options.outcome, "archived": self.options.archived})
         items.sort(key=lambda item: (-(item.get("latest_seq") or 0), item["id"]))
         for item in items:
-            self.out.plain("%s  %s  (%s messages, latest #%s)" % (
-                item["id"], _one_line(item["title"]), item.get("message_count") or 0, item.get("latest_seq") or "-"))
+            stands = item.get("state", "active")
+            if item.get("waiting_on"):
+                stands += " on " + ", ".join(item["waiting_on"])
+            if item.get("state_note"):
+                stands += ": " + _one_line(item["state_note"], 80)
+            self.out.plain("%s  %s  [%s]  (%s messages, latest #%s)" % (
+                item["id"], _one_line(item["title"]), stands, item.get("message_count") or 0, item.get("latest_seq") or "-"))
         if not items:
-            self.out.plain("no topics")
+            self.out.plain("no archived topics" if self.options.archived else "no topics")
+
+    def update_topic(self, args):
+        topic = self.view("topic", {"topic_id": self.options.topic})["topic"]
+        return self.command("topic.update", {"topic_id": topic["id"]}, args, {"topic_revision": topic["version"]})
+
+    def do_state(self):
+        options = self.options
+        args = {"state": options.state}
+        if options.note is not None:
+            args["note"] = options.note
+        if options.waiting_on is not None:
+            args["waiting_on"] = _names(options.waiting_on)
+        result = self.update_topic(args)
+        line = "%s is %s" % (result["topic_id"], result["state"])
+        if result["waiting_on"]:
+            line += " on " + ", ".join(result["waiting_on"])
+        if result["note"]:
+            line += ": " + _one_line(result["note"], 80)
+        self.out.plain(line)
+
+    def do_rename(self):
+        result = self.update_topic({"title": self.options.title})
+        self.out.plain('renamed %s "%s"' % (result["topic_id"], _one_line(result["title"], 60)))
+
+    def do_archive(self):
+        self.out.plain("archived %s" % self.update_topic({"archived": True})["topic_id"])
+
+    def do_unarchive(self):
+        self.out.plain("unarchived %s" % self.update_topic({"archived": False})["topic_id"])
 
     def do_read(self):
         options = self.options

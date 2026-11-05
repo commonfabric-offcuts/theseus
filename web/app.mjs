@@ -18,6 +18,7 @@ import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention, paintSent } from './attention.mjs';
+import { TopicStatePanel, paintWaiting } from './topic-state.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -27,7 +28,7 @@ const node = (tag, text, className) => {
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
 const status = message => { $('app-status').textContent = message; $('app-status').hidden = !message; };
 const run = action => { try { return Promise.resolve(action()).catch(error => { status(error.message); return null; }); } catch (error) { status(error.message); return Promise.resolve(null); } };
-let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null;
+let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
@@ -451,6 +452,7 @@ function paintViews(kind) {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
     topic = views.topic; $('topic-title').textContent = topic.title;
+    topicState?.paint(topic, views.participants);
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
     $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
     topicRail?.updateCurrent(topic);
@@ -749,6 +751,7 @@ async function initialize() {
     ask.onclick = () => run(async () => { await attention.ask(); offer(); });
     offer();
     live?.listen(event => { if (event.kind === 'commit' || event.state === 'live') attention.refresh(); });
+    attention.listen(answer => { if (waitingHost) paintWaiting(waitingHost, answer, (id, title) => openDestination({ kind: 'topic', id }, title)); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') attention.refresh(); });
     attention.refresh();
   }
@@ -772,6 +775,13 @@ async function initialize() {
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   $('participants').replaceChildren(...result.participants.map(participant => node('span', participant.actor_id, 'chip')));
+  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, saved: () => freshness?.request(),
+    send: (current, args) => {
+      const { authority_id, authority_epoch } = bootstrap.authority;
+      return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.update',
+        target: { topic_id: current.id }, expected: { topic_revision: current.version, authority: { authority_id, authority_epoch } }, args });
+    } });
+  topicState.paint(topic, result.participants);
   // Keep startup retry read-only: no editor or clickable source exists until
   // both initial list bodies have arrived after the captured feed baseline.
   const messageAnswer = checkedView(await api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }), bootstrap.instance_id);
@@ -830,7 +840,7 @@ async function initialize() {
     navigateTarget: target => location.assign(routeHref(target)) });
   await initializeInlineComposer();
   initializeOutcomeNavigation(topic.workspace_id);
-  topicRail = new TopicRail({ pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
+  topicRail = new TopicRail({ reader: bootstrap.actor, pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
     host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
@@ -925,6 +935,9 @@ async function initializeOutcomePage(route) {
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
   sentHost=$('sent-to-you');
   if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:acknowledgeSent});
+  // What waits on the reader heads every outcome page.
+  waitingHost=$('waiting-on-you');
+  if(attention?.last)paintWaiting(waitingHost,attention.last,(id,title)=>openDestination({kind:'topic',id},title));
   if(route.kind==='root') {
     $('topic-title').textContent='Outcomes';$('topic-description').textContent='Choose an outcome to see its topics.';
     $('outcomes-heading').textContent='Your outcomes';
@@ -955,7 +968,7 @@ async function initializeOutcomePage(route) {
       $('topic-navigation').hidden=false;
       $('topic-title').textContent=workspace.title;$('topic-description').textContent=workspace.purpose||'Choose a topic, or start a new one.';
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);
-      if(!topicRail)topicRail=new TopicRail({pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
+      if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
         open:id=>openDestination({kind:'topic',id},topicRail.pages.items.find(item=>item.id===id)?.title??id),
