@@ -164,6 +164,26 @@ class EffectsRunnerCase(unittest.TestCase):
         with self.assertRaises(ProcessLookupError): os.kill(observed['pid'],0)
         self.assertEqual(self.sql('SELECT child_pid FROM runner_state'),[(None,)])
 
+    def test_people_and_unrouted_agents_are_never_woken_across_cycles(self):
+        self.api(); self.create_topic()
+        self.store.register_actor('agent-c','agent','Unrouted fixture agent')
+        self.command('participation.set',{'actor_id':'agent-c','present':True},target={'topic_id':'t1'})
+        posted=self.command('message.post',{'body':'For everyone else'},target={'topic_id':'t1'},actor='agent-a')
+        self.assertEqual(posted['status'],'committed',posted)
+        self.assertEqual(self.sql("SELECT recipient_id FROM deliveries WHERE state='pending' ORDER BY recipient_id"),
+                         [('agent-a',),('agent-c',),('owner',)])
+        # Four sixty-second cooldowns: agent-a is woken each cycle, nobody else ever.
+        self.wait.stop_at=200
+        self.assertEqual(self.loop()['status'],'stopped')
+        attempts=self.sql('SELECT recipient_id FROM wake_attempts')
+        self.assertGreaterEqual(len(attempts),3,attempts)
+        self.assertEqual(set(attempts),{('agent-a',)})
+        self.assertEqual(self.sql("SELECT recipient_id FROM deliveries WHERE state='pending' ORDER BY recipient_id"),
+                         [('agent-a',),('agent-c',),('owner',)])
+        # The same 200 s with only agent-a pending takes 86 waits (renewals,
+        # reads and claims); a due person must not add a read every second.
+        self.assertLessEqual(self.wait.calls,90,'a due person must not make the idle loop spin')
+
     def test_second_due_recipient_is_not_delayed_by_first_cooldown(self):
         self.api(); self.create_topic(); self.send_next(addressees=['agent-b'])
         self.loop()
@@ -185,7 +205,7 @@ class EffectsRunnerCase(unittest.TestCase):
         writers=[(t,s) for t,s in statements if s=='BEGIN IMMEDIATE']
         self.assertEqual([t for t,s in writers],[0,9,18,27])
         self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(0,)])
-        self.assertTrue(any('due_recipients' in s for _,s in statements))
+        self.assertTrue(any('sqlite_autoindex_recipient_schedule_1' in s for _,s in statements))
         self.assertFalse(any('count(*)' in s.lower() for _,s in statements))
 
     def test_returned_acquire_busy_waits_lease_and_signal_can_stop_it(self):
@@ -367,7 +387,7 @@ class EffectsRunnerCase(unittest.TestCase):
             def wait(inner,timeout): return dict(dirty=False,stop=False)
             def close(inner): inner.closed=True
         original=Store.runner_schedule
-        def uncertain(store): raise RunnerError('RUNNER_STORAGE_ERROR','unconfirmed close fixture')
+        def uncertain(store,routed): raise RunnerError('RUNNER_STORAGE_ERROR','unconfirmed close fixture')
         with mock.patch.object(api,'NativeWatch',Watch),mock.patch.object(Store,'runner_schedule',uncertain):
             result=self.foreground()
         self.assertEqual(result['status'],'paused')
@@ -712,9 +732,9 @@ finally:db.close()
             except BaseException as error:
                 if commit or str(error)!='controlled spill rollback':errors.append(repr(error))
             finally:done.set()
-        def read(store):
+        def read(store,routed):
             try:
-                value=original_read(store);reads.append(dict(at=time.monotonic()-started,status='ok',due=value['next_due_ms']))
+                value=original_read(store,routed);reads.append(dict(at=time.monotonic()-started,status='ok',due=value['next_due_ms']))
                 return value
             except RunnerError as error:
                 reads.append(dict(at=time.monotonic()-started,status=error.code));raise
@@ -817,7 +837,7 @@ finally:db.close()
         self.wait.events=[(i/100,lambda:True) for i in range(1,100)]
         self.wait.events.insert(19,(0.195,lambda:(self.create_topic(),True)[1]))
         reads=[];claims=[];original_read=self.store.runner_schedule;original_claim=self.store.claim_wakes
-        def read():reads.append(self.clock.elapsed);return original_read()
+        def read(routed):reads.append(self.clock.elapsed);return original_read(routed)
         def claim(*args,**kwargs):claims.append(self.clock.elapsed);return original_claim(*args,**kwargs)
         with mock.patch.object(self.store,'runner_schedule',read),mock.patch.object(self.store,'claim_wakes',claim):
             result=self.loop()

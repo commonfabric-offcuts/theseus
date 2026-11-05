@@ -180,7 +180,7 @@ class AgentCLICase(AgentCLIBase):
         with claim_store.runner_guard("cli-fixture-runner") as guard:
             owner = claim_store.acquire_runner(guard)
             self.assertEqual(owner["status"], "acquired")
-            claims = claim_store.claim_wakes(guard, owner["runner_token"], limit=1)
+            claims = claim_store.claim_wakes(guard, owner["runner_token"], ["agent-a"], limit=1)
             self.assertEqual(claims["status"], "ok")
             self.assertEqual(len(claims["claims"]), 1)
             binding = claims["claims"][0]["route_binding"]

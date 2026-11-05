@@ -23,6 +23,9 @@ CONVERSATION_SCHEMA = [
 ]
 
 
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes"}
+
+
 def _preview(value, size=1024):
     return value.encode("utf-8")[:size].decode("utf-8", errors="ignore")
 
@@ -119,6 +122,43 @@ class Conversation:
         self._change(db, "actor", actor, "submission", snapshot["id"], 2)
         return dict(result, submission_id=snapshot["id"]), affected
 
+    def _command_message_post(self, db, actor, envelope):
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"topic_id"} or "body" not in args or set(args) - POST_FIELDS:
+            raise Refusal("INVALID_ARGUMENT", "A post names one topic and carries its body, and optionally attachments, addressees, reply_to and quotes")
+        snapshot = self._writing(args)
+        if snapshot.get("reply_to") is not None:
+            _identifier(snapshot["reply_to"], "reply_to")
+        return self._publish(db, actor, envelope["operation_id"], _identifier(target["topic_id"], "topic_id"), snapshot)
+
+    def _command_topic_read_through(self, db, actor, envelope):
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"topic_id"} or "seq" not in args or set(args) - {"seq", "from_seq"}:
+            raise Refusal("INVALID_ARGUMENT", "Name one topic and the sequence read through")
+        through, start = args["seq"], args.get("from_seq", 0)
+        if any(type(value) is not int or not 0 <= value <= 9223372036854775807 for value in (through, start)) or start > through:
+            raise Refusal("INVALID_ARGUMENT", "The sequences read are nonnegative integers, from_seq at most seq")
+        topic = self._topic(db, actor, target["topic_id"])
+        # Subscription groups are kept per topic; addressed deliveries share
+        # one direct group, so they are found through this topic's addressee
+        # index from the oldest pending direct delivery onward.
+        rows = db.execute("SELECT d.* FROM delivery_groups g JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
+                          "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.kind='subscription' AND g.topic_id=? AND g.active=1 AND g.pending_count>0 "
+                          "AND m.seq>=? AND m.seq<=? ORDER BY d.seq", (actor, topic["id"], start, through)).fetchall()
+        direct = db.execute("SELECT g.id,m.seq FROM delivery_groups g JOIN deliveries d ON d.seq=g.first_pending_seq JOIN messages m ON m.id=d.message_id "
+                            "WHERE g.recipient_id=? AND g.kind='direct' AND g.topic_id='' AND g.participant_epoch=0 AND g.active=1 AND g.pending_count>0",
+                            (actor,)).fetchone()
+        if direct is not None:
+            rows += db.execute("SELECT d.* FROM message_addressees a JOIN messages m ON m.seq=a.seq JOIN deliveries d ON d.message_id=m.id AND d.recipient_id=a.actor_id "
+                               "WHERE a.topic_id=? AND a.actor_id=? AND a.seq>=? AND a.seq<=? AND d.group_id=? AND d.state='pending' ORDER BY a.seq",
+                               (topic["id"], actor, max(direct["seq"], start), through, direct["id"])).fetchall()
+        for row in rows:
+            self._acknowledge(db, actor, row)
+        result = {"topic_id": topic["id"], "seq": through, "acknowledged": len(rows)}
+        if "from_seq" in args:
+            result["from_seq"] = start
+        return result, []
+
     def _open_topic(self, db, actor, topic_id, workspace_id, title, participants, untitled):
         """Create a topic with its author and chosen participants, ready for its first message."""
         participants = self._recipients(db, participants)
@@ -143,7 +183,8 @@ class Conversation:
         if snapshot.get("reply_to"):
             parent = db.execute("SELECT topic_id FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
             if not parent or parent["topic_id"] != topic_id:
-                raise Refusal("INVALID_ARGUMENT", "Reply context must belong to the destination topic")
+                # A state check, not a shape error: it is recorded like the others.
+                raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
         for quote in snapshot["quotes"]:
             if not isinstance(quote, dict):
                 raise Refusal("INVALID_ARGUMENT", "Invalid quote reference")

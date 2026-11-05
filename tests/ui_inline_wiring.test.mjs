@@ -8,9 +8,10 @@ import * as writing from '../web/writing-helpers.mjs';
 import { readFailure, checkedView, bindingOf } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
+import { ReadThrough } from '../web/read-through.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 function fixture(href = 'https://fixture/?topic=t1') {
-  const elements = new Map(), events = [], calls = [], paints = [];
+  const elements = new Map(), events = [], calls = [], paints = [], observers = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
@@ -25,11 +26,13 @@ function fixture(href = 'https://fixture/?topic=t1') {
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }
     scrollIntoView() {}
+    contains() { return false; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
-  const document = { body: get('body'), activeElement: null, visibilityState: 'visible', getElementById: get,
-    createElement: () => new Element(), querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)), addEventListener() {} };
+  const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
+    createElement: () => new Element(), querySelectorAll: () => [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    addEventListener(name, fn) { events.push(['document-handler', name, fn]); } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
   const api = { bootstrap: async () => bootstrap, view: async (name, args) => {
@@ -37,7 +40,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
     if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
     return { instance_id: 'fixture', items: [], next_cursor: null };
-  } };
+  }, command: async envelope => { calls.push({ kind: envelope.kind, envelope }); return { recorded: true }; } };
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
   const p = { surface: 'inline', initialized: true, topic, mode: 'reply', editors: { reply: editor } };
   const uploads = { current: () => [], running: new Map(), status: () => 'Ready' };
@@ -54,10 +57,14 @@ function fixture(href = 'https://fixture/?topic=t1') {
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {} };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [] };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']) };
-  const scope = { ...writing, WritingInput, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  class IntersectionObserver {
+    constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
+    observe(target) { this.targets.push(target); }
+  }
+  const scope = { ...writing, WritingInput, ReadThrough, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
-    EditorRegistry: class { constructor() { events.push(['registry']); return registry; } },
+    EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },
     TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
     initialViews: async () => ({}), readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
@@ -76,7 +83,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, openSource, retrySource, checkInlineAvailability, changed,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, openSource, retrySource, checkInlineAvailability, changed, paintViews,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness}; } };`, context);
@@ -87,7 +94,7 @@ function fixture(href = 'https://fixture/?topic=t1') {
   inline.show(p);
   context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh });
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
-  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap };
+  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers };
 }
 
 test('inline Ctrl-W uses the shared writing input path and preserves readonly writing', () => {
@@ -293,4 +300,70 @@ test('the opening route writes through a server-owned opening and never starts a
   assert.ok(f.events.some(e=>e[0]==='opening-load'));
   assert.equal(f.events.some(e=>['registry','journal','intent-journal'].includes(e[0])),false,'no EditorRegistry, recovery journal or prepared submission');
   assert.equal(f.get('body').dataset.ready,'true');
+});
+
+test('a topic page reports read-through only for what the person sees, and never their own messages', async () => {
+  const f = fixture(); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  const settle = () => new Promise(resolve => setImmediate(resolve));
+  const reads = () => f.calls.filter(c => c.kind === 'topic.read_through').map(c => JSON.parse(JSON.stringify(c.envelope)));
+  const ranges = () => reads().map(e => [e.args.from_seq, e.args.seq]);
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: 'older', memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  const [observer] = f.observers;
+  const message = (seq, author = 'agent-a') => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: author, body: 'Body ' + seq, topic_id: 't1' });
+  const card = seq => observer.targets.find(target => target.dataset.seq === seq);
+  const show = (shown, hidden = []) => {
+    observer.callback([...shown.map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })),
+      ...hidden.map(seq => ({ target: card(seq), isIntersecting: false, intersectionRatio: 0, intersectionRect: { height: 0 }, rootBounds: { height: 600 } }))]);
+  };
+  // The page loaded #20..#31; older history (an addressed #1, say) is not loaded.
+  for (let seq = 20; seq <= 31; seq++) message(seq);
+  f.views.newest = 31; f.paintViews('messages'); await settle();
+  assert.deepEqual(reads(), [], 'painting messages reads nothing until a card is on screen');
+  assert.equal(observer.targets.length, 12, 'each message card is observed');
+
+  show([29, 30, 31]); await settle();
+  assert.equal(reads().length, 1);
+  const [first] = reads();
+  assert.deepEqual({ ...first, operation_id: typeof first.operation_id }, { v: 1, instance_id: 'fixture', operation_id: 'string', kind: 'topic.read_through',
+    target: { topic_id: 't1' }, expected: { authority: { authority_id: 'a1', authority_epoch: 'e1' } }, args: { from_seq: 29, seq: 31 } });
+  f.paintViews('messages'); await settle();
+  assert.equal(reads().length, 1, 'repainting the same messages is not a new read');
+
+  // A card only slightly in view is not read; one filling half the viewport is.
+  observer.callback([{ target: card(28), isIntersecting: true, intersectionRatio: 0.1, intersectionRect: { height: 10 }, rootBounds: { height: 600 } }]); await settle();
+  assert.deepEqual(ranges(), [[29, 31]], 'a sliver of a card is not read');
+  observer.callback([{ target: card(28), isIntersecting: true, intersectionRatio: 0.4, intersectionRect: { height: 300 }, rootBounds: { height: 600 } }]); await settle();
+  assert.deepEqual(ranges(), [[29, 31], [28, 31]], 'a tall card covering half the viewport is read');
+
+  // Visible but unfocused (a second display), or hidden: a new message is not read.
+  message(32); f.views.newest = 32; f.paintViews('messages');
+  f.document.focused = false; show([32]); await settle();
+  f.document.focused = true; f.document.visibilityState = 'hidden'; show([32]); await settle();
+  assert.deepEqual(ranges(), [[29, 31], [28, 31]], 'nothing is read without focus or while hidden');
+  f.document.visibilityState = 'visible';
+  const focus = f.events.filter(e => e[0] === 'window-handler' && e[1] === 'focus');
+  assert.ok(focus.length); for (const handler of focus) handler[2]();
+  await settle();
+  assert.deepEqual(ranges().at(-1), [28, 32], 'focusing the page reads what is on screen');
+
+  // Scrolled down into older history: a new message inserted above the viewport is not read.
+  show([24, 25], [28, 29, 30, 31, 32]); await settle();
+  assert.deepEqual(ranges().at(-1), [24, 25]);
+  message(33); f.views.newest = 33; f.paintViews('messages'); await settle();
+  assert.deepEqual(ranges().at(-1), [24, 25], 'a message added outside the viewport is not read');
+
+  // The person's own messages settle nothing and are never reported.
+  message(34, 'fixture-person'); message(35, 'fixture-person'); f.views.newest = 35; f.paintViews('messages');
+  show([34, 35], [24, 25]); await settle();
+  assert.deepEqual(ranges().at(-1), [24, 25], 'only the person\'s own messages on screen: nothing to report');
+  assert.ok(ranges().every(([from]) => from >= 20), 'nothing below the loaded page is ever reported');
+
+  const presentation = { source: { source_ref: { kind: 'message', id: 'm7' }, topic_id: 't1', seq: 26, author: 'agent-a' }, editors: {}, mode: 'reply' };
+  const count = reads().length;
+  f.registry.current = presentation; show([33]); await settle();
+  assert.deepEqual(ranges().slice(count), [[26, 26]], 'under a Reader only the message it shows is read');
+  f.registry.current = null; f.registry.options.closed(presentation); await settle();
+  assert.deepEqual(ranges().at(-1), [33, 33], 'closing the Reader reads the cards on screen');
 });

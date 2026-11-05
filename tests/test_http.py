@@ -27,7 +27,7 @@ class FakeStore:
         self.calls.append(("command", actor, envelope))
         if envelope["kind"] == "explode":
             raise RuntimeError("private database path and token must not escape")
-        if envelope["kind"] == "blocked-command":
+        if envelope["kind"] == "blocked-command" or envelope["args"].get("hold"):
             self.command_started.set()
             self.release_command.wait(5)
         return {"instance_id": "new-test", "operation_id": envelope["operation_id"],
@@ -197,6 +197,27 @@ class HTTPContractTests(unittest.TestCase):
             finally:
                 self.store.release_read.set()
             self.assertEqual(blocked.result()[0], 200)
+
+    def test_read_through_reports_never_take_a_command_slot(self):
+        held = self.command(kind="topic.read_through", operation_id="through-held", args={"seq": 4, "hold": True})
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            first = executor.submit(self.request, "/api/command", held)
+            try:
+                self.assertTrue(self.store.command_started.wait(1))
+                # A second report is refused at once in its own lane...
+                status, _, raw = executor.submit(self.request, "/api/command", dict(held, operation_id="through-more")).result(timeout=2)
+                self.assertEqual(status, 503)
+                self.assertFalse(json.loads(raw)["recorded"])
+                # ...and a send still finds both command slots free.
+                for operation in ("send-A", "send-B"):
+                    status, _, raw = self.request("/api/command", self.command(operation_id=operation))
+                    self.assertEqual(status, 200)
+                    self.assertTrue(json.loads(raw)["recorded"])
+                self.assertFalse(first.done())
+            finally:
+                self.store.release_command.set()
+            self.assertEqual(first.result()[0], 200)
+        self.assertEqual([call[2]["operation_id"] for call in self.store.calls if call[0] == "command"], ["through-held", "send-A", "send-B"])
 
     def test_graceful_close_waits_for_an_admitted_command(self):
         with ThreadPoolExecutor(max_workers=2) as executor:

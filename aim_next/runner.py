@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import uuid
@@ -27,6 +28,16 @@ class RunnerError(StoreError):
     def __init__(self, code, message, retryable=False):
         self.code, self.retryable = code, retryable
         super().__init__(message)
+
+
+def _routed(recipients):
+    """The route map's actor IDs as one bound JSON parameter, so any map size is one query."""
+    if isinstance(recipients, (str, bytes)) or not isinstance(recipients, (list, tuple, set, frozenset)):
+        raise RunnerError("INVALID_ARGUMENT", "Name the routed recipients as a collection of actor IDs")
+    routed = list(recipients)
+    if any(not isinstance(actor, str) or not actor or len(actor) > 200 or any(ord(c) < 32 for c in actor) for actor in routed):
+        raise RunnerError("INVALID_ARGUMENT", "Each routed recipient is an actor ID")
+    return json.dumps(sorted(set(routed)))
 
 
 def _bounded(value, low, high, name):
@@ -145,11 +156,16 @@ class Runner:
             return {"status": "renewed", "lease_until_ms": until}, True
         return self._effect(guard, action)
 
-    def _next_due(self, db):
-        row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
+    def _next_due(self, db, routed=None):
+        if routed is None:
+            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
+        else:
+            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL ORDER BY next_due_ms,recipient_id LIMIT 1", (routed,)).fetchone()
         return row[0] if row else None
 
-    def claim_wakes(self, guard, runner_token, limit=1, lease_ms=20000):
+    def claim_wakes(self, guard, runner_token, recipients, limit=1, lease_ms=20000):
+        """Claim due wakes for the routed recipients only; nobody else is claimed or attempted."""
+        routed = _routed(recipients)
         _bounded(limit, 1, 32, "limit")
         _bounded(lease_ms, 1000, 30000, "lease_ms")
         def action(db, now):
@@ -160,7 +176,9 @@ class Runner:
             until = now + lease_ms
             if state["lease_until_ms"] < until:
                 raise RunnerError("LEASE_TOO_SHORT", "Renew the singleton before claiming this full lease", retryable=True)
-            rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms<=? ORDER BY next_due_ms,recipient_id LIMIT ?", (now, limit)).fetchall()
+            # Each routed recipient is one primary-key probe; people and agents
+            # without a route are never read, claimed or attempted here.
+            rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
             claims = []
             for row in rows:
                 if row["claim_token"] is not None and row["claim_until_ms"] > now:
@@ -176,7 +194,7 @@ class Runner:
                                "wake_generation": row["wake_generation"], "captured_seq": row["last_seq"], "lease_until_ms": until,
                                "route_binding": {"instance_id": self.instance_id, "actor_id": row["recipient_id"], "db_path": str(self.path),
                                                  "authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"]}})
-            return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db)}, bool(claims)
+            return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims)
         return self._effect(guard, action)
 
     def finish_wake(self, guard, runner_token, claim_token, outcome):
@@ -249,9 +267,10 @@ class Runner:
             return {"status": "recorded"}, True
         return self._effect(guard, action)
 
-    def runner_schedule(self):
-        """Bounded scheduling facts, not evidence of runner ownership."""
+    def runner_schedule(self, recipients):
+        """Bounded scheduling facts for the routed recipients, not evidence of runner ownership."""
         from .store import _connect
+        routed = _routed(recipients)
         try:
             with self._authority.shared() as fence:
                 db, _ = _connect(self.path)
@@ -262,7 +281,7 @@ class Runner:
                     state = self._runner_state(db)
                     result = {"instance_id": self.instance_id, "state": state["state"],
                               "version": state["version"], "lease_until_ms": state["lease_until_ms"],
-                              "next_due_ms": self._next_due(db)}
+                              "next_due_ms": self._next_due(db, routed)}
                     if state["reason_code"] is not None:
                         result["reason_code"] = state["reason_code"]
                     return result

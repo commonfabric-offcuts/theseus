@@ -50,6 +50,8 @@ class EffectsLoop:
                  resume_version=None, clock=None, emit=None):
         self.profile, self.store, self.guard, self.watch = profile, store, guard, watch
         self.routes = dict(routes)
+        # Only these actors are ever claimed; people and unrouted agents stay pending.
+        self.routed = sorted(self.routes)
         self.executable = selected_executable
         self.resume_version = resume_version
         self.clock = clock or Clock()
@@ -193,7 +195,7 @@ class EffectsLoop:
         return None
 
     def _read(self, hint):
-        value = self._preclaim('schedule',self.store.runner_schedule)
+        value = self._preclaim('schedule',lambda:self.store.runner_schedule(self.routed))
         if value is None: return
         if (value.get('state') not in ('idle','running','paused')
                 or not _integer(value.get('version'))
@@ -280,7 +282,7 @@ class EffectsLoop:
     def _claim(self):
         try:
             value = self._preclaim('claim',lambda:self.store.claim_wakes(
-                self.guard,self.token,limit=1,lease_ms=20000))
+                self.guard,self.token,self.routed,limit=1,lease_ms=20000))
         except ShortLease:
             self.short_at = self.clock.monotonic()+(1 if self.short_seen else 0)
             self.short_seen = True
