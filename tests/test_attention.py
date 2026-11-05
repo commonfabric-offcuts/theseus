@@ -168,6 +168,36 @@ class AttentionCase(AgentLoopCase):
         self.assertEqual([item["topic"]["id"] for item in latest], ["t1"])
         self.assertEqual(self.store.view("owner", "attention", {})["waiting_on_me"], 1)
 
+    def test_archiving_keeps_a_message_sent_by_name_for_someone_who_lost_the_topic(self):
+        # No list holds the topic for someone who lost it, so attention is where
+        # they read and settle what was sent to them by name, archived or not. A
+        # reader who can still open the topic finds it in the archived list instead.
+        self.participation("other-reader", True)
+        self.committed(self.post(body="Before you left", addressees=["other-reader"]))
+        self.committed(self.post(body="For the owner", addressees=["owner"]))
+        self.participation("other-reader", False)
+        self.archive(True)
+        answer = self.store.view("other-reader", "attention", {})
+        self.assertEqual((answer["unread"], answer["addressed"]), (1, 1))
+        [item] = answer["latest_addressed"]
+        self.assertEqual((item["message"]["body"], item["topic_readable"]), ("Before you left", False))
+        owner = self.store.view("owner", "attention", {})
+        self.assertEqual((owner["unread"], owner["addressed"], owner["latest_addressed"]), (0, 0, []))
+        self.committed(self.command("delivery.ack", {}, target={"delivery_id": item["id"]}, actor="other-reader"))
+        answer = self.store.view("other-reader", "attention", {})
+        self.assertEqual((answer["unread"], answer["addressed"], answer["latest_addressed"]), (0, 0, []))
+
+    def test_a_topic_set_waiting_while_archived_waits_without_counting(self):
+        self.archive(True)
+        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        self.committed(self.command("topic.update", {"state": "waiting", "waiting_on": ["owner"]}, target={"topic_id": "t1"},
+                                    expected={"topic_revision": version}, actor="agent-a"))
+        attention = self.store.view("owner", "attention", {})
+        self.assertEqual((attention["waiting_on_me"], attention["latest_waiting"]), (0, []))
+        self.archive(False)
+        attention = self.store.view("owner", "attention", {})
+        self.assertEqual((attention["waiting_on_me"], [item["id"] for item in attention["latest_waiting"]]), (1, ["t1"]))
+
     def test_a_page_starts_from_the_newest_message_by_name_already_waiting(self):
         # The page learns this number when it opens, so a delivery listed later
         # with a larger number arrived after it opened, whatever reads failed.

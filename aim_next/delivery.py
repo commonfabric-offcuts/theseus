@@ -5,7 +5,7 @@ import json
 import time
 import uuid
 
-from .contract import LIMITS, Refusal, _identifier, _json, _page_size, _prefix
+from .contract import LIMITS, READABLE, Refusal, _identifier, _json, _page_size, _prefix
 
 
 DELIVERY_SCHEMA = [
@@ -16,6 +16,12 @@ DELIVERY_SCHEMA = [
     "CREATE INDEX due_recipients ON recipient_schedule(next_due_ms,recipient_id) WHERE enabled=1 AND pending_count>0",
     "CREATE TRIGGER recipient_enabled AFTER UPDATE OF enabled ON actors BEGIN UPDATE recipient_schedule SET enabled=NEW.enabled WHERE recipient_id=NEW.id; END",
 ]
+
+# A message sent by name in an archived topic still waits in the attention view for
+# a recipient who can no longer open the topic: no list holds it for them, so there
+# is nowhere else to read it or mark it read. Read with deliveries d and topics t.
+NAMED_OUTSIDE_LISTS = ("(t.archived=0 OR NOT EXISTS (SELECT 1 FROM workspaces w WHERE w.id=t.workspace_id AND "
+                       + READABLE.replace(":actor", "d.recipient_id") + "))")
 
 
 def _now_ms():
@@ -119,7 +125,9 @@ class Delivery:
         A page of topics, archived or not, counts each of its own. Outcome and
         total counts leave archived topics out, as the outcome's list does, so
         no count points at a topic the reader cannot find in a list; nothing is
-        settled, and the counts return when the topic is unarchived.
+        settled, and the counts return when the topic is unarchived. A message
+        sent by name to someone who lost its topic still counts: no list ever
+        held it for them.
         """
         counts, scope, direct_scope, values = {}, "", "", ()
         if topics == [] or workspaces == []:
@@ -131,7 +139,7 @@ class Delivery:
             scope = direct_scope = " AND t.workspace_id IN (%s)" % ",".join("?" * len(workspaces))
             values = tuple(workspaces)
         if topics is None:
-            scope, direct_scope = scope + " AND t.archived=0", direct_scope + " AND t.archived=0"
+            scope, direct_scope = scope + " AND t.archived=0", direct_scope + " AND " + NAMED_OUTSIDE_LISTS
         if topics is not None:
             subscriptions = db.execute("SELECT g.topic_id,t.workspace_id,SUM(g.pending_count) AS pending "
                                        "FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 CROSS JOIN topics t ON t.id=g.topic_id "
@@ -160,16 +168,17 @@ class Delivery:
         deliveries, and the topics that say they wait on this actor, archived topics left out.
 
         Each delivery says whether its topic can be opened: a person sent a
-        message by name keeps reading it after they lose the topic, and then
-        acknowledges it directly rather than by reading through the topic.
+        message by name keeps reading it after they lose the topic, archived or
+        not, and then acknowledges it directly rather than by reading through the topic.
         """
         counts = self._unread(db, actor)
         waiting, waiting_topics = self._waiting_on_reader(db, actor)
         group = self._addressed_group(db, actor)
-        # Newest first in index order, passing over messages in archived topics as the totals do.
+        # Newest first in index order, passing over messages in archived topics the
+        # reader can still open, as the totals do.
         rows = [] if group is None else db.execute(
             "SELECT d.* FROM deliveries d INDEXED BY pending_group_deliveries CROSS JOIN messages m ON m.id=d.message_id "
-            "CROSS JOIN topics t ON t.id=m.topic_id WHERE d.group_id=? AND d.state='pending' AND t.archived=0 ORDER BY d.seq DESC LIMIT 5",
+            "CROSS JOIN topics t ON t.id=m.topic_id WHERE d.group_id=? AND d.state='pending' AND " + NAMED_OUTSIDE_LISTS + " ORDER BY d.seq DESC LIMIT 5",
             (group["id"],)).fetchall()
         items = []
         for row in rows:
