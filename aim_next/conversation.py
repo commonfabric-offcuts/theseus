@@ -139,13 +139,16 @@ class Conversation:
         if any(type(value) is not int or not 0 <= value <= 9223372036854775807 for value in (through, start)) or start > through:
             raise Refusal("INVALID_ARGUMENT", "The sequences read are nonnegative integers, from_seq at most seq")
         topic = self._topic(db, actor, target["topic_id"])
-        # Subscription groups are kept per topic, so only this topic's pending
-        # rows are visited; addressed deliveries share one direct group.
-        rows = db.execute("SELECT d.* FROM delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
+        # Subscription groups are kept per topic and participation epoch. Every
+        # join or leave advances the epoch and only the epoch left is cancelled,
+        # so the current epoch's group is the live one and only its pending rows
+        # are visited; addressed deliveries share one direct group.
+        rows = db.execute("SELECT d.* FROM topic_participants p CROSS JOIN delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
+                          "ON g.recipient_id=p.actor_id AND g.kind='subscription' AND g.topic_id=p.topic_id AND g.participant_epoch=p.epoch "
                           "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
-                          "CROSS JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.kind='subscription' AND g.topic_id=? "
-                          "AND g.active=1 AND g.pending_count>0 AND m.seq>=? AND m.seq<=?",
-                          (actor, topic["id"], start, through)).fetchall()
+                          "CROSS JOIN messages m ON m.id=d.message_id WHERE p.topic_id=? AND p.actor_id=? "
+                          "AND g.pending_count>0 AND m.seq>=? AND m.seq<=?",
+                          (topic["id"], actor, start, through)).fetchall()
         rows = sorted(rows + self._pending_addressed(db, actor, topic["id"], start, through), key=lambda row: row["seq"])
         for row in rows:
             self._acknowledge(db, actor, row)

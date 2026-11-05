@@ -237,6 +237,23 @@ class ReadThroughCase(AgentLoopCase):
         self.consistent()
         return steps
 
+    def test_read_through_work_is_flat_across_cancelled_subscription_epochs(self):
+        # Every cancellation, rejoin and send goes through commands. The work
+        # waiting stays at one delivery; only cancelled history grows.
+        steps, previous = [], 0
+        for count in (0, 10, 50):
+            for _ in range(count - previous):
+                self.participation("agent-a", False)
+                self.participation("agent-a", True)
+                self.committed(self.post(actor="owner", body="Fresh subscription epoch"))
+            previous = count
+            result, counts = measured(lambda: self.through(10 ** 9))
+            self.assertEqual(self.committed(result)["acknowledged"], 1)
+            steps.append(counts["vm_steps"])
+            self.committed(self.post(actor="owner", body="One pending"))
+        self.consistent()
+        self.assertLess(max(steps), steps[0] + 100, steps)
+
     def test_read_through_work_is_flat_as_settled_history_grows(self):
         steps = self.read_through_steps_as(lambda n: self.seed_addressed(n, "t1", "acknowledged"))
         self.assertGreater(steps[0], 0)
