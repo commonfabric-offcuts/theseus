@@ -52,7 +52,11 @@ export class Live {
       let message = null;
       try { message = typeof event.data === 'string' ? JSON.parse(event.data) : null; } catch { /* unreadable: below */ }
       if (Number.isSafeInteger(message?.seq) && message.seq >= 0) {
-        attempt.lines++; this.setState('live');
+        // A socket that went on to announce a commit has worked, so a later
+        // ending backs off from one second again. One that ends after only its
+        // first number keeps counting, so a broken feed is not asked in a loop.
+        if (++attempt.lines === 2) this.failures = 0;
+        this.setState('live');
         if (message.seq !== this.seq) { this.seq = message.seq; this.emit({ kind: 'commit', seq: message.seq }); }
       } else {
         attempt.clean = attempt.lines > 0 && message?.end === 'stopped';
@@ -83,11 +87,20 @@ export class Live {
 
 // A load asked for while one runs is run once more after it, so a commit that
 // lands during a load is still read; any number of such asks make one more.
+// A load that fails does not cancel the one asked for after it; the run
+// settles as its last load did.
 export function reloader(load) {
   let running = null, again = false;
   return () => {
     if (running) { again = true; return running; }
-    running = (async () => { do { again = false; await load(); } while (again); })().finally(() => { running = null; });
+    running = (async () => {
+      let failed = false, failure = null;
+      do {
+        again = false; failed = false;
+        try { await load(); } catch (error) { failed = true; failure = error; }
+      } while (again);
+      if (failed) throw failure;
+    })().finally(() => { running = null; });
     return running;
   };
 }

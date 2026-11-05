@@ -228,3 +228,28 @@ test('a commit during a list load asks for one more load, however many arrive', 
   assert.equal(loads, 3, 'a later ask starts a new load');
   releases.shift()();
 });
+
+test('a socket that announced commits resets the back-off, so a later bad ending waits one second', () => {
+  const { live, sockets, times } = fixture({ throws: 5 });
+  live.start();
+  for (let n = 0; n < 5; n++) times.run();
+  for (let seq = 1; seq <= 100; seq++) sockets[0].send({ seq });
+  sockets[0].send({ end: 'database_moved' });
+  assert.equal(times.run(), 1000, 'the session worked, so the back-off starts again');
+  sockets[1].send({ seq: 101 }); sockets[1].send({ end: 'unconfirmed' });
+  assert.equal(times.run(), 2000, 'a socket that only gave its first number still counts as failing');
+});
+
+test('a load that fails does not cancel the one asked for during it, and the run settles as its last load', async () => {
+  const releases = [];
+  let loads = 0;
+  const reload = reloader(() => { loads++; return new Promise((resolve, reject) => releases.push({ resolve, reject })); });
+  const first = reload();
+  reload();
+  releases.shift().reject(Error('busy')); await tick();
+  assert.equal(loads, 2, 'the ask made during the failed load still loads');
+  releases.shift().resolve(); await first;
+  const second = reload();
+  releases.shift().reject(Error('offline'));
+  await assert.rejects(second, /offline/);
+});

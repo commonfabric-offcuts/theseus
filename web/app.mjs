@@ -749,8 +749,9 @@ async function initialize() {
     live.start();
   }
   if (!attention) {
-    attention = new Attention({ api: { view: (...args) => api.view(...args) }, instanceId: bootstrap.instance_id, doc: document, open: openSent });
-    attention.listen(answer => { if (sentHost) paintSent(sentHost, answer, { open: openSent, acknowledge: acknowledgeSent }); });
+    attention = new Attention({ api: { view: (...args) => api.view(...args) }, instanceId: bootstrap.instance_id, after: bootstrap.attention?.after,
+      doc: document, open: openSent });
+    attention.listen(answer => { if (sentHost) paintSent(sentHost, answer, { open: openSent, acknowledge: markSent }); });
     const ask = $('notify'), offer = () => { ask.hidden = !attention.canAsk; };
     ask.onclick = () => run(async () => { await attention.ask(); offer(); });
     offer();
@@ -852,8 +853,8 @@ async function initialize() {
   topicNavigation = new TopicNavigation({ registry, current:route,
     navigateTarget: target => location.assign(routeHref(target)) });
   await initializeInlineComposer();
-  initializeOutcomeNavigation(topic.workspace_id);
-  topicRail = new TopicRail({ reader: bootstrap.actor, pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
+  initializeOutcomeNavigation(topic.workspace_id); outcomeRail.load();
+  topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
     host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
@@ -890,11 +891,17 @@ function openSent(item) {
 }
 async function acknowledgeSent(item) {
   const { authority_id, authority_epoch } = bootstrap.authority;
-  const receipt = await api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'delivery.ack',
-    target: { delivery_id: item.id }, expected: { authority: { authority_id, authority_epoch } }, args: {} });
-  if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'Marking it read was not confirmed.');
-  await attention.refresh();
+  try {
+    const receipt = await api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'delivery.ack',
+      target: { delivery_id: item.id }, expected: { authority: { authority_id, authority_epoch } }, args: {} });
+    if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'Marking it read was not confirmed.');
+  } finally {
+    // Whether or not the answer arrived, the list shows what Core now holds.
+    await attention.refresh();
+  }
 }
+// A failed attempt says so where the page reports, like every other button.
+const markSent = item => run(() => acknowledgeSent(item));
 // The topic's participants, which its outcome's owner and its creator may
 // change, and the names the composer offers.
 function paintParticipants(current, participants) {
@@ -931,14 +938,21 @@ function refreshDirectory() {
     .catch(() => {}).finally(() => { directoryRead = null; });
   return directoryRead;
 }
-// A visible page reloads its lists after each commit, and when shown again;
-// a hidden one waits, as its reads do.
+// A visible page reloads its lists after each commit, when the stream comes
+// back, and when shown again; a hidden one waits, as its reads do. Returns the
+// page's one reload, which its first read and Refresh go through as well; the
+// page calls this before its first read, so a commit while that read is out is
+// read after it.
 function followCommits(load) {
-  if (!live) return;
   const reload = reloader(load);
-  live.listen(event => { if (event.kind === 'commit' && document.visibilityState === 'visible') run(reload); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(reload); });
+  if (live) {
+    live.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && document.visibilityState === 'visible') run(reload); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(reload); });
+  }
+  return reload;
 }
+// Rows a reload may ask for at once, from the server's own limits.
+const pageMax = () => Number.isSafeInteger(bootstrap.limits?.page_max) ? bootstrap.limits.page_max : undefined;
 async function openDestination(target, title) {
   // A page whose start failed has no navigation; leave it for the destination.
   if (!topicNavigation) { location.assign(routeHref(target)); return; }
@@ -970,8 +984,7 @@ function initializeOutcomeNavigation(current=null) {
   };
   outcomeRail=new OutcomeRail({instanceId:bootstrap.instance_id,current,host:$('workspaces'),more:$('more-workspaces'),
     retry:$('retry-workspaces'),message:$('outcomes-status'),empty:$('outcomes-empty'),read,open:openDestination,
-    denied:error=>readFailure(error).kind==='forbidden'});
-  return outcomeRail.load();
+    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax()});
 }
 async function initializeOutcomePage(route) {
   // There is no topic, implicit composer or source in a selection-only view.
@@ -991,12 +1004,13 @@ async function initializeOutcomePage(route) {
     $('topic-title').textContent='Outcomes';$('topic-description').textContent='Choose an outcome to see its topics.';
     $('outcomes-heading').textContent='Your outcomes';
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
-    await initializeOutcomeNavigation();
-    $('refresh').onclick=()=>run(()=>outcomeRail.load());
-    followCommits(()=>outcomeRail.load());
+    initializeOutcomeNavigation();
+    const reload=followCommits(()=>outcomeRail.load());
+    $('refresh').onclick=()=>run(reload);
+    await reload();
   } else {
     $('outcome-page').append($('topic-navigation'));
-    await initializeOutcomeNavigation(route.id);
+    initializeOutcomeNavigation(route.id);
     let refreshSerial=0;
     const refresh=async()=>{
       const serial=++refreshSerial;
@@ -1017,17 +1031,18 @@ async function initializeOutcomePage(route) {
       $('topic-navigation').hidden=false;
       $('topic-title').textContent=workspace.title;$('topic-description').textContent=workspace.purpose||'Choose a topic, or start a new one.';
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);
-      await paintTeam(workspace,()=>refresh());
-      if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
+      await paintTeam(workspace,()=>reload());
+      if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
         open:id=>openDestination({kind:'topic',id},topicRail.pages.items.find(item=>item.id===id)?.title??id),
         updated:()=>{$('outcome-empty').hidden=!topicRail.pages.started||topicRail.pages.items.length>0||!$('topics-status').hidden;}});
       await topicRail.load();
     };
-    $('refresh').onclick=()=>run(refresh);await refresh();
-    // A commit may change the team or the outcome's revision as well as its topics.
-    followCommits(refresh);
+    // A commit may change the team or the outcome's revision as well as its
+    // topics, and the outcome rail beside them carries counts too.
+    const reload=followCommits(async()=>{await Promise.all([outcomeRail.load(),refresh()]);});
+    $('refresh').onclick=()=>run(reload);await reload();
   }
   document.body.dataset.ready='true';
 }
@@ -1073,7 +1088,7 @@ async function initializeOpeningPage(route) {
   await view.run(()=>draft.load());
   if(draft.editable)view.title.focus();
   view.run(()=>view.loadMembers());
-  await initializeOutcomeNavigation(route.workspace);document.body.dataset.ready='true';
+  initializeOutcomeNavigation(route.workspace);await outcomeRail.load();document.body.dataset.ready='true';
 }
 async function ensureIntentJournal() {
   if(intentJournal)return intentJournal;
@@ -1107,7 +1122,7 @@ async function initializeCreationPage(route) {
   if(outcomeCreation.row.phase==='confirmed')await form.run(()=>confirmed(outcomeCreation.row));
   $('refresh').onclick=()=>form.run(()=>outcomeCreation.refresh());
   window.addEventListener('beforeunload',event=>{if(outcomeCreation.writable&&(outcomeCreation.pending||outcomeCreation.dirty||outcomeCreation.storageError)){event.preventDefault();event.returnValue='';}});
-  await initializeOutcomeNavigation();document.body.dataset.ready='true';
+  initializeOutcomeNavigation();await outcomeRail.load();document.body.dataset.ready='true';
 }
 window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
 $('refresh').onclick = () => run(start);

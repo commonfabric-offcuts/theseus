@@ -5,10 +5,12 @@ import { checkedView } from './freshness.mjs';
 // not in front. Neither marks anything read: only reading through a message on
 // screen does that.
 export class Attention {
-  constructor({ api, instanceId, doc = globalThis.document, notifications = globalThis.Notification, open, focus = () => globalThis.focus?.() }) {
+  // after: the newest delivery naming the reader that was waiting when the page
+  // opened, as the server's bootstrap said. Without it, the first answer stands in.
+  constructor({ api, instanceId, after = null, doc = globalThis.document, notifications = globalThis.Notification, open, focus = () => globalThis.focus?.() }) {
     Object.assign(this, { api, instanceId, doc, notifications, open, focus });
     // after: the newest delivery number already known; only a later one is news.
-    this.baseTitle = doc.title; this.after = null; this.running = null; this.again = false; this.last = null;
+    this.baseTitle = doc.title; this.after = Number.isSafeInteger(after) ? after : null; this.running = null; this.again = false; this.last = null;
     this.unread = 0; this.addressed = 0; this.listeners = new Set();
   }
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
@@ -22,14 +24,16 @@ export class Attention {
   }
   async load() {
     let answer;
-    try { answer = checkedView(await this.api.view('attention', {}, { readClass: 'background' }), this.instanceId); }
+    // The foreground lane queues; the background lane sheds, for reads that
+    // keep a retry timer of their own, and this read keeps none.
+    try { answer = checkedView(await this.api.view('attention', {}, { readClass: 'foreground' }), this.instanceId); }
     catch { return; } // A failed read keeps what is shown; the next commit asks again.
     if (!Number.isSafeInteger(answer.unread) || !Number.isSafeInteger(answer.addressed) || !Array.isArray(answer.latest_addressed)) return;
     this.unread = answer.unread; this.addressed = answer.addressed;
     this.doc.title = answer.unread > 0 ? `(${answer.unread}) ${this.baseTitle}` : this.baseTitle;
     // Delivery numbers only grow, so a message that was already waiting, even
-    // one first listed after newer ones are read, is never news. The first
-    // answer only records where the page started.
+    // one first listed after newer ones are read, is never news. Without a
+    // starting number, the first answer only records where the page started.
     const numbers = answer.latest_addressed.map(item => item.seq).filter(Number.isSafeInteger);
     const fresh = this.after === null ? [] : answer.latest_addressed.filter(item => Number.isSafeInteger(item.seq) && item.seq > this.after);
     this.after = Math.max(this.after ?? 0, ...numbers);

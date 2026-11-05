@@ -30,22 +30,34 @@ count follows the number of pending messages that name the reader.
 
 ## In the browser
 
-The page reads `attention` at start, after each announced commit and when it
-becomes visible again. The tab title carries the unread total, and each topic
-and outcome row shows its count, marked when part of it names the reader. A
-visible page reloads its outcome and topic lists after each commit, on topic
-pages as on outcome pages; a hidden one reloads them when shown again.
+The page reads `attention` at start, after each announced commit, when the
+stream comes back and when it becomes visible again. It reads in the foreground
+lane, which queues: the background lane sheds reads that keep a retry timer of
+their own, and this one keeps none. Every open page asks after the same commit,
+and the server lets identical waiting reads share one, so many pages cost one
+waiting place. The tab title carries the unread total, and each topic and
+outcome row shows its count, marked when part of it names the reader; the open
+topic's row carries the count its list read for it. A visible page reloads its
+outcome and topic lists after each commit, on topic pages as on outcome pages,
+keeping the rows loaded with More; a hidden one reloads them when shown again.
 
 Outcome pages list the newest messages sent to the reader by name. One in a
 topic they can open links there, where reading it settles it; one in a topic
-they have lost shows its words and a "Mark read" button.
+they have lost shows its words and a "Mark read" button. A Mark read that is
+refused or whose answer is lost says so in the page's status, and the list is
+read again either way.
 
 A message that names the reader raises a system notification when it arrives
 while the page is in the background, once the person has allowed
 notifications. The page asks only when they press "Turn on notifications".
 Delivery numbers only grow, so the page announces only deliveries newer than
 any it has already seen: what was already waiting when the page opened is never
-announced, even when it first comes into view after newer ones are read.
+announced, even when it first comes into view after newer ones are read. The
+page learns where it started from `/api/bootstrap`: `attention.after` is the
+newest delivery naming the reader that waited then (the `capabilities` view's
+`attention.after`, one read through the pending index), so a delivery that
+arrives after the page opened is announced even when the page's first
+`attention` read failed.
 Clicking a notification opens the topic, or, for a topic the reader has lost,
 the outcomes page. Neither the title, the counts nor a notification marks
 anything read.
