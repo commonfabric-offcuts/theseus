@@ -52,6 +52,14 @@ test('a drag made backwards is extended from both of its ends, and a light that 
   assert.equal(f.reader.selectedPassage(), 'Beta two. Gamma three. Delta four.');
   assert.equal(f.lit(), f.reader.selectedPassage());
 
+  // Dragged from the second passage into the fourth, then extended back to
+  // the first: the light keeps all of the dragged fourth passage.
+  f.reader.light(f.spans[1], false);
+  f.selection.ranges = [{ startContainer: f.spans[1].text, startOffset: 2, endContainer: f.spans[3].text, endOffset: 2 }];
+  f.reader.light(f.spans[0], true);
+  assert.equal(f.reader.selectedPassage(), 'Alpha one. Beta two. Gamma three. Delta four.');
+  assert.equal(f.lit(), f.reader.selectedPassage());
+
   f.selection.ranges = [{ startContainer: f.spans[0].text, startOffset: 0, endContainer: f.spans[0].text, endOffset: 5 }];
   f.reader.light(f.spans[3], false);
   assert.equal(f.selection.rangeCount, 1, 'a plain click or move keeps the browser\'s selection');
