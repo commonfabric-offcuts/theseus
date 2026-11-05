@@ -140,6 +140,32 @@ clear a mark.
   untouched; other pages learn of it from the commit announcement and read
   `attention` and `marks` again.
 
+### Marks in the page
+
+- The topic page keeps, for each message, the highest mark revision anything
+  told it: every page of the `marks` view, an open's `editor_state`, a
+  receipt, a refusal's `current_versions`. A mark the page knew before a
+  `marks` read began and that read no longer lists has been cleared since.
+  It reads the marks at start, on Refresh, after each commit (beside the
+  rails), and after any recorded answer to a mark it sent.
+- Loaded cards show an Unread pill beside the author. When the person has
+  marks in the topic, a line says how many ("1 message marked unread") and
+  its Read it opens the oldest one in the Reader directly by its source,
+  however old; after it clears, Read it names the next.
+- The Reader's Mark unread button (pressed: Marked unread) marks and clears
+  the message it shows. A refusal adopts the revision Core names and says so.
+  Each request is kept per message, state and revision, and sent again as it
+  was until Core records an answer.
+- Only reading clears: a card's click or keypress, or Read it. That act
+  captures the revision the page knew for the message, and the open sends a
+  clear fenced on it only when the open succeeded with the source whole and
+  the message still marked, it is still the one shown, and the page is in
+  front; a page in the background sends it when shown again, if the same open
+  is still shown. An open that is superseded, closed, cancelled by Escape
+  before the Reader shows, or under way while the page leaves sends none, nor
+  does any other open (a Reader step, the Notebook, a correction). A mark
+  renewed while the open was under way survives, as its revision moved on.
+
 ## In the browser
 
 The page reads `attention` at start, after each announced commit, when the
