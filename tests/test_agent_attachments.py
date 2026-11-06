@@ -106,6 +106,30 @@ class AttachmentCase(test_agent_verbs.AgentVerbCase):
         self.assertIn("  [file: notes.txt, text/plain, %d bytes, id media-notes]\n" % len(notes), out)
         self.assertIn("  [image: image.png, image/png, ", out)
 
+    def test_a_failed_write_whose_partial_file_cannot_be_removed_says_so_and_is_refused_as_unavailable(self):
+        def fail(fd):
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+        def refuse(*args, **kwargs):
+            raise OSError(errno.EACCES, os.strerror(errno.EACCES))
+        with mock.patch.object(cli.os, "fsync", fail), mock.patch.object(cli.os, "unlink", refuse):
+            code, out, err = self.run_cli("attachment", self.media_id, "--message", self.message_id, "--out", str(self.out))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("OUT_UNAVAILABLE", err)
+        self.assertNotIn("CLI_REQUEST_UNCONFIRMED", err)
+        self.assertIn("a partial file may remain at %s" % self.out, err)
+
+    def test_a_failed_write_removes_only_the_file_it_created(self):
+        # Between the create and the removal, something else is put at the path.
+        def fail(fd):
+            os.rename(self.out, self.out.with_name("moved.png"))
+            self.out.write_bytes(b"someone else's")
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+        with mock.patch.object(cli.os, "fsync", fail):
+            code, out, err = self.run_cli("attachment", self.media_id, "--message", self.message_id, "--out", str(self.out))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("OUT_UNAVAILABLE", err)
+        self.assertEqual(self.out.read_bytes() if self.out.exists() else None, b"someone else's", "a file the attachment did not create is left alone")
+
     def test_sizes_read_as_a_person_would_say_them(self):
         self.assertEqual([cli._size(n) for n in (0, 1023, 1024, 140 * 1024 + 300, 1024 * 1024 - 513, 1024 * 1024 - 1, 1024 * 1024, 1536 * 1024)],
                          ["0 bytes", "1023 bytes", "1 KB", "140 KB", "1023 KB", "1.0 MB", "1.0 MB", "1.5 MB"])

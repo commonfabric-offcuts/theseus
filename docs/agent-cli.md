@@ -247,7 +247,10 @@ attachments. Anyone else, or an attachment the named message does not carry,
 is refused with `FORBIDDEN` and no file is written. Core checks the bytes
 against the attachment's size and sha256 before handing them over. A write
 that fails part way (a full disk, say) is refused with `OUT_UNAVAILABLE` and
-the part written is removed, so FILE never holds a partial copy. It prints
+the part written is removed, so FILE never holds a partial copy. It is removed
+only while FILE is still the file `attachment` created; when something else is
+there by then it is left alone, and when the removal itself fails the refusal
+is still `OUT_UNAVAILABLE` and says a partial file may remain. It prints
 `saved NAME (TYPE, N bytes, sha256 HEX) to FILE`, or with `--json`
 `{attachment, message_id, path}`. It sends no command and acknowledges nothing.
 

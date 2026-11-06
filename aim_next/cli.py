@@ -282,6 +282,20 @@ def _attachment_line(attachment):
                                          _size(attachment["size_bytes"]), attachment["id"])
 
 
+def _remove_partial(path, created):
+    """Removes the partial file this command created at path, while path still names that file
+    (created is its stat), and says what is left there."""
+    try:
+        if not os.path.samestat(os.stat(path, follow_symlinks=False), created):
+            return "the file now at %s is not the one this wrote, so it was left alone" % path
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        return "a partial file may remain at %s (%s)" % (path, error.strerror)
+    return "nothing was kept"
+
+
 def _one_line(text, size=120):
     line = " ".join(text.split())
     return line if len(line) <= size else line[:size - 1] + "…"
@@ -652,6 +666,7 @@ class Agent:
         try:
             # A new file only: an agent's earlier file is never replaced.
             fd = os.open(options.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            created = os.fstat(fd)
         except FileExistsError:
             self.refuse("OUT_EXISTS", "%s already exists; name a new file" % options.out)
         except OSError as error:
@@ -662,8 +677,7 @@ class Agent:
                 target.flush()
                 os.fsync(target.fileno())
         except OSError as error:
-            os.unlink(options.out)
-            self.refuse("OUT_UNAVAILABLE", "%s could not be written (%s); nothing was kept" % (options.out, error.strerror))
+            self.refuse("OUT_UNAVAILABLE", "%s could not be written (%s); %s" % (options.out, error.strerror, _remove_partial(options.out, created)))
         attachment = {key: descriptor[key] for key in ("name", "content_type", "size_bytes", "sha256", "inline")}
         self.out.raw({"attachment": dict(attachment, id=descriptor["media_id"]), "message_id": options.message, "path": options.out})
         self.out.plain("saved %s (%s, %s bytes, sha256 %s) to %s" % (descriptor["name"], descriptor["content_type"],
