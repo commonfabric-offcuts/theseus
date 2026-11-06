@@ -24,3 +24,11 @@ test('your own message stays black on hover, exactly as live: only its border ch
     assert.ok(contrast(rest[words], '#000000') >= 4.5, `${words} readable on black: ${contrast(rest[words], '#000000').toFixed(2)}`);
   for (const property of Object.keys(hover)) assert.doesNotMatch(property, /border-(left|inline-start)|box-shadow|outline/, 'no edge or bar');
 });
+
+test('your own message has a neutral border at rest, not the green that is Fable\'s: your colour is black', () => {
+  const border = rule('.message-card.own-message')['border-color'];
+  assert.match(border ?? '', /^#([0-9a-f]{3}){1,2}$/, 'a color of its own, not a token another color can set: ' + border);
+  const full = border.length === 4 ? '#' + [...border.slice(1)].map(c => c + c).join('') : border;
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(full.slice(i, i + 2), 16));
+  assert.ok(r === g && g === b, 'a grey or black, with no hue: ' + border);
+});

@@ -97,7 +97,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
   --accent: #79c7ab;
   background: #000;
   color: var(--ink);
-  border-color: var(--accent);
+  /* Neutral, as the card is. Black is this person's colour, and green is Fable's. */
+  border-color: #000;
 }
 .message-card.own-message:hover { background: #000; border-color: var(--ink); }
 /* Any other card under a pointer that can hover: a neutral ring, the quiet text color, on all four sides, as your own card's border changes; never a colored edge. */

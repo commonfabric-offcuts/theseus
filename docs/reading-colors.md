@@ -229,8 +229,9 @@ screenshots for review.
 ## Hovering your own message
 
 Your own card is black, at rest and under the pointer, exactly as it was
-live: hovering changes only its border, from the accent to the ink color,
-never its fill and never with an edge or bar. `tests/ui_own_hover.test.mjs`
+live. Its border at rest is black too, a neutral with no hue, never the green
+accent that is Fable's color. Hovering changes only its border, from black to
+the ink color, never its fill and never with an edge or bar. `tests/ui_own_hover.test.mjs`
 holds this from `aim.css`, and the native colors check reads the hovered
 card's fill from screenshot pixels on both sides.
 
