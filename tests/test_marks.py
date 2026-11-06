@@ -76,6 +76,29 @@ class MarkCountCase(MarkCase):
         self.committed(self.mark(message, False, 1))
         self.assertEqual(self.counts(), before)
 
+    def test_a_mark_on_your_own_message_counts_nowhere(self):
+        # Your own message is never unread for you: a mark on one is held, but no
+        # count, no list of marks, no Reader button and no New line shows it.
+        own = self.committed(self.post(actor="owner", body="Mine"))["message_id"]
+        theirs = self.read("Theirs, read already")
+        before = self.counts()
+        self.committed(self.mark(own, True, 0))
+        self.assertEqual(self.counts(), before, "counts in the topic, the outcome and the totals")
+        self.assertEqual(self.store.view("owner", "marks", {"topic_id": "t1"})["items"], [], "no Unread pill, no marks line")
+        self.assertIsNone(self.editor_mark(own), "the Reader offers no Mark unread on your own message")
+        self.assertIsNone(self.store.view("owner", "topic_unread", {"topic_id": "t1"})["oldest_unread"], "no New line")
+        # Someone else's message marked the same way counts in each.
+        self.committed(self.mark(theirs, True, 0))
+        topics, outcomes, total = self.counts()[:3]
+        self.assertEqual((topics["t1"][0], outcomes["w1"][0], total[0]), (before[0]["t1"][0] + 1, before[1]["w1"][0] + 1, before[2][0] + 1))
+        self.assertEqual([item["message_id"] for item in self.store.view("owner", "marks", {"topic_id": "t1"})["items"]], [theirs])
+        self.assertEqual(self.editor_mark(theirs), {"marked": True, "mark_revision": 1})
+        self.assertEqual(self.store.view("owner", "topic_unread", {"topic_id": "t1"})["oldest_unread"]["id"], theirs)
+        # agent-a's own mark on its own message counts nowhere for it either.
+        start = self.unread("agent-a")
+        self.committed(self.mark(theirs, True, 0, actor="agent-a"))
+        self.assertEqual(self.unread("agent-a"), start)
+
     def test_a_mark_changes_no_delivery_schedule_or_wake(self):
         message = self.read()
         self.committed(self.post(body="Waiting for the owner"))
@@ -261,7 +284,7 @@ class MarkReadCase(MarkCase):
         self.committed(self.mark(message, True, 0))
         before = self.records()
         self.assertEqual(self.editor_mark(message), {"marked": True, "mark_revision": 1})
-        self.assertEqual(self.editor_mark(message, "agent-a"), {"marked": False, "mark_revision": 0}, "a mark is the person's own")
+        self.assertEqual(self.editor_mark(message, "agent-b"), {"marked": False, "mark_revision": 0}, "a mark is the person's own")
         self.assertEqual(self.records(), before)
         self.committed(self.mark(message, False, 1))
         self.assertEqual(self.editor_mark(message), {"marked": False, "mark_revision": 2})
@@ -296,12 +319,12 @@ class MarkReadCase(MarkCase):
         for message in reversed(messages):
             self.committed(self.mark(message, True, 0))
         self.committed(self.mark(messages[2], False, 1))
-        self.committed(self.mark(messages[0], True, 0, actor="agent-a"))
+        self.committed(self.mark(messages[0], True, 0, actor="agent-b"))
         self.committed(self.command("opening.save", {"workspace_id": "w1", "topic_id": "t2", "title": "Second",
                                                      "participants": ["agent-a"], "body": "Elsewhere", "attachments": []},
                                     target={"opening_id": "o2"}, expected={"opening_revision": 0}))
-        elsewhere = self.committed(self.command("opening.publish", {}, target={"opening_id": "o2"},
-                                                expected={"opening_revision": 1}))["message_id"]
+        self.committed(self.command("opening.publish", {}, target={"opening_id": "o2"}, expected={"opening_revision": 1}))
+        elsewhere = self.committed(self.post(topic="t2", body="Elsewhere, by agent-a"))["message_id"]
         self.committed(self.mark(elsewhere, True, 0))
         pages, cursor = [], None
         while True:
@@ -316,7 +339,7 @@ class MarkReadCase(MarkCase):
                 break
         expected = [(message, self.seq(message), 1) for message in messages if message != messages[2]]
         self.assertEqual(pages, [expected[:2], expected[2:]])
-        self.assertEqual([item["message_id"] for item in self.store.view("agent-a", "marks", {"topic_id": "t1"})["items"]], [messages[0]])
+        self.assertEqual([item["message_id"] for item in self.store.view("agent-b", "marks", {"topic_id": "t1"})["items"]], [messages[0]])
         self.assertEqual([item["message_id"] for item in self.store.view("owner", "marks", {"topic_id": "t2"})["items"]], [elsewhere])
         self.assertEqual(self.store.view("outsider", "marks", {"topic_id": "t1"})["error"]["code"], "FORBIDDEN")
         self.assertEqual(self.store.view("owner", "marks", {"topic_id": "t1", "actor": "agent-a"})["error"]["code"], "INVALID_ARGUMENT")

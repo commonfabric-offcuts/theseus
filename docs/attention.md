@@ -197,7 +197,11 @@ then remove a fresh mark.
 
 A marked message adds one to `unread` in `workspace_topics`, `workspaces` and
 `attention`, and never to `addressed`, `latest_addressed` or
-`capabilities.attention.after`. It counts only while the person has no
+`capabilities.attention.after`. A message the person wrote is never unread for
+them, so a mark on one of their own messages counts nowhere: not in these
+counts, not in the `marks` view (so no Unread pill and no marks line), and not
+on the New line; `editor_state` offers no mark for it, so the Reader shows no
+Mark unread button there. `message.mark` still records it. It counts only while the person has no
 eligible pending delivery for the same message (pending in an active group,
 which the delivery terms already count), so a message is counted once.
 Leaving a topic cancels its subscription group and leaves that group's pending
@@ -217,11 +221,12 @@ clear a mark.
 
 ### Reading marks
 
-- `editor_state` carries `mark: {marked, mark_revision}` for a message
-  reference whose topic the person can read, and `mark: null` for any other
-  reference.
+- `editor_state` carries `mark: {marked, mark_revision}` for a message by
+  someone else whose topic the person can read, and `mark: null` for any other
+  reference, the person's own messages included.
 - The `marks` view takes `{topic_id, cursor, limit}` and needs topic access.
-  It lists the person's marked messages in that topic, oldest sequence first:
+  It lists the person's marked messages by others in that topic, oldest
+  sequence first:
   `items: [{message_id, seq, mark_revision}]` and `next_cursor` (the last
   sequence returned, or `null` at the end). `cursor` is an exclusive sequence
   lower bound; `limit` defaults to 50, at most 100.
@@ -279,7 +284,7 @@ line, the unread counts and the Unread pills never disagree:
   still waits on them ("Waiting on you") until they answer; the line is only
   about reading.
 - The reader's own messages never hold the line: they are never delivered to
-  them, and a mark on one is passed over. A delivery left pending by a
+  them, and a mark on one counts nowhere, as above. A delivery left pending by a
   subscription that leaving the topic cancelled is not unread either.
 
 `topic_messages` returns it on every page, in either direction, as
