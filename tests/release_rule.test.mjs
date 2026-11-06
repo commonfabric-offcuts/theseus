@@ -68,6 +68,15 @@ test('only a replaced main-frame document excuses: not a subframe, not the docum
   assert.deepEqual(f.errors, []);
 });
 
+test('a subframe navigating does not replace the main document its requests came from', () => {
+  const f = rule(sent('a', 'L1'));
+  f.r.refused(failure('a'), REFUSED);
+  f.r.observe(navigated('F2', 'L1'));
+  assert.deepEqual(f.outcome('a'), { excused: [], failed: 0, unsettled: true }, 'the main document is still L1');
+  f.r.observe(navigated('L2'));
+  assert.deepEqual(f.outcome('a'), { excused: ['document replaced'], failed: 0, unsettled: false });
+});
+
 test('any other refused release is a failure at once', () => {
   const f = rule(sent('a', 'L1'), navigated('L2'));
   f.r.refused(failure('a'), 'Some other protocol error');
