@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
+from .contract import LIMITS, READABLE, Refusal, _body, _identifier, _json, _page_size, _revision
 from .delivery import _now_ms
 from .work import work_by_topic
 
@@ -71,6 +71,25 @@ FIRST_UNANSWERED = ("SELECT m.id,m.seq FROM messages m INDEXED BY topic_messages
                     "AND m.seq>=coalesce((SELECT h.seq FROM reply_horizons h WHERE h.topic_id=?1 AND h.actor_id=?2),0) "
                     "AND m.author_id<>?2 AND NOT EXISTS (SELECT 1 FROM messages r INDEXED BY message_replies "
                     "WHERE r.reply_to=m.id AND r.author_id=?2) ORDER BY m.seq LIMIT 1")
+
+
+# Version 18: writing in a topic makes the writer one of its participants.
+# The upgrade makes each earlier writer one, oldest writer first while the
+# topic has room, when they can still read the topic and never had a
+# participation there. Someone who left stays out, and someone who lost the
+# outcome gains no topic back. The layout is unchanged, so the step back
+# keeps the participants, as version 17 can hold them.
+WRITER_BACKFILL = [
+    "INSERT INTO topic_participants(topic_id,actor_id,active,epoch) SELECT b.topic_id,b.author_id,1,1 FROM ("
+    "SELECT a.topic_id,a.author_id,row_number() OVER (PARTITION BY a.topic_id ORDER BY a.first_seq) AS n "
+    "FROM (SELECT topic_id,author_id,min(seq) AS first_seq FROM messages GROUP BY topic_id,author_id) a "
+    "JOIN topics t ON t.id=a.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+    "WHERE NOT EXISTS (SELECT 1 FROM topic_participants q WHERE q.topic_id=a.topic_id AND q.actor_id=a.author_id) "
+    "AND " + READABLE.replace(":actor", "a.author_id") + ") b "
+    "WHERE b.n+(SELECT count(*) FROM topic_participants c WHERE c.topic_id=b.topic_id AND c.active=1)<=%d" % LIMITS["topic_participants"],
+]
+WRITER_DOWN = ()
+WRITER_OCCUPIED = "SELECT 0"
 
 
 POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent"}
