@@ -1,15 +1,16 @@
-import { PAGE } from './topic-navigation.mjs';
+import { PAGE, paintChanged } from './topic-navigation.mjs';
 
-// The outcome's own Notebook, above a topic's messages: what every topic in
-// the outcome stands on, such as its architecture, ways of working and
-// guidelines. Closed it is one line; open, a title per item, each opening in
-// the Reader. A reader outside the outcome cannot list its Notebook and sees
-// nothing; a read that fails says so and keeps what was last shown. The
-// topic's changes do not cover the outcome's Notebook, so each read tells
+// The outcome's own Notebook pages, in the sidebar beside its topics: what
+// every topic in the outcome stands on, such as its architecture, ways of
+// working and guidelines. Each page is a row like a topic's, by title, and
+// opens in the Reader. A page the reader read before and that was revised
+// since carries the count of its new revisions until they open it again. A reader outside the outcome cannot list its Notebook
+// and sees nothing; a read that fails says so and keeps what was last shown.
+// The topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
 export class OutcomeReferences {
-  constructor({ scope, host, count, list, more, message, read, open, denied, seen = () => {}, pageMax = PAGE }) {
-    Object.assign(this, { scope, host, count, list, more, message, read, open, isDenied: denied, seen, pageMax });
+  constructor({ scope, host, list, more, message, read, open, denied, seen = () => {}, pageMax = PAGE }) {
+    Object.assign(this, { scope, host, list, more, message, read, open, isDenied: denied, seen, pageMax });
     this.items = []; this.next = null; this.loading = null; this.queued = null;
     more.onclick = () => this.load(true);
   }
@@ -19,14 +20,14 @@ export class OutcomeReferences {
     this.items.forEach((item, index) => {
       let row = [...this.list.children].find(child => child.dataset.id === item.id);
       if (!row) {
-        row = document.createElement('button'); row.type = 'button'; row.className = 'reference'; row.dataset.id = item.id;
+        row = document.createElement('button'); row.type = 'button'; row.className = 'nav-item reference'; row.dataset.id = item.id;
         this.list.append(row);
       }
       row.textContent = item.title || 'Notebook item';
+      paintChanged(row, item);
       row.onclick = () => this.open(item.source_ref, row);
       if (this.list.children[index] !== row) this.list.insertBefore(row, this.list.children[index] ?? null);
     });
-    this.count.textContent = this.next === null ? String(this.items.length) : `${this.items.length}+`;
     this.more.hidden = this.next === null;
     this.host.hidden = this.items.length === 0 && this.message.hidden;
   }
@@ -70,7 +71,8 @@ export class OutcomeReferences {
     for (const item of Array.isArray(answer?.items) ? answer.items : [null]) {
       if (typeof item?.id !== 'string' || ids.has(item.id) || !Number.isSafeInteger(item.seq) || item.seq <= previous ||
           !Number.isSafeInteger(item.revision) || item.revision < 1 || item.owner_scope?.kind !== 'workspace' || item.owner_scope.id !== this.scope ||
-          item.source_ref?.kind !== 'memory' || item.source_ref.id !== item.id || item.source_ref.revision !== item.revision) {
+          item.source_ref?.kind !== 'memory' || item.source_ref.id !== item.id || item.source_ref.revision !== item.revision ||
+          item.read_revision !== undefined && !(Number.isSafeInteger(item.read_revision) && item.read_revision >= 0 && item.read_revision <= item.revision)) {
         throw Error('The outcome references are malformed.');
       }
       ids.add(item.id); previous = item.seq;

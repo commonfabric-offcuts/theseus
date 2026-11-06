@@ -414,11 +414,27 @@ const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 export function paintUnread(host, item) {
   if (!(Number.isSafeInteger(item.unread) && item.unread > 0)) return;
   const addressed = Number.isSafeInteger(item.addressed) && item.addressed > 0 ? item.addressed : 0;
+  paintCount(host, item.unread, addressed ? 'unread-count addressed' : 'unread-count',
+    `, ${item.unread} unread` + (addressed ? `, ${addressed} sent to you by name` : ''));
+}
+// The revisions of a Notebook page since the reader last read it: 0 for a
+// page they have not read, or have read as it now stands.
+export function changedSince(item) {
+  return Number.isSafeInteger(item.read_revision) && item.read_revision > 0 && Number.isSafeInteger(item.revision) &&
+    item.revision > item.read_revision ? item.revision - item.read_revision : 0;
+}
+// A Notebook page read before and revised since wears the count of its new
+// revisions as a topic wears its unread count, until the reader opens it.
+export function paintChanged(host, item) {
+  const since = changedSince(item);
+  if (since) paintCount(host, since, 'unread-count changed', `, changed since you read it, ${since} new revision${since === 1 ? '' : 's'}`);
+}
+function paintCount(host, count, className, said) {
   const badge = document.createElement('span'), spoken = document.createElement('span');
-  badge.className = addressed ? 'unread-count addressed' : 'unread-count';
-  badge.textContent = String(item.unread); badge.setAttribute('aria-hidden', 'true');
+  badge.className = className;
+  badge.textContent = String(count); badge.setAttribute('aria-hidden', 'true');
   spoken.className = 'sr-only';
-  spoken.textContent = `, ${item.unread} unread` + (addressed ? `, ${addressed} sent to you by name` : '');
+  spoken.textContent = said;
   // The title's last character (a whole grapheme) and the count never part, so a title that
   // wraps keeps its count on its last line; the rest still wraps anywhere, so
   // a long unbroken ending cannot push the row wider.

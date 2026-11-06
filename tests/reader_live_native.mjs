@@ -874,7 +874,7 @@ export async function liveChecks({ check, page, until, control, observations, or
 
   // Last, because it adds to the outcome's Notebook, which every later topic
   // page would list.
-  await check('live the outcome Notebook is listed atop a topic, opens whole in the Reader, and follows a revision', async () => {
+  await check('live the outcome Notebook pages sit in the sidebar beside the topics, open whole in the Reader, and follow a revision', async () => {
     const p = await page('live-outcome-references', null, true);
     await settled(p);
     const rows = () => p.evaluate("[...document.querySelectorAll('#outcome-references-list .reference')].map(row => row.textContent)");
@@ -882,10 +882,12 @@ export async function liveChecks({ check, page, until, control, observations, or
     await control({ method: 'outcome_reference', operation_id: 'live-outcome-reference', item_id: 'live-outcome-reference',
       title: 'Architecture', body: 'The outcome passage every topic stands on.' });
     await until(() => p.evaluate("!document.querySelector('#outcome-references').hidden"), 'the outcome Notebook appears without a reload');
-    assert.equal(await p.evaluate("document.querySelector('#outcome-references details').open"), false, 'it starts closed');
-    assert.equal(await p.evaluate("document.querySelector('#outcome-references-count').textContent"), '1');
-    await p.point('#outcome-references summary');
+    assert.equal(await p.evaluate("document.querySelector('.rail').contains(document.querySelector('#outcome-references'))"), true, 'the pages are in the sidebar');
     assert.deepEqual(await rows(), ['Architecture']);
+    // A page's row is a row like a topic's: as tall, and in the same column.
+    const boxes = await p.evaluate("(()=>{const t=document.querySelector('#topics .nav-item').getBoundingClientRect(),r=document.querySelector('#outcome-references-list .reference').getBoundingClientRect();return {topic:[t.left,t.height],page:[r.left,r.height]}})()");
+    assert.equal(boxes.page[0], boxes.topic[0], 'pages line up with topics');
+    assert.ok(boxes.page[1] >= 44, 'a page row is a full touch target: ' + boxes.page[1]);
     await p.point('#outcome-references-list .reference');
     await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('The outcome passage every topic stands on.')"), 'the Reader shows the item whole');
     await control({ method: 'memory_revise', operation_id: 'live-outcome-reference-revise', item_id: 'live-outcome-reference',
@@ -911,7 +913,6 @@ export async function liveChecks({ check, page, until, control, observations, or
     const has = (selector, text) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent.includes(${JSON.stringify(text)})`);
     const open = async title => {
       await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.textContent === ${JSON.stringify(title)}`), `the outcome Notebook lists ${title}`);
-      if (!await p.evaluate("document.querySelector('#outcome-references details').open")) await p.point('#outcome-references summary');
       await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
       await p.point(row);
       await until(() => p.evaluate("document.querySelector('#reader').open"), 'the Reader opens the page');

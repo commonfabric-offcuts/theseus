@@ -7,7 +7,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
-import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref } from './topic-navigation.mjs';
+import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
@@ -28,6 +28,8 @@ import { placeNewLine } from './unanswered.mjs';
 import { cardClass, agentColor, paneClass } from './author-colors.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
+import { PageReads } from './page-reads.mjs';
+import { PageHere } from './page-here.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -43,7 +45,7 @@ let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 let topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
-let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null;
+let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
@@ -381,6 +383,8 @@ async function present(presentation) {
     }
     paintReaderMark();
     noteRead();
+    pageShown = shown.kind === 'memory' && !presentation.sourceUnavailable ? presentation : null;
+    notePageRead();
   }
   const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
@@ -390,6 +394,32 @@ async function present(presentation) {
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   sourceAttachments(presentation);
+}
+// A Notebook page shown in the Reader is read once the person can see it, as
+// a message is (noteRead): in a visible, focused page. One shown in the
+// background, such as a Reader restored on load, is read when the page comes
+// forward, if it is still the one shown.
+let pageShown = null;
+function notePageRead() {
+  const presentation = pageShown;
+  if (!presentation || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  pageShown = null;
+  if (registry.isSourceCurrent(presentation) && !presentation.sourceUnavailable) run(() => readPage(presentation));
+}
+// A read Core did not record says so in the Reader, and the page keeps its
+// light. A page the person read at an older revision shows what changed
+// since then.
+async function readPage(presentation) {
+  const current = () => registry.isSourceCurrent(presentation) && !presentation.sourceUnavailable;
+  let since;
+  try { since = await pageReads.opened(presentation.source); }
+  catch (error) { if (current()) reader.notice(error.message); return; }
+  if (since === null || !current()) return;
+  const ref = { ...presentation.source.source_ref, revision: since };
+  let earlier;
+  try { earlier = checkedView(await registry.cleanup.list(options => api.view('source', ref, options)), bootstrap.instance_id); }
+  catch (error) { if (current()) reader.notice(`What changed since revision ${since} could not be read. ${error.message}`); return; }
+  if (current()) reader.showChanges(since, earlier.body ?? '', presentation.source.body ?? '');
 }
 // A reply to someone else's message in this topic goes to its author unless
 // the person removes them; the offer is made once for each reply editor, and
@@ -563,9 +593,12 @@ function paintViews(kind) {
       card = button('', () => openSource(item.source_ref, card)); card.className = 'memory-card';
       card.dataset.id = item.id; card.append(node('strong'), node('span')); $('memory-items').append(card);
     }
-    const identity = sourceIdentity(item.source_ref);
-    if (card.dataset.source !== identity) {
-      card.dataset.source = identity; card.querySelector('strong').textContent = item.title || 'Notebook item'; card.querySelector('span').textContent = item.body;
+    // A page read before and revised since wears its light, as in the sidebar.
+    const identity = sourceIdentity(item.source_ref), changed = String(changedSince(item));
+    if (card.dataset.source !== identity || card.dataset.changed !== changed) {
+      const [title, body] = card.children;
+      card.dataset.source = identity; card.dataset.changed = changed;
+      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item); body.textContent = item.body;
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
@@ -640,6 +673,13 @@ function loadMarks() {
   if (!marks || topicUnavailable) return Promise.resolve(true);
   if (authorityReviewPending()) return Promise.resolve(false);
   return marks.load(topic.id, async args => checkedView(await registry.cleanup.list(options => api.view('marks', args, options)), bootstrap.instance_id));
+}
+// The topic's own Notebook pages' read state, as loadMarks: nothing for a
+// denied topic, and owed while the runtime changed.
+function loadReadState() {
+  if (topicUnavailable) return Promise.resolve(true);
+  if (authorityReviewPending()) return Promise.resolve(false);
+  return views.readState((name, args) => registry.cleanup.list(options => api.view(name, args, options)), pageMax());
 }
 async function toggleMark() {
   const p = registry.current, ref = p?.source?.source_ref;
@@ -1047,6 +1087,11 @@ async function initialize() {
   marks = new Marks({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current, cancelOpen: () => registry.cancelOpen(),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   marks.listen(paintMarks);
+  pageReads = new PageReads({ recorded: () => { if (commitReload) run(commitReload); }, send: (id, revision) => {
+    const { authority_id, authority_epoch } = registry.runtime.current;
+    return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'memory.read',
+      target: { item_id: id }, expected: { authority: { authority_id, authority_epoch } }, args: { revision } });
+  } });
   $('mark-unread').onclick = () => run(toggleMark);
   $('read-mark').onclick = () => run(() => {
     const next = marks.marked(topic.id)[0];
@@ -1065,6 +1110,8 @@ async function initialize() {
   middleObserver = new IntersectionObserver(cardsSeen(atMiddle, entry => entry.isIntersecting), { rootMargin: '-50% 0px -50% 0px', threshold: 0 });
   document.addEventListener('visibilitychange', noteRead);
   window.addEventListener('focus', noteRead);
+  document.addEventListener('visibilitychange', notePageRead);
+  window.addEventListener('focus', notePageRead);
   topicNavigation = new TopicNavigation({ registry, current:route,
     navigateTarget: target => { marks.leave(); location.assign(routeHref(target)); } });
   await initializeInlineComposer();
@@ -1081,7 +1128,7 @@ async function initialize() {
     open: (id, title) => openDestination({kind:'topic',id},title),
   });
   topicRail.load();
-  outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'), count: $('outcome-references-count'),
+  outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'),
     list: $('outcome-references-list'), more: $('more-references'), message: $('outcome-references-status'), pageMax: pageMax(),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
@@ -1096,10 +1143,12 @@ async function initialize() {
   outcomeReferences.load();
   // The open topic's marks are the person's own, read by the person's scope
   // and paged; the open Reader's button follows them. The New line follows
-  // what the person has read, here or anywhere else.
+  // what the person has read, here or anywhere else. The topic's own Notebook
+  // pages' read state is read again too, so a page read since, here or
+  // elsewhere, loses its light.
   commitReload = followCommits(async () => {
-    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks(), unread = await loadUnread();
-    return outcomes !== false && topics !== false && references !== false && marked !== false && unread !== false;
+    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks(), unread = await loadUnread(), read = await loadReadState();
+    return outcomes !== false && topics !== false && references !== false && marked !== false && unread !== false && read !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);
@@ -1283,7 +1332,8 @@ async function initializeOutcomePage(route) {
     $('refresh').onclick=()=>run(reload);
     await reload();
   } else {
-    $('outcome-page').append($('topic-navigation'));
+    // The outcome's Notebook pages are listed after its topics, and one opens in place below them.
+    $('outcome-page').append($('topic-navigation'),$('outcome-references'),$('page-here'));
     initializeOutcomeNavigation(route.id);
     let refreshSerial=0;
     const refresh=async()=>{
@@ -1296,6 +1346,8 @@ async function initializeOutcomePage(route) {
         if(readFailure(error).kind==='forbidden') {
           $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
+          // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
+          $('outcome-references').hidden=true;$('page-here').hidden=true;
         }
         throw error;
       }
@@ -1311,7 +1363,8 @@ async function initializeOutcomePage(route) {
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
         open:(id,title)=>openDestination({kind:'topic',id},title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
-      return topicRail.load();
+      if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
+      return (await Promise.all([topicRail.load(),outcomeReferences.load()])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
     // topics, and the outcome rail beside them carries counts too.
@@ -1319,6 +1372,19 @@ async function initializeOutcomePage(route) {
     $('refresh').onclick=()=>run(reload);await reload();
   }
   document.body.dataset.ready='true';
+}
+// An outcome's Notebook pages on its own page, each opening in place.
+function outcomePages(workspace,recorded) {
+  const view=async(name,args)=>checkedView(await api.view(name,args,{readClass:'foreground'}),bootstrap.instance_id);
+  const reads=new PageReads({recorded,send:(id,revision)=>{
+    const {authority_id,authority_epoch}=bootstrap.authority;
+    return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
+      target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
+  }});
+  const here=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref)});
+  return new OutcomeReferences({scope:workspace,host:$('outcome-references'),list:$('outcome-references-list'),more:$('more-references'),
+    message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
+    read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>here.open(ref,row))});
 }
 // An outcome's team, which its owner may change.
 let teamPanel=null;

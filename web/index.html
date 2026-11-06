@@ -41,16 +41,22 @@
       <details id="archived-topics" class="topic-group" hidden><summary id="archived-topics-label">Archived</summary><div id="archived-topic-list" class="topic-list" aria-label="Archived topics"></div><button id="more-archived-topics" type="button" hidden>More archived topics</button></details>
       <p id="outcome-empty" class="empty" hidden>No topics yet. Start the first topic in this outcome.</p>
       </section>
+      <section id="outcome-references" class="notebook-navigation" aria-labelledby="notebook-heading" hidden>
+      <div class="rail-heading"><h2 id="notebook-heading">Outcome Notebook</h2></div>
+      <div id="outcome-references-status" class="notice" role="status" hidden></div>
+      <div id="outcome-references-list" aria-labelledby="notebook-heading"></div>
+      <button id="more-references" type="button" hidden>More pages</button>
+      </section>
     </nav>
     <main id="main" tabindex="-1">
       <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><h1 id="topic-title"></h1><p id="topic-description" class="muted"></p></div></header>
-      <section id="outcome-references" class="outcome-references" aria-label="Outcome references" hidden><details><summary>Outcome references <span id="outcome-references-count" class="muted"></span></summary><div id="outcome-references-list"></div><button id="more-references" type="button" hidden>More references</button></details><div id="outcome-references-status" class="notice" role="status" hidden></div></section>
       <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
       <section id="topic-state" class="topic-state-panel" aria-label="Where this topic stands" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
       <section id="outcome-page" class="selection-page" hidden></section>
       <section id="outcome-team" class="outcome-team" aria-labelledby="team-heading" hidden><h2 id="team-heading">Team</h2><div id="team-people"></div></section>
       <section id="unfinished-work" class="selection-page" aria-label="Unfinished work" hidden></section>
+      <section id="page-here" class="page-here" aria-label="Notebook page" hidden></section>
       <div id="participants" class="participants" aria-label="Topic participants"></div>
       <section id="topic-pending" aria-label="Your pending replies"></section>
       <p id="topic-marks" class="topic-marks" hidden><span id="topic-marks-words"></span><span aria-hidden="true">·</span><button id="read-mark" type="button">Read it</button></p>
@@ -90,6 +96,7 @@
         <div id="source-access-status" class="notice" role="status" hidden></div>
         <div id="source-update" class="notice" hidden></div>
         <div id="revision-offer" class="notice" hidden><span>A newer Notebook revision is available. </span><button id="open-revision" type="button">Open revision</button></div>
+        <details id="source-changes" class="source-changes" open hidden><summary id="source-changes-title">What changed</summary><div id="source-changes-body"></div></details>
         <article id="source-body" tabindex="0" aria-label="Read and select source text"></article>
         <div id="source-attachments" class="attachments"></div>
         <footer class="source-actions">

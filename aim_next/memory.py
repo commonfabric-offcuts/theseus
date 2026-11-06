@@ -16,6 +16,15 @@ MEMORY_SCHEMA = [
     "CREATE TRIGGER immutable_memory_identity BEFORE UPDATE ON memory_items WHEN NEW.seq!=OLD.seq OR NEW.id!=OLD.id OR NEW.scope_kind!=OLD.scope_kind OR NEW.scope_id!=OLD.scope_id OR NEW.creator_id!=OLD.creator_id BEGIN SELECT RAISE(ABORT, 'immutable Notebook identity'); END",
     "CREATE TRIGGER immutable_memory_item_delete BEFORE DELETE ON memory_items BEGIN SELECT RAISE(ABORT, 'immutable Notebook identity'); END",
 ]
+# The revision of each Notebook page each person last read. It only grows, and
+# no row means the person has not read the page. A page read earlier and
+# revised since is one that changed since they read it.
+MEMORY_READ_SCHEMA = [
+    "CREATE TABLE memory_reads (actor_id TEXT NOT NULL REFERENCES actors(id), item_id TEXT NOT NULL REFERENCES memory_items(id), "
+    "revision INTEGER NOT NULL CHECK(revision>0), PRIMARY KEY(actor_id,item_id))",
+]
+MEMORY_READ_DOWN = ("DROP TABLE memory_reads",)
+MEMORY_READ_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM memory_reads)"
 
 
 class Memory:
@@ -109,6 +118,10 @@ class Memory:
             db.execute("UPDATE memory_items SET current_revision=? WHERE id=?", (revision + 1, item_id))
         db.execute("INSERT INTO memory_revisions VALUES (?,?,?,?,?,?,?,?)", (item_id, revision + 1, actor,
                    envelope["operation_id"], title, body, _json(attachments), _json(refs)))
+        # Whoever writes a revision has read it, so their own edit never marks
+        # the page changed for them. The write is already its own change.
+        db.execute("INSERT INTO memory_reads(actor_id,item_id,revision) VALUES (?,?,?) "
+                   "ON CONFLICT(actor_id,item_id) DO UPDATE SET revision=excluded.revision", (actor, item_id, revision + 1))
         db.execute("INSERT INTO memory_notebooks VALUES (?,?,1) ON CONFLICT(scope_kind,scope_id) DO UPDATE SET version=version+1", (scope["kind"], scope["id"]))
         notebook_version = db.execute("SELECT version FROM memory_notebooks WHERE scope_kind=? AND scope_id=?", (scope["kind"], scope["id"])).fetchone()[0]
         self._change(db, scope["kind"], scope["id"], "memory", item_id, revision + 1)
@@ -117,6 +130,30 @@ class Memory:
                 "source_ref": ref, "notebook_version": notebook_version}, [
                     {"kind": "memory", "id": item_id, "version": revision + 1},
                     {"kind": "notebook", "id": scope["id"], "scope_kind": scope["kind"], "version": notebook_version}]
+
+    def _memory_read(self, db, actor, item_id):
+        row = db.execute("SELECT revision FROM memory_reads WHERE actor_id=? AND item_id=?", (actor, item_id)).fetchone()
+        return row[0] if row else 0
+
+    def _command_memory_read(self, db, actor, envelope):
+        """The reader has read this exact revision of a Notebook page they can read.
+
+        A read only moves forward: reading an older revision, or the same one
+        again, leaves the later one in place, so a late request never makes a
+        page look changed again."""
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"item_id"} or set(args) != {"revision"}:
+            raise Refusal("INVALID_ARGUMENT", "Name one Notebook page and the revision read")
+        item = self._memory_ref(db, actor, {"kind": "memory", "id": target["item_id"], "revision": args["revision"]})
+        previous = self._memory_read(db, actor, item["id"])
+        result = {"item_id": item["id"], "previous_revision": previous, "current_revision": item["current_revision"]}
+        if args["revision"] <= previous:
+            return dict(result, read_revision=previous, changed=False), []
+        db.execute("INSERT INTO memory_reads(actor_id,item_id,revision) VALUES (?,?,?) "
+                   "ON CONFLICT(actor_id,item_id) DO UPDATE SET revision=excluded.revision", (actor, item["id"], args["revision"]))
+        self._change(db, "actor", actor, "memory_read", item["id"], args["revision"])
+        return dict(result, read_revision=args["revision"], changed=True), [
+            {"kind": "memory_read", "id": item["id"], "version": args["revision"]}]
 
     def _memory_source(self, db, actor, ref):
         item = self._memory_ref(db, actor, ref)
@@ -132,8 +169,10 @@ class Memory:
     def _view_memory_items(self, db, actor, args):
         scope = self._memory_scope(db, actor, args.get("owner_scope"))
         limit = _page_size(args)
-        rows = db.execute("SELECT i.*,r.author_id,substr(r.title,1,256) AS title,substr(r.body,1,1024) AS body,length(CAST(r.body AS BLOB)) AS body_bytes FROM memory_items i JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision WHERE i.scope_kind=? AND i.scope_id=? AND i.seq>? ORDER BY i.seq LIMIT ?",
-                          (scope["kind"], scope["id"], args.get("cursor", 0), limit + 1)).fetchall()
+        rows = db.execute("SELECT i.*,r.author_id,substr(r.title,1,256) AS title,substr(r.body,1,1024) AS body,length(CAST(r.body AS BLOB)) AS body_bytes,"
+                          "coalesce(k.revision,0) AS read_revision FROM memory_items i JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
+                          "LEFT JOIN memory_reads k ON k.actor_id=? AND k.item_id=i.id WHERE i.scope_kind=? AND i.scope_id=? AND i.seq>? ORDER BY i.seq LIMIT ?",
+                          (actor, scope["kind"], scope["id"], args.get("cursor", 0), limit + 1)).fetchall()
         items, size = [], 1024
         for row in rows[:limit]:
             body = _preview(row["body"])
@@ -141,7 +180,8 @@ class Memory:
                     "title": _preview(row["title"], 256), "body": body,
                     "preview": len(body.encode("utf-8")) < row["body_bytes"],
                     "source_ref": {"kind": "memory", "id": row["id"], "revision": row["current_revision"]},
-                    "revision": row["current_revision"], "author": row["author_id"], "allowed_actions": ["quote", "note.save"]}
+                    "revision": row["current_revision"], "read_revision": row["read_revision"],
+                    "author": row["author_id"], "allowed_actions": ["quote", "note.save"]}
             encoded = len(_json(item).encode("utf-8")) + 1
             if size + encoded > LIMITS["summary_utf8_bytes"]:
                 break

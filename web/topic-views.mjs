@@ -95,15 +95,37 @@ export class TopicViews {
   validMemory(item) {
     if (!item || typeof item.id !== 'string' || !integer(item.seq) || item.seq < 1 || !integer(item.revision) || item.revision < 1 ||
         item.owner_scope?.kind !== 'topic' || item.owner_scope.id !== this.topicId || item.source_ref?.kind !== 'memory' ||
-        item.source_ref.id !== item.id || item.source_ref.revision !== item.revision || typeof item.body !== 'string') throw invalid('The Notebook summary has a different identity.');
+        item.source_ref.id !== item.id || item.source_ref.revision !== item.revision || typeof item.body !== 'string' ||
+        item.read_revision !== undefined && !(integer(item.read_revision) && item.read_revision <= item.revision)) throw invalid('The Notebook summary has a different identity.');
     const old = this.memory.get(item.id);
     if (old && old.seq !== item.seq) throw invalid('The Notebook item moved to another sequence.');
   }
   memoryItem(item) {
     this.validMemory(item);
     const old = this.memory.get(item.id);
+    // A read only moves forward, so an answer older than the one shown, at
+    // the same revision, never relights a page the reader has read since.
+    if (old && item.revision === old.revision && (old.read_revision ?? 0) > (item.read_revision ?? 0)) item = { ...item, read_revision: old.read_revision };
     if (!old || item.revision >= old.revision) this.memory.set(item.id, item);
     this.retain(); this.revisions.observe(item.id, item.revision);
+  }
+  // The reader's own read state of every loaded Notebook page, read again
+  // from the start of the Notebook through the last page loaded, so a page
+  // read since, here or on another device, loses its light. Pages not loaded
+  // stay unloaded, and the Notebook's own paging is left where it was.
+  async readState(read, pageMax = 20) {
+    if (!this.memory.size) return true;
+    const limit = Math.min(pageMax, Math.max(20, this.memory.size));
+    let cursor = 0;
+    do {
+      const answer = this.page(await read('memory_items', { owner_scope: this.scope, cursor, limit }), 'notebook');
+      let previous = cursor;
+      for (const item of answer.items) { this.validMemory(item); if (item.seq <= previous) throw invalid('Notebook paging moved backwards.'); previous = item.seq; }
+      for (const item of answer.items) if (this.memory.has(item.id)) this.memoryItem(item);
+      if (answer.next_cursor !== null && answer.next_cursor <= cursor) throw invalid('Notebook continuation made no progress.');
+      cursor = answer.next_cursor;
+    } while (cursor !== null && cursor < this.memoryTail);
+    this.paint('memory'); this.paint('offer'); return true;
   }
   memoryPage(answer, { initial = false, cursor, live = false } = {}) {
     this.page(answer, 'notebook');
