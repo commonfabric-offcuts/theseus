@@ -329,10 +329,11 @@ class Conversation:
         backwards = args.get("direction", "after") == "before"
         relation, order = ("<", "DESC") if backwards else (">", "ASC")
         cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
-        # A reply says whose message it answers, and how that message begins.
-        columns = ("m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms,"
+        # A reply says whose message it answers, and how that message begins;
+        # every message says whether a person or an agent wrote it.
+        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms,"
                    "p.author_id AS reply_to_author,substr(p.body,1,120) AS reply_to_excerpt")
-        parent = " LEFT JOIN messages p ON p.id=m.reply_to"
+        parent = " JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
         if args.get("audience", "all") == "reader":
             unaddressed = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=? AND m.addressees='[]' AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
             addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=? AND actor_id=? AND seq" + relation + "? ORDER BY seq " + order + " LIMIT ?) a JOIN messages m ON m.seq=a.seq" + parent, (topic["id"], actor, cursor, limit + 1)).fetchall()

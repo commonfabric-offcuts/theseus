@@ -24,6 +24,7 @@ import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
+import { cardClass } from './author-colors.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -523,7 +524,7 @@ function paintViews(kind) {
     if (!card) {
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
-      card = button('', () => openSource(ref, card, marks.capture(item.id))); card.className = item.author_id === bootstrap.actor ? 'message-card own-message' : 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
+      card = button('', () => openSource(ref, card, marks.capture(item.id))); card.className = cardClass(item, bootstrap.actor); card.dataset.id = item.id; card.dataset.seq = item.seq;
       const author = node('span', undefined, 'message-author');
       paintCardAuthor(author, item);
       card.append(author);

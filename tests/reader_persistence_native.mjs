@@ -9,6 +9,7 @@ import { liveChecks } from './reader_live_native.mjs';
 import { renderChecks } from './render_native.mjs';
 import { inlineChecks } from './reader_inline_native.mjs';
 import { readingColorsCheck } from './reader_colors_native.mjs';
+import { agentColorsCheck } from './agent_colors_native.mjs';
 import { navigationChecks } from './reader_navigation_native.mjs';
 import { departureChecks, assertDepartureTrace } from './reader_departure_native.mjs';
 import { ReleaseRule } from './release-rule.mjs';
@@ -37,7 +38,7 @@ async function until(probe, description, timeout = 8000) {
   while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
   throw Error(`Timed out: ${description}`);
 }
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(['--live','--colors'].includes(mode) ? ['--live'] : []), ...(liveUpdatesFixture ? ['--freshness', '--images', '--media', ...(legacyAdmission ? ['--legacy-read-admission'] : []), ...(baseline ? ['--baseline-read-admission'] : [])] : mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(['--live','--colors'].includes(mode) ? ['--live'] : []), ...(mode === '--colors' ? ['--agent-colors'] : []), ...(liveUpdatesFixture ? ['--freshness', '--images', '--media', ...(legacyAdmission ? ['--legacy-read-admission'] : []), ...(baseline ? ['--baseline-read-admission'] : [])] : mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
@@ -54,7 +55,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of [...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs', ...(mode === '--live' ? ['web/live.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
+for (const filename of [...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/agent_colors_native.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py','web/author-colors.mjs','web/marks.mjs']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs', ...(mode === '--live' ? ['web/live.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -541,6 +542,7 @@ try {
     };
     if (mode === '--colors') {
       await readingColorsCheck({check,page,until,facts,view,control,field,shot,observations});
+      await agentColorsCheck({check,page,until,facts,control,shot,observations});
     } else if (mode === '--inline') {
       await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});
     } else if (mode === '--navigation') {

@@ -180,19 +180,25 @@ export const marksWords = count => `${count} message${count === 1 ? '' : 's'} ma
 
 // A card's author line: the name, an Unread pill when the message is marked,
 // joined to the name's last character (a whole grapheme) so a name that wraps
-// keeps the pill on its last line, then the time.
+// keeps the pill on its last line, then the time. The name is held in
+// author-name spans, which an agent's card colors as one: split for a pill,
+// its first part is the start and its last character the end.
 export function paintAuthor(author, name, time, marked) {
   const shows = JSON.stringify([name, time, marked]);
   if (author.dataset.shows === shows) return;
   author.dataset.shows = shows;
   author.replaceChildren();
   const last = marked && name ? Array.from(graphemes.segment(name)).at(-1).segment : '';
-  author.append(name.slice(0, name.length - last.length));
+  const named = document.createElement('span');
+  named.className = marked ? 'author-name author-name-start' : 'author-name'; named.append(name.slice(0, name.length - last.length));
+  author.append(named);
   if (marked) {
     const together = document.createElement('span'), pill = document.createElement('span'), spoken = document.createElement('span');
     together.className = 'together'; pill.className = 'unread-mark'; pill.textContent = 'Unread'; pill.setAttribute('aria-hidden', 'true');
     spoken.className = 'sr-only'; spoken.textContent = ', marked unread';
-    together.append(last, pill, spoken); author.append(together);
+    const end = document.createElement('span');
+    end.className = 'author-name author-name-end'; end.append(last);
+    together.append(end, pill, spoken); author.append(together);
   }
   if (time) { const at = document.createElement('span'); at.className = 'message-time'; at.textContent = ` · ${time}`; author.append(at); }
 }

@@ -15,6 +15,7 @@ import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
 import { replyLine } from '../web/replies.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
+import { cardClass } from '../web/author-colors.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -72,7 +73,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, replyLine, placeNewLine, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, replyLine, placeNewLine, cardClass, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -951,7 +952,8 @@ test('a card in the topic log says when its message was sent, and a message from
   f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'fable', body: 'Untimed', topic_id: 't1', sent_ms: null });
   f.paintViews('messages');
   const author = id => f.get('messages').children.find(card => card.dataset.id === id).children[0];
-  const parts = id => author(id).children.map(node => typeof node === 'string' ? node : node.textContent);
+  const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
+  const parts = id => author(id).children.map(text);
   assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM Thu Nov 5']);
   assert.deepEqual(parts('m2'), ['fable']);
 });
@@ -1307,4 +1309,13 @@ test('at the top of a topic a new message comes into view; read further down, th
   assert.deepEqual(scrolls, [100], 'read further down, the card in view is held where it was');
   listTop = -100; add(28); paint();
   assert.deepEqual(scrolls, [100, 100], 'the newest card just out of sight above: the card that heads the view is held too');
+});
+
+test('an agent\'s card in the topic log carries its color, and the person\'s own keeps its black', async () => {
+  const { f } = await readingPage();
+  const add = (seq, author_id, author_kind) => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id, author_kind, body: 'Body', topic_id: 't1' });
+  add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'dan', 'human'); add(4, 'warp', 'agent');
+  f.paintViews('messages');
+  const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
+  assert.deepEqual(classes, { m4: 'message-card agent-card agent-peach', m3: 'message-card', m2: 'message-card own-message', m1: 'message-card agent-card agent-orchid' });
 });
