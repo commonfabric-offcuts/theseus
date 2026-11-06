@@ -128,6 +128,39 @@ test('writing started on an older revision keeps it while the page shows the cur
   assert.deepEqual((await f.saved()).draft.source_ref, page(3));
 });
 
+test('a refused reply still holds its revision: the page opens current and the reply can be prepared again as written', async t => {
+  const f = await fixture(t);
+  // Core refuses the first preparation (it names a draft Core does not hold)
+  // and keeps the reply's writing in its slot, unrotated.
+  const command = f.api.command.bind(f.api);
+  let refuse = true;
+  f.api.command = async envelope => {
+    if (envelope.kind !== 'submission.prepare' || !refuse) return command(envelope);
+    refuse = false;
+    return command({ ...envelope, args: { ...envelope.args, draft_id: 'not-this-draft' } });
+  };
+  const registry = await f.load();
+  let shown = await registry.open(await f.listed(), { topicId: f.topicId });
+  const reply = shown.editors.reply;
+  reply.edit({ body: 'A reply about revision one' }); await registry.edited(reply);
+  const refused = await registry.send(reply, { stay: true });
+  assert.deepEqual([refused.status, refused.receipt?.error?.code], ['refused', 'FORBIDDEN']);
+  assert.deepEqual([(await f.saved()).draft.body, reply.draft.body], ['A reply about revision one', ''], 'the writing stays in its slot; the composer is empty');
+  await f.revise(1, 'Revision two.');
+
+  shown = await registry.open(await f.listed(), { topicId: f.topicId });
+  assert.deepEqual(shown.source.source_ref, page(2), 'the page shows its current revision');
+  assert.deepEqual(reply.sourceRef, page(1), 'the refused writing still names the revision it was written against');
+  const state = await f.saved();
+  const corrected = await registry.sessionFor(reply).correctPreparation(refused, state.draft, reply.localVersion,
+    { stay: true, acknowledgePossiblePriorPublication: true });
+  assert.equal(corrected.status, 'confirmed', 'the refused reply is prepared again as written');
+  const sent = (await f.api.view('topic_messages', { topic_id: f.topicId })).items.at(-1);
+  const prepared = await f.api.view('submission', { submission_id: corrected.id });
+  assert.deepEqual([sent.body, prepared.body, prepared.source_ref], ['A reply about revision one', 'A reply about revision one', page(1)]);
+  assert.deepEqual(reply.sourceRef, page(2), 'once its place is empty, the next reply is about the page shown');
+});
+
 test('a runtime review accepts a saved empty reply at an older revision as the same writing slot, and nothing else', () => {
   const authority = { authority_id: 'a1', authority_epoch: 'e1', continuity: 'initial' };
   const context = { instanceId: 'i1', actor: 'tony', kind: 'reply', topicId: 't1', sourceRef: page(13) };
