@@ -6,6 +6,7 @@
 // agent-colors-<theme>-<width>[-n].png and own-style-*.png for review.
 import assert from 'node:assert/strict';
 import { pngPixels, paintedBand } from './png-bands.mjs';
+import { olderControl } from './new_line_native.mjs';
 
 const AGENTS = ['aim-lead', 'aim-ux', 'fable', 'aim-core', 'aim-spec', 'warp', 'fixture-guest-agent'];
 const WIDTHS = { laptop: { width: 1280, height: 1000, mobile: false }, phone: { width: 390, height: 844, mobile: true } };
@@ -144,9 +145,10 @@ export async function agentColorsCheck({ check, page, until, facts, control, sho
       const q = await page('own-style-more-' + theme, null, true, { beforeNavigate: q => q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] }) });
       assert.equal(await style(q, older), null, theme + ': the older own message is not on the first page');
       for (let n = 0; n < 5 && !await style(q, older); n++) {
-        await q.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'center'})");
+        const more = await olderControl(q);
+        await q.evaluate(`document.querySelector(${JSON.stringify(more)}).scrollIntoView({block:'center'})`);
         const cards = await q.evaluate("document.querySelectorAll('#messages .message-card').length");
-        await q.point('#more-messages');
+        await q.point(more);
         await until(() => q.evaluate(`document.querySelectorAll('#messages .message-card').length > ${cards}`), theme + ': More loaded older messages');
       }
       ownStyle(await style(q, older), theme + ' More');

@@ -252,7 +252,7 @@ clear a mark.
 ## Not yet replied to
 
 Unread is about reading; this is about answering. In each topic the reader
-sees a red line marked "New" just below the oldest message they have not
+sees a red line marked "New above" just below the oldest message they have not
 replied to. Messages are listed newest first, so everything the line sits
 under is either newer than that message or that message itself.
 
@@ -287,17 +287,24 @@ since the horizons come from the messages.
 The page keeps the boundary from the newest topic version any page said it
 at, so an older page loaded with More never brings back a line a later reply
 moved. It draws the line under that message's card when the card is loaded.
-The line is text ("New"), with no message identity, in the alert colour, so
-nothing that looks for cards finds it.
+The line is text ("New above": in a newest-first list the messages the
+reader has not answered are above it), with no message identity, in the alert
+colour, so nothing that looks for cards finds it. Its words are an element of
+their own (`.new-line-label`), apart from anything else the line shows.
 
 When that message is further back than the page has loaded, which is when the
 reader is most behind, the line sits at the bottom of what is loaded and reads
-"New · older below". There it is a button: pressing it, by pointer or
-keyboard, reads older pages one after another, as More does, until that
-message's card is loaded or no older page is left, and then gives that
-message the focus, with the line in its true place just below it. A read that
-cannot go on (a review pending, or a refusal, which the page reports) ends it
-with the line still at the bottom. When no older page is left to read, there
+"More new below", saying which way the unanswered messages lie ("New · older
+below" read as new above and older below, the opposite of what it meant;
+warp, item 91b). There it is a button, framed and filled as the page's other
+buttons are: pressing it, by pointer or keyboard, reads older pages one after
+another, as More does, until that message's card is loaded or no older page
+is left, and then gives that message the focus, with the line in its true
+place just below it. While it shows, it is the one way to load older
+messages: More messages, which sat just below it doing much the same, is
+hidden, and comes back once the line is in its place. A read that cannot go
+on (a review pending, or a refusal, which the page reports) ends it with the
+line still at the bottom. When no older page is left to read, there
 is nothing the button could load, so no line is drawn. A message among the
 loaded ones that has no card on the page has no line.
 

@@ -1384,7 +1384,12 @@ test('the New line for a message further back sits at the bottom, and pressing i
   const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order(), '29 28 27 26 25 24 23 22 21 20 older', 'the line waits at the bottom of what is loaded');
   const marker = f.get('messages').children.at(-1);
-  assert.equal(marker.textContent, 'New · older below');
+  assert.deepEqual(marker.children.map(child => child.textContent), ['More new below']);
+  // While the line says more new messages lie below, it is the one control
+  // that loads older messages: More messages, doing much the same, is hidden.
+  assert.equal(f.get('more-messages').hidden, true, 'More messages is hidden while the line shows');
+  f.paintViews('memory');
+  assert.equal(f.get('more-messages').hidden, true, 'and painting the Notebook does not bring it back');
   const pages = [at(10, 19, 10), at(1, 9, null)], reads = [];
   const view = f.api.view;
   f.api.view = async (name, args) => {
@@ -1396,6 +1401,20 @@ test('the New line for a message further back sits at the bottom, and pressing i
   assert.equal(order().split(' ').slice(-7).join(' '), '6 5 new 4 3 2 1', 'loaded: the line is in its true place');
   assert.equal(f.get('messages').children.filter(child => child.dataset.line).length, 1, 'one line');
   assert.equal(f.document.activeElement?.dataset.seq, 5, 'the message it was for has the focus');
+});
+
+test('once the line is in its place, More messages loads what is older again', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = (from, through, next) => ({ ...page(from, through, next), unanswered: { seq: 15, id: 'm15' } });
+  views.messagesPage(at(20, 29, 20), { initial: true }); await settle();
+  assert.equal(f.get('more-messages').hidden, true, 'hidden while the line says more new below');
+  const view = f.api.view;
+  f.api.view = async (name, args) => name === 'topic_messages' ? at(10, 19, 10) : view(name, args);
+  await f.get('messages').children.at(-1).onclick(); await settle();
+  assert.equal(f.get('messages').children.find(child => child.dataset.line)?.dataset.line, 'new', 'the line is in its place');
+  assert.equal(f.get('more-messages').hidden, false, 'More messages is back, with older messages left to load');
 });
 
 test('with nothing older left to load, no line promises older messages below', async () => {

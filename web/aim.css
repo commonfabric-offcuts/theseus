@@ -117,8 +117,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 /* The New line: red (--alert), just below the oldest message the reader has not replied to. */
 .new-line{display:flex;align-items:center;gap:.6rem;margin:-.25rem 0 .85rem;color:var(--alert);font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1.2}
 .new-line::before{content:"";flex:1;height:2px;border-radius:1px;background:var(--alert)}
-/* Its oldest unanswered message further back than what is loaded: the line at the bottom, a button that loads down to it. */
-.new-line-older,.new-line-older:hover{width:100%;margin:.25rem 0 .85rem;padding:0;border:0;border-radius:0;background:none;min-height:2.75rem;cursor:pointer}.new-line-older:hover{text-decoration:underline}
+/* Its oldest unanswered message further back than what is loaded: the line at the bottom, "More new below", a button framed and filled as the page's others, that loads down to it. */
+.new-line-older{width:100%;margin:.25rem 0 .85rem;padding:.4rem .8rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);min-height:2.75rem;cursor:pointer}
 /* Agent colors (docs/reading-colors.md, "Agent colors"): an agent's cards in its own tint, its name in a deeper one, and no edge or bar. Text on them keeps 4.5:1. Green's card is the live --soft, Fable's color as it stood. */
 .agent-green{--agent-card:#e8f1ec;--agent-tag:#c8e0d2;--agent-hover:#dfece5}.agent-blue{--agent-card:#e7f3ff;--agent-tag:#c6daf1;--agent-hover:#dbecfc}.agent-indigo{--agent-card:#ececfb;--agent-tag:#c9cbed;--agent-hover:#e3e3f7}.agent-violet{--agent-card:#f3ecfb;--agent-tag:#dacbeb;--agent-hover:#ebe1f6}.agent-rose{--agent-card:#ffeaf1;--agent-tag:#edc9d5;--agent-hover:#fbdfe9}.agent-peach{--agent-card:#fff0e5;--agent-tag:#f1d7c6;--agent-hover:#fce8da}.agent-cyan{--agent-card:#e2f8fe;--agent-tag:#c9e6ed;--agent-hover:#d5f2fa}.agent-olive{--agent-card:#f3f8e9;--agent-tag:#e0e8cf;--agent-hover:#ecf3df}
 .message-card.agent-card{--muted:#56616a;background:var(--agent-card)}.message-card.agent-card:hover{background:var(--agent-hover)}

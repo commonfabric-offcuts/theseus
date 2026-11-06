@@ -218,9 +218,12 @@ try {
           if (liveUpdatesFixture) {
             for (let more = 0; more < 20 && !await evaluate(`Boolean(document.querySelector('#messages [data-id="${facts.sources[index].id}"]'))`); ++more) {
               const count = await evaluate('document.querySelectorAll("#messages [data-id]").length');
-              assert.equal(await evaluate('document.querySelector("#more-messages").hidden'), false, 'source exists in remaining older history');
-              await evaluate('document.querySelector("#more-messages").scrollIntoView({block:"center"})');
-              await point('#more-messages');
+              // More messages, or the New line while it says more new
+              // messages lie below, which hides More.
+              const more = await evaluate(`document.querySelector('#more-messages').hidden && document.querySelector('#messages .new-line-older') ? '#messages .new-line-older' : '#more-messages'`);
+              assert.equal(await evaluate(`document.querySelector(${JSON.stringify(more)}).hidden`), false, 'source exists in remaining older history');
+              await evaluate(`document.querySelector(${JSON.stringify(more)}).scrollIntoView({block:"center"})`);
+              await point(more);
               await until(() => evaluate(`document.querySelectorAll('#messages [data-id]').length > ${count}`), 'older history loaded');
             }
             await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);

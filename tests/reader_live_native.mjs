@@ -429,11 +429,13 @@ export async function liveChecks({ check, page, until, control, observations, or
 
   // Older messages that More loads appear where the loaded messages ended, so
   // the person reads on from where they asked, and what they read holds still;
-  // the button's focus holds nothing still. The list ends at More's button,
-  // or at the "New · older below" line just above it when the oldest message
-  // not yet answered is further back: that line then moves down to its card.
+  // the button's focus holds nothing still. While the oldest message not yet
+  // answered is further back, the New line says "More new below" and hides
+  // More, so the person answers the topic first: the list then ends at More's
+  // button.
   await check('live More messages shows the older messages where its button was', async () => {
     await control({ method: 'seed', messages: 45 });
+    await control({ method: 'agent_message', operation_id: 'live-more-answered', sender: 'person', body: 'Answering the topic, so nothing older waits on me.' });
     const p = await page('live-more', null, true);
     await settled(p);
     await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), 'More is offered');

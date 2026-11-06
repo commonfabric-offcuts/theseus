@@ -564,7 +564,9 @@ function paintViews(kind) {
   if (kind === 'messages') placeNewLine($('messages'), views.unanswered?.seq ?? null, document,
     views.olderCursor === null ? null : () => run(loadToUnanswered));
   });
-  $('more-messages').hidden = views.olderCursor === null;
+  // While the New line says more new messages lie below, it is the one way to
+  // load older messages; More messages, doing much the same, is hidden.
+  $('more-messages').hidden = views.olderCursor === null || [...$('messages').children].some(child => child.dataset?.line === 'older');
   $('more-memory').hidden = views.memoryCursor === null;
   if (kind === 'messages') noteRead();
 }
@@ -675,7 +677,7 @@ function listPage(kind, more = false) {
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
 }
-// The New line's "older below": older pages, one after another, until the
+// The New line's "More new below": older pages, one after another, until the
 // oldest unanswered message's card is loaded or no older page is left; then
 // that message takes the focus, with the line in its place below it. A read
 // that moves nothing on (a refusal, or a review pending) ends it.

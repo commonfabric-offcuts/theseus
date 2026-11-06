@@ -1,4 +1,4 @@
-// The red "New" line in a topic: just below the oldest message the reader has
+// The red New line in a topic ("New above"): just below the oldest message the reader has
 // not replied to (docs/attention.md, "Not yet replied to"). Messages are
 // newest first, so the line sits under that message's card, with every message
 // it has not answered above it.
@@ -14,11 +14,21 @@ export function unansweredOf(answer) {
   return value;
 }
 
+// The line's words, in an element of their own, apart from anything else the
+// line shows.
+function labelled(doc, line, words) {
+  const label = doc.createElement('span');
+  label.className = 'new-line-label'; label.textContent = words;
+  line.append(label);
+  return line;
+}
+
 // Puts the line just below the card of message seq, or takes it away when
-// there is none. When that message is older than every loaded card, the line
-// sits at the bottom of what is loaded, says "New · older below", and is a
-// button that calls loadOlder; once the card is loaded, the line takes its
-// place below it. loadOlder is null when nothing older is left to load; then
+// there is none. It says "New above": messages are newest first, so what the
+// reader has not answered is above it. When that message is older than every
+// loaded card, the line sits at the bottom of what is loaded, says "More new
+// below", and is a button that calls loadOlder; once the card is loaded, the
+// line takes its place below it. loadOlder is null when nothing older is left to load; then
 // no line promises older messages. A message among the loaded ones with no
 // card here has no line. The line carries no data-seq or data-id, so nothing that looks cards
 // up by them ever finds it.
@@ -36,12 +46,12 @@ export function placeNewLine(list, seq, doc = document, loadOlder) {
   if (!kind) return null;
   if (!line && kind === 'new') {
     line = doc.createElement('div');
-    line.className = 'new-line'; line.dataset.line = 'new'; line.textContent = 'New';
-    line.title = 'Just above: the oldest message you have not replied to';
+    line.className = 'new-line'; line.dataset.line = 'new'; labelled(doc, line, 'New above');
+    line.title = 'Above: the messages you have not replied to, the oldest just above this line';
   } else if (!line) {
     line = doc.createElement('button');
-    line.type = 'button'; line.className = 'new-line new-line-older'; line.dataset.line = 'older'; line.textContent = 'New · older below';
-    line.title = 'The oldest message you have not replied to is further back: press to load it';
+    line.type = 'button'; line.className = 'new-line new-line-older'; line.dataset.line = 'older'; labelled(doc, line, 'More new below');
+    line.title = 'Messages you have not replied to are further back: press to load down to the oldest';
   }
   if (kind === 'older') line.onclick = () => loadOlder();
   const next = card ? cards[cards.indexOf(card) + 1] ?? null : null;
