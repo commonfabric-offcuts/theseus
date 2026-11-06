@@ -216,6 +216,15 @@ class ReopenCase(TopicOrderCase):
         self.assertEqual(self.sql("SELECT state,state_message_id FROM topics WHERE id='t1'"), [("done", None)])
         self.assertEqual(self.order(done=True), ["t1"])
 
+    def test_a_topic_ready_for_review_keeps_its_state_and_note_when_a_message_arrives(self):
+        # docs/topic-list.md: only done reopens; a topic ready for review stays ready for review.
+        self.update("t1", {"state": "review", "note": "Look"}, actor="agent-a")
+        self.post("t1", "Reading it now", actor="agent-b")
+        self.send("Looks good so far")
+        self.assertEqual(self.sql("SELECT state,state_note,state_by,state_message_id FROM topics WHERE id='t1'"),
+                         [("review", "Look", "agent-a", None)])
+        self.assertEqual(self.order(), ["t1"])
+
     def test_a_prepared_send_reopens_a_done_topic_as_a_post_does(self):
         self.update("t1", {"state": "done"}, actor="agent-a")
         sent = self.send("Picked back up")
