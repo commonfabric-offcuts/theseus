@@ -175,6 +175,19 @@ class HostedParkingCase(HostedFixture):
         self.assertEqual(self.sql("SELECT unanswered_wakes,unanswered_since_ms FROM recipient_schedule WHERE recipient_id='agent-a'"), [(0, None)])
         self.assertIsNotNone(self.claim_now())
 
+    def test_a_failed_turn_takes_back_only_its_start_not_the_steers_into_it(self):
+        first = self.claim_now()
+        self.hand(first, turn_id="turn-a")
+        self.end("completed", turn_id="turn-a")
+        self.now = self.schedule()["next_due_ms"]
+        self.hand(self.claim_now(), turn_id="turn-b")
+        self.send_next("While turn-b runs")
+        self.hand(self.claim_now(), turn_id="turn-b", mode="steer")
+        self.assertEqual(self.sql("SELECT unanswered_wakes FROM recipient_schedule WHERE recipient_id='agent-a'"), [(2,)])
+        self.end("failed", turn_id="turn-b", error_code="usageLimitExceeded")
+        # turn-a reached the agent and went unanswered; turn-b, start and steer, never did.
+        self.assertEqual(self.sql("SELECT unanswered_wakes FROM recipient_schedule WHERE recipient_id='agent-a'"), [(1,)])
+
     def park_hosted(self):
         """Three turns that each end with the work unread."""
         for index in range(PARKED_AFTER):
