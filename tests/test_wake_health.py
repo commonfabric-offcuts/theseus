@@ -138,6 +138,25 @@ class ParkingCase(Fixture):
         self.now += 3600000
         self.assertEqual(self.claims(), [])
 
+    def work_arriving_while_a_parked_agents_wake_is_settled(self, outcome):
+        """A wake names only the work its claim captured: work that came while it was in flight is offered again."""
+        self.park()
+        self.send_next("A while it is silent")
+        claims = self.claims()
+        self.assertEqual(len(claims), 1)
+        self.send_next("B, while the wake for A is in flight")
+        result = self.store.finish_wake(self.runner_guard, self.runner, claims[0]["claim_token"], outcome)
+        self.assertIsNotNone(result["next_due_ms"], result)
+        self.now = result["next_due_ms"]
+        self.assertEqual(len(self.claims()), 1, "B was never named by a wake that reached the agent")
+
+    def test_work_arriving_while_a_parked_agents_wake_is_delivered_wakes_it_again(self):
+        self.work_arriving_while_a_parked_agents_wake_is_settled("accepted")
+
+    def test_work_arriving_while_a_parked_agents_waiting_notice_is_found_is_offered_again(self):
+        """The waiting notice was found for A alone; if the agent has read it since, only a new wake tells it of B."""
+        self.work_arriving_while_a_parked_agents_wake_is_settled("queued")
+
     def test_anything_the_agent_does_wakes_it_again_at_once(self):
         self.park()
         self.reply()
@@ -254,6 +273,24 @@ class HostedParkingCase(HostedFixture):
         self.end("completed", turn_id="turn-new")
         # It left the work unread, so it is named again a minute later, all of it.
         self.assertEqual((self.schedule()["handed_seq"], self.schedule()["next_due_ms"]), (None, self.now + 60000))
+
+    def test_work_arriving_while_a_parked_agents_turn_is_started_is_steered_into_it(self):
+        self.park_hosted()
+        self.send_next("A")
+        claim = self.claim_now()
+        self.send_next("B, while the turn for A is starting")
+        self.hand(claim, turn_id="turn-new")
+        self.assertIsNotNone(self.claim_now(), "B was never named to the running turn")
+
+    def test_work_arriving_while_new_work_is_steered_into_a_parked_agents_turn_is_steered_too(self):
+        self.park_hosted()
+        self.send_next("A")
+        self.hand(self.claim_now(), turn_id="turn-new")
+        self.send_next("B")
+        steer = self.claim_now()
+        self.send_next("C, while B is being steered")
+        self.hand(steer, turn_id="turn-new", mode="steer")
+        self.assertIsNotNone(self.claim_now(), "C was never named to the running turn")
 
     def new_work_turn_that_did_not_complete(self, status):
         """A parked hosted agent's new-work turn that never completed is started again; one that did ends the repeats."""
