@@ -21,7 +21,7 @@ export async function wakesChecks({ check, page, until, control, view, facts, sh
   await check('wakes a parked agent says on its name since when it has not answered and what waits', async () => {
     assert.equal((await control({ method: 'wakes', action: 'route' })).status, 'provisioned');
     await control({ method: 'agent_message', operation_id: 'wakes-person-asks', body: 'Over to you.', topic_id: 't1', sender: 'person', addressees: [agent] });
-    assert.deepEqual(await control({ method: 'wakes', action: 'runner_live' }), { status: 'acquired' });
+    assert.equal((await control({ method: 'wakes', action: 'runner_live' })).status, 'acquired');
     await control({ method: 'wakes', action: 'park' });
     const quiet = (await view('wakes', {})).quiet;
     assert.deepEqual(quiet.map(q => [q.actor_id, q.why]), [[agent, 'not_answering']]);
@@ -58,7 +58,7 @@ export async function wakesChecks({ check, page, until, control, view, facts, sh
     await until(async () => !(await readNotice(home)).hidden, 'the outcomes page shows the notice');
     const p = await page('wakes-back', null, true);
     await until(async () => !(await readNotice(p)).hidden, 'the topic page shows the notice');
-    assert.deepEqual(await control({ method: 'wakes', action: 'runner_live' }), { status: 'acquired' });
+    assert.equal((await control({ method: 'wakes', action: 'runner_live' })).status, 'acquired');
     await until(async () => (await readNotice(p)).hidden, 'the notice goes on the commit');
     await until(async () => (await readNotice(home)).hidden, 'and on the outcomes page');
     assert.equal((await readNotice(p)).text, '');

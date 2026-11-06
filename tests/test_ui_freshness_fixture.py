@@ -284,7 +284,11 @@ class WakesFixtureTests(FixtureCase):
         self.assertEqual(self.control("wakes", action="route")["status"], "provisioned")
         self.control("agent_message", operation_id="wakes-person-asks", body="Over to you", topic_id="t1",
                      sender="person", addressees=["fixture-notebook-agent"])
-        self.assertEqual(self.control("wakes", action="runner_live"), {"status": "acquired"})
+        live = self.control("wakes", action="runner_live")
+        self.assertEqual(live["status"], "acquired", live)
+        # The longest lease a runner may take: a slow browser start cannot let it lapse into "unrenewed"
+        # before the native check has read the page.
+        self.assertGreater(live["lease_until_ms"] - time.time() * 1000, 110000)
         self.assertEqual(self.wakes()["runner"], {"live": True})
         self.control("wakes", action="park")
         quiet = self.wakes()["quiet"]

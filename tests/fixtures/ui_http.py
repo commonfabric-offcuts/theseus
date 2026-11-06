@@ -472,8 +472,10 @@ def main():
                                     "thread_id": "12345678-1234-4234-8234-000000000001"})
                         elif action == "runner_live":
                             with store().runner_guard("fixture-runner") as guard:
-                                answer = store().acquire_runner(guard)
-                            answer = {"status": answer["status"]}
+                                # The longest lease a runner may take, so a slow browser start
+                                # cannot let it lapse into "unrenewed" mid-check.
+                                answer = store().acquire_runner(guard, lease_ms=120000)
+                            answer = {"status": answer["status"], "lease_until_ms": answer.get("lease_until_ms")}
                         elif action == "runner_killed":
                             answer = store().record_runner_exit(os.getpid(), -9)
                         elif action == "park":
