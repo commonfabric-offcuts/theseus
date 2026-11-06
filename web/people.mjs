@@ -135,9 +135,13 @@ export function replaceChips(host, field, chips) {
 // receipt; a refusal is shown beside the field. The field is built once and
 // never replaced or disabled, so a repaint from someone else's change leaves
 // the person typing in it where they were.
+//
+// pill(person), when given, makes each person one pill filled with the class
+// it returns (their colour, or own-pill for the reader), holding the name and,
+// for a reader who may manage, the remove button after it.
 export class PeoplePanel {
-  constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null, light = () => null }) {
-    Object.assign(this, { host, label, names, fixed, add, remove, named, light });
+  constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null, light = () => null, pill = null }) {
+    Object.assign(this, { host, label, names, fixed, add, remove, named, light, pill });
     this.busy = false; this.error = ''; this.people = []; this.manage = false; this.removers = new Map(); this.namers = new Map();
     this.chips = element('div', { className: 'chips' });
     this.input = element('input', { autocomplete: 'off', placeholder: 'Add a name' });
@@ -169,12 +173,14 @@ export class PeoplePanel {
       // A name may be a control of its own (named), such as an agent's color.
       const named = this.named(person);
       if (named) this.namers.set(person.actor_id, named);
-      const chip = named ? element('span', { className: 'chip' }, named) : element('span', { className: 'chip', textContent: person.actor_id });
+      const className = this.pill ? ['person-pill', this.pill(person)].filter(Boolean).join(' ') : 'chip';
+      const chip = named ? element('span', { className }, named)
+        : element('span', { className }, this.pill ? element('span', { className: 'pill-name', textContent: person.actor_id }) : person.actor_id);
       // Whether this agent's wakes are getting through, when they are not.
       const light = this.light(person);
       if (light) chip.append(element('span', { className: 'wake-light', textContent: ` · ${light}` }));
       if (manage && !fixed.has(person.actor_id)) {
-        const out = element('button', { type: 'button', textContent: '×', disabled: this.busy });
+        const out = element('button', { type: 'button', textContent: '×', disabled: this.busy, ...(this.pill ? { className: 'pill-remove' } : {}) });
         out.setAttribute('aria-label', `Remove ${person.actor_id}`);
         // The chip goes with its person; the field keeps the reader's place.
         out.onclick = () => { this.input.focus(); return this.submit(() => this.remove(person.actor_id), () => {}, () => this.input.focus()); };

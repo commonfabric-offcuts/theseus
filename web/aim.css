@@ -161,3 +161,28 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .source-changes{margin:0 0 .6rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);min-width:0}.source-changes summary{cursor:pointer;padding:.45rem .7rem;font-size:.85rem;font-weight:600}#source-changes-body{max-height:min(16rem,22dvh);overflow:auto}#source-changes-body,.page-here .source-changes>div{padding:0 .7rem .6rem;overflow-wrap:anywhere}.changes-summary{color:var(--muted);font-size:.8rem;margin:0 0 .35rem}.changes-text{white-space:pre-wrap;line-height:1.6}.changes-added{background:var(--soft);color:var(--ink);text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px;border-radius:.15rem}.changes-removed{color:var(--muted);text-decoration:line-through}.changes-gap{color:var(--muted)}
 /* On an outcome's page its Notebook pages are listed as its topics are, and one opens in place below them. */
 .selection-page #outcome-references-list{display:grid;grid-template-columns:1fr;gap:.35rem;overflow:visible;padding:0}.selection-page #outcome-references-list .nav-item{width:100%;max-width:none;margin:0;background:var(--panel);border-color:var(--line);padding:.85rem}.selection-page #outcome-references-list .nav-item:hover{background:var(--soft)}.page-here{margin-top:1rem;padding:1rem 1.15rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}.page-here h2{margin-bottom:.2rem;overflow-wrap:anywhere}.page-here h2:focus{outline:none}.page-here .notice{margin:.5rem 0}.page-here .source-changes{margin:.8rem 0 0}.page-here-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;margin:.8rem 0}
+/* The top of a topic: the title with a gear for Topic settings at its upper right, and the topic's note as a plain subtitle under it. */
+.title-row{display:flex;align-items:flex-start;gap:.75rem}.title-row h1{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.25;padding-top:.4rem}
+/* The gear: a quiet square button, 44 px to touch, its middle level with the title's first line. */
+.settings-gear{flex:0 0 auto;display:inline-grid;place-items:center;width:2.75rem;height:2.75rem;padding:0;color:var(--muted);border-color:transparent;background:transparent}.settings-gear:hover{color:var(--ink);background:var(--soft)}
+.topic-header .topic-subtitle{margin-top:.3rem;font-size:.95rem;overflow-wrap:anywhere}.topic-subtitle .topic-state{margin:0 .25rem 0 0;max-width:100%;vertical-align:.08em}
+/* The people, at the very bottom after the messages: one pill each, filled with the person's colour; the reader's own is black, as their messages are. */
+.topic-people{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--line)}.topic-people h2{font-size:.8rem;font-weight:600;color:var(--muted)}.topic-people .participants{flex:1 1 auto;margin:0;align-items:center}
+.person-pill{display:inline-flex;align-items:center;min-height:2rem;border-radius:1rem;background:var(--agent-tag,var(--panel));box-shadow:inset 0 0 0 1px var(--agent-tag,var(--line));color:var(--ink);font-size:.82rem;font-weight:600;line-height:1;overflow:hidden}
+.person-pill .pill-name{display:inline-flex;align-items:center;min-height:2rem;padding:0 .8rem;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;-webkit-tap-highlight-color:transparent}
+.person-pill button.pill-name:hover{background:transparent;text-decoration:underline}
+.person-pill .wake-light{color:var(--warn);padding-right:.8rem}.person-pill .pill-name+.wake-light{margin-left:-.6rem}
+/* The remove button sits inside its person's pill, after a hairline, in the pill's own letter colour. */
+.person-pill .pill-remove{min-width:2rem;min-height:2rem;padding:0 .5rem;border:0;border-left:1px solid color-mix(in srgb,currentColor 25%,transparent);border-radius:0;background:transparent;color:inherit;font-weight:600}.person-pill .pill-remove:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
+.person-pill.own-pill{background:#000;color:#e0e8e5;box-shadow:none}
+@media(prefers-color-scheme:dark){.person-pill.own-pill{box-shadow:inset 0 0 0 1px var(--line)}}
+/* Topic settings: a dialog by the live conventions, sized to its few fields. */
+dialog#topic-settings{width:min(34rem,calc(100vw - 3rem));height:fit-content;max-height:calc(100dvh - 3rem);overflow:auto}
+.settings-body{min-height:100%;padding:1rem 1.25rem 1.25rem}.settings-header{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:.75rem}.settings-header h2:focus{outline:none}
+.settings-section h3{font-size:.8rem;font-weight:600;color:var(--muted);margin:1rem 0 .4rem}.settings-section h3:first-child{margin-top:0}
+.settings-section .state-line{overflow-wrap:anywhere}.settings-section .state-line .topic-state{margin-left:0;max-width:none;overflow:visible;white-space:normal;border-radius:.5rem}
+.settings-section .state-fields{display:flex;flex-direction:column;align-items:stretch;gap:.6rem;margin:0 0 .6rem}.settings-section .state-fields input{min-width:0}
+.settings-section .field-label{display:grid;grid-template-columns:5.5rem minmax(0,1fr)}
+.settings-section .field-label input,.settings-section .field-label select{width:100%;min-width:0;min-height:2.5rem;border:1px solid var(--line);border-radius:.4rem;padding:.2rem .5rem;background:var(--panel);color:var(--ink);font-size:.95rem}
+.settings-section .state-fields>button{align-self:flex-end;min-width:6rem}
+@media(max-width:760px){dialog#topic-settings{width:100%;max-width:100%;height:100dvh;max-height:100dvh;border-radius:0;border:0;margin:0}.settings-body{padding:.6rem 1rem 1rem}.settings-section .field-label input,.settings-section .field-label select{font-size:16px}}

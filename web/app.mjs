@@ -20,6 +20,8 @@ import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention, paintSent } from './attention.mjs';
 import { TopicStatePanel, paintWaiting } from './topic-state.mjs';
+import { paintTopicHeader } from './topic-header.mjs';
+import { TopicSettings } from './topic-settings.mjs';
 import { repaintTimes, watchDays } from './times.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
@@ -46,7 +48,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
+let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
@@ -559,13 +561,13 @@ function paintViews(kind) {
   if (kind === 'topic') {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
-    topic = views.topic; $('topic-title').textContent = topic.title;
-    topicState?.paint(topic, views.participants);
+    topic = views.topic;
+    // The panel paints the header with the newest topic it has seen.
+    if (topicState) topicState.paint(topic, views.participants); else paintHeader(topic);
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
-    $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
     topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
-    for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = false;
+    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = false;
     paintMarks(); noteRead(); return;
   }
   keepListAnchor(() => {
@@ -651,8 +653,20 @@ function participantName(person) {
     name.onclick = () => run(() => pickColor(person.actor_id, name));
     participantNames.set(person.actor_id, name);
   }
-  name.className = `chip-name agent-${agentShown(person.actor_id)}`;
+  name.className = 'pill-name';
   return name;
+}
+// Each person in the topic is one pill in their colour: the reader's own is
+// black, as their messages are; an agent's is its colour as the reader sees it.
+function participantPill(person) {
+  if (person.actor_id === bootstrap.actor) return 'own-pill';
+  return person.kind === 'agent' ? `agent-${agentShown(person.actor_id)}` : '';
+}
+// The top of the open topic: its title, its note as the subtitle, and the
+// gear, except on a conversation, which refuses every change Topic settings makes.
+function paintHeader(current) {
+  paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
+    { settings: current.kind !== 'conversation' });
 }
 // Messages sent before times were kept have none.
 function paintCardAuthor(author, item) {
@@ -805,8 +819,10 @@ function updateStatus(state) {
 async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
     topicUnavailable = true; ++listAccessEpoch;
-    for (const id of ['messages', 'notebook', 'participants']) $(id).hidden = true;
+    for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = true;
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
+    // No settings for a topic the reader cannot see.
+    settings?.close(); $('settings-open').hidden = true;
     paintMarks();
     for (const session of registry.sessions.values()) {
       if (session.editor.context.kind === 'reply' && session.editor.context.topicId === topic.id) {
@@ -1030,19 +1046,20 @@ async function initialize() {
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
-  $('topic-title').textContent = topic.title; $('topic-description').textContent = 'Open a message to read, quote, reply, or keep a private note.';
+  paintHeader(topic);
+  settings = new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close') });
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add a participant to this topic', names: 'directory-names',
-    add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight });
+    add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight, pill: participantPill });
   await wakeLights.load();
   // Who can be sent a message here: the topic's participants and the outcome's
   // members. A reader outside the outcome cannot list its members.
   outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null);
   paintParticipants(topic, result.participants);
-  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(),
+  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), painted: paintHeader,
     send: (current, args) => {
       const { authority_id, authority_epoch } = bootstrap.authority;
       return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.update',
@@ -1344,7 +1361,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='opening')return initializeOpeningPage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   status('');
-  for(const id of ['notebook','participants','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('outcome-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
   sentHost=$('sent-to-you');
@@ -1438,7 +1455,7 @@ function enableNewTopic(workspace) {
   $('new-topic').onclick=()=>openDestination({kind:'opening',workspace,opening:crypto.randomUUID(),topic:crypto.randomUUID()},'New topic');
 }
 async function initializeOpeningPage(route) {
-  for(const id of ['notebook','participants','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
   $('outcome-page').hidden=false;$('topic-title').textContent='New topic';$('topic-description').textContent='Write privately, then Send to create the topic.';
   const answer=checkedView(await api.view('workspace',{workspace_id:route.workspace},{readClass:'foreground'}),bootstrap.instance_id);
   if(answer.workspace?.id!==route.workspace)throw Error('The chosen outcome could not be confirmed.');
@@ -1476,7 +1493,7 @@ async function initializeUnfinished(route) {
   catch(error){host.textContent='Unfinished work on this browser is unavailable. '+error.message;}
 }
 async function initializeCreationPage(route) {
-  for(const id of ['notebook','participants','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
   $('outcome-page').hidden=false;$('topic-title').textContent='New outcome';$('topic-description').textContent='Create a place for related topics.';
   const intents=await ensureIntentJournal();
   outcomeCreation=new OutcomeCreation({api,bootstrap,journal:intents,intentId:route.intent});await outcomeCreation.load();
