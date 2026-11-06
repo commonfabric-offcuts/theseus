@@ -967,11 +967,14 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await replace(p,'Retained while a manual list is held'); await p.point('#reader-close');
     await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader closed');
     await fault('changes','INVALID_ARGUMENT'); await until(() => p.evaluate('observedFreshness.stopped'), 'diagnostic stopped');
-    const oldCards=await p.evaluate('document.querySelector("#messages").innerHTML');
     await message('Held manual response '+transition);
     p.intercept(payload=>payload?.name==='topic_messages' && payload.args.limit===30);
     await p.evaluate('document.querySelector("#refresh").scrollIntoView({block:"center"})'); await p.point('#refresh');
     const held=await until(()=>p.held[0], 'manual list answer held',2500);
+    // Refresh places the New line afresh from the unread read it makes before
+    // the list read, so the page as it stands while the list answer is held is
+    // what the late answer must leave alone.
+    const oldCards=await p.evaluate('document.querySelector("#messages").innerHTML');
     // The foreground manual read intentionally defers background dispatch.
     // Inject the app's real access transition callbacks while that response
     // is held; this is a paint-race proof, not a claim of a native denial act.
@@ -1006,6 +1009,8 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     const nextEpoch=operation('epoch'); await control({method:'epoch',epoch:nextEpoch,complete:false,drop_private:true});
     await replace(p,'Exact writing after command-first epoch');
     await until(()=>p.evaluate(`observedRegistry.runtime.current.authority_epoch===${JSON.stringify(nextEpoch)}`),'actual command recovery bootstrap wins');
+    // The review reads the new runtime and the saved version before it settles.
+    await until(()=>p.evaluate("(r=>Boolean(r)&&r.phase!=='loading')(observedRegistry.current.editors.reply.authorityRecovery)"),'the recovery review has read the new runtime');
     const before=await p.evaluate('({snapshot:freshSnapshot(),recovery:observedRegistry.current.editors.reply.authorityRecovery,attempts:observedRegistry.sessionFor(observedRegistry.current.editors.reply).attempts})');
     assert.ok(p.calls.some(c=>c.payload?.kind==='draft.save' && c.payload.expected.authority.authority_epoch!==nextEpoch));
     p.intercept(null); await p.release(held);

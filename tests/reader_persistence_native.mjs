@@ -230,7 +230,11 @@ try {
               assert.equal(await evaluate(`document.querySelector(${JSON.stringify(more)}).hidden`), false, 'source exists in remaining older history');
               await evaluate(`document.querySelector(${JSON.stringify(more)}).scrollIntoView({block:"center"})`);
               await point(more);
-              await until(() => evaluate(`document.querySelectorAll('#messages [data-id]').length > ${count}`), 'older history loaded');
+              // More loads one page. The New line loads page after page until
+              // its message is loaded, and the line moves down as they come:
+              // the next press waits until it has reached that message.
+              await until(() => evaluate(`document.querySelectorAll('#messages [data-id]').length > ${count}` +
+                (more === '#more-messages' ? '' : ` && !document.querySelector('#messages .new-line-older')`)), 'older history loaded');
             }
             await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
           }
