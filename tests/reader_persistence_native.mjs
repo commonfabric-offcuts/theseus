@@ -1246,10 +1246,11 @@ try {
       // new runtime at once when its save is refused first. Until that read is
       // done the saved version is unknown, and the comparison must not claim
       // there is none (6e29a82).
-      const phase = await until(async () => { const value = (await p.evaluate('readOwnRecovery()'))?.authorityRecovery?.phase; return value && value !== 'loading' ? value : null; }, 'settled runtime review phase');
-      observations.push({ epochFirstReviewPhase: phase });
+      const review = await until(async () => { const value = (await p.evaluate('readOwnRecovery()'))?.authorityRecovery; return value?.phase && value.phase !== 'loading' ? value : null; }, 'settled runtime review phase');
+      observations.push({ epochFirstReviewPhase: review.phase, epochFirstReviewRead: Boolean(review.authority) });
       await p.point('#review-versions');
-      const saved = phase === 'ready' ? 'No saved version here' : 'Saved version unavailable. Retry to read it; your writing is kept.';
+      // A review that read the new runtime (ready or blocked) records its authority.
+      const saved = review.authority ? 'No saved version here' : 'Saved version unavailable. Retry to read it; your writing is kept.';
       await until(() => p.evaluate(`document.querySelector("#review-content").textContent.includes(${JSON.stringify(saved)})`), 'saved private version as far as it is known');
       assert.equal(await p.evaluate('document.activeElement.id'), 'review-title', 'comparison never focuses its write action');
       await p.point('#review-keep'); await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'Keep both closes comparison');

@@ -289,6 +289,22 @@ test('a More versions page that fails after its review was replaced leaves the n
   assert.equal(f.get('review-status').textContent,'','the new review shows no error from the old one');
   assert.equal(f.get('review-retry').hidden,true);
 });
+// recovery.authority is set only once both the runtime and the saved version
+// were read; whether the review then is ready or blocked, that read stands.
+test('a runtime review shows the saved version it read, ready or blocked, and calls it unavailable only when unread',async()=>{
+  const authority={authority_id:'a2',authority_epoch:'e2'},saved={id:'d1',revision:3,body:'Saved in the new runtime'};
+  const all=(element,text)=>[...(element.textContent===text?[element]:[]),...element.children.flatMap(child=>all(child,text))];
+  const unavailable='Saved version unavailable. Retry to read it; your writing is kept.';
+  for (const [phase,read,remote,shown] of [['blocked',true,saved,saved.body],['ready',true,saved,saved.body],['ready',true,null,'No saved version here'],
+      ['blocked',true,null,'No saved version here'],['parked',false,null,unavailable],['loading',false,null,unavailable],['error',false,null,unavailable]]) {
+    const f=fixture();f.get('version-review').showModal=function(){this.open=true;};
+    f.registry.recoveryCandidates=async()=>({items:[],nextCursor:null});
+    f.editor.authorityRecovery={phase,authority:read?authority:null,remote,message:`Review ${phase}`};
+    await f.showVersions(f.editor,f.get('opener'),f.p);
+    assert.equal(all(f.get('review-content'),shown).length,1,`${phase} ${read?'read':'unread'} shows ${shown}`);
+    if (shown!==unavailable) assert.equal(all(f.get('review-content'),unavailable).length,0,`${phase} after a read never says unavailable`);
+  }
+});
 test('the first page of a review is drawn when the registry applied it and its settle then failed',async()=>{
   const f=fixture(),row=id=>({id,stamp:id,availability:'open-in-another-tab'});
   f.get('version-review').showModal=function(){this.open=true;};

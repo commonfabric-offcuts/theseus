@@ -118,8 +118,9 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
     }
   }
   // undefined: not read (say so and offer Retry); null: read, and nothing is
-  // saved there. A runtime review has read the saved version only once ready.
-  let remote = recovery ? (recovery.phase === 'ready' ? recovery.remote : undefined) : editor.conflict?.remote;
+  // saved there. A runtime review records its authority only once it has read
+  // both the runtime and the saved version, whether it is then ready or blocked.
+  let remote = recovery ? (recovery.authority ? recovery.remote : undefined) : editor.conflict?.remote;
   if (!recovery && editor.conflict && remote === undefined) {
     try {
       const state = validate(await api.view('editor_state', { source_ref: editor.sourceRef, topic_id: editor.context.topicId }));
