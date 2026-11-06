@@ -5,6 +5,7 @@ import { markReach, replaceChips } from './people.mjs';
 import { readableTime } from './topic-state.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
+import { paintChanges } from './page-changes.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -143,6 +144,7 @@ export class Reader {
     this.mode = mode;
     this.notice('');
     this.$('source-update').hidden = true;
+    this.$('source-changes').hidden = true;
     this.opener = opener ?? this.opener ?? document.activeElement;
     this.disarm();
     this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
@@ -164,6 +166,14 @@ export class Reader {
     this.applyLayout();
     this.sourceBody.scrollTop = this.positions.get(this.placeKey()) ?? 0;
     this.sourceBody.focus({ preventScroll: true });
+  }
+
+  // What changed in the Notebook page shown since the revision the reader
+  // last read (since), above the page as it now stands.
+  showChanges(since, before, after) {
+    this.$('source-changes-title').textContent = `What changed since you read revision ${since}`;
+    paintChanges(this.$('source-changes-body'), before, after);
+    this.$('source-changes').open = true; this.$('source-changes').hidden = false;
   }
 
   get layoutShape() { return this.narrow.matches ? 'stacked' : this.layout.mode; }

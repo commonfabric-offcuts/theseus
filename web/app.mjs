@@ -393,10 +393,19 @@ async function present(presentation) {
   sourceAttachments(presentation);
 }
 // A Notebook page shown in the Reader is read; a read Core did not record
-// says so in the Reader, and the page keeps its light.
+// says so in the Reader, and the page keeps its light. A page the person
+// read at an older revision shows what changed since then.
 async function readPage(presentation) {
-  try { await pageReads.opened(presentation.source); }
-  catch (error) { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); }
+  const current = () => registry.isSourceCurrent(presentation) && !presentation.sourceUnavailable;
+  let since;
+  try { since = await pageReads.opened(presentation.source); }
+  catch (error) { if (current()) reader.notice(error.message); return; }
+  if (since === null || !current()) return;
+  const ref = { ...presentation.source.source_ref, revision: since };
+  let earlier;
+  try { earlier = checkedView(await registry.cleanup.list(options => api.view('source', ref, options)), bootstrap.instance_id); }
+  catch (error) { if (current()) reader.notice(`What changed since revision ${since} could not be read. ${error.message}`); return; }
+  if (current()) reader.showChanges(since, earlier.body ?? '', presentation.source.body ?? '');
 }
 // A reply to someone else's message in this topic goes to its author unless
 // the person removes them; the offer is made once for each reply editor, and

@@ -51,3 +51,23 @@ reaches every open page through the live feed, whose next reload draws the
 row without its light; a page without the feed reloads after the read is
 recorded. A read Core did not record is said in the Reader, and the page
 keeps its light until it is opened again.
+
+## What changed, in the Reader
+
+When the read answers a `previous_revision` older than the revision shown,
+the Reader reads that revision (`source` with its exact `revision`) and
+shows, above the page, "What changed since you read revision N": the page's
+words with what was added marked and what was removed struck through
+(screen readers hear "[added: …]" and "[removed: …]"), and a count of
+additions and removals. Long unchanged stretches keep about a line of
+context on each side of a change, with a gap for the rest, so the changes
+read in place; the whole page as it now stands is below, to read and quote.
+The panel is a disclosure, open at first, and scrolls on its own so a phone
+keeps room for the page.
+
+`web/page-changes.mjs` compares lines, then the words of the lines that
+changed, each by a shortest edit script. A script longer than 2,000 edits is
+not worked out: a stretch of lines is shown removed and added whole, and a
+page whose lines differ that much says it was mostly rewritten. A revision
+that changed only the title or attachments says so. A Reader that has moved
+to another source by the time the earlier revision arrives is left alone.
