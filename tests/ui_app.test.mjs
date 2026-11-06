@@ -414,6 +414,23 @@ test('a step whose device save fails says so plainly and keeps the writing in fr
   assert.equal(x.editors.reply.draft.body, 'Unkept before the step');
 });
 
+// Typing after the last save, while the next page loads: each keystroke starts
+// keeping the writing on this device at once, and until the device holds it
+// the page counts as unprotected, so leaving warns; once held, the writing is
+// on this device for the next visit.
+test('typing after the last save is guarded from the keystroke until this device holds it', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply, put = f.backend.put;
+  const entered = deferred(), release = deferred();
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  f.backend.put = async row => { entered.resolve(); await release.promise; return put(row); };
+  reply.edit({ body: 'Typed as the next page loads' });
+  const kept = f.registry.edited(reply);
+  assert.equal(f.registry.hasUnprotectedWriting, true, 'leaving now warns');
+  await entered.promise; release.resolve(); await kept;
+  assert.equal(f.registry.hasUnprotectedWriting, false);
+  assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Typed as the next page loads');
+});
+
 // A second press of Close supersedes the first while the Reader stays in
 // front: only the newer close reports the refusal, once.
 test('of two explicit closes refused while preservation fails, only the newer one says why', async t => {
