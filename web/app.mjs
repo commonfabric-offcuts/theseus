@@ -902,11 +902,12 @@ async function initialize() {
   });
   reader = new Reader({
     admits: (p, editor) => registry?.isCurrent(p, editor),
+    writes: (p, editor) => registry?.isWritable(p, editor),
     reach: recipientReach,
     revisionOffer,
     retrySource: () => run(retrySource),
     uploads: editor => registry?.sessionFor(editor).uploads,
-    edit: editor => run(() => { if (registry.isCurrent(reader.presentation, editor)) return registry.edited(editor); }), status: editor => registry.status(editor),
+    edit: editor => run(() => { if (registry.isWritable(reader.presentation, editor)) return registry.edited(editor); }), status: editor => registry.status(editor),
     mode: mode => {
       const cancelled = Boolean(registry.pendingOpen);
       reader.presentation = registry.setMode(mode); changed(reader.editor); retainRevisionTargets();

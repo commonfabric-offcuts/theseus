@@ -45,11 +45,21 @@ export class EditorRegistry {
   }
 
   get interactive() { return this.current ?? this.inline; }
-  isCurrent(presentation, editor) {
-    return Boolean(presentation && this.interactive === presentation && !this.pendingOpen && !this.disposed &&
+  // The presentation in front, holding this registered editor, whether or not
+  // an open is under way.
+  holds(presentation, editor) {
+    return Boolean(presentation && this.interactive === presentation && !this.disposed &&
       (presentation.surface !== 'inline' || presentation.initialized) &&
       (!editor || Object.values(presentation.editors).includes(editor) && this.sessions.get(editor.key)?.editor === editor));
   }
+  // Every act on the writing in front: sending, images, versions, quiet closes.
+  // An open under way stops them before it keeps the writing it is leaving.
+  isCurrent(presentation, editor) { return this.holds(presentation, editor) && !this.pendingOpen; }
+  // Typing in the Reader goes on while a step to another source waits: each
+  // change is kept on this device as it lands, and Close, Escape or Topic
+  // cancel the step and keep it. The inline composer waits, since the open
+  // replaces it in front with the Reader.
+  isWritable(presentation, editor) { return this.holds(presentation, editor) && (!this.pendingOpen || presentation.surface !== 'inline'); }
   isSourceCurrent(presentation) { return Boolean(presentation?.source && this.current?.source === presentation.source && !this.pendingOpen && !this.disposed); }
 
   async initializeInline(topic) {

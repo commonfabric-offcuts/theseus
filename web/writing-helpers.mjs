@@ -4,9 +4,11 @@ import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 // nodes, focus, events and captured presentation; sessions still own the work.
 export const recipientChoices = names => names.map(name => ({ name, removeLabel: `Remove ${name}` }));
 
-export function writingState(editor, { active = true, note = false, status } = {}) {
+// active: every act on this writing is admitted. writable: typing is, which
+// can hold while the acts wait (the Reader during a step).
+export function writingState(editor, { active = true, writable = active, note = false, status } = {}) {
   const barrier = imageBarrier(editor);
-  const readOnly = Boolean(!active || editor.adopting || recoveryReadOnly(editor) || editor.conflict?.error?.code === 'INVALID_TOPIC_COMPOSITION');
+  const readOnly = Boolean(!writable || editor.adopting || recoveryReadOnly(editor) || editor.conflict?.error?.code === 'INVALID_TOPIC_COMPOSITION');
   const preparing = editor.submissions.some(item => item.status === 'preparing' && !item.detached);
   return {
     readOnly,
@@ -14,7 +16,7 @@ export function writingState(editor, { active = true, note = false, status } = {
       : editor.conflict ? 'Not saved — another version needs review' : editor.dirty ? 'Not yet saved to AIM' : 'Saved to AIM'),
     sendDisabled: Boolean(!active || barrier || editor.adopting || editor.unavailable || editor.authorityRecovery || editor.conflict ||
       (!note && (preparing || !editor.context.topicId || (!editor.draft.body.trim() && !editor.draft.attachments.length)))),
-    addDisabled: Boolean(readOnly || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||
+    addDisabled: Boolean(!active || readOnly || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||
       editor.uploadState?.entries.some(e => e.selected && e.owner.id === editor.clientCycleId && e.origin === 'retained-ref' && !e.ready_descriptor)),
   };
 }

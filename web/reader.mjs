@@ -6,6 +6,7 @@ import { readableTime } from './topic-state.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
 
+const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const QUOTE_STOPS = 'button,a,input,select,summary,[role="separator"]';
 
 const node = (tag, text, className) => {
@@ -36,6 +37,8 @@ export class Reader {
   $(id) { return this.dialog.querySelector(`#${id}`); }
   get editor() { return this.sessions?.[this.mode]; }
   admits(editor = this.editor, presentation = this.presentation) { return this.callbacks.admits?.(presentation, editor) ?? true; }
+  // Typing, quoting and naming recipients: these go on while a step waits.
+  writes(editor = this.editor, presentation = this.presentation) { return this.callbacks.writes?.(presentation, editor) ?? this.admits(editor, presentation); }
 
   bind() {
     this.$('reader-close').onclick = () => this.close();
@@ -76,7 +79,7 @@ export class Reader {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
     this.$('reply-destination').onchange = event => this.callbacks.destination(event.target.value);
-    this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),
+    this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
       beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();}});
     this.field.addEventListener('paste', event => this.paste(event));
     // Clicking a passage lights it for Return, as moving over it does while
@@ -101,6 +104,7 @@ export class Reader {
       const editor = this.editor, presentation = this.presentation;
       const refusal = pasteImageError(editor, this.mode, this.writingReadOnly());
       if (refusal) throw Error(refusal);
+      if (!this.admits(editor, presentation)) throw Error(STEP_WAITS);
       const uploads = this.callbacks.uploads?.(editor);
       if (!uploads) throw Error('Images are not available in this reply yet.');
       // Capture clipboard files and their original editor/cycle before any
@@ -316,7 +320,7 @@ export class Reader {
     if (!excerpt || !this.sessions) return;
     if (this.mode === 'note') this.switchMode('reply');
     const editor = this.sessions.reply;
-    if (!this.admits(editor)) return;
+    if (!this.writes(editor)) return;
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
@@ -369,7 +373,7 @@ export class Reader {
       const chip = node('span', name, 'chip'); chip.dataset.name = name;
       const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
       remove.onclick = () => {
-        if (!this.admits(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
+        if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
         editor.edit({ addressees: editor.draft.addressees.filter(item => item !== name) });
         this.callbacks.edit(editor); this.paintRecipients();
       };
@@ -382,7 +386,7 @@ export class Reader {
     const name = input.value.trim().replace(/^@/, '');
     if (!name || !this.sessions) return;
     const editor = this.sessions.reply;
-    if (!this.admits(editor) || editor.adopting || recoveryReadOnly(editor)) return;
+    if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return;
     if (!editor.draft.addressees.includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name] });
       this.callbacks.edit(editor); this.paintRecipients();
@@ -432,7 +436,7 @@ export class Reader {
   paintStatus() {
     if (!this.editor) return;
     const editor = this.editor;
-    const state = writingState(editor, { active: this.admits(editor), note: this.mode === 'note', status: this.callbacks.status });
+    const state = writingState(editor, { active: this.admits(editor), writable: this.writes(editor), note: this.mode === 'note', status: this.callbacks.status });
     this.$('save-state').textContent = state.message;
     this.$('send-reply').disabled = state.sendDisabled;
     const pinned = editor.sourceRef?.kind === 'memory' && editor.sourceRef.revision !== this.source.source_ref.revision;
@@ -513,7 +517,7 @@ export class Reader {
   notice(text) { this.$('reader-notice').textContent = text; this.$('reader-notice').hidden = !text; }
 
   async send(stay) {
-    if (!this.admits(this.sessions?.reply)) return;
+    if (!this.admits(this.sessions?.reply)) { if (this.writes(this.sessions?.reply)) this.notice(STEP_WAITS); return; }
     this.disarm();
     const editor = this.sessions.reply;
     if (editor.submissions.some(item => item.status === 'preparing' && !item.detached)) {

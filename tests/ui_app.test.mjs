@@ -222,6 +222,32 @@ test('failed explicit close still cancels navigation and permits a fresh step', 
   assert.equal((await f.journal.own(x.editors.reply.key)).snapshot.draft.body, 'Still editable X');
 });
 
+// While a step waits, the Reader in front still takes typing; every other act
+// waits for the step. The inline composer, a superseded presentation and a
+// disposed registry take nothing.
+test('a waiting step leaves the Reader writable and nothing else', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const held = await holdSource(f); t.after(() => held.release.resolve());
+  assert.equal(f.registry.isCurrent(x, reply), false, 'acts on the writing wait for the step');
+  assert.equal(f.registry.isWritable(x, reply), true, 'typing in the Reader goes on');
+  assert.throws(() => f.registry.sessionFor(reply).uploads.reserve(x), 'images wait for the step');
+  assert.equal(f.registry.isWritable(x, new Editor(reply.context, reply.draft)), false, 'only the registered editor');
+  held.release.resolve(); const y = (await held.opening).value;
+  assert.equal(f.registry.isWritable(x, reply), false, 'the presentation the step replaced takes nothing');
+  assert.equal(f.registry.isWritable(y, y.editors.reply), true);
+  const note = f.registry.setMode('note');
+  assert.equal(f.registry.isWritable(y, y.editors.reply), false, 'a superseded presentation takes nothing');
+  assert.equal(f.registry.isWritable(note, note.editors.note), true);
+  assert.equal(await f.registry.close(note, { explicit: true }), true);
+  const topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const inline = await f.registry.initializeInline(topic), editor = inline.editors.reply;
+  assert.equal(f.registry.isWritable(inline, editor), true);
+  const step = await holdSource(f); t.after(() => step.release.resolve());
+  assert.equal(f.registry.isWritable(inline, editor), false, 'the inline composer waits while the Reader opens over it');
+  step.release.resolve(); await step.opening;
+  f.registry.dispose(); assert.equal(f.registry.isWritable(f.registry.current, f.registry.current.editors.reply), false);
+});
+
 test('newer open wins over explicit close awaiting local preservation', async t => {
   const f = await fixture(t), x = await f.open(0), entered = deferred(), release = deferred(), put = f.backend.put;
   t.after(() => { release.resolve(); f.backend.put = put; });
