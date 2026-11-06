@@ -1214,7 +1214,7 @@ try {
         await replace(p, body);
         await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Recovery copy unavailable")'), 'visible local preservation failure');
         await p.release(held);
-        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Fixture quota failure"'), 'the refused step says why');
+        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Not opened: this device could not keep your writing. It stays here; keep this page open."'), 'the refused step says why');
         assert.ok((await sourceText(p)).startsWith('Source 0 '), 'the step did not replace the Reader');
         assert.equal(await field(p), body);
         assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false, 'the Reader takes typing again');

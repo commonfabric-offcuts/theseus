@@ -300,7 +300,7 @@ test('a step refuses to replace a Reader whose writing typed while it waited was
   await assert.rejects(f.registry.edited(reply), /Injected recovery quota failure/);
   assert.match(f.registry.status(reply), /Recovery copy unavailable/);
   held.release.resolve();
-  assert.match((await held.opening).error?.message ?? 'the step replaced the Reader', /Injected recovery quota failure/, 'the step is refused and says why');
+  assert.match((await held.opening).error?.message ?? 'the step replaced the Reader', /^Not opened: this device could not keep your writing\./, 'the step is refused and says why');
   assert.equal(f.registry.current, x); assert.deepEqual(f.shown, [x]); assert.equal(f.registry.pendingOpen, null);
   assert.equal(f.registry.isCurrent(x, reply), true, 'the Reader takes every act again');
   assert.match(f.registry.status(reply), /Recovery copy unavailable/, 'the warning stays with the writing');
@@ -396,6 +396,22 @@ test('an explicit close a newer open superseded stays quiet when its preservatio
   release.resolve();
   assert.equal(await closing, false, 'the superseded close reports nothing over the newer open');
   const y = await opening; assert.equal(f.registry.current, y); assert.deepEqual(f.closed, []);
+});
+
+// A step to another message keeps the writing on this device first; when the
+// device cannot keep it, the step is refused in plain words and the cause goes
+// to the console.
+test('a step whose device save fails says so plainly and keeps the writing in front', async t => {
+  const f = await fixture(t), x = await f.open(0), put = f.backend.put;
+  t.after(() => { f.backend.put = put; });
+  f.backend.put = async () => { throw Error('Injected step quota failure'); };
+  x.editors.reply.edit({ body: 'Unkept before the step' });
+  const warned = t.mock.method(console, 'warn', () => {});
+  const { error } = await f.open(1).then(value => ({ value }), error => ({ error }));
+  assert.equal(error?.message, 'Not opened: this device could not keep your writing. It stays here; keep this page open.');
+  assert.ok(warned.mock.calls.some(call => call.arguments.some(value => value?.message === 'Injected step quota failure')),
+    'the device\'s own error goes to the console');
+  assert.equal(x.editors.reply.draft.body, 'Unkept before the step');
 });
 
 // A second press of Close supersedes the first while the Reader stays in

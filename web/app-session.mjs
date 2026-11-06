@@ -172,6 +172,18 @@ export class EditorRegistry {
     return this.keepEditorsLocal(Object.values(presentation.editors));
   }
 
+  // Writing in front is kept on this device before a step replaces it. When
+  // the device cannot keep it, the step is refused in plain words and the
+  // device's own error goes to the console; the image refusal already is plain.
+  async keepBeforeStep(presentation) {
+    try { await this.keepLocal(presentation); }
+    catch (error) {
+      if (error instanceof ImageHeld) throw error;
+      console.warn('Step: this device could not keep the writing', error);
+      throw Error('Not opened: this device could not keep your writing. It stays here; keep this page open.');
+    }
+  }
+
   async keepEditorsLocal(editors) {
     await Promise.all(editors.filter(editor => uploadWork(editor) || editor.localVersion > 0 ||
       editor.submissions.length || this.sessionFor(editor).attempts.length).map(editor => this.persistLocal(editor)));
@@ -185,7 +197,7 @@ export class EditorRegistry {
     this.pendingOpen = token;
     this.activity();
     try {
-    await this.keepLocal(this.interactive);
+    await this.keepBeforeStep(this.interactive);
     const [sourceAnswer, state] = await foreground.read(options => pairedReads([
       this.api.view('source', sourceRef, options),
       this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize }, options),
@@ -202,7 +214,7 @@ export class EditorRegistry {
     // Writing typed while the step waited is kept on this device before the
     // step replaces it, or the step is refused and the writing stays in front.
     this.leaving = token; this.activity();
-    await this.keepLocal(this.interactive);
+    await this.keepBeforeStep(this.interactive);
     if (token !== this.generation || this.disposed) return null;
     reply.unavailable = sourceUnavailable || !state.destination_available;
     note.unavailable = sourceUnavailable;
