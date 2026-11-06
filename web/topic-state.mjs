@@ -34,10 +34,12 @@ export function stateLabel(item, reader) {
   return state === 'waiting' || state === 'active' ? `Waiting on ${names}` : `${LABELS[state]} · waiting on ${names}`;
 }
 
+// "fable asked you": who asked whom.
+const askWords = (ask, reader) => `${named(ask.by, reader)} asked ${ask.actor_id === reader ? 'you' : ask.actor_id}`;
+
 // "fable asked you, since 7:41 AM Thu Nov 5": how long each open ask has waited.
 export function askLines(item, reader) {
-  return asksOf(item).map(ask => `${named(ask.by, reader)} asked ${ask.actor_id === reader ? 'you' : ask.actor_id}` +
-    (Number.isSafeInteger(ask.since_ms) ? `, since ${readableTime(ask.since_ms)}` : ''));
+  return asksOf(item).map(ask => askWords(ask, reader) + (Number.isSafeInteger(ask.since_ms) ? `, since ${readableTime(ask.since_ms)}` : ''));
 }
 
 // Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
@@ -98,6 +100,9 @@ const element = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props);
   node.append(...children); return node;
 };
+// A time after its lead-in (", since "), kept on one line so a narrow screen
+// never breaks inside it; nothing when there is no time.
+const whole = (lead, ms) => Number.isSafeInteger(ms) ? [lead, element('span', { className: 'together', textContent: readableTime(ms) })] : [];
 const names = value => [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))];
 const known = state => STATES.includes(state) ? state : 'active';
 const CHANGED = 'This topic changed while you were choosing. What you chose is kept here: check it against the line above and save again.';
@@ -139,9 +144,8 @@ export class TopicStatePanel {
     if (waitsOn(topic).includes(reader)) mark.classList.add('mine');
     const line = [mark];
     if (topic.state_note) line.push(' · ', element('span', { className: 'state-note', textContent: topic.state_note }));
-    if (topic.state_by) line.push(element('span', { className: 'muted', textContent:
-      ` — ${named(topic.state_by, reader)}${Number.isSafeInteger(topic.state_ms) ? ', ' + readableTime(topic.state_ms) : ''}` }));
-    for (const ask of askLines(topic, reader)) line.push(element('span', { className: 'muted ask-line', textContent: ` · ${ask}` }));
+    if (topic.state_by) line.push(element('span', { className: 'muted' }, ` — ${named(topic.state_by, reader)}`, ...whole(', ', topic.state_ms)));
+    for (const ask of asksOf(topic)) line.push(element('span', { className: 'muted ask-line' }, ` · ${askWords(ask, reader)}`, ...whole(', since ', ask.since_ms)));
     if (topic.archived) line.push(element('span', { className: 'muted', textContent: ' · Archived' }));
     this.line.replaceChildren(...line);
     if (!(manager || participant)) this.drop();

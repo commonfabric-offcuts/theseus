@@ -74,6 +74,8 @@ test('the panel line says who said it and when; only those who may change it get
   panel.paint(said, [{ actor_id: 'fable' }]);
   assert.equal(host.hidden, false);
   assert.equal(host.children[0].text, 'Waiting on tony · Which name? — you, 7:41 AM Thu Nov 5');
+  // At 390 the line wraps; a time never breaks inside itself (warp, item 91b).
+  assert.deepEqual(host.children[0].all().filter(node => node.classes.has('together')).map(node => node.text), ['7:41 AM Thu Nov 5'], 'the time is kept whole');
   const mark = host.children[0].children[0];
   assert.equal(mark.title, 'Waiting on tony', 'its whole words are its title');
   assert.equal(mark.classes.has('mine'), false, 'it waits on someone else');
@@ -369,7 +371,9 @@ test('an open ask makes a topic wait on whoever it asks, whatever its state, and
   assert.equal(other.children[0].classes.has('mine'), false);
   const panel = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
   panel.paint(topic({ state: 'review', asks: [asked('tony')] }), []);
-  assert.equal(panel.line.find(node => node.classes.has('ask-line')).textContent, ' · fable asked you, since 7:41 AM Thu Nov 5');
+  const line = panel.line.find(node => node.classes.has('ask-line'));
+  assert.equal(line.text, ' · fable asked you, since 7:41 AM Thu Nov 5');
+  assert.deepEqual(line.all().filter(node => node.classes.has('together')).map(node => node.text), ['7:41 AM Thu Nov 5'], 'the time an ask has waited since is kept whole');
   assert.equal(panel.line.find(node => node.classes.has('topic-state')).dataset.state, 'waiting');
 });
 
