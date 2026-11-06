@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicStatePanel, paintState, paintWaiting, paintWork, readableTime, stateLabel, workNote } from '../web/topic-state.mjs';
+import { TopicStatePanel, paintState, paintWaiting, paintWork, stateLabel, workNote } from '../web/topic-state.mjs';
+import { clock } from '../web/times.mjs';
+
+// The page reads every time on Friday 6 November 2026 at noon, so a time on
+// the 6th shows bare, one on the 5th as yesterday's, and earlier ones dated.
+clock.now = () => new Date(2026, 10, 6, 12, 0).getTime();
 
 // A small DOM with parents and one focused element. Detaching the focused
 // element, or an ancestor of it, sends focus to the body, as a browser does;
@@ -41,11 +46,6 @@ const NOT_SENT = 'That was not sent: another change was still being saved. Press
 const topic = (fields = {}) => ({ id: 't1', version: 4, title: 'Naming', owner_id: 'tony', creator_id: 'tony', state: 'active',
   state_note: '', state_by: null, state_ms: null, waiting_on: [], archived: false, ...fields });
 
-test('a time reads like 7:41 AM Thu Nov 5 in the reader\'s zone', () => {
-  assert.equal(readableTime(new Date(2026, 10, 5, 7, 41).getTime()), '7:41 AM Thu Nov 5');
-  assert.equal(readableTime(new Date(2026, 10, 5, 17, 4).getTime()), '5:04 PM Thu Nov 5');
-});
-
 test('labels name who a topic waits on, the reader as you', () => {
   assert.equal(stateLabel(topic({ state: 'waiting', waiting_on: ['tony', 'fable'] }), 'tony'), 'Waiting on you, fable');
   assert.equal(stateLabel(topic({ state: 'waiting' }), 'tony'), 'Waiting');
@@ -70,10 +70,11 @@ test('the panel line says who said it and when; only those who may change it get
   dom(t);
   const host = new Element('section'), sent = [];
   const panel = new TopicStatePanel({ host, reader: 'fable', send: async (...args) => { sent.push(args); return { status: 'committed', result: {} }; } });
-  const said = topic({ state: 'waiting', waiting_on: ['tony'], state_note: 'Which name?', state_by: 'fable', state_ms: new Date(2026, 10, 5, 7, 41).getTime() });
+  const said = topic({ state: 'waiting', waiting_on: ['tony'], state_note: 'Which name?', state_by: 'fable', state_ms: new Date(2026, 10, 6, 7, 41).getTime() });
   panel.paint(said, [{ actor_id: 'fable' }]);
   assert.equal(host.hidden, false);
-  assert.equal(host.children[0].text, 'Waiting on tony · Which name? — you, 7:41 AM Thu Nov 5');
+  assert.equal(host.children[0].text, 'Waiting on tony · Which name? — you, 7:41 AM', 'said today: the time alone');
+  assert.equal(host.children[0].find(node => node.tag === 'time').title, '7:41 AM Fri Nov 6', 'its title keeps the date');
   const mark = host.children[0].children[0];
   assert.equal(mark.title, 'Waiting on tony', 'its whole words are its title');
   assert.equal(mark.classes.has('mine'), false, 'it waits on someone else');
@@ -369,7 +370,7 @@ test('an open ask makes a topic wait on whoever it asks, whatever its state, and
   assert.equal(other.children[0].classes.has('mine'), false);
   const panel = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
   panel.paint(topic({ state: 'review', asks: [asked('tony')] }), []);
-  assert.equal(panel.line.find(node => node.classes.has('ask-line')).textContent, ' · fable asked you, since 7:41 AM Thu Nov 5');
+  assert.equal(panel.line.find(node => node.classes.has('ask-line')).text, ' · fable asked you, since Yesterday 7:41 AM');
   assert.equal(panel.line.find(node => node.classes.has('topic-state')).dataset.state, 'waiting');
 });
 
@@ -379,15 +380,18 @@ test('the waiting list says who asked and since when, and leaves out a state it 
   paintWaiting(host, { waiting_on_me: 2, latest_waiting: [
     { id: 't1', title: 'Asked', title_truncated: false, note: 'Someone else\'s note', state_by: 'codex', state_ms: null, said: false,
       ask: { message_id: 'm1', by: 'fable', since_ms: since } },
-    { id: 't2', title: 'Both', title_truncated: false, note: 'Pick one', state_by: 'codex', state_ms: null, said: true,
+    { id: 't2', title: 'Both', title_truncated: false, note: 'Pick one', state_by: 'codex', state_ms: new Date(2026, 10, 3, 16, 0).getTime(), said: true,
       ask: { message_id: 'm2', by: 'fable', since_ms: since } }] }, () => {});
   assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text),
-    ['Asked fable asked you, since 7:41 AM Thu Nov 5', 'Both Pick one — codex · fable asked you, since 7:41 AM Thu Nov 5']);
+    ['Asked fable asked you, since Yesterday 7:41 AM', 'Both Pick one — codex, 4:00 PM Tue Nov 3 · fable asked you, since Yesterday 7:41 AM']);
+  assert.deepEqual(host.all().filter(node => node.tag === 'time').map(node => node.title), ['7:41 AM Thu Nov 5', '4:00 PM Tue Nov 3', '7:41 AM Thu Nov 5'],
+    'each time\'s title keeps its date');
 });
 
 test('a row with observed work carries a dot, and every row says when activity was last seen, never that nobody works', t => {
   dom(t);
-  const at = new Date(2026, 10, 5, 7, 41).getTime(), when = '7:41 AM Thu Nov 5';
+  // Seen today: a title and screen-reader words still say the day.
+  const at = new Date(2026, 10, 6, 7, 41).getTime(), when = '7:41 AM Fri Nov 6';
   const work = (observed, extra = {}) => ({ observed, seen_ms: at, by: 'fable', how: 'posted', waits: false, ...extra });
   assert.equal(workNote(work(true), 'tony'), `Activity seen ${when} (fable posted)`);
   assert.equal(workNote(work(true, { by: 'tony', how: 'turn' }), 'tony'), `Activity seen ${when} (you took a turn)`);
@@ -414,7 +418,8 @@ test('a row with observed work carries a dot, and every row says when activity w
 
 test('a waiting row\'s title and screen-reader words name whom it waits on as its pill does', t => {
   dom(t);
-  const at = new Date(2026, 10, 5, 7, 41).getTime(), when = '7:41 AM Thu Nov 5';
+  // Seen today: a title and screen-reader words still say the day.
+  const at = new Date(2026, 10, 6, 7, 41).getTime(), when = '7:41 AM Fri Nov 6';
   const work = { observed: true, seen_ms: at, by: 'aim-lead', how: 'posted', waits: true };
   const ask = (actor_id, by = 'aim-lead') => ({ actor_id, by, message_id: 'm-' + actor_id, since_ms: at });
   for (const [item, pill] of [

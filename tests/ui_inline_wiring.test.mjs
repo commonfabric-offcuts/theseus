@@ -18,10 +18,14 @@ import { placeNewLine } from '../web/unanswered.mjs';
 import { cardClass, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
 import { AgentColors } from '../web/colors.mjs';
 import { openColorPicker } from '../web/color-picker.mjs';
+import * as times from '../web/times.mjs';
+// Every shown time is read on one fixed day, noon on Thursday 5 November 2026, wherever and whenever the check runs.
+const TODAY = new Date(2026, 10, 5, 12, 0).getTime();
+times.clock.now = () => TODAY;
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
-  const elements = new Map(), events = [], calls = [], paints = [], observers = [];
+  const elements = new Map(), events = [], calls = [], paints = [], observers = [], days = [];
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
@@ -77,7 +81,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, ...times, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -92,7 +96,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(Object.assign(scope, overrides));
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,readableTime}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork}; })())', context);
   const attentionSource = readFileSync(new URL('../web/attention.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + attentionSource + '; return {Attention,paintSent}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
@@ -122,7 +126,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   context.wiring.inject({ api, bootstrap, registry, reader, inline, topic, views, freshness: fresh,
     marks: new context.Marks({ api, instanceId: 'fixture', authority: () => bootstrap.authority, doc: null, win: null }) });
   const state = (ref = editor.context.sourceRef) => ({ instance_id: 'fixture', source_ref: ref, destination: { topic_id: 't1' }, source_available: true, destination_available: true });
-  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers };
+  return { ...context.wiring, makeInline:context.wiring.inline, owners: context.wiring.get, registry, reader, inline, topic, editor, p, api, fresh, get, events, calls, paints, state, bootstrap, views, document, observers, days };
 }
 
 test('inline Ctrl-W uses the shared writing input path and preserves readonly writing', () => {
@@ -955,12 +959,38 @@ test('a card in the topic log says when its message was sent, and a message from
   const sent = new Date(2026, 10, 5, 5, 44).getTime();
   f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'tony', body: 'Timed', topic_id: 't1', sent_ms: sent });
   f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'fable', body: 'Untimed', topic_id: 't1', sent_ms: null });
+  f.views.messages.set('m3', { id: 'm3', seq: 3, author_id: 'fable', body: 'Last night', topic_id: 't1', sent_ms: new Date(2026, 10, 4, 21, 12).getTime() });
+  f.views.messages.set('m4', { id: 'm4', seq: 4, author_id: 'fable', body: 'Earlier', topic_id: 't1', sent_ms: new Date(2026, 10, 3, 7, 41).getTime() });
   f.paintViews('messages');
   const author = id => f.get('messages').children.find(card => card.dataset.id === id).children[0];
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
   const parts = id => author(id).children.map(text);
-  assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM Thu Nov 5']);
+  assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM'], 'sent today: the time alone');
   assert.deepEqual(parts('m2'), ['fable']);
+  assert.deepEqual(parts('m3'), ['fable', ' · Yesterday 9:12 PM']);
+  assert.deepEqual(parts('m4'), ['fable', ' · 7:41 AM Tue Nov 3'], 'earlier: dated as before');
+  assert.equal(author('m1').children[1].children[1].title, '5:44 AM Thu Nov 5', 'a time\'s title keeps its date');
+});
+
+test('the page watches the viewer\'s day once, and at a new day repaints every shown time with the list held in place', async () => {
+  const f = fixture();
+  assert.equal(f.days.length, 1, 'one watch for the page');
+  const [{ doc, win, repaint }] = f.days;
+  assert.equal(doc, f.document);
+  assert.equal(typeof win.addEventListener, 'function');
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'tony', body: 'Timed', topic_id: 't1', sent_ms: new Date(2026, 10, 5, 5, 44).getTime() });
+  f.paintViews('messages');
+  const time = f.get('messages').children[0].children[0].children[1].children[1];
+  assert.equal(time.textContent, '5:44 AM');
+  const query = f.document.querySelectorAll;
+  f.document.querySelectorAll = selector => selector === 'time[data-ms]' ? [time] : query(selector);
+  try {
+    times.clock.now = () => new Date(2026, 10, 6, 0, 0).getTime();
+    repaint();
+    assert.equal(time.textContent, 'Yesterday 5:44 AM', 'a card painted yesterday says so');
+  } finally { times.clock.now = () => TODAY; f.document.querySelectorAll = query; }
 });
 
 test('a reply card says quietly which message it answers, and a message answering none says nothing', async () => {

@@ -2,7 +2,7 @@ import { keyAction } from './editor.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { markReach, replaceChips } from './people.mjs';
-import { readableTime } from './topic-state.mjs';
+import { timeNode } from './times.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 
@@ -513,8 +513,8 @@ export class Reader {
 
   paintOrigin(source) {
     const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}` : 'Message';
-    const sent = Number.isInteger(source.sent_ms) ? readableTime(source.sent_ms) : '';
-    this.$('reader-origin').textContent = [source.author, provenance, sent].filter(Boolean).join(' · ');
+    const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
+    this.$('reader-origin').replaceChildren([source.author, provenance].filter(Boolean).join(' · '), ...sent);
     this.paintTone(source);
   }
   // The page the source is read on: an agent's message wears its color, as

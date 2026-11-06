@@ -19,7 +19,8 @@ import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention, paintSent } from './attention.mjs';
-import { TopicStatePanel, paintWaiting, readableTime } from './topic-state.mjs';
+import { TopicStatePanel, paintWaiting } from './topic-state.mjs';
+import { repaintTimes, watchDays } from './times.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
@@ -604,7 +605,7 @@ function participantName(person) {
 }
 // Messages sent before times were kept have none.
 function paintCardAuthor(author, item) {
-  paintAuthor(author, item.author_id, Number.isInteger(item.sent_ms) ? readableTime(item.sent_ms) : null, marks?.state(item.id)?.marked === true);
+  paintAuthor(author, item.author_id, Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true);
 }
 // What the page knows of the person's marks: the topic's line, each loaded
 // card's pill and the Reader's button.
@@ -1368,5 +1369,8 @@ async function initializeCreationPage(route) {
   initializeOutcomeNavigation();await followCommits(()=>outcomeRail.load())();document.body.dataset.ready='true';
 }
 window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
+// Every shown time follows the viewer's day: at midnight today's "4:40 AM"
+// becomes "Yesterday 4:40 AM", with a topic's list held where the reader was.
+watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
 $('refresh').onclick = () => run(start);
 run(start);

@@ -12,6 +12,7 @@
 // The clear is sent only for an open that succeeded and is still the one shown,
 // while the page is in front; a page in the background sends it when it is
 // shown again, if that same open is still shown.
+import { shownTime, timeNode } from './times.mjs';
 
 const PAGE = 50;
 const graphemes = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -182,9 +183,10 @@ export const marksWords = count => `${count} message${count === 1 ? '' : 's'} ma
 // joined to the name's last character (a whole grapheme) so a name that wraps
 // keeps the pill on its last line, then the time. The name is held in
 // author-name spans, which an agent's card colors as one: split for a pill,
-// its first part is the start and its last character the end.
-export function paintAuthor(author, name, time, marked) {
-  const shows = JSON.stringify([name, time, marked]);
+// its first part is the start and its last character the end. sent is when
+// the message was sent, or null for one from before times were kept.
+export function paintAuthor(author, name, sent, marked) {
+  const shows = JSON.stringify([name, sent, sent === null ? null : shownTime(sent), marked]);
   if (author.dataset.shows === shows) return;
   author.dataset.shows = shows;
   author.replaceChildren();
@@ -200,5 +202,5 @@ export function paintAuthor(author, name, time, marked) {
     end.className = 'author-name author-name-end'; end.append(last);
     together.append(end, pill, spoken); author.append(together);
   }
-  if (time) { const at = document.createElement('span'); at.className = 'message-time'; at.textContent = ` · ${time}`; author.append(at); }
+  if (sent !== null) { const at = document.createElement('span'); at.className = 'message-time'; at.append(' · ', timeNode(sent, document)); author.append(at); }
 }

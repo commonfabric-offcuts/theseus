@@ -9,6 +9,7 @@ import { Api, AttemptError } from '../web/api.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { Marks, paintAuthor, paintMarkButton, marksWords } from '../web/marks.mjs';
+import { clock } from '../web/times.mjs';
 
 const copy = value => structuredClone(value);
 const deferred = () => {
@@ -345,11 +346,19 @@ test('a card\'s Unread pill keeps the name\'s last character with it, and leaves
   const author = new Node('span');
   const shape = () => author.children.map(child => child.nodeType === 3 ? child.data
     : [child.className, ...child.children.map(c => c.nodeType === 3 ? c.data : [c.className, c.textContent ?? c.children.map(x => x.data).join(''), c.attributes['aria-hidden'] ?? null])]);
-  paintAuthor(author, 'agent-👨‍👩‍👧', '3:04 PM', true);
-  assert.deepEqual(shape(), [['author-name author-name-start', 'agent-'], ['together', ['author-name author-name-end', '👨‍👩‍👧', null], ['unread-mark', 'Unread', 'true'], ['sr-only', ', marked unread', null]], ['message-time']]);
-  assert.equal(author.children[2].textContent, ' · 3:04 PM');
-  paintAuthor(author, 'agent-👨‍👩‍👧', '3:04 PM', false);
-  assert.deepEqual(shape(), [['author-name', 'agent-👨‍👩‍👧'], ['message-time']]);
+  const now = clock.now; t.after(() => { clock.now = now; });
+  clock.now = () => new Date(2026, 10, 5, 18, 0).getTime();
+  const sent = new Date(2026, 10, 5, 15, 4).getTime();
+  paintAuthor(author, 'agent-👨‍👩‍👧', sent, true);
+  assert.deepEqual(shape(), [['author-name author-name-start', 'agent-'], ['together', ['author-name author-name-end', '👨‍👩‍👧', null], ['unread-mark', 'Unread', 'true'], ['sr-only', ', marked unread', null]], ['message-time', ' · ', [undefined, '3:04 PM', null]]]);
+  const time = author.children[2].children[1];
+  assert.deepEqual([time.tag, time.title, time.dataset.ms], ['time', '3:04 PM Thu Nov 5', String(sent)], 'sent today: the time alone, its title dated');
+  paintAuthor(author, 'agent-👨‍👩‍👧', sent, false);
+  assert.deepEqual(shape(), [['author-name', 'agent-👨‍👩‍👧'], ['message-time', ' · ', [undefined, '3:04 PM', null]]]);
+  // Painted again the next day, the same card says it was yesterday.
+  clock.now = () => new Date(2026, 10, 6, 0, 1).getTime();
+  paintAuthor(author, 'agent-👨‍👩‍👧', sent, false);
+  assert.equal(author.children[1].children[1].textContent, 'Yesterday 3:04 PM');
   paintAuthor(author, 'alice', null, true);
   assert.deepEqual(shape(), [['author-name author-name-start', 'alic'], ['together', ['author-name author-name-end', 'e', null], ['unread-mark', 'Unread', 'true'], ['sr-only', ', marked unread', null]]]);
 });
