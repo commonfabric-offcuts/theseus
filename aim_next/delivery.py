@@ -59,7 +59,10 @@ BETWEEN_OTHERS_SETTLE = (
     "WHERE active=1 AND recipient_id IN " + HUMANS,
     "UPDATE recipient_schedule SET pending_count=(SELECT coalesce(sum(g.pending_count),0) FROM delivery_groups g "
     "WHERE g.recipient_id=recipient_schedule.recipient_id AND g.active=1) WHERE recipient_id IN " + HUMANS,
-    "UPDATE recipient_schedule SET next_due_ms=NULL,retry_count=0,handed_seq=NULL WHERE pending_count=0 AND recipient_id IN " + HUMANS,
+    # A person left with nothing pending is as reading the last of it leaves them
+    # (_eligibility_changed): nothing due or handed, and no wake left unanswered.
+    "UPDATE recipient_schedule SET next_due_ms=NULL,retry_count=0,handed_seq=NULL,unanswered_wakes=0,unanswered_since_ms=NULL "
+    "WHERE pending_count=0 AND recipient_id IN " + HUMANS,
 )
 DELIVERY_GROUP_TOPIC_UP += BETWEEN_OTHERS_SETTLE
 # A fresh instance has the column and the version-25 index and trigger.

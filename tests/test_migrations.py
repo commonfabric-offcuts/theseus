@@ -1973,9 +1973,36 @@ class Schema24Case(MigrationCase):
         self.assertEqual(self.sql("SELECT g.id FROM delivery_groups g WHERE g.active=1 AND (g.pending_count<>(SELECT count(*) FROM deliveries d "
                                   "WHERE d.group_id=g.id AND d.state='pending') OR coalesce(g.first_pending_seq,0)<>coalesce((SELECT min(seq) "
                                   "FROM deliveries d WHERE d.group_id=g.id AND d.state='pending'),0))"), [])
-        self.assertEqual(self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'"), [(3,)])
+        self.assertEqual(self.sql("SELECT pending_count,next_due_ms FROM recipient_schedule WHERE recipient_id='owner'"), [(3, 1)],
+                         "a person with something still unread keeps their schedule")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.store.view("owner", "attention", {})["unread"], 3, "named, the answer to the owner, and the message to everyone")
+
+    def test_a_person_whose_only_unread_was_between_others_is_left_with_nothing_due(self):
+        # As version 24 left it: the person's one pending delivery is of a message between two
+        # agents, and their schedule is due, backing off, and counting a wake left unanswered.
+        with sqlite3.connect(str(self.path)) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM deliveries WHERE recipient_id='owner' AND state='pending'").fetchone(), (0,))
+            db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
+                       "VALUES ('between','t1','agent-a','To b','[]','[]','[\"agent-b\"]','op-between')")
+            seq = db.execute("SELECT seq FROM messages WHERE id='between'").fetchone()[0]
+            db.execute("INSERT INTO message_addressees VALUES ('t1','agent-b',?)", (seq,))
+            db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) SELECT actor_id,'subscription',topic_id,epoch "
+                       "FROM topic_participants WHERE topic_id='t1' AND actor_id='owner' AND active=1 ON CONFLICT DO NOTHING")
+            group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id='owner' AND kind='subscription' AND topic_id='t1' AND active=1").fetchone()[0]
+            delivery = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id) VALUES ('d-between','between','owner',?,'t1')",
+                                  (group,)).lastrowid
+            db.execute("INSERT INTO delivery_reasons VALUES ('d-between','subscription','t1',1)")
+            db.execute("UPDATE delivery_groups SET pending_count=1,first_pending_seq=? WHERE id=?", (delivery, group))
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('owner',1) ON CONFLICT DO NOTHING")
+            db.execute("UPDATE recipient_schedule SET pending_count=1,next_due_ms=1,retry_count=2,handed_seq=?,unanswered_wakes=1,unanswered_since_ms=5 "
+                       "WHERE recipient_id='owner'", (delivery,))
+        self.upgrade()
+        self.assertEqual(self.sql("SELECT state FROM deliveries WHERE id='d-between'"), [("acknowledged",)])
+        # What reading the last unread message leaves (Delivery._eligibility_changed): nothing due,
+        # no back-off, nothing handed, and no wake left unanswered.
+        self.assertEqual(self.sql("SELECT pending_count,next_due_ms,retry_count,handed_seq,unanswered_wakes,unanswered_since_ms "
+                                  "FROM recipient_schedule WHERE recipient_id='owner'"), [(0, None, 0, None, 0, None)])
 
     def test_step_back_to_24_restores_its_frozen_layout(self):
         self.upgrade()
