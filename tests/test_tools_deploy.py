@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
+import socket
 import subprocess
 import tempfile
 import unittest
@@ -52,6 +54,8 @@ class FakeHost:
             code = self.backup
         elif "migrate" in argv:
             code = self.migrate
+        elif argv[-1] == "binding":
+            out = "i-1\n"
         else:
             raise AssertionError("unexpected command %r" % argv)
         return subprocess.CompletedProcess(argv, code, out, "")
@@ -195,6 +199,129 @@ class Refusals(DeployCase):
                                 str(self.evidence), "--dry-run"])
         self.assertEqual(code, 1)
         self.assertIn("refused:", err.getvalue())
+
+
+# Stand-ins for bin/aim-next-server and bin/aim-next-runner: each prints its first line as the real one does
+# (the server only after binding --port) and then stays up until it is signalled.
+STUB_SERVER = """import http.server, json, sys
+port = int(sys.argv[sys.argv.index("--port") + 1])
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(json.dumps({"stub": %(nonce)r, "path": self.path}).encode())
+    def log_message(self, *args):
+        pass
+server = http.server.HTTPServer(("127.0.0.1", port), Handler)
+print(json.dumps({"status": %(status)r, "argv": sys.argv[1:]}), flush=True)
+server.serve_forever()
+"""
+STUB_RUNNER = """import json, signal, sys
+print(json.dumps({"event": %(event)r, "argv": sys.argv[1:]}), flush=True)
+signal.pause()
+"""
+
+
+class FullDeploy(DeployCase):
+    """The deploy past migrate: real stand-in server and runner processes on a free loopback port.
+
+    ps, git, the backup, the migration and the CLI are still answered by FakeHost, and every
+    process the deploy starts is stopped by the PID start() returned."""
+
+    def setUp(self):
+        super().setUp()
+        self.started = []
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            self.port = probe.getsockname()[1]
+        self.assertNotEqual(self.port, 5192)  # unlike the constant the old script had
+        self.raw["port"] = self.port
+        self.config_path.write_text(json.dumps(self.raw))
+        self.config = deploy.load_config(self.config_path)
+        self.nonce = os.urandom(8).hex()
+        self.stubs()
+
+    def stubs(self, status="ready", event="acquired"):
+        (self.config.live / "bin").mkdir(parents=True, exist_ok=True)
+        (self.config.live / "bin/aim-next-server").write_text(STUB_SERVER % {"nonce": self.nonce, "status": status})
+        (self.config.live / "bin/aim-next-runner").write_text(STUB_RUNNER % {"event": event})
+
+    def tearDown(self):
+        for proc in self.started:
+            proc.kill()
+            proc.wait()
+        super().tearDown()
+
+    def run_deploy(self, host):
+        real_start, real_urlopen, opened = deploy.start, deploy.urllib.request.urlopen, []
+
+        def start(*args):
+            proc = real_start(*args)
+            self.started.append(proc)
+            return proc
+
+        def urlopen(url):
+            # Only the stand-in server: a wrong port must fail here, never reach a live server.
+            opened.append(url)
+            self.assertTrue(url.startswith("http://127.0.0.1:%d/" % self.port), url)
+            return real_urlopen(url)
+
+        with mock.patch.object(deploy, "run", host), \
+                mock.patch.object(deploy.os, "kill", lambda pid, sig: self.kills.append((pid, sig))), \
+                mock.patch.object(deploy, "wait_exit", return_value="exited"), \
+                mock.patch.object(deploy, "start", start), \
+                mock.patch.object(deploy.urllib.request, "urlopen", urlopen), \
+                redirect_stdout(io.StringIO()):
+            deploy.deploy(self.config, SHA, self.evidence, self.summary, False)
+        return opened
+
+    def first_line(self, run):
+        return json.loads((self.instance / run / "stdout.log").read_text().splitlines()[0])
+
+    def test_a_deploy_restarts_both_from_the_config_and_verifies_the_new_server(self):
+        host = FakeHost(self.config)
+        try:
+            opened = self.run_deploy(host)
+        except Exception as error:  # a refusal here is the failure under test, not an error
+            self.fail("the deploy did not complete: %r" % error)
+        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "03-stopped",
+                                          "04-backup", "05-fast-forward", "06-migrate", "07-server", "09-runner",
+                                          "10-verify"])
+        self.assertEqual(self.kills, [(222, 15), (111, 15)])
+        # The backup reads the server's profile, the one bound to the database.
+        backup = host.ran("-c")[0][-1]
+        self.assertIn(repr(str(self.config.server_profile)), backup)
+        self.assertNotIn(str(self.config.runner_profile), backup)
+        server, runner = self.started
+        self.assertEqual(self.first_line("run-server-04")["argv"], deploy.server_argv(self.config)[3:])
+        self.assertEqual(self.first_line("run-runner-03")["argv"], deploy.runner_argv(self.config)[3:])
+        for run, proc in (("run-server-04", server), ("run-runner-03", runner)):
+            self.assertEqual(json.loads((self.instance / run / "pid.json").read_text())["pid"], proc.pid)
+            self.assertEqual(json.loads((self.instance / run / "launch.json").read_text())["revision"], SHA)
+            # Each runs in its own session, so it outlives the deploy and the terminal it ran in.
+            self.assertEqual(os.getsid(proc.pid), proc.pid)
+        verify = json.loads((self.evidence / "10-verify.json").read_text())
+        self.assertEqual((verify["root_status"], verify["server_alive"], verify["runner_alive"], verify["cli_exit"]),
+                         (200, True, True, 0))
+        self.assertIn(self.nonce, verify["bootstrap_head"])
+        self.assertEqual(opened, ["http://127.0.0.1:%d/api/bootstrap" % self.port, "http://127.0.0.1:%d/" % self.port])
+
+    def test_a_server_that_does_not_report_ready_stops_the_deploy_before_the_runner_starts(self):
+        self.stubs(status="starting")
+        with self.assertRaises(deploy.Refused) as caught:
+            self.run_deploy(FakeHost(self.config))
+        self.assertIn("did not report ready", str(caught.exception))
+        self.assertEqual(len(self.started), 1)
+        self.assertFalse((self.instance / "run-runner-03").exists())
+        self.assertEqual(self.records()[-1], "07-server")
+
+    def test_a_runner_that_does_not_acquire_its_guard_stops_the_deploy_before_the_verify(self):
+        self.stubs(event="waiting")
+        with self.assertRaises(deploy.Refused) as caught:
+            self.run_deploy(FakeHost(self.config))
+        self.assertIn("did not acquire its guard", str(caught.exception))
+        self.assertEqual(len(self.started), 2)
+        self.assertEqual(self.records()[-1], "09-runner")
 
 
 class ReleaseCheckGate(DeployCase):
