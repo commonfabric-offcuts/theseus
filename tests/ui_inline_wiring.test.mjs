@@ -18,6 +18,7 @@ import { placeNewLine } from '../web/unanswered.mjs';
 import { cardClass, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
 import { AgentColors } from '../web/colors.mjs';
 import { openColorPicker } from '../web/color-picker.mjs';
+import { PageReads } from '../web/page-reads.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -77,7 +78,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -98,7 +99,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach,replaceChips}; })())', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,reread,PAGE}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,paintChanged,changedSince,reread,PAGE}; })())', context);
   const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + marksSource + '; return {Marks,paintMarkButton,paintAuthor,marksWords}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
@@ -1469,4 +1470,29 @@ test('your own message keeps its own style when it arrives live and when More lo
   const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
   assert.deepEqual(classes, { m33: 'message-card agent-card agent-peach', m32: 'message-card own-message', m31: 'message-card agent-card agent-green',
     m30: 'message-card agent-card agent-green', m29: 'message-card agent-card agent-green', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
+});
+
+test('a Notebook page shown in the Reader is read at the revision shown; a message is not, and a refused read is said', async () => {
+  const { f } = await readingPage();
+  const answers = [];
+  f.api.command = async envelope => { f.calls.push({ kind: envelope.kind, envelope }); return answers.shift() ?? { status: 'committed', recorded: true, result: { previous_revision: 0 } }; };
+  Object.assign(f.reader, { show() {}, paintPending() {}, paintRecipients() {} });
+  Object.assign(f.views, { revisions: { observe() {}, offer: () => null } });
+  f.registry.neighbors = async () => null;
+  const shown = (source_ref, extra = {}) => {
+    const presentation = { surface: 'reader', mode: 'reply', source: { source_ref, title: 'Page', body: 'Words', attachments: [], topic_id: 't1', author: 'agent-a', ...extra },
+      editors: { reply: { key: 'r', context: { kind: 'reply', topicId: 't1', sourceRef: source_ref }, submissions: [] }, note: { key: 'n', context: { kind: 'note' }, submissions: [] } } };
+    f.registry.current = presentation; return presentation;
+  };
+  const reads = () => JSON.parse(JSON.stringify(f.calls.filter(c => c.kind === 'memory.read').map(c => [c.envelope.target, c.envelope.args, c.envelope.expected])));
+  f.registry.options.present(shown({ kind: 'memory', id: 'p1', revision: 3 })); await settle(); await settle();
+  assert.deepEqual(reads(), [[{ item_id: 'p1' }, { revision: 3 }, { authority: { authority_id: 'a1', authority_epoch: 'e1' } }]]);
+  f.registry.options.present(shown({ kind: 'message', id: 'm1' })); await settle(); await settle();
+  assert.equal(reads().length, 1, 'a message is read through its topic, not here');
+  f.registry.options.present(Object.assign(shown({ kind: 'memory', id: 'p1', revision: 3 }), { sourceUnavailable: true })); await settle(); await settle();
+  assert.equal(reads().length, 1, 'an unavailable page is not read');
+  answers.push({ status: 'rejected', recorded: true, error: { code: 'FORBIDDEN', message: 'No readable Notebook revision' } });
+  f.registry.options.present(shown({ kind: 'memory', id: 'p2', revision: 1 })); await settle(); await settle();
+  assert.equal(reads().length, 2);
+  assert.ok(f.events.some(e => e[0] === 'reader-notice' && /No readable Notebook revision.*may still show as changed/.test(e[1])), 'the refusal is said in the Reader');
 });

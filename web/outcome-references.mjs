@@ -1,9 +1,10 @@
-import { PAGE } from './topic-navigation.mjs';
+import { PAGE, paintChanged } from './topic-navigation.mjs';
 
 // The outcome's own Notebook pages, in the sidebar beside its topics: what
 // every topic in the outcome stands on, such as its architecture, ways of
 // working and guidelines. Each page is a row like a topic's, by title, and
-// opens in the Reader. A reader outside the outcome cannot list its Notebook
+// opens in the Reader. A page the reader read before and that was revised
+// since carries the count of its new revisions until they open it again. A reader outside the outcome cannot list its Notebook
 // and sees nothing; a read that fails says so and keeps what was last shown.
 // The topic's changes do not cover the outcome's Notebook, so each read tells
 // the Reader the revisions it saw.
@@ -23,6 +24,7 @@ export class OutcomeReferences {
         this.list.append(row);
       }
       row.textContent = item.title || 'Notebook item';
+      paintChanged(row, item);
       row.onclick = () => this.open(item.source_ref, row);
       if (this.list.children[index] !== row) this.list.insertBefore(row, this.list.children[index] ?? null);
     });
@@ -69,7 +71,8 @@ export class OutcomeReferences {
     for (const item of Array.isArray(answer?.items) ? answer.items : [null]) {
       if (typeof item?.id !== 'string' || ids.has(item.id) || !Number.isSafeInteger(item.seq) || item.seq <= previous ||
           !Number.isSafeInteger(item.revision) || item.revision < 1 || item.owner_scope?.kind !== 'workspace' || item.owner_scope.id !== this.scope ||
-          item.source_ref?.kind !== 'memory' || item.source_ref.id !== item.id || item.source_ref.revision !== item.revision) {
+          item.source_ref?.kind !== 'memory' || item.source_ref.id !== item.id || item.source_ref.revision !== item.revision ||
+          item.read_revision !== undefined && !(Number.isSafeInteger(item.read_revision) && item.read_revision >= 0 && item.read_revision <= item.revision)) {
         throw Error('The outcome references are malformed.');
       }
       ids.add(item.id); previous = item.seq;

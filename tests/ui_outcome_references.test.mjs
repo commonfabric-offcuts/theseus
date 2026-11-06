@@ -6,7 +6,9 @@ import { OutcomeReferences } from '../web/outcome-references.mjs';
 function fixture(t, { pageMax } = {}) {
   const previous = globalThis.document;
   class Element {
-    constructor() { this.children = []; this.dataset = {}; this.hidden = false; this.textContent = ''; }
+    constructor() { this.children = []; this.dataset = {}; this.hidden = false; this.text = ''; }
+    // As the DOM's: setting the text replaces whatever the element held.
+    get textContent() { return this.text; } set textContent(value) { this.text = value; this.children = []; }
     append(...nodes) { for (const child of nodes) { child.remove(); child.parent = this; this.children.push(child); } }
     insertBefore(child, before) { child.remove(); const index = before ? this.children.indexOf(before) : this.children.length; this.children.splice(index, 0, child); child.parent = this; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); this.parent = null; }
@@ -17,7 +19,7 @@ function fixture(t, { pageMax } = {}) {
   const nodes = Object.fromEntries(['host', 'list', 'more', 'message'].map(k => [k, new Element()]));
   nodes.host.hidden = true; nodes.message.hidden = true;
   const queue = [], calls = [], opened = [], seen = [];
-  const item = (seq, title = `Item ${seq}`, revision = 1) => ({ id: `m${seq}`, seq, title, revision, owner_scope: { kind: 'workspace', id: 'w1' }, source_ref: { kind: 'memory', id: `m${seq}`, revision } });
+  const item = (seq, title = `Item ${seq}`, revision = 1, read_revision) => ({ id: `m${seq}`, seq, title, revision, read_revision, owner_scope: { kind: 'workspace', id: 'w1' }, source_ref: { kind: 'memory', id: `m${seq}`, revision } });
   const answer = (items, next_cursor = null) => ({ instance_id: 'instance', items, next_cursor });
   const references = new OutcomeReferences({ ...nodes, scope: 'w1', ...(pageMax ? { pageMax } : {}),
     read: args => { calls.push(args); const next = queue.shift(); return typeof next === 'function' ? next() : Promise.resolve(next); },
@@ -71,6 +73,9 @@ test('a read that fails says so and keeps the titles already shown; the next rea
     ['an id twice', f.answer([f.item(1), { ...f.item(2), id: 'm1', source_ref: { kind: 'memory', id: 'm1', revision: 1 } }])],
     ['out of order', f.answer([f.item(2), f.item(1)])],
     ['a cursor behind its items', f.answer([f.item(1), f.item(2)], 1)],
+    ['read past its revision', bad(one => { one.read_revision = 2; })],
+    ['read revision not a count', bad(one => { one.read_revision = '1'; })],
+    ['read revision below zero', bad(one => { one.read_revision = -1; })],
   ]) {
     f.queue.push(answer);
     assert.equal(await f.references.load(), false, name);
@@ -147,6 +152,27 @@ test('More, once nothing is left to bring, hands focus to the first item it brou
   f.more.hidden = false; f.references.next = 4; f.more.focus();
   await f.more.onclick();
   assert.equal(globalThis.document.activeElement, f.more);
+});
+
+test('a page read before and revised since carries its new revisions as a count until it is read as it stands', async t => {
+  const f = fixture(t);
+  const badge = row => row.children.flatMap(child => [child, ...(child.children ?? [])]).filter(child => /unread-count/.test(child.className ?? ''))
+    .map(child => [child.className, child.textContent]);
+  const spoken = row => row.children.flatMap(child => [child, ...(child.children ?? [])]).find(child => child.className === 'sr-only')?.textContent;
+  f.queue.push(f.answer([f.item(1, 'Never read', 3, 0), f.item(2, 'Changed', 4, 1), f.item(3, 'Read as it stands', 2, 2), f.item(4, 'From an older server', 2)]));
+  await f.references.load();
+  const [never, changed, current, older] = f.list.children;
+  assert.deepEqual(badge(never), [], 'a page never read has no light');
+  assert.deepEqual(badge(changed), [['unread-count changed', '3']]);
+  assert.equal(spoken(changed), ', changed since you read it, 3 new revisions');
+  assert.deepEqual(badge(current), []); assert.deepEqual(badge(older), []);
+  // Read as it stands, on this device or another, the next read draws it without its light.
+  f.queue.push(f.answer([f.item(1, 'Never read', 3, 0), f.item(2, 'Changed', 4, 4), f.item(3, 'Read as it stands', 3, 2), f.item(4, 'From an older server', 2)]));
+  await f.references.load();
+  assert.equal(f.list.children[1], changed, 'the same row');
+  assert.deepEqual(badge(changed), []);
+  assert.deepEqual(badge(current), [['unread-count changed', '1']]);
+  assert.equal(spoken(current), ', changed since you read it, 1 new revision');
 });
 
 test('the Notebook pages sit in the sidebar beside the topics, with the failure said above their rows', () => {

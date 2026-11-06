@@ -37,3 +37,17 @@ phone the rows scroll sideways, as topics do. An outcome with no pages, or
 one the reader cannot list, shows no Notebook section; a read that fails
 says so above the rows and keeps what was shown. The list is read again
 after every commit the live feed names, as the topics are.
+
+## The changed light
+
+A page the reader read before and that was revised since wears the number
+of its new revisions in the sidebar, in the same badge a topic's unread
+count wears, and screen readers hear ", changed since you read it, N new
+revisions". A page never read, or read as it stands, wears nothing.
+
+Showing a page in the Reader reads it: the page sends `memory.read` with the
+exact revision shown (a page the Reader cannot show is not read). The commit
+reaches every open page through the live feed, whose next reload draws the
+row without its light; a page without the feed reloads after the read is
+recorded. A read Core did not record is said in the Reader, and the page
+keeps its light until it is opened again.

@@ -27,6 +27,7 @@ import { placeNewLine } from './unanswered.mjs';
 import { cardClass, agentColor, paneClass } from './author-colors.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
+import { PageReads } from './page-reads.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -42,7 +43,7 @@ let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 let topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
-let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null;
+let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
@@ -380,6 +381,7 @@ async function present(presentation) {
     }
     paintReaderMark();
     noteRead();
+    if (shown.kind === 'memory' && !presentation.sourceUnavailable) run(() => readPage(presentation));
   }
   const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
@@ -389,6 +391,12 @@ async function present(presentation) {
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   sourceAttachments(presentation);
+}
+// A Notebook page shown in the Reader is read; a read Core did not record
+// says so in the Reader, and the page keeps its light.
+async function readPage(presentation) {
+  try { await pageReads.opened(presentation.source); }
+  catch (error) { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); }
 }
 // A reply to someone else's message in this topic goes to its author unless
 // the person removes them; the offer is made once for each reply editor, and
@@ -1028,6 +1036,11 @@ async function initialize() {
   marks = new Marks({ api, instanceId: bootstrap.instance_id, authority: () => registry.runtime.current, cancelOpen: () => registry.cancelOpen(),
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   marks.listen(paintMarks);
+  pageReads = new PageReads({ recorded: () => { if (commitReload) run(commitReload); }, send: (id, revision) => {
+    const { authority_id, authority_epoch } = registry.runtime.current;
+    return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'memory.read',
+      target: { item_id: id }, expected: { authority: { authority_id, authority_epoch } }, args: { revision } });
+  } });
   $('mark-unread').onclick = () => run(toggleMark);
   $('read-mark').onclick = () => run(() => {
     const next = marks.marked(topic.id)[0];
