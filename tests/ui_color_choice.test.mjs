@@ -82,6 +82,58 @@ test('choosing sends the palette name on the revision last read, and a stale one
   assert.equal(calls.at(-1).readClass, 'foreground', 'read while the person waits on the picker');
 });
 
+test('a choice whose answer was lost is sent again as the same request, so it is not called a change made elsewhere', async () => {
+  // Core recorded the first press; its answer never arrived. Core answers the
+  // same operation with its recorded receipt, and a new one as stale.
+  const recorded = new Map(), sent = [];
+  let serial = 0, lose = true;
+  const api = {
+    view: async () => page([{ actor_id: 'fable', color: 'rose', color_revision: 4 }]),
+    command: async envelope => {
+      sent.push(envelope.operation_id);
+      if (recorded.has(envelope.operation_id)) return recorded.get(envelope.operation_id);
+      if (recorded.size) return { status: 'rejected', recorded: true, operation_id: envelope.operation_id, error: { code: 'REVISION_CONFLICT', message: 'This color changed since it was read; nothing was changed' } };
+      const receipt = { status: 'committed', recorded: true, operation_id: envelope.operation_id, result: { actor_id: 'fable', color: 'olive', color_revision: 5 } };
+      recorded.set(envelope.operation_id, receipt);
+      if (lose) { lose = false; throw Error('connection lost'); }
+      return receipt;
+    },
+  };
+  const colors = new AgentColors({ api, instanceId: 'i', authority: () => ({ authority_id: 'a', authority_epoch: 'e' }), id: () => 'op-' + ++serial, doc: null, win: null });
+  await colors.load();
+  await assert.rejects(colors.choose('fable', 'olive'), /connection lost/);
+  const again = await colors.choose('fable', 'olive');
+  assert.equal(again.status, 'committed', 'the press again is answered with what Core recorded');
+  assert.deepEqual(sent, ['op-1', 'op-1'], 'the same operation both times');
+  assert.equal(colors.color('fable'), 'olive');
+  await colors.choose('fable', 'cyan');
+  assert.equal(sent.at(-1), 'op-2', 'a new choice is a new operation');
+});
+
+test('after a lost answer, another color is its own request, and a recorded refusal frees the press for a new one', async () => {
+  const sent = [];
+  let serial = 0, answers = [], epoch = 'e', last = null;
+  const api = {
+    view: async () => page([{ actor_id: 'fable', color: 'rose', color_revision: 4 }]),
+    command: async envelope => { last = envelope; sent.push([envelope.operation_id, envelope.args.color]); const next = answers.shift(); if (next instanceof Error) throw next; return { ...next, operation_id: envelope.operation_id }; },
+  };
+  const colors = new AgentColors({ api, instanceId: 'i', authority: () => ({ authority_id: 'a', authority_epoch: epoch }), id: () => 'op-' + ++serial, doc: null, win: null });
+  await colors.load();
+  answers = [Error('connection lost'), { status: 'rejected', recorded: true, error: { code: 'INVALID_ARGS', message: 'Not a color' } }, { status: 'rejected', recorded: true, error: { code: 'INVALID_ARGS', message: 'Not a color' } }];
+  await assert.rejects(colors.choose('fable', 'olive'));
+  await colors.choose('fable', 'cyan');
+  await colors.choose('fable', 'cyan');
+  assert.deepEqual(sent, [['op-1', 'olive'], ['op-2', 'cyan'], ['op-3', 'cyan']],
+    'cyan is not olive sent again; once Core recorded an answer, a press again is a new request');
+  // A request made under an authority that has since changed could only be refused.
+  answers = [Error('connection lost'), { status: 'committed', recorded: true, result: { actor_id: 'fable', color: 'teal', color_revision: 5 } }];
+  await assert.rejects(colors.choose('fable', 'teal'));
+  epoch = 'e2';
+  await colors.choose('fable', 'teal');
+  assert.deepEqual(sent.slice(-2), [['op-4', 'teal'], ['op-5', 'teal']], 'under a new authority the press again is a new request');
+  assert.equal(last.expected.authority.authority_epoch, 'e2');
+});
+
 test('a read answered before a choice, landing after it, does not undo the choice', async () => {
   let answer; const late = new Promise(resolve => answer = resolve);
   const { colors, listeners } = store([page([{ actor_id: 'fable', color: 'rose', color_revision: 1 }]), late],
@@ -134,7 +186,7 @@ function picker({ chosen = null, receipts = [] } = {}) {
   doc.body = new El(doc, 'body');
   const anchor = new El(doc, 'button'); doc.body.append(anchor);
   const choices = [];
-  const choose = async color => { choices.push(color); return receipts.shift() ?? { status: 'committed' }; };
+  const choose = async color => { choices.push(color); const next = receipts.shift() ?? { status: 'committed' }; if (next instanceof Error) throw next; return next; };
   const open = () => openColorPicker({ anchor, agent: 'fable', palette: AGENT_PALETTE, chosen, own: 'green', choose, doc, win: { innerWidth: 1000 } });
   const p = open();
   const buttons = () => p.root.all().filter(n => n.tag === 'button');
@@ -210,4 +262,15 @@ test('choosing sends the color and closes; a refusal is said and the picker stay
   assert.deepEqual(choices, ['violet', null], 'the agent\'s own is chosen with null');
   assert.equal(p.root.parent, null, 'committed: closed');
   assert.equal(doc.activeElement, anchor);
+});
+
+test('a lost answer says the choice may be saved and that a press again sends the same request', async () => {
+  const { p, buttons, choices, doc } = picker({ receipts: [Error('connection lost')] });
+  await buttons().find(b => b.title === 'violet').onclick();
+  const notice = p.root.all().find(n => n.getAttribute('role') === 'status');
+  assert.deepEqual([notice.hidden, notice.textContent], [false, 'Connection interrupted; whether the color was saved is unknown. Press again to send the same request.']);
+  assert.equal(p.root.parent, doc.body, 'still open, for the press again');
+  await buttons().find(b => b.title === 'violet').onclick();
+  assert.deepEqual(choices, ['violet', 'violet']);
+  assert.equal(p.root.parent, null);
 });

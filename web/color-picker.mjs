@@ -28,10 +28,10 @@ export function openColorPicker({ anchor, back = anchor, agent, palette, chosen,
       if (picker.busy) return;
       picker.busy = true; notice.hidden = true;
       let receipt;
-      try { receipt = await choose(color); } catch (error) { receipt = { error: { message: 'The color was not confirmed. Press again to choose it.' } }; }
+      try { receipt = await choose(color); } catch (error) { receipt = { error: { message: 'Connection interrupted; whether the color was saved is unknown. Press again to send the same request.' } }; }
       picker.busy = false;
       if (receipt?.status === 'committed') { picker.close(true); return; }
-      Object.assign(notice, { textContent: receipt?.error?.message ?? 'The color was not confirmed. Press again to choose it.', hidden: false });
+      Object.assign(notice, { textContent: receipt?.error?.message ?? 'The color was not confirmed. Press again to send the same request.', hidden: false });
     };
     buttons.push(button);
   };

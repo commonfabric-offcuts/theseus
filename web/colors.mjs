@@ -13,7 +13,7 @@ export class AgentColors {
   constructor({ api, instanceId, authority, id = () => crypto.randomUUID(), doc = globalThis.document, win = globalThis }) {
     if (!api || !instanceId || typeof authority !== 'function') throw Error('Agent colors need the instance and its authority.');
     Object.assign(this, { api, instanceId, authority, id });
-    this.choices = new Map(); this.listeners = new Set(); this.palette = [...AGENT_PALETTE]; this.loaded = false; this.loading = null; this.again = false;
+    this.choices = new Map(); this.envelopes = new Map(); this.authorityKey = null; this.listeners = new Set(); this.palette = [...AGENT_PALETTE]; this.loaded = false; this.loading = null; this.again = false;
     const resume = () => { if (doc?.visibilityState !== 'hidden') this.load().catch(() => {}); };
     doc?.addEventListener?.('visibilitychange', resume); win?.addEventListener?.('focus', resume);
   }
@@ -64,14 +64,29 @@ export class AgentColors {
     this.emit();
   }
 
+  // One envelope per agent, color and revision, made once and sent again as it
+  // is until Core records an answer to it, so a press again after a lost
+  // answer is the same request and Core answers it with what it recorded. One
+  // made under another authority is dropped: it can only be refused.
+  envelope(agentId, color) {
+    const { authority_id, authority_epoch } = this.authority() ?? {}, key = JSON.stringify([authority_id, authority_epoch]);
+    if (this.authorityKey !== key) { this.envelopes.clear(); this.authorityKey = key; }
+    const at = this.choices.get(agentId)?.revision ?? 0, name = JSON.stringify([agentId, color, at]);
+    if (!this.envelopes.has(name)) {
+      this.envelopes.set(name, { v: 1, instance_id: this.instanceId, operation_id: this.id(), kind: 'color.set',
+        target: { actor_id: agentId }, expected: { authority: { authority_id, authority_epoch }, color_revision: at }, args: { color } });
+    }
+    return { name, envelope: structuredClone(this.envelopes.get(name)) };
+  }
+
   // Chooses color (a palette name, or null for the agent's own) for one agent.
   // Answers the receipt. A refusal for a stale revision means the choice
   // changed elsewhere: the page reads the choices again, while the person waits.
   async choose(agentId, color) {
-    const { authority_id, authority_epoch } = this.authority() ?? {};
-    const receipt = await this.api.command({ v: 1, instance_id: this.instanceId, operation_id: this.id(), kind: 'color.set',
-      target: { actor_id: agentId }, expected: { authority: { authority_id, authority_epoch }, color_revision: this.choices.get(agentId)?.revision ?? 0 },
-      args: { color } });
+    const { name, envelope } = this.envelope(agentId, color);
+    const receipt = await this.api.command(envelope);
+    if (receipt?.recorded === true && receipt.operation_id === envelope.operation_id &&
+        this.envelopes.get(name)?.operation_id === envelope.operation_id) this.envelopes.delete(name);
     if (receipt?.status === 'committed') {
       const result = receipt.result;
       this.choices.set(agentId, { color: result.color, revision: result.color_revision });

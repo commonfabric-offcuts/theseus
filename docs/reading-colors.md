@@ -226,7 +226,12 @@ against the picker in both themes (WCAG 1.4.11), and the pressed one also
 wears an ink ring. The arrow keys, Home and End move between them, and Tab goes round
 them while it is open; Escape closes it and gives the focus back; a press
 outside closes it; pressing the name again closes it. A choice closes it once
-Core has committed it, and a refusal is said inside it. A card is itself a
+Core has committed it, and a refusal is said inside it. When the answer is
+lost on the way, the picker says it is unknown whether the color was saved and
+that a press again sends the same request: the page keeps one request per
+agent, color and revision, under the authority it was made with, and sends it
+again as it is until Core records an answer, so Core answers a press again
+with what it recorded rather than calling it a change made elsewhere. A card is itself a
 button that opens the message, and a control inside a button is not reachable
 or announced as one, so on a card the name is a pointer shortcut: a click on
 it opens the picker instead of the message, and the focus returns to the
