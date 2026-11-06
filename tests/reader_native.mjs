@@ -190,8 +190,8 @@ try {
   await check('empty Shift-Cmd-Return returns to gallery without Send', async () => {
     await point('#writing-body'); await key('Enter', 12);
     const state = await snapshot();
-    assert.equal(state.events.filter(event => event.type === 'send').length, 0);
-    assert.equal(await evaluate('document.querySelector("#reader").open'), false);
+    assert.equal(state.events.filter(event => event.type === 'send').length, 0, 'empty Shift-Cmd-Return sends nothing');
+    assert.equal(await evaluate('document.querySelector("#reader").open'), false, 'empty Shift-Cmd-Return returns to the gallery');
     assert.equal(state.events.find(event => event.type === 'close')?.reason, 'gallery');
   });
 
@@ -295,7 +295,9 @@ try {
     const definitions = mode === '--mutations' ? [
       { name: 'empty-gallery-falls-through-to-send', file: 'web/editor.mjs', index: 3,
         from: "if (event.metaKey && event.shiftKey && writingEmpty && ['reader', 'reply'].includes(context)) return 'return-gallery';",
-        to: "if (false) return 'return-gallery';", expected: /1 !== 0/ },
+        // Falling through to Send: an empty draft is not sent (Reader.send
+        // refuses it), so what fails is that the Reader stays open.
+        to: "if (false) return 'return-gallery';", expected: /empty Shift-Cmd-Return returns to the gallery/ },
       { name: 'divider-ignores-real-pointer-movement', file: 'web/reader.mjs', index: 4,
         from: 'this.layout.setShare(drag.share + delta / drag.extent, drag.shape);',
         to: 'this.layout.setShare(drag.share, drag.shape);', expected: /native drag expands writing/ },
