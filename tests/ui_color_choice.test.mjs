@@ -45,12 +45,16 @@ test('the page reads every page of the reader\'s choices, and again when it is s
 });
 
 test('a read the person waits on is a foreground read; a read on focus is background, unless a foreground one is asked meanwhile', async () => {
-  const { colors, calls, listeners } = store([page([]), page([]), page([]), page([])]);
+  const { colors, calls, listeners } = store([page([]), page([]), page([]), page([]), page([]), page([])]);
   await colors.load('foreground');
   listeners.focus(); await colors.loading;
   assert.deepEqual(calls.map(c => c.readClass), ['foreground', 'background']);
   listeners.focus(); const asked = colors.load('foreground'); await asked;
   assert.deepEqual(calls.map(c => c.readClass).slice(2), ['background', 'foreground'], 'asked while a background read ran: it reads again, in the foreground');
+  // A focus after the person's read is queued does not send it to the back:
+  // the read they wait on still runs in the foreground.
+  listeners.focus(); const waited = colors.load('foreground'); listeners.focus(); await waited;
+  assert.deepEqual(calls.map(c => c.readClass).slice(4), ['background', 'foreground'], 'a background read asked later keeps the queued read in the foreground');
   assert.throws(() => colors.load('soon'), /foreground or background/);
 });
 
