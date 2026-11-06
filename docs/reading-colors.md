@@ -212,3 +212,18 @@ The page reads `colors` when it opens and again when it is shown or focused,
 so a choice made on another device is there when the person comes back to
 this one. A card's color is the reader's choice for its agent when there is
 one, else the agent's default.
+
+The picker (`web/color-picker.mjs`) is a non-modal popover labelled "Color
+for" the agent: a swatch per palette color, each a button named for its
+color, and "Default (its own color)", with the current choice pressed and
+focused. The arrow keys, Home and End move between them, and Tab goes round
+them while it is open; Escape closes it and gives the focus back; a press
+outside closes it; pressing the name again closes it. A choice closes it once
+Core has committed it, and a refusal is said inside it. A card is itself a
+button that opens the message, and a control inside a button is not reachable
+or announced as one, so on a card the name is a pointer shortcut: a click on
+it opens the picker instead of the message, and the focus returns to the
+card. The keyboard way is the topic's participants, where each agent's name is
+a button of its own, in the agent's color. The page reads the choices before
+it first draws the cards, so they wear the chosen colors from the start; a
+read that fails leaves the defaults, and opening the picker reads again.

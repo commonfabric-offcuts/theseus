@@ -18,9 +18,11 @@ export function agentColor(id) {
 }
 
 // The person's own messages keep their black; a person's other messages keep
-// the plain card.
-export function cardClass(item, actor) {
+// the plain card. color(id) is the color the reader sees an agent in: their
+// own choice for it (docs/reading-colors.md, "Choosing an agent's color"), or
+// by default the agent's own.
+export function cardClass(item, actor, color = agentColor) {
   if (item.author_id === actor) return 'message-card own-message';
-  if (item.author_kind === 'agent') return `message-card agent-card agent-${agentColor(item.author_id)}`;
+  if (item.author_kind === 'agent') return `message-card agent-card agent-${color(item.author_id)}`;
   return 'message-card';
 }

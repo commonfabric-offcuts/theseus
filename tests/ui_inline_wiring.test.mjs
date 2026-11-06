@@ -15,7 +15,9 @@ import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
 import { replyLine } from '../web/replies.mjs';
 import { placeNewLine } from '../web/unanswered.mjs';
-import { cardClass } from '../web/author-colors.mjs';
+import { cardClass, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
+import { AgentColors } from '../web/colors.mjs';
+import { openColorPicker } from '../web/color-picker.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -36,7 +38,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }
     scrollIntoView() {}
-    contains() { return false; }
+    contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
+    closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && String(at.className ?? '').split(' ').includes(selector.slice(1))) return at; return null; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
@@ -50,6 +53,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
     if (name === 'marks') return { instance_id: 'fixture', topic_id: args.topic_id, items: [], next_cursor: null };
+    if (name === 'colors') return { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null };
     return { instance_id: 'fixture', items: [], next_cursor: null };
   }, command: async envelope => { calls.push({ kind: envelope.kind, envelope }); return { recorded: true }; } };
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
@@ -73,7 +77,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, replyLine, placeNewLine, cardClass, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -742,7 +746,8 @@ test('a topic\'s creator who does not own the outcome manages its participants; 
   await f.initialize();
   const nodes = walk(f.get('participants'));
   assert.deepEqual([nodes.find(node => node.className === 'people-add').hidden, nodes.some(node => node.textContent === '×')], [true, false]);
-  assert.deepEqual(nodes.filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'fable']);
+  // A chip's words, as the DOM's textContent gives them: an agent's name is a button inside it.
+  assert.deepEqual(nodes.filter(node => node.className === 'chip').map(node => node.textContent + node.children.map(child => child.textContent ?? child).join('')), ['fixture-person', 'fable']);
 });
 
 test('the directory and the team behind the composer are read again when someone starts naming', async () => {
@@ -1282,6 +1287,61 @@ test('attention is read again when the stream comes back, and not when it goes d
   live.emit({ kind: 'state', state: 'live' }); await drain();
   assert.equal(reads(), before + 1, 'the stream coming back reads attention');
   assert.equal(f.owners().attention.unread, 2);
+});
+
+test('clicking an agent\'s name on its card opens its color picker, not the message; a choice recolors its cards', async () => {
+  const opened = [];
+  const f = fixture(undefined, { openColorPicker: options => { opened.push(options); return {}; } });
+  Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  const add = (seq, author_id, author_kind) => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id, author_kind, body: 'Body', topic_id: 't1' });
+  add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'fable', 'agent'); add(4, 'dan', 'human');
+  f.paintViews('messages');
+  const card = id => f.get('messages').children.find(child => child.dataset.id === id);
+  const name = id => card(id).children[0].children[0];
+  const opens = () => f.calls.filter(c => c.name === 'source' || c.name === 'editor_state').length;
+  const before = opens();
+  await card('m3').onclick({ target: name('m3') }); await settle();
+  assert.equal(opened.length, 1, 'the picker opened');
+  assert.deepEqual([opened[0].anchor, opened[0].agent, opened[0].own, opened[0].chosen, opened[0].palette], [name('m3'), 'fable', 'green', null, AGENT_PALETTE]);
+  assert.equal(opened[0].back, card('m3'), 'closing it gives the focus to the card, which can hold it');
+  assert.equal(opens(), before, 'the message was not opened');
+  // Choosing goes to Core, and every card of that agent changes.
+  f.api.command = async envelope => { f.calls.push({ kind: envelope.kind, envelope }); return { status: 'committed', recorded: true, result: { actor_id: 'fable', color: 'rose', color_revision: 1 } }; };
+  assert.equal((await opened[0].choose('rose')).status, 'committed');
+  const sent = f.calls.find(c => c.kind === 'color.set').envelope;
+  assert.deepEqual([sent.target, sent.args, sent.expected.color_revision], [{ actor_id: 'fable' }, { color: 'rose' }, 0]);
+  assert.deepEqual(['m1', 'm2', 'm3', 'm4'].map(id => card(id).className),
+    ['message-card agent-card agent-rose', 'message-card own-message', 'message-card agent-card agent-rose', 'message-card']);
+  // Your own name and a person's open no picker.
+  for (const id of ['m2', 'm4']) await card(id).onclick({ target: name(id) });
+  assert.equal(opened.length, 1, 'only an agent\'s name opens a picker');
+});
+
+test('an agent in the participants is a button that opens its color picker, in its color; people are plain names', async () => {
+  const opened = [];
+  const f = fixture(undefined, { openColorPicker: options => { opened.push(options); return {}; } });
+  Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  Object.assign(f.views, { topic: f.topic, participants: [{ actor_id: 'dan', kind: 'human' }, { actor_id: 'fable', kind: 'agent' }, { actor_id: 'fixture-person', kind: 'human' }] });
+  f.paintViews('topic');
+  const chips = f.get('participants').children[0].children;
+  const names = chips.map(chip => chip.children[0] ?? chip.textContent);
+  assert.deepEqual(names.map(n => typeof n === 'string' ? n : n.textContent), ['dan', 'fable', 'fixture-person']);
+  const agent = names[1];
+  assert.equal(typeof names[0], 'string', 'a person is a plain name');
+  assert.equal(agent.type, 'button');
+  assert.equal(agent.className, 'chip-name agent-green', 'in the agent\'s color');
+  assert.equal(agent['aria-haspopup'], 'dialog');
+  await agent.onclick(); await settle();
+  assert.deepEqual([opened.length, opened[0]?.anchor, opened[0]?.agent], [1, agent, 'fable']);
+  f.api.command = async () => ({ status: 'committed', recorded: true, result: { actor_id: 'fable', color: 'olive', color_revision: 1 } });
+  await opened[0].choose('olive');
+  assert.equal(f.get('participants').children[0].children[1].children[0].className, 'chip-name agent-olive', 'the name takes the choice at once');
 });
 
 test('the New line is drawn under the oldest unanswered card, moves with each answer, and goes', async () => {

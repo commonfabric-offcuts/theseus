@@ -160,3 +160,81 @@ export async function agentColorsCheck({ check, page, until, facts, control, sho
     }
   });
 }
+
+// Changing an agent's color for yourself, as a person does it: a click on the
+// agent's name opens the picker and not the message; the picker is reached by
+// keyboard and closes on Escape or a press outside; a choice recolors the
+// agent's cards at once, stays after a reload and shows on another page; the
+// participants' name does the same by keyboard, and Default brings the agent's
+// own color back. Screenshots: agent-color-picker-*.png.
+export async function agentColorChoiceCheck({ check, page, until, control, shot, observations }) {
+  await check('colors clicking an agent\'s name changes its color for you, kept across reloads and pages', async () => {
+    const id = (await control({ method: 'agent_message', operation_id: 'agent-color-choice', sender: 'aim-ux', join: true, body: 'aim-ux, about to be recolored.' })).result.message_id;
+    const card = `#messages [data-id="${id}"]`;
+    const fill = (p, selector) => p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).backgroundColor`);
+    const tokens = (p, name) => p.evaluate(`(()=>{const e=document.createElement('div');e.className='agent-${name}';document.body.append(e);const c=getComputedStyle(e);const v=[c.getPropertyValue('--agent-card').trim(),c.getPropertyValue('--agent-tag').trim()];e.remove();return v})()`);
+    const rgbOf = hex => `rgb(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
+    const picker = p => p.evaluate(`(()=>{const r=document.querySelector('.color-picker');if(!r)return null;const b=r.getBoundingClientRect();
+      return {role:r.getAttribute('role'),label:r.getAttribute('aria-label'),focused:document.activeElement?.getAttribute('aria-label')??document.activeElement?.textContent,
+        inView:b.left>=0&&b.top>=0&&b.right<=innerWidth&&b.bottom<=innerHeight,pressed:[...r.querySelectorAll('[aria-pressed=true]')].map(e=>e.getAttribute('aria-label')??e.textContent)}})()`);
+    for (const [width, metrics] of Object.entries({ laptop: { width: 1280, height: 900, mobile: false }, phone: { width: 390, height: 844, mobile: true } })) {
+      const p = await page('agent-color-picker-' + width, null, true, { beforeNavigate: async p => {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+        await p.send('Emulation.setDeviceMetricsOverride', { ...metrics, deviceScaleFactor: 1 });
+        if (metrics.mobile) await p.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+      } });
+      await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), width + ': card drawn');
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      const [violet] = await tokens(p, 'violet');
+      assert.equal(await fill(p, card), rgbOf(violet), width + ': aim-ux starts in its own violet');
+      // The name: the picker opens under it, and the message does not open.
+      await p.point(`${card} .author-name`);
+      await until(() => picker(p), width + ': the picker opened');
+      const opened = await picker(p);
+      assert.deepEqual([opened.role, opened.label, opened.inView, opened.pressed], ['dialog', 'Color for aim-ux', true, ['Default (violet)']], width + ': a labelled popover in view, the agent\'s own pressed');
+      assert.equal(opened.focused, 'Default (violet)', width + ': the current choice has the focus');
+      assert.equal(await p.evaluate("document.querySelector('#reader').open"), false, width + ': the message did not open');
+      await shot(p, 'agent-color-picker-' + width);
+      // Keyboard: the arrows move round the swatches; Escape closes and the card has the focus.
+      await p.key('ArrowRight'); assert.equal((await picker(p)).focused, 'green', width + ': ArrowRight goes round to the first swatch');
+      await p.key('Escape');
+      assert.equal(await picker(p), null, width + ': Escape closes it');
+      assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(card)})`), true, width + ': the card has the focus');
+      // A press outside closes it.
+      await p.point(`${card} .author-name`); await until(() => picker(p), width + ': opened again');
+      await p.point('#topic-title');
+      assert.equal(await picker(p), null, width + ': a press outside closes it');
+      if (width === 'phone') { assert.equal(await p.evaluate('document.documentElement.scrollWidth<=innerWidth'), true, 'phone: no horizontal overflow'); await p.close(); continue; }
+      // Choosing rose recolors the card at once.
+      await p.point(`${card} .author-name`); await until(() => picker(p), 'opened to choose');
+      await p.point('.color-picker [aria-label="rose"]');
+      await until(async () => !(await picker(p)), 'closed once chosen');
+      const [rose] = await tokens(p, 'rose');
+      await until(async () => await fill(p, card) === rgbOf(rose), 'the card wears rose');
+      await shot(p, 'agent-color-picker-chosen');
+      await p.close();
+    }
+    // Kept by Core: a new page, as on another device, shows rose.
+    const q = await page('agent-color-picker-again', null, true, { beforeNavigate: p => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] }) });
+    await until(() => q.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), 'card drawn again');
+    const [roseDark] = await tokens(q, 'rose');
+    assert.equal(await fill(q, card), rgbOf(roseDark), 'another page shows the choice, in dark too');
+    // The participants' name, by keyboard: Tab-reachable, Return opens, End and Return choose Default.
+    const chip = '#participants .chip-name[title="Change aim-ux\'s color"]';
+    await until(() => q.evaluate(`Boolean(document.querySelector(${JSON.stringify(chip)}))`), 'aim-ux in the participants');
+    const [, roseTag] = await tokens(q, 'rose');
+    assert.equal(await fill(q, chip), rgbOf(roseTag), 'the participant name wears the chosen color');
+    await q.evaluate(`document.querySelector(${JSON.stringify(chip)}).focus()`);
+    await q.key('Enter'); await until(() => picker(q), 'Return opens the picker from the participants');
+    assert.deepEqual((await picker(q)).pressed, ['rose']);
+    await q.key('End'); await q.key('Enter');
+    await until(async () => !(await picker(q)), 'closed once Default is chosen');
+    const [violetDark] = await tokens(q, 'violet');
+    await until(async () => await fill(q, card) === rgbOf(violetDark), 'Default brings aim-ux\'s own violet back');
+    assert.equal(await q.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(chip)})`), true, 'the focus is back on the name');
+    observations.push({ name: 'agent color choice', card: await fill(q, card) });
+    await shot(q, 'agent-color-picker-participants');
+    assert.deepEqual(q.errors, []);
+    await q.close();
+  });
+}

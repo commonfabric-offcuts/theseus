@@ -136,9 +136,9 @@ export function replaceChips(host, field, chips) {
 // never replaced or disabled, so a repaint from someone else's change leaves
 // the person typing in it where they were.
 export class PeoplePanel {
-  constructor({ host, label, names, fixed = () => [] , add, remove }) {
-    Object.assign(this, { host, label, names, fixed, add, remove });
-    this.busy = false; this.error = ''; this.people = []; this.manage = false; this.removers = new Map();
+  constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null }) {
+    Object.assign(this, { host, label, names, fixed, add, remove, named });
+    this.busy = false; this.error = ''; this.people = []; this.manage = false; this.removers = new Map(); this.namers = new Map();
     this.chips = element('div', { className: 'chips' });
     this.input = element('input', { autocomplete: 'off', placeholder: 'Add a name' });
     this.input.setAttribute('list', names); this.input.setAttribute('aria-label', label);
@@ -163,9 +163,13 @@ export class PeoplePanel {
     // A repaint replaces the remove buttons; one that held focus hands it to
     // the same person's new button, or to the field when they have gone.
     const held = [...this.removers].find(([, out]) => out === document.activeElement)?.[0];
-    this.removers = new Map();
+    const heldName = [...this.namers].find(([, name]) => name === document.activeElement)?.[0];
+    this.removers = new Map(); this.namers = new Map();
     this.chips.replaceChildren(...people.map(person => {
-      const chip = element('span', { className: 'chip', textContent: person.actor_id });
+      // A name may be a control of its own (named), such as an agent's color.
+      const named = this.named(person);
+      if (named) this.namers.set(person.actor_id, named);
+      const chip = named ? element('span', { className: 'chip' }, named) : element('span', { className: 'chip', textContent: person.actor_id });
       if (manage && !fixed.has(person.actor_id)) {
         const out = element('button', { type: 'button', textContent: '×', disabled: this.busy });
         out.setAttribute('aria-label', `Remove ${person.actor_id}`);
@@ -177,6 +181,7 @@ export class PeoplePanel {
       return chip;
     }));
     if (held !== undefined && manage) (this.removers.get(held) ?? this.input).focus();
+    else if (heldName !== undefined) this.namers.get(heldName)?.focus();
     this.row.hidden = !manage;
     this.button.disabled = this.busy;
     this.notice.textContent = this.error; this.notice.hidden = !this.error;
