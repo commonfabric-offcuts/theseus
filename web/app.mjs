@@ -584,12 +584,20 @@ async function pickColor(agent, anchor, back = anchor) {
   return openColorPicker({ anchor, back, agent, palette: colors.palette, chosen: colors.chosen(agent), own: agentColor(agent),
     choose: color => colors.choose(agent, color) });
 }
-// An agent in the participants: its name, in its color, opens its picker.
+// An agent in the participants: its name, in its color, opens its picker. An
+// agent keeps one name button across repaints, so a choice that repaints the
+// participants leaves the picker's opener on the page to take the focus back.
+const participantNames = new Map();
 function participantName(person) {
   if (person.kind !== 'agent' || person.actor_id === bootstrap.actor) return null;
-  const name = node('button', person.actor_id, `chip-name agent-${agentShown(person.actor_id)}`); name.type = 'button';
-  name.setAttribute('aria-haspopup', 'dialog'); name.title = `Change ${person.actor_id}'s color`;
-  name.onclick = () => run(() => pickColor(person.actor_id, name));
+  let name = participantNames.get(person.actor_id);
+  if (!name) {
+    name = node('button', person.actor_id); name.type = 'button';
+    name.setAttribute('aria-haspopup', 'dialog'); name.title = `Change ${person.actor_id}'s color`;
+    name.onclick = () => run(() => pickColor(person.actor_id, name));
+    participantNames.set(person.actor_id, name);
+  }
+  name.className = `chip-name agent-${agentShown(person.actor_id)}`;
   return name;
 }
 // Messages sent before times were kept have none.

@@ -1341,7 +1341,12 @@ test('an agent in the participants is a button that opens its color picker, in i
   assert.deepEqual([opened.length, opened[0]?.anchor, opened[0]?.agent], [1, agent, 'fable']);
   f.api.command = async () => ({ status: 'committed', recorded: true, result: { actor_id: 'fable', color: 'olive', color_revision: 1 } });
   await opened[0].choose('olive');
-  assert.equal(f.get('participants').children[0].children[1].children[0].className, 'chip-name agent-olive', 'the name takes the choice at once');
+  const now = f.get('participants').children[0].children[1].children[0];
+  assert.equal(now.className, 'chip-name agent-olive', 'the name takes the choice at once');
+  // The choice repainted the participants; the picker gives the focus back to
+  // the name it opened from, so that name is still the one on the page.
+  assert.equal(now, agent, 'the name that opened the picker is the one in the participants after the repaint');
+  assert.equal(opened[0].back, agent);
 });
 
 test('the New line is drawn under the oldest unanswered card, moves with each answer, and goes', async () => {

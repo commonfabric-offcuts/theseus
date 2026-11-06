@@ -5,7 +5,12 @@ import { PeoplePanel, fillNames, markReach, readDirectory, readMembers } from '.
 class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, hidden: true }); }
   append(...nodes) { this.children.push(...nodes); }
-  replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  // As in a browser, a focused element taken out of the page loses the focus,
+  // even when it is put back.
+  replaceChildren(...nodes) {
+    if (this.all().includes(globalThis.document.activeElement)) globalThis.document.activeElement = null;
+    this.children = []; this.append(...nodes);
+  }
   setAttribute(key, value) { this.attributes[key] = value; }
   removeAttribute(key) { delete this.attributes[key]; }
   getAttribute(key) { return this.attributes[key] ?? null; }
@@ -111,6 +116,28 @@ test('a repaint while a remove button holds focus keeps focus on that person, or
   assert.equal(document.activeElement, field(host), 'with them gone, the field has it');
   document.activeElement = null;
   panel.paint(people(['ally']), true);
+  assert.equal(document.activeElement, null, 'a repaint does not take focus it did not hold');
+});
+
+test('a repaint while a person\'s name control holds focus gives it to that person\'s name again', t => {
+  dom(t);
+  const host = new Element('div');
+  // A name may be a control: a new one each paint, or the same one put back.
+  const kept = new Element('button');
+  const named = person => person.actor_id === 'ally' ? kept : Object.assign(new Element('button'), { name: person.actor_id });
+  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', named });
+  const name = id => panel.namers.get(id);
+  panel.paint(people(['ally', 'fable', 'tony']), false);
+  const first = name('fable');
+  first.focus();
+  panel.paint(people(['ally', 'fable', 'tony']), false);
+  assert.notEqual(name('fable'), first);
+  assert.equal(document.activeElement, name('fable'), 'the new name for the same person has the focus');
+  kept.focus();
+  panel.paint(people(['ally', 'fable']), false);
+  assert.equal(document.activeElement, kept, 'a name put back takes the focus back');
+  document.activeElement = null;
+  panel.paint(people(['ally', 'fable']), false);
   assert.equal(document.activeElement, null, 'a repaint does not take focus it did not hold');
 });
 
