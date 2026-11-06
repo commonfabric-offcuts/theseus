@@ -142,15 +142,17 @@ export class EditorSession {
     return this.runtime.probe(this.authority, { retry: true });
   }
 
-  validPrivateState(state) {
+  // `pinned` is the revision the writing is about: the editor's, or a refused
+  // reply's when it is prepared again.
+  validPrivateState(state, pinned = this.editor.sourceRef) {
     const context = this.editor.context;
-    if (state?.instance_id !== context.instanceId || !same(state.source_ref, this.editor.sourceRef) ||
+    if (state?.instance_id !== context.instanceId || !same(state.source_ref, pinned) ||
         state.source_available !== true) return false;
     if (context.kind !== 'note' && (state.destination?.topic_id !== context.topicId || state.destination_available !== true)) return false;
     const remote = context.kind === 'note' ? state.note : state.draft;
     // A saved version with nothing in it holds no revision (Core's rule), so
     // it fits writing that has since begun on a later one.
-    const pinned = this.editor.sourceRef, fits = same(remote?.source_ref, pinned) || remote?.source_ref?.kind === 'memory' &&
+    const fits = same(remote?.source_ref, pinned) || remote?.source_ref?.kind === 'memory' &&
       pinned.kind === 'memory' && remote.source_ref.id === pinned.id && !holdsWriting(remote);
     return remote == null || (typeof remote.id === 'string' && Number.isInteger(remote.revision) && remote.revision > 0 &&
       fits && (context.kind === 'note' || typeof remote.generation === 'string'));
@@ -497,9 +499,10 @@ export class EditorSession {
       }
       const state = await this.api.view('editor_state', { source_ref: refused.sourceRef, topic_id: refused.topicId });
       requireUnpublished();
-      if (!this.validPrivateState(state) || !state.draft ||
-          !same(state.draft, reviewedRemote) || this.editor.localVersion !== reviewedLocalVersion ||
-          !same(state.draft.source_ref, refused.sourceRef)) {
+      // The slot holds the refused reply's revision, or nothing: an emptied
+      // place may have followed a revised page since.
+      if (!this.validPrivateState(state, refused.sourceRef) || !state.draft ||
+          !same(state.draft, reviewedRemote) || this.editor.localVersion !== reviewedLocalVersion) {
         throw new Error('Writing changed since it was reviewed. Review both versions again.');
       }
       // This is an explicit correction after reviewing the remote draft, never

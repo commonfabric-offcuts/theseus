@@ -219,6 +219,37 @@ for (const reload of [false, true]) {
   });
 }
 
+test('a refused reply can be prepared again after its emptied place followed a revised page, and not over writing about that page', async t => {
+  const f = await fixture(t);
+  refusePreparations(f, 1);
+  const registry = await f.load();
+  const { reply, refused } = await refusedReply(f, registry);
+  await f.write(registry, reply, '');
+  await f.revise(1, 'Revision two.');
+  await registry.open(await f.listed(), { topicId: f.topicId });
+  assert.deepEqual(reply.sourceRef, page(2));
+  const correct = async () => {
+    const state = await f.saved();
+    return registry.sessionFor(reply).correctPreparation(refused, state.draft, reply.localVersion,
+      { stay: true, acknowledgePossiblePriorPublication: true });
+  };
+  // Writing about revision two is in the place: preparing the refused reply
+  // again would put writing about revision one over it.
+  await f.write(registry, reply, 'Words about revision two');
+  await assert.rejects(correct(), /Writing changed since it was reviewed/);
+  // Emptied again, the place is saved about revision two and holds nothing:
+  // the refused reply is prepared again as written, about revision one.
+  await f.write(registry, reply, '');
+  assert.deepEqual((await f.saved()).draft.source_ref, page(2));
+  const corrected = await correct();
+  assert.equal(corrected.status, 'confirmed', 'the refused reply is prepared again as written');
+  const prepared = await f.api.view('submission', { submission_id: corrected.id });
+  assert.deepEqual([prepared.body, prepared.source_ref], ['A reply about revision one', page(1)]);
+  assert.deepEqual(reply.sourceRef, page(2), 'the next reply is about the page shown');
+  await f.write(registry, reply, 'The next reply');
+  assert.deepEqual((await f.saved()).draft.source_ref, page(2));
+});
+
 test('a runtime review accepts a saved empty reply at an older revision as the same writing slot, and nothing else', () => {
   const authority = { authority_id: 'a1', authority_epoch: 'e1', continuity: 'initial' };
   const context = { instanceId: 'i1', actor: 'tony', kind: 'reply', topicId: 't1', sourceRef: page(13) };
