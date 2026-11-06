@@ -15,7 +15,7 @@ from .openings import Openings, OPENING_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA, MESSAGE_INTENT_SCHEMA, MESSAGE_TIME_SCHEMA, UNANSWERED_SCHEMA
 from .validation import COMMANDS, _command_envelope, _view_arguments
 from .authority import Authority, AuthorityError, prepare_authority, publish_initial
-from .delivery import Delivery, DELIVERY_SCHEMA
+from .delivery import Delivery, DELIVERY_SCHEMA, _now_ms
 from . import initialization
 from .runner import Runner, RUNNER_SCHEMA, HOSTED_SCHEMA
 from .memory import Memory, MEMORY_SCHEMA
@@ -26,9 +26,10 @@ from .topic_state import ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITIN
 from .work import WORK_SCHEMA, work_by_topic
 from .marks import Marks, MARK_SCHEMA
 from .colors import Colors, COLOR_SCHEMA
+from .releases import Releases, RELEASE_SCHEMA, write_release
 
 
-SCHEMA_VERSION = "17"
+SCHEMA_VERSION = "18"
 
 
 def commit_identity_intact(metadata):
@@ -102,7 +103,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + UNANSWERED_SCHEMA + COLOR_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + UNANSWERED_SCHEMA + COLOR_SCHEMA + RELEASE_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -135,7 +136,7 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors):
+class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Releases):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -182,26 +183,46 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             raise Refusal("INVALID_ARGUMENT", "An actor is a human or an agent")
         if not _body(name).strip():
             raise Refusal("INVALID_ARGUMENT", "An actor needs a name")
+
+        def write(db):
+            if db.execute("SELECT 1 FROM actors WHERE id=?", (actor_id,)).fetchone():
+                raise Refusal("ACTOR_EXISTS", "This actor ID is already registered")
+            db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", (actor_id, kind, name))
+            return True
+        self._operator_write(write, "registered", "registration")
+        return {"instance_id": self.instance_id, "actor": {"id": actor_id, "kind": kind, "name": name, "enabled": True}}
+
+    def record_release(self, record):
+        """Operator record of one release (docs/releases.md); never a command or an HTTP route."""
+        found = {}
+
+        def write(db):
+            found["release"], written = write_release(db, record, _now_ms())
+            return written
+        written = self._operator_write(write, "recorded", "release record")
+        return {"instance_id": self.instance_id, "release": found["release"], "recorded": written}
+
+    def _operator_write(self, write, done, noun):
+        """Run write(db) in one short write transaction; it returns whether it changed anything."""
         with self._authority.shared() as fence:
             db, _ = _connect(self.path)
             try:
                 db.execute("BEGIN IMMEDIATE")
                 fence.verify()
                 self._check_instance(db)
-                if db.execute("SELECT 1 FROM actors WHERE id=?", (actor_id,)).fetchone():
-                    raise Refusal("ACTOR_EXISTS", "This actor ID is already registered")
-                db.execute("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", (actor_id, kind, name))
-                self._advance_commit_seq(db)
+                changed = write(db)
+                if changed:
+                    self._advance_commit_seq(db)
                 db.commit()
+                return changed
             except sqlite3.Error as error:
                 if isinstance(error, sqlite3.OperationalError) and ("locked" in str(error).lower() or "busy" in str(error).lower()):
-                    raise StoreOpenError("DATABASE_BUSY", "The selected instance is busy; nothing was registered", retryable=True) from error
-                raise StoreError("The registration could not be confirmed") from error
+                    raise StoreOpenError("DATABASE_BUSY", "The selected instance is busy; nothing was " + done, retryable=True) from error
+                raise StoreError("The %s could not be confirmed" % noun) from error
             finally:
                 if db.in_transaction:
                     db.rollback()
                 db.close()
-        return {"instance_id": self.instance_id, "actor": {"id": actor_id, "kind": kind, "name": name, "enabled": True}}
 
     def _check_instance(self, db):
         row = db.execute("SELECT value FROM metadata WHERE key='instance_id'").fetchone()

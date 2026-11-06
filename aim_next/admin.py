@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Local operator program: schema upgrades and actor registration. Never exposed over HTTP."""
+"""Local operator program: schema upgrades, actor registration and release records. Never exposed over HTTP."""
 
 import argparse
 import json
@@ -32,7 +32,18 @@ def _parser():
     actor.add_argument("--id", required=True)
     actor.add_argument("--kind", required=True)
     actor.add_argument("--name", required=True)
+    release = verbs.add_parser("record-release", add_help=False)
+    release.add_argument("--profile", required=True)
+    release.add_argument("--record", required=True)
     return parser
+
+
+def _record(path):
+    """The release record in a JSON file (docs/releases.md); an unreadable file is refused, not an empty record."""
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise Refusal("INVALID_ARGUMENT", "No readable release record at %s: %s" % (path, error))
 
 
 def _run(options):
@@ -42,6 +53,8 @@ def _run(options):
             raise Refusal("BINDING_MISMATCH", "The profile binds another database or instance")
         return migrate(profile.db_path, options.instance, profile.binding, options.to)
     profile = load_profile(options.profile)
+    if options.verb == "record-release":
+        return profile.store().record_release(_record(options.record))
     return profile.store().register_actor(options.id, options.kind, options.name)
 
 
@@ -51,11 +64,13 @@ def main(argv=None, *, stdout=None, stderr=None):
     try:
         options = _parser().parse_args(argv)
         if options.verb is None or any(not Path(path).is_absolute() for path in (
-                getattr(options, "db", "/"), getattr(options, "binding", "/"), getattr(options, "profile", "/"))):
+                getattr(options, "db", "/"), getattr(options, "binding", "/"), getattr(options, "profile", "/"),
+                getattr(options, "record", "/"))):
             raise ValueError("absolute paths")
     except ValueError:
         stderr.write("usage: aim-next-admin migrate --db /abs/db --instance ID --binding /abs/profile.json [--to VERSION]\n"
-                     "       aim-next-admin add-actor --profile /abs/profile.json --id ID --kind human|agent --name NAME\n")
+                     "       aim-next-admin add-actor --profile /abs/profile.json --id ID --kind human|agent --name NAME\n"
+                     "       aim-next-admin record-release --profile /abs/profile.json --record /abs/release.json\n")
         return 2
     try:
         result, code = dict(_run(options), ok=True), 0

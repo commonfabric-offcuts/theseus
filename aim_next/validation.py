@@ -55,6 +55,7 @@ VIEWS = {
     "attention": set(), "actors": {"cursor", "limit", "kind"},
     "marks": {"topic_id", "cursor", "limit"},
     "colors": {"cursor", "limit"},
+    "releases": {"cursor", "limit"},
 }
 
 

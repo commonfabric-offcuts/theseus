@@ -172,7 +172,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION}")
+         "| publish OPENING | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N]}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
@@ -240,6 +240,7 @@ def _parser():
     through.add_argument("seq", type=int)
     verb("watch")
     verb("retry").add_argument("operation")
+    verb("releases").add_argument("--limit", type=int)
     return parser
 
 
@@ -494,6 +495,25 @@ class Agent:
                 item["id"], _one_line(item["title"]), stands, item.get("message_count") or 0, item.get("latest_seq") or "-"))
         if not items:
             self.out.plain("no archived topics" if self.options.archived else "no topics")
+
+    def do_releases(self):
+        """Every release record, newest first, or only the newest --limit of them."""
+        limit = self.options.limit
+        items = self.view("releases", {"limit": limit})["items"] if limit is not None else self.pages("releases", {})
+        for item in items:
+            measured = item.get("measurements") or {}
+            counts = [("python", (measured.get("python_units") or {}).get("tests")),
+                      ("node", (measured.get("node_units") or {}).get("tests"))]
+            native = measured.get("native") or {}
+            shown = ["%s %s" % pair for pair in counts if isinstance(pair[1], int)]
+            if isinstance(native.get("pass"), int) and isinstance(native.get("total"), int):
+                shown.append("native %d/%d" % (native["pass"], native["total"]))
+            self.out.plain("release %d  %s  %s  shipped %s%s%s" % (
+                item["release"], item["commit"][:7], item["deployed_at"],
+                ", ".join(str(n) for n in item["items"]) or "no pipeline item",
+                "  (%s)" % ", ".join(shown) if shown else "", "  [recorded retroactively]" if item["source"] == "backfill" else ""))
+        if not items:
+            self.out.plain("no releases recorded")
 
     def update_topic(self, args):
         topic = self.view("topic", {"topic_id": self.options.topic})["topic"]
