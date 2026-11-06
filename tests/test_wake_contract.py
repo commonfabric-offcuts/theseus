@@ -11,7 +11,26 @@ the quiet -> the next wake, in Core, with Core's own clock.
 The broker path (a queued hint, settled `accepted`) and the hosted path (a
 turn Theseus runs, settled `handed`) are traced separately: only the hosted
 path knows when a turn ends, so only it can tell "handled during the turn"
-from "never read".
+from "never read". On the broker path a hint queued while a turn runs is
+consumed after it, even if the turn handled its delivery: Core cannot see the
+turn, so that empty turn is counted rather than prevented (option C in the
+evaluation record), and the cases here hold what Core can know.
+
+The integration cases the wake plan lists keep their own guards:
+- a lost acceptance reply retries the same work unacknowledged:
+  test_effects_runner, test_lost_acceptance_result_can_retry_same_work_without_ack;
+- 500 pending deliveries are one claim and stay pending:
+  test_runner_bounds, test_five_hundred_deliveries_are_one_recipient_claim;
+- a sleep's catch-up is bounded per claim:
+  test_runner_bounds, test_sleep_catchup_is_bounded_by_recipient_limit;
+- an already-queued hint is not queued twice:
+  test_codex_broker, test_queued_match_coalesces_across_generation_and_attempt;
+- the queue is read at most two pages before one add:
+  test_codex_broker, test_valid_incomplete_scan_stops_after_two_pages_then_adds_once;
+- a stale in-progress turn is not trusted unless its thread is active:
+  test_codex_host, test_a_turn_left_open_by_a_dead_runner_is_settled_lost_on_restart;
+- a failed, lost or dropped turn hands its work back:
+  test_hosted_schedule, test_a_dropped_steer_re_arms_and_a_seen_steer_does_not.
 """
 
 import unittest
@@ -126,6 +145,111 @@ class HostedTurnEndCase(HostedFixture):
             self.ack(item["id"])
         self.assertFalse(self.end("completed")["rearmed"])
         self.nothing_due()
+
+
+@own_cases
+class BrokerContractCase(runner_tests.RunnerCase):
+    """The broker path: a hint is queued and settled accepted; only the agent's acknowledgment settles work.
+
+    agent-a holds the topic's opening delivery from setUp.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.runner_guard = self.guard()
+        self.runner = self.token(self.runner_guard)
+
+    def fresh_lease(self):
+        if self.store.renew_runner(self.runner_guard, self.runner)["status"] != "renewed":
+            self.runner = self.token(self.runner_guard)
+
+    def claims(self):
+        self.fresh_lease()
+        result = self.store.claim_wakes(self.runner_guard, self.runner, ["agent-a"])
+        self.assertEqual(result["status"], "ok", result)
+        return result["claims"]
+
+    def accepted(self):
+        claims = self.claims()
+        self.assertEqual(len(claims), 1, claims)
+        result = self.store.finish_wake(self.runner_guard, self.runner, claims[0]["claim_token"], "accepted")
+        self.assertEqual(result["status"], "settled", result)
+        return claims[0]
+
+    def due(self):
+        return self.sql("SELECT next_due_ms FROM recipient_schedule WHERE recipient_id='agent-a'")[0][0]
+
+    def ack_all(self):
+        for item in self.pending()["items"]:
+            self.ack(item["id"])
+
+    def test_an_unanswered_notice_is_repeated_once_a_minute_and_never_sooner(self):
+        # Duplicate hints: the same work is not claimed again while its notice may still be read.
+        first = self.accepted()
+        self.now += 59999
+        self.assertEqual(self.claims(), [])
+        self.now += 1
+        again = self.accepted()
+        self.assertEqual(again["captured_seq"], first["captured_seq"])
+
+    def test_reading_the_inbox_without_acknowledging_is_not_an_answer(self):
+        # Crash after read: the agent read its deliveries, then died before acknowledging them.
+        self.accepted()
+        before = self.due()
+        self.assertEqual(len(self.pending()["items"]), 1)
+        self.assertEqual(self.due(), before)
+        self.now += 60000
+        self.assertEqual(len(self.claims()), 1)
+
+    def test_a_turn_that_read_one_page_is_woken_again_for_the_rest(self):
+        for _ in range(4):
+            self.send_next()
+        self.accepted()
+        for item in self.pending(limit=2)["items"]:
+            self.ack(item["id"])
+        self.assertEqual(self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='agent-a'"), [(3,)])
+        self.now += 60000
+        self.assertEqual(len(self.claims()), 1)
+
+    def test_a_delivery_arriving_while_older_work_is_unread_makes_no_new_notice(self):
+        # The agent is mid-turn on the first delivery; the second arrives and is handled in the same turn.
+        self.accepted()
+        self.now += 1000
+        self.send_next("While the first is being read")
+        self.assertEqual(self.claims(), [])
+        self.ack_all()
+        self.assertIsNone(self.due())
+        self.now += 3600000
+        self.assertEqual(self.claims(), [])
+
+    def test_a_delivery_after_everything_was_acknowledged_wakes_at_once(self):
+        # A new delivery after the turn's last read: the turn may be ending, so it is named now.
+        self.accepted()
+        self.ack_all()
+        self.now += 1000
+        self.send_next("After the last read")
+        self.assertEqual(self.due(), self.now)
+        self.assertEqual(len(self.claims()), 1)
+
+    def test_newer_work_is_named_at_once_when_the_notified_work_is_acknowledged(self):
+        self.accepted()
+        self.send_next("Newer")
+        self.assertEqual(self.claims(), [])
+        self.ack(self.pending()["items"][0]["id"])
+        self.assertEqual(self.due(), self.now)
+        later = self.claims()
+        self.assertEqual(len(later), 1)
+
+    def test_a_claim_whose_runner_died_is_claimed_again_after_its_lease(self):
+        claims = self.claims()
+        self.assertEqual(len(claims), 1)
+        # The runner dies before it settles: its claim lease ends and the work is claimed again.
+        self.now += 20000
+        again = self.claims()
+        self.assertEqual(len(again), 1)
+        self.assertEqual(again[0]["captured_seq"], claims[0]["captured_seq"])
+        self.assertEqual(self.sql("SELECT r.outcome FROM wake_results r JOIN wake_attempts a ON a.id=r.attempt_id WHERE a.claim_token=?",
+                                  (claims[0]["claim_token"],)), [("expired",)])
 
 
 if __name__ == "__main__":
