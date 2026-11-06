@@ -1062,7 +1062,7 @@ async function initialize() {
     open: id => openDestination({kind:'topic',id},topicRail.pages.items.find(item => item.id === id)?.title ?? id),
   });
   topicRail.load();
-  outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'), count: $('outcome-references-count'),
+  outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'),
     list: $('outcome-references-list'), more: $('more-references'), message: $('outcome-references-status'), pageMax: pageMax(),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {

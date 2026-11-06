@@ -14,7 +14,7 @@ function fixture(t, { pageMax } = {}) {
     focus() { globalThis.document.activeElement = this; }
   }
   globalThis.document = { createElement: () => new Element(), activeElement: null }; t.after(() => globalThis.document = previous);
-  const nodes = Object.fromEntries(['host', 'count', 'list', 'more', 'message'].map(k => [k, new Element()]));
+  const nodes = Object.fromEntries(['host', 'list', 'more', 'message'].map(k => [k, new Element()]));
   nodes.host.hidden = true; nodes.message.hidden = true;
   const queue = [], calls = [], opened = [], seen = [];
   const item = (seq, title = `Item ${seq}`, revision = 1) => ({ id: `m${seq}`, seq, title, revision, owner_scope: { kind: 'workspace', id: 'w1' }, source_ref: { kind: 'memory', id: `m${seq}`, revision } });
@@ -32,7 +32,7 @@ test('the outcome Notebook is listed by title in order, and each title opens its
   assert.equal(await f.references.load(), true);
   assert.equal(f.host.hidden, false); assert.equal(f.more.hidden, true);
   assert.deepEqual(f.titles(), ['Architecture', 'Notebook item', 'How we work']);
-  assert.equal(f.count.textContent, '3');
+  assert.ok(f.list.children.every(row => row.className === 'nav-item reference'), 'each page is a row like a topic\'s');
   f.list.children[2].onclick();
   assert.deepEqual(f.opened, [[{ kind: 'memory', id: 'm3', revision: 4 }, f.list.children[2]]]);
   assert.deepEqual(f.seen, [['m1', 'm2', 'm3']]);
@@ -86,10 +86,10 @@ test('a reload keeps every item More brought in, and shows a revision under the 
   const f = fixture(t, { pageMax: 50 });
   f.queue.push(f.answer([f.item(1), f.item(2)], 2));
   await f.references.load();
-  assert.equal(f.more.hidden, false); assert.equal(f.count.textContent, '2+');
+  assert.equal(f.more.hidden, false);
   f.queue.push(f.answer([f.item(3)], null));
   await f.more.onclick();
-  assert.deepEqual(f.titles(), ['Item 1', 'Item 2', 'Item 3']); assert.equal(f.more.hidden, true); assert.equal(f.count.textContent, '3');
+  assert.deepEqual(f.titles(), ['Item 1', 'Item 2', 'Item 3']); assert.equal(f.more.hidden, true);
   const rows = [...f.list.children];
   f.queue.push(f.answer([f.item(1), f.item(2, 'Revised', 2)], 2), f.answer([f.item(3)], null));
   await f.references.load();
@@ -149,10 +149,18 @@ test('More, once nothing is left to bring, hands focus to the first item it brou
   assert.equal(globalThis.document.activeElement, f.more);
 });
 
-test('a failed read is said outside the closed list, where it can be seen', () => {
+test('the Notebook pages sit in the sidebar beside the topics, with the failure said above their rows', () => {
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
-  const section = /<section id="outcome-references"[^>]*>([\s\S]*?)<\/section>/.exec(html)?.[1] ?? '';
-  const details = /<details>[\s\S]*?<\/details>/.exec(section)?.[0] ?? '';
-  assert.match(section, /id="outcome-references-status"/);
-  assert.doesNotMatch(details, /id="outcome-references-status"/);
+  const rail = /<nav class="rail"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? '';
+  const main = /<main[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? '';
+  const section = /<section id="outcome-references"[^>]*>([\s\S]*?)<\/section>/.exec(rail)?.[1] ?? '';
+  assert.ok(section, 'the Notebook is in the sidebar');
+  assert.doesNotMatch(main, /outcome-references/, 'and no longer a closed line above the topic');
+  assert.ok(rail.indexOf('id="outcome-references"') > rail.indexOf('id="topic-navigation"'), 'after the topics');
+  assert.match(section, /<h2 id="notebook-heading">Notebook<\/h2>/);
+  assert.doesNotMatch(section, /<details/);
+  assert.ok(section.indexOf('id="outcome-references-status"') < section.indexOf('id="outcome-references-list"'));
+  const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');
+  assert.match(css, /#outcome-references-list \.nav-item\{min-height:44px;/, 'a page row is as tall as a topic row');
+  assert.match(css, /@media\(max-width:760px\)\{#outcome-references\{[^}]*\}#outcome-references-list\{display:flex;overflow:auto;/, 'and scrolls sideways on a phone as topics do');
 });

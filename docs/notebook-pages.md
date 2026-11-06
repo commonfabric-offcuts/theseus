@@ -27,3 +27,13 @@ page look changed again.
   `0` when they have not read it. A page is changed for the viewer when
   `0 < read_revision < revision`. A page never read is not marked: the light
   is for what changed under someone, not for everything they have not read.
+
+## The sidebar
+
+On a topic's page the sidebar lists the outcome's Notebook pages under the
+heading Notebook, below its topics: one row per page, by title, as tall as
+a topic row and in the same column, opening the page in the Reader. On a
+phone the rows scroll sideways, as topics do. An outcome with no pages, or
+one the reader cannot list, shows no Notebook section; a read that fails
+says so above the rows and keeps what was shown. The list is read again
+after every commit the live feed names, as the topics are.
