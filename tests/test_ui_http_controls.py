@@ -40,6 +40,8 @@ runpy.run_path(fixture, run_name="__main__")
 class ImagesFixtureControls(unittest.TestCase):
     """The --images fixture's private controls, through its real stdin and HTTP."""
 
+    ARGS = ("--images",)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.stderr = open(Path(self.tmp.name) / "stderr.log", "w+")
@@ -48,7 +50,7 @@ class ImagesFixtureControls(unittest.TestCase):
         # authority lock without the fixture having to publish a path.
         env = dict(os.environ, TMPDIR=self.tmp.name)
         self.process = subprocess.Popen(
-            [sys.executable, "-c", OBSERVED, str(write), str(FIXTURE), "--images"],
+            [sys.executable, "-c", OBSERVED, str(write), str(FIXTURE), *self.ARGS],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr, text=True, bufsize=1,
             pass_fds=(write,), env=env, cwd=str(FIXTURE.parents[2]))
         os.close(write)
@@ -158,6 +160,30 @@ class ImagesFixtureControls(unittest.TestCase):
         self.assertEqual(capabilities["authority"]["authority_epoch"], "controls-epoch-2")
         self.assertNotEqual(before, "controls-epoch-2")
         self.assertEqual(json.loads(anchor.read_text())["epoch"], "controls-epoch-2")
+
+
+
+class SourceFixtureControls(ImagesFixtureControls):
+    """The live fixture's agent starting topics from a message, as the sources native mode drives it."""
+
+    ARGS = ("--live", "--freshness", "--images", "--media")
+    test_reset_empties_a_draft_that_holds_only_reply_fields = None
+    test_epoch_waits_for_a_request_holding_the_authority_shared = None
+
+    def test_the_agent_starts_from_a_message_naming_what_it_has_seen(self):
+        message = self.control("agent_message", operation_id="controls-question", body="Which name?")["result"]["message_id"]
+        first = self.control("source_start", operation_id="controls-a", message_id=message, title="Naming", body="First")
+        second = self.control("source_start", operation_id="controls-b", message_id=message, title="Naming again", body="Second")
+        self.assertEqual([first["result"]["topic"]["id"], second["result"]["topic"]["id"]], ["controls-a-topic", "controls-b-topic"])
+        # The person sees both, and each names the message it answers.
+        listed = self.view("source_topics", {"message_id": message})
+        self.assertEqual([(item["id"], item["creator_id"]) for item in listed["items"]],
+                         [("controls-a-topic", self.ready["agent"]), ("controls-b-topic", self.ready["agent"])])
+        self.assertEqual(self.view("topic", {"topic_id": "controls-b-topic"})["topic"]["source_message_id"], message)
+        # The agent joined the outcome once; a Notebook write after it finds it there.
+        self.control("outcome_reference", operation_id="controls-reference", item_id="controls-item", title="Plan", body="Words")
+        members = [item["actor_id"] for item in self.view("workspace_members", {"workspace_id": "w1"})["items"]]
+        self.assertEqual(members.count(self.ready["agent"]), 1)
 
 
 if __name__ == "__main__":

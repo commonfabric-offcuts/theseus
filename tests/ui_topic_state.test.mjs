@@ -489,3 +489,70 @@ test('work observed is a hollow ring, never the filled dot of presence or unread
   assert.match(key[2], /<span class="topic-work"><\/span>\s*Activity seen/, 'the ring, and in words what it means');
   assert.ok(html.indexOf('id="topics-key"') > html.indexOf('id="topics"'), 'under the topics');
 });
+
+// What each participant is responsible for, beside where the topic stands.
+const people = (...notes) => notes.map(([actor_id, responsibility = '', responsibility_revision = 0]) => ({ actor_id, responsibility, responsibility_revision }));
+const duties = host => host.find(node => node.classes.has('responsibilities'));
+
+test('every reader sees each participant\'s note beside the state, their own first as you, and nothing for those without one', t => {
+  dom(t);
+  const host = new Element('section');
+  const panel = new TopicStatePanel({ host, reader: 'agent-b', send: async () => ({}), sendNote: async () => ({}) });
+  panel.paint(topic({ state: 'review' }), people(['fable', 'Drafts the notes', 1], ['tony'], ['warp', 'Builds the page', 2]));
+  const list = duties(host);
+  assert.equal(host.children.indexOf(list), host.children.indexOf(panel.line) + 1, 'the notes sit right under the state line');
+  assert.equal(list.hidden, false);
+  assert.deepEqual(list.children.map(item => item.text), ['fable Drafts the notes', 'warp Builds the page']);
+  assert.equal(host.find(node => node.id === 'topic-responsibility'), undefined, 'a reader who does not take part sets no note');
+  panel.paint(topic({ state: 'review', version: 5 }), people(['fable', 'Drafts the notes', 1], ['agent-b', 'Checks the copy', 1]));
+  assert.deepEqual(duties(host).children.map(item => item.text), ['you Checks the copy', 'fable Drafts the notes']);
+  panel.paint(topic({ version: 6 }), people(['fable'], ['agent-b']));
+  assert.equal(duties(host).hidden, true, 'no notes, no list');
+  assert.deepEqual(duties(host).children, []);
+});
+
+test('a participant says what they do from the form, fenced on their note\'s revision, and the list follows the answer', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  const panel = new TopicStatePanel({ host, reader: 'fable', send: async () => ({}),
+    sendNote: async (current, note, revision) => { sent.push([current.id, note, revision]);
+      return { status: 'committed', result: { topic_id: current.id, actor_id: 'fable', note, responsibility_revision: revision + 1, changed: true, version: current.version + 1 } }; } });
+  panel.paint(topic(), people(['fable', 'Old part', 3], ['tony']));
+  const field = host.find(node => node.id === 'topic-responsibility');
+  const save = host.find(node => node.textContent === 'Save my part');
+  assert.equal(field.value, 'Old part', 'the field shows the note as it stands');
+  type(field, 'Drafts the release notes');
+  await save.onclick();
+  assert.deepEqual(sent, [['t1', 'Drafts the release notes', 3]]);
+  assert.deepEqual(duties(host).children.map(item => item.text), ['you Drafts the release notes']);
+  assert.equal(panel.topic.version, 5, 'the answer\'s topic version is kept, so the next change sends it');
+  assert.equal(panel.mine().responsibility_revision, 4);
+  // An untouched field follows fresh data.
+  panel.paint(topic({ version: 6 }), people(['fable', 'Set on another page', 5]));
+  assert.equal(field.value, 'Set on another page');
+  await save.onclick();
+  assert.deepEqual(sent.at(-1), ['t1', 'Set on another page', 5]);
+});
+
+test('a note refused for a newer one keeps what the person wrote and says so; one too long is not sent', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  let refreshed = 0;
+  const panel = new TopicStatePanel({ host, reader: 'fable', send: async () => ({}), refresh: () => { refreshed++; },
+    sendNote: async (current, note, revision) => { sent.push(revision);
+      return { status: 'rejected', recorded: true, error: { code: 'REVISION_CONFLICT', message: 'x', current_versions: { responsibility_revision: 2 } } }; } });
+  panel.paint(topic(), people(['fable', 'Mine', 1]));
+  const field = host.find(node => node.id === 'topic-responsibility');
+  type(field, 'Newer words');
+  await host.find(node => node.textContent === 'Save my part').onclick();
+  assert.deepEqual(sent, [1]);
+  assert.equal(controls(host).notice.textContent, 'Your note changed elsewhere while you were writing. What you wrote is kept here: check it against the list above and save again.');
+  assert.equal(refreshed, 1, 'it asks for the note as it now stands');
+  panel.paint(topic({ version: 5 }), people(['fable', 'Set elsewhere', 2]));
+  assert.equal(field.value, 'Newer words', 'a touched field keeps the person\'s words over fresh data');
+  assert.deepEqual(duties(host).children.map(item => item.text), ['you Set elsewhere']);
+  type(field, 'é'.repeat(513));
+  await host.find(node => node.textContent === 'Save my part').onclick();
+  assert.deepEqual(sent, [1], 'a note over 1024 bytes is not sent');
+  assert.match(controls(host).notice.textContent, /at most 1024 bytes/);
+});

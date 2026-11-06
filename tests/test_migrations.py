@@ -34,6 +34,7 @@ SCHEMA_16 = (Path(__file__).parent / "fixtures" / "schema_16.sql").read_text().s
 SCHEMA_17 = (Path(__file__).parent / "fixtures" / "schema_17.sql").read_text().splitlines()
 SCHEMA_18 = (Path(__file__).parent / "fixtures" / "schema_18.sql").read_text().splitlines()
 SCHEMA_19 = (Path(__file__).parent / "fixtures" / "schema_19.sql").read_text().splitlines()
+SCHEMA_20 = (Path(__file__).parent / "fixtures" / "schema_20.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -53,6 +54,13 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 21 gives each participant's responsibility note a revision, and keeps the message each topic was started from.
+        db.execute("DROP INDEX topic_sources")
+        db.execute("ALTER TABLE topics DROP COLUMN source_message_id")
+        db.execute("ALTER TABLE topic_participants DROP COLUMN responsibility_revision")
+        if version == "20":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 20 keeps the revision of each Notebook page each person last read.
         db.execute("DROP TABLE memory_reads")
         if version == "19":
@@ -154,11 +162,12 @@ class MigrationCase(fixtures.StoreCase):
 
     def records(self):
         with sqlite3.connect(str(self.path)) as db:
-            # Topics, messages and deliveries are compared on the columns every version has: version 11 adds
-            # where each topic stands, version 12 when each message was sent, and version 18 each delivery's topic.
-            # Version 18 copies each delivery's topic from its message.
+            # Topics, messages, deliveries and participants are compared on the columns every version has:
+            # version 11 adds where each topic stands, version 12 when each message was sent, version 18 each
+            # delivery's topic (copied from its message), and version 21 each responsibility note's revision.
             columns = {"topics": "id,workspace_id,title,creator_id,version",
                        "deliveries": "seq,id,message_id,recipient_id,group_id,state",
+                       "topic_participants": "topic_id,actor_id,active,epoch,responsibility",
                        "messages": "seq,id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id"}
             return {table: db.execute("SELECT " + columns.get(table, "*") + " FROM " + table + " ORDER BY rowid").fetchall()
                     for table in TABLES}
@@ -1167,9 +1176,11 @@ class Schema16Case(MigrationCase):
                              "VALUES ('m-16','t1','writer','Written','[]','[]','[]','op-16')").lastrowid
             # Version 16 gave every writer a horizon with each message.
             db.execute("INSERT INTO reply_horizons VALUES ('t1','writer',?)", (seq + 1,))
-        participants = self.sql("SELECT * FROM topic_participants ORDER BY rowid")
+        # Compared on the columns version 16 has; version 21 adds each note's revision.
+        rows = "SELECT topic_id,actor_id,active,epoch,responsibility FROM topic_participants ORDER BY rowid"
+        participants = self.sql(rows)
         self.assertTrue(self.upgrade()["migrated"])
-        self.assertEqual(self.sql("SELECT * FROM topic_participants ORDER BY rowid"), participants)
+        self.assertEqual(self.sql(rows), participants)
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
         self.assertEqual(self.command("topic.update", {"state": "review"}, target={"topic_id": "t1"},
@@ -1399,6 +1410,81 @@ class Schema19Case(MigrationCase):
         self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class Schema20Case(MigrationCase):
+    """A schema-20 instance: version 21 gives each participant's responsibility note a revision,
+    and keeps the message each topic was started from."""
+
+    VERSION, FIXTURE = "20", SCHEMA_20
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "20")
+
+    def note(self, note, revision):
+        return self.command("responsibility.set", {"note": note}, target={"topic_id": "t1"},
+                            expected={"responsibility_revision": revision}, actor="agent-b")
+
+    def test_upgrade_from_20_keeps_records_and_notes_matches_a_fresh_instance_and_fences_notes(self):
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE topic_participants SET responsibility='Set before' WHERE actor_id='agent-b'")
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "20", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        # Every note is kept, at revision 0.
+        self.assertEqual(self.sql("SELECT actor_id,responsibility,responsibility_revision FROM topic_participants WHERE topic_id='t1' ORDER BY actor_id"),
+                         [("agent-a", "", 0), ("agent-b", "Set before", 0), ("owner", "", 0)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.note("Set after", 0)["result"]["responsibility_revision"], 1)
+
+    def test_step_back_to_20_restores_its_frozen_layout_while_no_note_has_a_revision(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_20))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def start_from(self, opening, topic, publish):
+        source = self.sql("SELECT id FROM messages WHERE topic_id='t1' ORDER BY seq LIMIT 1")[0][0]
+        self.assertEqual(self.command("opening.save", {"workspace_id": "w1", "topic_id": topic, "title": "From a message", "participants": [],
+                                                       "body": "Answering", "attachments": [], "source_message_id": source},
+                                      target={"opening_id": opening}, expected={"opening_revision": 0})["status"], "committed")
+        if publish:
+            self.assertEqual(self.command("opening.publish", {}, target={"opening_id": opening},
+                                          expected={"opening_revision": 1})["status"], "committed")
+
+    def test_step_back_refuses_once_a_topic_or_an_open_opening_names_its_message(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        for opening, topic, publish in (("o-open", "t-open", False), ("o-done", "t-done", True)):
+            with self.subTest(publish=publish):
+                if publish:
+                    # Only the published topic still names it once the open opening is discarded.
+                    self.assertEqual(self.command("opening.discard", {}, target={"opening_id": "o-open"},
+                                                  expected={"opening_revision": 1})["status"], "committed")
+                self.start_from(opening, topic, publish)
+                before = self.unchanged()
+                with self.assertRaises(MigrationError) as raised:
+                    self.step_back()
+                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(self.unchanged(), before)
+
+    def test_step_back_refuses_once_a_note_has_a_revision(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.note("Reviews", 0)["status"], "committed")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1427,6 +1513,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema18Case, _name, None)
     if _name.startswith("test_") and _name not in Schema19Case.__dict__:
         setattr(Schema19Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema20Case.__dict__:
+        setattr(Schema20Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

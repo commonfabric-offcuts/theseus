@@ -47,6 +47,9 @@ export class OpeningView {
     this.file=el('input');this.file.type='file';this.file.accept='image/png,image/jpeg,image/gif,image/webp';this.file.hidden=true;
     this.file.onchange=()=>{const file=this.file.files?.[0];this.file.value='';if(file)this.run(()=>draft.attach(file));};
     this.addImage=button('Add image',()=>{if(draft.editable&&!draft.conflict)this.file.click();});this.addImage.id='opening-add-image';
+    // What this topic answers, and the topics already started from it, before anything is written.
+    this.answers=el('section',undefined,'opening-answers');this.answers.id='opening-source';this.answers.hidden=true;
+    this.answers.setAttribute('aria-label','The message this topic answers');
     this.conflict=el('section',undefined,'pending-card');this.conflict.id='opening-conflict';this.conflict.hidden=true;
     this.outcome=el('section',undefined,'pending-card');this.outcome.id='opening-outcome';this.outcome.hidden=true;
     this.sendButton=button('Send',()=>this.send(),'primary');this.sendButton.id='opening-send';
@@ -56,7 +59,7 @@ export class OpeningView {
     this.confirm=button('Discard this opening',()=>this.run(async()=>{this.confirming=false;await draft.discard();}));this.confirm.id='opening-discard-confirm';
     this.keep=button('Keep it',()=>{this.confirming=false;this.paint();this.discard.focus();});
     const actions=el('div',undefined,'creation-actions');actions.append(this.sendButton,this.later,this.discard,this.confirm,this.keep);
-    host.append(this.state,this.notice,titleLabel,el('h2','Topic participants'),people,this.members,this.membersState,this.moreMembers,this.retryMembers,
+    host.append(this.state,this.notice,this.answers,titleLabel,el('h2','Topic participants'),people,this.members,this.membersState,this.moreMembers,this.retryMembers,
       el('p','Participants receive this topic’s messages. Choose from this outcome’s members.','muted'),
       bodyLabel,this.attachments,this.file,this.addImage,this.conflict,this.outcome,actions);
     draft.changed=()=>this.paint();this.paint();
@@ -102,7 +105,7 @@ export class OpeningView {
     this.membersState.textContent=this.membersError?'Outcome members are unavailable. '+this.membersError:'';this.membersState.hidden=!this.membersError;
     this.paintAttachments(editable);
     this.addImage.disabled=!editable||Boolean(d.conflict);
-    this.paintConflict();this.paintOutcome();
+    this.paintConflict();this.paintOutcome();this.paintAnswers();
     const open=['editing','sending','unknown','loading','error'].includes(d.phase);
     this.sendButton.hidden=!open||d.phase==='unknown';this.sendButton.disabled=!editable||Boolean(d.conflict);
     this.discard.hidden=!open||this.confirming||d.phase==='unknown';this.discard.disabled=!editable||Boolean(d.conflict);
@@ -123,6 +126,32 @@ export class OpeningView {
       text.textContent=`${m.name} · ${label}${m.message?' — '+m.message:''}`;
       retry.hidden=!(m.state==='failed'&&m.upload);retry.disabled=!editable;remove.disabled=!editable;remove.setAttribute('aria-label','Remove '+m.name);
     });
+  }
+  paintAnswers() {
+    const d=this.draft,host=this.answers;
+    host.hidden=!d.source;
+    if(!d.source){host.replaceChildren();host.dataset.key='';return;}
+    const key=JSON.stringify([d.source,d.sourceMessage,d.started,d.startedRead,d.sourceError,d.phase]);
+    if(host.dataset.key===key)return;host.dataset.key=key;
+    const words=d.sourceMessage?d.sourceMessage.body.replace(/\s+/g,' ').trim():'';
+    const quote=el('blockquote',d.sourceMessage?`${d.sourceMessage.author}: ${words.length>240?words.slice(0,239)+'…':words}`:'The message is being read…');
+    host.replaceChildren(el('h2','Answers a message'),quote);
+    if(d.sourceError){
+      host.append(el('p','The topics already started from this message could not be read. '+d.sourceError,'notice'),
+        button('Retry',()=>this.run(()=>d.loadSource())));
+      return;
+    }
+    if(!d.startedRead)return;
+    if(!d.started.length){host.append(el('p','No topic has been started from this message yet.','muted'));return;}
+    const list=el('ul',undefined,'started-topics');
+    for(const t of d.started){
+      const title=(t.title||'Untitled topic')+(t.title_truncated?'…':''),link=el('a',title);link.href=routeHref({kind:'topic',id:t.id});link.dataset.topicId=t.id;
+      link.onclick=event=>{if(!plain(event))return;event.preventDefault();this.open({kind:'topic',id:t.id},title);};
+      const item=el('li');item.append(link,el('span',` · started by ${t.creator_id===d.bootstrap.actor?'you':t.creator_id} · ${t.message_count} message${t.message_count===1?'':'s'}${t.archived?' · archived':''}`,'muted'));
+      list.append(item);
+    }
+    host.append(el('h3',d.started.length===1?'A topic was already started from this message':`${d.started.length} topics were already started from this message`),list,
+      el('p',['published','discarded'].includes(d.phase)?'':'Continue there if it is the same question. Send starts this topic anyway.','muted'));
   }
   paintConflict() {
     const d=this.draft,c=d.conflict;this.conflict.hidden=!c;

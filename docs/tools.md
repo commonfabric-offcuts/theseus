@@ -38,7 +38,7 @@ Then it runs, one at a time:
 
 1. Python units: `/usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v` (`--python` to change).
 2. Node units: `node --test --test-reporter=tap tests/*.test.mjs` (`--node` to change).
-3. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook` among them), `tests/reader_openings_native.mjs`, and the default and four modes of `tests/reader_native.mjs`. A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
+3. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties` and `sources` among them), `tests/reader_openings_native.mjs`, and the default and four modes of `tests/reader_native.mjs`. A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
 
 Every step runs with its own `PYTHONPYCACHEPREFIX` and log. A step passes only when it exits 0 and its own report agrees: unittest's `OK` with at least one test, TAP's `# fail 0` and `# cancelled 0` with at least one test, or a harness results file with at least one case, every case passed and the browser closed. One failing step does not stop the others, so one run shows everything; it does fail the run (exit 1).
 

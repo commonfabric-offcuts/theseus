@@ -23,6 +23,7 @@ COMMANDS = {
     "opening.discard": "_command_opening_discard",
     "message.mark": "_command_message_mark",
     "color.set": "_command_color_set",
+    "responsibility.set": "_command_responsibility_set",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -32,14 +33,16 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
             "workspace.member_set": {"workspace_revision"}, "opening.save": {"opening_revision"},
             "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"},
-            "message.mark": {"mark_revision"}, "color.set": {"color_revision"}}
+            "message.mark": {"mark_revision"}, "color.set": {"color_revision"},
+            "responsibility.set": {"responsibility_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision", "topic.update": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision",
                      "workspace.member_set": "workspace_revision", "opening.save": "opening_revision",
                      "opening.publish": "opening_revision", "opening.discard": "opening_revision",
-                     "message.mark": "mark_revision", "color.set": "color_revision"}
+                     "message.mark": "mark_revision", "color.set": "color_revision",
+                     "responsibility.set": "responsibility_revision"}
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
@@ -56,6 +59,7 @@ VIEWS = {
     "attention": set(), "actors": {"cursor", "limit", "kind"},
     "marks": {"topic_id", "cursor", "limit"}, "topic_unread": {"topic_id"},
     "colors": {"cursor", "limit"},
+    "source_topics": {"message_id", "cursor", "limit"},
 }
 
 
@@ -138,7 +142,7 @@ def _view_arguments(name, args):
             if cursor != "":
                 from .topic_state import order_position
                 order_position(cursor)
-        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors"):
+        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors", "source_topics"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):

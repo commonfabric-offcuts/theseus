@@ -17,13 +17,19 @@ const validWriting=w=>Boolean(w&&typeof w.title==='string'&&typeof w.body==='str
 export function checkedOpening(answer,{instanceId,opening,workspace,topic}) {
   const o=answer?.opening;
   if(answer?.instance_id!==instanceId||!o||o.id!==opening||o.workspace_id!==workspace||o.topic_id!==topic||!Number.isInteger(o.revision)||o.revision<1||
-      !['open','published','discarded'].includes(o.state)||!validWriting(o))throw Error('The saved opening does not match this link.');
-  return {...writingOf(o),revision:o.revision,state:o.state,publish_operation_id:o.publish_operation_id??null,receipt:copy(answer.publish_receipt??null)};
+      !['open','published','discarded'].includes(o.state)||!validWriting(o)||!(o.source_message_id==null||validActorId(o.source_message_id)))throw Error('The saved opening does not match this link.');
+  return {...writingOf(o),revision:o.revision,state:o.state,publish_operation_id:o.publish_operation_id??null,receipt:copy(answer.publish_receipt??null),
+    source:o.source_message_id??null};
 }
 
+// One topic from those already started from a message, as Core lists them.
+const validStarted=t=>validActorId(t?.id)&&validActorId(t.workspace_id)&&validActorId(t.creator_id)&&typeof t.title==='string'&&
+  typeof t.title_truncated==='boolean'&&typeof t.state==='string'&&Number.isInteger(t.message_count);
+
 export class OpeningDraft {
-  constructor({api,bootstrap,store,workspace,opening,topic,id=()=>crypto.randomUUID(),timers=realTimers,saveDelayMs=450,maxSaveDelayMs=2000,changed=()=>{},published=()=>{}}) {
-    if(![workspace,opening,topic].every(validActorId))throw Error('This opening link is incomplete. Open the outcome and choose New topic.');
+  // source: the message this topic answers, from the link; Core's own record of it wins once it has one.
+  constructor({api,bootstrap,store,workspace,opening,topic,source=null,id=()=>crypto.randomUUID(),timers=realTimers,saveDelayMs=450,maxSaveDelayMs=2000,changed=()=>{},published=()=>{}}) {
+    if(![workspace,opening,topic].every(validActorId)||!(source===null||validActorId(source)))throw Error('This opening link is incomplete. Open the outcome and choose New topic.');
     if(!bootstrap?.instance_id||!bootstrap.actor||!bootstrap.authority?.authority_id||!bootstrap.limits)throw Error('A confirmed instance, actor and authority are required.');
     if(!(saveDelayMs>0&&maxSaveDelayMs>=saveDelayMs))throw Error('Saves need bounded idle and maximum delays.');
     Object.assign(this,{api,bootstrap:copy(bootstrap),store,workspace,opening,topic,id,timers,saveDelayMs,maxSaveDelayMs,changed,published});
@@ -31,6 +37,8 @@ export class OpeningDraft {
     this.conflict=null;this.publish=null;this.receipt=null;this.refusal=null;this.notice=null;this.leftover=null;this.pendingSave=null;
     this.saving=false;this.saveQueue=Promise.resolve();this.timer=null;this.persisting=Promise.resolve();this.persistQueued=null;this.persistCount=0;
     this.storageError=null;this.media=new Map();this.members=[];this.membersNext=null;this.departure=null;this.discarding=false;
+    // What this topic answers, and the topics already started from it that the person can read.
+    this.source=source;this.sourceMessage=null;this.started=[];this.startedRead=false;this.sourceError=null;
   }
   get dirty(){return this.localVersion>this.savedVersion;}
   get editable(){return this.phase==='editing'&&!this.discarding;}
@@ -93,6 +101,7 @@ export class OpeningDraft {
   }
   async adopt(server,row) {
     this.base=server?.revision??0;this.writing=server?writingOf(server):blankWriting();this.receipt=server?.receipt??null;
+    if(server)this.source=server.source;
     this.localVersion=this.savedVersion=this.keptVersion=0;this.conflict=this.publish=this.leftover=this.pendingSave=null;this.media.clear();
     const kept=row?.writing??null,unacknowledged=kept&&!sameWriting(kept,this.writing);
     if(server&&server.state!=='open'){
@@ -166,7 +175,7 @@ export class OpeningDraft {
     if(!this.pendingSave){
       if(!this.dirty)return;
       this.pendingSave={version:this.localVersion,envelope:this.envelope('opening.save',{opening_revision:this.base},
-        {workspace_id:this.workspace,topic_id:this.topic,...writingOf(this.writing)})};
+        {workspace_id:this.workspace,topic_id:this.topic,...writingOf(this.writing),...(this.source?{source_message_id:this.source}:{})})};
     }
     const entry=this.pendingSave;this.saving=true;this.changed();
     try{await this.acceptSave(entry,await this.api.command(copy(entry.envelope)));}
@@ -255,7 +264,9 @@ export class OpeningDraft {
       // Closed elsewhere, or no longer able to start a topic: read again, nothing to publish.
       if(this.phase!=='sending')return this.phase;
       if(this.dirty||this.conflict||this.pendingSave||this.base<1)throw Error(this.notice??'Your writing is not saved to Theseus yet. It is kept; Send again when it is saved.');
-      this.publish={envelope:this.envelope('opening.publish',{opening_revision:this.base},{})};
+      // A topic answering a message names the topics already started from it that the person was shown.
+      if(this.source&&!this.startedRead)await this.loadSource().catch(()=>{});
+      this.publish={envelope:this.envelope('opening.publish',{opening_revision:this.base},this.source?{seen:this.started.map(t=>t.id)}:{})};
       await this.persist(); // The exact envelope is durable here before it is dispatched.
     } catch(error){
       this.publish=null;if(this.phase==='sending')this.phase='editing';this.changed();throw error;
@@ -285,6 +296,8 @@ export class OpeningDraft {
       this.publish=null;this.phase='editing';this.refusal=receipt.error.message;
       await this.persist().catch(()=>{});
       if(['OPENING_CLOSED','REVISION_CONFLICT'].includes(receipt.error.code))await this.load().catch(()=>{});
+      // Another topic started from the same message meanwhile: show it; the next Send has seen it.
+      if(receipt.error.code==='ALREADY_STARTED')await this.loadSource().catch(()=>{});
       this.changed();return 'refused';
     }
     this.phase='unknown';
@@ -356,7 +369,37 @@ export class OpeningDraft {
     const opening=this.id(),topic=this.id();
     await this.store.put({...this.row(),opening,topic,base:0,writing:copy(this.writing),publish:null,save:null});
     this.savedVersion=this.localVersion;await this.persist();this.changed();
-    return {kind:'opening',workspace:this.workspace,opening,topic};
+    return {kind:'opening',workspace:this.workspace,opening,topic,...(this.source?{from:this.source}:{})};
+  }
+
+  // The message this topic answers, and every topic already started from it
+  // that the person can read, read afresh each time.
+  async loadSource() {
+    if(!this.source){this.sourceMessage=null;this.started=[];this.startedRead=true;this.changed();return;}
+    const source=this.source;
+    try {
+      const [message,started]=await Promise.all([this.readSourceMessage(source),this.readStarted(source)]);
+      if(this.source!==source)return;
+      this.sourceMessage=message;this.started=started;this.startedRead=true;this.sourceError=null;
+    } catch(error){this.sourceError=error.message;throw error;}
+    finally{this.changed();}
+  }
+  async readSourceMessage(source) {
+    const answer=await this.api.view('source',{source_ref:{kind:'message',id:source}},{readClass:'foreground'});
+    if(answer?.error)throw Error(answer.error.message??answer.error.code);
+    if(answer?.instance_id!==this.bootstrap.instance_id||answer.source_ref?.id!==source||typeof answer.body!=='string'||!validActorId(answer.author))throw Error('The message this topic answers could not be confirmed.');
+    return {author:answer.author,body:answer.body,topic_id:answer.topic_id};
+  }
+  async readStarted(source) {
+    let cursor=null;const items=[];
+    do {
+      const answer=await this.api.view('source_topics',{message_id:source,limit:this.bootstrap.limits.page_max??100,...(cursor===null?{}:{cursor})},{readClass:'foreground'});
+      if(answer?.error)throw Error(answer.error.message??answer.error.code);
+      if(answer?.instance_id!==this.bootstrap.instance_id||answer.message_id!==source||!Array.isArray(answer.items)||!answer.items.every(validStarted)||
+          !(answer.next_cursor===null||answer.next_cursor===answer.items.at(-1)?.id))throw Error('The topics already started from this message could not be confirmed.');
+      for(const item of answer.items)items.push(copy(item));cursor=answer.next_cursor;
+    } while(cursor!==null);
+    return items;
   }
 
   // Image adapter over the existing media commands. Bytes stay in memory until

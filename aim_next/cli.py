@@ -169,10 +169,10 @@ LEGACY_VERBS = ("binding", "view", "command")
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes | new-outcome --title TITLE [--purpose TEXT] [--team A,B] "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] TEXT|- "
-         "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | rename TOPIC TITLE "
+         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT|- "
+         "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION}")
+         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
@@ -222,18 +222,26 @@ def _parser():
     start.add_argument("outcome")
     start.add_argument("--title", required=True)
     start.add_argument("--with", dest="participants", default="")
+    # The message the topic answers, and the topics already started from it that the caller has seen.
+    start.add_argument("--from", dest="source")
+    start.add_argument("--seen")
     start.add_argument("text")
     state = verb("state")
     state.add_argument("topic")
     state.add_argument("state", choices=STATES)
     state.add_argument("--note")
     state.add_argument("--waiting-on")
+    responsible = verb("responsible")
+    responsible.add_argument("topic")
+    responsible.add_argument("text")
     rename = verb("rename")
     rename.add_argument("topic")
     rename.add_argument("title")
     verb("archive").add_argument("topic")
     verb("unarchive").add_argument("topic")
-    verb("publish").add_argument("opening")
+    publish = verb("publish")
+    publish.add_argument("opening")
+    publish.add_argument("--seen")
     verb("ack").add_argument("deliveries", nargs="+")
     through = verb("read-through")
     through.add_argument("topic")
@@ -533,6 +541,17 @@ class Agent:
             line += ": " + _one_line(result["note"], 80)
         self.out.plain(line)
 
+    def do_responsible(self):
+        """Says what the actor is responsible for in a topic; empty text clears it."""
+        note = self.text()
+        # Fenced on the note as read; Core refuses someone not taking part.
+        mine = [item["responsibility_revision"] for item in self.view("topic", {"topic_id": self.options.topic})["participants"]
+                if item["actor_id"] == self.actor]
+        result = self.command("responsibility.set", {"topic_id": self.options.topic}, {"note": note},
+                              {"responsibility_revision": mine[0] if mine else 0})
+        self.out.plain("%s in %s: %s" % (self.actor, result["topic_id"], _one_line(result["note"], 200)) if result["note"]
+                       else "%s in %s: no note" % (self.actor, result["topic_id"]))
+
     def do_rename(self):
         result = self.update_topic({"title": self.options.title})
         self.out.plain('renamed %s "%s"' % (result["topic_id"], _one_line(result["title"], 60)))
@@ -545,9 +564,14 @@ class Agent:
 
     def do_read(self):
         options = self.options
-        topic = self.view("topic", {"topic_id": options.topic})["topic"]
+        answer = self.view("topic", {"topic_id": options.topic})
+        topic = answer["topic"]
         page = self.view("topic_messages", {"topic_id": options.topic, "cursor": options.after, "limit": options.limit})
         self.out.plain("%s  %s" % (topic["id"], _one_line(topic["title"])))
+        # What each participant said they are responsible for, under the title.
+        for item in answer["participants"]:
+            if item.get("responsibility"):
+                self.out.plain("  %s: %s" % (item["actor_id"], _one_line(item["responsibility"], 200)))
         for item in page["items"]:
             body = item["body"]
             if item["preview"]:
@@ -599,15 +623,37 @@ class Agent:
         result = self.command("message.post", {"topic_id": options.topic}, args)
         self.out.plain("posted %s in %s (%s deliveries queued)" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"]))
 
+    def started_from(self, source, seen):
+        """Refuses, saving nothing, when topics were already started from source that seen does not name; lists them first."""
+        unseen = [item for item in self.pages("source_topics", {"message_id": source}) if item["id"] not in seen]
+        for item in unseen:
+            self.out.plain('already started %s "%s" in %s by %s  [%s]  (%s messages)' % (
+                item["id"], _one_line(item["title"], 60), item["workspace_id"], item["creator_id"], item["state"], item["message_count"]))
+        if unseen:
+            ids = ",".join(item["id"] for item in unseen)
+            self.refuse("ALREADY_STARTED", "%s already started from %s (listed above): continue there, or start anyway with --seen %s; nothing was saved" % (
+                "a topic was" if len(unseen) == 1 else "%d topics were" % len(unseen), source, ids))
+
+    def seen(self):
+        seen = _names(self.options.seen or "")
+        if self.options.seen is not None and not seen:
+            self.refuse("INVALID_ARGUMENT", "--seen names the topics already started that you have read (--seen T1,T2); nothing was sent")
+        return seen
+
     def do_start(self):
         options = self.options
         opening, topic = "o-" + uuid.uuid4().hex, "t-" + uuid.uuid4().hex
         body = self.text()
+        seen = self.seen()
+        writing = {"workspace_id": options.outcome, "topic_id": topic, "title": options.title,
+                   "participants": _names(options.participants), "body": body, "attachments": []}
+        if options.source is not None:
+            self.started_from(options.source, seen)
+            writing["source_message_id"] = options.source
+        elif seen:
+            self.refuse("INVALID_ARGUMENT", "--seen names topics started from the message --from names; nothing was sent")
         try:
-            saved = self.command("opening.save", {"opening_id": opening}, {
-                "workspace_id": options.outcome, "topic_id": topic, "title": options.title,
-                "participants": _names(options.participants), "body": body, "attachments": []},
-                {"opening_revision": 0})
+            saved = self.command("opening.save", {"opening_id": opening}, writing, {"opening_revision": 0})
         except BaseException as stopped:
             # Once the save request is saved, any end but a final refusal may
             # leave the save recorded (or recordable by `retry`), so the
@@ -616,11 +662,15 @@ class Agent:
                 _diagnostic(self.out.stderr, "start: " + self.publish_hint(opening, topic))
             raise
         try:
-            result = self.command("opening.publish", {"opening_id": opening}, {}, {"opening_revision": saved["opening_revision"]})
+            result = self.command("opening.publish", {"opening_id": opening}, {"seen": seen} if options.source is not None else {},
+                                  {"opening_revision": saved["opening_revision"]})
         except BaseException as stopped:
             # The save is recorded, so the opening stays whatever ends the publish.
             if isinstance(stopped, Failed) and stopped.code == 2:
                 hint = "opening %s stays unpublished: Core refused its publish." % opening
+                if options.source is not None:
+                    hint += " If another topic started from %s meanwhile, read it; `publish %s --seen T1,T2` naming every one starts this anyway." % (
+                        options.source, opening)
             elif isinstance(stopped, Failed) and stopped.recorded:
                 hint = "the publish of opening %s was recorded; `publish %s` reports whether it started topic %s." % (opening, opening, topic)
             else:
@@ -639,7 +689,9 @@ class Agent:
         if opening["state"] == "published":
             self.out.plain("already published %s as %s with %s" % (opening["id"], opening["topic_id"], opening["message_id"]))
             return
-        result = self.command("opening.publish", {"opening_id": opening["id"]}, {}, {"opening_revision": opening["revision"]})
+        seen = self.seen()
+        result = self.command("opening.publish", {"opening_id": opening["id"]}, {"seen": seen} if seen else {},
+                              {"opening_revision": opening["revision"]})
         self.out.plain('started %s "%s" in %s with %s' % (opening["topic_id"], _one_line(opening.get("title", ""), 60),
                                                           opening["workspace_id"], result["message_id"]))
 

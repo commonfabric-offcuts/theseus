@@ -44,8 +44,10 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
 ### `opening.save`
 
 - `target`: `{opening_id}`. `expected`: `{opening_revision}` (required).
-- `args`: exactly `{workspace_id, topic_id, title, participants, body, attachments}`.
-  Every save carries the whole writing; nothing is merged.
+- `args`: exactly `{workspace_id, topic_id, title, participants, body, attachments}`,
+  and optionally the `source_message_id` the topic answers (see
+  [sources.md](sources.md)). Every save carries the whole writing; nothing is
+  merged.
 - Creation is `opening_revision: 0` for an ID this actor has not used. It
   checks that the actor can access `workspace_id` and that `topic_id` names
   no existing topic and no other opening (`REVISION_CONFLICT` otherwise).
@@ -66,8 +68,9 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
 ### `opening.publish`
 
 - `target`: `{opening_id}`. `expected`: `{opening_revision}` (required).
-- `args`: `{}`. The saved revision is the content; the request cannot
-  supply or override writing.
+- `args`: `{}`, or `{seen}` for an opening that answers a message (see
+  [sources.md](sources.md)). The saved revision is the content; the request
+  cannot supply or override writing.
 - In one transaction Core checks that the opening is open and at the
   expected revision, that the actor can still access its workspace, that
   `topic_id` is unused, that the title is not blank, that every participant

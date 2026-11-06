@@ -21,6 +21,8 @@ from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 from .work import WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
 from .memory import MEMORY_READ_DOWN, MEMORY_READ_OCCUPIED, MEMORY_READ_SCHEMA
+from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPONSIBILITY_SCHEMA
+from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -57,6 +59,9 @@ STEPS = (
     ("18", "19", ACTIVITY_SCHEMA, ACTIVITY_DOWN, ACTIVITY_OCCUPIED),
     # Version 20 keeps the revision of each Notebook page each person last read.
     ("19", "20", MEMORY_READ_SCHEMA, MEMORY_READ_DOWN, MEMORY_READ_OCCUPIED),
+    # Version 21 gives each participant's responsibility note a revision, and keeps the message each topic was started from.
+    ("20", "21", RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA, SOURCE_DOWN + RESPONSIBILITY_DOWN,
+     "SELECT (%s) OR (%s)" % (RESPONSIBILITY_OCCUPIED, SOURCE_OCCUPIED)),
 )
 
 

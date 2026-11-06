@@ -350,6 +350,14 @@ def main():
         if controls is not None:
             controls.install(server, store)
 
+        def on_team(operation):
+            """The fixture's agent, a member of the outcome w1; adding a member already there changes nothing."""
+            agent = "fixture-notebook-agent"
+            version = store().view(actor, "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+            command("workspace.member_set", operation + "-member", {"actor_id": agent, "present": True},
+                    {"workspace_id": "w1"}, {"workspace_revision": version})
+            return agent
+
         def agent_message(request):
             operation = request["operation_id"]
             # The person may write one too, so their own message is drawn, or
@@ -517,15 +525,31 @@ def main():
                         revision = store().view(actor, "topic", {"topic_id": request["topic_id"]})["topic"]["version"]
                         answer = command("topic.update", request["operation_id"], request["args"],
                                          {"topic_id": request["topic_id"]}, {"topic_revision": revision})
+                    elif freshness and request["method"] == "responsibility":
+                        # A participant says what they do in a topic, as their own page or CLI does,
+                        # fenced on the revision they read.
+                        sender, topic_id = request.get("sender") or "fixture-notebook-agent", request.get("topic_id", "t1")
+                        [revision] = [item["responsibility_revision"] for item in store().view(sender, "topic", {"topic_id": topic_id})["participants"]
+                                      if item["actor_id"] == sender]
+                        answer = command("responsibility.set", request["operation_id"], {"note": request["note"]},
+                                         {"topic_id": topic_id}, {"responsibility_revision": revision}, sender=sender)
+                    elif freshness and request["method"] == "source_start":
+                        # An agent on the outcome's team starts a topic answering a message,
+                        # as `start --from` does: it reads the topics already started from it
+                        # and names them as seen.
+                        agent, prefix = on_team(request["operation_id"]), request["operation_id"]
+                        started = store().view(agent, "source_topics", {"message_id": request["message_id"]})
+                        assert "error" not in started and started["next_cursor"] is None, started
+                        command("opening.save", prefix + "-save", {
+                            "workspace_id": "w1", "topic_id": prefix + "-topic", "title": request["title"], "participants": [],
+                            "body": request["body"], "attachments": [], "source_message_id": request["message_id"]},
+                            {"opening_id": prefix + "-opening"}, {"opening_revision": 0}, sender=agent)
+                        answer = command("opening.publish", prefix + "-publish", {"seen": [item["id"] for item in started["items"]]},
+                                         {"opening_id": prefix + "-opening"}, {"opening_revision": 1}, sender=agent)
                     elif freshness and request["method"] == "outcome_reference":
                         # An agent on the outcome's team writes to the outcome's
                         # own Notebook, which every topic in it stands on.
-                        agent = "fixture-notebook-agent"
-                        members = store().view(actor, "workspace_members", {"workspace_id": "w1"})["items"]
-                        if agent not in [member["actor_id"] for member in members]:
-                            version = store().view(actor, "workspace", {"workspace_id": "w1"})["workspace"]["version"]
-                            command("workspace.member_set", request["operation_id"] + "-member", {"actor_id": agent, "present": True},
-                                    {"workspace_id": "w1"}, {"workspace_revision": version})
+                        agent = on_team(request["operation_id"])
                         answer = command("memory.create", request["operation_id"], {
                             "title": request["title"], "body": request["body"], "attachments": [], "references": []},
                             {"item_id": request["item_id"], "owner_scope": {"kind": "workspace", "id": "w1"}},

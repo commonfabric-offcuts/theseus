@@ -8,18 +8,23 @@ const afterId = (id,previous) => {
   return a.length>b.length;
 };
 const badRoute = () => { throw Error('This destination link is incomplete or ambiguous. Open Outcomes to choose a place.'); };
+// An opening may name the message its topic answers ('from').
+const OPTIONAL = {opening:['from']};
 export function routeKey(route) {
   const fields = {root:[],topic:['id'],workspace:['id'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
-  if (!fields || Object.keys(route).length !== fields.length + 1 || !fields.every(key=>validId(route[key]))) badRoute();
-  return JSON.stringify([route.kind,...fields.map(key=>route[key])]);
+  const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
+  if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>validId(route[key]))) badRoute();
+  return JSON.stringify([route.kind,...fields.map(key=>route[key]),...optional.map(key=>[key,route[key]])]);
 }
 export function routeHref(route) {
   routeKey(route);
   const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id} :
     route.kind === 'workspace' ? {workspace:route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
-      {workspace:route.workspace,opening:route.opening,opening_topic:route.topic};
+      {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
   return params ? '?' + new URLSearchParams(params) : '/';
 }
+// A new opening in an outcome whose topic answers one message.
+export const startFrom = (workspace, message) => ({kind:'opening',workspace,opening:crypto.randomUUID(),topic:crypto.randomUUID(),from:message});
 export function parseRoute(url) {
   const p=url.searchParams, keys=[...p.keys()];
   if (new Set(keys).size !== keys.length) badRoute();
@@ -28,7 +33,9 @@ export function parseRoute(url) {
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
   else if (keys.length===1 && p.has('workspace')) route={kind:'workspace',id:p.get('workspace')};
   else if (keys.length===2 && p.get('new')==='outcome' && p.has('intent')) route={kind:'create',intent:p.get('intent')};
-  else if (keys.length===3 && ['workspace','opening','opening_topic'].every(k=>p.has(k))) route={kind:'opening',workspace:p.get('workspace'),opening:p.get('opening'),topic:p.get('opening_topic')};
+  else if ([3,4].includes(keys.length) && ['workspace','opening','opening_topic'].every(k=>p.has(k)) && (keys.length===3 || p.has('opening_from'))) {
+    route={kind:'opening',workspace:p.get('workspace'),opening:p.get('opening'),topic:p.get('opening_topic'),...(p.has('opening_from')?{from:p.get('opening_from')}:{})};
+  }
   else badRoute();
   routeKey(route);return route;
 }
