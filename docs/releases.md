@@ -20,9 +20,13 @@ Co-Authored-By: ...
 
 `Pipeline: 87, 2` names two items. Name an item only on the change that
 completes it; a change that does part of an item, or none, carries no trailer.
-A trailer may sit on a branch commit or on the merge commit that brings the
+The trailer is read as git reads trailers (`git interpret-trailers`): only in
+the message's last paragraph, and only when every line of that paragraph is a
+`Key: value` trailer; the key may be written in any case. A `Pipeline:` line
+elsewhere in the message, such as one quoted as an example, names nothing. A
+trailer may sit on a branch commit or on the merge commit that brings the
 branch in: the deploy reads every commit it ships, merges included. A
-`Pipeline:` line whose value is not a list of item numbers stops the deploy
+`Pipeline` trailer whose value is not a list of item numbers stops the deploy
 before anything is stopped.
 
 ## The record

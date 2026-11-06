@@ -3,27 +3,27 @@ from __future__ import annotations
 """What a deploy ships, for its release record: the pipeline items its commits name, and the release check's counts.
 
 docs/releases.md is the contract. A change names the items it delivers in a
-`Pipeline: 87, 2` line of its commit message; tools/deploy.py reads every
+`Pipeline: 87, 2` trailer of its commit message, read by git's own trailer
+rules (the last paragraph, the key in any case); tools/deploy.py reads every
 commit between the live HEAD and the commit it deploys, merges included.
 """
 
 import re
 
-TRAILER = re.compile(r"^Pipeline:(.*)$", re.M)
 NUMBER = re.compile(r"[1-9][0-9]*")
-# Fields of one commit in `git log --format`, and the end of each commit.
-FIELD, END = "\x1f", "\x1e"
-LOG_FORMAT = "--format=%H" + "%x1f" + "%s" + "%x1f" + "%B" + "%x1e"
+# Fields of one commit in `git log --format`, each Pipeline trailer's value, and the end of each commit.
+FIELD, VALUE, END = "\x1f", "\x1d", "\x1e"
+LOG_FORMAT = "--format=%H%x1f%s%x1f%(trailers:key=Pipeline,valueonly,separator=%x1d)%x1e"
 
 
 class Malformed(ValueError):
-    """A Pipeline line that does not name item numbers."""
+    """A Pipeline trailer that does not name item numbers."""
 
 
-def trailer_items(message):
-    """The item numbers every `Pipeline:` line of one commit message names, in order; [] when it has none."""
+def trailer_items(values):
+    """The item numbers one commit's Pipeline trailer values name, in order; [] when it has none."""
     items = []
-    for value in TRAILER.findall(message):
+    for value in values.split(VALUE) if values else ():
         parts = [part.strip() for part in value.split(",")]
         if not all(NUMBER.fullmatch(part) for part in parts):
             raise Malformed("Pipeline: %s" % value.strip())
@@ -39,17 +39,17 @@ def log_argv(checkout, head, sha):
 def shipped(log_text):
     """(each item once in the order its commits came, [{commit, subject, items}]) from log_argv's output.
 
-    Raises Malformed naming the commit whose Pipeline line does not name item numbers."""
+    Raises Malformed naming the commit whose Pipeline trailer does not name item numbers."""
     commits, items = [], []
     for entry in log_text.split(END):
         entry = entry.strip("\n")
         if not entry:
             continue
-        commit, subject, message = entry.split(FIELD, 2)
+        commit, subject, values = entry.split(FIELD, 2)
         try:
-            named = trailer_items(message)
+            named = trailer_items(values)
         except Malformed as error:
-            raise Malformed("commit %s (%s) has a line %r that does not name pipeline item numbers"
+            raise Malformed("commit %s (%s) has a trailer %r that does not name pipeline item numbers"
                             % (commit[:12], subject, str(error)))
         commits.append({"commit": commit, "subject": subject, "items": named})
         items.extend(item for item in named if item not in items)

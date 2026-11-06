@@ -18,12 +18,15 @@ SHA = "c" * 40
 HEAD = "b" * 40
 
 
-def log(*messages):
-    """`git log` output as the deploy asks for it: one entry per (subject, message), oldest first."""
-    return "".join("%s\x1f%s\x1f%s\n\x1e\n" % (("%040x" % (n + 1)), subject, body) for n, (subject, body) in enumerate(messages))
+def log(*commits):
+    """`git log` output as the deploy asks for it: one entry per (subject, its Pipeline trailer values), oldest first.
+
+    Which lines are trailers is git's to read (tests/test_tools_releases.py runs it)."""
+    return "".join("%s\x1f%s\x1f%s\x1e\n" % (("%040x" % (n + 1)), subject, "\x1d".join(values))
+                   for n, (subject, values) in enumerate(commits))
 
 
-SHIPPED = log(("One change", "One change\n\nPipeline: 88\n"))
+SHIPPED = log(("One change", ["88"]))
 
 
 def page(*numbers):
@@ -234,9 +237,8 @@ class ReleasePlan(DeployCase):
         return json.loads((self.evidence / "02-release.json").read_text())
 
     def test_the_items_come_from_every_commit_shipped_in_order_and_the_number_follows_the_latest(self):
-        shipped = log(("Close keeps the writing", "Close keeps the writing\n\nPipeline: 87, 2\nCo-Authored-By: x"),
-                      ("A check for the saving sign", "A check for the saving sign\n"),
-                      ("Merge branch 'next-90'", "Merge branch 'next-90'\n\nPipeline: 2, 90\n"))
+        shipped = log(("Close keeps the writing", ["87, 2"]), ("A check for the saving sign", []),
+                      ("Merge branch 'next-90'", ["2", "90"]))
         host = FakeHost(self.config, log=shipped, releases=(page(19, 18), 0))
         self.deploy(host, dry=True)
         plan = self.plan()
@@ -263,15 +265,15 @@ class ReleasePlan(DeployCase):
         self.assertEqual(measured["native"]["steps"]["journal"], {"pass": 2, "total": 3})
         self.assertEqual(set(measured["native"]["steps"]), {step.name for step in release_check.NATIVE_STEPS})
 
-    def test_a_pipeline_line_that_names_no_item_numbers_stops_the_deploy_before_anything_stops(self):
+    def test_a_pipeline_trailer_that_names_no_item_numbers_stops_the_deploy_before_anything_stops(self):
         for value in ("next", "87 and 2", "", "087", "2,"):
             with self.subTest(value):
-                host = FakeHost(self.config, log=log(("Something", "Something\n\nPipeline: %s\n" % value)))
+                host = FakeHost(self.config, log=log(("Something", ["3", value])))
                 self.assertIn("does not name pipeline item numbers", self.refused(host))
                 self.assertEqual((self.kills, host.ran("-c")), ([], []))
 
     def test_a_release_that_names_no_item_says_so_or_stops_before_anything_stops(self):
-        quiet = log(("A check", "A check\n\nCo-Authored-By: x\n"), ("Pipeline mentioned in passing", "It says Pipeline: 3 mid-line\n"))
+        quiet = log(("A check", []), ("Another check", []))
         host = FakeHost(self.config, log=quiet)
         self.assertIn("--no-items", self.refused(host))
         self.assertEqual((self.kills, host.ran("-c")), ([], []))
