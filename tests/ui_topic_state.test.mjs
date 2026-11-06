@@ -411,3 +411,35 @@ test('a row with observed work carries a dot, and every row says when activity w
   paintWork(unknown, {}, 'tony');
   assert.deepEqual([unknown.children, unknown.attributes.title], [[], undefined]);
 });
+
+test('a waiting row\'s title and screen-reader words name whom it waits on as its pill does', t => {
+  dom(t);
+  const at = new Date(2026, 10, 5, 7, 41).getTime(), when = '7:41 AM Thu Nov 5';
+  const work = { observed: true, seen_ms: at, by: 'aim-lead', how: 'posted', waits: true };
+  const ask = (actor_id, by = 'aim-lead') => ({ actor_id, by, message_id: 'm-' + actor_id, since_ms: at });
+  for (const [item, pill] of [
+    [{ state: 'active', asks: [ask('tony')] }, 'Waiting on you'],
+    [{ state: 'waiting', waiting_on: ['riley'], asks: [ask('tony')] }, 'Waiting on you, riley'],
+    [{ state: 'review', asks: [ask('fable', 'tony')] }, 'Ready for review · waiting on fable'],
+  ]) {
+    const row = new Element('a'), topic = { ...item, work };
+    paintState(row, topic, 'tony'); paintWork(row, topic, 'tony');
+    const mark = row.children.find(node => String(node.className).startsWith('topic-state'));
+    assert.equal(mark.textContent, pill);
+    const note = `${pill} · last activity ${when} (aim-lead posted)`;
+    assert.equal(row.attributes.title, note, 'the row\'s title says what its pill says');
+    // A screen reader hears the pill, then the rest of the note, once.
+    assert.equal(mark.textContent + row.children.find(node => node.className === 'sr-only').textContent, note);
+    assert.doesNotMatch(row.attributes.title, /someone/);
+  }
+  // A server that counts a wait the page cannot name still says there is one.
+  const unnamed = new Element('a');
+  paintState(unnamed, { state: 'active', work }, 'tony'); paintWork(unnamed, { state: 'active', work }, 'tony');
+  assert.equal(unnamed.attributes.title, `Waiting on someone · last activity ${when} (aim-lead posted)`);
+  assert.equal(unnamed.children.find(node => node.className === 'sr-only').textContent, ` · Waiting on someone · last activity ${when} (aim-lead posted)`);
+  // Without a time, a waiting row's words are its pill's alone, said once.
+  const untimed = new Element('a'), quiet = { state: 'active', asks: [ask('tony')], work: { ...work, seen_ms: null } };
+  paintState(untimed, quiet, 'tony'); paintWork(untimed, quiet, 'tony');
+  assert.equal(untimed.attributes.title, 'Waiting on you');
+  assert.deepEqual(untimed.children.map(node => String(node.className)), ['topic-state mine', 'topic-work']);
+});

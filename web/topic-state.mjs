@@ -42,20 +42,28 @@ export function askLines(item, reader) {
 
 // Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
 // in words. It never says nobody is working: only when activity was last seen.
-export function workNote(work, reader) {
+// A waiting topic's words are its pill's ("Waiting on you"), passed as
+// waiting; without them it waits on someone the page cannot name.
+export function workNote(work, reader, waiting = '') {
   if (!work || typeof work !== 'object') return '';
   const when = Number.isSafeInteger(work.seen_ms) ? readableTime(work.seen_ms) : null;
   const what = when && typeof work.by === 'string' ? ` (${named(work.by, reader)} ${work.how === 'turn' ? 'took a turn' : 'posted'})` : '';
   // The server counts every wait as observed work.
-  if (work.waits) return when ? `Waiting on someone · last activity ${when}${what}` : 'Waiting on someone';
+  if (work.waits) {
+    const who = waiting || 'Waiting on someone';
+    return when ? `${who} · last activity ${when}${what}` : who;
+  }
   if (work.observed && when) return `Activity seen ${when}${what}`;
   return when ? `No activity seen since ${when}` : 'No activity seen';
 }
 
 // A row with observed work carries a small dot; every row's title and
-// screen-reader text say what was seen and when.
+// screen-reader text say what was seen and when. A waiting row's title begins
+// with its pill's words; its screen-reader words follow the pill, which the
+// row already says, so they do not say it twice.
 export function paintWork(host, item, reader) {
-  const note = workNote(item?.work, reader);
+  const pill = pillMarked(item) && waitsOn(item).length ? stateLabel(item, reader) : '';
+  const note = workNote(item?.work, reader, pill);
   if (!note) { host.removeAttribute('title'); return; }
   host.setAttribute('title', note);
   if (item.work.observed) {
@@ -63,15 +71,20 @@ export function paintWork(host, item, reader) {
     dot.className = 'topic-work'; dot.setAttribute('aria-hidden', 'true');
     host.append(dot);
   }
+  const rest = pill && note.startsWith(pill) ? note.slice(pill.length) : ` · ${note}`;
+  if (!rest) return;
   const words = document.createElement('span');
-  words.className = 'sr-only'; words.textContent = ` · ${note}`;
+  words.className = 'sr-only'; words.textContent = rest;
   host.append(words);
 }
+
+// Whether a topic list row carries a state pill.
+const pillMarked = item => STATES.includes(item?.state) && !(item.state === 'active' && !waitsOn(item).length);
 
 // A row in a topic list says where its topic stands unless it is simply active
 // and waits on nobody. The caller has just set the row's text, so the row holds no earlier mark.
 export function paintState(host, item, reader) {
-  if (!STATES.includes(item?.state) || item.state === 'active' && !waitsOn(item).length) return;
+  if (!pillMarked(item)) return;
   const mark = document.createElement('span');
   mark.className = 'topic-state'; mark.dataset.state = waitsOn(item).length ? 'waiting' : item.state;
   if (waitsOn(item).includes(reader)) mark.classList.add('mine');

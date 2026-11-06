@@ -136,8 +136,10 @@ once NOW is a record; `observed()` takes it as `in_now`.
 
 In the web app a topic row with observed work carries a small dot and
 nothing else; every row's title and screen-reader text say what was seen:
-"Activity seen <time> (<who> posted)", "Waiting on someone · last activity
-<time>", "No activity seen since <time>", or "No activity seen".
+"Activity seen <time> (<who> posted)", "No activity seen since <time>", or
+"No activity seen". A waiting row's words begin with what its pill says,
+"Waiting on you · last activity <time>", and say "Waiting on someone" only
+when the server counts a wait the row does not name.
 
 Schema version 15 adds `topic_turns` (the latest turn per topic) and
 `hosted_turn_topics` (the topics each handed turn holds). Stepping back to 14
