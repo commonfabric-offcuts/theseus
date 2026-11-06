@@ -7,6 +7,13 @@ running an outcome can see at a glance what is moving, what waits on them,
 what is ready for their review and what is finished. Renaming a topic and
 archiving it, which takes it out of the outcome's list without changing
 where it stands, stay with the outcome's owner and the topic's creator.
+
+A topic waits on someone for either of two reasons, kept on one row per
+topic and person in topic_waiting: someone said so (`said`, the topic's
+state is waiting and names them), or a message asked them and they have not
+written in the topic since (`ask_message_id`, the oldest such ask). The row
+lives while either reason holds; its order time is the state's time while
+it is said, else the ask's.
 """
 
 from .contract import LIMITS, READABLE, Refusal, _body, _prefix, _revision
@@ -53,6 +60,16 @@ WAITING_ORDER_SCHEMA = [
 WAITING_ORDER_DOWN = ("DROP INDEX reader_waiting", "CREATE INDEX actor_waiting ON topic_waiting(actor_id,topic_id)",
                       "ALTER TABLE topic_waiting DROP COLUMN archived", "ALTER TABLE topic_waiting DROP COLUMN state_ms")
 
+# Version 14: an asking message makes its topic wait on each person it asks,
+# on the same row as a wait someone said, until that person writes in the topic.
+# Rows from before were all said.
+ASK_WAIT_SCHEMA = [
+    "ALTER TABLE topic_waiting ADD COLUMN said INTEGER NOT NULL DEFAULT 1 CHECK(said IN (0,1))",
+    "ALTER TABLE topic_waiting ADD COLUMN ask_message_id TEXT REFERENCES messages(id)",
+]
+ASK_WAIT_DOWN = ("ALTER TABLE topic_waiting DROP COLUMN ask_message_id", "ALTER TABLE topic_waiting DROP COLUMN said")
+ASK_WAIT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM topic_waiting WHERE said=0 OR ask_message_id IS NOT NULL)"
+
 
 class TopicState:
     def _command_topic_update(self, db, actor, envelope):
@@ -79,7 +96,7 @@ class TopicState:
                 raise Refusal("INVALID_ARGUMENT", "Archived is true or false")
             db.execute("UPDATE topics SET archived=? WHERE id=?", (int(args["archived"]), topic["id"]))
             db.execute("UPDATE topic_waiting SET archived=? WHERE topic_id=?", (int(args["archived"]), topic["id"]))
-        old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? ORDER BY actor_id", (topic["id"],))]
+        old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? AND said=1 ORDER BY actor_id", (topic["id"],))]
         if args.keys() & {"state", "note", "waiting_on"}:
             if not manager and not db.execute("SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1",
                                               (topic["id"], actor)).fetchone():
@@ -98,8 +115,12 @@ class TopicState:
             waiting = self._waiting_on(db, topic, waiting)
             db.execute("UPDATE topics SET state=?,state_note=?,state_by=?,state_ms=? WHERE id=?",
                        (state, note, actor, _now_ms(), topic["id"]))
-            db.execute("DELETE FROM topic_waiting WHERE topic_id=?", (topic["id"],))
-            db.executemany("INSERT INTO topic_waiting(topic_id,actor_id,state_ms,archived) SELECT id,?,state_ms,archived FROM topics WHERE id=?",
+            # Only what was said changes here: a row an open ask still holds stays, ordered by its ask.
+            db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND ask_message_id IS NULL", (topic["id"],))
+            db.execute("UPDATE topic_waiting SET said=0,state_ms=(SELECT m.sent_ms FROM messages m WHERE m.id=ask_message_id) WHERE topic_id=?",
+                       (topic["id"],))
+            db.executemany("INSERT INTO topic_waiting(topic_id,actor_id,state_ms,archived,said) SELECT id,?,state_ms,archived,1 FROM topics WHERE id=? "
+                           "ON CONFLICT(topic_id,actor_id) DO UPDATE SET said=1,state_ms=excluded.state_ms",
                            [(member, topic["id"]) for member in waiting])
         else:
             waiting = old_waiting
@@ -135,14 +156,52 @@ class TopicState:
         db.executemany("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", [(topic["id"], member) for topic in topics])
         return topics
 
-    def _waiting_by_topic(self, db, topic_ids):
-        """{topic_id: [actor_id, ...]} for the given topics."""
-        waiting = {topic_id: [] for topic_id in topic_ids}
+    def _ask(self, db, topic, author, message_id, sent_ms, asked):
+        """Make the topic wait on each person a message asks; return those it newly waits on.
+
+        A person already asked keeps their oldest open ask, so the wait shows how
+        long they have been waited on. The message reached each of them, so each
+        can read the topic."""
+        newly = []
+        for member in asked:
+            if member == author:
+                continue
+            if db.execute("INSERT INTO topic_waiting(topic_id,actor_id,state_ms,archived,said,ask_message_id) VALUES (?,?,?,?,0,?) "
+                          "ON CONFLICT(topic_id,actor_id) DO UPDATE SET ask_message_id=excluded.ask_message_id WHERE ask_message_id IS NULL",
+                          (topic["id"], member, sent_ms, topic["archived"], message_id)).rowcount:
+                newly.append(member)
+        return newly
+
+    def _answered(self, db, topic_id, author):
+        """Writing in a topic answers every ask there that waits on its author; whether one did.
+
+        A wait someone said stays until it is said otherwise."""
+        row = db.execute("SELECT said FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL",
+                         (topic_id, author)).fetchone()
+        if row is None:
+            return False
+        if row["said"]:
+            db.execute("UPDATE topic_waiting SET ask_message_id=NULL WHERE topic_id=? AND actor_id=?", (topic_id, author))
+        else:
+            db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic_id, author))
+        return True
+
+    def _waits_by_topic(self, db, topic_ids):
+        """{topic_id: (waiting_on, asks)} for the given topics: who the topic was said to wait
+        on, and each open ask, {actor_id, message_id, by, since_ms}, both in actor order."""
+        waits = {topic_id: ([], []) for topic_id in topic_ids}
         if topic_ids:
             marks = ",".join("?" * len(topic_ids))
-            for row in db.execute("SELECT topic_id,actor_id FROM topic_waiting WHERE topic_id IN (%s) ORDER BY topic_id,actor_id" % marks, list(topic_ids)):
-                waiting[row["topic_id"]].append(row["actor_id"])
-        return waiting
+            for row in db.execute("SELECT q.topic_id,q.actor_id,q.said,q.ask_message_id,m.author_id,m.sent_ms FROM topic_waiting q "
+                                  "LEFT JOIN messages m ON m.id=q.ask_message_id WHERE q.topic_id IN (%s) ORDER BY q.topic_id,q.actor_id" % marks,
+                                  list(topic_ids)):
+                said, asks = waits[row["topic_id"]]
+                if row["said"]:
+                    said.append(row["actor_id"])
+                if row["ask_message_id"] is not None:
+                    asks.append({"actor_id": row["actor_id"], "message_id": row["ask_message_id"],
+                                 "by": row["author_id"], "since_ms": row["sent_ms"]})
+        return waits
 
     def _waiting_on_reader(self, db, actor, limit=5):
         """(count, newest first) of the topics that wait on this reader, archived ones left out.
@@ -151,12 +210,16 @@ class TopicState:
         newest few in that index's order."""
         count = db.execute("SELECT count(*) FROM topic_waiting INDEXED BY reader_waiting WHERE actor_id=? AND archived=0",
                            (actor,)).fetchone()[0]
-        rows = db.execute("SELECT t.id,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,t.state_note,t.state_by,t.state_ms "
+        rows = db.execute("SELECT t.id,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,t.state_note,t.state_by,t.state_ms,"
+                          "q.said,q.ask_message_id,m.author_id AS asked_by,m.sent_ms AS asked_ms "
                           "FROM topic_waiting q INDEXED BY reader_waiting CROSS JOIN topics t ON t.id=q.topic_id "
+                          "LEFT JOIN messages m ON m.id=q.ask_message_id "
                           "WHERE q.actor_id=? AND q.archived=0 ORDER BY q.state_ms DESC,q.topic_id LIMIT ?", (actor, limit)).fetchall()
         items = []
         for row in rows:
             title, truncated = _prefix(row["title_prefix"])
+            ask = None if row["ask_message_id"] is None else {"message_id": row["ask_message_id"], "by": row["asked_by"], "since_ms": row["asked_ms"]}
             items.append({"id": row["id"], "title": title, "title_truncated": truncated,
-                          "note": row["state_note"], "state_by": row["state_by"], "state_ms": row["state_ms"]})
+                          "note": row["state_note"], "state_by": row["state_by"], "state_ms": row["state_ms"],
+                          "said": bool(row["said"]), "ask": ask})
         return count, items

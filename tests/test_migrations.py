@@ -47,7 +47,9 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
-        # Version 14 records whether a message to someone asks or tells.
+        # Version 14 records whether a message to someone asks or tells, and what waits on whoever it asks.
+        db.execute("ALTER TABLE topic_waiting DROP COLUMN ask_message_id")
+        db.execute("ALTER TABLE topic_waiting DROP COLUMN said")
         db.execute("ALTER TABLE messages DROP COLUMN intent")
         if version == "13":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
@@ -952,6 +954,18 @@ class Schema13Case(MigrationCase):
         self.assertEqual(schema(self.path), frozen(SCHEMA_13))
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
                          {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_a_wait_said_before_the_upgrade_stays_said_and_survives_a_step_back(self):
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE topics SET state='waiting',state_by='owner',state_ms=1234 WHERE id='t1'")
+            db.execute("INSERT INTO topic_waiting(topic_id,actor_id,state_ms,archived) VALUES ('t1','agent-b',1234,0)")
+        self.upgrade()
+        self.assertEqual(self.sql("SELECT topic_id,actor_id,said,ask_message_id FROM topic_waiting"), [("t1", "agent-b", 1, None)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        topic = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]
+        self.assertEqual((topic["waiting_on"], topic["asks"]), (["agent-b"], []))
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(self.sql("SELECT * FROM topic_waiting"), [("t1", "agent-b", 1234, 0)])
 
     def test_step_back_refuses_once_a_message_asks_or_tells(self):
         for intent in ("tell", "ask"):

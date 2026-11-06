@@ -7,6 +7,7 @@ import unittest
 
 import reader_fixture as fixtures
 import test_agent_verbs
+import test_topic_state
 
 
 class AskOrTellCase(fixtures.ReaderCase):
@@ -74,6 +75,131 @@ class AskOrTellCase(fixtures.ReaderCase):
                                    target={"draft_id": "unsure"}, expected={"draft_revision": 0}), "INVALID_ARGUMENT")
 
 
+class AskWaitsCase(AskOrTellCase):
+    """An asking message makes its topic wait on whoever it asks until they write in it."""
+
+    update = test_topic_state.TopicStateCase.update
+    topic = test_topic_state.TopicStateCase.topic
+    listed = test_topic_state.TopicStateCase.listed
+    waiting_on = test_topic_state.TopicStateCase.waiting_on
+    member_set = test_topic_state.TopicStateCase.member_set
+
+    def ask(self, asked, actor="agent-a", topic="t1"):
+        result = self.committed(self.post({"addressees": asked, "intent": "ask"}, actor=actor, topic=topic))
+        sent = self.sql("SELECT sent_ms FROM messages WHERE id=?", (result["message_id"],))[0][0]
+        return result["message_id"], sent
+
+    def latest_waiting(self, actor):
+        answer = self.store.view(actor, "attention", {})
+        self.assertNotIn("error", answer, answer)
+        return answer["latest_waiting"]
+
+    def waiting_changes(self, actor):
+        return self.sql("SELECT count(*) FROM changes WHERE scope_kind='actor' AND scope_id=? AND resource_kind='waiting'", (actor,))[0][0]
+
+    def test_an_ask_waits_on_whoever_it_asks_in_the_same_act_until_they_write_in_the_topic(self):
+        told = self.committed(self.post({"addressees": ["agent-b"], "intent": "tell"}))
+        self.assertEqual(self.waiting_on("agent-b"), (0, []))
+        message, sent = self.ask(["owner"])
+        self.assertEqual(self.waiting_on("owner"), (1, ["t1"]))
+        [item] = self.latest_waiting("owner")
+        self.assertEqual((item["said"], item["ask"], item["state_ms"]), (False, {"message_id": message, "by": "agent-a", "since_ms": sent}, None))
+        ask = {"actor_id": "owner", "message_id": message, "by": "agent-a", "since_ms": sent}
+        topic = self.topic()
+        # The topic's state is what people said; the ask is its own reason to wait.
+        self.assertEqual((topic["state"], topic["waiting_on"], topic["asks"]), ("active", [], [ask]))
+        self.assertEqual((self.listed()["t1"]["waiting_on"], self.listed()["t1"]["asks"]), ([], [ask]))
+        self.assertEqual(self.waiting_changes("owner"), 1)
+        # Someone else writing in the topic answers nothing asked of the owner.
+        self.committed(self.post({"body": "Meanwhile"}, actor="agent-b"))
+        self.assertEqual(self.waiting_on("owner"), (1, ["t1"]))
+        # The owner's own message there answers it, whatever it says and whoever it names.
+        self.committed(self.post({"body": "Here you go"}, actor="owner"))
+        self.assertEqual(self.waiting_on("owner"), (0, []))
+        self.assertEqual((self.topic()["asks"], self.listed()["t1"]["asks"]), ([], []))
+        self.assertEqual(self.waiting_changes("owner"), 2)
+        self.assertEqual(self.sql("SELECT count(*) FROM topic_waiting"), [(0,)])
+        self.assertTrue(told)
+
+    def test_agents_asking_agents_wait_the_same_way_and_a_message_sent_through_the_composer_answers(self):
+        self.ask(["agent-b", "owner"], actor="agent-a")
+        self.assertEqual(self.waiting_on("agent-b"), (1, ["t1"]))
+        self.assertEqual([ask["actor_id"] for ask in self.topic()["asks"]], ["agent-b", "owner"])
+        # Asking yourself waits on nobody.
+        self.ask(["agent-a"], actor="agent-a")
+        self.assertEqual(self.waiting_on("agent-a"), (0, []))
+        self.send("Answered from the page")
+        self.assertEqual(self.waiting_on("owner"), (0, []))
+        self.assertEqual(self.waiting_on("agent-b"), (1, ["t1"]))
+        self.committed(self.post({"addressees": ["agent-a"], "intent": "ask"}, actor="agent-b"))
+        # agent-b's ask answered what was asked of agent-b and now waits on agent-a.
+        self.assertEqual(self.waiting_on("agent-b"), (0, []))
+        self.assertEqual(self.waiting_on("agent-a"), (1, ["t1"]))
+
+    def test_a_second_ask_keeps_the_wait_from_the_first(self):
+        first, sent = self.ask(["owner"])
+        self.ask(["owner"], actor="agent-b")
+        self.assertEqual(self.latest_waiting("owner")[0]["ask"], {"message_id": first, "by": "agent-a", "since_ms": sent})
+        self.assertEqual(self.waiting_changes("owner"), 1)
+        self.committed(self.post({"body": "Both answered"}, actor="owner"))
+        self.assertEqual(self.waiting_on("owner"), (0, []))
+
+    def test_a_said_wait_and_an_ask_are_one_wait_and_each_ends_on_its_own(self):
+        # Said first: an ask joins it, a reply answers the ask, the said wait stays.
+        self.committed(self.update({"state": "waiting", "note": "Your call", "waiting_on": ["agent-a"]}, actor="owner"))
+        said_ms = self.topic()["state_ms"]
+        message, sent = self.ask(["agent-a"], actor="agent-b")
+        self.assertEqual(self.waiting_on("agent-a"), (1, ["t1"]))
+        [item] = self.latest_waiting("agent-a")
+        self.assertEqual((item["said"], item["ask"]["message_id"], item["state_ms"]), (True, message, said_ms))
+        self.committed(self.post({"body": "Answering agent-b"}, actor="agent-a"))
+        [item] = self.latest_waiting("agent-a")
+        self.assertEqual((item["said"], item["ask"]), (True, None))
+        self.assertEqual((self.topic()["state"], self.topic()["waiting_on"], self.topic()["asks"]), ("waiting", ["agent-a"], []))
+        # Asked first: a new state ends what was said and leaves the ask, ordered by its own time.
+        message, sent = self.ask(["agent-a"], actor="agent-b")
+        self.committed(self.update({"state": "review"}, actor="owner"))
+        self.assertEqual(self.waiting_on("agent-a"), (1, ["t1"]))
+        self.assertEqual(self.sql("SELECT said,state_ms,ask_message_id FROM topic_waiting"), [(0, sent, message)])
+        topic = self.topic()
+        self.assertEqual((topic["state"], topic["waiting_on"], [ask["actor_id"] for ask in topic["asks"]]), ("review", [], ["agent-a"]))
+        # Saying it waits on them again makes the one row said once more, at the state's time.
+        self.committed(self.update({"state": "waiting", "waiting_on": ["agent-a", "agent-b"]}, actor="owner"))
+        self.assertEqual(self.sql("SELECT actor_id,said,state_ms=?,ask_message_id FROM topic_waiting ORDER BY actor_id", (self.topic()["state_ms"],)),
+                         [("agent-a", 1, 1, message), ("agent-b", 1, 1, None)])
+        # An update that names nobody keeps who was said, never turning an ask into a said wait.
+        self.committed(self.update({"state": "waiting", "waiting_on": ["agent-b"]}, actor="owner"))
+        self.committed(self.update({"note": "Still yours"}, actor="owner"))
+        self.assertEqual((self.topic()["waiting_on"], [ask["actor_id"] for ask in self.topic()["asks"]]), (["agent-b"], ["agent-a"]))
+        self.assertEqual(self.waiting_on("agent-a"), (1, ["t1"]))
+
+    def test_whoever_loses_the_topic_is_no_longer_asked(self):
+        # agent-b reads t1 only as a member of the outcome.
+        self.ask(["agent-b"])
+        self.assertEqual(self.waiting_on("agent-b"), (1, ["t1"]))
+        self.member_set("agent-b", False)
+        self.assertEqual(self.sql("SELECT count(*) FROM topic_waiting"), [(0,)])
+        self.member_set("agent-b", True)
+        self.assertEqual(self.waiting_on("agent-b"), (0, []))
+
+    def test_an_ask_in_an_archived_topic_waits_without_counting(self):
+        self.committed(self.update({"archived": True}))
+        self.ask(["owner"])
+        self.assertEqual(self.waiting_on("owner"), (0, []))
+        self.assertEqual(self.listed(archived=True)["t1"]["asks"][0]["actor_id"], "owner")
+        self.committed(self.update({"archived": False}))
+        self.assertEqual(self.waiting_on("owner"), (1, ["t1"]))
+
+    def test_what_waits_is_listed_newest_first_whether_said_or_asked(self):
+        self.ask(["owner"])
+        self.committed(self.command("opening.save", {"workspace_id": "w1", "topic_id": "t2", "title": "Second", "participants": ["agent-a"],
+                                                     "body": "Opened", "attachments": []}, target={"opening_id": "o2"},
+                                    expected={"opening_revision": 0}))
+        self.committed(self.command("opening.publish", {}, target={"opening_id": "o2"}, expected={"opening_revision": 1}))
+        self.committed(self.update({"state": "waiting", "waiting_on": ["owner"]}, actor="agent-a", topic="t2"))
+        self.assertEqual(self.waiting_on("owner"), (2, ["t2", "t1"]))
+
+
 class AskOrTellVerbCase(test_agent_verbs.AgentVerbCase):
     def message(self):
         return self.sql("SELECT author_id,body,addressees,intent FROM messages ORDER BY seq DESC LIMIT 1")[0]
@@ -91,6 +217,9 @@ class AskOrTellVerbCase(test_agent_verbs.AgentVerbCase):
         code, out, err = self.run_cli("read", "t1", "--after", "0")
         self.assertIn(" agent-a asks owner\n", out)
         self.assertIn(" agent-a tells owner, agent-b\n", out)
+        # The topic list says who the topic waits on because they were asked, and since when.
+        code, out, err = self.run_cli("topics", "w1")
+        self.assertRegex(out, r"t1  .*\[active, asked owner since \d{4}-\d\d-\d\d \d\d:\d\d\]")
 
     def test_a_post_that_neither_asks_nor_tells_is_refused_before_anything_is_saved(self):
         before = self.records()

@@ -22,7 +22,7 @@ from .memory import Memory, MEMORY_SCHEMA
 from .media import Media, MEDIA_SCHEMA
 from .route_pins import RoutePins
 from .changes import Changes
-from .topic_state import TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA
+from .topic_state import ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA
 from .marks import Marks, MARK_SCHEMA
 
 
@@ -100,7 +100,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -542,11 +542,11 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                           (workspace["id"], int(archived), args.get("cursor", ""), limit + 1)).fetchall()
         items = [dict(row) for row in rows[:limit]]
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
-        waiting = self._waiting_by_topic(db, [item["id"] for item in items])
+        waits = self._waits_by_topic(db, [item["id"] for item in items])
         for item in items:
             item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
             item["archived"] = bool(item["archived"])
-            item["waiting_on"] = waiting[item["id"]]
+            item["waiting_on"], item["asks"] = waits[item["id"]]
         return {"instance_id": self.instance_id, "items": items,
                 "next_cursor": items[-1]["id"] if len(rows) > limit else None,
                 "relevant_versions": {"workspace": workspace["version"]}}

@@ -201,6 +201,11 @@ message names the flags. `post --to`, which said neither, is refused the same
 way before anything is saved, as is a post with both `--asks` and `--tells`.
 An intent on a message that names nobody is refused as `INVALID_ARGUMENT`.
 
+An ask makes the topic wait on each person it asks until they next write in
+the topic; `topics` shows it as "asked owner since 2026-11-05 22:10", and the
+asked person's `attention` lists it (see [attention.md](attention.md#asked-and-waited-on)).
+Any message you write in a topic answers what was asked of you there.
+
 Writing saved with `draft.save` may carry `intent` as well; the composer path
 (`submission.prepare`, `message.send`) sends an addressed message without one
 as a tell, so a person's message asks only when they say so.

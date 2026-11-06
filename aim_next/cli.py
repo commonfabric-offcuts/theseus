@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import stat
 import sys
+import time
 import uuid
 
 from .authority import AuthorityError
@@ -246,6 +247,11 @@ def _names(value):
     return [name.strip() for name in value.split(",") if name.strip()]
 
 
+def _since(ms):
+    """When something began, in local time: "since 2026-11-05 22:10"."""
+    return "since " + time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000.0)) if isinstance(ms, int) else "(time unknown)"
+
+
 def _one_line(text, size=120):
     line = " ".join(text.split())
     return line if len(line) <= size else line[:size - 1] + "…"
@@ -480,6 +486,8 @@ class Agent:
             stands = item.get("state", "active")
             if item.get("waiting_on"):
                 stands += " on " + ", ".join(item["waiting_on"])
+            for ask in item.get("asks") or ():
+                stands += ", asked %s %s" % (ask["actor_id"], _since(ask["since_ms"]))
             if item.get("state_note"):
                 stands += ": " + _one_line(item["state_note"], 80)
             self.out.plain("%s  %s  [%s]  (%s messages, latest #%s)" % (

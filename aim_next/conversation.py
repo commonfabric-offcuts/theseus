@@ -272,16 +272,21 @@ class Conversation:
         if len(audience) > LIMITS["recipients"]:
             raise Refusal("TOO_MANY_RECIPIENTS", "Resolved recipients exceed the limit; nobody was sent a partial message")
         self._recipients(db, list(audience))
-        message_id = "m-" + uuid.uuid4().hex
+        message_id, sent_ms = "m-" + uuid.uuid4().hex, _now_ms()
         sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms,intent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
-                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, _now_ms(), intent)).lastrowid
+                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         db.execute("UPDATE topic_summaries SET message_count=message_count+1,latest_message_id=? WHERE topic_id=?", (message_id, topic_id))
+        # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
+        answered = [actor] if self._answered(db, topic_id, actor) else []
+        asked = self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else []
         version = self._touch_topic(db, topic)
+        for member in answered + asked:
+            self._change(db, "actor", member, "waiting", topic_id, version)
         return {"message_id": message_id, "topic": {"id": topic_id, "version": version},
                 "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
 
@@ -319,7 +324,8 @@ class Conversation:
         topic = self._topic(db, actor, args.get("topic_id"))
         participants = [dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"])) for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(p.responsibility,1,256) AS responsibility,a.enabled,a.kind FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?", (topic["id"], LIMITS["topic_participants"]))]
         summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
-        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=self._waiting_by_topic(db, [topic["id"]])[topic["id"]])
+        waiting_on, asks = self._waits_by_topic(db, [topic["id"]])[topic["id"]]
+        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks)
         return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,
                 "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 

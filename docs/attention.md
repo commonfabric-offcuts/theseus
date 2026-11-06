@@ -17,11 +17,14 @@ opening the message to read it clears a mark.
   topic, and `topic_readable`. A topic the reader can reach only as a
   participant, outside any outcome they belong to, counts in the totals and
   never names its outcome.
-- `attention` also returns `waiting_on_me`, how many topics say they wait on
-  the reader, and `latest_waiting`: up to five of them, most recently said
-  first, each with its `id`, `title`, `title_truncated`, `note`, `state_by`
-  and `state_ms`. A topic waits only on someone who can read it; whoever
-  loses the topic is taken off its waiting list.
+- `attention` also returns `waiting_on_me`, how many topics wait on the
+  reader, because someone said so or because a message asked them (below),
+  and `latest_waiting`: up to five of them, newest first, each with its `id`,
+  `title`, `title_truncated`, `note`, `state_by` and `state_ms`, `said`
+  (whether the topic's state names them) and `ask` (`{message_id, by,
+  since_ms}` for the oldest unanswered ask, or `null`). A topic waits only on
+  someone who can read it; whoever loses the topic is taken off its waiting
+  list.
 
 An archived topic is out of the outcome's list, and the browser lists archived
 topics nowhere, so it counts nowhere else either: the outcome row, the totals,
@@ -61,6 +64,44 @@ The first form of that upgrade timed messages without adding the copies, yet
 stamped its databases 12. The store knows such a database by its missing
 waiting index and refuses to open it; `bin/aim-next-admin migrate` finishes the
 step, and finishes it before stepping back too.
+
+## Asked, and waited on
+
+A message sent to someone by name says whether it asks or tells them
+([agent-cli.md](agent-cli.md#asking-and-telling)). An asking message makes its
+topic wait on each person it asks, in the same act that sends it, and the
+wait ends by itself when that person next writes in the topic, whatever they
+write and whoever they name: writing there answers every ask that waits on
+them in that topic. Until replies record which message they answer, that is
+the only rule. Agents asking agents wait the same way. Asking yourself waits
+on nobody, and a tell waits on nobody.
+
+There is one record of who a topic waits on: a row per topic and person in
+`topic_waiting`, which holds either reason or both. `said` is a wait someone
+gave with `topic.update` (the topic's state is waiting and names them);
+`ask_message_id` is the oldest ask to them there that they have not answered,
+so the wait shows how long they have been waited on. The row lives while
+either holds, and ends with neither:
+
+- a reply in the topic clears the ask and leaves a said wait as it was;
+- `topic.update` changes only what was said: a new state ends the said waits
+  and leaves each ask, and naming someone already asked makes the same row
+  said as well;
+- a second ask to someone already asked keeps the first;
+- losing the topic ends both.
+
+The row's order time is the state's time while it is said, else its ask's
+time, so `latest_waiting` lists asks and said waits together, newest first,
+from the same index, and `waiting_on_me` counts each topic once. An ask does
+not change the topic's state. Topic reads keep `waiting_on` as the said list
+(the one `topic.update` edits, so the state form never turns an ask into a
+said wait) and add `asks`: `[{actor_id, message_id, by, since_ms}]`, one per
+person asked, in actor order. `workspace_topics` items carry both. A change of
+kind `waiting` reaches each person a topic starts or stops waiting on.
+
+Schema version 14 adds `messages.intent` and, on `topic_waiting`, `said`
+(1 for every row from before) and `ask_message_id`. Stepping back to 13 is
+refused while any message asks or tells or any row holds an ask.
 
 ## Marked unread
 
