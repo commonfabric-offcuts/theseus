@@ -1597,3 +1597,37 @@ test('a page in the topic\'s own Notebook carries the changed light, and a commi
   live.emit({ kind: 'commit', seq: 10 }); await drain();
   assert.deepEqual(light(), ['1', ', changed since you read it, 1 new revision'], 'revised again, it comes back on');
 });
+
+test('a Notebook page counts as read only once the person can see it: shown in a background or unfocused tab, it is read when the tab comes forward', async () => {
+  const { f } = await readingPage();
+  f.api.command = async envelope => { f.calls.push({ kind: envelope.kind, envelope }); return { status: 'committed', recorded: true, result: { previous_revision: 0 } }; };
+  Object.assign(f.reader, { show() {}, paintPending() {}, paintRecipients() {} });
+  Object.assign(f.views, { revisions: { observe() {}, offer: () => null } });
+  f.registry.neighbors = async () => null;
+  const shown = (id, revision) => {
+    const source_ref = { kind: 'memory', id, revision };
+    const presentation = { surface: 'reader', mode: 'reply', source: { source_ref, title: 'Page', body: 'Words', attachments: [], topic_id: 't1', author: 'agent-a' },
+      editors: { reply: { key: 'r', context: { kind: 'reply', topicId: 't1', sourceRef: source_ref }, submissions: [] }, note: { key: 'n', context: { kind: 'note' }, submissions: [] } } };
+    f.registry.current = presentation; f.registry.options.present(presentation);
+  };
+  const reads = () => f.calls.filter(c => c.kind === 'memory.read').map(c => [c.envelope.target.item_id, c.envelope.args.revision]);
+  const fire = (kind, name) => { for (const event of f.events.filter(e => e[0] === kind && e[1] === name)) event[2]({}); };
+  f.document.focused = false;
+  shown('p1', 2); await settle(); await settle();
+  assert.deepEqual(reads(), [], 'restored in a tab without focus, the page is not yet read');
+  f.document.focused = true; fire('window-handler', 'focus'); await settle(); await settle();
+  assert.deepEqual(reads(), [['p1', 2]], 'focus reads it');
+  fire('window-handler', 'focus'); await settle();
+  assert.deepEqual(reads(), [['p1', 2]], 'once');
+  f.document.visibilityState = 'hidden';
+  shown('p2', 1); await settle(); await settle();
+  assert.deepEqual(reads(), [['p1', 2]], 'a hidden tab reads nothing');
+  shown('p3', 4); await settle();
+  f.document.visibilityState = 'visible'; fire('document-handler', 'visibilitychange'); await settle(); await settle();
+  assert.deepEqual(reads(), [['p1', 2], ['p3', 4]], 'coming forward reads the page shown then, not one shown before it');
+  f.document.focused = false;
+  shown('p4', 1); await settle();
+  f.registry.current = null;
+  f.document.focused = true; fire('window-handler', 'focus'); await settle(); await settle();
+  assert.deepEqual(reads(), [['p1', 2], ['p3', 4]], 'a page the Reader closed before the tab came forward was never seen, so it is not read');
+});

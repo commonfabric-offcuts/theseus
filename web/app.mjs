@@ -382,7 +382,8 @@ async function present(presentation) {
     }
     paintReaderMark();
     noteRead();
-    if (shown.kind === 'memory' && !presentation.sourceUnavailable) run(() => readPage(presentation));
+    pageShown = shown.kind === 'memory' && !presentation.sourceUnavailable ? presentation : null;
+    notePageRead();
   }
   const discovery = Promise.all(Object.values(presentation.editors).map(editor => discover(presentation, editor)));
   if (presentation.surface === 'inline') { inlineDiscovery = discovery; return; }
@@ -393,9 +394,20 @@ async function present(presentation) {
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   sourceAttachments(presentation);
 }
-// A Notebook page shown in the Reader is read; a read Core did not record
-// says so in the Reader, and the page keeps its light. A page the person
-// read at an older revision shows what changed since then.
+// A Notebook page shown in the Reader is read once the person can see it, as
+// a message is (noteRead): in a visible, focused page. One shown in the
+// background, such as a Reader restored on load, is read when the page comes
+// forward, if it is still the one shown.
+let pageShown = null;
+function notePageRead() {
+  const presentation = pageShown;
+  if (!presentation || document.visibilityState !== 'visible' || !document.hasFocus()) return;
+  pageShown = null;
+  if (registry.isSourceCurrent(presentation) && !presentation.sourceUnavailable) run(() => readPage(presentation));
+}
+// A read Core did not record says so in the Reader, and the page keeps its
+// light. A page the person read at an older revision shows what changed
+// since then.
 async function readPage(presentation) {
   const current = () => registry.isSourceCurrent(presentation) && !presentation.sourceUnavailable;
   let since;
@@ -1072,6 +1084,8 @@ async function initialize() {
   middleObserver = new IntersectionObserver(cardsSeen(atMiddle, entry => entry.isIntersecting), { rootMargin: '-50% 0px -50% 0px', threshold: 0 });
   document.addEventListener('visibilitychange', noteRead);
   window.addEventListener('focus', noteRead);
+  document.addEventListener('visibilitychange', notePageRead);
+  window.addEventListener('focus', notePageRead);
   topicNavigation = new TopicNavigation({ registry, current:route,
     navigateTarget: target => { marks.leave(); location.assign(routeHref(target)); } });
   await initializeInlineComposer();

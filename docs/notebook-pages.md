@@ -46,8 +46,12 @@ of its new revisions in the sidebar, in the same badge a topic's unread
 count wears, and screen readers hear ", changed since you read it, N new
 revisions". A page never read, or read as it stands, wears nothing.
 
-Showing a page in the Reader reads it: the page sends `memory.read` with the
-exact revision shown (a page the Reader cannot show is not read). The commit
+Showing a page in the Reader reads it once the person can see it, as a
+message counts as read only then: the page sends `memory.read` with the
+exact revision shown while the tab is visible and focused. One shown in the
+background, such as a Reader restored on load, is read when the tab comes
+forward, if the Reader still shows it; a page the Reader cannot show is not
+read. The commit
 reaches every open page through the live feed, whose next reload draws the
 row without its light; a page without the feed reloads after the read is
 recorded. A read Core did not record is said in the Reader, and the page
