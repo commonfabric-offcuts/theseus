@@ -8,7 +8,7 @@ class AuthorKindCase(ReaderCase):
 
     def test_each_message_says_what_kind_of_actor_wrote_it(self):
         for actor, args in (("agent-a", {"body": "From an agent"}), ("owner", {"body": "From a person"}),
-                            ("agent-a", {"body": "To the owner", "addressees": ["owner"]})):
+                            ("agent-a", {"body": "To the owner", "addressees": ["owner"], "intent": "tell"})):
             self.committed(self.command("message.post", args, target={"topic_id": "t1"}, actor=actor))
         for audience in ("all", "reader"):
             page = self.store.view("owner", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 10, "audience": audience})
