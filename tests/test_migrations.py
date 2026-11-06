@@ -31,6 +31,7 @@ SCHEMA_13 = (Path(__file__).parent / "fixtures" / "schema_13.sql").read_text().s
 SCHEMA_14 = (Path(__file__).parent / "fixtures" / "schema_14.sql").read_text().splitlines()
 SCHEMA_15 = (Path(__file__).parent / "fixtures" / "schema_15.sql").read_text().splitlines()
 SCHEMA_16 = (Path(__file__).parent / "fixtures" / "schema_16.sql").read_text().splitlines()
+SCHEMA_17 = (Path(__file__).parent / "fixtures" / "schema_17.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -50,6 +51,14 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 18 keeps each topic's activity time and the message that reopened it.
+        db.execute("DROP INDEX workspace_topic_order")
+        db.execute("CREATE INDEX workspace_listed_topics ON topics(workspace_id,archived,id)")
+        db.execute("ALTER TABLE topics DROP COLUMN state_message_id")
+        db.execute("ALTER TABLE topics DROP COLUMN activity_ms")
+        if version == "17":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 17 keeps the color each person chose for an agent.
         db.execute("DROP TABLE color_choices")
         if version == "16":
@@ -1156,6 +1165,59 @@ class Schema16Case(MigrationCase):
                 self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class Schema17Case(MigrationCase):
+    """A schema-17 instance: version 18 orders each outcome's topics by activity."""
+
+    VERSION, FIXTURE = "17", SCHEMA_17
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "17")
+
+    def test_upgrade_from_17_keeps_records_matches_a_fresh_instance_and_orders_by_the_activity_kept(self):
+        # Written at version 17: t2's newest message is later than its state, t3
+        # has only a state, t4 has neither, and t1 has its opening message.
+        with sqlite3.connect(str(self.path)) as db:
+            for topic, state_ms in (("t2", 3000), ("t3", 7000), ("t4", None)):
+                db.execute("INSERT INTO topics(id,workspace_id,title,creator_id,version,state_ms) VALUES (?,'w1',?,'owner',1,?)",
+                           (topic, topic, state_ms))
+                db.execute("INSERT INTO topic_summaries VALUES (?,0,NULL)", (topic,))
+            db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,sent_ms) "
+                       "VALUES ('m-t2','t2','owner','Body','[]','[]','[]','op-m-t2',5000)")
+            db.execute("UPDATE topic_summaries SET message_count=1,latest_message_id='m-t2' WHERE topic_id='t2'")
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        opened = self.sql("SELECT m.sent_ms FROM messages m WHERE m.topic_id='t1' ORDER BY seq DESC LIMIT 1")[0][0]
+        self.assertEqual(dict(self.sql("SELECT id,activity_ms FROM topics")), {"t1": opened, "t2": 5000, "t3": 7000, "t4": 0})
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        listed = self.store.view("owner", "workspace_topics", {"workspace_id": "w1"})
+        self.assertEqual([item["id"] for item in listed["items"]], ["t1", "t3", "t2", "t4"])
+
+    def test_step_back_to_17_restores_its_frozen_layout_while_no_topic_was_reopened(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_refuses_once_a_message_reopened_a_topic(self):
+        self.upgrade()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE topics SET state_message_id=(SELECT id FROM messages ORDER BY seq LIMIT 1) WHERE id='t1'")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1178,6 +1240,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema15Case, _name, None)
     if _name.startswith("test_") and _name not in Schema16Case.__dict__:
         setattr(Schema16Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema17Case.__dict__:
+        setattr(Schema17Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

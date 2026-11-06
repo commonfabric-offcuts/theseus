@@ -337,6 +337,7 @@ class Conversation:
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         db.execute("UPDATE topic_summaries SET message_count=message_count+1,latest_message_id=? WHERE topic_id=?", (message_id, topic_id))
+        self._message_activity(db, topic, actor, message_id, sent_ms)
         # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
         answered = [actor] if self._answered(db, topic_id, actor) else []
         asked = self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else []

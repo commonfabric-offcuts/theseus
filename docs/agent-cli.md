@@ -138,7 +138,7 @@ above; `binding`, `view` and `command` are unchanged.
 | --- | --- |
 | `outcomes` | Lists the actor's outcomes. |
 | `new-outcome --title TITLE [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. |
-| `topics OUTCOME [--archived]` | Lists an outcome's topics, newest activity first, each with where it stands; `--archived` lists only its archived topics. |
+| `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees and full body. Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
 | `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |

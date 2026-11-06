@@ -91,8 +91,8 @@ send's own transaction. A message sent before version 12 of the schema has
 no message has a time.
 
 `workspace_topics` items also carry `message_count` and `latest_seq` (the
-sequence of the topic's newest message), so a client can order topics by
-activity.
+sequence of the topic's newest message). The list itself comes latest
+activity first, done topics apart ([topic-list.md](topic-list.md)).
 
 ### `topic.read_through`
 

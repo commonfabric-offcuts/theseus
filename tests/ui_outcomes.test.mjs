@@ -8,7 +8,7 @@ test('an outcome topic page has no invented current topic', () => {
   assert.deepEqual(pages.items, []);
   pages.accept({instance_id:'instance',items:[],next_cursor:null});
   assert.deepEqual(pages.items, []);
-  pages.accept({instance_id:'instance',items:[{id:'t1',workspace_id:'w1',title:'Real topic'}],next_cursor:null});
+  pages.accept({instance_id:'instance',items:[{id:'t1',workspace_id:'w1',title:'Real topic',activity_ms:1}],next_cursor:null});
   assert.deepEqual(pages.items.map(x=>x.id),['t1']);
 });
 

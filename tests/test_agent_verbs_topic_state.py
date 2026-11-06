@@ -53,6 +53,23 @@ class TopicStateVerbCase(AgentVerbCase):
         self.assertIn(topic, self.run_cli("topics", "w1")[1])
         self.assertEqual(self.run_cli("topics", "w1", "--archived")[1], "no archived topics\n")
 
+    def test_topics_lists_latest_activity_first_then_the_done_ones_and_says_how_many_are_archived(self):
+        started = []
+        for title in ("First", "Second", "Third"):
+            code, out, err = self.run_cli("start", "w1", "--title", title, "Opening words")
+            self.assertEqual((code, err), (0, ""))
+            started.append(out.split()[1])
+        first, second, third = started
+        self.assertEqual((self.run_cli("state", second, "done")[0], self.run_cli("archive", third)[0]), (0, 0))
+        self.assertEqual(self.run_cli("post", first, "Back to this one")[0], 0)
+        code, out, err = self.run_cli("topics", "w1")
+        self.assertEqual((code, err), (0, ""))
+        lines = out.splitlines()
+        self.assertEqual([line.split("  ")[0] for line in lines], [first, "t1", "done (1):", second, "archived (1): topics w1 --archived"])
+        self.assertIn("[done]", lines[3])
+        _, archived, _ = self.run_cli("topics", "w1", "--archived")
+        self.assertEqual([line.split("  ")[0] for line in archived.splitlines()], [third])
+
     def test_new_outcome_creates_one_the_agent_owns(self):
         code, out, err = self.run_cli("new-outcome", "--title", "Agent outcome", "--purpose", "Prove it", "--team", "agent-b")
         self.assertEqual((code, err), (0, ""))

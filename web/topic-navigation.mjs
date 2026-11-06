@@ -53,39 +53,70 @@ export class WorkspacePages {
     this.next=answer.next_cursor;this.started=true;return true;
   }
   empty() { return new WorkspacePages(this.instanceId); }
+  last() { return [...this.loaded.keys()].pop() ?? null; }
   precedes(a,b) { return afterId(b,a); }
 }
 
+// An outcome's topics come in three lists (docs/topic-list.md): the ones that
+// are neither done nor archived, the done ones and the archived ones, each
+// latest activity first. A topic's place is its position, DONE:ACTIVITY_MS:ID.
+export const TOPIC_LISTS = { active: {}, done: { done: true }, archived: { archived: true } };
+const listOf = item => item.archived === true ? 'archived' : item.state === 'done' ? 'done' : 'active';
+const doneFlag = item => item.state === 'done' ? 1 : 0;
+export const topicPosition = item => `${doneFlag(item)}:${item.activity_ms}:${item.id}`;
+function position(cursor) {
+  const first = cursor.indexOf(':'), second = cursor.indexOf(':', first + 1);
+  return [Number(cursor.slice(0, first)), Number(cursor.slice(first + 1, second)), cursor.slice(second + 1)];
+}
+// Negative when a comes before b in a list: the topics not done first, then
+// later activity, then, at the same time, the larger id (compared as the server
+// does, by code point).
+function compare([doneA, activityA, idA], [doneB, activityB, idB]) {
+  return doneA - doneB || activityB - activityA || (idA === idB ? 0 : afterId(idA, idB) ? -1 : 1);
+}
+const key = item => [doneFlag(item), Number.isSafeInteger(item.activity_ms) ? item.activity_ms : 0, item.id];
+
 // Only workspace navigation data lives here. Existing sessions own all writing.
 export class TopicPages {
-  constructor(instanceId, workspaceId, current) {
-    Object.assign(this, { instanceId, workspaceId, current });
-    this.loaded = new Map(); this.next = null; this.started = false;
+  constructor(instanceId, workspaceId, current, list = 'active') {
+    if (!Object.hasOwn(TOPIC_LISTS, list)) throw Error('Unknown topic list.');
+    Object.assign(this, { instanceId, workspaceId, current, list });
+    this.loaded = new Map(); this.next = null; this.started = false; this.groups = null;
   }
   // The open topic's row shows what the page knows of it, with the counts the
-  // list read for it: the topic view itself carries no unread count.
+  // list read for it: the topic view itself carries no unread count. It is in
+  // the list where what the page knows of it puts it, in its place there.
   get items() {
-    const items = [...this.loaded.values()].map(item => item.id === this.current?.id ? { ...item, ...this.current } : item);
-    return !this.current || this.loaded.has(this.current.id) ? items : [this.current, ...items];
+    const current = this.current, here = current && listOf(current) === this.list;
+    const items = [...this.loaded.values()].filter(item => item.id !== current?.id || here)
+      .map(item => item.id === current?.id ? { ...item, ...current } : item);
+    if (here && !this.loaded.has(current.id)) items.push(current);
+    return items.sort((a, b) => compare(key(a), key(b)));
   }
   accept(answer, cursor = null) {
     if (cursor !== null && (!this.started || cursor !== this.next)) return false;
     const fail = () => { throw Error('The topic list could not be confirmed. Retry topics.'); };
     if (answer?.instance_id !== this.instanceId || !Array.isArray(answer.items) ||
         !(answer.next_cursor === null || typeof answer.next_cursor === 'string' && answer.next_cursor)) fail();
-    let previous = cursor ?? ''; const ids = new Set();
+    const groups = answer.groups;
+    if (groups !== undefined && !['done', 'archived'].every(name => Number.isSafeInteger(groups?.[name]) && groups[name] >= 0)) fail();
+    let previous = cursor === null ? null : position(cursor); const ids = new Set();
     for (const item of answer.items) {
-      if (!item || typeof item.id !== 'string' || !item.id || item.id <= previous || ids.has(item.id) ||
-          item.workspace_id !== this.workspaceId || typeof item.title !== 'string') fail();
-      previous = item.id; ids.add(item.id);
+      if (!item || typeof item.id !== 'string' || !item.id || ids.has(item.id) || item.workspace_id !== this.workspaceId ||
+          typeof item.title !== 'string' || !Number.isSafeInteger(item.activity_ms) || item.activity_ms < 0 || listOf(item) !== this.list ||
+          previous !== null && compare(previous, key(item)) >= 0) fail();
+      previous = key(item); ids.add(item.id);
     }
-    if (answer.next_cursor !== null && (!answer.items.length || answer.next_cursor !== previous)) fail();
+    if (answer.next_cursor !== null && (!answer.items.length || answer.next_cursor !== topicPosition(answer.items.at(-1)))) fail();
     if (cursor === null) this.loaded.clear();
     for (const item of answer.items) this.loaded.set(item.id, structuredClone(item));
-    this.next = answer.next_cursor; this.started = true; return true;
+    this.next = answer.next_cursor; this.started = true;
+    if (groups !== undefined) this.groups = { done: groups.done, archived: groups.archived };
+    return true;
   }
-  empty() { return new TopicPages(this.instanceId, this.workspaceId, this.current); }
-  precedes(a, b) { return a < b; }
+  empty() { return new TopicPages(this.instanceId, this.workspaceId, this.current, this.list); }
+  last() { const item = [...this.loaded.values()].pop(); return item ? topicPosition(item) : null; }
+  precedes(a, b) { return compare(position(a), position(b)) < 0; }
 }
 
 export const PAGE = 20;
@@ -94,14 +125,14 @@ export const PAGE = 20;
 // passes the last row they had. The list changes once, when all have arrived,
 // so a reload never folds the list back to its first page.
 export async function reread(pages, read, pageMax = PAGE) {
-  const fresh = pages.empty(), last = [...pages.loaded.keys()].pop() ?? null;
+  const fresh = pages.empty(), last = pages.last();
   const limit = Math.min(pageMax, Math.max(PAGE, pages.loaded.size));
   let cursor = null;
   do {
     fresh.accept(await read({ limit, ...(cursor === null ? {} : { cursor }) }), cursor);
     cursor = fresh.next;
   } while (cursor !== null && last !== null && fresh.precedes(cursor, last));
-  Object.assign(pages, { loaded: fresh.loaded, next: fresh.next, started: true });
+  Object.assign(pages, { loaded: fresh.loaded, next: fresh.next, groups: fresh.groups ?? pages.groups, started: true });
 }
 
 export class TopicNavigation {
@@ -179,90 +210,162 @@ export class TopicNavigation {
   }
 }
 
+// The topic list: the topics neither done nor archived, then a "Done (N)" line
+// and an "Archived (N)" line that each open to list theirs. Whether each line
+// is open is kept per person on this browser; a closed one is not read.
 export class TopicRail {
-  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE }) {
-    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax });
-    this.denied = false; this.loading = null; this.queued = null; this.failedMore = false;
+  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE, done = null, archived = null, storage = null }) {
+    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax, storage });
+    this.denied = false; this.loading = null; this.queued = null; this.failedMore = false; this.serial = 0;
+    this.lists = [{ name: 'active', pages, host, more }];
+    const kept = this.kept();
+    for (const [name, parts] of [['done', done], ['archived', archived]]) {
+      if (!parts) continue;
+      const list = { name, pages: new TopicPages(pages.instanceId, pages.workspaceId, pages.current, name), ...parts };
+      this.lists.push(list);
+      list.details.open = kept[name] === true;
+      list.more.onclick = () => this.load(list);
+      // Opening a line reads its list, unless a read of it is under way; a
+      // list read before reads again with the others.
+      list.details.addEventListener('toggle', () => {
+        this.keep(name, list.details.open);
+        if (list.details.open && !list.reading) this.load(list.pages.started ? false : list);
+      });
+    }
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore);
     // Mobile browsers can retarget a gap tap to a nearby link. Only accept a
     // synthesized click when the raw touch ended inside that link's bounds.
-    host.addEventListener('touchend', event => {
+    for (const list of this.lists) list.host.addEventListener('touchend', event => {
       const link = event.target.closest('a[data-topic-id]'), touch = event.changedTouches?.[0];
       if (!link || !touch) return;
       const box = link.getBoundingClientRect();
       if (touch.clientX < box.left || touch.clientX > box.right || touch.clientY < box.top || touch.clientY > box.bottom) event.preventDefault();
     }, { passive: false });
+    this.links = new Map();
     this.paint();
   }
-  updateCurrent(topic) { this.pages.current = structuredClone(topic); this.paint(); }
+  // Which folded lines this person keeps open, on this browser.
+  get storageKey() { return `aim-next.topic-lists.${this.pages.instanceId}.${this.reader}`; }
+  kept() {
+    try { const value = JSON.parse(this.storage?.getItem(this.storageKey) ?? '{}'); return value && typeof value === 'object' ? value : {}; }
+    catch { return {}; }
+  }
+  keep(name, open) {
+    try { this.storage?.setItem(this.storageKey, JSON.stringify({ ...this.kept(), [name]: open })); } catch { /* kept for this page only */ }
+  }
+  // How many topics the done and archived lines hold, from the latest list read.
+  get groups() { return this.lists.map(list => list.pages).filter(pages => pages.groups).sort((a, b) => b.readAt - a.readAt)[0]?.groups ?? null; }
+  // Whether the outcome has no topics at all, as far as the lists read say.
+  get empty() {
+    return this.pages.started && this.lists.every(list => list.pages.items.length === 0) && !(this.groups?.done || this.groups?.archived);
+  }
+  title(id) { for (const list of this.lists) { const item = list.pages.items.find(item => item.id === id); if (item) return item.title; } return id; }
+  updateCurrent(topic) { for (const list of this.lists) list.pages.current = structuredClone(topic); this.paint(); }
+  row(item) {
+    let link = this.links.get(item.id);
+    if (!link) {
+      link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
+      link.href = '?topic=' + encodeURIComponent(item.id);
+      link.onclick = event => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault(); return this.open(item.id, this.title(item.id));
+      };
+      this.links.set(item.id, link);
+    }
+    // A row drawn again with what it already shows is left alone, so the
+    // pointer's hover and a click under way stay on what they were on.
+    const shows = JSON.stringify([item.title, item.unread, item.addressed, item.state, item.waiting_on, item.asks, item.state_note, item.work]);
+    if (drawn.get(link) !== shows) {
+      drawn.set(link, shows);
+      link.textContent = item.title;
+      paintUnread(link, item);
+      paintState(link, item, this.reader);
+      paintWork(link, item, this.reader);
+    }
+    if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+    return link;
+  }
   paint() {
-    const items = this.pages.items, ids = new Set(items.map(item => item.id));
-    for (const link of [...this.host.children]) if (!ids.has(link.dataset.topicId)) link.remove();
-    items.forEach((item, index) => {
-      let link = [...this.host.children].find(link => link.dataset.topicId === item.id);
-      if (!link) {
-        link = document.createElement('a'); link.className = 'nav-item'; link.dataset.topicId = item.id;
-        link.href = '?topic=' + encodeURIComponent(item.id);
-        link.onclick = event => {
-          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-          event.preventDefault(); return this.open(item.id);
-        };
-      }
-      // A row drawn again with what it already shows is left alone, so the
-      // pointer's hover and a click under way stay on what they were on.
-      const shows = JSON.stringify([item.title, item.unread, item.addressed, item.state, item.waiting_on, item.asks, item.state_note, item.work]);
-      if (drawn.get(link) !== shows) {
-        drawn.set(link, shows);
-        link.textContent = item.title;
-        paintUnread(link, item);
-        paintState(link, item, this.reader);
-        paintWork(link, item, this.reader);
-      }
-      if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
-      else link.removeAttribute('aria-current');
-      // Moving a focused link can blur it. Leave unchanged rows in place.
-      if (this.host.children[index] !== link) this.host.insertBefore(link, this.host.children[index] ?? null);
-    });
+    // A topic two lists hold, because one was read before it moved, is shown
+    // where the list read last puts it.
+    const owner = new Map();
+    for (const list of this.lists) for (const item of list.pages.items) {
+      const held = owner.get(item.id);
+      if (!held || list.pages.readAt > held.pages.readAt) owner.set(item.id, list);
+    }
+    for (const list of this.lists) {
+      const items = list.pages.items.filter(item => owner.get(item.id) === list);
+      arrange(list.host, items.map(item => this.row(item)));
+      list.more.hidden = this.denied || list.pages.next === null;
+    }
+    for (const [id, link] of this.links) if (!owner.has(id)) { link.remove(); this.links.delete(id); }
+    const groups = this.groups;
+    for (const list of this.lists.slice(1)) {
+      const shown = list.pages.items.length, count = groups ? groups[list.name] : shown;
+      list.details.hidden = this.denied || count === 0 && shown === 0;
+      list.label.textContent = `${list.name === 'done' ? 'Done' : 'Archived'} (${count})`;
+    }
     this.host.hidden = this.denied;
-    this.more.hidden = this.denied || this.pages.next === null;
   }
   // A More asked for while a read runs shares it. A reload never joins a read
   // already sent: it may have been asked for after a commit that read cannot
   // show, so it runs once more after it; any number of reloads asked meanwhile
-  // make that one. Settles true when the list was read, false when it was not.
+  // make that one. A reload reads every list that is open. A line just opened
+  // reads its list from the start, as a reload does. Settles true when the
+  // lists were read, false when they were not. more is true for the first
+  // list's More, or the list whose More or line was pressed.
   load(more = false) {
+    const target = more === true ? this.lists[0] : more || null, first = target !== null && !target.pages.started;
     if (this.loading) {
-      if (more) return this.loading;
+      if (target && !first) return this.loading;
       this.queued ??= this.loading.then(() => { this.queued = null; return this.load(); });
       return this.queued;
     }
-    const cursor = more ? this.pages.next : null;
-    if (more && cursor === null) return Promise.resolve(true);
-    const previousIds = new Set(this.pages.items.map(item => item.id));
+    const cursor = target && !first ? target.pages.next : null;
+    if (target && !first && cursor === null) return Promise.resolve(true);
+    const previousIds = new Set(this.lists.flatMap(list => list.pages.items.map(item => item.id)));
     // Keep busy controls focusable; repeated activation shares this read.
-    this.more.setAttribute('aria-disabled', 'true'); this.retry.setAttribute('aria-disabled', 'true');
-    const read = args => this.read({ workspace_id: this.pages.workspaceId, ...args });
-    this.loading = (more ? read({ limit: PAGE, cursor }).then(answer => { this.pages.accept(answer, cursor); }) : reread(this.pages, read, this.pageMax))
+    for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.setAttribute('aria-disabled', 'true');
+    const reading = list => args => this.read({ workspace_id: this.pages.workspaceId, ...TOPIC_LISTS[list.name], ...args });
+    const read = list => (target && !first ? reading(list)({ limit: PAGE, cursor }).then(answer => { list.pages.accept(answer, cursor); })
+      : reread(list.pages, reading(list), this.pageMax)).then(() => { list.pages.readAt = ++this.serial; });
+    const lists = target ? [target] : this.lists.filter(list => list === this.lists[0] || list.details.open);
+    for (const list of lists) list.reading = true;
+    this.loading = Promise.all(lists.map(read))
       .then(() => {
         const focused = document.activeElement;
         this.denied = false;
         this.message.hidden = true; this.retry.hidden = true; this.paint();
-        if ((focused === this.more || focused === this.retry) && focused.hidden) {
-          const links = [...this.host.children];
+        const pressed = this.lists.find(list => list.more === focused);
+        if ((pressed || focused === this.retry) && focused.hidden) {
+          const links = [...(pressed ?? this.lists[0]).host.children];
           (links.find(link => !previousIds.has(link.dataset.topicId)) ?? links.find(link => link.dataset.topicId === this.pages.current?.id) ?? links[0])?.focus();
         }
         return true;
       }).catch(error => {
         const focused = document.activeElement;
-        if (this.isDenied(error)) { this.denied = true; this.host.hidden = true; this.more.hidden = true; }
-        this.failedMore = more && !this.denied;
+        if (this.isDenied(error)) { this.denied = true; this.paint(); }
+        this.failedMore = target && !first && !this.denied ? target : false;
         this.message.textContent = this.denied ? 'Workspace topics are unavailable. Retry to check access.' : error.message + ' Retry topics.';
         this.message.hidden = false; this.retry.hidden = false;
-        if (focused === this.more && this.more.hidden) this.retry.focus();
+        if (this.lists.some(list => list.more === focused) && focused.hidden) this.retry.focus();
         return false;
-      }).finally(() => { this.loading = null; this.more.removeAttribute('aria-disabled'); this.retry.removeAttribute('aria-disabled'); this.updated?.(); });
+      }).finally(() => {
+        this.loading = null;
+        for (const list of lists) list.reading = false;
+        for (const control of [this.retry, ...this.lists.map(list => list.more)]) control.removeAttribute('aria-disabled');
+        this.updated?.();
+      });
     return this.loading;
   }
+}
+
+// Puts exactly nodes in host, in their order, moving only what is out of place.
+export function arrange(host, nodes) {
+  const wanted = new Set(nodes);
+  for (const child of [...host.children]) if (!wanted.has(child)) child.remove();
+  nodes.forEach((node, index) => { if (host.children[index] !== node) host.insertBefore(node, host.children[index] ?? null); });
 }
 
 // A count of what waits unread in a topic or outcome, marked when part of it

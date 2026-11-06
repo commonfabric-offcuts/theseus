@@ -151,7 +151,7 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
       if(failure) throw failure;
       return {instance_id:'fixture',workspace:{id:'w1',title:'Real outcome',purpose:'Purpose'}};
     }
-    return {instance_id:'fixture',items:name==='workspace_topics'?[f.topic]:[],next_cursor:null};
+    return {instance_id:'fixture',items:name==='workspace_topics'?[{...f.topic,activity_ms:1}]:[],next_cursor:null};
   };
   await f.initialize();
   assert.equal(f.get('topic-title').textContent,'Real outcome');
