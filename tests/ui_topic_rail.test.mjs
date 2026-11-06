@@ -259,6 +259,31 @@ test('a topic that moved between lists is shown once, where the list read last p
   assert.deepEqual(shown(f.host), ['a']); assert.deepEqual(shown(f.done.host), ['z', 'b', 'c']);
 });
 
+// A closed line read earlier keeps its rows from then; once the counts say it
+// holds nothing, those rows do not keep it on the page (review of 72-98, finding 1).
+test('a closed line whose last topic left it is not shown, with nothing behind it; the open topic said done before the line was read keeps it', async t => {
+  const f = fixture(t, { folds: true });
+  f.done.details.open = true;
+  f.queue.push(listed(f, ['a'], { done: 1, archived: 0 }), { instance_id: 'i1', items: [as(f, 'c', { state: 'done' })], next_cursor: null, groups: { done: 1, archived: 0 } });
+  await f.rail.load();
+  assert.deepEqual(shown(f.done.host), ['c']); assert.equal(f.done.label.textContent, 'Done (1)');
+  // The person closes the line; then a message reopens c, the last done topic.
+  f.done.details.open = false; f.done.details.handlers.toggle();
+  f.queue.push(listed(f, ['a', 'c'], { done: 0, archived: 0 }));
+  await f.rail.load();
+  assert.deepEqual(f.calls.at(-1), { workspace_id: 'w1', limit: 20 }, 'the closed line is not read');
+  assert.deepEqual(shown(f.host), ['z', 'a', 'c']);
+  assert.equal(f.done.details.hidden, true, 'no "Done (0)" line with nothing behind it: ' + f.done.label.textContent);
+  // The open topic said done on this page, before the Done line was ever read, keeps the line shown, holding it.
+  const g = fixture(t, { folds: true });
+  g.queue.push(listed(g, ['a'], { done: 0, archived: 0 }));
+  await g.rail.load();
+  assert.equal(g.done.details.hidden, true);
+  g.rail.updateCurrent({ ...g.item('z'), activity_ms: 4e8, state: 'done' });
+  assert.deepEqual(shown(g.done.host), ['z']);
+  assert.equal(g.done.details.hidden, false, 'the open topic, now done, is in the Done line');
+});
+
 test('the outcome is empty only when no list holds a topic', async t => {
   const f = fixture(t, { folds: true, current: null });
   f.rail.pages.current = null; for (const list of f.rail.lists) list.pages.current = null;

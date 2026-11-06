@@ -335,8 +335,12 @@ export class TopicRail {
     for (const list of this.lists) list.more.hidden = this.denied || list.pages.next === null;
     const groups = this.groups;
     for (const list of this.lists.slice(1)) {
-      const shown = list.pages.items.length, count = groups ? groups[list.name] : shown;
-      list.details.hidden = this.denied || count === 0 && shown === 0;
+      // A closed line keeps the rows it read before, some since moved on; once
+      // the counts are known only the open topic, put here by what the page
+      // knows of it, adds to them.
+      const items = list.pages.items, count = groups ? groups[list.name] : items.length;
+      const held = groups && !list.details.open ? items.filter(item => item.id === this.pages.current?.id).length : items.length;
+      list.details.hidden = this.denied || count === 0 && held === 0;
       list.label.textContent = `${list.name === 'done' ? 'Done' : 'Archived'} (${count})`;
     }
     this.host.hidden = this.denied;
