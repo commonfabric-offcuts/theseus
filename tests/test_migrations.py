@@ -31,6 +31,7 @@ SCHEMA_13 = (Path(__file__).parent / "fixtures" / "schema_13.sql").read_text().s
 SCHEMA_14 = (Path(__file__).parent / "fixtures" / "schema_14.sql").read_text().splitlines()
 SCHEMA_15 = (Path(__file__).parent / "fixtures" / "schema_15.sql").read_text().splitlines()
 SCHEMA_16 = (Path(__file__).parent / "fixtures" / "schema_16.sql").read_text().splitlines()
+SCHEMA_17 = (Path(__file__).parent / "fixtures" / "schema_17.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -50,6 +51,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 18 keeps the revision of each Notebook page each person last read.
+        db.execute("DROP TABLE memory_reads")
+        if version == "17":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 17 keeps the color each person chose for an agent.
         db.execute("DROP TABLE color_choices")
         if version == "16":
@@ -1156,6 +1162,60 @@ class Schema16Case(MigrationCase):
                 self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class Schema17Case(MigrationCase):
+    """A schema-17 instance: version 18 keeps the revision of each Notebook page each person last read."""
+
+    VERSION, FIXTURE = "17", SCHEMA_17
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "17")
+
+    def page(self):
+        return self.command("memory.create", {"title": "Page", "body": "Words", "attachments": [], "references": []},
+                            target={"item_id": "page", "owner_scope": {"kind": "workspace", "id": "w1"}},
+                            expected={"item_revision": 0}, actor="agent-a")
+
+    def read(self):
+        return self.command("memory.read", {"revision": 1}, target={"item_id": "page"})
+
+    def test_upgrade_from_17_keeps_records_matches_a_fresh_instance_and_keeps_reads(self):
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.page()["status"], "committed")
+        self.assertEqual(self.read()["result"]["read_revision"], 1)
+        listed = self.store.view("owner", "memory_items", {"owner_scope": {"kind": "workspace", "id": "w1"}})["items"]
+        self.assertEqual([(item["id"], item["read_revision"]) for item in listed], [("page", 1)])
+
+    def test_step_back_to_17_restores_its_frozen_layout_while_nobody_has_read_a_page(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.page()["status"], "committed", "a page nobody has read holds no step back")
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_refuses_while_anyone_has_read_a_page(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.page()["status"], "committed")
+        self.assertEqual(self.read()["status"], "committed")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1178,6 +1238,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema15Case, _name, None)
     if _name.startswith("test_") and _name not in Schema16Case.__dict__:
         setattr(Schema16Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema17Case.__dict__:
+        setattr(Schema17Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)
