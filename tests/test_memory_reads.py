@@ -104,6 +104,12 @@ class MemoryReadCase(ReaderCase):
         self.assertEqual(self.listed(), {"memory-one": (2, 0)}, "someone who never read it is not told it changed")
         # Writing is its own change; the writer's feed is not told twice.
         self.assertEqual(self.sql("SELECT count(*) FROM changes WHERE resource_kind='memory_read'"), [(0,)])
+        # A writer who had read an earlier revision has read the one they write.
+        self.outcome_page(body="Revision three", revision=2, actor="agent-a")
+        self.assertEqual(self.listed("agent-a"), {"memory-one": (3, 3)}, "the creator's second edit is read by them")
+        self.committed(self.read(3, actor="agent-b"))
+        self.outcome_page(body="Revision four", revision=3, actor="agent-b")
+        self.assertEqual(self.listed("agent-b"), {"memory-one": (4, 4)}, "a reader who then writes has read what they wrote")
 
     def test_a_topic_page_keeps_its_reads_the_same_way(self):
         self.committed(self.memory())
