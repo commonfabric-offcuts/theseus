@@ -22,6 +22,10 @@ One act that carries its content, for a topic that already exists.
   `opening.publish`: the same access, quote, addressee, reply-path and
   delivery rules, and the same receipt
   `{message_id, topic: {id, version}, delivery}`.
+- A message in a done topic makes it active again, in the same act: said by
+  the message's author, with the note "Reopened by a new message" and the
+  message as why ([topic-list.md](topic-list.md#a-message-in-a-done-topic)).
+  So say a topic is done after its last message, not before.
 - An exact retry returns the recorded receipt. A refusal is recorded, except
   a malformed request (`INVALID_ARGUMENT`: missing, extra or mistyped fields,
   such as a quote that is not an object), which is not recorded and must be

@@ -27,7 +27,8 @@ opening the message to read it clears a mark.
   list.
 
 An archived topic is out of the outcome's list, and the browser lists archived
-topics nowhere, so it counts nowhere else either: the outcome row, the totals,
+topics only behind the list's closed "Archived (N)" line, so it counts nowhere
+else either: the outcome row, the totals,
 `latest_addressed`, `waiting_on_me` and `latest_waiting` all leave it out,
 save for a message sent by name to someone with no list of the outcome's
 topics (below).
