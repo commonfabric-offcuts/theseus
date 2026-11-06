@@ -87,6 +87,14 @@ test('the panel line says who said it and when; only those who may change it get
   assert.equal(host.find(node => node.id === 'topic-rename'), undefined, 'a participant who is not its creator or owner cannot rename it');
   panel.paint(said, [{ actor_id: 'someone-else' }]);
   assert.equal(host.find(node => node.tag === 'details'), undefined, 'a reader who does not work in it gets no form');
+  // Core says whether the reader may say where it stands: having written in a
+  // topic, they may, without being one of its participants.
+  const writer = new TopicStatePanel({ host: new Element('section'), reader: 'fable', send: async () => ({}) });
+  writer.paint({ ...said, reader_may_say: true }, [{ actor_id: 'someone-else' }]);
+  assert.ok(writer.host.find(node => node.tag === 'details'), 'someone who has written in it may say where it stands');
+  assert.equal(writer.host.find(node => node.id === 'topic-rename'), undefined, 'but cannot rename it');
+  writer.paint({ ...said, version: 5, reader_may_say: false }, [{ actor_id: 'someone-else' }]);
+  assert.equal(writer.host.find(node => node.tag === 'details'), undefined, 'and when Core says they may not, the form goes');
   const owner = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
   owner.paint(said, []);
   assert.ok(owner.host.find(node => node.id === 'topic-rename'));

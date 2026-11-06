@@ -109,8 +109,9 @@ const CHANGED = 'This topic changed while you were choosing. What you chose is k
 const NOT_SENT = 'That was not sent: another change was still being saved. Press it again.';
 
 // The line under a topic's title, and a form for those who may change it:
-// participants say where it stands; the outcome's owner and the topic's
-// creator also rename and archive it.
+// participants, and whoever has written in it (Core's reader_may_say), say
+// where it stands; the outcome's owner and the topic's creator also rename and
+// archive it.
 //
 // The form is built once per topic and kept across repaints, so focus and
 // whatever the person has typed survive fresh data. A field the person has
@@ -138,7 +139,7 @@ export class TopicStatePanel {
     else if (topic.version < this.topic.version) return;
     this.topic = topic; this.participants = participants;
     const reader = this.reader, manager = [topic.owner_id, topic.creator_id].includes(reader);
-    const participant = participants.some(person => person.actor_id === reader);
+    const says = topic.reader_may_say === true || participants.some(person => person.actor_id === reader);
     const mark = element('strong', { className: 'topic-state', textContent: stateLabel(topic, reader), title: stateLabel(topic, reader) });
     mark.dataset.state = waitsOn(topic).length ? 'waiting' : topic.state ?? 'active';
     if (waitsOn(topic).includes(reader)) mark.classList.add('mine');
@@ -148,7 +149,7 @@ export class TopicStatePanel {
     for (const ask of asksOf(topic)) line.push(element('span', { className: 'muted ask-line' }, ` · ${askWords(ask, reader)}`, ...whole(', since ', ask.since_ms)));
     if (topic.archived) line.push(element('span', { className: 'muted', textContent: ' · Archived' }));
     this.line.replaceChildren(...line);
-    if (!(manager || participant)) this.drop();
+    if (!(manager || says)) this.drop();
     else {
       if (!this.controls) this.host.insertBefore(this.build(), this.notice);
       this.manage(manager); this.follow();

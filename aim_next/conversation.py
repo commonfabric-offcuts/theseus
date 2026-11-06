@@ -382,7 +382,9 @@ class Conversation:
         summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
         waits = self._waits_by_topic(db, [topic["id"]])
         waiting_on, asks = waits[topic["id"]]
-        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits)[topic["id"]])
+        # reader_may_say: whether the reader may say where it stands, so a page offers its form.
+        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits)[topic["id"]],
+                     reader_may_say=self._may_say(db, topic, actor))
         return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,
                 "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 

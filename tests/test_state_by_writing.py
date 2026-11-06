@@ -60,6 +60,13 @@ class WriterSaysCase(fixtures.ReaderCase):
         self.rejected(self.say("agent-b", title="Mine now"), "FORBIDDEN")
         self.rejected(self.say("agent-b", archived=True), "FORBIDDEN")
 
+    def test_the_topic_view_tells_each_reader_whether_they_may_say_where_it_stands(self):
+        may = lambda actor: self.store.view(actor, "topic", {"topic_id": "t1"})["topic"]["reader_may_say"]
+        self.assertEqual([may(actor) for actor in ("owner", "agent-a", "agent-b")], [True, True, False],
+                         "the owner and creator, a participant, and a member who never wrote")
+        self.committed(self.post("agent-b"))
+        self.assertIs(may("agent-b"), True, "having written")
+
     def test_a_writer_is_not_woken_by_what_is_written_next(self):
         self.committed(self.post("agent-b"))
         writer, participant = self.deliveries("agent-b"), self.deliveries("agent-a")
