@@ -324,7 +324,9 @@ export class Reader {
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
-    editor.draft.quotes.push({ source: structuredClone(this.source.source_ref), excerpt });
+    // The quote is writing like any other, so it goes through the editor's
+    // edit, which brings in the author a reply is offered to.
+    editor.edit({ quotes: [...editor.draft.quotes, { source: structuredClone(this.source.source_ref), excerpt }] });
     this.field.focus();
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
     this.insertText(addition);

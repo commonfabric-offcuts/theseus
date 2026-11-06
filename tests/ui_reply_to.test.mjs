@@ -115,3 +115,29 @@ test('a reply card names the author of the message it answers and how it begins'
   assert.equal(replyLine({ reply_to: 'm-1', reply_to_author: 'fable', reply_to_excerpt: long }), 'Replying to fable: ' + long.slice(0, 60).trimEnd() + '…');
   assert.equal(replyLine({ reply_to: 'm-1', reply_to_author: 'fable', reply_to_excerpt: '' }), 'Replying to fable');
 });
+
+test('a reply begun with a quote still goes to the author it was offered', t => {
+  const previous = globalThis.window;
+  globalThis.window = { getSelection: () => null };
+  t.after(() => { globalThis.window = previous; });
+  const reply = editor();
+  reply.offerAddressees(['fable']);
+  const field = { value: '', focus() {}, setSelectionRange() {} };
+  const reader = Object.assign(Object.create(Reader.prototype), {
+    sessions: { reply }, presentation: {}, mode: 'reply', field, writes: () => true,
+    source: { source_ref: { kind: 'message', id: 'm-1' }, body: 'Ship it' },
+    selectedPassage: () => 'Ship it', disarm() {},
+    // The writing field reports each insertion to its editor, as typing does.
+    insertText(text) { field.value += text; reply.edit({ body: field.value }); },
+  });
+  reader.quote();
+  assert.deepEqual(reply.draft.quotes.map(quote => quote.excerpt), ['Ship it']);
+  assert.equal(reply.draft.body, '> Ship it\n\n');
+  assert.deepEqual(reply.draft.addressees, ['fable'], 'quoting first is writing, so it takes the offered author');
+  const declined = editor();
+  declined.offerAddressees(['fable']);
+  declined.declineAddressee('fable');
+  Object.assign(reader, { sessions: { reply: declined }, insertText(text) { declined.edit({ body: text }); } });
+  reader.quote();
+  assert.deepEqual(declined.draft.addressees, [], 'a declined author stays off a quoted reply');
+});
