@@ -14,6 +14,7 @@ import { Attention, paintSent } from '../web/attention.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
 import { replyLine } from '../web/replies.mjs';
+import { placeNewLine } from '../web/unanswered.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -71,7 +72,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, replyLine, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, replyLine, placeNewLine, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -1265,4 +1266,20 @@ test('attention is read again when the stream comes back, and not when it goes d
   live.emit({ kind: 'state', state: 'live' }); await drain();
   assert.equal(reads(), before + 1, 'the stream coming back reads attention');
   assert.equal(f.owners().attention.unread, 2);
+});
+
+test('the New line is drawn under the oldest unanswered card, moves with each answer, and goes', async () => {
+  const { f } = await readingPage();
+  for (let seq = 20; seq <= 25; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  f.views.unanswered = { seq: 22, id: 'm22' }; f.paintViews('messages');
+  assert.equal(order(), '25 24 23 22 new 21 20');
+  f.views.messages.set('m26', { id: 'm26', seq: 26, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  f.views.unanswered = { seq: 24, id: 'm24' }; f.paintViews('messages');
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'an answer moves it up; a new card goes above it');
+  f.views.messages.set('m19', { id: 'm19', seq: 19, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  f.paintViews('messages');
+  assert.equal(order(), '26 25 24 new 23 22 21 20 19', 'an older card loaded by More goes below it');
+  f.views.unanswered = null; f.paintViews('messages');
+  assert.equal(order(), '26 25 24 23 22 21 20 19', 'nothing left unanswered: no line');
 });

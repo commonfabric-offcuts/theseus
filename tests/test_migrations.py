@@ -27,6 +27,7 @@ SCHEMA_11 = (Path(__file__).parent / "fixtures" / "schema_11.sql").read_text().s
 # Version 12 as its step first stood: messages timed, what waits on each reader not yet ordered.
 SCHEMA_12_EARLY = (Path(__file__).parent / "fixtures" / "schema_12_early.sql").read_text().splitlines()
 SCHEMA_12 = (Path(__file__).parent / "fixtures" / "schema_12.sql").read_text().splitlines()
+SCHEMA_13 = (Path(__file__).parent / "fixtures" / "schema_13.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -46,6 +47,12 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 14 indexes each reader's posts to a whole topic and each message's replies.
+        db.execute("DROP INDEX topic_author_posts")
+        db.execute("DROP INDEX message_replies")
+        if version == "13":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 13 adds the messages each person marked unread.
         db.execute("DROP TABLE message_marks")
         if version == "12":
@@ -912,6 +919,48 @@ class Schema12Case(MigrationCase):
                 self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class Schema13Case(MigrationCase):
+    """A schema-13 instance: version 14 indexes what each reader has not replied to."""
+
+    VERSION, FIXTURE = "13", SCHEMA_13
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "13")
+
+    def reply(self, actor, parent, key):
+        self.committed_post(actor, {"body": "Answer " + key, "reply_to": parent}, key)
+
+    def committed_post(self, actor, args, key):
+        receipt = self.command("message.post", args, target={"topic_id": "t1"}, actor=actor, op="post-" + key)
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]["message_id"]
+
+    def test_upgrade_from_13_keeps_records_matches_a_fresh_instance_and_finds_the_unanswered(self):
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "13", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        opening = self.sql("SELECT id,seq FROM messages ORDER BY seq LIMIT 1")[0]
+        page = self.store.view("agent-a", "topic_messages", {"topic_id": "t1"})
+        self.assertEqual(page["unanswered"], {"seq": opening[1], "id": opening[0]})
+
+    def test_step_back_to_13_restores_its_frozen_layout_even_with_replies(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        opening = self.sql("SELECT id FROM messages ORDER BY seq LIMIT 1")[0][0]
+        self.reply("agent-a", opening, "a")
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_13))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -926,6 +975,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema11Case, _name, None)
     if _name.startswith("test_") and _name not in Schema12Case.__dict__:
         setattr(Schema12Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema13Case.__dict__:
+        setattr(Schema13Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

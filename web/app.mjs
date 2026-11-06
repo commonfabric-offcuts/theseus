@@ -23,6 +23,7 @@ import { TopicStatePanel, paintWaiting, readableTime } from './topic-state.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
+import { placeNewLine } from './unanswered.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -543,6 +544,7 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
+  if (kind === 'messages') placeNewLine($('messages'), views.unanswered?.seq ?? null, document);
   });
   $('more-messages').hidden = views.olderCursor === null;
   $('more-memory').hidden = views.memoryCursor === null;

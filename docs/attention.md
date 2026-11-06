@@ -166,6 +166,40 @@ clear a mark.
   does any other open (a Reader step, the Notebook, a correction). A mark
   renewed while the open was under way survives, as its revision moved on.
 
+## Not yet replied to
+
+Unread is about reading; this is about answering. In each topic the reader
+sees a red line marked "New" just below the oldest message they have not
+replied to. Messages are listed newest first, so everything the line sits
+under is either newer than that message or that message itself.
+
+A message is not yet replied to when someone else wrote it after the reader's
+last post to the whole topic (a post with no `reply_to`), and no reply of the
+reader's has that message as its `reply_to`. A post to the whole topic answers
+everything before it. A reply moves the line up to below the next message the
+reader has not answered; when none is left, the line goes. Only the reader's
+own posts move it: reading through, `delivery.ack`, a mark, and other people's
+replies do not.
+
+`topic_messages` returns it as `unanswered`, `{seq, id}` or null, on every
+page in either direction, worked out in the same read as the page. It does not
+depend on deliveries, so the value a page gets is the same before and after
+that page's read-through. One indexed query finds it: the reader's last post
+to the whole topic comes from an index on (topic, author, sequence) over posts
+with no `reply_to`; the walk forward from there stops at the first message by
+someone else that no reply of the reader's names, which an index on
+(`reply_to`, author) answers per message. Every row it passes is the reader's
+own reply or a message one of those replies answers, so its cost follows what
+the reader wrote in the topic since their last whole-topic post, not the
+topic's length, other topics, or anyone else's history. Schema version 14
+adds the two indexes and nothing else; stepping back to 13 drops them.
+
+The page keeps the boundary from the newest topic version any page said it
+at, so an older page loaded with More never brings back a line a later reply
+moved. It draws the line under that message's card when the card is loaded;
+until More loads it, no line shows. The line is text ("New"), with no message
+identity, in the alert colour, so nothing that looks for cards finds it.
+
 ## In the browser
 
 The page reads `attention` at start, after each announced commit, when the

@@ -30,6 +30,17 @@ MESSAGE_TIME_DOWN = ("ALTER TABLE messages DROP COLUMN sent_ms",)
 MESSAGE_TIME_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM messages WHERE sent_ms IS NOT NULL)"
 
 
+# Version 14 finds what a reader has not replied to from two indexes: their
+# posts to the whole topic (those that answer no particular message), and the
+# replies each message has, by author. Dropping them loses no record.
+UNANSWERED_SCHEMA = [
+    "CREATE INDEX topic_author_posts ON messages(topic_id,author_id,seq) WHERE reply_to IS NULL",
+    "CREATE INDEX message_replies ON messages(reply_to,author_id) WHERE reply_to IS NOT NULL",
+]
+UNANSWERED_DOWN = ("DROP INDEX message_replies", "DROP INDEX topic_author_posts")
+UNANSWERED_OCCUPIED = "SELECT 0"
+
+
 POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes"}
 
 
@@ -343,7 +354,26 @@ class Conversation:
         if backwards:
             items.reverse()
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
-                "relevant_versions": {"topic": topic["version"]}}
+                "relevant_versions": {"topic": topic["version"]}, "unanswered": self._oldest_unanswered(db, actor, topic["id"])}
+
+    def _oldest_unanswered(self, db, actor, topic_id):
+        """The oldest message in the topic the reader has not replied to, as {seq, id}, or None.
+
+        A message is unanswered when someone else wrote it after the reader's
+        last post to the whole topic (one that replies to no particular
+        message), and no reply of the reader's names it. The walk starts just
+        after that post and stops at the first unanswered message, so every row
+        it passes is one of the reader's own replies or a message one of them
+        answers: its cost follows what the reader wrote there since, never the
+        topic's length or anyone else's history. Reading and marks change
+        nothing here; only the reader's own posts move it."""
+        row = db.execute("SELECT m.id,m.seq FROM messages m INDEXED BY topic_messages WHERE m.topic_id=? AND m.seq>"
+                         "coalesce((SELECT max(p.seq) FROM messages p INDEXED BY topic_author_posts "
+                         "WHERE p.topic_id=? AND p.author_id=? AND p.reply_to IS NULL),0) "
+                         "AND m.author_id<>? AND NOT EXISTS (SELECT 1 FROM messages r INDEXED BY message_replies "
+                         "WHERE r.reply_to=m.id AND r.author_id=?) ORDER BY m.seq LIMIT 1",
+                         (topic_id, topic_id, actor, actor, actor)).fetchone()
+        return {"seq": row["seq"], "id": row["id"]} if row else None
 
     def _effective_reasons(self, db, delivery):
         rows = db.execute("SELECT r.reason,r.participant_epoch,p.active,p.epoch FROM delivery_reasons r LEFT JOIN topic_participants p ON p.topic_id=r.topic_id AND p.actor_id=? WHERE r.delivery_id=? ORDER BY r.reason", (delivery["recipient_id"], delivery["id"])).fetchall()
