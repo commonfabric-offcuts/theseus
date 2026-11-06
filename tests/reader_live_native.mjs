@@ -427,8 +427,11 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
-  // Older messages that More loads appear where its button was, so the person
-  // reads on from where they asked; the button's focus holds nothing still.
+  // Older messages that More loads appear where the loaded messages ended, so
+  // the person reads on from where they asked, and what they read holds still;
+  // the button's focus holds nothing still. The list ends at More's button,
+  // or at the "New · older below" line just above it when the oldest message
+  // not yet answered is further back: that line then moves down to its card.
   await check('live More messages shows the older messages where its button was', async () => {
     await control({ method: 'seed', messages: 45 });
     const p = await page('live-more', null, true);
@@ -436,13 +439,17 @@ export async function liveChecks({ check, page, until, control, observations, or
     await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), 'More is offered');
     const count = await p.evaluate("document.querySelectorAll('#messages .message-card').length");
     await p.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'end'})");
-    const button = await p.evaluate("Math.round(document.querySelector('#more-messages').getBoundingClientRect().top)");
+    const before = await p.evaluate(`(()=>{const cards=document.querySelectorAll('#messages .message-card'),last=cards[cards.length-1],end=last.nextElementSibling??document.querySelector('#more-messages');
+      return {last:last.dataset.id,lastTop:Math.round(last.getBoundingClientRect().top),end:end.id||end.dataset.line,endTop:Math.round(end.getBoundingClientRect().top),button:Math.round(document.querySelector('#more-messages').getBoundingClientRect().top)}})()`);
     await p.point('#more-messages');
     assert.equal(await p.evaluate("document.activeElement.id"), 'more-messages', 'the press focuses the button');
     await until(() => p.evaluate(`document.querySelectorAll('#messages .message-card').length > ${count}`), 'older messages are loaded');
     await settled(p);
-    const first = await p.evaluate(`Math.round(document.querySelectorAll('#messages .message-card')[${count}].getBoundingClientRect().top)`);
-    assert.ok(Math.abs(first - button) <= 1, `the first older message is where the button was: ${JSON.stringify({ button, first })}`);
+    const after = await p.evaluate(`({first:Math.round(document.querySelectorAll('#messages .message-card')[${count}].getBoundingClientRect().top),lastTop:Math.round(document.querySelector('#messages [data-id="${before.last}"]').getBoundingClientRect().top)})`);
+    const seen = JSON.stringify({ before, after });
+    assert.ok(Math.abs(after.lastTop - before.lastTop) <= 1, `the messages already shown hold still: ${seen}`);
+    assert.ok(Math.abs(after.first - before.endTop) <= 1, `the first older message is where the loaded messages ended: ${seen}`);
+    observations.push({ name: 'More messages', before, after });
     assert.deepEqual(p.errors, []);
     await p.close();
   });
