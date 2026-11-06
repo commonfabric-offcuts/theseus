@@ -26,9 +26,12 @@ def summary(commit=SHA, failed=()):
 class FakeHost:
     """Answers the deploy's ps and git calls from a table and records every call; nothing real runs."""
 
-    def __init__(self, config, servers=(111,), runners=(222,), dirty="", ff=True, backup=0, merge=0, migrate=0):
+    def __init__(self, config, servers=(111,), runners=(222,), supervisors=(), children=(), dirty="", ff=True, backup=0,
+                 merge=0, migrate=0):
+        """runners are bare runners (as started before supervision); children are (pid, parent) runner processes."""
         self.config, self.calls = config, []
         self.servers, self.runners = list(servers), list(runners)
+        self.supervisors, self.children = list(supervisors), list(children)
         self.dirty, self.ff, self.backup, self.merge, self.migrate = dirty, ff, backup, merge, migrate
 
     def __call__(self, argv, **kw):
@@ -37,9 +40,12 @@ class FakeHost:
         if argv[:2] == ["ps", "-axo"]:
             server = " ".join(deploy.server_argv(self.config))
             runner = " ".join(deploy.runner_argv(self.config))
-            out = "".join("%d %s\n" % (pid, server) for pid in self.servers)
-            out += "".join("%d %s\n" % (pid, runner) for pid in self.runners)
-            out += "333 /usr/bin/python3 -I unrelated\n"
+            supervisor = " ".join(deploy.supervisor_argv(self.config))
+            out = "".join("%d 1 %s\n" % (pid, server) for pid in self.servers)
+            out += "".join("%d 1 %s\n" % (pid, runner) for pid in self.runners)
+            out += "".join("%d 1 %s\n" % (pid, supervisor) for pid in self.supervisors)
+            out += "".join("%d %d %s\n" % (pid, parent, runner) for pid, parent in self.children)
+            out += "333 1 /usr/bin/python3 -I unrelated\n"
         elif argv[:2] == ["ps", "-o"]:
             out = "Thu Nov  5 15:02:31 2026     process %s" % argv[-1]
         elif argv[0] == "git" and "rev-parse" in argv:
@@ -115,6 +121,9 @@ class Config(DeployCase):
         self.assertEqual(deploy.runner_argv(self.config), [
             "/usr/bin/python3", "-I", str(base / "bin/aim-next-runner"), "--profile", str(self.instance / "agent.profile.json"),
             "--runner-id", "runner-01", "--routes", str(self.instance / "routes.json")])
+        # The deploy starts the runner under its supervisor, which runs it with exactly these arguments.
+        self.assertEqual(deploy.supervisor_argv(self.config),
+                         deploy.runner_argv(self.config)[:3] + ["supervise"] + deploy.runner_argv(self.config)[3:])
         del self.raw["tailnet_origin"]
         self.raw.update(python="/opt/python3", routes="/elsewhere/routes.json")
         self.config_path.write_text(json.dumps(self.raw))
@@ -162,6 +171,31 @@ class Refusals(DeployCase):
                              (FakeHost(self.config, runners=(221,)), "not the ones their run records started")):
             with self.subTest(reason=reason, servers=host.servers, runners=host.runners):
                 self.assertIn(reason, self.refused(host))
+                self.assertEqual(self.kills, [])
+
+    def test_a_supervised_runner_is_stopped_through_its_supervisor(self):
+        host = FakeHost(self.config, runners=(), supervisors=(222,), children=((224, 222),))
+        self.refused(FakeHost(self.config, runners=(), supervisors=(222,), children=((224, 222),), migrate=1))
+        self.assertEqual(self.kills, [(222, 15), (111, 15)])
+        self.kills = []
+        self.deploy(host, dry=True)
+        live = json.loads((self.evidence / "01-live.json").read_text())
+        self.assertEqual(([pid for pid, _ in live["supervisor"]], [pid for pid, _ in live["runner"]]), ([222], [224]))
+
+    def test_a_supervisor_between_runs_is_stopped_without_a_runner_line(self):
+        (self.instance / "run-runner-02" / "stdout.log").write_text('{"status": "idle_lease_lost"}\n')
+        host = FakeHost(self.config, runners=(), supervisors=(222,), migrate=1)
+        self.assertIn("migration failed", self.refused(host))
+        self.assertEqual(self.kills, [(222, 15), (111, 15)])
+
+    def test_runners_that_are_not_the_supervisors_own_are_refused_before_anything_stops(self):
+        for kw, reason in ((dict(runners=(), supervisors=(222,), children=((224, 9),)), "not its supervisor's"),
+                           (dict(runners=(224,), supervisors=(222,)), "not its supervisor's"),
+                           (dict(runners=(), supervisors=(222,), children=((224, 222), (225, 222))), "not its supervisor's"),
+                           (dict(runners=(), supervisors=(222, 223)), "at most one runner"),
+                           (dict(runners=(), supervisors=(221,), children=((224, 221),)), "not the ones their run records started")):
+            with self.subTest(**{k: str(v) for k, v in kw.items()}):
+                self.assertIn(reason, self.refused(FakeHost(self.config, **kw)))
                 self.assertEqual(self.kills, [])
 
     def test_a_dirty_or_diverged_live_checkout_is_refused_before_anything_stops(self):
@@ -294,7 +328,7 @@ class FullDeploy(DeployCase):
         self.assertNotIn(str(self.config.runner_profile), backup)
         server, runner = self.started
         self.assertEqual(self.first_line("run-server-04")["argv"], deploy.server_argv(self.config)[3:])
-        self.assertEqual(self.first_line("run-runner-03")["argv"], deploy.runner_argv(self.config)[3:])
+        self.assertEqual(self.first_line("run-runner-03")["argv"], deploy.supervisor_argv(self.config)[3:])
         for run, proc in (("run-server-04", server), ("run-runner-03", runner)):
             self.assertEqual(json.loads((self.instance / run / "pid.json").read_text())["pid"], proc.pid)
             self.assertEqual(json.loads((self.instance / run / "launch.json").read_text())["revision"], SHA)

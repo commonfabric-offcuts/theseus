@@ -588,6 +588,9 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ['host-provision']:
         return codex_host.provision_main(argv[1:])
+    if argv[:1] == ['supervise']:
+        from . import supervisor
+        return supervisor.main(argv[1:])
     parser = argparse.ArgumentParser(description='Run one explicit Theseus effects process in the foreground')
     parser.add_argument('--profile',required=True)
     parser.add_argument('--runner-id',required=True)

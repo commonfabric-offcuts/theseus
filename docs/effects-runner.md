@@ -13,6 +13,10 @@ A map with a hosted Codex route (see [codex-hosting.md](codex-hosting.md)) also
 needs `--host-dir /absolute/private-dir`; the process then hosts those agents'
 `codex app-server` children itself.
 
+`bin/aim-next-runner supervise` followed by the same arguments runs this
+checkout's runner under a supervisor that brings it back when that is safe;
+see "When the runner stops" below.
+
 All configured routes and pins must validate before ownership is acquired. The
 mapping is loaded once; changing its membership requires a restart. Each claim
 gets a fresh comparison of the selected route, config and Core pin. The first
@@ -128,6 +132,23 @@ the runner again, or see why it stopped. Stepping back to version 17 turns a
 `stopped` or `exited` row into `idle`, the only not-running state 17 knows.
 Proof: `tests/test_runner_exit.py`, and for the loop's own stop
 `tests/test_effects_runner.py`.
+
+`bin/aim-next-runner supervise ARGS` starts the runner (`bin/aim-next-runner
+ARGS`, in its own process group with no signal blocked), waits on the
+kernel's exit event for it, and reports the exit with `record_runner_exit`.
+TERM or INT is passed to the runner, the one process it started, and nothing
+more is started. Otherwise it starts the runner again only when Core recorded
+the exit (the runner still held the role, so no other runner took over and
+nothing paused it), the runner neither stopped cleanly (0) nor refused or
+paused (2), and fewer than three runs in a row ended within 30 seconds of
+starting. An exit Core could not record is reported as `unrecorded`, not as
+no role, and is not restarted. Before a restart it waits until no process
+holds the runner guard, since the ended runner's broker children inherit it.
+The runner's own output passes through, so its last stdout line is still its
+result; the supervisor's events (`runner_started`, `runner_exited`,
+`restarting`, `not_restarting` with why, `stopped`) go to stderr. It keeps no
+timer and never polls. `tools/deploy.py` starts the runner this way and stops
+it by stopping the supervisor. Proof: `tests/test_supervisor.py`.
 
 Focused proof lives in `tests/test_effects_runner.py`,
 `tests/test_effects_watch.py` and, for hosted routes, `tests/test_codex_host.py`. It uses isolated real Stores, owned fixture

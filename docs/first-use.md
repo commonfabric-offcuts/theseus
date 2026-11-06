@@ -65,7 +65,11 @@ For the retained instance, launch each entry in its own detached session with
 closed input and private retained stdout/stderr logs. A foreground process
 inside an agent tool session, or a successful launch call alone, does not prove
 it survives the chat turn. Record and check the actual process after launcher
-exit. No service, login startup, crash restart or general supervisor is included.
+exit. No service or login startup is included. For the runner,
+`bin/aim-next-runner supervise` with the same arguments starts it under a
+supervisor that brings it back after a lost lease or a crash where that is safe
+(see [effects-runner.md](effects-runner.md)); record the supervisor's PID as the
+runner's, and stop the runner by stopping it.
 
 Keep an exclusive private run record containing source revision, exact argv,
 profile and authority binding, port/runner ID, PID, start identity, executable

@@ -79,6 +79,12 @@ def runner_argv(config):
             "--runner-id", config.runner_id, "--routes", str(config.routes)]
 
 
+def supervisor_argv(config):
+    """The runner's supervisor, which runs the runner with the same arguments and starts it again when that is safe."""
+    argv = runner_argv(config)
+    return argv[:3] + ["supervise"] + argv[3:]
+
+
 def now():
     return datetime.datetime.now().astimezone().isoformat()
 
@@ -97,15 +103,20 @@ def identity(pid):
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def find(argv_tail):
-    """PIDs whose command line ends with exactly this argv (after the interpreter)."""
-    r = run(["ps", "-axo", "pid=,command="])
+def processes(argv_tail):
+    """(pid, parent pid) of each process whose command line ends with exactly this argv (after the interpreter)."""
+    r = run(["ps", "-axo", "pid=,ppid=,command="])
     hits = []
     for line in r.stdout.splitlines():
-        pid, _, command = line.strip().partition(" ")
+        pid, parent, command = line.split(None, 2)
         if command.endswith(" ".join(argv_tail)) and "deploy.py" not in command:
-            hits.append(int(pid))
+            hits.append((int(pid), int(parent)))
     return hits
+
+
+def find(argv_tail):
+    """PIDs whose command line ends with exactly this argv (after the interpreter)."""
+    return [pid for pid, _ in processes(argv_tail)]
 
 
 def wait_exit(pid):
@@ -181,18 +192,27 @@ def deploy(config, sha, evidence, summary, dry):
                                           "reasons": reasons})
     unchecked = "the release check has not passed for %s: %s" % (sha, "; ".join(reasons))
     require(dry or not reasons, unchecked)
-    server_args, runner_args = server_argv(config), runner_argv(config)
+    server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
-                                 "server": server_args, "runner": runner_args})
+                                 "server": server_args, "runner": supervisor_args})
 
-    # 1. The live processes, by exact command line, and nothing else matching.
-    server_pids, runner_pids = find(server_args[1:]), find(runner_args[1:])
-    live = {"server": [(p, identity(p)) for p in server_pids], "runner": [(p, identity(p)) for p in runner_pids]}
+    # 1. The live processes, by exact command line, and nothing else matching. The runner runs
+    # under its supervisor, or bare as one started before supervision did.
+    server_pids, supervisors = find(server_args[1:]), find(supervisor_args[1:])
+    runners = processes(runner_args[1:])
+    runner_pids = [pid for pid, _ in runners]
+    live = {"server": [(p, identity(p)) for p in server_pids], "supervisor": [(p, identity(p)) for p in supervisors],
+            "runner": [(p, identity(p)) for p in runner_pids]}
     record(evidence, "01-live", live)
-    require(len(server_pids) == 1 and len(runner_pids) <= 1, "expected one server and at most one runner: %s" % live)
+    require(len(server_pids) == 1 and len(supervisors) + (0 if supervisors else len(runners)) <= 1,
+            "expected one server and at most one runner: %s" % live)
+    # A supervised runner is its supervisor's one child; the supervisor is what the run record started.
+    require(not supervisors or (len(runners) <= 1 and all(parent == supervisors[0] for _, parent in runners)),
+            "a runner is not its supervisor's own child: %s %s" % (supervisors, runners))
+    stop = supervisors or runner_pids
     # Each must be the PID its own run record captured at start.
-    require(server_pids == [recorded(config, "server")] and runner_pids in ([], [recorded(config, "runner")]),
-            "live processes are not the ones their run records started: %s %s" % (server_pids, runner_pids))
+    require(server_pids == [recorded(config, "server")] and stop in ([], [recorded(config, "runner")]),
+            "live processes are not the ones their run records started: %s %s" % (server_pids, stop))
     head = run(["git", "-C", str(config.live), "rev-parse", "HEAD"]).stdout.strip()
     dirty = run(["git", "-C", str(config.live), "status", "--porcelain", "--untracked-files=no"]).stdout
     ff = run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", head, sha]).returncode == 0
@@ -202,9 +222,10 @@ def deploy(config, sha, evidence, summary, dry):
         require(not reasons, unchecked)
         return
 
-    # 2. Stop the runner, then the server, by captured PID; wait on each exit event.
+    # 2. Stop the runner, then the server, by captured PID; wait on each exit event. A supervisor
+    # passes the stop to its runner and exits only after the runner has.
     stopped = {}
-    for name, pids in (("runner", runner_pids), ("server", server_pids)):
+    for name, pids in (("runner", stop), ("server", server_pids)):
         for pid in pids:
             os.kill(pid, 15)
             stopped[name] = (pid, wait_exit(pid))
@@ -251,7 +272,7 @@ def deploy(config, sha, evidence, summary, dry):
     record(evidence, "07-server", {"pid": server.pid, "run": str(server_dir), "ready": ready})
     require(ready and json.loads(ready).get("status") == "ready", "the server did not report ready: %s" % ready)
     # The team is already in place; its setup matches topics by title, which a rename can change, so it does not run again.
-    runner = start(config, sha, runner_args, runner_dir, {"pid": runner_pids[0] if runner_pids else None})
+    runner = start(config, sha, supervisor_args, runner_dir, {"pid": stop[0] if stop else None})
     first = wait_line(runner_dir / "stdout.log", runner)
     record(evidence, "09-runner", {"pid": runner.pid, "run": str(runner_dir), "identity": identity(runner.pid), "first": first})
     require(first and json.loads(first).get("event") == "acquired", "the runner did not acquire its guard: %s" % first)

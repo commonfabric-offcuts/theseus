@@ -177,6 +177,9 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
     def runner_guard(self, runner_id):
         return self._authority.runner_guard(runner_id)
 
+    def wait_for_runner_guard(self):
+        self._authority.wait_for_runner_guard()
+
     def register_actor(self, actor_id, kind, name):
         """Operator registration of one enabled actor; never a command or an HTTP route."""
         _identifier(actor_id, "actor_id")
