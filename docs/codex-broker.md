@@ -98,9 +98,9 @@ hint; this bounded duplicate is deliberate.
 
 An add requires a nonempty returned queue item ID and the exact client ID and
 input. Losing its response is an error, even if the add might have committed.
-There is no retry inside the broker. A matching queued hint or a validated add
-is accepted only after closing stdin and confirming this API child exited zero
-within the budget. Otherwise the generic invocation owner confirms owned-group
+There is no retry inside the broker. A validated add exits 0 (accepted) and a matching
+queued hint exits 10 (queued: nothing new reached the agent), each only after
+closing stdin and confirming this API child exited zero within the budget. Otherwise the generic invocation owner confirms owned-group
 cleanup before settling the attempt. The broker sends no signals to discovered
 processes and never uses the legacy pending exit code.
 

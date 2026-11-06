@@ -64,7 +64,9 @@ HOSTED_OCCUPIED = ("SELECT EXISTS (SELECT 1 FROM hosted_turns) OR EXISTS (SELECT
                    "OR EXISTS (SELECT 1 FROM metadata WHERE key LIKE 'route_pin.v1:%' AND "
                    "CASE WHEN json_valid(value) THEN json_extract(value,'$.destination.kind') END='codex-hosted-stdio')")
 
-OUTCOMES = frozenset(("accepted", "handed", "busy", "unavailable", "error"))
+# queued: the notice was already waiting unread in the agent's chat. It is
+# scheduled like accepted, and is not a wake the agent left unanswered.
+OUTCOMES = frozenset(("accepted", "queued", "handed", "busy", "unavailable", "error"))
 TURN_FIELDS = frozenset(("thread_id", "turn_id", "mode", "client_id", "announced_seq"))
 TURN_STATUSES = frozenset(("completed", "interrupted", "failed", "lost"))
 USAGE_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "cli_calls")

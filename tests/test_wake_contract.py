@@ -8,7 +8,8 @@ agent, and pending work always comes back to a wake however the turn or the
 runner ended. Each case traces pending delivery -> what quiets it -> what ends
 the quiet -> the next wake, in Core, with Core's own clock.
 
-The broker path (a queued hint, settled `accepted`) and the hosted path (a
+The broker path (a queued hint, settled `accepted`, or `queued` when the
+earlier hint still waits unread) and the hosted path (a
 turn Theseus runs, settled `handed`) are traced separately: only the hosted
 path knows when a turn ends, so only it can tell "handled during the turn"
 from "never read". On the broker path a hint queued while a turn runs is

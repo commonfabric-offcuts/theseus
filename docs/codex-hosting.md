@@ -64,7 +64,8 @@ next claim names every pending delivery again:
   ended under the live claim and Core handed its work back, so this notice
   (which named only newer deliveries) left that work out. `next_due_ms` is now.
 
-`accepted`, `busy`, `unavailable` and `error` behave as before.
+`accepted`, `busy`, `unavailable` and `error` behave as before; `queued` (a
+broker found its hint already waiting unread) is scheduled like `accepted`.
 
 Each claim from `claim_wakes` also carries `handed_seq`, the recipient's value
 when it was claimed (NULL or an integer), so the notice can name only what is

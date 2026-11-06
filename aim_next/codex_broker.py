@@ -230,7 +230,7 @@ def _queue(rpc,payload,config):
             params['cursor'] = cursor
         items,cursor = _page(rpc.call('thread/queue/list',params),seen)
         if any(_matches(item,hint) for item in items):
-            return
+            return False
         if cursor is None:
             break
     _require(_remaining(rpc.deadline)>=ADD_SECONDS)
@@ -241,6 +241,7 @@ def _queue(rpc,payload,config):
     _require(type(result) is dict and 'queuedSubmission' in result)
     receipt = _item(result['queuedSubmission'])
     _require(receipt['clientUserMessageId']==client_id and receipt['input']==inputs)
+    return True
 
 
 def main(argv=None, *, started=None):
@@ -250,6 +251,7 @@ def main(argv=None, *, started=None):
     rpc_deadline = deadline-CLEANUP_SECONDS
     child = None
     accepted = False
+    added = False
     try:
         argv = sys.argv[1:] if argv is None else argv
         _require(len(argv)==2 and argv[0]=='--config')
@@ -264,7 +266,7 @@ def main(argv=None, *, started=None):
             shell=False,env=environment,start_new_session=False,close_fds=True,bufsize=0)
         rpc = _RPC(child,rpc_deadline)
         _initialize(rpc,config.destination['codex_home'])
-        _queue(rpc,payload,config)
+        added = _queue(rpc,payload,config)
         accepted = True
     except Exception:
         # No request, profile, body or credential is logged. A nonzero process
@@ -280,4 +282,6 @@ def main(argv=None, *, started=None):
                 accepted = False
                 # Do not signal or detach. The invocation owner retains the
                 # broker leader until its existing group cleanup is confirmed.
-    return 0 if accepted else 1
+    if not accepted:
+        return 1
+    return 0 if added else wake_adapter.QUEUED_EXIT

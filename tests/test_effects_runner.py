@@ -294,6 +294,15 @@ class EffectsRunnerCase(unittest.TestCase):
         self.assertFalse(result['pause_saved'])
         self.assertEqual(self.sql('SELECT count(*) FROM wake_results'),[(0,)])
 
+    def test_a_notice_already_waiting_is_settled_queued_and_the_loop_goes_on(self):
+        self.api();self.create_topic()
+        with mock.patch.object(wake_adapter,'run_route',return_value=
+                wake_adapter.RouteResult('queued',10,'already_queued')):
+            result=self.loop()
+        self.assertEqual(result['status'],'stopped')
+        self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('queued',)])
+        self.assertEqual(self.sql('SELECT unanswered_wakes FROM recipient_schedule WHERE recipient_id=?',('agent-a',)),[(0,)])
+
     def test_stop_during_native_invocation_settles_after_cleanup_once(self):
         self.api(); self.create_topic();self.send_next(addressees=['agent-b'])
         original=wake_adapter.run_route

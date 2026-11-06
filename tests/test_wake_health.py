@@ -115,6 +115,18 @@ class ParkingCase(Fixture):
             self.now += 60000
         self.assertEqual(len(self.claims()), 1)
 
+    def test_a_notice_still_waiting_unread_is_not_counted_again(self):
+        """An agent busy in one long turn has not read its notice yet: it is not blamed for that."""
+        first = self.now
+        self.settle()
+        for _ in range(PARKED_AFTER + 2):
+            self.now += 60000
+            self.assertEqual(self.settle("queued")["next_due_ms"], self.now + 60000)
+        self.assertEqual(self.unanswered(), (1, first))
+        self.assertEqual(self.wakes()["quiet"], [])
+        self.now += 60000
+        self.assertEqual(len(self.claims()), 1)
+
     def test_an_answer_from_someone_else_does_not_count(self):
         self.park()
         self.command("message.post", {"body": "Anyone?"}, target={"topic_id": "t1"})

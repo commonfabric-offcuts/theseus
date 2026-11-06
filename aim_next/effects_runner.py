@@ -354,8 +354,9 @@ class EffectsLoop:
         # A normal adapter return means no child started or owned cleanup was
         # confirmed. Stop cannot skip the result of this already finished act.
         if (not isinstance(result,wake_adapter.RouteResult)
-                or result.outcome not in ('accepted','busy','unavailable','error')
-                or (result.outcome=='accepted' and result.exit_code != 0)):
+                or result.outcome not in ('accepted','queued','busy','unavailable','error')
+                or (result.outcome=='accepted' and result.exit_code != 0)
+                or (result.outcome=='queued' and result.exit_code != wake_adapter.QUEUED_EXIT)):
             raise LoopFault()
         self._response(self._storage(lambda:self.store.finish_wake(
             self.guard,self.token,claim['claim_token'],result.outcome)),'settled')

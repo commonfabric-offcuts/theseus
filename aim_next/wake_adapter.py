@@ -41,6 +41,11 @@ class PreparedRoute:
     executable: str
 
 
+# A broker's exit when the notice it would add is already waiting unread in
+# the agent's chat: nothing new reached the agent, so it is not an unanswered wake.
+QUEUED_EXIT = 10
+
+
 @dataclass(frozen=True)
 class RouteResult:
     outcome: str
@@ -329,6 +334,8 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
         return RouteResult("error", exit_code, "surviving_descendant")
     if exit_code == 0:
         return RouteResult("accepted", 0, "accepted")
+    if exit_code == QUEUED_EXIT:
+        return RouteResult("queued", QUEUED_EXIT, "already_queued")
     if exit_code == 75:
         return RouteResult("busy", 75, "busy")
     return RouteResult("error", exit_code, "broker_exit")

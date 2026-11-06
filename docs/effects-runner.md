@@ -88,10 +88,12 @@ and its restart policy require the separate activation review.
 ## Unanswered wakes
 
 Core counts, per recipient, the wakes that reached it and were followed by
-nothing from it: an `accepted` notice, or a hosted turn `start` handed its
-work (a steer into a running turn is not counted, and a turn that fails or is
-lost takes its count back). `busy`, `error` and `unavailable` never reached
-the agent and are not counted. After three in a row the recipient is parked:
+nothing from it: an `accepted` notice (one the broker added), or a hosted turn
+`start` handed its work (a steer into a running turn is not counted, and a turn
+that fails or is lost takes its count back). `queued` (the earlier notice is
+still waiting unread, as while the agent works through one long turn), `busy`,
+`error` and `unavailable` put nothing new in front of the agent and are not
+counted. After three in a row the recipient is parked:
 `claim_wakes`, the due reads and `due_count` skip it while nothing pending is
 newer than its last wake named (`last_seq` not above `captured_seq`), so it is
 not woken again for work it was told of, and nothing it was sent is dropped or
