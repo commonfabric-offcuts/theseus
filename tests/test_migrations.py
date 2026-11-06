@@ -1176,13 +1176,14 @@ class Schema17Case(MigrationCase):
         return migrate(self.path, "test-instance", self.binding, "17")
 
     def written_at_17(self):
-        """agent-a posts, then the owner twice; agent-b takes a turn that completes and one that fails, then agent-a one."""
+        """agent-b posts, then agent-a, then the owner twice; agent-b takes a turn that completes and one that fails, then agent-a one."""
         with sqlite3.connect(str(self.path)) as db:
             base = db.execute("SELECT max(sent_ms) FROM messages").fetchone()[0]
-            for key, author, ms in (("m-agent", "agent-a", base + 10), ("m-own-1", "owner", base + 20), ("m-own-2", "owner", base + 30)):
+            for key, author, ms in (("m-agent-b", "agent-b", base + 5), ("m-agent", "agent-a", base + 10),
+                                    ("m-own-1", "owner", base + 20), ("m-own-2", "owner", base + 30)):
                 db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,sent_ms) "
                            "VALUES (?,'t1',?,'Body','[]','[]','[]',?,?)", (key, author, "op-" + key, ms))
-            db.execute("UPDATE topic_summaries SET message_count=message_count+3,latest_message_id='m-own-2' WHERE topic_id='t1'")
+            db.execute("UPDATE topic_summaries SET message_count=message_count+4,latest_message_id='m-own-2' WHERE topic_id='t1'")
             for attempt, recipient, handed, status, finished in (("a1", "agent-b", base + 100, "completed", base + 200),
                                                                 ("a2", "agent-b", base + 250, "failed", base + 260),
                                                                 ("a3", "agent-a", base + 280, "completed", base + 300)):
@@ -1202,7 +1203,7 @@ class Schema17Case(MigrationCase):
         fresh.mkdir()
         fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
         self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
-        # The latest by someone else: agent-a's post, behind the owner's two; and
+        # The latest by someone else: agent-a's post, behind the owner's two and ahead of agent-b's; and
         # agent-b's failed turn, counted when it was handed, behind agent-a's.
         self.assertEqual(self.sql("SELECT other_message_id FROM topic_summaries WHERE topic_id='t1'"), [("m-agent",)])
         self.assertEqual(self.sql("SELECT other_ms,other_by FROM topic_turns WHERE topic_id='t1'"), [(base + 250, "agent-b")])

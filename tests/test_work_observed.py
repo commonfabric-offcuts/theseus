@@ -120,6 +120,22 @@ class WorkObservedCase(hosted.HostedCase):
         self.assertEqual(self.seen(actor="agent-a"), (True, other_turn + 5, "owner", "turn", False))
         self.assertEqual(self.seen(actor="owner"), (True, self.now, "agent-a", "turn", False))
 
+    def test_of_two_turns_in_the_same_millisecond_the_one_recorded_later_wins_and_stays_the_others_latest(self):
+        self.send_next("For the agents")
+        self.now += 10
+        with sqlite3.connect(str(self.path)) as db:
+            work._turn_in(db, ["t1"], None, "agent-a", self.now)
+            work._turn_in(db, ["t1"], None, "agent-b", self.now)
+        tie = self.now
+        self.assertEqual(self.seen(actor="owner"), (True, tie, "agent-b", "turn", False))
+        self.assertEqual(self.seen(actor="agent-b"), (True, tie, "agent-a", "turn", False))
+        # The owner's later turn moves the pair on: agent-b, recorded after agent-a, is still the latest by anyone else.
+        self.now += 10
+        with sqlite3.connect(str(self.path)) as db:
+            work._turn_in(db, ["t1"], None, "owner", self.now)
+        self.assertEqual(self.seen(actor="owner"), (True, tie, "agent-b", "turn", False))
+        self.assertEqual(self.seen(actor="agent-a"), (True, self.now, "owner", "turn", False))
+
     def test_a_post_is_observed_work_for_an_hour_then_no_activity_is_seen_since_it(self):
         self.now = 5000
         self.send_next("A post")

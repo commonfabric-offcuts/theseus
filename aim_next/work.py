@@ -89,7 +89,8 @@ def _turn_in(db, topic_ids, attempt_id, recipient_id, now):
         if attempt_id is not None:
             db.execute("INSERT OR IGNORE INTO hosted_turn_topics VALUES (?,?)", (attempt_id, topic_id))
         row = db.execute("SELECT turn_ms,turn_by,other_ms,other_by FROM topic_turns WHERE topic_id=?", (topic_id,)).fetchone()
-        kept = [(row[0], row[1]), (row[2], row[3])] if row else []
+        # The kept latest beat the kept other on any tie, so it goes after it, as if recorded later.
+        kept = [(row[2], row[3]), (row[0], row[1])] if row else []
         latest, other = _latest_pair(kept + [(now, recipient_id)])
         db.execute("INSERT INTO topic_turns VALUES (?,?,?,?,?) ON CONFLICT(topic_id) DO UPDATE SET "
                    "turn_ms=excluded.turn_ms,turn_by=excluded.turn_by,other_ms=excluded.other_ms,other_by=excluded.other_by",
