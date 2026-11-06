@@ -184,15 +184,22 @@ replies do not.
 `topic_messages` returns it as `unanswered`, `{seq, id}` or null, on every
 page in either direction, worked out in the same read as the page. It does not
 depend on deliveries, so the value a page gets is the same before and after
-that page's read-through. One indexed query finds it: the reader's last post
-to the whole topic comes from an index on (topic, author, sequence) over posts
-with no `reply_to`; the walk forward from there stops at the first message by
-someone else that no reply of the reader's names, which an index on
-(`reply_to`, author) answers per message. Every row it passes is the reader's
-own reply or a message one of those replies answers, so its cost follows what
-the reader wrote in the topic since their last whole-topic post, not the
-topic's length, other topics, or anyone else's history. Schema version 14
-adds the two indexes and nothing else; stepping back to 13 drops them.
+that page's read-through. One indexed query finds it, starting from the
+reader's horizon in the topic: a sequence below which every message is the
+reader's own, answered by a reply of theirs, or older than a post of theirs to
+the whole topic. Each post of the reader's moves their horizon in the same
+transaction: a post to the whole topic moves it past that post; a reply moves
+it to the oldest message they still have not answered, or past the reply when
+none is left. Whatever arrives after that is someone else's and unanswered
+until the reader posts again, so the read stops at the first message it looks
+at, and its cost does not grow with the topic, other topics, or how many
+messages the reader has answered. A reply that moves the horizon looks only
+at messages between the old horizon and the new one, each answered or theirs,
+so across a topic's life each message is passed once per reader. An index on
+(`reply_to`, author) says whether the reader replied to a message. Schema
+version 14 adds the horizons, worked out on upgrade from the messages already
+there, and that index; stepping back to 13 drops both and loses no record,
+since the horizons come from the messages.
 
 The page keeps the boundary from the newest topic version any page said it
 at, so an older page loaded with More never brings back a line a later reply

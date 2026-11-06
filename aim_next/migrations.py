@@ -10,7 +10,7 @@ from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
 from .runner import HOSTED_DOWN, HOSTED_OCCUPIED, HOSTED_SCHEMA
 from .topic_state import TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA, WAITING_ORDER_DOWN, WAITING_ORDER_SCHEMA
-from .conversation import MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA, UNANSWERED_DOWN, UNANSWERED_OCCUPIED, UNANSWERED_SCHEMA
+from .conversation import MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA, UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED, UNANSWERED_SCHEMA
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 
 
@@ -25,9 +25,9 @@ STEPS = (
     ("11", "12", MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA, WAITING_ORDER_DOWN + MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED),
     # Version 13 keeps the messages each person marked unread.
     ("12", "13", MARK_SCHEMA, MARK_DOWN, MARK_OCCUPIED),
-    # Version 14 indexes each reader's posts to a whole topic and each message's
-    # replies, to find what a reader has not replied to; it holds no records.
-    ("13", "14", UNANSWERED_SCHEMA, UNANSWERED_DOWN, UNANSWERED_OCCUPIED),
+    # Version 14 keeps where each reader's unanswered messages begin in each
+    # topic, worked out from the messages, and indexes each message's replies.
+    ("13", "14", UNANSWERED_SCHEMA + UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED),
 )
 
 

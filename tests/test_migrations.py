@@ -47,8 +47,8 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
-        # Version 14 indexes each reader's posts to a whole topic and each message's replies.
-        db.execute("DROP INDEX topic_author_posts")
+        # Version 14 keeps each reader's reply horizon and indexes each message's replies.
+        db.execute("DROP TABLE reply_horizons")
         db.execute("DROP INDEX message_replies")
         if version == "13":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
@@ -948,6 +948,29 @@ class Schema13Case(MigrationCase):
         opening = self.sql("SELECT id,seq FROM messages ORDER BY seq LIMIT 1")[0]
         page = self.store.view("agent-a", "topic_messages", {"topic_id": "t1"})
         self.assertEqual(page["unanswered"], {"seq": opening[1], "id": opening[0]})
+
+    def test_upgrade_from_13_works_out_where_each_readers_unanswered_messages_begin(self):
+        # Written at version 13, before any horizon was kept: agent-a asks, the
+        # owner posts to the whole topic, agent-a asks twice more, and the owner
+        # answers the first of those.
+        with sqlite3.connect(str(self.path)) as db:
+            def post(key, author, reply_to=None):
+                db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,operation_id) "
+                           "VALUES (?,'t1',?,'Body','[]','[]','[]',?,?)", (key, author, reply_to, "op-" + key))
+                return {"seq": db.execute("SELECT seq FROM messages WHERE id=?", (key,)).fetchone()[0], "id": key}
+            post("m-before", "agent-a")
+            post("m-everyone", "owner")
+            answered = post("m-answered", "agent-a")
+            waiting = post("m-waiting", "agent-a")
+            answer = post("m-answer", "owner", answered["id"])
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        def unanswered(actor):
+            return self.store.view(actor, "topic_messages", {"topic_id": "t1"})["unanswered"]
+        self.assertEqual(unanswered("owner"), waiting, "the post to everyone answered what came before; the reply answered one")
+        self.assertEqual(unanswered("agent-a"), answer, "the owner's answer came after agent-a's last post to the topic")
+        self.committed_post("owner", {"body": "And this", "reply_to": waiting["id"]}, "w")
+        self.assertIsNone(unanswered("owner"))
 
     def test_step_back_to_13_restores_its_frozen_layout_even_with_replies(self):
         self.upgrade()

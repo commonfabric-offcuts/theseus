@@ -87,7 +87,32 @@ class UnansweredCase(ReaderCase):
                 db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
                            "VALUES (?,?,?,'Bulk','[]','[]','[]',?)", ("bulk-%s-%s-%s" % (topic, author, index), topic, author, "bulk-op-%s-%s-%s" % (topic, author, index)))
 
-    def test_finding_it_costs_the_same_however_long_the_topic_is(self):
+    def test_finding_it_costs_the_same_however_many_messages_the_reader_has_answered(self):
+        # Someone who answers every message with a reply never posts to the
+        # whole topic; the line, and the reply that moves it, cost the same
+        # after hundreds of answered messages as after a few.
+        def answered(rounds):
+            for index in range(rounds):
+                self.post("owner", "Answer", reply_to=self.post("agent-a", "Question %d" % index))
+            return self.post("agent-a", "Waiting")
+        def page():
+            return self.store.view("owner", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 1})
+        def reply(waiting):
+            return lambda: self.command("message.post", {"body": "Answer", "reply_to": waiting}, target={"topic_id": "t1"})
+        waiting = answered(3)
+        short, short_page = self.measured(page)
+        self.assertEqual(short["unanswered"], self.at(waiting))
+        _, short_reply = self.measured(reply(waiting))
+        waiting = answered(300)
+        long, long_page = self.measured(page)
+        self.assertEqual(long["unanswered"], self.at(waiting))
+        _, long_reply = self.measured(reply(waiting))
+        self.assertIsNone(self.boundary())
+        print("unanswered work after answering: page %d -> %d, reply %d -> %d" % (short_page, long_page, short_reply, long_reply))
+        self.assertLess(long_page, short_page + 200, (short_page, long_page))
+        self.assertLess(long_reply, short_reply + 200, (short_reply, long_reply))
+
+    def test_finding_it_skips_history_before_the_readers_last_post_and_in_other_topics(self):
         def scenario():
             # The reader replies to one message, leaves another unanswered.
             post = self.post("owner", "To everyone")
@@ -124,6 +149,6 @@ class UnansweredCase(ReaderCase):
         [query] = [sql for sql in statements if "NOT EXISTS (SELECT 1 FROM messages r" in sql]
         with sqlite3.connect(str(self.path)) as db:
             plan = " ".join(row[3] for row in db.execute("EXPLAIN QUERY PLAN " + query))
-        for index in ("topic_messages", "topic_author_posts", "message_replies"):
+        for index in ("topic_messages", "sqlite_autoindex_reply_horizons_1", "message_replies"):
             self.assertIn(index, plan)
         self.assertNotIn("SCAN ", plan)
