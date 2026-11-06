@@ -41,10 +41,12 @@ INTENT_REQUIRED = ("A message to someone says whether it asks or tells: post wit
                    "(args.intent \"ask\" or \"tell\" on message.post or draft.save); nothing was sent")
 
 
-# Version 16 finds what a reader has not replied to. Each reader's horizon in
-# a topic is a sequence below which every message is theirs, answered by a
-# reply of theirs, or older than a post of theirs to the whole topic; each post
-# moves it forward. An index finds each message's replies by author.
+# Version 16 found what a reader had not replied to, and version 18 drops it,
+# since the New line follows what the reader has read (Delivery._oldest_unread).
+# Each reader's horizon in a topic was a sequence below which every message was
+# theirs, answered by a reply of theirs, or older than a post of theirs to the
+# whole topic. An index found each message's replies by author. The 15->16
+# step adds them and the 18->17 step works them out again from the messages.
 UNANSWERED_SCHEMA = [
     "CREATE TABLE reply_horizons (topic_id TEXT NOT NULL REFERENCES topics(id), actor_id TEXT NOT NULL REFERENCES actors(id), "
     "seq INTEGER NOT NULL, PRIMARY KEY(topic_id,actor_id))",
@@ -65,12 +67,6 @@ UNANSWERED_DOWN = ("DROP INDEX message_replies", "DROP TABLE reply_horizons")
 # Horizons are worked out from the messages, which stay: the step back loses
 # no record, and the next upgrade works them out again.
 UNANSWERED_OCCUPIED = "SELECT 0"
-# The oldest message at or after the reader's horizon that someone else wrote
-# and no reply of the reader's names. Bound: topic, reader, reader, reader, reader.
-FIRST_UNANSWERED = ("SELECT m.id,m.seq FROM messages m INDEXED BY topic_messages WHERE m.topic_id=?1 "
-                    "AND m.seq>=coalesce((SELECT h.seq FROM reply_horizons h WHERE h.topic_id=?1 AND h.actor_id=?2),0) "
-                    "AND m.author_id<>?2 AND NOT EXISTS (SELECT 1 FROM messages r INDEXED BY message_replies "
-                    "WHERE r.reply_to=m.id AND r.author_id=?2) ORDER BY m.seq LIMIT 1")
 
 
 POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent"}
@@ -337,12 +333,6 @@ class Conversation:
                                   (snapshot["reply_to"], actor)).fetchone()
             if answered is not None:
                 self._acknowledge(db, actor, answered)
-        # A post to the whole topic answers everything before it; a reply may
-        # answer the oldest message its author had left, so the horizon moves on
-        # to the next one, or past this message when none is left.
-        waiting = None if not snapshot.get("reply_to") else db.execute(FIRST_UNANSWERED, (topic_id, actor)).fetchone()
-        db.execute("INSERT INTO reply_horizons VALUES (?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
-                   (topic_id, actor, waiting["seq"] if waiting else sequence + 1))
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
@@ -428,21 +418,7 @@ class Conversation:
         if backwards:
             items.reverse()
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
-                "relevant_versions": {"topic": topic["version"]}, "unanswered": self._oldest_unanswered(db, actor, topic["id"])}
-
-    def _oldest_unanswered(self, db, actor, topic_id):
-        """The oldest message in the topic the reader has not replied to, as {seq, id}, or None.
-
-        A message is unanswered when someone else wrote it after the reader's
-        last post to the whole topic (one that replies to no particular
-        message), and no reply of the reader's names it. The search starts at
-        the reader's horizon, which each of their posts leaves on their oldest
-        unanswered message or past the newest; whatever arrived since is
-        someone else's and unanswered. So it stops at the first row it reads,
-        whatever the topic's length. Reading and marks change nothing here;
-        only the reader's own posts move it."""
-        row = db.execute(FIRST_UNANSWERED, (topic_id, actor)).fetchone()
-        return {"seq": row["seq"], "id": row["id"]} if row else None
+                "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
 
     def _effective_reasons(self, db, delivery):
         rows = db.execute("SELECT r.reason,r.participant_epoch,p.active,p.epoch FROM delivery_reasons r LEFT JOIN topic_participants p ON p.topic_id=r.topic_id AND p.actor_id=? WHERE r.delivery_id=? ORDER BY r.reason", (delivery["recipient_id"], delivery["id"])).fetchall()

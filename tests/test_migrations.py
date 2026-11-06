@@ -31,6 +31,7 @@ SCHEMA_13 = (Path(__file__).parent / "fixtures" / "schema_13.sql").read_text().s
 SCHEMA_14 = (Path(__file__).parent / "fixtures" / "schema_14.sql").read_text().splitlines()
 SCHEMA_15 = (Path(__file__).parent / "fixtures" / "schema_15.sql").read_text().splitlines()
 SCHEMA_16 = (Path(__file__).parent / "fixtures" / "schema_16.sql").read_text().splitlines()
+SCHEMA_17 = (Path(__file__).parent / "fixtures" / "schema_17.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -50,14 +51,23 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 18 keeps each delivery's topic and indexes the pending ones by
+        # reader and topic, and drops what version 16 added: each reader's reply
+        # horizon and the index of each message's replies.
+        db.execute("DROP INDEX pending_topic_deliveries")
+        db.execute("ALTER TABLE deliveries DROP COLUMN topic_id")
+        if version in ("17", "16"):
+            db.execute("CREATE TABLE reply_horizons (topic_id TEXT NOT NULL REFERENCES topics(id), actor_id TEXT NOT NULL REFERENCES actors(id), "
+                       "seq INTEGER NOT NULL, PRIMARY KEY(topic_id,actor_id))")
+            db.execute("CREATE INDEX message_replies ON messages(reply_to,author_id) WHERE reply_to IS NOT NULL")
+        if version == "17":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 17 keeps the color each person chose for an agent.
         db.execute("DROP TABLE color_choices")
         if version == "16":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return
-        # Version 16 keeps each reader's reply horizon and indexes each message's replies.
-        db.execute("DROP TABLE reply_horizons")
-        db.execute("DROP INDEX message_replies")
         if version == "15":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return
@@ -129,9 +139,11 @@ class MigrationCase(fixtures.StoreCase):
 
     def records(self):
         with sqlite3.connect(str(self.path)) as db:
-            # Topics and messages are compared on the columns every version has: version 11 adds
-            # where each topic stands, and version 12 when each message was sent.
+            # Topics, messages and deliveries are compared on the columns every version has: version 11 adds
+            # where each topic stands, version 12 when each message was sent, and version 18 each delivery's topic.
+            # Version 18 copies each delivery's topic from its message.
             columns = {"topics": "id,workspace_id,title,creator_id,version",
+                       "deliveries": "seq,id,message_id,recipient_id,group_id,state",
                        "messages": "seq,id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id"}
             return {table: db.execute("SELECT " + columns.get(table, "*") + " FROM " + table + " ORDER BY rowid").fetchall()
                     for table in TABLES}
@@ -1060,7 +1072,10 @@ class Schema15Case(MigrationCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]["message_id"]
 
-    def test_upgrade_from_15_keeps_records_matches_a_fresh_instance_and_finds_the_unanswered(self):
+    def horizons(self):
+        return dict(((topic, actor), seq) for topic, actor, seq in self.sql("SELECT topic_id,actor_id,seq FROM reply_horizons"))
+
+    def test_upgrade_from_15_keeps_records_and_matches_a_fresh_instance(self):
         before = self.records()
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "15", "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
@@ -1069,33 +1084,26 @@ class Schema15Case(MigrationCase):
         fresh.mkdir()
         fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
         self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        opening = self.sql("SELECT id,seq FROM messages ORDER BY seq LIMIT 1")[0]
-        page = self.store.view("agent-a", "topic_messages", {"topic_id": "t1"})
-        self.assertEqual(page["unanswered"], {"seq": opening[1], "id": opening[0]})
 
-    def test_upgrade_from_15_works_out_where_each_readers_unanswered_messages_begin(self):
+    def test_upgrade_to_16_works_out_where_each_readers_unanswered_messages_begin(self):
         # Written at version 15, before any horizon was kept: agent-a asks, the
         # owner posts to the whole topic, agent-a asks twice more, and the owner
-        # answers the first of those.
+        # answers the first of those. Version 17 code reads these horizons.
         with sqlite3.connect(str(self.path)) as db:
             def post(key, author, reply_to=None):
                 db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,operation_id) "
                            "VALUES (?,'t1',?,'Body','[]','[]','[]',?,?)", (key, author, reply_to, "op-" + key))
-                return {"seq": db.execute("SELECT seq FROM messages WHERE id=?", (key,)).fetchone()[0], "id": key}
+                return db.execute("SELECT seq FROM messages WHERE id=?", (key,)).fetchone()[0]
             post("m-before", "agent-a")
             post("m-everyone", "owner")
             answered = post("m-answered", "agent-a")
             waiting = post("m-waiting", "agent-a")
-            answer = post("m-answer", "owner", answered["id"])
-        self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        def unanswered(actor):
-            return self.store.view(actor, "topic_messages", {"topic_id": "t1"})["unanswered"]
-        self.assertEqual(unanswered("owner"), waiting, "the post to everyone answered what came before; the reply answered one")
-        self.assertEqual(unanswered("agent-a"), answer, "the owner's answer came after agent-a's last post to the topic")
-        self.committed_post("owner", {"body": "And this", "reply_to": waiting["id"]}, "w")
-        self.assertIsNone(unanswered("owner"))
+            answer = post("m-answer", "owner", "m-answered")
+        self.assertTrue(migrate(self.path, "test-instance", self.binding, "16")["migrated"])
+        horizons = self.horizons()
+        self.assertEqual(horizons[("t1", "owner")], waiting, "the post to everyone answered what came before; the reply answered one")
+        self.assertEqual(horizons[("t1", "agent-a")], answer, "the owner's answer came after agent-a's last post to the topic")
+        self.assertLess(answered, waiting)
 
     def test_step_back_to_15_restores_its_frozen_layout_even_with_replies(self):
         self.upgrade()
@@ -1156,6 +1164,65 @@ class Schema16Case(MigrationCase):
                 self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class Schema17Case(MigrationCase):
+    """A schema-17 instance: version 18 places the New line by what each reader has read."""
+
+    VERSION, FIXTURE = "17", SCHEMA_17
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "17")
+
+    def horizons(self):
+        return sorted(self.sql("SELECT topic_id,actor_id,seq FROM reply_horizons"))
+
+    def test_upgrade_from_17_keeps_records_matches_a_fresh_instance_and_finds_the_oldest_unread(self):
+        # agent-a has the opening pending (a delivery from before the upgrade, with no topic of its own yet).
+        opening = self.sql("SELECT id,seq FROM messages ORDER BY seq LIMIT 1")[0]
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE topic_id IS NULL OR topic_id<>"
+                                  "(SELECT topic_id FROM messages WHERE id=deliveries.message_id)"), [(0,)],
+                         "every delivery's topic is copied from its message")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        answer = self.store.view("agent-a", "topic_unread", {"topic_id": "t1"})
+        self.assertEqual(answer["oldest_unread"], {"seq": opening[1], "id": opening[0]})
+
+    def test_step_back_to_17_restores_its_frozen_layout_and_works_out_the_horizons_again(self):
+        # Horizons as version 17 kept them, after replies and posts to the whole topic.
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        def post(actor, key, **args):
+            receipt = self.command("message.post", dict(args, body=key), target={"topic_id": "t1"}, actor=actor, op="post-" + key)
+            self.assertEqual(receipt["status"], "committed", receipt)
+            return receipt["result"]["message_id"]
+        asked = post("agent-a", "asked")
+        post("agent-a", "waiting")
+        post("owner", "answer", reply_to=asked)
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+        stepped = self.horizons()
+        # The same horizons the 15->16 step works out from the same messages.
+        self.sql("DELETE FROM reply_horizons")
+        from aim_next.conversation import UNANSWERED_BACKFILL
+        for statement in UNANSWERED_BACKFILL:
+            self.sql(statement)
+        self.assertEqual(stepped, self.horizons())
+        waiting = self.sql("SELECT seq FROM messages WHERE body='waiting'")[0][0]
+        self.assertIn(("t1", "owner", waiting), stepped, "the owner answered the ask, not the message after it")
+        # And it moves up again.
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT name FROM sqlite_master WHERE name IN ('reply_horizons','message_replies')"), [])
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1178,6 +1245,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema15Case, _name, None)
     if _name.startswith("test_") and _name not in Schema16Case.__dict__:
         setattr(Schema16Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema17Case.__dict__:
+        setattr(Schema17Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

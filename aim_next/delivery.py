@@ -18,6 +18,16 @@ DELIVERY_SCHEMA = [
     "CREATE TRIGGER recipient_enabled AFTER UPDATE OF enabled ON actors BEGIN UPDATE recipient_schedule SET enabled=NEW.enabled WHERE recipient_id=NEW.id; END",
 ]
 
+# Version 18 keeps each delivery's topic, copied from its message (which never
+# changes), so the reader's oldest unread message in a topic is one index probe
+# on (recipient, topic, delivery) over the pending rows, whatever the history.
+DELIVERY_TOPIC_SCHEMA = [
+    "ALTER TABLE deliveries ADD COLUMN topic_id TEXT",
+    "CREATE INDEX pending_topic_deliveries ON deliveries(recipient_id,topic_id,seq) WHERE state='pending'",
+]
+DELIVERY_TOPIC_BACKFILL = ["UPDATE deliveries SET topic_id=(SELECT m.topic_id FROM messages m WHERE m.id=deliveries.message_id)"]
+DELIVERY_TOPIC_DOWN = ("DROP INDEX pending_topic_deliveries", "ALTER TABLE deliveries DROP COLUMN topic_id")
+
 # A message sent by name in an archived topic still waits in the attention view for
 # a recipient who has no list of the outcome's topics (neither its owner nor a
 # member: a participant from outside it, or someone who lost the topic), so there
@@ -78,7 +88,8 @@ class Delivery:
         db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", key)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? AND participant_epoch=?", key).fetchone()[0]
         delivery_id = "d-" + uuid.uuid4().hex
-        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id) VALUES (?,?,?,?)", (delivery_id, message_id, recipient, group)).lastrowid
+        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id) VALUES (?,?,?,?,?)",
+                         (delivery_id, message_id, recipient, group, topic_id)).lastrowid
         db.executemany("INSERT INTO delivery_reasons VALUES (?,?,?,?)", [(delivery_id, reason, topic_id, epoch) for reason, epoch in reasons.items()])
         db.execute("UPDATE delivery_groups SET pending_count=pending_count+1,first_pending_seq=COALESCE(first_pending_seq,?) WHERE id=?", (seq, group))
         db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) SELECT id,enabled FROM actors WHERE id=? ON CONFLICT DO NOTHING", (recipient,))
@@ -178,6 +189,48 @@ class Delivery:
                               (actor,) + values):
             counts.setdefault(row["topic_id"], [0, 0, row["workspace_id"]])[0] += row["marked"]
         return counts
+
+    def _oldest_unread(self, db, actor, topic_id):
+        """The oldest message in one topic that is unread for this actor, as {seq, id}, or None.
+
+        Unread is what the counts hold (_unread): a delivery pending in an
+        active group, or a mark. A delivery left pending by a subscription the
+        actor's leaving cancelled is not unread, and the actor's own messages,
+        which are never delivered to them, do not count even when marked.
+
+        Deliveries are queued in the transaction that writes their message, so
+        delivery order is message order: the first pending delivery to the
+        actor in the topic, in the (recipient, topic, delivery) index, is the
+        oldest. The marks are read through the actor's marked index in
+        sequence order. Each read stops at its first row, past only the rows
+        a cancelled subscription left pending or the actor's marks on their
+        own messages; the topic's history and other topics are never read."""
+        rows = [db.execute("SELECT m.id,m.seq FROM deliveries d INDEXED BY pending_topic_deliveries "
+                           "CROSS JOIN delivery_groups g ON g.id=d.group_id CROSS JOIN messages m ON m.id=d.message_id "
+                           "WHERE d.recipient_id=? AND d.topic_id=? AND d.state='pending' AND g.active=1 ORDER BY d.seq LIMIT 1",
+                           (actor, topic_id)).fetchone(),
+                db.execute("SELECT k.seq,k.message_id AS id FROM message_marks k INDEXED BY reader_marks "
+                           "CROSS JOIN messages m ON m.id=k.message_id "
+                           "WHERE k.actor_id=? AND k.topic_id=? AND k.revision%2=1 AND m.author_id<>? ORDER BY k.seq LIMIT 1",
+                           (actor, topic_id, actor)).fetchone()]
+        found = [row for row in rows if row is not None]
+        if not found:
+            return None
+        row = min(found, key=lambda row: row["seq"])
+        return {"seq": row["seq"], "id": row["id"]}
+
+    def _new_line(self, db, actor, topic_id):
+        """Where the New line sits: the oldest unread message, and the commit it is as of.
+
+        A view reads in one transaction, so commit_seq is the commit the answer
+        reflects; reading, marks and replies change no topic version, and a
+        page keeps the answer of the latest commit it has read."""
+        commit = db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0]
+        return {"oldest_unread": self._oldest_unread(db, actor, topic_id), "commit_seq": int(commit)}
+
+    def _view_topic_unread(self, db, actor, args):
+        topic = self._topic(db, actor, args.get("topic_id"))
+        return dict({"instance_id": self.instance_id, "topic_id": topic["id"]}, **self._new_line(db, actor, topic["id"]))
 
     def _view_attention(self, db, actor, args):
         """What waits for this actor: unread and addressed totals, the newest addressed
