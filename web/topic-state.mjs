@@ -101,6 +101,17 @@ const element = (tag, props = {}, ...children) => {
 const names = value => [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))];
 const known = state => STATES.includes(state) ? state : 'active';
 const CHANGED = 'This topic changed while you were choosing. What you chose is kept here: check it against the line above and save again.';
+const NOTE_CHANGED = 'Your note changed elsewhere while you were writing. What you wrote is kept here: check it against the list above and save again.';
+const NOTE_BYTES = 1024;
+
+// What each participant said they are responsible for, beside where the topic
+// stands; the reader first, as "you". Participants without a note are left out.
+export function responsibilities(participants, reader) {
+  const said = (Array.isArray(participants) ? participants : [])
+    .filter(person => typeof person?.actor_id === 'string' && typeof person.responsibility === 'string' && person.responsibility.trim());
+  return [...said.filter(person => person.actor_id === reader), ...said.filter(person => person.actor_id !== reader)]
+    .map(person => ({ who: named(person.actor_id, reader), note: person.responsibility + (person.responsibility_truncated ? '…' : '') }));
+}
 const NOT_SENT = 'That was not sent: another change was still being saved. Press it again.';
 
 // The line under a topic's title, and a form for those who may change it:
@@ -118,10 +129,13 @@ const NOT_SENT = 'That was not sent: another change was still being saved. Press
 export class TopicStatePanel {
   // refresh asks the page for fresh topic data; it is called after every answer
   // to a change, so a refusal for a stale version is followed by the news.
-  constructor({ host, reader, send, refresh = () => {} }) {
-    Object.assign(this, { host, reader, send, refresh });
+  // sendNote(topic, note, revision) says what the reader is responsible for.
+  constructor({ host, reader, send, sendNote = null, refresh = () => {} }) {
+    Object.assign(this, { host, reader, send, sendNote, refresh });
     this.topic = null; this.out = null; this.controls = null; this.touched = new Set();
     this.line = element('p', { className: 'state-line' });
+    this.duties = element('ul', { className: 'responsibilities', hidden: true });
+    this.duties.setAttribute('aria-label', 'Who is responsible for what');
     // One notice, kept in place, so a screen reader announces each new text.
     this.notice = element('p', { className: 'notice', hidden: true });
     this.notice.setAttribute('role', 'status');
@@ -144,17 +158,20 @@ export class TopicStatePanel {
     for (const ask of askLines(topic, reader)) line.push(element('span', { className: 'muted ask-line', textContent: ` · ${ask}` }));
     if (topic.archived) line.push(element('span', { className: 'muted', textContent: ' · Archived' }));
     this.line.replaceChildren(...line);
+    const duties = responsibilities(participants, reader);
+    this.duties.replaceChildren(...duties.map(({ who, note }) => element('li', {}, element('strong', { textContent: who }), ` ${note}`)));
+    this.duties.hidden = !duties.length;
     if (!(manager || participant)) this.drop();
     else {
       if (!this.controls) this.host.insertBefore(this.build(), this.notice);
-      this.manage(manager); this.follow();
+      this.manage(manager); this.duty(participant); this.follow();
     }
     this.host.hidden = false;
   }
 
   reset() {
     this.controls = null; this.touched.clear(); this.show(null);
-    this.host.replaceChildren(this.line, this.notice);
+    this.host.replaceChildren(this.line, this.duties, this.notice);
   }
 
   drop() {
@@ -199,10 +216,62 @@ export class TopicStatePanel {
     }
   }
 
+  // The reader's own note, for a participant: only they say what they do here.
+  duty(participant) {
+    const controls = this.controls;
+    if (participant && this.sendNote && !controls.duty) {
+      const note = element('input', { id: 'topic-responsibility', maxLength: NOTE_BYTES, autocomplete: 'off', placeholder: 'What you do in this topic' });
+      note.oninput = () => { this.touched.add('duty'); };
+      const save = element('button', { type: 'button', id: 'topic-responsibility-save', textContent: 'Save my part' });
+      save.onclick = () => this.submitNote();
+      const row = element('div', { className: 'state-fields' }, element('label', { className: 'field-label' }, 'You are responsible for ', note), save);
+      controls.details.append(row);
+      controls.duty = { row, note, save };
+      this.mark();
+    } else if (!(participant && this.sendNote) && controls.duty) {
+      controls.duty.row.remove(); controls.duty = null; this.touched.delete('duty');
+    }
+  }
+
+  mine() { return this.participants?.find(person => person.actor_id === this.reader) ?? null; }
+
+  // The reader's note goes fenced on the revision the page read. Like a state
+  // change, one is out at a time, and the notice says what became of it.
+  async submitNote() {
+    const duty = this.controls?.duty, mine = this.mine();
+    if (!duty || !this.topic || !mine) return;
+    const value = duty.note.value, args = JSON.stringify({ note: value });
+    if (this.out !== null) { if (args !== this.out) this.show(NOT_SENT); return; }
+    if (new TextEncoder().encode(value).length > NOTE_BYTES) { this.show(`A note is at most ${NOTE_BYTES} bytes; shorten it and save again.`); return; }
+    const topic = this.topic;
+    this.out = args; this.show(null); this.mark();
+    let message = null;
+    try {
+      const receipt = await this.sendNote(topic, value, Number.isSafeInteger(mine.responsibility_revision) ? mine.responsibility_revision : 0);
+      const result = receipt?.result;
+      if (receipt?.status === 'committed' && result?.topic_id === topic.id && result.actor_id === this.reader) {
+        if (this.controls?.duty?.note.value === value) this.touched.delete('duty');
+        const participants = this.participants.map(person => person.actor_id === this.reader
+          ? { ...person, responsibility: result.note, responsibility_truncated: false, responsibility_revision: result.responsibility_revision } : person);
+        if (Number.isSafeInteger(result.version) && result.version > this.topic.version) this.paint({ ...this.topic, version: result.version }, participants);
+        else this.paint(this.topic, participants);
+      } else if (receipt?.error?.code === 'REVISION_CONFLICT') message = NOTE_CHANGED;
+      else message = receipt?.error?.message ?? 'Your note was not confirmed. Refresh to see it as it stands.';
+    } catch (error) {
+      message = error.message;
+    } finally {
+      this.out = null; this.mark();
+    }
+    if (this.topic?.id !== topic.id) return;
+    if (message) this.show(message);
+    this.refresh();
+  }
+
   // Each untouched field shows the topic as it stands. The note and who it
   // waits on belong to the topic's state, so another chosen state starts both empty.
   follow() {
-    const { state, note, waiting, waitingField, managed } = this.controls, topic = this.topic, touched = this.touched;
+    const { state, note, waiting, waitingField, managed, duty } = this.controls, topic = this.topic, touched = this.touched;
+    if (duty && !touched.has('duty')) duty.note.value = this.mine()?.responsibility ?? '';
     if (!touched.has('state')) state.value = known(topic.state);
     const current = state.value === known(topic.state);
     if (!touched.has('note')) note.value = current ? topic.state_note ?? '' : '';
@@ -221,8 +290,8 @@ export class TopicStatePanel {
   // While a change is out, the buttons say they are unavailable. They are not
   // disabled, so the one pressed keeps its focus.
   mark() {
-    const { save, managed } = this.controls ?? {};
-    for (const button of [save, managed?.rename, managed?.archive]) {
+    const { save, managed, duty } = this.controls ?? {};
+    for (const button of [save, managed?.rename, managed?.archive, duty?.save]) {
       if (!button) continue;
       if (this.out !== null) button.setAttribute('aria-disabled', 'true'); else button.removeAttribute('aria-disabled');
     }

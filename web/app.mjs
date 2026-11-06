@@ -969,6 +969,11 @@ async function initialize() {
       const { authority_id, authority_epoch } = bootstrap.authority;
       return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.update',
         target: { topic_id: current.id }, expected: { topic_revision: current.version, authority: { authority_id, authority_epoch } }, args });
+    },
+    sendNote: (current, note, revision) => {
+      const { authority_id, authority_epoch } = bootstrap.authority;
+      return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'responsibility.set',
+        target: { topic_id: current.id }, expected: { responsibility_revision: revision, authority: { authority_id, authority_epoch } }, args: { note } });
     } });
   topicState.paint(topic, result.participants);
   // Keep startup retry read-only: no editor or clickable source exists until

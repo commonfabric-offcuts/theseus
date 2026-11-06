@@ -495,6 +495,14 @@ def main():
                         revision = store().view(actor, "topic", {"topic_id": request["topic_id"]})["topic"]["version"]
                         answer = command("topic.update", request["operation_id"], request["args"],
                                          {"topic_id": request["topic_id"]}, {"topic_revision": revision})
+                    elif freshness and request["method"] == "responsibility":
+                        # A participant says what they do in a topic, as their own page or CLI does,
+                        # fenced on the revision they read.
+                        sender, topic_id = request.get("sender") or "fixture-notebook-agent", request.get("topic_id", "t1")
+                        [revision] = [item["responsibility_revision"] for item in store().view(sender, "topic", {"topic_id": topic_id})["participants"]
+                                      if item["actor_id"] == sender]
+                        answer = command("responsibility.set", request["operation_id"], {"note": request["note"]},
+                                         {"topic_id": topic_id}, {"responsibility_revision": revision}, sender=sender)
                     elif freshness and request["method"] == "outcome_reference":
                         # An agent on the outcome's team writes to the outcome's
                         # own Notebook, which every topic in it stands on.
