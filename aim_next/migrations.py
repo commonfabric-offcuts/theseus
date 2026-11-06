@@ -12,6 +12,7 @@ from .runner import HOSTED_DOWN, HOSTED_OCCUPIED, HOSTED_SCHEMA
 from .topic_state import TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA, WAITING_ORDER_DOWN, WAITING_ORDER_SCHEMA
 from .conversation import MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA, UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED, UNANSWERED_SCHEMA
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
+from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -28,6 +29,8 @@ STEPS = (
     # Version 14 keeps where each reader's unanswered messages begin in each
     # topic, worked out from the messages, and indexes each message's replies.
     ("13", "14", UNANSWERED_SCHEMA + UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED),
+    # Version 15 keeps the color each person chose for an agent.
+    ("14", "15", COLOR_SCHEMA, COLOR_DOWN, COLOR_OCCUPIED),
 )
 
 

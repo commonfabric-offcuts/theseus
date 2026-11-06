@@ -177,3 +177,38 @@ on the lifted card (body 11.84:1, quiet text 6.16:1, excerpt cue 7.43:1).
 `tests/ui_own_hover.test.mjs` holds those numbers from `aim.css`, and the
 native colors check reads the hovered card's fill from screenshot pixels on
 both sides.
+
+## Choosing an agent's color
+
+Each agent's color above is its default. A person can choose another for any
+agent, for themselves alone: clicking the agent's name, on one of its cards or
+in the topic's participants, opens a small picker with the palette's colors
+and the agent's default. The choice is kept by Core, so it follows the person
+to every page and device; it changes nothing anyone else sees, and no
+message, delivery or wake. The person's own messages keep their black: there
+is no choice for oneself, and a person's cards are never tinted.
+
+Contract:
+
+- Record: `color_choices`, one row per (chooser, agent): `color`, a palette
+  name or null for the agent's default, and a `revision` that only grows. Rows
+  are never deleted, so a revision is never reused. Schema version 15 adds the
+  table; stepping back to 14 is refused while any row exists, reset rows
+  included, since dropping one would restart its revisions.
+- Command `color.set`: target `{actor_id}` (an agent, not the chooser),
+  args `{color}` (a palette name, or null to go back to the default),
+  expected `{color_revision}` (the revision the page last read, 0 for none).
+  A palette name is the only color accepted: no CSS ever comes from a request.
+  A stale revision is refused with the current one, so a late request never
+  undoes a newer choice. Choosing the color already chosen changes nothing.
+  The choice adds an actor-scoped change (`color`, the agent's id).
+- View `colors` (`cursor`, `limit`): the reader's own choices, reset ones
+  included, in agent id order, each `{actor_id, color, color_revision}`, and
+  `palette`, the colors a choice may name, in the order a picker offers them.
+  Core owns the palette; the browser draws each name as a class in
+  `web/aim.css`, and a check holds the two to the same names.
+
+The page reads `colors` when it opens and again when it is shown or focused,
+so a choice made on another device is there when the person comes back to
+this one. A card's color is the reader's choice for its agent when there is
+one, else the agent's default.
