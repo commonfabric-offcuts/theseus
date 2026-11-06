@@ -15,7 +15,9 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     assert.equal(work.observed, true);
     assert.equal(shown.dot, true, 'observed work has the dot');
     assert.match(shown.title, /^Activity seen .+ \(fixture-notebook-agent posted\)$/);
-    assert.deepEqual(shown.words, [' · ' + shown.title], 'screen readers hear the title');
+    // The row's other words for screen readers, its unread count (", 1 unread"),
+    // come and go with what is read; the work's words are the title's.
+    assert.deepEqual(shown.words.filter(words => !/^, \d+ unread/.test(words)), [' · ' + shown.title], 'screen readers hear the title');
     assert.ok(shown.size[0] > 0 && shown.size[0] <= 10 && shown.size[1] <= 10, 'the dot is small: ' + shown.size);
     for (const r of await p.evaluate(`[...document.querySelectorAll('#topics .nav-item')].map(a=>a.title)`)) assert.doesNotMatch(r, /nobody|no one/i);
     await shot(p, 'work-row-dot');
