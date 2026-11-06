@@ -86,12 +86,16 @@ deploys wrote records, and a deploy can stop after the restart. The system
 records them from what it keeps:
 
 - The repository keeps the records of releases 18 and 19 in
-  `tools/pipeline/releases/`. A deploy to an instance that keeps no records
-  writes them first, when the newest is the live commit or one of its
-  ancestors, so the next release's number follows 19 without being typed.
-- A deploy whose live commit is not the latest record's commit records the
-  live commit first, as the next release, from the commits since the latest
-  record and the time the live server's run record says it started.
+  `tools/pipeline/releases/`. A deploy writes those its instance lacks first,
+  once they are its records: it records one of them, or, while it records
+  none, the newest is the live commit or one of its ancestors. So the next
+  release's number follows 19 without being typed, even when only one of the
+  two was written by hand.
+- A deploy whose live commit is not the latest record's commit records each
+  commit a server was started at since that record, in the order they started:
+  each is a release, numbered on from the latest, with the items named since
+  the commit before it and the time a server first started it. Two deploys in
+  a row that put their release live without its record are two releases.
 
 The same records can also be written by hand on an instance at schema 18,
 without a deploy, once per file:

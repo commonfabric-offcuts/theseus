@@ -224,13 +224,91 @@ def follows(config, commit, head):
     return run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", commit, head]).returncode == 0
 
 
-def launched_at(config, head):
-    """When the live server's run record says it started at head, or None when the record does not say."""
-    launch = run_dirs(config, "server")[-1] / "launch.json"
-    if not launch.exists():
-        return None
-    started = json.loads(launch.read_text())
-    return started.get("at") if started.get("revision") == head else None
+def kept_lacked(config, sha, known, head):
+    """The records the repository keeps for this instance that it lacks, oldest first.
+
+    They are this instance's when it records one of them, or, while it records
+    none, when the newest is the live HEAD or one of its ancestors; otherwise
+    they are another instance's. Together with its own they must be one line:
+    consecutive numbers, each commit after the one before, one commit per number."""
+    kept = repo_records(config, sha)
+    recorded = {record["release"]: record for record in known}
+    if known:
+        if not any(recorded.get(record["release"], {}).get("commit") == record["commit"] for record in kept):
+            return []
+    elif not kept or not follows(config, kept[-1]["commit"], head):
+        return []
+    line, lacked = dict(recorded), []
+    for record in kept:
+        held = line.setdefault(record["release"], record)
+        require(held["commit"] == record["commit"], "the repository keeps release %d at %s, but the instance records it "
+                "at %s" % (record["release"], record["commit"][:12], held["commit"][:12]))
+        if record["release"] not in recorded:
+            lacked.append(record)
+    numbers = sorted(line)
+    require(numbers == list(range(numbers[0], numbers[-1] + 1)), "the releases the instance and the repository record are "
+            "numbered %s, not one after another" % ", ".join(str(number) for number in numbers))
+    for record in lacked:
+        for older, newer in ((line.get(record["release"] - 1), record), (record, line.get(record["release"] + 1))):
+            if older is not None and newer is not None:
+                require(older["commit"] != newer["commit"] and follows(config, older["commit"], newer["commit"]),
+                        "release %d at %s does not come after release %d at %s" % (
+                            newer["release"], newer["commit"][:12], older["release"], older["commit"][:12]))
+    return lacked
+
+
+def server_starts(config):
+    """[(commit, time)]: each commit a server run record started, at the first time one did, in the order they started.
+
+    The deploy writes launch.json when it starts a server; a run record without one predates that."""
+    first = collections.OrderedDict()
+    for run_dir in run_dirs(config, "server"):
+        launch = run_dir / "launch.json"
+        if not launch.exists():
+            continue
+        try:
+            started = json.loads(launch.read_text())
+        except (OSError, ValueError) as error:
+            raise Refused("the run record %s could not be read: %s" % (launch, error))
+        require(isinstance(started, dict) and isinstance(started.get("revision"), str) and isinstance(started.get("at"), str),
+                "the run record %s does not say which commit it started and when" % launch)
+        first.setdefault(started["revision"], started["at"])
+    return list(first.items())
+
+
+def went_live(config, latest, head, live_since):
+    """[(commit, time)]: the releases that went live after the latest record without one, oldest first.
+
+    Each commit a server run record started after the latest record's commit is
+    one (a restart at the same commit is not another), at the first time one
+    started it; the live HEAD is the last, at live_since when no run record
+    started it."""
+    if latest["commit"] == head:
+        require(live_since is None, "--live-since names when an unrecorded live commit went live; %s is release %d"
+                % (head[:12], latest["release"]))
+        return []
+    require(follows(config, latest["commit"], head), "the live commit %s does not follow %s, the commit of release %d, "
+            "the latest recorded" % (head[:12], latest["commit"][:12], latest["release"]))
+    found = []
+    for commit, at in server_starts(config):
+        if follows(config, commit, latest["commit"]):
+            continue
+        require(follows(config, latest["commit"], commit) and follows(config, commit, head),
+                "a server run record started %s, which is neither before release %d at %s nor on the way to the live "
+                "commit %s; record the releases since %d by hand (docs/releases.md)"
+                % (commit[:12], latest["release"], latest["commit"][:12], head[:12], latest["release"]))
+        require(not found or follows(config, found[-1][0], commit), "the server run records start %s after %s, which it "
+                "comes before; record the releases since %d by hand (docs/releases.md)"
+                % (commit[:12], found[-1][0][:12] if found else "", latest["release"]))
+        found.append((commit, at))
+    if found and found[-1][0] == head:
+        require(live_since is None, "--live-since is not needed: the live server's run record says %s went live at %s"
+                % (head[:12], found[-1][1]))
+        return found
+    require(live_since, "the live commit %s has no release record (release %d at %s is the latest) and no server run "
+            "record says when it went live; name that time with --live-since, and the deploy records it as release %d "
+            "before this one" % (head[:12], latest["release"], latest["commit"][:12], latest["release"] + len(found) + 1))
+    return found + [(head, live_since)]
 
 
 def shipped_between(config, older, newer):
@@ -249,36 +327,25 @@ def release_plan(config, head, sha, summary, number, no_items, live_since=None):
     Everything is read now, before anything stops, and each record is checked
     with this commit's own rules, so the record step cannot refuse it. Those
     before it are what the system knows and the instance lacks: the records the
-    repository keeps, while the instance keeps none, and the live commit's own
-    record when no record names it (from its server's run record)."""
+    repository keeps for it (kept_lacked), then one for each commit a server run
+    record started after the latest record (went_live)."""
     items, commits = shipped_between(config, head, sha)
     require(items or no_items, "no commit from %s to %s names a pipeline item in a 'Pipeline: N, M' trailer; "
             "name the items the changes deliver, or pass --no-items for a release that ships none" % (head[:12], sha[:12]))
     known = live_records(config)
-    before, recovered = [], None
-    if not known:
-        kept = repo_records(config, sha)
-        if kept and follows(config, kept[-1]["commit"], head):
-            known = before = kept
-    latest = max(known, key=lambda record: record["release"]) if known else None
-    if latest is not None and latest["commit"] != head:
-        require(follows(config, latest["commit"], head), "the live commit %s does not follow %s, the commit of release %d, "
-                "the latest recorded" % (head[:12], latest["commit"][:12], latest["release"]))
-        since = launched_at(config, head)
-        require(not (since and live_since), "--live-since is not needed: the live server's run record says %s went live at %s"
-                % (head[:12], since))
-        require(since or live_since, "the live commit %s has no release record (release %d at %s is the latest) and the live "
-                "server's run record does not say when it went live; name that time with --live-since, and the deploy "
-                "records it as release %d before this one" % (head[:12], latest["release"], latest["commit"][:12],
-                                                               latest["release"] + 1))
-        missed, _ = shipped_between(config, latest["commit"], head)
-        recovered = latest = {"release": latest["release"] + 1, "commit": head, "previous": latest["commit"],
-                              "items": missed, "deployed_at": since or live_since, "measurements": None,
-                              "source": "backfill", "evidence": None}
-        before = before + [recovered]
+    before = kept_lacked(config, sha, known, head)
+    line = sorted(known + before, key=lambda each: each["release"])
+    latest = line[-1] if line else None
+    if latest is None:
+        require(live_since is None, "--live-since names when an unrecorded live commit went live; no record places %s"
+                % head[:12])
     else:
-        require(live_since is None, "--live-since names when an unrecorded live commit went live; %s is %s"
-                % (head[:12], "recorded" if latest else "not on a line of recorded releases"))
+        for commit, at in went_live(config, latest, head, live_since):
+            missed, _ = shipped_between(config, latest["commit"], commit)
+            latest = {"release": latest["release"] + 1, "commit": commit, "previous": latest["commit"], "items": missed,
+                      "deployed_at": at, "measurements": None, "source": "backfill", "evidence": None}
+            before.append(latest)
+            line.append(latest)
     if number is None:
         require(latest is not None, "neither the live instance nor the repository records a release %s follows; name "
                 "this one's number with --release" % head[:12])
@@ -289,7 +356,7 @@ def release_plan(config, head, sha, summary, number, no_items, live_since=None):
               "measurements": releases.measurements(json.loads(Path(summary).read_text())), "source": "deploy"}
     # An item ships in one release (the store refuses it again); say so now, before anything stops.
     shipped_in = {}
-    for named in sorted(known, key=lambda each: each["release"]) + ([recovered] if recovered else []) + [record]:
+    for named in line + [record]:
         for item in named["items"]:
             require(shipped_in.setdefault(item, named["release"]) == named["release"],
                     "pipeline item %d shipped in release %d; release %d names it again"

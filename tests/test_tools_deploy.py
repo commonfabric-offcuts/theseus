@@ -55,15 +55,16 @@ class FakeHost:
 
     def __init__(self, config, servers=(111,), runners=(222,), dirty="", ff=True, backup=0, merge=0, migrate=0,
                  log=SHIPPED, keeps=True, releases=(page(19), 0), cli=0, recorded=0, on_cli=None, logs=None,
-                 kept=(), ancestors=()):
+                 kept=(), line=(HEAD,), others=()):
         self.config, self.calls = config, []
         self.servers, self.runners = list(servers), list(runners)
         self.dirty, self.ff, self.backup, self.merge, self.migrate = dirty, ff, backup, merge, migrate
         self.log, self.keeps, self.releases, self.cli, self.recorded = log, keeps, releases, cli, recorded
         self.written, self.on_cli = [], on_cli
         # git log answers per range (default: self.log); kept: the records tools/pipeline/releases holds at SHA;
-        # ancestors: the commits merge-base calls ancestors of HEAD.
-        self.logs, self.kept, self.ancestors = logs or {}, list(kept), set(ancestors)
+        # line: the live checkout's history, oldest first; others: commits git knows on another line. Any other
+        # commit is one git cannot read (exit 128).
+        self.logs, self.kept, self.line, self.others = logs or {}, list(kept), list(line), set(others)
 
     def __call__(self, argv, **kw):
         self.calls.append(argv)
@@ -83,7 +84,12 @@ class FakeHost:
         elif argv[0] == "git" and "merge-base" in argv and argv[-1] == SHA:
             code = 0 if self.ff else 1
         elif argv[0] == "git" and "merge-base" in argv:
-            code = 0 if argv[-1] == HEAD and (argv[-2] == HEAD or argv[-2] in self.ancestors) else 1
+            older, newer = argv[-2:]
+            if not {older, newer} <= set(self.line) | self.others:
+                code = 128
+            else:
+                code = 0 if older == newer or (older in self.line and newer in self.line
+                                               and self.line.index(older) < self.line.index(newer)) else 1
         elif argv[0] == "git" and "merge" in argv:
             code = self.merge
         elif argv[0] == "git" and "log" in argv:
@@ -149,6 +155,13 @@ class DeployCase(unittest.TestCase):
                 mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")), \
                 redirect_stdout(io.StringIO()):
             deploy.deploy(self.config, sha, self.evidence, self.summary, dry, **release)
+
+    def planned(self, host, **release):
+        """A dry run that must not refuse; a refusal fails the test rather than erroring it."""
+        try:
+            self.deploy(host, dry=True, **release)
+        except deploy.Refused as refusal:
+            self.fail("the deploy refused: %s" % refusal)
 
     def refused(self, host, dry=False, sha=SHA, **release):
         """The deploy's refusal; a crash is not one."""
@@ -339,7 +352,7 @@ class ReleasePlan(DeployCase):
         logs = {"%s..%s" % (X, HEAD): log(("Search", ["89"]), ("Ring", ["74"])), "%s..%s" % (HEAD, SHA): SHIPPED}
         answer = (page(release(19, X, [87])), 0)
         self.launched(HEAD)
-        self.deploy(FakeHost(self.config, releases=answer, logs=logs, ancestors=[X]), dry=True)
+        self.deploy(FakeHost(self.config, releases=answer, logs=logs, line=[X, HEAD]), dry=True)
         plan = self.plan()
         self.assertEqual(plan["before"], [{"release": 20, "commit": HEAD, "previous": X, "items": [89, 74],
                                            "deployed_at": "2026-11-07T05:00:00-08:00", "measurements": None,
@@ -352,9 +365,9 @@ class ReleasePlan(DeployCase):
     def test_when_no_run_record_says_when_the_live_commit_went_live_the_deploy_needs_that_time(self):
         X = "a" * 40
         answer = (page(release(19, X, [87])), 0)
-        host = FakeHost(self.config, releases=answer, logs={"%s..%s" % (X, HEAD): log()}, ancestors=[X])
+        host = FakeHost(self.config, releases=answer, logs={"%s..%s" % (X, HEAD): log()}, line=["d" * 40, X, HEAD])
         self.assertIn("name that time with --live-since", self.refused(host))
-        self.launched("d" * 40)  # the server's run record names another commit
+        self.launched("d" * 40)  # the server's run record names a commit before the latest record
         self.assertIn("name that time with --live-since", self.refused(host))
         self.deploy(host, dry=True, live_since="2026-11-07T04:00:00-08:00")
         self.assertEqual([(record["release"], record["deployed_at"]) for record in self.plan()["before"]],
@@ -371,30 +384,30 @@ class ReleasePlan(DeployCase):
     def test_a_live_commit_that_does_not_follow_the_latest_record_stops_the_deploy(self):
         answer = (page(release(19, "a" * 40, [87])), 0)
         self.launched(HEAD)
-        self.assertIn("does not follow", self.refused(FakeHost(self.config, releases=answer)))
+        self.assertIn("does not follow", self.refused(FakeHost(self.config, releases=answer, others=["a" * 40])))
         self.assertEqual(self.kills, [])
 
     def test_an_instance_with_no_records_starts_from_the_records_the_repository_keeps(self):
         kept = [release(18, "1" * 40, [1, 4]), release(19, HEAD, [87, 2])]
         # Live code from before release records keeps none; the records kept at SHA name the live HEAD.
-        host = FakeHost(self.config, keeps=False, kept=kept)
+        host = FakeHost(self.config, keeps=False, kept=kept, line=["1" * 40, HEAD])
         self.deploy(host, dry=True)
         plan = self.plan()
         self.assertEqual((plan["before"], plan["record"]["release"], plan["latest_recorded"]), (kept, 20, 19))
-        self.assertIn("would not follow the latest, 19", self.refused(FakeHost(self.config, keeps=False, kept=kept), number=2))
+        self.assertIn("would not follow the latest, 19", self.refused(FakeHost(self.config, keeps=False, kept=kept, line=["1" * 40, HEAD]), number=2))
         # An instance whose live commit the kept records do not reach starts from the number it is given.
         elsewhere = [release(18, "1" * 40, [1, 4]), release(19, "2" * 40, [87, 2])]
-        self.assertIn("name this one's number with --release", self.refused(FakeHost(self.config, keeps=False, kept=elsewhere)))
-        self.deploy(FakeHost(self.config, keeps=False, kept=elsewhere), dry=True, number=1)
+        self.assertIn("name this one's number with --release", self.refused(FakeHost(self.config, keeps=False, kept=elsewhere, others=["1" * 40, "2" * 40])))
+        self.deploy(FakeHost(self.config, keeps=False, kept=elsewhere, others=["1" * 40, "2" * 40]), dry=True, number=1)
         self.assertEqual((self.plan()["before"], self.plan()["record"]["release"]), ([], 1))
         # A kept record that is not one, or names no number, stops the deploy.
         for broken, reason in ((dict(kept[1], items="87"), "is not one: items"), (dict(kept[1], release=None), "names no release number")):
             with self.subTest(reason):
-                self.assertIn(reason, self.refused(FakeHost(self.config, keeps=False, kept=[kept[0], broken])))
-        # Records already on the instance are the line; the kept ones are not read.
-        host = FakeHost(self.config, kept=kept, releases=(page(release(19, HEAD, [87, 2])), 0))
+                self.assertIn(reason, self.refused(FakeHost(self.config, keeps=False, kept=[kept[0], broken], line=["1" * 40, HEAD])))
+        # Records already on the instance are not written again.
+        host = FakeHost(self.config, kept=kept, line=["1" * 40, HEAD], releases=(page(*reversed(kept)), 0))
         self.deploy(host, dry=True)
-        self.assertEqual((self.plan()["before"], host.ran("ls-tree")), ([], []))
+        self.assertEqual((self.plan()["before"], self.plan()["record"]["release"]), ([], 20))
         self.assertEqual(self.kills, [])
 
     def test_an_item_an_earlier_release_shipped_stops_the_deploy_before_anything_stops(self):
@@ -402,13 +415,115 @@ class ReleasePlan(DeployCase):
         self.assertIn("pipeline item 88 shipped in release 19; release 20 names it again", self.refused(host))
         kept = [release(18, "1" * 40, [88]), release(19, HEAD, [87])]
         self.assertIn("pipeline item 88 shipped in release 18; release 20 names it again",
-                      self.refused(FakeHost(self.config, keeps=False, kept=kept)))
+                      self.refused(FakeHost(self.config, keeps=False, kept=kept, line=["1" * 40, HEAD])))
         X = "a" * 40
         self.launched(HEAD)
-        recovered = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), ancestors=[X],
+        recovered = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[X, HEAD],
                              logs={"%s..%s" % (X, HEAD): log(("Again", ["87"]))})
         self.assertIn("pipeline item 87 shipped in release 19; release 20 names it again", self.refused(recovered))
         self.assertEqual(self.kills, [])
+
+    def started(self, *runs):
+        """Server run records after run-server-03, one per (commit, time), as the deploys that started them wrote them."""
+        for number, (revision, at) in enumerate(runs, 4):
+            run = self.instance / ("run-server-%02d" % number)
+            run.mkdir()
+            (run / "launch.json").write_text(json.dumps({"at": at, "revision": revision}))
+            (run / "pid.json").write_text(json.dumps({"pid": 111}))
+
+    def summarised(self):
+        return [(record["release"], record["commit"], record["previous"], record["items"], record["deployed_at"])
+                for record in self.plan()["before"]]
+
+    def test_the_records_the_repository_keeps_fill_in_what_the_instance_lacks_and_continue_from_them(self):
+        X, Y = "a" * 40, "e" * 40
+        # Release 18 was recorded by hand; release 19's command was refused, or never run.
+        kept = [release(18, X, [1, 4]), release(19, HEAD, [87, 2])]
+        self.planned(FakeHost(self.config, kept=kept, releases=(page(kept[0]), 0), line=[X, HEAD]))
+        self.assertEqual((self.plan()["before"], self.plan()["record"]["release"]), ([kept[1]], 20))
+        # Only 19 was recorded by hand: 18 is written, below it.
+        self.planned(FakeHost(self.config, kept=kept, releases=(page(kept[1]), 0), line=[X, HEAD]))
+        self.assertEqual((self.plan()["before"], self.plan()["record"]["release"]), ([kept[0]], 20))
+        # Then release 20 went live and its record was refused: it follows 19, from its own commits and first start.
+        kept = [release(18, X, [1, 4]), release(19, Y, [87, 2])]
+        self.started((Y, "2026-11-06T05:28:11-08:00"), (HEAD, "2026-11-07T05:00:00-08:00"))
+        logs = {"%s..%s" % (Y, HEAD): log(("Release 20's change", ["88"])),
+                "%s..%s" % (X, HEAD): log(("Release 19's change", ["87"]), ("Release 20's change", ["88"])),
+                "%s..%s" % (HEAD, SHA): log(("Release 21's change", ["89"]))}
+        self.planned(FakeHost(self.config, kept=kept, releases=(page(kept[0]), 0), line=[X, Y, HEAD], logs=logs))
+        self.assertEqual(self.plan()["before"][0], kept[1])
+        self.assertEqual(self.summarised()[1:], [(20, HEAD, Y, [88], "2026-11-07T05:00:00-08:00")])
+        self.assertEqual({key: self.plan()["record"][key] for key in ("release", "items")}, {"release": 21, "items": [89]})
+        self.assertEqual(self.kills, [])
+
+    def test_each_commit_a_server_started_after_the_latest_record_is_a_release_of_its_own(self):
+        # Releases 20 and 21 went live and neither verified; each server was restarted at its own commit.
+        W, X, R = "9" * 40, "a" * 40, "d" * 40
+        self.started((W, "2026-11-04T10:00:00-08:00"), (X, "2026-11-05T10:00:00-08:00"), (R, "2026-11-06T10:00:00-08:00"),
+                     (R, "2026-11-06T11:00:00-08:00"), (HEAD, "2026-11-07T10:00:00-08:00"), (HEAD, "2026-11-07T12:00:00-08:00"))
+        logs = {"%s..%s" % (X, R): log(("Twenty", ["89"])), "%s..%s" % (R, HEAD): log(("Twenty-one", ["74"])),
+                "%s..%s" % (X, HEAD): log(("Twenty", ["89"]), ("Twenty-one", ["74"])), "%s..%s" % (HEAD, SHA): SHIPPED}
+        host = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[W, X, R, HEAD], logs=logs)
+        self.planned(host)
+        self.assertEqual(self.summarised(), [(20, R, X, [89], "2026-11-06T10:00:00-08:00"),
+                                             (21, HEAD, R, [74], "2026-11-07T10:00:00-08:00")])
+        self.assertEqual((self.plan()["record"]["release"], self.plan()["latest_recorded"]), (22, 21))
+        # A commit no run record started, between them, is not a release: the next start at a later commit includes it.
+        self.assertEqual(self.kills, [])
+
+    def test_a_live_commit_no_run_record_started_takes_the_time_it_is_given_and_only_it_does(self):
+        X, R = "a" * 40, "d" * 40
+        self.started((R, "2026-11-06T10:00:00-08:00"))
+        logs = {"%s..%s" % (X, R): log(("Twenty", ["89"])), "%s..%s" % (R, HEAD): log(("Twenty-one", ["74"])),
+                "%s..%s" % (HEAD, SHA): SHIPPED}
+        host = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[X, R, HEAD], logs=logs)
+        self.assertIn("name that time with --live-since, and the deploy records it as release 21", self.refused(host))
+        self.planned(host, live_since="2026-11-07T04:00:00-08:00")
+        self.assertEqual(self.summarised(), [(20, R, X, [89], "2026-11-06T10:00:00-08:00"),
+                                             (21, HEAD, R, [74], "2026-11-07T04:00:00-08:00")])
+        self.assertEqual(self.kills, [])
+
+    def test_records_and_run_records_off_the_instances_line_stop_the_deploy_before_anything_stops(self):
+        X, Y, Z = "a" * 40, "e" * 40, "f" * 40
+        live = (page(release(19, HEAD, [87]), release(18, X, [1])), 0)
+        cases = (
+            # The repository keeps another commit under a number the instance records.
+            ("keeps release 18 at %s" % Y[:12], dict(kept=[release(18, Y, [1]), release(19, HEAD, [87])], releases=live,
+                                                    line=[X, Y, HEAD])),
+            # A kept record that leaves a number out.
+            ("numbered 18, 20", dict(kept=[release(18, X, [1]), release(20, HEAD, [87])], releases=(page(release(18, X, [1])), 0),
+                                     line=[X, HEAD])),
+            # A kept record whose commit comes before the release under it.
+            ("release 19 at %s does not come after release 18" % Y[:12],
+             dict(kept=[release(18, X, [1]), release(19, Y, [87])], releases=(page(release(18, X, [1])), 0), line=[Y, X, HEAD])),
+            # A kept record the live commit does not include.
+            ("does not follow %s" % Z[:12], dict(kept=[release(18, X, [1]), release(19, Z, [87])],
+                                                releases=(page(release(18, X, [1])), 0), line=[X, HEAD, Z])))
+        for reason, setup in cases:
+            with self.subTest(reason):
+                self.assertIn(reason, self.refused(FakeHost(self.config, **setup)))
+        # A server run record at a commit off the line from the latest record to the live HEAD.
+        self.started((Z, "2026-11-06T10:00:00-08:00"), (HEAD, "2026-11-07T10:00:00-08:00"))
+        host = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[X, HEAD], others=[Z],
+                        logs={"%s..%s" % (X, HEAD): log(("Twenty", ["89"]))})
+        self.assertIn("a server run record started %s" % Z[:12], self.refused(host))
+        # Run records that start a commit after one it comes before.
+        for run in (self.instance / "run-server-04", self.instance / "run-server-05"):
+            for name in ("launch.json", "pid.json"):
+                (run / name).unlink()
+            run.rmdir()
+        self.started((HEAD, "2026-11-06T10:00:00-08:00"), (Y, "2026-11-07T10:00:00-08:00"))
+        host = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[X, Y, HEAD],
+                        logs={"%s..%s" % (X, Y): log(("Twenty", ["89"]))})
+        self.assertIn("after %s, which it comes before" % HEAD[:12], self.refused(host))
+        self.assertEqual(self.kills, [])
+
+    def test_records_the_repository_keeps_for_another_instance_are_not_this_ones(self):
+        # This instance numbers its own releases from 1; the kept records share none of them.
+        kept = [release(18, "1" * 40, [1, 4]), release(19, "2" * 40, [87, 2])]
+        host = FakeHost(self.config, kept=kept, releases=(page(release(1, HEAD, [5])), 0), others=["1" * 40, "2" * 40])
+        self.planned(host)
+        self.assertEqual((self.plan()["before"], self.plan()["record"]["release"]), ([], 2))
 
     def test_live_records_that_cannot_be_read_stop_the_deploy_rather_than_count_as_none(self):
         for answer in (("", 1), ('{"instance_id":"i-1","error":{"code":"DATABASE_BUSY"}}\n', 75), ("not json\n", 0),
@@ -598,7 +713,7 @@ class FullDeploy(DeployCase):
 
     def test_the_records_the_instance_lacks_are_written_first_in_order(self):
         kept = [release(18, "1" * 40, [1, 4]), release(19, HEAD, [87, 2])]
-        host = FakeHost(self.config, keeps=False, kept=kept)
+        host = FakeHost(self.config, keeps=False, kept=kept, line=["1" * 40, HEAD])
         self.run_deploy(host)
         self.assertEqual([written["release"] for written in host.written], [18, 19, 20])
         self.assertEqual(host.written[:2], kept)
@@ -607,7 +722,7 @@ class FullDeploy(DeployCase):
 
     def test_when_a_record_is_refused_nothing_after_it_is_tried_and_every_command_left_is_given(self):
         kept = [release(18, "1" * 40, [1, 4]), release(19, HEAD, [87, 2])]
-        host = FakeHost(self.config, keeps=False, kept=kept, recorded=2)
+        host = FakeHost(self.config, keeps=False, kept=kept, recorded=2, line=["1" * 40, HEAD])
         with self.assertRaises(deploy.Refused) as caught:
             self.run_deploy(host)
         commands = [" ".join(argv) for argv in host.ran("record-release")]
