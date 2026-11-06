@@ -322,6 +322,24 @@ class AskOrTellVerbCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual(self.records(), before)
 
 
+    def test_an_ask_or_tell_that_names_nobody_is_refused_before_anything_is_saved(self):
+        # "--asks" with no names would otherwise post to nobody, asking no one.
+        before = self.records()
+        for flag in ("--asks", "--tells"):
+            for names in ("", "  ", " , "):
+                argv = ["post", "t1", flag, names, "To nobody"]
+                with self.subTest(argv=argv):
+                    code, out, err = self.run_cli(*argv)
+                    self.assertEqual((code, out), (2, ""))
+                    self.assertIn("INVALID_ARGUMENT", err)
+                    self.assertIn(flag, err)
+                    code, out, err = self.run_cli("--json", *argv)
+                    self.assertEqual((code, json.loads(out)["error"]["code"]), (2, "INVALID_ARGUMENT"))
+        self.assertEqual(self.saved(), [])
+        self.assertEqual(self.records(), before)
+        # A name among the commas is still a name.
+        self.assertEqual(self.run_cli("post", "t1", "--tells", " ,owner, ", "Told")[0], 0)
+        self.assertEqual(self.message(), ("agent-a", "Told", '["owner"]', "tell"))
 
 if __name__ == "__main__":
     unittest.main()

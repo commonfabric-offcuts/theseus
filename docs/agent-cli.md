@@ -201,7 +201,9 @@ unrecorded, with `INTENT_REQUIRED`, and nothing is sent; its message names the
 flags. A person's post that names someone and says neither is a tell, and is
 recorded as one. `post --to`, which said neither, is refused the same way
 before anything is saved, as is a post with both `--asks` and `--tells`. An
-intent on a message that names nobody is refused as `INVALID_ARGUMENT`.
+`--asks` or `--tells` that names nobody (`--asks ""`) is refused as
+`INVALID_ARGUMENT` before anything is saved, as is an intent on a message
+that names nobody.
 
 An ask makes the topic wait on each person it asks until they next write in
 the topic; `topics` shows it as "asked owner since 2026-11-05 22:10", and the

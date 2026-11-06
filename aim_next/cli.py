@@ -568,8 +568,12 @@ class Agent:
             self.refuse("INTENT_REQUIRED", "A message to someone says whether it asks or tells: use --asks A,B or --tells A,B "
                         "(not --to, and not both); nothing was sent")
         named = options.asks if options.asks is not None else options.tells
-        args = {"body": self.text(), "addressees": _names(named or "")}
-        if args["addressees"]:
+        addressees = _names(named or "")
+        if named is not None and not addressees:
+            flag = "--asks" if options.asks is not None else "--tells"
+            self.refuse("INVALID_ARGUMENT", "%s names who it is to (%s A,B), and these name nobody; nothing was sent" % (flag, flag))
+        args = {"body": self.text(), "addressees": addressees}
+        if addressees:
             args["intent"] = "ask" if options.asks is not None else "tell"
         if options.reply_to:
             args["reply_to"] = options.reply_to
