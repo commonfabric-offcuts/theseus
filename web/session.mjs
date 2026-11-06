@@ -509,6 +509,14 @@ export class EditorSession {
       // an automatic CAS retry. Keep the original refusal and current B intact.
       await this.uploads?.validateCorrection(refused);
       if (this.editor.localVersion !== reviewedLocalVersion) throw new Error('Writing changed while checking the earlier images. Review again.');
+      // The correction puts the refused writing back in the slot, about the
+      // revision it was written against, and the place goes back with it.
+      // Writing begun about another revision, or an unsaved change to the
+      // place, would be saved there about the refused writing's revision.
+      const moved = !same(this.editor.sourceRef, refused.sourceRef);
+      if (moved && (holdsWriting(this.editor.draft) || this.editor.dirty)) {
+        throw new Error('Your current writing is about another revision of this page and is kept. Send it, or clear it and let it save, before preparing the earlier reply again.');
+      }
       const item = { ...copy(refused), id: this.id(), prepareOperationId: this.id(), sendOperationId: this.id(),
         authority: authorityPair(this.authority),
         snapshot: { ...copy(refused.snapshot), id: state.draft.id, revision: state.draft.revision, generation: state.draft.generation },
@@ -523,6 +531,7 @@ export class EditorSession {
         this.editor.uploadState.revision++;
       }
       this.editor.conflict = null;
+      if (moved) this.editor.pin(refused.sourceRef);
       this.editor.draft.id = state.draft.id;
       this.editor.draft.revision = null;
       this.editor.draft.generation = null;
