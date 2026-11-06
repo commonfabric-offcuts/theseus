@@ -126,7 +126,13 @@ and carry no tint, whoever they are; other people's cards keep the plain
 card. Hovering an agent's card deepens its tint a little. Hovering another
 person's card gives it a neutral grey tint (`#eff0f0` light, `#252b2e` dark),
 not the green that is Fable's card at rest, with its quiet words deepened so
-every word keeps 4.5:1 (`tests/ui_card_hover.test.mjs`).
+every word keeps 4.5:1 (`tests/ui_card_hover.test.mjs`). A fill step that
+small changed an agent's card by only 1.5 to 2.3 (CIEDE2000), so the pointer's
+place was lost on most cards (warp, item 91b): under a pointer that can hover
+(`@media (hover:hover)`), every card but your own also wears a neutral ring,
+its border in the quiet text color (`--muted`) on all four sides, at 3:1 or
+better against its hover fill. That is the signal your own card already
+gives, and not a colored edge.
 
 `topic_messages` items carry `author_kind` (`human` or `agent`, from the
 actor record), and only an `agent` card is tinted. `web/author-colors.mjs`

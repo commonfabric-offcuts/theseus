@@ -98,6 +98,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
   border-color: var(--accent);
 }
 .message-card.own-message:hover { background: #000; border-color: var(--ink); }
+/* Any other card under a pointer that can hover: a neutral ring, the quiet text color, on all four sides, as your own card's border changes; never a colored edge. */
+@media (hover:hover){.message-card:not(.own-message):hover{border-color:var(--muted)}}
 /* On a wide screen the rail scrolls on its own, so nothing it shows can move the conversation, and the conversation cannot move it. Scrolling past its end moves the page, which brings the rail's last rows below the header into view. */
 @media(min-width:761px){.rail{position:sticky;top:0;align-self:start;max-height:100dvh;overflow-y:auto}}
 .sent-whole{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0}

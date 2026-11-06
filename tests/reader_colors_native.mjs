@@ -48,6 +48,11 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       expect((await style(own)).outline==='solid',theme+': keyboard focus stays visible on own black card');
       await p.evaluate(`document.querySelector(${JSON.stringify(other)}).scrollIntoView({block:'center'})`);
       await p.point(other,'move');const topicHover=await style(other);
+      // Any card but your own shows a neutral ring under the pointer, one
+      // color on all four sides, that stands out from its hover fill.
+      const ring=rgb(topicHover.border);
+      expect(/^rgb\(\d+, \d+, \d+\)$/.test(topicHover.border)&&topicHover.border!==otherRest.border,theme+`: a hovered agent card is ringed alike on all four sides (${otherRest.border} to ${topicHover.border})`);
+      expect(Math.max(...ring)-Math.min(...ring)<=20&&contrast(topicHover.border,topicHover.background)>=3,theme+`: the ring is neutral and shows on the hover fill (${topicHover.border} on ${topicHover.background})`);
       // Sample a real space between source words: an opaque article background
       // can hide the pane's correct computed color.
       const behindWords=async()=>{
