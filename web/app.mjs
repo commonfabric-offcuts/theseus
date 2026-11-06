@@ -665,6 +665,13 @@ function loadMarks() {
   if (authorityReviewPending()) return Promise.resolve(false);
   return marks.load(topic.id, async args => checkedView(await registry.cleanup.list(options => api.view('marks', args, options)), bootstrap.instance_id));
 }
+// The topic's own Notebook pages' read state, as loadMarks: nothing for a
+// denied topic, and owed while the runtime changed.
+function loadReadState() {
+  if (topicUnavailable) return Promise.resolve(true);
+  if (authorityReviewPending()) return Promise.resolve(false);
+  return views.readState((name, args) => registry.cleanup.list(options => api.view(name, args, options)), pageMax());
+}
 async function toggleMark() {
   const p = registry.current, ref = p?.source?.source_ref;
   if (!p || p.sourceUnavailable || !p.mark || ref.kind !== 'message' || marks.busy(ref.id)) return;
@@ -1120,9 +1127,8 @@ async function initialize() {
   // The topic's own Notebook pages' read state is read again too, so a page
   // read since, here or elsewhere, loses its light.
   commitReload = followCommits(async () => {
-    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks();
-    await views.readState((name, args) => registry.cleanup.list(options => api.view(name, args, options)), pageMax());
-    return outcomes !== false && topics !== false && references !== false && marked !== false;
+    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks(), read = await loadReadState();
+    return outcomes !== false && topics !== false && references !== false && marked !== false && read !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);

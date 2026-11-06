@@ -67,7 +67,10 @@ names the page reads the reader's read state of the loaded pages again
 (`memory_items` from the start of the Notebook through the last page
 loaded, never past it); a page read here or on another device loses its
 light. An answer older than the one shown, at the same revision, never
-relights a page read since.
+relights a page read since. As with the person's marks, a topic they can
+no longer read is not read again, so its refusal never fills the page's
+status at each commit, and while the runtime has changed the read waits,
+owed, until the saved writing is reviewed.
 
 ## What changed, in the Reader
 

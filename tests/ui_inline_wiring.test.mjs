@@ -111,7 +111,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
@@ -1596,6 +1596,45 @@ test('a page in the topic\'s own Notebook carries the changed light, and a commi
   shown = page(4, 3);
   live.emit({ kind: 'commit', seq: 10 }); await drain();
   assert.deepEqual(light(), ['1', ', changed since you read it, 1 new revision'], 'revised again, it comes back on');
+});
+
+test('once the topic is denied, or the runtime changed, a commit reads none of its Notebook\'s read state and puts nothing in the page status', async () => {
+  const f = fixture(), live = stream(); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  Object.assign(f.registry.runtime, { current: { ...f.bootstrap.authority } });
+  f.useLive(live);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  const scope = { kind: 'topic', id: 't1' };
+  const page = { id: 'n1', seq: 1, owner_scope: scope, revision: 3, read_revision: 1, title: 'Plan', body: 'Words', source_ref: { kind: 'memory', id: 'n1', revision: 3 } };
+  let denied = false;
+  const view = f.api.view, notebook = (name, args) => name === 'memory_items' && args.owner_scope?.kind === 'topic';
+  f.api.view = async (name, args) => {
+    if (!notebook(name, args)) return view(name, args);
+    f.calls.push({ name, args });
+    return denied ? { instance_id: 'fixture', error: { code: 'FORBIDDEN', message: 'No readable topic' } }
+      : { instance_id: 'fixture', items: [page], next_cursor: null, relevant_versions: { notebook: 3 } };
+  };
+  await f.initialize(); await drain();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  views.memoryPage({ instance_id: 'fixture', items: [page], next_cursor: null, relevant_versions: { notebook: 3 } }, { initial: true });
+  const asked = () => f.calls.filter(call => notebook(call.name, call.args)).length;
+  live.emit({ kind: 'commit', seq: 9 }); await drain();
+  const before = asked();
+  assert.ok(before > 0, 'an available topic\'s Notebook is read on a commit');
+  const runtime = f.registry.runtime.current;
+  f.registry.runtime.current = { ...runtime, authority_epoch: 'e2' };
+  live.emit({ kind: 'commit', seq: 10 }); await drain();
+  assert.equal(asked(), before, 'while the runtime changed, nothing of the Notebook is read');
+  f.registry.runtime.current = runtime;
+  live.emit({ state: 'live' }); await drain();
+  assert.equal(asked(), before + 1, 'the read stays owed and is made once the stream is back');
+  denied = true;
+  await f.checkAvailability(async name => name === 'topic' ? { instance_id: 'fixture', topic: f.topic } : f.state(), () => true);
+  f.get('app-status').textContent = ''; f.get('app-status').hidden = true;
+  live.emit({ kind: 'commit', seq: 11 }); await drain();
+  assert.equal(f.get('app-status').textContent, '', 'a denied topic\'s refusal is not said in the page status at every commit');
+  assert.equal(f.get('app-status').hidden, true);
+  assert.equal(asked(), before + 1, 'for its Notebook is not read');
 });
 
 test('a Notebook page counts as read only once the person can see it: shown in a background or unfocused tab, it is read when the tab comes forward', async () => {
