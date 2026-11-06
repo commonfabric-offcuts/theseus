@@ -1,9 +1,9 @@
-// The red New line: where the server says the oldest unanswered message is,
-// the page draws the line under its card, and moves or removes it as later
-// answers say.
+// The red New line: where the server says the oldest unread message is, the
+// page draws the line under its card, and moves or removes it as answers read
+// at later commits say.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { unansweredOf, placeNewLine } from '../web/unanswered.mjs';
+import { oldestUnreadOf, placeNewLine } from '../web/unanswered.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 
 class Element {
@@ -23,7 +23,7 @@ const list = (...seqs) => {
 };
 const order = host => host.children.map(node => node.dataset.line ?? Number(node.dataset.seq));
 
-test('the line sits just below the card of the oldest unanswered message, and moves with it', () => {
+test('the line sits just below the card of the oldest unread message, and moves with it', () => {
   const host = list(50, 40, 30, 20);
   const line = placeNewLine(host, 30, doc);
   assert.deepEqual(order(host), [50, 40, 30, 'new', 20]);
@@ -34,16 +34,16 @@ test('the line sits just below the card of the oldest unanswered message, and mo
   assert.equal(placeNewLine(host, 30, doc), line, 'placed again where it is, it stays');
   assert.deepEqual(order(host), [50, 40, 30, 'new', 20]);
   placeNewLine(host, 40, doc);
-  assert.deepEqual(order(host), [50, 40, 'new', 30, 20], 'a reply to the oldest moves it up');
+  assert.deepEqual(order(host), [50, 40, 'new', 30, 20], 'reading the oldest moves it up');
   placeNewLine(host, 20, doc);
   assert.deepEqual(order(host), [50, 40, 30, 20, 'new'], 'under the last loaded card');
   placeNewLine(host, null, doc);
-  assert.deepEqual(order(host), [50, 40, 30, 20], 'replied to everything, it goes');
+  assert.deepEqual(order(host), [50, 40, 30, 20], 'everything read, it goes');
   placeNewLine(host, 35, doc);
   assert.deepEqual(order(host), [50, 40, 30, 20], 'a message among the loaded ones without a card here has no line');
 });
 
-// When the oldest unanswered message is further back than what is loaded, the
+// When the oldest unread message is further back than what is loaded, the
 // line sits at the bottom of what is loaded, says so, and loads the older
 // messages when activated; once its card is loaded, the line takes its place.
 test('a line for a message not loaded yet sits at the bottom, says older below, and loads it when pressed', () => {
@@ -78,26 +78,48 @@ test('a line for a message not loaded yet sits at the bottom, says older below, 
   assert.deepEqual(order(top), [50, 40], 'no older line when nothing older can be loaded');
 });
 
-test('the boundary a page carries is read strictly', () => {
-  assert.equal(unansweredOf({}), undefined, 'a server that does not say draws no line');
-  assert.equal(unansweredOf({ unanswered: null }), null);
-  assert.deepEqual(unansweredOf({ unanswered: { seq: 4, id: 'm4' } }), { seq: 4, id: 'm4' });
+test('what an answer says of the oldest unread message is read strictly', () => {
+  assert.equal(oldestUnreadOf({}), undefined, 'a server that does not say draws no line');
+  assert.deepEqual(oldestUnreadOf({ oldest_unread: null, commit_seq: 3 }), { value: null, at: 3 });
+  assert.deepEqual(oldestUnreadOf({ oldest_unread: { seq: 4, id: 'm4' }, commit_seq: 0 }), { value: { seq: 4, id: 'm4' }, at: 0 });
   for (const bad of [{ seq: 0, id: 'm' }, { seq: 4 }, { seq: '4', id: 'm4' }, { seq: 4, id: '' }, 4, 'm4'])
-    assert.throws(() => unansweredOf({ unanswered: bad }), /unanswered boundary is malformed/);
+    assert.throws(() => oldestUnreadOf({ oldest_unread: bad, commit_seq: 3 }), /oldest unread message is malformed/);
+  for (const at of [undefined, -1, 1.5, '3'])
+    assert.throws(() => oldestUnreadOf({ oldest_unread: null, commit_seq: at }), /oldest unread message is malformed/, 'it says which commit it is as of');
 });
 
-test('the newest topic version a page was read at decides where the line is', () => {
-  const views = new TopicViews({ instanceId: 'i', topicId: 't1' });
-  const page = (version, unanswered, items = []) => ({ instance_id: 'i', items, next_cursor: null, relevant_versions: { topic: version }, ...(unanswered === undefined ? {} : { unanswered }) });
+test('the latest commit an answer was read at decides where the line is, from a page or from topic_unread', async () => {
+  const paints = [];
+  const views = new TopicViews({ instanceId: 'i', topicId: 't1', paint: kind => paints.push(kind) });
+  const page = (version, at, oldest, items = []) => ({ instance_id: 'i', items, next_cursor: null, relevant_versions: { topic: version },
+    ...(oldest === undefined ? {} : { oldest_unread: oldest, commit_seq: at }) });
   const item = seq => ({ id: 'm' + seq, seq, topic_id: 't1', body: 'b', author_id: 'a' });
-  views.messagesPage(page(5, { seq: 3, id: 'm3' }, [item(3), item(4)]), { initial: true });
-  assert.deepEqual(views.unanswered, { seq: 3, id: 'm3' });
-  views.messagesPage(page(7, { seq: 4, id: 'm4' }, [item(6)]), { live: true, cursor: 4 });
-  assert.deepEqual(views.unanswered, { seq: 4, id: 'm4' }, 'a live page after the reader replied moves it');
-  views.messagesPage(page(6, { seq: 3, id: 'm3' }, [item(2)]), { cursor: views.olderCursor ?? 3 });
-  assert.deepEqual(views.unanswered, { seq: 4, id: 'm4' }, 'a page read at an older version does not bring it back');
-  views.messagesPage(page(8, null, []), { live: true, cursor: 6 });
-  assert.equal(views.unanswered, null);
-  views.messagesPage(page(9, undefined, []), { live: true, cursor: 6 });
-  assert.equal(views.unanswered, null, 'a page that does not say leaves it as it was');
+  views.messagesPage(page(5, 10, { seq: 3, id: 'm3' }, [item(3), item(4)]), { initial: true });
+  assert.deepEqual(views.oldestUnread, { seq: 3, id: 'm3' });
+  // Reading changes no topic version: the commit orders the answers.
+  const reads = [];
+  const answer = (at, oldest, topic = 't1') => async (name, args) => { reads.push([name, args]); return { instance_id: 'i', topic_id: topic, oldest_unread: oldest, commit_seq: at }; };
+  paints.length = 0;
+  assert.equal(await views.readUnread(answer(12, { seq: 4, id: 'm4' })), true);
+  assert.deepEqual(reads, [['topic_unread', { topic_id: 't1' }]]);
+  assert.deepEqual(views.oldestUnread, { seq: 4, id: 'm4' }, 'reading the oldest moved it up');
+  assert.deepEqual(paints, ['line'], 'and the line is placed again');
+  views.messagesPage(page(5, 11, { seq: 3, id: 'm3' }, [item(2)]), { cursor: views.olderCursor ?? 3 });
+  assert.deepEqual(views.oldestUnread, { seq: 4, id: 'm4' }, 'a page read at an earlier commit does not bring it back, though its topic version is the same');
+  paints.length = 0;
+  await views.readUnread(answer(12, { seq: 4, id: 'm4' }));
+  assert.deepEqual(paints, [], 'the same answer again moves nothing');
+  await views.readUnread(answer(11, null));
+  assert.deepEqual(views.oldestUnread, { seq: 4, id: 'm4' }, 'nor does an earlier topic_unread');
+  await views.readUnread(answer(13, null));
+  assert.equal(views.oldestUnread, null, 'everything read: no line');
+  views.messagesPage(page(6, 14, { seq: 6, id: 'm6' }, [item(6)]), { live: true, cursor: 4 });
+  assert.deepEqual(views.oldestUnread, { seq: 6, id: 'm6' }, 'a message that arrived while caught up');
+  views.messagesPage(page(7, undefined, undefined, []), { live: true, cursor: 6 });
+  assert.deepEqual(views.oldestUnread, { seq: 6, id: 'm6' }, 'a page that does not say leaves it as it was');
+  // A stale read (the topic was left meanwhile) changes nothing; another topic's answer is refused.
+  assert.equal(await views.readUnread(answer(20, null), () => false), false);
+  assert.deepEqual(views.oldestUnread, { seq: 6, id: 'm6' });
+  await assert.rejects(views.readUnread(answer(21, null, 't2')), /another topic or says nothing/);
+  await assert.rejects(views.readUnread(async () => ({ instance_id: 'i', topic_id: 't1' })), /another topic or says nothing/, 'an answer that does not say is refused');
 });

@@ -163,3 +163,48 @@ class ReplyRecordCase(ReaderCase):
         self.assertEqual((opening["reply_to"], opening["reply_to_author"], opening["reply_to_excerpt"]), (None, None, None))
         reader = self.store.view("owner", "topic_messages", {"topic_id": "t1", "audience": "reader", "limit": 10})
         self.assertEqual(next(row for row in reader["items"] if row["id"] == item["id"])["reply_to_author"], "owner")
+
+    def test_a_reply_reads_the_message_it_answers_and_no_other(self):
+        def post(actor, body, **args):
+            return self.committed(self.command("message.post", dict(args, body=body), target={"topic_id": "t1"}, actor=actor))["message_id"]
+        def state(message_id):
+            return self.sql("SELECT state FROM deliveries WHERE message_id=? AND recipient_id='owner'", (message_id,))[0][0]
+        def unread():
+            return [item["unread"] for item in self.store.view("owner", "workspace_topics", {"workspace_id": "w1"})["items"] if item["id"] == "t1"][0]
+        first, second = post("agent-a", "First"), post("agent-a", "Second")
+        named = post("agent-a", "To you", addressees=["owner"], intent="tell")
+        self.assertEqual(unread(), 3)
+        # A reply written in the Reader (a draft about the newest message, sent to the reader by name) reads it.
+        self.send("Answered from the Reader")
+        self.assertEqual((state(first), state(second), state(named)), ("pending", "pending", "acknowledged"))
+        self.assertEqual(unread(), 2)
+        post("owner", "To the second", reply_to=second)
+        self.assertEqual((state(first), state(second)), ("pending", "acknowledged"),
+                         "a reply reads the message it answers, and nothing older")
+        self.assertEqual(unread(), 1)
+        # Someone else's reply reads nothing for this reader.
+        other = post("agent-b", "agent-b answers", reply_to=first)
+        self.assertEqual(state(first), "pending")
+        # A reply to a message already read settles nothing more.
+        before = self.sql("SELECT max(seq) FROM changes")[0][0]
+        post("owner", "Late answer", reply_to=second)
+        self.assertNotIn(("delivery",), self.sql("SELECT resource_kind FROM changes WHERE seq>? AND scope_id='owner'", (before,)),
+                         "nothing of the reader's is settled")
+        post("owner", "To the first", reply_to=first)
+        self.assertEqual((state(first), state(other), unread()), ("acknowledged", "pending", 1))
+
+    def test_a_reply_leaves_a_cancelled_delivery_as_it_was(self):
+        # The owner leaves the topic and can still reply there; what their
+        # subscription left pending stays uncounted, and is not counted down twice.
+        asked = self.committed(self.command("message.post", {"body": "Before you leave"}, target={"topic_id": "t1"}, actor="agent-a"))["message_id"]
+        self.participation("owner", False)
+        schedule = self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'")
+        self.committed(self.command("message.post", {"body": "Answer", "reply_to": asked}, target={"topic_id": "t1"}))
+        self.assertEqual(self.sql("SELECT state FROM deliveries WHERE message_id=? AND recipient_id='owner'", (asked,)), [("pending",)])
+        self.assertEqual(self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'"), schedule)
+
+    def test_an_agents_reply_leaves_its_work_to_acknowledge(self):
+        # An agent's deliveries are the work it is woken for; it acknowledges each itself.
+        asked = self.committed(self.command("message.post", {"body": "For the agent"}, target={"topic_id": "t1"}))["message_id"]
+        self.committed(self.command("message.post", {"body": "Answer", "reply_to": asked}, target={"topic_id": "t1"}, actor="agent-a"))
+        self.assertEqual(self.sql("SELECT state FROM deliveries WHERE message_id=? AND recipient_id='agent-a'", (asked,)), [("pending",)])

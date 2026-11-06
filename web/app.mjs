@@ -509,8 +509,15 @@ function keepListAnchor(paint) {
   if (anchor?.isConnected && !atTop) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
+// The New line, just below the oldest message the reader has not read.
+function placeLine() {
+  placeNewLine($('messages'), views.oldestUnread?.seq ?? null, document,
+    views.olderCursor === null ? null : () => run(loadToUnread));
+}
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
+  // Reading moves the line under the reader's eyes: the card they are looking at stays where it is.
+  if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
     if (authorityReviewPending()) return;
     topicUnavailable = false;
@@ -561,8 +568,7 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
-  if (kind === 'messages') placeNewLine($('messages'), views.unanswered?.seq ?? null, document,
-    views.olderCursor === null ? null : () => run(loadToUnanswered));
+  if (kind === 'messages') placeLine();
   });
   $('more-messages').hidden = views.olderCursor === null;
   $('more-memory').hidden = views.memoryCursor === null;
@@ -676,23 +682,33 @@ function listPage(kind, more = false) {
   listLoads.set(kind, run); return run;
 }
 // The New line's "older below": older pages, one after another, until the
-// oldest unanswered message's card is loaded or no older page is left; then
+// oldest unread message's card is loaded or no older page is left; then
 // that message takes the focus, with the line in its place below it. A read
 // that moves nothing on (a refusal, or a review pending) ends it.
-async function loadToUnanswered() {
-  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.unanswered?.seq);
-  while (views.unanswered && !loaded() && views.olderCursor !== null) {
+async function loadToUnread() {
+  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.oldestUnread?.seq);
+  while (views.oldestUnread && !loaded() && views.olderCursor !== null) {
     const before = views.olderCursor, shared = listLoads.has('messages');
     await listPage('messages', true);
     if (!shared && views.olderCursor === before) break;
   }
   loaded()?.focus();
 }
+// Where the New line sits, read again after each commit and on Refresh:
+// reading, marks and replies move it without changing the topic. Settles true
+// when it was read, false when it was not, as the marks do.
+function loadUnread() {
+  if (!views || topicUnavailable) return Promise.resolve(true);
+  if (authorityReviewPending()) return Promise.resolve(false);
+  const accessEpoch = listAccessEpoch;
+  return views.readUnread(async (name, args) => checkedView(await registry.cleanup.list(options => api.view(name, args, options)), bootstrap.instance_id),
+    () => accessEpoch === listAccessEpoch && !topicUnavailable && !authorityReviewPending()).catch(() => false);
+}
 async function refreshLists() {
   if (authorityReviewPending()) {
     status('The runtime changed. Review your saved writing before reloading this page.'); return;
   }
-  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks();
+  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks(); await loadUnread();
   if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
   if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
   await listPage('messages'); await listPage('memory');
@@ -1076,10 +1092,11 @@ async function initialize() {
   });
   outcomeReferences.load();
   // The open topic's marks are the person's own, read by the person's scope
-  // and paged; the open Reader's button follows them.
+  // and paged; the open Reader's button follows them. The New line follows
+  // what the person has read, here or anywhere else.
   commitReload = followCommits(async () => {
-    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks();
-    return outcomes !== false && topics !== false && references !== false && marked !== false;
+    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks(), unread = await loadUnread();
+    return outcomes !== false && topics !== false && references !== false && marked !== false && unread !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('refresh').onclick = () => run(refreshLists);

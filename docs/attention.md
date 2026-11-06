@@ -3,8 +3,14 @@
 Unread counts come from the deliveries Core already keeps, plus the messages
 a person has marked unread to come back to (below). A message is unread for a
 reader while its delivery to them is pending, or while they have it marked.
-Reading through it on screen, or acknowledging it, settles the delivery; only
-opening the message to read it clears a mark.
+Reading through it on screen, replying to it, or acknowledging it settles the
+delivery; only opening the message to read it clears a mark. A person's reply
+(a post whose `reply_to` names the message, including one written in the
+Reader about it) settles their own delivery of that message, in the same act,
+when it is pending in an active group; it settles nothing else and clears no
+mark. An agent's deliveries are the work it is woken for, which it acknowledges
+itself with `delivery.ack` ([agent-cli.md](agent-cli.md)), so an agent's reply
+settles nothing.
 
 - `workspace_topics` items carry `unread` and `addressed`: the reader's
   pending deliveries and marked messages in that topic, and how many of the
@@ -249,53 +255,71 @@ clear a mark.
   does any other open (a Reader step, the Notebook, a correction). A mark
   renewed while the open was under way survives, as its revision moved on.
 
-## Not yet replied to
+## The New line
 
-Unread is about reading; this is about answering. In each topic the reader
-sees a red line marked "New" just below the oldest message they have not
-replied to. Messages are listed newest first, so everything the line sits
-under is either newer than that message or that message itself.
+In each topic the reader sees a red line marked "New" just below the oldest
+message they have not read. Its job is to keep them from missing anything.
+Messages are listed newest first, so everything the line sits under is either
+newer than that message or that message itself.
 
-A message is not yet replied to when someone else wrote it after the reader's
-last post to the whole topic (a post with no `reply_to`), and no reply of the
-reader's has that message as its `reply_to`. A post to the whole topic answers
-everything before it. A reply moves the line up to below the next message the
-reader has not answered; when none is left, the line goes. Only the reader's
-own posts move it: reading through, `delivery.ack`, a mark, and other people's
-replies do not.
+Read is exactly what the counts above hold. A message is unread while its
+delivery to the reader is pending in an active group or while they have it
+marked unread; reading it on screen, opening it in the Reader, replying to it
+or Mark read settles its delivery, and only opening it clears a mark. So the
+line, the unread counts and the Unread pills never disagree:
 
-`topic_messages` returns it as `unanswered`, `{seq, id}` or null, on every
-page in either direction, worked out in the same read as the page. It does not
-depend on deliveries, so the value a page gets is the same before and after
-that page's read-through. One indexed query finds it, starting from the
-reader's horizon in the topic: a sequence below which every message is the
-reader's own, answered by a reply of theirs, or older than a post of theirs to
-the whole topic. Each post of the reader's moves their horizon in the same
-transaction: a post to the whole topic moves it past that post; a reply moves
-it to the oldest message they still have not answered, or past the reply when
-none is left. Whatever arrives after that is someone else's and unanswered
-until the reader posts again, so the read stops at the first message it looks
-at, and its cost does not grow with the topic, other topics, or how many
-messages the reader has answered. A reply that moves the horizon looks only
-at messages between the old horizon and the new one, each answered or theirs,
-so across a topic's life each message is passed once per reader. An index on
-(`reply_to`, author) says whether the reader replied to a message. Schema
-version 16 adds the horizons, worked out on upgrade from the messages already
-there, and that index; stepping back to 15 drops both and loses no record,
-since the horizons come from the messages.
+- Reading a newer message leaves the line under the oldest unread one; when
+  the oldest is read, the line moves up to just below the next; when nothing
+  is unread, there is no line.
+- Marking an older message unread moves the line down to just below it;
+  clearing the mark (opening it, or Mark unread again) brings the line back.
+- A message that arrives while the reader is caught up is unread, so the line
+  appears just below it.
+- An ask to the reader that they have read moves past the line. The topic
+  still waits on them ("Waiting on you") until they answer; the line is only
+  about reading.
+- The reader's own messages never hold the line: they are never delivered to
+  them, and a mark on one is passed over. A delivery left pending by a
+  subscription that leaving the topic cancelled is not unread either.
 
-The page keeps the boundary from the newest topic version any page said it
-at, so an older page loaded with More never brings back a line a later reply
-moved. It draws the line under that message's card when the card is loaded.
-The line is text ("New"), with no message identity, in the alert colour, so
-nothing that looks for cards finds it.
+`topic_messages` returns it on every page, in either direction, as
+`oldest_unread`, `{seq, id}` or null, with `commit_seq`, the commit the answer
+reflects (the view reads in one transaction). The `topic_unread` view takes
+`{topic_id}`, needs topic access, and returns `{topic_id, oldest_unread,
+commit_seq}`. Reading, marks and replies change no topic version, so a page
+keeps the answer with the highest `commit_seq` it has seen, from either view.
+
+Finding it does not read the topic. Each delivery keeps its topic, copied from
+its message, and an index on (recipient, topic, delivery) over the pending ones
+gives the reader's first pending delivery in the topic; deliveries are queued
+in the transaction that writes their message, so that is the oldest message
+delivered and unread. The reader's marked index gives their oldest mark in the
+topic. Each read stops at its first row, passing over only rows a cancelled
+subscription left pending or marks on the reader's own messages, so the cost
+does not grow with the topic, other topics, or what the reader has read.
+
+Schema version 18 adds each delivery's topic (copied on upgrade from its
+message) and that index, and drops what version 16 kept for the line's first
+form, which followed replies: each reader's reply horizon and the index of
+each message's replies. Nothing else read them. Stepping back to 17 drops the
+column and the index and works the horizons out again from the messages, so
+no record is lost and version 17 code finds its line as before.
+
+The page keeps the newest answer as said above. It draws the line under that
+message's card when the card is loaded. The line is text ("New"), with no
+message identity, in the alert colour, so nothing that looks for cards finds
+it. The page reads `topic_unread` again after each announced commit (beside
+its rails and marks, in the same reload), so the line follows reading live as
+it happens, in this page or any other; a repaint keeps the card the reader is
+looking at where it was.
 
 When that message is further back than the page has loaded, which is when the
 reader is most behind, the line sits at the bottom of what is loaded and reads
 "New · older below". There it is a button: pressing it, by pointer or
 keyboard, reads older pages one after another, as More does, until that
 message's card is loaded or no older page is left, and then gives that
-message the focus, with the line in its true place just below it. A read that
+message the focus, with the line in its true place just below it; once on
+screen the message is read, and the line moves on as reading moves it. A read that
 cannot go on (a review pending, or a refusal, which the page reports) ends it
 with the line still at the bottom. When no older page is left to read, there
 is nothing the button could load, so no line is drawn. A message among the

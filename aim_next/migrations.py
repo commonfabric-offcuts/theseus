@@ -14,6 +14,7 @@ from .topic_state import (ASK_WAIT_DOWN, ASK_WAIT_OCCUPIED, ASK_WAIT_SCHEMA, TOP
 from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE_INTENT_SCHEMA,
                            MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA,
                            UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED, UNANSWERED_SCHEMA)
+from .delivery import DELIVERY_TOPIC_BACKFILL, DELIVERY_TOPIC_DOWN, DELIVERY_TOPIC_SCHEMA
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 from .work import WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
@@ -40,6 +41,13 @@ STEPS = (
     ("15", "16", UNANSWERED_SCHEMA + UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED),
     # Version 17 keeps the color each person chose for an agent.
     ("16", "17", COLOR_SCHEMA, COLOR_DOWN, COLOR_OCCUPIED),
+    # Version 18 places the New line by what each reader has read: it keeps each
+    # delivery's topic and indexes the pending ones by reader and topic, and
+    # drops the reply horizons and reply index, which nothing else reads. Both
+    # are worked out from the messages, so stepping back loses no record and
+    # works the horizons out again.
+    ("17", "18", UNANSWERED_DOWN + tuple(DELIVERY_TOPIC_SCHEMA + DELIVERY_TOPIC_BACKFILL),
+     DELIVERY_TOPIC_DOWN + tuple(UNANSWERED_SCHEMA + UNANSWERED_BACKFILL), "SELECT 0"),
 )
 
 

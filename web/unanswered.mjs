@@ -1,17 +1,18 @@
 // The red "New" line in a topic: just below the oldest message the reader has
-// not replied to (docs/attention.md, "Not yet replied to"). Messages are
-// newest first, so the line sits under that message's card, with every message
-// it has not answered above it.
+// not read (docs/attention.md, "The New line"). Messages are newest first, so
+// the line sits under that message's card, with every message newer than it
+// above.
 const integer = n => Number.isSafeInteger(n) && n >= 1;
 
-// What a topic_messages answer says of the boundary: {seq, id}, null when the
-// reader has replied to everything, or undefined from a server that does not say.
-export function unansweredOf(answer) {
-  if (!Object.hasOwn(answer, 'unanswered')) return undefined;
-  const value = answer.unanswered;
-  if (value !== null && !(value && integer(value.seq) && typeof value.id === 'string' && value.id))
-    throw Object.assign(Error('The unanswered boundary is malformed.'), { code: 'INVALID_FRESHNESS_VIEW' });
-  return value;
+// What a topic_messages or topic_unread answer says of the line: {value, at},
+// value the oldest unread message ({seq, id}, or null when everything is read)
+// and at the commit the answer reflects; undefined from a server that does not say.
+export function oldestUnreadOf(answer) {
+  if (!Object.hasOwn(answer, 'oldest_unread')) return undefined;
+  const value = answer.oldest_unread, at = answer.commit_seq;
+  if (value !== null && !(value && integer(value.seq) && typeof value.id === 'string' && value.id) || !Number.isSafeInteger(at) || at < 0)
+    throw Object.assign(Error('The oldest unread message is malformed.'), { code: 'INVALID_FRESHNESS_VIEW' });
+  return { value, at };
 }
 
 // Puts the line just below the card of message seq, or takes it away when
@@ -37,11 +38,11 @@ export function placeNewLine(list, seq, doc = document, loadOlder) {
   if (!line && kind === 'new') {
     line = doc.createElement('div');
     line.className = 'new-line'; line.dataset.line = 'new'; line.textContent = 'New';
-    line.title = 'Just above: the oldest message you have not replied to';
+    line.title = 'Just above: the oldest message you have not read';
   } else if (!line) {
     line = doc.createElement('button');
     line.type = 'button'; line.className = 'new-line new-line-older'; line.dataset.line = 'older'; line.textContent = 'New · older below';
-    line.title = 'The oldest message you have not replied to is further back: press to load it';
+    line.title = 'The oldest message you have not read is further back: press to load it';
   }
   if (kind === 'older') line.onclick = () => loadOlder();
   const next = card ? cards[cards.indexOf(card) + 1] ?? null : null;
