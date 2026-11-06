@@ -886,18 +886,19 @@ def tailnet_authority(origin):
 
 
 def runner_gone(store_factory, emit):
-    """What the live feed calls when the runner process it watched ends: tell Core at once, and say what Core answered."""
+    """What the live feed calls when the runner process it watched ends: tell Core at once, say what Core answered, and return whether it did."""
     from .runner import RunnerError
     from .contract import StoreError
 
     def gone(pid):
         try:
-            record = store_factory().record_runner_exit(pid, None)
+            record, answered = store_factory().record_runner_exit(pid, None), True
         except (AuthorityError, StoreError, RunnerError) as error:
             # Could not record is not "did not hold the role": say which.
             code = getattr(error, "code", None)
-            record = {"status": "unrecorded", "code": code if isinstance(code, str) else type(error).__name__}
+            record, answered = {"status": "unrecorded", "code": code if isinstance(code, str) else type(error).__name__}, False
         emit({"event": "runner_gone", "pid": pid, "record": record})
+        return answered
     return gone
 
 

@@ -147,8 +147,13 @@ reaches every open page, which says so. The supervisor's own account of the
 same process may follow; it names how (`killed`, `failed`, ...), keeps
 `ended_ms`, and is `recorded`, so the supervisor still brings the runner back.
 Once a runner is no longer running (stopped, paused, or its end recorded) the
-server forgets its pid, so a clean stop is never said to have ended. The
-server writes one `runner_gone` JSON line to stderr with Core's answer. A
+server forgets its pid, so a clean stop is never said to have ended; an exit
+is acted on by the read after it, so a stop committed just before it is seen
+first. The server writes one `runner_gone` JSON line to stderr with Core's
+answer. When Core could not take the account (`unrecorded`, for instance
+`DATABASE_BUSY` while another writer held the lock past the store's wait), the
+next commit's read finds the pid still recorded as running and gone, and the
+server tells Core again; there is no timer. A
 runner that is alive but stops renewing has no process event; it is known gone
 when its lease ends, on the next read. Proof: `tests/test_http_live.py`,
 `tests/test_runner_exit.py`.

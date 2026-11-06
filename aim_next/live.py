@@ -43,7 +43,11 @@ class LiveFeed:
     process ends, or is already gone when first seen, it calls runner_gone(pid)
     from this thread, so whoever must be told that wakes stopped is told at
     once, with no clock involved. Core decides whether that pid still held the
-    role.
+    role. An exit is acted on by the read that follows it, so a commit that
+    came with it (the runner's own clean stop) is seen first. runner_gone
+    returns whether Core answered; when it did not (a writer held the lock past
+    the store's wait), the pid is forgotten, and the read after the next commit
+    finds it still recorded as running, and gone, and says so again.
     """
 
     def __init__(self, db_path, companions=(), max_streams=8, runner_gone=None):
@@ -128,12 +132,13 @@ class LiveFeed:
                 result = self.watch.wait(None)
                 if self.stop_read in result["readable"]:
                     break
-                if self.runner_pid in result["exited"] and not self._runner_ended(self.runner_pid):
-                    break
                 if self.watch.companion_moved:
                     reason = "binding_changed"
                     break
-                dirty = result["dirty"]
+                exited = self.runner_pid in result["exited"]
+                if exited:
+                    self.runner_pid = None
+                dirty = result["dirty"] or exited
         except WatchError:
             reason = "database_moved"
         except (sqlite3.Error, StoreError, ValueError, OSError):
@@ -174,11 +179,13 @@ class LiveFeed:
                 return False
             self.reading = True
         try:
-            self.runner_gone(pid)
+            answered = self.runner_gone(pid)
         finally:
             with self.lock:
                 self.reading = False
                 stopped = self.stopped
+        if not answered:
+            self.runner_pid = None
         return not stopped
 
     def _wake_all(self):
