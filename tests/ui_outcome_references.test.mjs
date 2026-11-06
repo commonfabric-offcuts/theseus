@@ -183,7 +183,11 @@ test('the Notebook pages sit in the sidebar beside the topics, with the failure 
   assert.ok(section, 'the Notebook is in the sidebar');
   assert.doesNotMatch(main, /outcome-references/, 'and no longer a closed line above the topic');
   assert.ok(rail.indexOf('id="outcome-references"') > rail.indexOf('id="topic-navigation"'), 'after the topics');
-  assert.match(section, /<h2 id="notebook-heading">Notebook<\/h2>/);
+  // Named for the outcome, so neither eyes nor a screen reader take it for the topic's own Notebook.
+  assert.match(section, /<h2 id="notebook-heading">Outcome Notebook<\/h2>/);
+  const topicNotebook = /<section id="notebook"[^>]*>[\s\S]*?<h2>([^<]*)<\/h2>/.exec(main)?.[1];
+  const headings = [...html.matchAll(/<h2[^>]*>([^<]*)<\/h2>/g)].map(match => match[1]);
+  assert.equal(headings.filter(text => text === topicNotebook).length, 1, 'one heading of each name: ' + headings);
   assert.doesNotMatch(section, /<details/);
   assert.ok(section.indexOf('id="outcome-references-status"') < section.indexOf('id="outcome-references-list"'));
   const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');

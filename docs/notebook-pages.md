@@ -31,7 +31,8 @@ page look changed again.
 ## The sidebar
 
 On a topic's page the sidebar lists the outcome's Notebook pages under the
-heading Notebook, below its topics: one row per page, by title, as tall as
+heading Outcome Notebook, below its topics (named for the outcome, so it is
+not taken for the topic's own Notebook in the page beside it): one row per page, by title, as tall as
 a topic row and in the same column, opening the page in the Reader. On a
 phone the rows scroll sideways, as topics do. An outcome with no pages, or
 one the reader cannot list, shows no Notebook section; a read that fails
