@@ -161,7 +161,7 @@ class ReaderIntegrityCase(MediaCase):
         self.participation("other-reader", True)
         key = "rollback-send"
         self.committed(self.command("draft.save", {"source_ref": self.opening, "topic_id": "t1",
-            "generation": "gA", "body": "No partial indexed message", "addressees": ["owner", "other-reader"]},
+            "generation": "gA", "body": "No partial indexed message", "addressees": ["owner", "other-reader"], "intent": "tell"},
             target={"draft_id": key}, expected={"draft_revision": 0}))
         self.committed(self.prepare(key, "t1", submission=key, send_op=key))
         before = self.records()

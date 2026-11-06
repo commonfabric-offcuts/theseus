@@ -15,7 +15,7 @@ class ReplyPathCase(ReaderCase):
     def prepare_reply(self, addressees, actor="owner", source=None, topic="t1", opening=None):
         args = dict(source_ref=source or self.opening, topic_id=topic,
                     generation="gA", body="Exact A", attachments=[], quotes=[],
-                    addressees=addressees)
+                    addressees=addressees, **({"intent": "tell"} if addressees else {}))
         if opening is not None:
             args["opening"] = opening
         self.committed(self.command("draft.save", args, target={"draft_id": "reply"},
@@ -71,7 +71,7 @@ class ReplyPathCase(ReaderCase):
         self.ready()
         self.committed(self.command("draft.save", dict(source_ref=self.opening, topic_id="t1",
             generation="gA", body="Exact A", attachments=[{"id": "media-one"}],
-            quotes=[{"source": self.opening, "excerpt": "Opening message"}], addressees=["outsider"]),
+            quotes=[{"source": self.opening, "excerpt": "Opening message"}], addressees=["outsider"], intent="tell"),
             target={"draft_id": "reply"}, expected={"draft_revision": 0}))
         prepared = self.committed(self.prepare("reply", "t1", submission="frozen", send_op="send-A"))
         next_draft = prepared["next_draft"]
@@ -109,7 +109,7 @@ class ReplyPathCase(ReaderCase):
         self.committed(self.prepare("second", "t2", submission="second", send_op="second-send"))
         opened = self.committed(self.command("topic.create_and_send", {"submission_id": "second"}, target={"topic_id": "t2"}, op="second-send"))
         self.committed(self.command("draft.save", dict(source_ref={"kind": "message", "id": opened["message_id"]}, topic_id="t2",
-            generation="g", body="Request", addressees=["agent-a"]), target={"draft_id": "third"}, expected={"draft_revision": 0}))
+            generation="g", body="Request", addressees=["agent-a"], intent="tell"), target={"draft_id": "third"}, expected={"draft_revision": 0}))
         self.committed(self.prepare("third", "t2", submission="third", send_op="third-send"))
         self.committed(self.command("message.send", {"submission_id": "third"}, target={"topic_id": "t2"}, op="third-send"))
 

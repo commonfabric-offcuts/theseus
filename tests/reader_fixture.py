@@ -51,7 +51,7 @@ class ReaderCase(unittest.TestCase):
                 "kind": kind, "target": target,
                 "expected": dict(expected or {}, authority=dict(self.pin)), "args": args}
 
-    def send(self, body, addressees=None, quotes=None, attachments=None):
+    def send(self, body, addressees=None, quotes=None, attachments=None, intent=None):
         # A distinct source for each reply avoids manufacturing duplicate
         # private editors for the same actor/source/destination key.
         source = {"kind": "message", "id": self.sql(
@@ -60,6 +60,9 @@ class ReaderCase(unittest.TestCase):
         self.committed(self.command("draft.save", {
             "source_ref": source, "topic_id": "t1", "generation": "gA", "body": body,
             "attachments": attachments or [], "quotes": quotes or [], "addressees": addressees or [],
+            # A message to someone tells them unless the case says otherwise, as
+            # the person's page says for them.
+            **({"intent": intent or "tell"} if addressees or intent else {}),
         }, target={"draft_id": key}, expected={"draft_revision": 0}))
         self.committed(self.prepare(key, "t1", submission=key, send_op=key + "-send"))
         receipt = self.command("message.send", {"submission_id": key},

@@ -11,8 +11,11 @@ topic, acknowledge, and wait for the next change without polling.
 One act that carries its content, for a topic that already exists.
 
 - `target`: `{topic_id}`. `expected`: `{}` beyond the captured authority.
-- `args`: `{body, attachments, addressees, reply_to, quotes}`. `body` is
-  required. The others are optional and default to empty or absent.
+- `args`: `{body, attachments, addressees, intent, reply_to, quotes}`. `body`
+  is required. The others are optional and default to empty or absent, except
+  that a message naming addressees says whether it asks or tells them:
+  `intent` is `"ask"` or `"tell"`, and without it the post is refused,
+  unrecorded, as `INTENT_REQUIRED` (see [agent-cli.md](agent-cli.md#asking-and-telling)).
   Attachments must already be ready media owned by the actor.
 - It runs the same publication helper as a prepared send and
   `opening.publish`: the same access, quote, addressee, reply-path and
@@ -25,7 +28,9 @@ One act that carries its content, for a topic that already exists.
   destination topic is a recorded `INVALID_REPLY`.
 
 Prepared sends (`draft.save`, `submission.prepare`, `message.send`) remain
-for clients that keep private drafts.
+for clients that keep private drafts. A prepared message to someone carries
+`intent` in its saved writing the same way, or its send is refused with
+`INTENT_REQUIRED`.
 
 ### Which message a reply answers
 
@@ -145,8 +150,8 @@ output; the exit codes are those of `command`.
   time, so none is printed. It does not acknowledge anything.
 - `inbox`: pending deliveries, oldest first, with topic, author, sequence
   and a preview.
-- `post TOPIC [--to A,B] [--reply-to MESSAGE] (TEXT | -)`: sends a
-  `message.post`.
+- `post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] (TEXT | -)`:
+  sends a `message.post`; `--to`, which says neither, is refused.
 - `start OUTCOME --title TITLE [--with A,B] (TEXT | -)`: starts a topic
   through `opening.save` and `opening.publish`. If the save is not confirmed
   (busy, interrupted, a lost answer or an unsaved receipt), stderr names the

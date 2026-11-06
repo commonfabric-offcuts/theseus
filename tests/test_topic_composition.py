@@ -77,7 +77,7 @@ class TopicCompositionCase(ReaderCase):
         topics = self.sql("SELECT id FROM topics ORDER BY id")
         participants = self.sql("SELECT * FROM topic_participants ORDER BY rowid")
         public = self.public_state()
-        self.committed(self.save(body="", attachments=[{"id": "composition-media"}], addressees=["agent-b"]))
+        self.committed(self.save(body="", attachments=[{"id": "composition-media"}], addressees=["agent-b"], intent="tell"))
         state = self.state()
         self.assertEqual(state["draft"]["source_ref"], self.ref)
         self.assertEqual(state["draft"]["caret"], {"start": 4, "end": 4})

@@ -80,7 +80,7 @@ class AgentCLIBase(fixtures.ReaderCase):
         save = self.envelope("draft.save", {"draft_id": "cli-reply"}, {
             "source_ref": self.opening, "topic_id": "t1", "generation": "original-generation",
             "body": body, "attachments": [], "quotes": [{"source": self.opening, "excerpt": "Opening message"}],
-            "addressees": ["owner"], "reply_to": self.opening["id"]},
+            "addressees": ["owner"], "intent": "tell", "reply_to": self.opening["id"]},
             {"draft_revision": 0}, op="cli-save")
         prepare = self.envelope("submission.prepare", {"topic_id": "t1"}, {
             "draft_id": "cli-reply", "submission_id": "cli-frozen", "send_operation_id": "cli-send"},
@@ -627,7 +627,7 @@ class AgentCLICase(AgentCLIBase):
         namespace = {}
         exec(compile(blocks[0], str(documentation), "exec"), namespace)
         output = namespace["agent_example"](root / "bin" / "aim-next", self.profiles["agent-a"],
-            Path(self.temp.name) / "example-requests", selected, "doc-act", "Exact documented reply", ["owner"])
+            Path(self.temp.name) / "example-requests", selected, "doc-act", "Exact documented reply", ["owner"], "tell")
         self.assertTrue(output["exits"])
         self.assertTrue(all(code == 0 for code in output["exits"].values()), output["exits"])
         self.assertEqual(output["selected"]["source_ref"], selected)
@@ -637,6 +637,7 @@ class AgentCLICase(AgentCLIBase):
         self.assertEqual(message["body"], "Exact documented reply")
         self.assertEqual(message["quotes"], [{"source": selected, "excerpt": "Selected revision one"}])
         self.assertEqual(message["addressees"], ["owner"])
+        self.assertEqual(message["intent"], "tell")
         self.assertTrue(output["pending_before_ack"]["items"])
         self.assertEqual(output["ack"]["operation_id"], "doc-act-ack")
         self.assertEqual(output["sent"]["operation_id"], "doc-act-send")

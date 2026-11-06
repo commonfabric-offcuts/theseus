@@ -380,7 +380,9 @@ def main():
             command("draft.save", operation + "-save", dict({
                 "source_ref": sources[0], "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
-                **({"intent": request["intent"]} if request.get("intent") else {})),
+                # An agent's message to someone says ask or tell; a case that names
+                # no intent tells.
+                **({"intent": request.get("intent") or "tell"} if request.get("addressees") or request.get("intent") else {})),
                 {"draft_id": draft["id"]}, {"draft_revision": draft["revision"]}, sender=sender)
             command("submission.prepare", operation + "-prepare", {
                 "draft_id": draft["id"], "submission_id": operation + "-submission",
@@ -473,7 +475,7 @@ def main():
                             "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
                             "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
                             "attachments": [{"id": media_id}],
-                            "addressees": [actor], "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
+                            "addressees": [actor], "intent": "tell", "opening": {"workspace_id": workspace, "title": "Elsewhere topic", "participants": [actor]}},
                             {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
                         command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
                                                                            "send_operation_id": prefix + "-send"},

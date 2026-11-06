@@ -48,7 +48,7 @@ class RecoveryCase(StoreCase):
     def test_explicit_disabled_addressee_still_refuses_the_entire_send(self):
         source = self.create_topic()
         saved = self.command("draft.save", {"source_ref": source, "topic_id": "t1", "body": "Explicit A",
-                             "generation": "gA", "addressees": ["agent-a"], "quotes": [], "attachments": []},
+                             "generation": "gA", "addressees": ["agent-a"], "intent": "tell", "quotes": [], "attachments": []},
                              target={"draft_id": "d1"}, expected={"draft_revision": 0})
         self.assertEqual(saved["status"], "committed")
         self.prepare("d1", "t1")

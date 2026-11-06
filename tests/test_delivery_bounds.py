@@ -107,7 +107,7 @@ class DeliveryBoundsCase(DeliveryCase):
         # Use a real send for the arrival. The latest fixture source belongs to
         # another topic, so choose the last real message on t1 explicitly.
         source = {"kind": "message", "id": self.sql("SELECT id FROM messages WHERE topic_id='t1' ORDER BY seq DESC LIMIT 1")[0][0]}
-        saved = self.command("draft.save", {"source_ref": source, "topic_id": "t1", "body": "New early-group work", "generation": "gA", "addressees": ["agent-a"]}, target={"draft_id": "restart"}, expected={"draft_revision": 0})
+        saved = self.command("draft.save", {"source_ref": source, "topic_id": "t1", "body": "New early-group work", "generation": "gA", "addressees": ["agent-a"], "intent": "tell"}, target={"draft_id": "restart"}, expected={"draft_revision": 0})
         self.assertEqual(saved["status"], "committed", saved)
         self.prepare("restart", "t1", submission="restart", send_op="restart-send")
         sent = self.command("message.send", {"submission_id": "restart"}, target={"topic_id": "t1"}, op="restart-send")

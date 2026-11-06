@@ -52,8 +52,10 @@ class AskOrTellCase(fixtures.ReaderCase):
                 self.rejected(self.post({"addressees": ["owner"], "intent": intent}), "INVALID_ARGUMENT")
         self.assertEqual(self.public_state(), before)
 
-    def test_a_composer_message_to_someone_tells_unless_it_says_it_asks(self):
-        told = self.send("Composed for agent-a", addressees=["agent-a"])
+    def test_a_prepared_message_to_someone_says_whether_it_asks_or_tells_or_is_refused(self):
+        # The composer path holds the same rule as message.post: the sender
+        # says ask or tell. Tony's page says tell for him unless he ticks Ask.
+        told = self.send("Composed for agent-a", addressees=["agent-a"], intent="tell")
         self.assertEqual(self.latest(), (told["id"], "owner", '["agent-a"]', "tell"))
         unaddressed = self.send("Composed for the topic")
         self.assertEqual(self.latest(), (unaddressed["id"], "owner", "[]", None))
@@ -73,6 +75,17 @@ class AskOrTellCase(fixtures.ReaderCase):
         self.rejected(self.command("draft.save", {"source_ref": {"kind": "message", "id": sent["message_id"]}, "topic_id": "t1", "generation": "gA", "body": "x",
                                                   "attachments": [], "quotes": [], "addressees": [], "intent": "maybe"},
                                    target={"draft_id": "unsure"}, expected={"draft_revision": 0}), "INVALID_ARGUMENT")
+        # Saved and prepared naming someone but saying neither: the send is refused.
+        source = {"kind": "message", "id": sent["message_id"]}
+        self.committed(self.command("draft.save", {"source_ref": source, "topic_id": "t1", "generation": "gA",
+                                                    "body": "Saying neither", "attachments": [], "quotes": [], "addressees": ["agent-a"]},
+                                    target={"draft_id": "neither"}, expected={"draft_revision": 0}))
+        self.committed(self.prepare("neither", "t1", submission="neither", send_op="neither-send"))
+        before = self.public_state()
+        receipt = self.command("message.send", {"submission_id": "neither"}, target={"topic_id": "t1"}, op="neither-send")
+        self.rejected(receipt, "INTENT_REQUIRED")
+        self.assertIs(receipt["recorded"], False)
+        self.assertEqual(self.public_state(), before, "nothing was sent")
 
 
 class AskWaitsCase(AskOrTellCase):

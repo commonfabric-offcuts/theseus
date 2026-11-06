@@ -210,7 +210,7 @@ class StoreCase(unittest.TestCase):
     def test_removal_cancels_subscription_reason_without_erasing_addressed_reason(self):
         source = self.create_topic()
         saved = self.command("draft.save", {"source_ref": source, "topic_id": "t1", "body": "Directed too",
-                             "generation": "gA", "addressees": ["agent-a"], "attachments": [], "quotes": []},
+                             "generation": "gA", "addressees": ["agent-a"], "intent": "tell", "attachments": [], "quotes": []},
                              target={"draft_id": "d1"}, expected={"draft_revision": 0})
         self.assertEqual(saved["status"], "committed", saved)
         self.prepare("d1", "t1")

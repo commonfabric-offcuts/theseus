@@ -59,7 +59,7 @@ import os
 import subprocess
 
 
-def agent_example(cli, profile, request_directory, selected_ref, operation_prefix, reply_text, addressees):
+def agent_example(cli, profile, request_directory, selected_ref, operation_prefix, reply_text, addressees, intent):
     directory = Path(request_directory)
     directory.mkdir(mode=0o700, exist_ok=False)
     base = ["/usr/bin/python3", "-I", str(cli), "--profile", str(profile)]
@@ -108,7 +108,7 @@ def agent_example(cli, profile, request_directory, selected_ref, operation_prefi
     command("save", "draft.save", {"draft_id": draft}, {"source_ref": selected_ref,
         "topic_id": topic, "generation": operation_prefix + "-generation", "body": reply_text,
         "attachments": [], "quotes": [{"source": selected_ref, "excerpt": selected["body"]}],
-        "addressees": sent_to, "reply_to": delivered["source_ref"]["id"]}, {"draft_revision": 0})
+        "addressees": sent_to, "intent": intent, "reply_to": delivered["source_ref"]["id"]}, {"draft_revision": 0})
     command("prepare", "submission.prepare", {"topic_id": topic}, {"draft_id": draft,
         "submission_id": submission, "send_operation_id": operation_prefix + "-send"}, {"draft_revision": 1})
     sent = command("send", "message.send", {"topic_id": topic}, {"submission_id": submission})
@@ -122,7 +122,7 @@ def agent_example(cli, profile, request_directory, selected_ref, operation_prefi
             "delivery": delivery, "exits": exits, "pending_before_ack": pending}
 ```
 
-The example's source, recipient and text are explicit caller choices. Stored
+The example's source, recipients, whether it asks or tells them, and text are explicit caller choices. Stored
 quotes remain separate from addressees. A later Notebook revision does not
 replace the selected one. `delivery.ack` settles only the named incoming
 delivery; it does not mean the topic is complete or that a wake was accepted.
@@ -206,9 +206,12 @@ the topic; `topics` shows it as "asked owner since 2026-11-05 22:10", and the
 asked person's `attention` lists it (see [attention.md](attention.md#asked-and-waited-on)).
 Any message you write in a topic answers what was asked of you there.
 
-Writing saved with `draft.save` may carry `intent` as well; the composer path
-(`submission.prepare`, `message.send`) sends an addressed message without one
-as a tell, so a person's message asks only when they say so.
+Writing saved with `draft.save` carries `intent` the same way, and the
+prepared send (`submission.prepare`, then `message.send`) holds the same rule:
+a prepared message that names someone without an intent is refused, unrecorded,
+with `INTENT_REQUIRED`, and nothing is sent; save the writing again with
+`intent` and prepare it again. Tony's page says it for him: a reply is a tell
+unless he ticks Ask.
 
 ## Openings and membership
 

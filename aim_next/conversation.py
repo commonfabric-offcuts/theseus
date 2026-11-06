@@ -38,7 +38,7 @@ MESSAGE_INTENT_DOWN = ("ALTER TABLE messages DROP COLUMN intent",)
 MESSAGE_INTENT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM messages WHERE intent IS NOT NULL)"
 INTENTS = ("ask", "tell")
 INTENT_REQUIRED = ("A message to someone says whether it asks or tells: post with --asks NAMES or --tells NAMES "
-                   "(message.post args.intent \"ask\" or \"tell\"); nothing was sent")
+                   "(args.intent \"ask\" or \"tell\" on message.post or draft.save); nothing was sent")
 
 
 # Version 16 finds what a reader has not replied to. Each reader's horizon in
@@ -171,10 +171,8 @@ class Conversation:
                 raise Refusal("INVALID_ARGUMENT", "The opening belongs to a different workspace")
             self._open_topic(db, actor, topic_id, workspace_id, creation.get("title", ""), creation.get("participants", []),
                              Refusal("INVALID_ARGUMENT", "A topic needs a title"))
-        # Writing from a composer that does not ask is a tell: a person's message
-        # to someone asks only when they say so.
-        if snapshot["addressees"] and snapshot.get("intent") is None:
-            snapshot["intent"] = "tell"
+        # A prepared message to someone says whether it asks or tells, as a post
+        # does: _publish refuses it, unrecorded, when the writing said neither.
         # Writing about a message in the topic it goes to answers that message,
         # quoted or not. The frozen source names it, so every send of it does.
         source = snapshot["source_ref"]

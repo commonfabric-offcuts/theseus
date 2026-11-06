@@ -101,9 +101,28 @@ test('an old autosave acknowledgement does not mark newer writing as saved', () 
   assert.equal(editor.draft.revision, 8);
 });
 
-test('an in-flight save acknowledges frozen A before prepare without touching live B', () => {
+test('Send says tell for a reply that names someone and said neither, so a save without it does not stand for A', () => {
   const editor = fresh();
   editor.edit({ body: 'Reply A ready' });
+  const ticket = editor.saveTicket('save-A-8');
+  const a = editor.beginPrepare(ids);
+  assert.equal(a.snapshot.intent, 'tell', 'the page chooses tell for the person');
+  assert.equal(Object.hasOwn(editor.draft, 'intent'), false, 'the next reply starts without saying either');
+  const receipt = { instance_id: 'new1', operation_id: 'save-A-8', kind: 'draft.save',
+    status: 'committed', recorded: true, result: { draft_id: 'd1', draft_revision: 8, generation: 'gA' } };
+  editor.acceptSave(ticket, receipt);
+  assert.ok(a.savedVersion < a.localVersion, 'A is saved again, with its tell, before it is prepared');
+  for (const [named, intent, expected] of [[['fixture-agent'], 'ask', 'ask'], [[], undefined, undefined]]) {
+    const other = fresh();
+    other.edit({ body: 'Another', addressees: named, ...(intent ? { intent } : {}) });
+    assert.equal(other.beginPrepare(ids).snapshot.intent, expected, 'an ask stays an ask; a message to nobody says neither');
+  }
+});
+
+test('an in-flight save acknowledges frozen A before prepare without touching live B', () => {
+  const editor = fresh();
+  // A says it tells the agent it names, so Send adds nothing to it.
+  editor.edit({ body: 'Reply A ready', intent: 'tell' });
   const ticket = editor.saveTicket('save-A-8');
   const a = editor.beginPrepare(ids);
   editor.edit({ body: 'New B while A saves', attachments: [{ id: 'image-b' }] });

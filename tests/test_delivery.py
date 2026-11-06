@@ -14,7 +14,9 @@ class DeliveryCase(StoreCase):
         serial = self.serial + 1
         source = {"kind": "message", "id": self.sql("SELECT id FROM messages ORDER BY seq DESC LIMIT 1")[0][0]}
         saved = self.command("draft.save", {"source_ref": source, "topic_id": "t1", "body": body,
-            "generation": "gA", "addressees": addressees or [], "attachments": [], "quotes": []},
+            "generation": "gA", "addressees": addressees or [], "attachments": [], "quotes": [],
+            # A message to someone says it tells them, as the person's page says for them.
+            **({"intent": "tell"} if addressees else {})},
             target={"draft_id": "d%s" % serial}, expected={"draft_revision": 0})
         self.assertEqual(saved["status"], "committed", saved)
         submission, operation = "s%s" % serial, "send%s" % serial
