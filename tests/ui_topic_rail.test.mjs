@@ -129,7 +129,8 @@ test('a row drawn again with what it already shows is left alone, and one whose 
   assert.equal(link.children.at(-2).textContent, '3');
   // Each thing a row shows, changed alone, draws it anew.
   const base = { ...counted('a', 3), state: 'waiting', waiting_on: ['x'] };
-  for (const change of [{ state: 'done' }, { waiting_on: ['y'] }, { state_note: 'note' }, { addressed: 1 }, { title: 'A' }]) {
+  for (const change of [{ state: 'done' }, { waiting_on: ['y'] }, { asks: [{ actor_id: 'y', message_id: 'm1', by: 'x', since_ms: 1 }] },
+    { state_note: 'note' }, { addressed: 1 }, { title: 'A' }]) {
     f.queue.push({ instance_id: 'i1', items: [base, f.item('z')], next_cursor: null }); await f.rail.load();
     const before = [...link.children];
     f.queue.push({ instance_id: 'i1', items: [{ ...base, ...change }, f.item('z')], next_cursor: null }); await f.rail.load();

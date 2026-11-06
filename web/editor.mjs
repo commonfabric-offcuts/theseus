@@ -91,7 +91,7 @@ export class Editor {
 
   edit(patch) {
     // Only writing fields may be changed by user input, never its identity.
-    for (const field of ['body', 'attachments', 'quotes', 'addressees', 'caret']) {
+    for (const field of ['body', 'attachments', 'quotes', 'addressees', 'intent', 'caret']) {
       if (Object.hasOwn(patch, field)) this.draft[field] = copy(patch[field]);
     }
     this.localVersion += 1;

@@ -28,7 +28,8 @@ function reader(t, { admits, writes }) {
   const context = { instanceId: 'reader-step', actor: 'fixture-person', sourceRef: { kind: 'message', id: 'm1' }, topicId: 't1' };
   const reply = new Editor({ ...context, kind: 'reply' }, { id: 'reply', revision: 1, generation: 'g1', body: '' });
   const note = new Editor({ ...context, kind: 'note' }, { id: 'note', revision: 1, body: 'A private note' });
-  const elements = { 'reader-notice': new Element('p'), 'recipient-input': new Element('input'), 'recipient-chips': Object.assign(new Element('div'), { root: true }) };
+  const elements = { 'reader-notice': new Element('p'), 'recipient-input': new Element('input'), 'recipient-chips': Object.assign(new Element('div'), { root: true }),
+    'ask-choice': new Element('label'), 'ask-toggle': new Element('input') };
   const acts = [], inserted = [];
   const r = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply, note }, mode: 'reply', presentation: {}, source: { source_ref: context.sourceRef, body: 'Quoted passage' },
@@ -53,6 +54,28 @@ test('while a step waits, recipients and quotes reach the Reader\'s writing', t 
   assert.deepEqual(f.inserted, ['> Quoted passage\n\n'], 'the quote is written');
   assert.deepEqual(f.acts, [['edit', 'reply'], ['edit', 'reply']], 'each change is kept as it lands');
   assert.equal(f.notice(), '');
+});
+
+test('Ask shows once the reply names someone, marks the writing as asking, and goes with the last name', t => {
+  const f = reader(t, { admits: true, writes: true });
+  const choice = f.elements['ask-choice'], toggle = f.elements['ask-toggle'];
+  f.r.paintAsk();
+  assert.equal(choice.hidden, true, 'a reply to nobody offers no Ask');
+  f.r.setAsk(true);
+  assert.equal(Object.hasOwn(f.reply.draft, 'intent'), false, 'and cannot ask');
+  f.elements['recipient-input'].value = 'fable'; f.r.addRecipient();
+  assert.deepEqual([choice.hidden, toggle.checked], [false, false], 'a reply to someone tells unless Ask is on');
+  f.r.setAsk(true);
+  assert.deepEqual([f.reply.draft.intent, toggle.checked], ['ask', true]);
+  f.elements['recipient-input'].value = 'tony'; f.r.addRecipient();
+  f.elements['recipient-chips'].children[0].children.find(node => node.tag === 'button').onclick();
+  assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, toggle.checked], [['tony'], 'ask', true], 'Ask stays while someone is named');
+  f.r.setAsk(false);
+  assert.equal(f.reply.draft.intent, null, 'Ask off tells');
+  f.r.setAsk(true);
+  f.elements['recipient-chips'].children[0].children.find(node => node.tag === 'button').onclick();
+  assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, choice.hidden], [[], null, true], 'the last name taken away takes the ask with it');
+  assert.equal(f.acts.filter(([act]) => act === 'edit').length, 7, 'each change is kept as it lands');
 });
 
 test('while a step waits, sending and Save note wait and say why', async t => {

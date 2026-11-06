@@ -349,3 +349,38 @@ test('the waiting list names each topic, opens it, and hides when nothing waits'
   assert.deepEqual(opened, [['t9', 'Naming']]);
   assert.equal(host.find(node => node.tag === 'li').text, 'Naming Pick one — fable');
 });
+
+test('an open ask makes a topic wait on whoever it asks, whatever its state, and says since when', t => {
+  dom(t);
+  const since = new Date(2026, 10, 5, 7, 41).getTime(), asked = (actor_id, by = 'fable') => ({ actor_id, message_id: 'm-' + actor_id, by, since_ms: since });
+  assert.equal(stateLabel(topic({ asks: [asked('tony')] }), 'tony'), 'Waiting on you');
+  assert.equal(stateLabel(topic({ state: 'review', asks: [asked('codex')] }), 'tony'), 'Ready for review · waiting on codex');
+  // Someone both said and asked is named once; the reader still comes first.
+  assert.equal(stateLabel(topic({ state: 'waiting', waiting_on: ['codex'], asks: [asked('codex'), asked('tony')] }), 'tony'), 'Waiting on you, codex');
+  // A said list only counts while the topic is waiting, as before.
+  assert.equal(stateLabel(topic({ state: 'done', waiting_on: ['codex'] }), 'tony'), 'Done');
+  const host = new Element('a');
+  paintState(host, topic({ asks: [asked('tony')] }), 'tony');
+  const [mark] = host.children;
+  assert.deepEqual([mark.textContent, mark.dataset.state, mark.classes.has('mine'), mark.title],
+    ['Waiting on you', 'waiting', true, 'Waiting on you · fable asked you, since 7:41 AM Thu Nov 5']);
+  const other = new Element('a');
+  paintState(other, topic({ asks: [asked('codex')] }), 'tony');
+  assert.equal(other.children[0].classes.has('mine'), false);
+  const panel = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
+  panel.paint(topic({ state: 'review', asks: [asked('tony')] }), []);
+  assert.equal(panel.line.find(node => node.classes.has('ask-line')).textContent, ' · fable asked you, since 7:41 AM Thu Nov 5');
+  assert.equal(panel.line.find(node => node.classes.has('topic-state')).dataset.state, 'waiting');
+});
+
+test('the waiting list says who asked and since when, and leaves out a state it was not said in', t => {
+  dom(t);
+  const since = new Date(2026, 10, 5, 7, 41).getTime(), host = new Element('section');
+  paintWaiting(host, { waiting_on_me: 2, latest_waiting: [
+    { id: 't1', title: 'Asked', title_truncated: false, note: 'Someone else\'s note', state_by: 'codex', state_ms: null, said: false,
+      ask: { message_id: 'm1', by: 'fable', since_ms: since } },
+    { id: 't2', title: 'Both', title_truncated: false, note: 'Pick one', state_by: 'codex', state_ms: null, said: true,
+      ask: { message_id: 'm2', by: 'fable', since_ms: since } }] }, () => {});
+  assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text),
+    ['Asked fable asked you, since 7:41 AM Thu Nov 5', 'Both Pick one — codex · fable asked you, since 7:41 AM Thu Nov 5']);
+});

@@ -374,7 +374,8 @@ def main():
                 attached.append({"id": media_id})
             command("draft.save", operation + "-save", dict({
                 "source_ref": sources[0], "topic_id": topic_id, "generation": draft["generation"],
-                "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {})),
+                "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
+                **({"intent": request["intent"]} if request.get("intent") else {})),
                 {"draft_id": draft["id"]}, {"draft_revision": draft["revision"]}, sender=sender)
             command("submission.prepare", operation + "-prepare", {
                 "draft_id": draft["id"], "submission_id": operation + "-submission",

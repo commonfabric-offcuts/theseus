@@ -99,6 +99,13 @@ said wait) and add `asks`: `[{actor_id, message_id, by, since_ms}]`, one per
 person asked, in actor order. `workspace_topics` items carry both. A change of
 kind `waiting` reaches each person a topic starts or stops waiting on.
 
+In the web app a reply to someone tells them unless the writer ticks Ask,
+which shows in the Reader once the reply names someone and goes when the last
+name does. A topic row is marked "Waiting on …" while anyone is said or asked,
+whatever its state ("Ready for review · waiting on …" when it is ready), and
+the mark's title says who asked whom and since when. The "Waiting on you" list
+gives each topic's ask the same way and leaves out a state that was not said.
+
 Schema version 14 adds `messages.intent` and, on `topic_waiting`, `said`
 (1 for every row from before) and `ask_message_id`. Stepping back to 13 is
 refused while any message asks or tells or any row holds an ask.

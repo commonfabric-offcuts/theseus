@@ -282,3 +282,10 @@ test('no recheck runs between discovery reading its page and checking it', async
   assert.deepEqual(calls, ['r1', 'own', 'read', 'applied', 'r1']);
   assert.deepEqual(rechecks, [{ session, ids: ['r1'], kept: [] }]);
 });
+
+test('a saved copy whose reply asks or tells is recognized; one holding any other intent is not', () => {
+  const withIntent = intent => structuredClone({ ...acknowledgedRow, snapshot: { ...acknowledgedRow.snapshot,
+    draft: { ...acknowledgedRow.snapshot.draft, addressees: ['tony'], intent } } });
+  for (const intent of ['ask', 'tell', null]) assert.equal(eligible(withIntent(intent), context), true, String(intent));
+  for (const intent of ['maybe', 1]) assert.equal(eligible(withIntent(intent), context), false, String(intent));
+});

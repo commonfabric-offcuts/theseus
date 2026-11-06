@@ -210,7 +210,7 @@ export class TopicRail {
       }
       // A row drawn again with what it already shows is left alone, so the
       // pointer's hover and a click under way stay on what they were on.
-      const shows = JSON.stringify([item.title, item.unread, item.addressed, item.state, item.waiting_on, item.state_note]);
+      const shows = JSON.stringify([item.title, item.unread, item.addressed, item.state, item.waiting_on, item.asks, item.state_note]);
       if (drawn.get(link) !== shows) {
         drawn.set(link, shows);
         link.textContent = item.title;

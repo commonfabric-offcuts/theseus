@@ -39,7 +39,7 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
   const editor = { draft: { addressees: ['fable', 'stranger'] }, edit(patch) { Object.assign(this.draft, patch); } };
   const reader = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply: editor }, presentation: {}, admits: () => true,
-    $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id],
+    $: id => ({ 'recipient-chips': chips, 'recipient-input': input, 'ask-choice': new Element('label'), 'ask-toggle': new Element('input') })[id],
     callbacks: { edit() {}, reach: name => name === 'stranger' && !inTopic ? { reachable: false, add: async () => answer } : { reachable: true } },
   });
   const chip = name => chips.children.find(node => node.textContent === name);
@@ -79,7 +79,7 @@ test('a chip rebuilt while its add is out shows it still out, sends nothing more
   const reach = name => ({ reachable: false, scope, add: () => { adds++; return new Promise(resolve => { settle = resolve; }); } });
   const reader = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply: editor }, presentation: {}, admits: () => true,
-    $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id], callbacks: { edit() {}, reach },
+    $: id => ({ 'recipient-chips': chips, 'recipient-input': input, 'ask-choice': new Element('label'), 'ask-toggle': new Element('input') })[id], callbacks: { edit() {}, reach },
   });
   const offer = () => chips.children[0].children.find(node => node.textContent.startsWith('Add to topic'));
   const said = () => chips.children[0].children.find(node => node.className === 'reach-notice');

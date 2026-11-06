@@ -100,3 +100,5 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .message-card{position:relative}.unread-mark{display:inline-block;margin-left:.45rem;padding:0 .45rem;border-radius:1rem;background:color-mix(in srgb,var(--accent) 30%,transparent);color:var(--ink);font-size:.72rem;font-weight:650;line-height:1.4rem;vertical-align:middle}
 .topic-marks{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;margin:0 0 .75rem;color:var(--muted);font-size:.9rem}.topic-marks button{font-size:.85rem}
 #mark-unread[aria-pressed=true]{border-color:var(--accent);background:var(--soft)}
+/* Ask beside a reply's names: an asking reply waits on them until they write in the topic. */
+.ask-choice{display:inline-flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--muted)}.ask-choice[hidden]{display:none}

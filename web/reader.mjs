@@ -75,6 +75,7 @@ export class Reader {
     this.$('previous-message').onclick = () => this.step(-1);
     this.$('next-message').onclick = () => this.step(1);
     this.$('add-recipient').onclick = () => this.addRecipient();
+    this.$('ask-toggle').onchange = event => this.setAsk(event.target.checked);
     this.$('recipient-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
@@ -364,6 +365,7 @@ export class Reader {
     this.field.value = this.editor.draft.body;
     this.paintImages();
     this.paintRecipients();
+    this.paintAsk();
     this.paintStatus();
   }
 
@@ -374,8 +376,10 @@ export class Reader {
       const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
       remove.onclick = () => {
         if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
-        editor.edit({ addressees: editor.draft.addressees.filter(item => item !== name) });
-        this.callbacks.edit(editor); this.paintRecipients();
+        const rest = editor.draft.addressees.filter(item => item !== name);
+        // A message to nobody neither asks nor tells.
+        editor.edit({ addressees: rest, ...(rest.length ? {} : { intent: null }) });
+        this.callbacks.edit(editor); this.paintRecipients(); this.paintAsk();
       };
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));
@@ -389,10 +393,26 @@ export class Reader {
     if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return;
     if (!editor.draft.addressees.includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name] });
-      this.callbacks.edit(editor); this.paintRecipients();
+      this.callbacks.edit(editor); this.paintRecipients(); this.paintAsk();
     }
     input.value = '';
     input.focus();
+  }
+
+  // Your reply to someone tells them unless you say it asks: Ask makes the topic
+  // wait on them until they write in it. It shows once the reply names someone.
+  paintAsk() {
+    const editor = this.sessions?.reply, choice = this.$('ask-choice'), toggle = this.$('ask-toggle');
+    choice.hidden = this.mode === 'note' || !editor?.draft.addressees?.length;
+    toggle.checked = editor?.draft.intent === 'ask';
+    toggle.disabled = Boolean(this.field?.readOnly);
+  }
+
+  setAsk(asking) {
+    const editor = this.sessions?.reply;
+    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor) || !editor.draft.addressees?.length) { this.paintAsk(); return; }
+    editor.edit({ intent: asking ? 'ask' : null });
+    this.callbacks.edit(editor); this.paintAsk();
   }
 
   drawAttachments(host, attachments = []) {
@@ -449,6 +469,7 @@ export class Reader {
     this.field.readOnly = state.readOnly;
     this.$('recipient-input').disabled = this.field.readOnly;
     this.$('add-recipient').disabled = this.field.readOnly;
+    this.$('ask-toggle').disabled = this.field.readOnly;
     this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
     this.paintImages();
     this.paintOffer();
