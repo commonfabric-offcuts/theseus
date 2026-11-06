@@ -9,10 +9,16 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
-from tools import deploy
+from tools import deploy, release_check
 
 SHA = "c" * 40
 HEAD = "b" * 40
+
+
+def summary(commit=SHA, failed=()):
+    steps = [{"name": name, "exit": int(name in failed), "passed": name not in failed} for name in release_check.REQUIRED]
+    return {"tool": release_check.TOOL, "commit": commit, "tree_unchanged": True, "passed": not failed,
+            "required": list(release_check.REQUIRED), "steps": steps}
 
 
 class FakeHost:
@@ -73,6 +79,8 @@ class DeployCase(unittest.TestCase):
         self.config = deploy.load_config(self.config_path)
         self.evidence = base / "evidence"
         self.kills = []
+        self.summary = base / "summary.json"
+        self.summary.write_text(json.dumps(summary()))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -83,7 +91,7 @@ class DeployCase(unittest.TestCase):
                 mock.patch.object(deploy, "wait_exit", return_value="exited"), \
                 mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")), \
                 redirect_stdout(io.StringIO()):
-            deploy.deploy(self.config, sha, self.evidence, dry)
+            deploy.deploy(self.config, sha, self.evidence, self.summary, dry)
 
     def refused(self, host, dry=False, sha=SHA):
         with self.assertRaises(deploy.Refused) as caught:
@@ -135,7 +143,7 @@ class Refusals(DeployCase):
     def test_a_dry_run_reads_and_records_the_plan_and_changes_nothing(self):
         host = FakeHost(self.config)
         self.deploy(host, dry=True)
-        self.assertEqual(self.records(), ["00-plan", "01-live", "02-checkout"])
+        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout"])
         self.assertEqual(self.kills, [])
         self.assertEqual(host.ran("merge") + host.ran("migrate") + host.ran("-c"), [])
         live = json.loads((self.evidence / "01-live.json").read_text())
@@ -183,9 +191,55 @@ class Refusals(DeployCase):
     def test_main_exits_one_on_a_refusal(self):
         host = FakeHost(self.config, ff=False)
         with mock.patch.object(deploy, "run", host), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
-            code = deploy.main(["--config", str(self.config_path), SHA, str(self.evidence), "--dry-run"])
+            code = deploy.main(["--config", str(self.config_path), "--release-check", str(self.summary), SHA,
+                                str(self.evidence), "--dry-run"])
         self.assertEqual(code, 1)
         self.assertIn("refused:", err.getvalue())
+
+
+class ReleaseCheckGate(DeployCase):
+    def test_without_a_passed_release_check_for_the_commit_nothing_is_read_or_stopped(self):
+        cases = ((None, "no readable release-check summary"),
+                 (summary(failed=("native-colors",)), "native-colors failed"),
+                 (summary(commit="d" * 40), "ran on " + "d" * 40),
+                 (dict(summary(), passed=False), "did not pass"))
+        for written, reason in cases:
+            with self.subTest(reason):
+                if written is None:
+                    self.summary.unlink()
+                else:
+                    self.summary.write_text(json.dumps(written))
+                host = FakeHost(self.config)
+                self.assertIn(reason, self.refused(host))
+                self.assertEqual(host.calls, [])
+                self.assertEqual(self.kills, [])
+                self.assertEqual(self.records(), ["00-release-check"])
+                self.assertFalse(json.loads((self.evidence / "00-release-check.json").read_text())["passed"])
+
+    def test_a_passed_release_check_for_the_commit_lets_the_deploy_go_on(self):
+        host = FakeHost(self.config, ff=False)
+        self.assertIn("fast-forward", self.refused(host))
+        self.assertTrue(json.loads((self.evidence / "00-release-check.json").read_text())["passed"])
+        self.assertTrue(host.ran("ps"))
+
+    def test_a_dry_run_shows_the_plan_but_still_fails_without_a_passed_release_check(self):
+        self.summary.write_text(json.dumps(summary(failed=("node-units",))))
+        host = FakeHost(self.config)
+        self.assertIn("node-units failed", self.refused(host, dry=True))
+        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout"])
+        self.assertEqual(self.kills, [])
+
+    def test_only_a_full_commit_is_accepted(self):
+        host = FakeHost(self.config)
+        for sha in ("c" * 7, "C" * 40, "HEAD", ""):
+            with self.subTest(sha):
+                self.assertIn("full 40-character commit", self.refused(host, sha=sha))
+        self.assertEqual(host.calls, [])
+
+    def test_main_requires_the_release_check(self):
+        with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as caught:
+            deploy.main(["--config", str(self.config_path), SHA, str(self.evidence)])
+        self.assertEqual(caught.exception.code, 2)
 
 
 if __name__ == "__main__":

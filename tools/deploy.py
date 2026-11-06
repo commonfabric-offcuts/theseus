@@ -3,11 +3,14 @@ from __future__ import annotations
 
 """Deploy a reviewed Theseus commit to a live instance: stop, back up, fast-forward, migrate, restart.
 
-Usage: tools/deploy.py --config CONFIG.json SHA EVIDENCE_DIR [--dry-run]
+Usage: tools/deploy.py --config CONFIG.json --release-check SUMMARY.json SHA EVIDENCE_DIR [--dry-run]
 
-Every step writes its result to EVIDENCE_DIR; the
-first failure stops the run (exit 1). --dry-run reads the live processes and
-checkout and stops before changing anything. docs/tools.md describes the config.
+SHA is the full commit, and SUMMARY.json is tools/release_check.py's summary
+for exactly that commit; unless it passed, nothing is stopped or changed.
+Every step writes its result to EVIDENCE_DIR; the first failure stops the run
+(exit 1). --dry-run reads the live processes and checkout, stops before
+changing anything, and still exits 1 when the release check has not passed.
+docs/tools.md describes the config.
 """
 
 import collections
@@ -15,11 +18,17 @@ import datetime
 import json
 import os
 from pathlib import Path
+import re
 import select
 import subprocess
 import sys
 import urllib.error
 import urllib.request
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from tools import release_check
 
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
@@ -163,8 +172,15 @@ def recorded(config, kind):
             return json.loads((latest / name).read_text())["pid"]
 
 
-def deploy(config, sha, evidence, dry):
+def deploy(config, sha, evidence, summary, dry):
+    require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
     evidence.mkdir(parents=True, exist_ok=True)
+    # 0. The release check passed for exactly this commit, or nothing is touched.
+    reasons = release_check.verify_summary(summary, sha)
+    record(evidence, "00-release-check", {"summary": str(summary), "commit": sha, "passed": not reasons,
+                                          "reasons": reasons})
+    unchecked = "the release check has not passed for %s: %s" % (sha, "; ".join(reasons))
+    require(dry or not reasons, unchecked)
     server_args, runner_args = server_argv(config), runner_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
                                  "server": server_args, "runner": runner_args})
@@ -183,6 +199,7 @@ def deploy(config, sha, evidence, dry):
     record(evidence, "02-checkout", {"head": head, "target": sha, "tracked_changes": dirty, "fast_forward": ff})
     require(not dirty and ff, "the live checkout has tracked changes or %s is not a fast-forward of %s" % (sha, head))
     if dry:
+        require(not reasons, unchecked)
         return
 
     # 2. Stop the runner, then the server, by captured PID; wait on each exit event.
@@ -256,12 +273,13 @@ def main(argv=None):
     import argparse
     parser = argparse.ArgumentParser(description="Deploy a reviewed Theseus commit to a live instance.")
     parser.add_argument("--config", required=True)
+    parser.add_argument("--release-check", required=True, type=Path, help="the release check's summary.json")
     parser.add_argument("sha")
     parser.add_argument("evidence", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:
-        deploy(load_config(args.config), args.sha, args.evidence, args.dry_run)
+        deploy(load_config(args.config), args.sha, args.evidence, args.release_check, args.dry_run)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         return 1

@@ -51,10 +51,12 @@ For development, `tools/native.py --out DIR STEP [CASE_FILTER]` runs one native 
 ## Deploy: `tools/deploy.py`
 
 ```sh
-tools/deploy.py --config INSTANCE/deploy.json SHA EVIDENCE_DIR [--dry-run]
+tools/deploy.py --config INSTANCE/deploy.json --release-check EVIDENCE/release-SHA/summary.json SHA EVIDENCE_DIR [--dry-run]
 ```
 
-The deploy stops the instance's runner and then its server, by the PIDs their own run records captured, waiting on each exit. It backs up the database with the code that wrote it, fast-forwards the live checkout to `SHA`, runs `bin/aim-next-admin migrate`, restarts the server and waits for its ready line, restarts the runner and waits for it to acquire its guard, and then checks the reader, `/api/bootstrap` and the CLI. Each step writes `NN-step.json` into `EVIDENCE_DIR`, and the first failure stops the run (exit 1, `refused: <why>`). It refuses before stopping anything when the live processes are not exactly one server and at most one runner, matching their run records, or when the live checkout has tracked changes or `SHA` is not a fast-forward of its HEAD. It also stops after the stop step if the runner did not end with `"status": "stopped"`: a paused runner needs a deliberate resume. `--dry-run` writes `00-plan`, `01-live` and `02-checkout` and changes nothing.
+The deploy ships only a commit the release check passed. `SHA` must be the full 40-character commit, and the summary must name exactly that commit, show every required step passed and the checkout unchanged during the run. Otherwise it records why in `00-release-check.json` and refuses before reading or stopping anything. Run it from the release-check worktree at `SHA`, so the deploy's list of required steps is that commit's own.
+
+It then stops the instance's runner and then its server, by the PIDs their own run records captured, waiting on each exit. It backs up the database with the code that wrote it, fast-forwards the live checkout to `SHA`, runs `bin/aim-next-admin migrate`, restarts the server and waits for its ready line, restarts the runner and waits for it to acquire its guard, and then checks the reader, `/api/bootstrap` and the CLI. Each step writes `NN-step.json` into `EVIDENCE_DIR`, and the first failure stops the run (exit 1, `refused: <why>`). It refuses before stopping anything when the live processes are not exactly one server and at most one runner, matching their run records, or when the live checkout has tracked changes or `SHA` is not a fast-forward of its HEAD. It also stops after the stop step if the runner did not end with `"status": "stopped"`: a paused runner needs a deliberate resume. `--dry-run` writes `00-release-check`, `00-plan`, `01-live` and `02-checkout` and changes nothing; it exits 1 when the release check has not passed, after showing the rest of the plan.
 
 The config is a JSON object. Paths for profiles and routes are relative to `instance` unless absolute:
 
