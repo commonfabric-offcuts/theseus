@@ -264,10 +264,21 @@ class Conversation:
         db.executemany("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES (?,?,1,1)", [(topic_id, member) for member in participants])
         db.execute("INSERT INTO topic_summaries VALUES (?,0,NULL)", (topic_id,))
 
+    def _intent(self, db, actor, snapshot):
+        """Whether writing to someone asks or tells. The rule exists to make
+        agents choose, so an agent saying neither gets None, to be refused; a
+        person naming someone and saying neither tells them. A person's page
+        left open from an earlier release, or a preparation it froze, says
+        neither, and its writing still goes."""
+        intent = snapshot.get("intent")
+        if intent is None and snapshot.get("addressees") and self._actor(db, actor)["kind"] == "human":
+            return "tell"
+        return intent
+
     def _publish(self, db, actor, operation_id, topic_id, snapshot):
         """Publish frozen writing as one message with its deliveries; every send shares this path."""
         topic = self._topic(db, actor, topic_id)
-        intent = snapshot.get("intent")
+        intent = self._intent(db, actor, snapshot)
         if snapshot["addressees"] and intent is None:
             raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED, recorded=False)
         if intent is not None and not snapshot["addressees"]:

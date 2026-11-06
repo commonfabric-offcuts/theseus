@@ -68,7 +68,8 @@ step, and finishes it before stepping back too.
 ## Asked, and waited on
 
 A message sent to someone by name says whether it asks or tells them
-([agent-cli.md](agent-cli.md#asking-and-telling)). An asking message makes its
+([agent-cli.md](agent-cli.md#asking-and-telling)); an agent must say which,
+and a person's message that says neither is a tell. An asking message makes its
 topic wait on each person it asks, in the same act that sends it, and the
 wait ends by itself when that person next writes in the topic, whatever they
 write and whoever they name: writing there answers every ask that waits on

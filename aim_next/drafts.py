@@ -179,11 +179,15 @@ class Drafts:
         for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
-        # A message to someone says whether it asks or tells. Refused here, the
-        # writing stays in its draft to be corrected; frozen without it, it
+        # A message to someone says whether it asks or tells; a person's that
+        # says neither is a tell, frozen as one. An agent's is refused here, so
+        # the writing stays in its draft to be corrected; frozen without it, it
         # could only be refused at its send.
-        if snapshot.get("addressees") and snapshot.get("intent") is None:
+        intent = self._intent(db, actor, snapshot)
+        if snapshot.get("addressees") and intent is None:
             raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED)
+        if intent is not None:
+            snapshot["intent"] = intent
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         submission_id = _identifier(args.get("submission_id"), "submission_id")
         send_op = _identifier(args.get("send_operation_id"), "send_operation_id")

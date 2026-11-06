@@ -195,11 +195,13 @@ recorded shows "to". Core keeps it on the message as `intent` (`"ask"`,
 `"tell"`, or `null` for a message that names nobody), and `topic_messages`,
 `source` and each delivery's `message` carry it.
 
-`message.post` takes `args.intent`. A post that names addressees without an
-intent is refused, unrecorded, with `INTENT_REQUIRED`, and nothing is sent; its
-message names the flags. `post --to`, which said neither, is refused the same
-way before anything is saved, as is a post with both `--asks` and `--tells`.
-An intent on a message that names nobody is refused as `INVALID_ARGUMENT`.
+`message.post` takes `args.intent`. The rule is there to make agents choose:
+an agent's post that names addressees without an intent is refused,
+unrecorded, with `INTENT_REQUIRED`, and nothing is sent; its message names the
+flags. A person's post that names someone and says neither is a tell, and is
+recorded as one. `post --to`, which said neither, is refused the same way
+before anything is saved, as is a post with both `--asks` and `--tells`. An
+intent on a message that names nobody is refused as `INVALID_ARGUMENT`.
 
 An ask makes the topic wait on each person it asks until they next write in
 the topic; `topics` shows it as "asked owner since 2026-11-05 22:10", and the
@@ -208,12 +210,14 @@ Any message you write in a topic answers what was asked of you there.
 
 Writing saved with `draft.save` carries `intent` the same way, and the
 prepared send (`submission.prepare`, then `message.send`) holds the same rule:
-preparing writing that names someone without an intent is refused with
-`INTENT_REQUIRED`, and nothing is frozen or sent; the writing stays in its
-draft, so save it again with `intent` and prepare it again. A submission
-frozen without one by an earlier release is refused, unrecorded, when it is
-sent. Tony's page says it for him: a reply is a tell
-unless he ticks Ask.
+an agent preparing writing that names someone without an intent is refused
+with `INTENT_REQUIRED`, and nothing is frozen or sent; the writing stays in its
+draft, so save it again with `intent` and prepare it again. An agent's
+submission frozen without one by an earlier release is refused, unrecorded,
+when it is sent. A person's writing that says neither is frozen and sent as a
+tell, so a page left open from an earlier release, and a preparation it froze,
+still go. Tony's page says it for him anyway: a reply is a tell unless he
+ticks Ask.
 
 ## Openings and membership
 

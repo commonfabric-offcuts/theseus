@@ -159,9 +159,9 @@ export class Editor {
     const barrier = imageBarrier(this);
     if (barrier) throw new Error(barrier);
     if (!this.draft.generation || this.conflict) throw new Error('Resolve the draft before preparing a send.');
-    // A message to someone says whether it asks or tells, and Core refuses one
-    // that says neither. The person's page says it for them: a tell, unless
-    // they ticked Ask.
+    // A message to someone says whether it asks or tells. Core takes a
+    // person's that says neither as a tell, but the page says it for them
+    // anyway, so the frozen act names its intent: a tell, unless they ticked Ask.
     if (this.draft.addressees?.length && !['ask', 'tell'].includes(this.draft.intent)) this.edit({ intent: 'tell' });
     const submission = {
       id: submissionId, prepareOperationId, sendOperationId,
