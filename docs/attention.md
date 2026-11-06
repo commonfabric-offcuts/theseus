@@ -262,30 +262,41 @@ clear a mark.
 
 ## The New line
 
-In each topic the reader sees a red line marked "New" just below the oldest
-message they have not read. Its job is to keep them from missing anything.
-Messages are listed newest first, so everything the line sits under is either
-newer than that message or that message itself.
+When a topic opens, the reader sees a red line marked "New" just below the
+oldest message they have not read. Its job is to keep them from missing
+anything. Messages are listed newest first, so everything the line sits under
+is either newer than that message or that message itself.
 
 Read is exactly what the counts above hold. A message is unread while its
 delivery to the reader is pending in an active group or while they have it
 marked unread; reading it on screen, opening it in the Reader, replying to it
-or Mark read settles its delivery, and only opening it clears a mark. So the
-line, the unread counts and the Unread pills never disagree:
+or Mark read settles its delivery, and only opening it clears a mark. The
+server's answer, the unread counts and the Unread pills never disagree, and
+they follow reading live.
 
-- Reading a newer message leaves the line under the oldest unread one; when
-  the oldest is read, the line moves up to just below the next; when nothing
-  is unread, there is no line.
-- Marking an older message unread moves the line down to just below it;
-  clearing the mark (opening it, or Mark unread again) brings the line back.
-- A message that arrives while the reader is caught up is unread, so the line
-  appears just below it.
-- An ask to the reader that they have read moves past the line. The topic
-  still waits on them ("Waiting on you") until they answer; the line is only
-  about reading.
+The line is placed from that answer when the topic opens and when the reader
+presses Refresh. During the visit it stays put while they read, so it does not
+vanish a second after a short topic opens; it is a marker of where they were,
+not a count:
+
+- Reading on screen, here or in another tab, never moves the line up, even
+  when everything is read. Opening the topic again, or Refresh, places it
+  afresh: under the oldest message still unread, or nowhere.
+- The line moves during the visit only to show more unread: a message marked
+  unread further back than the line (here or anywhere) moves it down to just
+  below that message, and a message that arrives while there is no line
+  brings the line just below it. A message that arrives above the line is
+  already shown as new.
+- The reader's own Mark read in this page (pressing Marked unread in the
+  Reader) places the line afresh at once, wherever the oldest unread message
+  now is. A mark cleared in another tab, or by opening the message to read
+  it, leaves the line where it is until Refresh.
+- An ask to the reader that they have read is past the line once it is placed
+  again. The topic still waits on them ("Waiting on you") until they answer;
+  the line is only about reading.
 - The reader's own messages never hold the line: they are never delivered to
-  them, and a mark on one counts nowhere, as above. A delivery left pending by a
-  subscription that leaving the topic cancelled is not unread either.
+  them, and a mark on one counts nowhere, as above. A delivery left pending by
+  a subscription that leaving the topic cancelled is not unread either.
 
 `topic_messages` returns it on every page, in either direction, as
 `oldest_unread`, `{seq, id}` or null, with `commit_seq`, the commit the answer
@@ -317,13 +328,15 @@ line as before. Version 19 replaces that index with the one on (group, topic,
 delivery), and the store refuses a new delivery without a topic, whatever
 writes it. Stepping back to 18 puts the version-18 index back.
 
-The page keeps the newest answer as said above. It draws the line under that
+The page keeps the newest answer as said above, and reads `topic_unread` again
+after each announced commit (beside its rails and marks, in the same reload),
+on Refresh, and after the reader's own Mark read. Its first answer, an answer
+to Refresh and an answer after Mark read place the line; any other answer
+moves it only to show more, as above. The page draws the line under its
 message's card when the card is loaded. The line is text ("New"), with no
 message identity, in the alert colour, so nothing that looks for cards finds
-it. The page reads `topic_unread` again after each announced commit (beside
-its rails and marks, in the same reload), so the line follows reading live as
-it happens, in this page or any other; a repaint keeps the card the reader is
-looking at where it was.
+it. Wherever the line moves, a repaint keeps the card the reader is looking at
+where it was.
 
 When that message is further back than the page has loaded, which is when the
 reader is most behind, the line sits at the bottom of what is loaded and reads
@@ -331,7 +344,7 @@ reader is most behind, the line sits at the bottom of what is loaded and reads
 keyboard, reads older pages one after another, as More does, until that
 message's card is loaded or no older page is left, and then gives that
 message the focus, with the line in its true place just below it; once on
-screen the message is read, and the line moves on as reading moves it. A read that
+screen the message is read, and the line stays there for the visit. A read that
 cannot go on (a review pending, or a refusal, which the page reports) ends it
 with the line still at the bottom. When no older page is left to read, there
 is nothing the button could load, so no line is drawn. A message among the

@@ -21,6 +21,10 @@ export class TopicViews {
     // and topic_unread, which the page reads again after each commit, since
     // reading, marks and replies move it without changing the topic.
     this.oldestUnread = null; this.unreadAt = -1;
+    // The message the New line is drawn under. The first answer places it, as
+    // does one read afresh (Refresh, an explicit Mark read); during the visit
+    // it moves only to show more unread, never up as the person reads.
+    this.line = null; this.placed = false;
     this.currentItem = null; this.openingItem = null;
   }
   retain(current = this.currentItem, opening = this.openingItem) {
@@ -75,20 +79,27 @@ export class TopicViews {
     this.paint('messages'); return true;
   }
   // Keeps what an answer says of the oldest unread message unless an answer
-  // read at a later commit said otherwise; true when the line moves.
-  learnUnread(answer) {
+  // read at a later commit said otherwise, and moves the line: to that
+  // message when the line is placed afresh (the topic's first answer, or one
+  // read afresh), else only when it shows more unread (there was no line, or
+  // the message is further back). True when the line moves.
+  learnUnread(answer, afresh = false) {
     const said = oldestUnreadOf(answer);
     if (said === undefined || said.at < this.unreadAt) return false;
-    const moved = this.oldestUnread?.id !== said.value?.id;
     this.oldestUnread = said.value; this.unreadAt = said.at;
+    const value = said.value, more = value && (!this.line || value.seq < this.line.seq);
+    const line = afresh || !this.placed || more ? value : this.line;
+    const moved = this.line?.id !== line?.id;
+    this.line = line; this.placed = true;
     return moved;
   }
-  // Reads where the line sits now, and moves it when it moved.
-  async readUnread(read, current = () => true) {
+  // Reads where the oldest unread message is now, and moves the line when it
+  // moved; afresh, the line goes there whichever way it moved.
+  async readUnread(read, current = () => true, { afresh = false } = {}) {
     const answer = checkedView(await read('topic_unread', { topic_id: this.topicId }), this.instanceId);
     if (!current()) return false;
     if (answer.topic_id !== this.topicId || oldestUnreadOf(answer) === undefined) throw invalid('The oldest unread answer is for another topic or says nothing.');
-    if (this.learnUnread(answer)) this.paint('line');
+    if (this.learnUnread(answer, afresh)) this.paint('line');
     return true;
   }
   runOf(id) { return this.runs.get(id); }

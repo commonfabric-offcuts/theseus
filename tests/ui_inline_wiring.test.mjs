@@ -109,11 +109,11 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, toggleMark, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
-    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail}; } };`, context);
+    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,marks}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
     edit: editor => events.push(['inline-edit',editor.key]),
     needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
@@ -1386,20 +1386,20 @@ test('an agent in the participants is a button that opens its color picker, in i
   assert.equal(opened[0].back, agent);
 });
 
-test('the New line is drawn under the oldest unread card, moves as reading happens, and goes', async () => {
+test('the New line is drawn under the card of the message it holds, moves with it, and goes', async () => {
   const { f } = await readingPage();
   for (let seq = 20; seq <= 25; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
   const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
-  f.views.oldestUnread = { seq: 22, id: 'm22' }; f.paintViews('messages');
+  f.views.line = { seq: 22, id: 'm22' }; f.paintViews('messages');
   assert.equal(order(), '25 24 23 22 new 21 20');
   f.views.messages.set('m26', { id: 'm26', seq: 26, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
-  f.views.oldestUnread = { seq: 24, id: 'm24' }; f.paintViews('messages');
-  assert.equal(order(), '26 25 24 new 23 22 21 20', 'reading moves it up; a new card goes above it');
+  f.views.line = { seq: 24, id: 'm24' }; f.paintViews('messages');
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'it moves with the message it holds; a new card goes above it');
   f.views.messages.set('m19', { id: 'm19', seq: 19, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
   f.paintViews('messages');
   assert.equal(order(), '26 25 24 new 23 22 21 20 19', 'an older card loaded by More goes below it');
-  f.views.oldestUnread = null; f.paintViews('messages');
-  assert.equal(order(), '26 25 24 23 22 21 20 19', 'nothing left unread: no line');
+  f.views.line = null; f.paintViews('messages');
+  assert.equal(order(), '26 25 24 23 22 21 20 19', 'no message held: no line');
 });
 
 test('the New line for a message further back sits at the bottom, and pressing it loads down to that message', async () => {
@@ -1448,7 +1448,7 @@ test('pressing the older-below line while the page may not read stops at once an
   assert.equal(f.get('messages').children.at(-1).dataset.line, 'older', 'the line still waits at the bottom');
 });
 
-test('after each commit the page reads where the New line is, and moves it without moving the card being read', async () => {
+test('during a visit the New line holds as the person reads, moves to show more, and Refresh or Mark read place it afresh, the card being read held still', async () => {
   const scrolls = [];
   const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
@@ -1467,21 +1467,38 @@ test('after each commit the page reads where the New line is, and moves it witho
     return { top, bottom: top + (child.dataset.line ? 30 : 90) }; }; };
   views.messagesPage({ ...page(20, 26, null), oldest_unread: { seq: 22, id: 'm22' }, commit_seq: 5 }, { initial: true }); await settle(); layout();
   const order = () => list.children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
-  assert.equal(order(), '26 25 24 23 22 new 21 20');
-  // The person is reading #23, three cards down; #22 and #21 were read on screen, elsewhere.
-  listTop = -300;
+  assert.equal(order(), '26 25 24 23 22 new 21 20', 'placed from the server when the topic opens');
+  // The person is reading #21, just below the line; #22 and #23 were read on screen.
+  listTop = -500;
   const reads = [], view = f.api.view;
   let answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 7 };
   f.api.view = async (name, args) => { if (name === 'topic_unread') { reads.push(args); return { instance_id: 'fixture', topic_id: 't1', ...answer }; } return view(name, args); };
   live.emit({ kind: 'commit', seq: 7 }); for (let n = 0; n < 5; n++) await settle(); layout();
-  assert.deepEqual(reads, [{ topic_id: 't1' }], 'the reload a commit sets off reads where the line is');
-  assert.equal(order(), '26 25 24 new 23 22 21 20', 'the line moved up to the oldest unread message');
-  assert.deepEqual(scrolls, [30], 'the card being read is held where it was');
-  answer = { oldest_unread: null, commit_seq: 9 };
+  assert.deepEqual(reads, [{ topic_id: 't1' }], 'the reload a commit sets off reads where the oldest unread message is');
+  assert.equal(order(), '26 25 24 23 22 new 21 20', 'reading during the visit leaves the line where it was');
+  assert.deepEqual(scrolls, []);
+  // Marked unread elsewhere, further back: the line moves down to show it.
+  answer = { oldest_unread: { seq: 20, id: 'm20' }, commit_seq: 8 };
+  live.emit({ kind: 'commit', seq: 8 }); for (let n = 0; n < 5; n++) await settle();
+  assert.equal(order(), '26 25 24 23 22 21 20 new', 'a mark further back moves the line down');
+  assert.deepEqual(scrolls, [-30], 'the card being read is held where it was');
+  answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 9 };
   await f.refreshLists(); await settle();
-  assert.equal(reads.length, 2, 'Refresh reads it too');
-  assert.equal(order(), '26 25 24 23 22 21 20', 'everything read: the line goes');
-  assert.deepEqual(scrolls, [30, -30], 'and the card being read still holds still');
+  assert.equal(reads.length, 3, 'Refresh reads it too');
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'and places the line afresh, under the oldest unread message');
+  assert.deepEqual(scrolls, [-30, 30], 'the card being read still holds still');
+  // Read meanwhile, the line holds; the person's own Mark read in the Reader places it afresh.
+  answer = { oldest_unread: null, commit_seq: 10 };
+  live.emit({ kind: 'commit', seq: 10 }); for (let n = 0; n < 5; n++) await settle();
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'everything read: the line still holds');
+  const source = { source_ref: { kind: 'message', id: 'm24' }, topic_id: 't1', seq: 24 };
+  f.registry.current = { source, mark: { marked: true, mark_revision: 1 } };
+  f.owners().marks.learn('m24', 1, { topicId: 't1', seq: 24 });
+  f.api.command = async envelope => ({ recorded: true, status: 'committed', operation_id: envelope.operation_id,
+    result: { message_id: 'm24', topic_id: 't1', seq: 24, marked: false, mark_revision: 2, changed: true } });
+  answer = { oldest_unread: null, commit_seq: 11 };
+  await f.toggleMark(); for (let n = 0; n < 5; n++) await settle();
+  assert.equal(order(), '26 25 24 23 22 21 20', 'an explicit Mark read places the line afresh: nothing is unread');
   // A read that fails leaves the line where it was, and the reload is owed.
   f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
   await f.refreshLists(); await settle();

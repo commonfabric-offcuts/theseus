@@ -509,14 +509,15 @@ function keepListAnchor(paint) {
   if (anchor?.isConnected && !atTop) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
-// The New line, just below the oldest message the reader has not read.
+// The New line, just below the oldest message the reader had not read when the
+// topic opened, or further back as more became unread (TopicViews.line).
 function placeLine() {
-  placeNewLine($('messages'), views.oldestUnread?.seq ?? null, document,
+  placeNewLine($('messages'), views.line?.seq ?? null, document,
     views.olderCursor === null ? null : () => run(loadToUnread));
 }
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
-  // Reading moves the line under the reader's eyes: the card they are looking at stays where it is.
+  // The line moves under the reader's eyes: the card they are looking at stays where it is.
   if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
     if (authorityReviewPending()) return;
@@ -649,6 +650,8 @@ async function toggleMark() {
     if (registry.isSourceCurrent(p)) reader.notice('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.');
     return;
   }
+  // An explicit Mark read places the New line afresh, wherever the oldest unread message now is.
+  if (receipt?.status === 'committed' && state.marked) run(() => loadUnread(true));
   if (!registry.isSourceCurrent(p)) return;
   if (receipt?.error?.code === 'REVISION_CONFLICT') {
     reader.notice(`This message's mark changed in another tab or device: it is ${marks.state(ref.id)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
@@ -682,33 +685,35 @@ function listPage(kind, more = false) {
   listLoads.set(kind, run); return run;
 }
 // The New line's "older below": older pages, one after another, until the
-// oldest unread message's card is loaded or no older page is left; then
-// that message takes the focus, with the line in its place below it. A read
-// that moves nothing on (a refusal, or a review pending) ends it.
+// line's message's card is loaded or no older page is left; then that
+// message takes the focus, with the line in its place below it. A read that
+// moves nothing on (a refusal, or a review pending) ends it.
 async function loadToUnread() {
-  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.oldestUnread?.seq);
-  while (views.oldestUnread && !loaded() && views.olderCursor !== null) {
+  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.line?.seq);
+  while (views.line && !loaded() && views.olderCursor !== null) {
     const before = views.olderCursor, shared = listLoads.has('messages');
     await listPage('messages', true);
     if (!shared && views.olderCursor === before) break;
   }
   loaded()?.focus();
 }
-// Where the New line sits, read again after each commit and on Refresh:
-// reading, marks and replies move it without changing the topic. Settles true
+// Where the oldest unread message is, read again after each commit and on
+// Refresh: reading, marks and replies move it without changing the topic.
+// During a visit the line follows it only to show more unread; afresh (Refresh,
+// the person's explicit Mark read) the line goes wherever it is. Settles true
 // when it was read, false when it was not, as the marks do.
-function loadUnread() {
+function loadUnread(afresh = false) {
   if (!views || topicUnavailable) return Promise.resolve(true);
   if (authorityReviewPending()) return Promise.resolve(false);
   const accessEpoch = listAccessEpoch;
   return views.readUnread(async (name, args) => checkedView(await registry.cleanup.list(options => api.view(name, args, options)), bootstrap.instance_id),
-    () => accessEpoch === listAccessEpoch && !topicUnavailable && !authorityReviewPending()).catch(() => false);
+    () => accessEpoch === listAccessEpoch && !topicUnavailable && !authorityReviewPending(), { afresh }).catch(() => false);
 }
 async function refreshLists() {
   if (authorityReviewPending()) {
     status('The runtime changed. Review your saved writing before reloading this page.'); return;
   }
-  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks(); await loadUnread();
+  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks(); await loadUnread(true);
   if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
   if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
   await listPage('messages'); await listPage('memory');

@@ -1,12 +1,14 @@
 // The red New line, as painted: just below the card of the oldest message the
-// person has not read, as the server names it (topic_unread); red words "New"
-// readable on the page in light and dark. Reading on screen moves it live,
-// with the card being read held still; a message that arrives while the
-// person is caught up brings it back; Mark unread moves it down. At the top of
-// the topic a message that arrives comes into view above. Each case reads in
-// a topic of its own, so what earlier checks read does not matter. Run by
-// reader_persistence_native.mjs with --colors; screenshots are kept as
-// new-line-*.png for review.
+// person had not read when the topic opened, as the server names it
+// (topic_unread); red words "New" readable on the page in light and dark.
+// During the visit reading never moves it up, so it does not vanish as the
+// person reads; it moves to show more (Mark unread further back, an arrival
+// while caught up) and on the person's explicit Mark read, and Refresh or
+// opening the topic again places it afresh, with the card being read held
+// still wherever it moves. At the top of the topic a message that arrives
+// comes into view above. Each case reads in a topic of its own, so what
+// earlier checks read does not matter. Run by reader_persistence_native.mjs
+// with --colors; screenshots are kept as new-line-*.png for review.
 import assert from 'node:assert/strict';
 
 const luminance = c => c.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255)
@@ -46,9 +48,22 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await until(async () => (await unread(topic))?.id !== oldest.id, label + ': read ' + oldest.id);
     }
   };
+  // Resolves once the page has had the answer to a topic_unread read it sent
+  // at or after since, and two frames have passed for it to draw what it said.
+  const pageRead = async (p, since, label) => {
+    await until(() => {
+      const sent = p.network.filter(e => e.method === 'Network.requestWillBeSent' && e.observedAt >= since &&
+        /"name":"topic_unread"/.test(e.params.request.postData ?? '')).map(e => e.params.requestId);
+      return sent.some(id => p.network.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === id));
+    }, label + ': the page read where the oldest unread message is');
+    await p.evaluate('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+  };
+  // Refresh, pressed from the keyboard so the page keeps its place: the header
+  // is out of view when the person reads further down.
+  const refresh = async p => { await p.evaluate("document.querySelector('#refresh').focus({preventScroll:true})"); await p.key('Enter'); };
   const reading = p => p.evaluate(`(()=>{const c=[...document.querySelectorAll('#messages .message-card')].find(e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight});return {id:c.dataset.id,top:c.getBoundingClientRect().top}})()`);
 
-  await check('colors the New line sits under the oldest unread message, and moves up live as it is read', async () => {
+  await check('colors the New line sits under the oldest unread message, holds while it is read, and moves on Refresh and on opening the topic again', async () => {
     for (const theme of ['light', 'dark']) {
       // A page of agent messages: the oldest ones are below the first screen.
       const topic = 'new-line-read-' + theme, ids = await topicWith(topic, 24);
@@ -77,30 +92,45 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await p.evaluate("document.querySelector('#messages .new-line').scrollIntoView({block:'start'})");
       await shot(p, 'new-line-' + theme);
       assert.equal((await unread(topic))?.id, ids[0], theme + ': a card out of view is not read');
-      // Reading the oldest on screen moves the line up, live, to the next unread
-      // one above it; the card the person reads holds still.
+      // Reading the oldest on screen: the server moves on, and the line holds
+      // under it for the rest of the visit, so it does not vanish.
       await p.evaluate(`document.querySelector('#messages [data-id="${ids[0]}"]').scrollIntoView({block:'center'})`);
-      const held = await reading(p);
+      const since = Date.now();
       await until(async () => (await unread(topic))?.id !== ids[0], theme + ': the oldest, now on screen, is read');
-      await settle(p, topic, theme + ': the line follows, without a reload');
-      assert.ok(Math.abs(await cardTop(p, held.id) - held.top) <= 1, theme + ': the card being read held still');
+      const next = await unread(topic);
+      await pageRead(p, since, theme);
+      const held = await drawn(p);
+      assert.deepEqual([held.count, held.kind, held.after], [1, 'new', ids[0]], theme + ': read during the visit, the line holds where it was placed');
+      // Opening the topic again places it afresh, under the oldest still unread.
+      const again = await open(topic, 'new-line-again-' + theme, theme);
+      await until(async () => (await drawn(again)).after === next?.id, theme + ': opened again, the line is under the oldest still unread');
+      await again.close();
+      await p.send('Page.bringToFront');
+      // So does Refresh, and the card being read holds still as it moves.
+      const reader = await reading(p);
+      await refresh(p);
+      await settle(p, topic, theme + ': Refresh places the line where the server says');
+      assert.ok(Math.abs(await cardTop(p, reader.id) - reader.top) <= 1, theme + ': the card being read held still');
       const moved = await drawn(p);
-      // Reading the rest takes the line away.
+      // Read to the end: the line holds until Refresh, which takes it away.
       await readAll(p, topic, theme);
-      await settle(p, topic, theme + ': all read, no line');
-      observations.push({ name: 'new line follows reading', theme, oldest, placed, held, moved });
+      assert.equal((await drawn(p)).count, 1, theme + ': all read, the line still holds');
+      await refresh(p);
+      await settle(p, topic, theme + ': all read and refreshed, no line');
+      observations.push({ name: 'new line holds while read', theme, oldest, placed, held, next, moved });
       assert.deepEqual(p.errors, []);
       await p.close();
     }
   });
 
-  await check('colors a message arriving while the person is caught up brings the line under it, Mark unread moves it down, and an arrival at the top comes into view', async () => {
+  await check('colors a message arriving while the person is caught up brings the line under it, Mark unread moves it down, Mark read places it afresh, and an arrival at the top comes into view', async () => {
     for (const theme of ['light', 'dark']) {
       const topic = 'new-line-arrive-' + theme, ids = await topicWith(topic, 24);
       const p = await open(topic, 'new-line-arrive-' + theme, theme);
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids[0]}"]'))`), theme + ': loaded');
       await readAll(p, topic, theme + ': catching up');
-      await settle(p, topic, theme + ': no line');
+      await refresh(p);
+      await settle(p, topic, theme + ': caught up and refreshed, no line');
       // Further down, the newest card out of view above: what arrives is not on screen.
       await p.evaluate(`document.querySelector('#messages [data-id="${ids[12]}"]').scrollIntoView({block:'start'})`);
       const held = await reading(p);
@@ -110,21 +140,37 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       assert.equal((await drawn(p)).after, arrival, theme + ': under the message that arrived');
       assert.ok(Math.abs(await cardTop(p, held.id) - held.top) <= 1, theme + ': the card being read held still as the message and the line came');
       // Mark unread, from another tab, on an older message already read: the
-      // line moves down to just below it; clearing the mark brings the line back.
+      // line moves down to just below it. Clearing the mark there is not this
+      // page's Mark read: the line holds until Refresh.
       await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [ids[3]], marked: true });
       await until(async () => (await drawn(p)).after === ids[3], theme + ': marked unread, the line moves down to it');
       await settle(p, topic, theme + ': where the server says');
+      assert.ok(Math.abs(await cardTop(p, held.id) - held.top) <= 1, theme + ': the card being read held still as the line moved down');
+      const since = Date.now();
       await control({ method: 'mark', operation_id: topic + '-clear', message_ids: [ids[3]], marked: false });
-      await until(async () => (await drawn(p)).after === arrival, theme + ': cleared, the line returns under the arrival');
-      // At the top: the arrival is read, the line goes, and what arrives next shows above the newest card.
+      await pageRead(p, since, theme + ': cleared elsewhere');
+      assert.equal((await drawn(p)).after, ids[3], theme + ': cleared in another tab, the line holds');
+      await refresh(p);
+      await until(async () => (await drawn(p)).after === arrival, theme + ': Refresh brings the line back under the arrival');
+      // In this page's Reader: Mark unread moves the line down to the message;
+      // pressing it again (Mark read) places the line afresh, under the arrival.
+      await p.point(`#messages [data-id="${ids[10]}"]`);
+      await until(() => p.evaluate("document.querySelector('#reader').open && !document.querySelector('#mark-unread').hidden"), theme + ': the Reader is open with its mark button');
+      await p.point('#mark-unread');
+      await until(async () => (await drawn(p)).after === ids[10], theme + ': Mark unread in the Reader moves the line down to the message');
+      await p.point('#mark-unread');
+      await until(async () => (await drawn(p)).after === arrival && (await unread(topic))?.id === arrival, theme + ': Mark read places the line afresh');
+      await p.point('#reader-close');
+      await until(() => p.evaluate("!document.querySelector('#reader').open"), theme + ': the Reader closed');
+      // At the top: the arrival is read, and the line holds under it for the visit.
       await p.evaluate('scrollTo(0,0)');
       await until(async () => await unread(topic) === null, theme + ': the arrival, now on screen, is read');
-      await settle(p, topic, theme + ': no line');
       const top = (await control({ method: 'agent_message', operation_id: topic + '-top', topic_id: topic, body: 'Arriving while the person is at the top.' })).result.message_id;
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${top}"]'))`), theme + ': arrival at the top drawn');
       const shown = await p.evaluate(`(()=>{const r=document.querySelector('#messages [data-id="${top}"]').getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:innerHeight,first:document.querySelector('#messages .message-card').dataset.id}})()`);
       assert.equal(shown.first, top, theme + ': the arrival is the newest card');
       assert.ok(shown.top >= 0 && shown.bottom <= shown.height, theme + ': and it is in view');
+      assert.equal((await drawn(p)).after, arrival, theme + ': the line still holds under the first arrival, below the newest');
       await shot(p, 'new-line-' + theme + '-top-arrival');
       observations.push({ name: 'new line on arrival', theme, held, arrival, shown });
       assert.deepEqual(p.errors, []);
@@ -153,9 +199,9 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await p.key('Enter');
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${ids[0]}"]'))`), theme + ': the message further back is loaded');
       await until(() => p.evaluate(`document.activeElement?.dataset?.id === ${JSON.stringify(ids[0])}`), theme + ': and has the focus');
-      // In view it is read, so the line moves up to the oldest message still unread.
+      // In view it is read, and the line holds under it for the visit.
       await until(async () => (await unread(topic))?.id !== ids[0], theme + ': the message brought into view is read');
-      await settle(p, topic, theme + ': the line where the server says');
+      assert.equal((await drawn(p)).after, ids[0], theme + ': the line in its true place, just below it');
       const placed = await p.evaluate(`(()=>{const card=document.querySelector('#messages [data-id="${ids[0]}"]'),r=card.getBoundingClientRect();
         return {inView:r.top<innerHeight&&r.bottom>0,lines:document.querySelectorAll('#messages .new-line').length}})()`);
       assert.equal(placed.inView, true, theme + ': the message is in view');
