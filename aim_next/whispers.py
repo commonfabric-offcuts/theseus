@@ -59,10 +59,12 @@ QUOTE_PRIVATE = ("A whisper stays between the two people in it. Only the person 
 
 
 def whispering(writing):
-    """Whether writing (a post's args, a draft or a frozen snapshot) is a whisper; refuses a non-boolean."""
-    value = writing.get("whisper", False)
+    """Whether writing (a post's args, a draft or a frozen snapshot) is a whisper; null is not, and anything else but a boolean is refused."""
+    value = writing.get("whisper")
+    if value is None:
+        return False
     if not isinstance(value, bool):
-        raise Refusal("INVALID_ARGUMENT", "whisper is true or false")
+        raise Refusal("INVALID_ARGUMENT", "whisper is true, false or null")
     return value
 
 

@@ -8,6 +8,7 @@ import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { wordNodes, webLinks } from './links.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
+import { paintChoice, clearChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -82,14 +83,13 @@ export class Reader {
     this.$('previous-message').onclick = () => this.step(-1);
     this.$('next-message').onclick = () => this.step(1);
     this.$('add-recipient').onclick = () => this.addRecipient();
-    this.$('ask-toggle').onchange = event => this.setAsk(event.target.checked);
     this.$('recipient-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
     this.$('reply-destination').onchange = event => this.callbacks.destination(event.target.value);
-    // Writing can take the author a reply is offered to, so Ask is redrawn with it.
+    // Writing can take the author a reply is offered to, so the choice is redrawn with it.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
-      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintAsk();}});
+      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintChoice();}});
     this.field.addEventListener('paste', event => this.paste(event));
     // Clicking a passage lights it for Return, as moving over it does while
     // Return would quote. Shift-click extends the light, from a dragged
@@ -391,12 +391,13 @@ export class Reader {
     this.$('reply-audience').hidden = note;
     this.$('pending-submissions').hidden = note;
     this.$('writing-hint').textContent = note ? 'Only you · ⌘ Return to save and close' : 'Return for a new line · ⌘ Return to send';
-    this.$('send-reply').textContent = note ? 'Save note' : 'Send ⌘↵';
+    if (note) this.$('send-reply').textContent = 'Save note';
+    else { const word = node('span', 'Send', 'send-word'), keys = node('span', '⌘↵'); keys.setAttribute('aria-hidden', 'true'); this.$('send-reply').replaceChildren(word, ' ', keys); }
     this.field.placeholder = note ? 'Your private note…' : 'Write a reply…';
     this.field.value = this.editor.draft.body;
     this.paintImages();
     this.paintRecipients();
-    this.paintAsk();
+    this.paintChoice();
     this.paintStatus();
   }
 
@@ -414,11 +415,11 @@ export class Reader {
         editor.declineAddressee(name);
         if (editor.draft.addressees.includes(name)) {
           const rest = editor.draft.addressees.filter(item => item !== name);
-          // A message to nobody neither asks nor tells.
-          editor.edit({ addressees: rest, ...(rest.length ? {} : { intent: null }) });
+          // A message to nobody neither asks, tells nor whispers.
+          editor.edit({ addressees: rest, ...(rest.length ? {} : unnamed) });
           this.callbacks.edit(editor);
         }
-        this.paintRecipients(); this.paintAsk();
+        this.paintRecipients(); this.paintChoice();
       };
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));
@@ -431,27 +432,32 @@ export class Reader {
     const editor = this.sessions.reply;
     if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return;
     if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
-      editor.edit({ addressees: [...editor.draft.addressees, name] });
-      this.callbacks.edit(editor); this.paintRecipients(); this.paintAsk();
+      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.names(editor), this.kindOf) });
+      this.callbacks.edit(editor); this.paintRecipients(); this.paintChoice();
     }
     input.value = '';
     input.focus();
   }
 
-  // Your reply to someone tells them unless you say it asks: Ask makes the topic
-  // wait on them until they write in it. It shows once the reply names someone.
-  paintAsk() {
-    const editor = this.sessions?.reply, choice = this.$('ask-choice'), toggle = this.$('ask-toggle');
-    choice.hidden = this.mode === 'note' || !editor?.draft.addressees?.length;
-    toggle.checked = editor?.draft.intent === 'ask';
-    toggle.disabled = Boolean(this.field?.readOnly);
+  // Who the reply goes to: the author it is offered to, then whoever it names.
+  names(editor = this.sessions?.reply) { return editor ? [...(editor.offeredAddressees ?? []), ...editor.draft.addressees] : []; }
+  get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
+
+  // Whisper, Tell or Ask (whisper-choice.mjs), and who will see it, above Send.
+  // A reply to one agent starts as a whisper; a private note has no choice.
+  paintChoice() {
+    const editor = this.sessions?.reply, row = this.$('intent-row');
+    if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply')); return; }
+    paintChoice(row, { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf, everyone: this.callbacks.people?.().everyone ?? [],
+      send: this.$('send-reply'), field: this.field, readOnly: Boolean(this.field?.readOnly), answeringWhisper: Boolean(this.source?.whisper),
+      onChoose: choice => this.choose(choice) });
   }
 
-  setAsk(asking) {
+  choose(choice) {
     const editor = this.sessions?.reply;
-    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor) || !editor.draft.addressees?.length) { this.paintAsk(); return; }
-    editor.edit({ intent: asking ? 'ask' : null });
-    this.callbacks.edit(editor); this.paintAsk();
+    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) { this.paintChoice(); return; }
+    editor.edit(chosen(choice));
+    this.callbacks.edit(editor); this.paintChoice();
   }
 
   drawAttachments(host, attachments = []) {
@@ -508,7 +514,7 @@ export class Reader {
     this.field.readOnly = state.readOnly;
     this.$('recipient-input').disabled = this.field.readOnly;
     this.$('add-recipient').disabled = this.field.readOnly;
-    this.$('ask-toggle').disabled = this.field.readOnly;
+    this.paintChoice();
     this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
     this.paintImages();
     this.paintOffer();
@@ -538,7 +544,9 @@ export class Reader {
   }
 
   paintOrigin(source) {
-    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}` : 'Message';
+    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}`
+      : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : 'Message';
+    this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
     this.$('reader-origin').replaceChildren([source.author, provenance].filter(Boolean).join(' · '), ...sent);
     this.paintTone(source);
@@ -552,7 +560,7 @@ export class Reader {
   }
   hideUnavailableSource() {
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
-    this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null);
+    this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null); this.sourceBody.classList.remove('whispering');
     this.paintStatus();
   }
 
@@ -600,6 +608,8 @@ export class Reader {
     if (editor.authorityRecovery || editor.conflict || (!editor.draft.body.trim() && !editor.draft.attachments.length)) {
       this.notice(editor.authorityRecovery || editor.conflict ? 'Review the saved versions before sending.' : 'Write a reply before sending.'); return;
     }
+    // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
+    editor.edit(sending(editor.draft, this.names(editor), this.kindOf));
     const draft = editor.draft;
     try {
       // The controller freezes A synchronously. Reflect that deliberate act

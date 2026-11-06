@@ -113,7 +113,6 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 /* The saving sign: a small mark before the save status. A ring while the writing is being saved, a dot once this device holds it, the accent once Theseus does, the warning colour when it needs attention. The hidden reserve carries the same mark, so the footer never moves. */
 .save-status>span::before{content:'';display:inline-block;width:.5em;height:.5em;margin-right:.4em;border:1px solid transparent;border-radius:50%;vertical-align:.05em}.save-status>[data-save=saving]::before{border-color:var(--muted)}.save-status>[data-save=device]::before{background:var(--muted);border-color:var(--muted)}.save-status>[data-save=saved]::before{background:var(--accent);border-color:var(--accent)}.save-status>[data-save=attention]::before{background:var(--warn);border-color:var(--warn)}
 /* Ask beside a reply's names: an asking reply waits on them until they write in the topic. */
-.ask-choice{display:inline-flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--muted)}.ask-choice[hidden]{display:none}
 /* Work observed on a topic: a small hollow ring in the quiet text color, never the filled accent dot of presence and unread; its words in the row title and for screen readers, and in the key under the topics. */.topic-work{display:inline-block;width:.5rem;height:.5rem;margin-left:.45rem;border:1.5px solid var(--muted);border-radius:50%;background:transparent;vertical-align:middle}@media (forced-colors:active){.topic-work{border-color:CanvasText}}
 .topics-key{display:flex;align-items:center;gap:.35rem;margin:.35rem 0 0;font-size:.78rem}.topics-key .topic-work{margin-left:0}
 /* A reply card says, quietly and on one line, which message it answers. */
@@ -218,3 +217,32 @@ main>#outcomes-home{margin-bottom:.4rem}
 
 /* A web address in a message's words: underlined in the words' own color, so it reads on every card and page; a long one wraps. */
 .words-link{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-word;cursor:pointer}.words-link:hover{text-decoration-thickness:2px}
+/* A whisper (docs/whispers.md): the author's own card with a dashed 1px line all the way round, never italics or a coloured edge.
+   The line is dark on light cards and near-white on dark cards and on your own black card in both themes. */
+:root{--whisper-line:#222a30}
+@media(prefers-color-scheme:dark){:root{--whisper-line:#eef3f1}}
+.message-card.own-message{--whisper-line:#eef3f1}
+.message-card.whisper,.message-card.whisper:hover{border:1px dashed var(--whisper-line);border-radius:.75rem}
+/* Your black card keeps a thin black rim outside its line, so the near-white dashes always sit on black, even on the light page. */
+.message-card.own-message.whisper{box-shadow:0 0 0 2px #000}
+.whisper-label{font-weight:500}
+.message-card .whisper-label,.whisper-wait{color:var(--muted)}
+.whisper-wait{font-weight:400}
+/* How a message is sent: one choice of three, then who will see it, in words. */
+.intent-row{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem}.intent-row:empty{display:none}
+.intent-choice{display:inline-flex;border:1px solid var(--line);border-radius:.5rem;overflow:hidden;background:var(--panel);flex-shrink:0}
+.intent-choice label{position:relative;display:inline-flex;align-items:center;min-height:2.2rem;padding:0 .75rem;font-size:.82rem;cursor:pointer;border-left:1px solid var(--line)}
+.intent-choice label:first-child{border-left:0}
+.intent-choice input{position:absolute;opacity:0;width:1px;height:1px}
+.intent-choice label:has(input:checked){background:var(--soft);color:var(--accent);font-weight:650}
+.intent-choice label:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:-2px}
+.intent-choice label:has(input:disabled){opacity:.45;cursor:default}
+.audience-line{font-size:.8rem;color:var(--muted);margin:0;overflow-wrap:anywhere}
+.audience-line strong{color:var(--ink);font-weight:650}
+/* As you write a whisper, and as you read one, the same dashed line marks it. */
+textarea.whispering,textarea.whispering:focus{border:1px dashed var(--whisper-line)}
+#source-body.whispering{border:1px dashed var(--whisper-line);border-radius:.6rem;padding:.6rem .8rem}
+/* When a second agent is added to a whisper, the line above Send takes its own row and says what changed. */
+.audience-line.switched{flex-basis:100%}.audience-line.switched .switch-words{color:var(--ink)}
+/* At phone width the line keeps who will see it and drops the rest, so the Reader's Send stays in view. */
+@media(max-width:760px){.intent-choice label{padding:0 .55rem}.intent-row{flex-wrap:nowrap}.intent-row:has(.switched){flex-wrap:wrap}.audience-line{font-size:.75rem;min-width:0}.audience-more{display:none}}

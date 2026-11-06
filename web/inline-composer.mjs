@@ -1,6 +1,7 @@
 import { markReach, replaceChips } from './people.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
+import { paintChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
 
 const node = (tag, text, className) => {
   const el = document.createElement(tag); if (text !== undefined) el.textContent = text;
@@ -14,7 +15,7 @@ export class InlineComposer {
     this.callbacks = callbacks; this.root = document.querySelector('#inline-composer');
     this.field = this.$('writing-body');
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.admits(),readOnly:()=>this.state().readOnly,
-      changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();}});
+      changed:editor=>{this.callbacks.edit(editor,this.presentation);this.paintStatus();this.paintChoice();}});
     this.field.addEventListener('keydown', event => {
       if(this.input.terminalKey(event))return;
       if (event.key === 'Enter' && event.metaKey && !event.isComposing && event.keyCode !== 229) {
@@ -63,7 +64,7 @@ export class InlineComposer {
     this.presentation = p; this.root.hidden = false;
     this.field.disabled = false; this.$('notice').hidden = true;
     this.$('destination').textContent = `To ${p.topic.title}`;
-    this.drawEditor(); this.paintRecipients(); this.paintStatus();
+    this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice();
   }
   fail(message) {
     this.root.hidden = false;
@@ -93,17 +94,34 @@ export class InlineComposer {
       chip.dataset.name = name;
       remove.onclick = () => {
         if (!this.admits(p, editor) || this.state().readOnly) return;
-        editor.edit({ addressees: editor.draft.addressees.filter(value => value !== name) });
-        this.callbacks.edit(editor, p); this.paintRecipients();
+        const rest = editor.draft.addressees.filter(value => value !== name);
+        // A message to nobody neither asks, tells nor whispers.
+        editor.edit({ addressees: rest, ...(rest.length ? {} : unnamed) });
+        this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
       };
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));
+  }
+  get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
+  // Whisper, Tell or Ask (whisper-choice.mjs), and who will see it, above the writing.
+  paintChoice(readOnly = this.state().readOnly) {
+    const editor = this.editor;
+    if (!editor) return;
+    paintChoice(this.$('intent-row'), { draft: editor.draft, names: editor.draft.addressees, kindOf: this.kindOf,
+      everyone: this.callbacks.people?.().everyone ?? [], send: this.$('send'), field: this.field, readOnly,
+      onChoose: choice => this.choose(choice) });
+  }
+  choose(choice) {
+    const p = this.presentation, editor = this.editor;
+    if (!this.admits(p, editor) || this.state().readOnly) { this.paintChoice(); return; }
+    editor.edit(chosen(choice)); this.callbacks.edit(editor, p); this.paintChoice();
   }
   addRecipient() {
     const p = this.presentation, editor = this.editor, input = this.$('recipient-input'), name = input.value.trim().replace(/^@/, '');
     if (!name || !this.admits(p, editor) || this.state().readOnly) return;
     if (!editor.draft.addressees.includes(name)) {
-      editor.edit({ addressees: [...editor.draft.addressees, name] }); this.callbacks.edit(editor, p); this.paintRecipients();
+      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, editor.draft.addressees, this.kindOf) });
+      this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
     }
     input.value = ''; input.focus();
   }
@@ -143,6 +161,7 @@ export class InlineComposer {
     this.$('retry').hidden = Boolean(editor.authorityRecovery || this.presentation.availabilityChecking || !(this.presentation.availabilityUnconfirmed || editor.unavailable));
     this.$('send').disabled = state.sendDisabled;
     this.$('recipient-input').disabled = state.readOnly; this.$('add-recipient').disabled = state.readOnly;
+    this.paintChoice(state.readOnly);
     this.$('add-image').hidden = Boolean(editor.imageReservation); this.$('add-image').disabled = state.addDisabled;
     this.$('cancel-image').hidden = !editor.imageReservation;
     this.$('review-versions').hidden = !this.callbacks.needsReview(editor);
@@ -170,11 +189,13 @@ export class InlineComposer {
   async send() {
     const p = this.presentation, editor = this.editor;
     if (!this.admits(p, editor) || this.state().sendDisabled) return;
+    // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
+    editor.edit(sending(editor.draft, editor.draft.addressees, this.kindOf));
     const draft = editor.draft;
     try {
-      const sending = this.callbacks.send(editor, p);
-      if (this.admits(p, editor) && editor.draft !== draft) { this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.field.focus(); }
-      await sending;
+      const sent = this.callbacks.send(editor, p);
+      if (this.admits(p, editor) && editor.draft !== draft) { this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice(); this.field.focus(); }
+      await sent;
     } catch (error) { this.notice(error.message, p, editor); }
   }
 }

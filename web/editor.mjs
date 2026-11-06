@@ -102,7 +102,7 @@ export class Editor {
   edit(patch) {
     const offered = this.offeredAddressees;
     // Only writing fields may be changed by user input, never its identity.
-    for (const field of ['body', 'attachments', 'quotes', 'addressees', 'intent', 'caret']) {
+    for (const field of ['body', 'attachments', 'quotes', 'addressees', 'intent', 'whisper', 'caret']) {
       if (Object.hasOwn(patch, field)) this.draft[field] = copy(patch[field]);
     }
     if (offered.length && holdsWriting(this.draft)) {
@@ -161,8 +161,9 @@ export class Editor {
     if (!this.draft.generation || this.conflict) throw new Error('Resolve the draft before preparing a send.');
     // A message to someone says whether it asks or tells. Core takes a
     // person's that says neither as a tell, but the page says it for them
-    // anyway, so the frozen act names its intent: a tell, unless they ticked Ask.
-    if (this.draft.addressees?.length && !['ask', 'tell'].includes(this.draft.intent)) this.edit({ intent: 'tell' });
+    // anyway, so the frozen act names its intent: a tell, unless they chose Ask.
+    // A whisper neither asks nor tells.
+    if (this.draft.addressees?.length && this.draft.whisper !== true && !['ask', 'tell'].includes(this.draft.intent)) this.edit({ intent: 'tell' });
     const submission = {
       id: submissionId, prepareOperationId, sendOperationId,
       sourceRef: copy(this.sourceRef), topicId: this.context.topicId,

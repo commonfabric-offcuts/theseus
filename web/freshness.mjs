@@ -38,6 +38,7 @@ export function checkedView(answer, instance) {
 }
 
 function validateCursor(value, bootstrap, scope, kind) {
+  const versions = scope.kind === 'actor' ? v => v && Object.keys(v).length === 0 : topicVersions;
   const identity = bindingOf(bootstrap);
   if (!value || value.v !== 1 || value.kind !== kind || !integer(value.after_seq) ||
       !sameBinding(identity, value) || !equal(value.scope, scope)) throw diagnostic('The changes cursor has a different binding or scope.');
@@ -45,7 +46,7 @@ function validateCursor(value, bootstrap, scope, kind) {
   if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key))) throw diagnostic('The changes cursor fields are malformed.');
   if (kind === 'continuation' && (!integer(value.through_seq) || value.through_seq < value.after_seq || !versions(value.covered_versions))) throw diagnostic('The changes window is malformed.');
 }
-const versions = v => v && Object.keys(v).length === 2 && integer(v.topic) && integer(v.notebook);
+const topicVersions = v => v && Object.keys(v).length === 2 && integer(v.topic) && integer(v.notebook);
 export function changesPage(answer, bootstrap, topicId, input = null) {
   checkedView(answer, bootstrap.instance_id);
   const scope = { kind: 'topic', id: topicId };
@@ -54,7 +55,7 @@ export function changesPage(answer, bootstrap, topicId, input = null) {
   const end = answer.has_more ? answer.continuation : answer.checkpoint;
   validateCursor(end, bootstrap, scope, answer.has_more ? 'continuation' : 'checkpoint');
   if (answer.has_more ? answer.checkpoint !== null || answer.covered_versions !== null || !answer.items.length
-    : answer.continuation !== null || !versions(answer.covered_versions)) throw diagnostic('A partial changes page cannot be a checkpoint.');
+    : answer.continuation !== null || !topicVersions(answer.covered_versions)) throw diagnostic('A partial changes page cannot be a checkpoint.');
   if (input === null && (answer.items.length || answer.has_more)) throw diagnostic('The baseline must precede view loading.');
   let previous = input?.after_seq ?? 0;
   const upper = answer.has_more ? end.through_seq : end.after_seq;
@@ -83,6 +84,23 @@ export async function initialViews({ api, bootstrap, topicId, load }) {
   return checkpoint;
 }
 
+// The reader's own private changes, followed beside the topic's so a whisper
+// in the open topic shows as it arrives (docs/whispers.md): a whisper changes
+// nothing in the topic's scope. The baseline is null where it cannot be read,
+// and the page then shows whispers when it next reads the topic.
+const actorScope = bootstrap => ({ kind: 'actor', id: bootstrap.actor });
+function actorPage(answer, bootstrap) {
+  if (!equal(answer?.scope, actorScope(bootstrap)) || !Array.isArray(answer.items) || typeof answer.has_more !== 'boolean') throw diagnostic('The private changes page is malformed.');
+  const end = answer.has_more ? answer.continuation : answer.checkpoint;
+  validateCursor(end, bootstrap, actorScope(bootstrap), answer.has_more ? 'continuation' : 'checkpoint');
+  return answer;
+}
+export async function actorBaseline({ api, bootstrap }) {
+  if (!supportsAdmission(bootstrap)) return null;
+  try { return copy(actorPage(checkedView(await api.view('changes', { scope: actorScope(bootstrap), limit: 50 }), bootstrap.instance_id), bootstrap).checkpoint); }
+  catch { return null; }
+}
+
 export class RevisionTargets {
   constructor() { this.values = new Map(); this.relevant = new Set(); }
   retain(ids) {
@@ -102,14 +120,14 @@ export class RevisionTargets {
 
 const timers = { setTimeout: (f, ms) => setTimeout(f, ms), clearTimeout: t => clearTimeout(t) };
 export class Freshness {
-  constructor({ api, bootstrap, topicId, checkpoint, read, keys, refresh, binding = () => bootstrap,
+  constructor({ api, bootstrap, topicId, checkpoint, actorCheckpoint = null, read, keys, refresh, binding = () => bootstrap,
     status = () => {}, authorityLost = async () => {}, denied = async () => {}, rebuild = async () => {},
     refreshKeys = () => [], timers: clock = timers, random = Math.random, yieldRead = () => new Promise(resolve => setTimeout(resolve, 0)),
     live = null }) {
     Object.assign(this, { api, bootstrap: copy(bootstrap), topicId, read, keys, refresh, binding, status, authorityLost, denied, rebuild, refreshKeys, timers: clock, random, yieldRead, live });
     // settled: the last pass ran to its end and found nothing left to read.
     this.settled = false;
-    this.checkpoint = copy(checkpoint); this.continuation = null;
+    this.checkpoint = copy(checkpoint); this.continuation = null; this.actorCheckpoint = copy(actorCheckpoint);
     this.dirty = new Map(); this.serial = 0; this.epoch = 0; this.visible = true;
     this.enabled = supportsAdmission(bootstrap) && Boolean(checkpoint);
     this.disposed = false; this.stopped = false; this.requested = false; this.running = null; this.timer = null; this.failures = 0;
@@ -153,6 +171,20 @@ export class Freshness {
     }
     this.stopped = true; this.status(result);
   }
+  // A whisper in the open topic, from the reader's own scope: its key loads
+  // the topic's newest messages down to it (TopicViews.refresh).
+  async readWhispers(read, current) {
+    let input = this.actorCheckpoint;
+    while (input && current()) {
+      const answer = actorPage(await read('changes', { scope: actorScope(this.bootstrap), limit: 50, cursor: input }), this.bootstrap);
+      if (!current()) return;
+      for (const item of answer.items) {
+        if (item.resource_kind === 'whisper' && item.resource_id === this.topicId && integer(item.version)) this.invalidate('whisper:' + item.version, item.version);
+      }
+      input = answer.has_more ? answer.continuation : null;
+      if (!answer.has_more) this.actorCheckpoint = copy(answer.checkpoint);
+    }
+  }
   async readAt(epoch, name, args) {
     if (!this.current(epoch)) throw Object.assign(Error('Freshness read was superseded.'), { code: 'CLEANUP_DEFERRED' });
     let answer;
@@ -192,6 +224,7 @@ export class Freshness {
           // success is independent and failures remain in the dirty map.
           if (answer.has_more) this.continuation = copy(answer.continuation);
           else { this.checkpoint = copy(answer.checkpoint); this.continuation = null; }
+          await this.readWhispers(read, current);
           await this.yieldRead();
         }
         if (!current()) return;

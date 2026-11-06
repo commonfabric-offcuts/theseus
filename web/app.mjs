@@ -5,7 +5,7 @@ import { Reader } from './reader.mjs';
 import { InlineComposer } from './inline-composer.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
-import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
+import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince, startFrom } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
@@ -30,6 +30,7 @@ import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, opened } from './fold.mjs';
 import { cardClass, agentColor, paneClass } from './author-colors.mjs';
+import { paintWhisperAuthor } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
@@ -613,6 +614,13 @@ function paintViews(kind) {
       $('messages').insertBefore(entry, following ?? null);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
     }
+    // A whispered answer arrived: the whisper it answers no longer waits for one.
+    const asked = item.whisper && item.reply_to ? views.messages.get(item.reply_to) : null;
+    if (asked?.no_answer && item.author_id === asked.private_to) {
+      asked.no_answer = false;
+      const entry = [...$('messages').children].find(child => cardIn(child)?.dataset.id === asked.id);
+      if (entry) paintCardAuthor(cardIn(entry).querySelector('.message-author'), asked);
+    }
   }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
     let card = [...$('memory-items').children].find(child => child.dataset.id === item.id);
@@ -684,6 +692,15 @@ function paintHeader(current) {
 // Messages sent before times were kept have none.
 function paintCardAuthor(author, item) {
   paintAuthor(author, item.author_id, Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true);
+  if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
+}
+// Who the composers may whisper to, and who everyone in this topic is: the
+// topic's participants and the outcome's team, by kind, never the reader.
+function whisperPeople() {
+  const kinds = new Map();
+  for (const person of [...outcomeMembers ?? [], ...views?.participants ?? []]) if (person.kind) kinds.set(person.actor_id, person.kind);
+  const everyone = (views?.participants ?? []).map(person => person.actor_id).filter(id => id !== bootstrap.actor).sort();
+  return { kindOf: name => kinds.get(name), everyone };
 }
 // What the page knows of the person's marks: the topic's line, each loaded
 // card's pill and the Reader's button.
@@ -969,9 +986,9 @@ async function retrySource() {
     }
   }
 }
-function enableFreshness(checkpoint) {
+function enableFreshness(checkpoint, actorCheckpoint = null) {
   if (!checkpoint) { updateStatus({ kind: 'manual', message: 'Automatic updates need the updated server. Reload this page to see newer messages.' }); return; }
-  freshness = new Freshness({ api, bootstrap, topicId: topic.id, checkpoint,
+  freshness = new Freshness({ api, bootstrap, topicId: topic.id, checkpoint, actorCheckpoint,
     read: operation => registry.cleanup.read(operation), binding: () => ({ ...bootstrap, authority: registry.runtime.current }),
     keys: item => views.keys(item), refreshKeys: () => views.refreshKeys(), status: updateStatus, live,
     authorityLost: (binding, failure) => registry.parkAuthority(binding, failure.code), denied: checkAvailability,
@@ -1047,6 +1064,7 @@ async function initialize() {
   const colorsRead = colors.load('foreground').catch(() => {});
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
+  const actorCheckpoint = await actorBaseline({ api, bootstrap });
   views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version) });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
@@ -1095,6 +1113,7 @@ async function initialize() {
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: (host, editor, p) => pendingButton(host, editor, p),
     retry: () => run(retryInline),
+    people: whisperPeople,
   });
   reader = new Reader({
     admits: (p, editor) => registry?.isCurrent(p, editor),
@@ -1126,6 +1145,7 @@ async function initialize() {
     recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
     error: error => reader.notice(error.message),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
+    people: whisperPeople, actor: () => bootstrap.actor,
   });
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
@@ -1219,7 +1239,7 @@ async function initialize() {
   window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   run(loadMarks);
-  document.body.dataset.ready = 'true'; enableFreshness(checkpoint);
+  document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
 }
 // A message sent by name opens its topic, or, where the reader has lost the
 // topic, the outcomes page that lists it to be marked read.
