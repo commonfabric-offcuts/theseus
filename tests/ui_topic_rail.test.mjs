@@ -356,6 +356,28 @@ test('a focused row keeps its focus while rows move around it, and leaves its li
   assert.deepEqual(shown(f.host), ['z', 'c']);
 });
 
+// Focus moving from one row to another passes through no row: in a browser the
+// row losing it fires focusout before the next row has it. Moving rows then
+// could take away the row the focus is going to, so the lists wait for focusin.
+test('focus going from one row to another moves nothing until it lands, then the row it left moves on', async t => {
+  const f = fixture(t, { folds: true });
+  f.done.details.open = true;
+  const empty = { instance_id: 'i1', items: [], next_cursor: null, groups: { done: 0, archived: 0 } };
+  f.queue.push(listed(f, ['a', 'b', 'c'], { done: 0, archived: 0 }), empty); await f.rail.load();
+  const b = f.host.children.find(x => x.dataset.topicId === 'b'); b.focus();
+  f.queue.push(listed(f, ['a', 'c'], { done: 1, archived: 0 }), { ...empty, items: [as(f, 'b', { state: 'done' })], groups: { done: 1, archived: 0 } });
+  await f.rail.load();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'b', 'c'], 'b stays while it has the focus');
+  // Tab to c: b loses the focus first, toward c, while nothing has it.
+  const c = f.host.children.find(x => x.dataset.topicId === 'c');
+  document.activeElement = null; f.area.handlers.focusout({ relatedTarget: c });
+  assert.deepEqual(shown(f.host), ['z', 'a', 'b', 'c'], 'nothing moves while the focus is between two rows');
+  assert.deepEqual(shown(f.done.host), []);
+  c.focus(); f.area.handlers.focusin();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'c']); assert.deepEqual(shown(f.done.host), ['b']);
+  assert.equal(document.activeElement, c, 'the focus is on the row it went to');
+});
+
 test('opening a line under the pointer shows its rows at once, whether it was read before or opens while another read runs', async t => {
   const f = fixture(t, { folds: true }), done = (...ids) => ({ instance_id: 'i1', items: ids.map(id => as(f, id, { state: 'done' })), next_cursor: null, groups: { done: ids.length, archived: 0 } });
   f.done.details.open = true;
