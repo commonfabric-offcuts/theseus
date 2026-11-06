@@ -180,8 +180,10 @@ export class TopicNavigation {
 }
 
 export class TopicRail {
-  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE }) {
-    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax });
+  // key: the line under the topics that says what the work ring means, shown
+  // while a row wears one.
+  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE, key = null }) {
+    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax, key });
     this.denied = false; this.loading = null; this.queued = null; this.failedMore = false;
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore);
     // Mobile browsers can retarget a gap tap to a nearby link. Only accept a
@@ -224,6 +226,7 @@ export class TopicRail {
       if (this.host.children[index] !== link) this.host.insertBefore(link, this.host.children[index] ?? null);
     });
     this.host.hidden = this.denied;
+    if (this.key) this.key.hidden = this.denied || !items.some(item => item.work?.observed === true);
     this.more.hidden = this.denied || this.pages.next === null;
   }
   // A More asked for while a read runs shares it. A reload never joins a read

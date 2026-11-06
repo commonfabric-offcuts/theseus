@@ -134,8 +134,13 @@ time. A turn's start or end does not itself make the list read again; the
 posts a turn makes do. The pipeline's NOW list will count as observed work
 once NOW is a record; `observed()` takes it as `in_now`.
 
-In the web app a topic row with observed work carries a small dot and
-nothing else; every row's title and screen-reader text say what was seen:
+In the web app a topic row with observed work carries a small hollow ring in
+the quiet text color (`--muted`) and nothing else. It was the filled accent
+dot that presence and unread use, beside the unread count, so it read as
+unread (warp, item 91b). While any row has the ring, a key under the topics
+says in words what it means ("Activity seen"), at every width, since a phone
+shows no title; the key is hidden from screen readers, which hear each row's
+own words. Every row's title and screen-reader text say what was seen:
 "Activity seen <time> (<who> posted)", "No activity seen since <time>", or
 "No activity seen". A waiting row's words begin with what its pill says,
 "Waiting on you · last activity <time>", and say "Waiting on someone" only

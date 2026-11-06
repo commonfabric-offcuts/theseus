@@ -149,3 +149,20 @@ test('a row shows the work dot only while the server observes work, and says whe
   assert.deepEqual(b.children.map(node => node.className), ['sr-only']);
   assert.equal(b.attributes.title, 'No activity seen since 7:41 AM Thu Nov 5');
 });
+// The key under the topics, which says what the work ring means, shows only
+// while a row wears the ring.
+test('the key to the work ring shows while a row has observed work, and not otherwise', async t => {
+  const f = fixture(t), key = { hidden: true };
+  const rail = new TopicRail({ host: f.host, more: f.more, retry: f.retry, message: f.message, key, pages: new TopicPages('i1', 'w1', null),
+    read: () => Promise.resolve(f.queue.shift()), open() {}, denied: () => false, reader: 'tony' });
+  const work = observed => ({ observed, seen_ms: 1, by: 'fable', how: 'posted', waits: false });
+  f.queue.push({ instance_id: 'i1', items: [{ ...f.item('a'), work: work(false) }, f.item('b')], next_cursor: null });
+  await rail.load();
+  assert.equal(key.hidden, true, 'no ring, no key');
+  f.queue.push({ instance_id: 'i1', items: [{ ...f.item('a'), work: work(true) }, f.item('b')], next_cursor: null });
+  await rail.load();
+  assert.equal(key.hidden, false, 'a ring on a row: the key says what it means');
+  f.queue.push({ instance_id: 'i1', items: [{ ...f.item('a'), work: work(false) }], next_cursor: null });
+  await rail.load();
+  assert.equal(key.hidden, true, 'the ring gone, the key goes');
+});
