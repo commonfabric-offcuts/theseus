@@ -1292,6 +1292,8 @@ async function initializeOutcomePage(route) {
         if(readFailure(error).kind==='forbidden') {
           $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
+          // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
+          $('outcome-references').hidden=true;$('page-here').hidden=true;
         }
         throw error;
       }

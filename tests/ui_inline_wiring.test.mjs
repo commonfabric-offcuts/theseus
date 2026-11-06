@@ -1541,3 +1541,23 @@ test('on an outcome page its Notebook pages are listed after its topics and read
   live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.equal(pages().length, 2, 'a commit reads the pages again, so a light goes out or comes on');
 });
+
+test('an outcome that becomes unavailable stops showing its Notebook pages and the page open in place, and shows them again on recovery', async () => {
+  const f = fixture('https://fixture/?workspace=w1');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  let failure = null;
+  const item = { id: 'p1', seq: 1, title: 'Release plan', revision: 2, read_revision: 1, owner_scope: { kind: 'workspace', id: 'w1' }, source_ref: { kind: 'memory', id: 'p1', revision: 2 } };
+  f.api.view = async name => {
+    if (name === 'workspace') { if (failure) throw failure; return { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome', purpose: 'Purpose' } }; }
+    return { instance_id: 'fixture', items: name === 'memory_items' ? [item] : name === 'workspace_topics' ? [f.topic] : [], next_cursor: null };
+  };
+  await f.initialize();
+  assert.equal(f.get('outcome-references').hidden, false);
+  f.get('page-here').hidden = false;
+  failure = Object.assign(Error('Access denied'), { code: 'FORBIDDEN' });
+  await f.get('refresh').onclick();
+  assert.equal(f.get('outcome-references').hidden, true, 'a denied outcome lists no pages');
+  assert.equal(f.get('page-here').hidden, true, 'and shows none open');
+  failure = null; await f.get('refresh').onclick();
+  assert.equal(f.get('outcome-references').hidden, false, 'recovery lists them again');
+});
