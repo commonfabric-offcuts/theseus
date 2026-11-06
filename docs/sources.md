@@ -50,4 +50,6 @@ listed nor counted: it is not one they could continue in.
   topic's page says which message it answers and lists the topics already
   started from it, with links; Send names those as seen. If another topic
   started meanwhile, Send is refused, the list is read again, and the next
-  Send goes ahead.
+  Send goes ahead. The page's link carries the message as `opening_from`
+  (`?workspace=W&opening=O&opening_topic=T&opening_from=M`); Core's own record
+  of the opening's source wins once it has one.

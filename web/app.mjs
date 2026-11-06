@@ -7,7 +7,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
-import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref } from './topic-navigation.mjs';
+import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, startFrom } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
@@ -623,6 +623,8 @@ function paintMarks() {
 }
 function paintReaderMark() {
   const p = registry?.current, ref = p?.source?.source_ref;
+  // Any readable message can start a topic of its own in this outcome.
+  $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
   paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
 }
@@ -1034,6 +1036,10 @@ async function initialize() {
     recorded: () => { attention?.refresh(); if (commitReload) run(commitReload); } });
   marks.listen(paintMarks);
   $('mark-unread').onclick = () => run(toggleMark);
+  $('start-from-message').onclick = () => run(() => {
+    const ref = registry.current?.source?.source_ref;
+    if (ref?.kind === 'message' && topic) return openDestination(startFrom(topic.workspace_id, ref.id), 'New topic');
+  });
   $('read-mark').onclick = () => run(() => {
     const next = marks.marked(topic.id)[0];
     if (next) return openSource({ kind: 'message', id: next.messageId }, $('read-mark'), marks.capture(next.messageId));
@@ -1325,7 +1331,7 @@ async function initializeOpeningPage(route) {
   $('workspace-name').textContent=answer.workspace.title;
   const store=await openOpeningStore({instanceId:bootstrap.instance_id,actor:bootstrap.actor});
   // Core owns the opening; a committed publication opens its topic.
-  const draft=new OpeningDraft({api,bootstrap,store,workspace:route.workspace,opening:route.opening,topic:route.topic,
+  const draft=new OpeningDraft({api,bootstrap,store,workspace:route.workspace,opening:route.opening,topic:route.topic,source:route.from??null,
     published:receipt=>location.assign(routeHref({kind:'topic',id:receipt.result.topic.id}))});
   topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>draft.leave(target,title),navigateTarget:target=>location.assign(routeHref(target))});
   const view=new OpeningView({host:$('outcome-page'),draft,workspace:answer.workspace,open:openDestination});
@@ -1334,7 +1340,7 @@ async function initializeOpeningPage(route) {
   window.addEventListener('pagehide',()=>{draft.cancelSave();store.close();});
   await view.run(()=>draft.load());
   if(draft.editable)view.title.focus();
-  view.run(()=>view.loadMembers());
+  view.run(()=>view.loadMembers());view.run(()=>draft.loadSource());
   // The outcome list stays beside the writing, and follows commits as on every page.
   initializeOutcomeNavigation(route.workspace);await followCommits(()=>outcomeRail.load())();document.body.dataset.ready='true';
 }
