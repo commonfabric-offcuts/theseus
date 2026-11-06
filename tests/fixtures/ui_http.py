@@ -529,14 +529,16 @@ def main():
                         answer = {"message_ids": message_ids, "item_ids": item_ids, "unrelated_changes": unrelated}
                     elif "--images" in sys.argv and request["method"] == "reset_drafts":
                         # Each image case starts from the seeded writing. Every
-                        # draft the person left is emptied at its revision through
-                        # the real Store, as a send leaves it.
+                        # draft the person left holding anything is emptied at its
+                        # revision through the real Store. It keeps its generation,
+                        # where a send would also start a new one.
                         with sqlite3.connect(str(path)) as db:
                             rows = db.execute("SELECT id,revision,generation,topic_id,payload FROM drafts WHERE actor_id=?", (actor,)).fetchall()
                         answer = []
                         for draft_id, revision, generation, topic_id, payload in rows:
                             payload = json.loads(payload)
-                            if not payload["body"] and not payload["attachments"] and not payload["quotes"] and not payload["addressees"]:
+                            if not payload["body"] and not payload["attachments"] and not payload["quotes"] and not payload["addressees"] and all(
+                                    payload.get(name) is None for name in ("reply_to", "exchange_id", "opening", "caret")):
                                 continue
                             command("draft.save", "fixture-reset-%s-%d" % (draft_id, revision), {
                                 "source_ref": payload["source_ref"], "topic_id": topic_id,

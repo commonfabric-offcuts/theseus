@@ -23,10 +23,12 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   };
   // The narrow layout is applied by the Reader's media-query listener in the
   // next rendered frame. Until then its panes keep the wide columns, so wait
-  // for the Reader's own layout before measuring a target.
+  // for the Reader's own layout before measuring a target. A Reader already
+  // stacked shows that layout before the listener runs; the listener alone
+  // hides the layout switch, so the wait holds from either starting layout.
   const narrow = async p => {
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-    await until(() => p.evaluate('matchMedia("(max-width: 760px)").matches && document.querySelector("#reader").dataset.layout === "stacked"'), 'Reader in its narrow layout');
+    await until(() => p.evaluate('matchMedia("(max-width: 760px)").matches && document.querySelector("#reader").dataset.layout === "stacked" && document.querySelector("#reader-layout").hidden === true'), 'Reader in its narrow layout');
   };
   const png = (await readFile(path.join(root, 'tests/fixtures/media/screen.png'))).toString('base64');
   // Page-owned clipboard payload only: never read/write the OS pasteboard or
@@ -289,7 +291,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const chooser = await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'native file chooser activation');
     // Interception proves browser assignment, not the OS dismiss gesture.
     await p.send('DOM.setFileInputFiles', { backendNodeId: chooser.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
-    await until(() => p.evaluate('document.querySelector("#writing-attachments").textContent.includes("Ready")'), 'ready image chip');
+    await until(() => p.evaluate('document.querySelector("#writing-attachments .image-choice span")?.textContent === "screen.png · Ready"'), 'ready image chip names its file');
     const captured = await p.evaluate('imagePuts');
     assert.equal(captured.filter(x => x.bytes > 0).length, 1);
     assert.ok(captured.every(x => !x.bytes || x.kind === 'upload-bytes-v1'));
