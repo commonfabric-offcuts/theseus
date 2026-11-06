@@ -65,6 +65,25 @@ test('every agent color keeps the card\'s words at 4.5:1 or better, in light and
   assert.equal(seen.dark.size, AGENT_PALETTE.length, 'and in dark');
 });
 
+// CIELAB (D65) lightness and chroma, the measure warp used for each tint.
+const lab = hex => {
+  const lin = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const [x, y, z] = [[0.4124564, 0.3575761, 0.1804375, 0.95047], [0.2126729, 0.7151522, 0.0721750, 1], [0.0193339, 0.1191920, 0.9503041, 1.08883]]
+    .map(([r, g, b, white]) => (r * lin[0] + g * lin[1] + b * lin[2]) / white);
+  const f = t => t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116;
+  return { L: 116 * f(y) - 16, C: Math.hypot(500 * (f(x) - f(y)), 200 * (f(y) - f(z))) };
+};
+
+// Peach on a dark card read brown and heavy at chroma 11.9 (#3c2b20); its
+// card and hover are a quieter peach, and its name's tag keeps the hue.
+test('the dark peach card is a quiet peach, not brown', () => {
+  const peach = tokens(dark, '.agent-peach');
+  for (const surface of ['agent-card', 'agent-hover'])
+    assert.ok(lab(peach[surface]).C <= 8, `dark peach ${surface} chroma ${lab(peach[surface]).C.toFixed(1)}`);
+  assert.ok(lab(peach['agent-tag']).C <= 12, `dark peach tag chroma ${lab(peach['agent-tag']).C.toFixed(1)}`);
+  assert.ok(lab(peach['agent-card']).C >= 5, 'still a tint, not grey');
+});
+
 // Fable's cards keep the green the live app already paints them (Tony,
 // #452: "your color as it stands"): the live --soft, #e8f1ec in light and
 // #263d35 in dark, which is what a Fable card under the pointer and the
