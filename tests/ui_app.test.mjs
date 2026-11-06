@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { readFile } from 'node:fs/promises';
 import { Api } from '../web/api.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
@@ -207,6 +208,43 @@ test('an explicit close refused while an image is being kept says why, and an au
   assert.deepEqual(f.closed, [x]);
 });
 
+// An image the person is choosing when they press × is theirs: Close is
+// refused at once, as it is when the image is still being kept, and the file
+// they pick joins the reply instead of expiring under a Reader that closes.
+test('Close pressed while an image is being chosen is refused, and the chosen image joins the reply', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply, uploads = f.registry.sessionFor(reply).uploads;
+  const put = f.backend.put, release = deferred(), image = await fixtureImage();
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  reply.edit({ body: 'Writing beside the image' });
+  const token = uploads.reserve(x);
+  let first = true;
+  f.backend.put = async row => { if (first) { first = false; await release.promise; } return put(row); };
+  const closing = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error: error.message }));
+  const chosen = uploads.choose(token, image).then(value => ({ value }), error => ({ error: error.message }));
+  release.resolve();
+  assert.deepEqual(await closing, { error: 'Keep this page open until the selected image is saved or removed.' });
+  const picked = await chosen;
+  assert.equal(picked.error, undefined, 'the chosen image is not refused');
+  assert.deepEqual(uploads.current().map(entry => entry.selection_id), [picked.value]);
+  assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+  assert.equal(f.registry.isWritable(x, reply), true, 'the Reader takes typing');
+});
+
+// An image whose bytes this device could not keep refuses Close in its own
+// words, not in the words for writing the device could not keep.
+test('Close refused over an image the device could not keep says so in its own words', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply, uploads = f.registry.sessionFor(reply).uploads;
+  const image = await fixtureImage();
+  t.after(() => { delete f.backend.capture; });
+  f.backend.capture = async () => { throw Error('Injected byte quota failure'); };
+  await uploads.add(image, { start: false });
+  assert.equal(uploads.current()[0].bytes_state, 'memory-only');
+  await assert.rejects(f.registry.close(x, { explicit: true }), error => {
+    assert.equal(error.message, 'Keep this page open until the selected image is saved or removed.'); return true;
+  });
+  assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+});
+
 test('failed explicit close still cancels navigation and permits a fresh step', async t => {
   const f = await fixture(t), x = await f.open(0), held = await holdSource(f);
   const put = f.backend.put; t.after(() => { held.release.resolve(); f.backend.put = put; });
@@ -369,11 +407,83 @@ test('of two explicit closes refused while preservation fails, only the newer on
   const first = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
   await entered.promise;
   const second = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
-  assert.equal(f.registry.isCurrent(x), true, 'the Reader is still in front');
+  assert.equal(f.registry.current, x, 'the Reader is still in front');
+  assert.equal(f.registry.isWritable(x, x.editors.reply), false, 'typing waits for the newer close');
   release.resolve();
   assert.deepEqual(await first, { value: false }, 'the superseded close stays quiet');
   assert.match((await second).error?.message ?? '', /Injected recovery quota failure/, 'the newer close says why');
   assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+  assert.equal(f.registry.isWritable(x, x.editors.reply), true, 'the Reader takes typing again');
+});
+
+// Close keeps the writing on this device before the Reader goes. Typing and
+// every act on the writing wait while that save runs, so a Reader that closes
+// leaves nothing the device did not keep, even when a later save would fail.
+for (const explicit of [true, false]) {
+  test(`typing waits while ${explicit ? 'Close' : 'an automatic close'} keeps the writing, so the closed Reader leaves nothing unkept`, async t => {
+    const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+    const put = f.backend.put, entered = deferred(), release = deferred();
+    t.after(() => { release.resolve(); f.backend.put = put; });
+    reply.edit({ body: 'before close' }); await f.registry.edited(reply);
+    reply.edit({ body: 'before close, changed' });
+    let puts = 0;
+    f.backend.put = async row => {
+      if (++puts === 1) { entered.resolve(); await release.promise; return put(row); }
+      throw Error('Injected recovery failure');
+    };
+    const closing = f.registry.close(x, { explicit });
+    await entered.promise;
+    // The Reader's field and its acts ask these before they take anything.
+    const writable = f.registry.isWritable(x, reply), current = f.registry.isCurrent(x, reply);
+    if (writable) { reply.edit({ body: 'typed during close' }); f.registry.edited(reply).catch(() => {}); }
+    release.resolve();
+    assert.equal(await closing, true);
+    assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, reply.draft.body, 'the device holds what the closed Reader held');
+    assert.equal(writable, false, 'typing waits for the close');
+    assert.equal(current, false, 'sending and images wait for the close');
+    assert.deepEqual(f.closed, [x]);
+  });
+}
+
+// Close pressed again (or Escape) while the first is keeping the writing: the
+// first ending does not reopen typing while the newer one still keeps it.
+test('typing waits until the newer of two closes has kept the writing', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const put = f.backend.put, releases = [deferred(), deferred()], entered = [deferred(), deferred()];
+  t.after(() => { for (const r of releases) r.resolve(); f.backend.put = put; });
+  let puts = 0;
+  f.backend.put = async row => { const n = puts++; entered[n].resolve(); await releases[n].promise; return put(row); };
+  reply.edit({ body: 'Kept by the newer close' });
+  const first = f.registry.close(x, { explicit: true });
+  await entered[0].promise;
+  const second = f.registry.close(x, { explicit: true });
+  releases[0].resolve();
+  assert.equal(await first, false, 'the newer close took over');
+  assert.equal(await Promise.race([entered[1].promise.then(() => 'keeping'), second]), 'keeping', 'the newer close keeps the writing');
+  assert.equal(f.registry.isWritable(x, reply), false, 'typing still waits for the newer close');
+  releases[1].resolve();
+  assert.equal(await second, true);
+  assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Kept by the newer close');
+});
+
+// A Close whose device save fails is refused in plain words, and the Reader it
+// left in front takes typing again.
+test('a Close whose device save fails says so plainly, and the Reader takes typing again', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const put = f.backend.put, entered = deferred(), release = deferred();
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  f.backend.put = async () => { entered.resolve(); await release.promise; throw Error('Injected recovery quota failure'); };
+  reply.edit({ body: 'Unkept writing' });
+  const closing = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
+  await entered.promise;
+  assert.equal(f.registry.isWritable(x, reply), false, 'typing waits for the close');
+  release.resolve();
+  const { error } = await closing;
+  assert.equal(error?.message, 'Not closed: this device could not keep your writing (Injected recovery quota failure). It stays here; keep this page open.');
+  assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+  assert.equal(f.registry.isWritable(x, reply), true, 'the Reader takes typing again');
+  assert.equal(f.registry.isCurrent(x, reply), true, 'and its acts');
+  assert.equal(reply.draft.body, 'Unkept writing');
 });
 
 for (const action of ['note', 'send']) {
@@ -550,6 +660,8 @@ async function fixture(t, options = {}) {
   const state = index => api.view('editor_state', { source_ref: facts.sources[index], topic_id: facts.topic_id });
   return { registry, api, transport, bootstrap, journal, backend, rows, calls, shown, closed, changes, facts, open, state, control };
 }
+
+const fixtureImage = async () => new File([await readFile(new URL('./fixtures/media/screen.png', import.meta.url))], 'image.png', { type: 'image/png' });
 
 async function cleanupSettled(f, editor) { await f.registry.cleanup?.idle(editor.key); }
 
@@ -1045,6 +1157,71 @@ test('local recovery success alone never claims a server acknowledgement', async
   await f.registry.flush(editor);
   assert.equal((await f.state(0)).note, null);
   assert.equal(editor.dirty, true); assert.doesNotMatch(f.registry.status(editor), /^Saved to Theseus$/);
+});
+
+// The saving sign beside the writing: a short word, and a state the page
+// marks it with. It says whether this device and Theseus each hold the
+// writing yet, and says so while Close keeps it, so the person knows when it
+// is safe to leave.
+test('the saving sign follows the writing to this device, then to Theseus, and through Close', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const put = f.backend.put, command = f.transport.command;
+  t.after(() => { f.backend.put = put; f.transport.command = command; });
+  const sign = () => [f.registry.saveSign?.(reply).state, f.registry.status(reply)];
+  let held = deferred(), entered = deferred();
+  f.backend.put = async row => { entered.resolve(); await held.promise; return put(row); };
+  reply.edit({ body: 'Signed writing' });
+  const local = f.registry.edited(reply); await entered.promise;
+  assert.deepEqual(sign(), ['saving', 'Saving on this device…']);
+  held.resolve(); await local; f.backend.put = put;
+  assert.deepEqual(sign(), ['saving', 'Saved on this device — saving to Theseus…'], 'a save to Theseus is on its way');
+  held = deferred(); entered = deferred();
+  f.transport.command = async envelope => { entered.resolve(); await held.promise; return command(envelope); };
+  const saving = f.registry.flush(reply); await entered.promise;
+  assert.deepEqual(sign(), ['saving', 'Saved on this device — saving to Theseus…'], 'the save to Theseus is under way');
+  held.resolve(); await saving;
+  assert.deepEqual(sign(), ['saved', 'Saved to Theseus'], 'safe to leave from anywhere');
+  f.transport.command = async () => { throw Error('Offline fixture'); };
+  reply.edit({ body: 'Signed writing, offline' }); await f.registry.edited(reply); await f.registry.flush(reply);
+  assert.deepEqual(sign(), ['device', 'Saved on this device — not yet saved to Theseus'], 'nothing is on its way to Theseus');
+  held = deferred(); entered = deferred();
+  f.backend.put = async row => { entered.resolve(); await held.promise; return put(row); };
+  reply.edit({ body: 'Signed writing at Close' });
+  const painted = [];
+  f.registry.activity = () => painted.push([f.registry.isWritable(x, reply), ...sign()]);
+  const closing = f.registry.close(x, { explicit: true }); await entered.promise;
+  assert.deepEqual(sign(), ['saving', 'Closing — saving on this device…']);
+  assert.deepEqual(painted, [[false, 'saving', 'Closing — saving on this device…']], 'the page is told as Close starts');
+  held.resolve(); assert.equal(await closing, true);
+  f.backend.put = async () => { throw Error('Injected recovery failure'); };
+  const y = await f.open(0), again = y.editors.reply;
+  again.edit({ body: 'Not kept' }); await f.registry.edited(again).catch(() => {});
+  assert.deepEqual([f.registry.saveSign?.(again).state, f.registry.status(again)], ['attention', 'Recovery copy unavailable — keep this page open']);
+});
+
+// The Closing words belong to the Reader being closed; the topic composer
+// behind it keeps its own sign.
+test('the Closing words mark only the writing being closed', async t => {
+  const f = await fixture(t);
+  const topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const composer = (await f.registry.initializeInline(topic)).editors.reply;
+  const x = await f.open(0), reply = x.editors.reply, put = f.backend.put, entered = deferred(), release = deferred();
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  f.backend.put = async row => { entered.resolve(); await release.promise; return put(row); };
+  reply.edit({ body: 'Closing writing' });
+  const closing = f.registry.close(x, { explicit: true }); await entered.promise;
+  assert.equal(f.registry.status(reply), 'Closing — saving on this device…');
+  assert.deepEqual(f.registry.saveSign(composer), { state: 'saved', text: 'Saved to Theseus' });
+  release.resolve(); assert.equal(await closing, true);
+  // A mode change during Close leaves the Reader open, so it is not closing.
+  const y = await f.open(1), again = y.editors.reply, held = deferred(), kept = deferred();
+  t.after(() => kept.resolve());
+  f.backend.put = async row => { held.resolve(); await kept.promise; return put(row); };
+  again.edit({ body: 'Writing that stays' });
+  const abandoned = f.registry.close(y, { explicit: true }); await held.promise;
+  f.registry.setMode('note');
+  assert.equal(f.registry.status(again), 'Saving on this device…');
+  kept.resolve(); assert.equal(await abandoned, false);
 });
 
 test('late close after another source opened does not close the new presentation', async t => {

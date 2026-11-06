@@ -6,8 +6,9 @@ import { holdsWriting } from './editor.mjs';
 export const recipientChoices = names => names.map(name => ({ name, removeLabel: `Remove ${name}` }));
 
 // active: every act on this writing is admitted. writable: typing is, which
-// can hold while the acts wait (the Reader during a step).
-export function writingState(editor, { active = true, writable = active, note = false, status } = {}) {
+// can hold while the acts wait (the Reader during a step). sign: the saving
+// sign's state for the save status; other words in its place carry none.
+export function writingState(editor, { active = true, writable = active, note = false, status, sign } = {}) {
   const barrier = imageBarrier(editor);
   const readOnly = Boolean(!writable || editor.adopting || recoveryReadOnly(editor) || editor.conflict?.error?.code === 'INVALID_TOPIC_COMPOSITION');
   const preparing = editor.submissions.some(item => item.status === 'preparing' && !item.detached);
@@ -15,6 +16,7 @@ export function writingState(editor, { active = true, writable = active, note = 
     readOnly,
     message: barrier || (status ? status(editor) : editor.journalError ? 'Recovery copy unavailable — keep this page open'
       : editor.conflict ? 'Not saved — another version needs review' : editor.dirty ? 'Not yet saved to AIM' : 'Saved to AIM'),
+    sign: barrier || !status ? '' : sign?.(editor) ?? '',
     sendDisabled: Boolean(!active || barrier || editor.adopting || editor.unavailable || editor.authorityRecovery || editor.conflict ||
       (!note && (preparing || !editor.context.topicId || (!editor.draft.body.trim() && !editor.draft.attachments.length)))),
     addDisabled: Boolean(!active || readOnly || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||

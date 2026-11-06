@@ -13,6 +13,11 @@ const same = (a, b) => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && same(a[key], b[key]));
 };
+// The refusal while an image is being chosen or kept: it is already in plain
+// words, unlike a device save that failed.
+class ImageHeld extends Error {
+  constructor() { super('Keep this page open until the selected image is saved or removed.'); }
+}
 const realTimers = { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id), now: () => Date.now() };
 const pairedReads = async reads => {
   const settled = await Promise.allSettled(reads);
@@ -30,9 +35,9 @@ export class EditorRegistry {
     if (!(saveDelayMs > 0 && maxSaveDelayMs >= saveDelayMs)) throw Error('Saves need bounded idle and maximum delays.');
     Object.assign(this, { api, bootstrap: copy(bootstrap), journal, present, closed, changed, activity, saveDelayMs, maxSaveDelayMs, pendingPageSize, timers });
     this.runtime = new RuntimeAuthority({ api, instanceId: bootstrap.instance_id, authority: bootstrap.authority });
-    this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map();
+    this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map(); this.serverSaves = new Map();
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
-    this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null;
+    this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null; this.closing = null;
     this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
       changed: editor => this.changed(editor), stopped: () => this.disposed });
@@ -53,17 +58,22 @@ export class EditorRegistry {
       (!editor || Object.values(presentation.editors).includes(editor) && this.sessions.get(editor.key)?.editor === editor));
   }
   // Every act on the writing in front: sending, images, versions, quiet closes.
-  // An open under way stops them before it keeps the writing it is leaving.
-  isCurrent(presentation, editor) { return this.holds(presentation, editor) && !this.pendingOpen; }
+  // An open under way stops them before it keeps the writing it is leaving,
+  // and a close stops them while it keeps the writing it is closing.
+  isCurrent(presentation, editor) { return this.holds(presentation, editor) && !this.pendingOpen && !this.closing; }
   // Typing in the Reader goes on while a step to another source waits: each
   // change is kept on this device as it lands, and Close, Escape or Topic
   // cancel the step and keep it. Once the step has read its source it stops
   // the Reader's typing and keeps the writing one last time before replacing
   // it. The inline composer waits from the start, since the open replaces it
-  // in front with the Reader.
+  // in front with the Reader. A close stops typing while it keeps the writing,
+  // so what it keeps is all there is when the Reader goes.
   isWritable(presentation, editor) {
-    return this.holds(presentation, editor) && (!this.pendingOpen || presentation.surface !== 'inline' && this.leaving !== this.pendingOpen);
+    return this.holds(presentation, editor) && !this.closing &&
+      (!this.pendingOpen || presentation.surface !== 'inline' && this.leaving !== this.pendingOpen);
   }
+  // A close under way is keeping this presentation's writing on this device.
+  isClosing(presentation) { return Boolean(presentation && this.closing?.presentation === presentation); }
   isSourceCurrent(presentation) { return Boolean(presentation?.source && this.current?.source === presentation.source && !this.pendingOpen && !this.disposed); }
 
   async initializeInline(topic) {
@@ -166,7 +176,7 @@ export class EditorRegistry {
     await Promise.all(editors.filter(editor => uploadWork(editor) || editor.localVersion > 0 ||
       editor.submissions.length || this.sessionFor(editor).attempts.length).map(editor => this.persistLocal(editor)));
     if (editors.some(editor => editor.imageBusy || editor.imageReservation ||
-        editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw Error('Keep this page open until the selected image is saved or removed.');
+        editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw new ImageHeld();
   }
 
   async open(sourceRef, { topicId, opener } = {}) {
@@ -253,7 +263,20 @@ export class EditorRegistry {
     this.scheduled.delete(editor.key);
   }
 
-  flush(editor) { this.cancelSave(editor); return editor.unavailable ? this.persistLocal(editor).then(() => null) : this.sessionFor(editor).save(); }
+  flush(editor) {
+    this.cancelSave(editor);
+    if (editor.unavailable) return this.persistLocal(editor).then(() => null);
+    // Saves to Theseus under way, for the saving sign.
+    const saved = this.sessionFor(editor).save();
+    this.serverSaves.set(editor.key, (this.serverSaves.get(editor.key) ?? 0) + 1); this.changed(editor);
+    const settled = () => {
+      const left = this.serverSaves.get(editor.key) - 1;
+      if (left) this.serverSaves.set(editor.key, left); else this.serverSaves.delete(editor.key);
+      this.changed(editor);
+    };
+    saved.then(settled, settled);
+    return saved;
+  }
   send(editor, options = {}) {
     if (options.presentation && !this.isCurrent(options.presentation, editor)) throw Error('Return to this writing before sending.');
     if (editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept on this device.');
@@ -266,23 +289,43 @@ export class EditorRegistry {
     if (explicit) {
       if (!presentation || this.current !== presentation || this.disposed) return false;
       ++this.generation;
-      this.pendingOpen = null;
+      // Close, Escape or × again: this close takes over from any under way.
+      this.pendingOpen = null; this.closing = null;
     }
     const requestGeneration = this.generation;
     if (!this.isCurrent(presentation)) return false;
+    // An image the person is choosing is theirs to finish: Close is refused at
+    // once, so the choice is not stopped and dropped by the close.
+    if (Object.values(presentation.editors).some(editor => editor.imageReservation)) {
+      if (explicit) throw new ImageHeld();
+      return false;
+    }
     // Everything that can take this presentation out of front moves the
     // generation (an open, a mode change, another close, disposal), so while
     // it is unchanged the presentation is still current.
-    // A refused explicit close says why to the person who asked for it, while
-    // this is still the writing they asked to close; an automatic close (a
-    // prepared send, a saved note) stays quietly open.
-    try { await this.keepLocal(presentation); }
-    catch (error) {
-      if (explicit && requestGeneration === this.generation) throw error;
-      return false;
-    }
-    if (requestGeneration !== this.generation) return false;
-    this.current = null; ++this.generation; this.closed(presentation); this.activity(); return true;
+    // Typing and every act on the writing wait while it is kept on this
+    // device, so the Reader never closes over writing the device did not keep.
+    const stop = this.closing = { presentation };
+    this.activity();
+    try {
+      // A refused explicit close says why to the person who asked for it,
+      // while this is still the writing they asked to close; an automatic
+      // close (a prepared send, a saved note) stays quietly open.
+      try { await this.keepLocal(presentation); }
+      catch (error) {
+        if (explicit && requestGeneration === this.generation) throw this.closeRefusal(error);
+        return false;
+      }
+      if (requestGeneration !== this.generation) return false;
+      this.current = null; ++this.generation; this.closed(presentation); return true;
+    } finally { if (this.closing === stop) this.closing = null; this.activity(); }
+  }
+
+  // A device save that failed is said in plain words; the image refusal
+  // already is.
+  closeRefusal(error) {
+    if (error instanceof ImageHeld) return error;
+    return Error(`Not closed: this device could not keep your writing (${error.message}). It stays here; keep this page open.`);
   }
 
   setMode(mode) {
@@ -307,14 +350,23 @@ export class EditorRegistry {
   }
 
   checkConfirmation(editor) { return this.sessionFor(editor).reconcile(); }
-  status(editor) {
-    if (editor.journalError) return 'Recovery copy unavailable — keep this page open';
-    if (this.localWrites.get(editor.key)?.pending) return 'Saving recovery copy';
-    if (editor.unavailable) return 'Source or destination unavailable — writing kept on this device';
-    if (editor.authorityRecovery) return 'Runtime changed — review saved version';
-    if (editor.conflict) return 'Not saved — another version needs review';
-    if (editor.cleanupError && !editor.dirty) return editor.cleanupError;
-    return editor.dirty ? 'Saved on this device — not yet saved to Theseus' : 'Saved to Theseus';
+  status(editor) { return this.saveSign(editor).text; }
+  // The saving sign beside the writing: its words, and its state (saving,
+  // device, saved or attention) the page marks them with. It says whether
+  // this device and Theseus each hold the writing yet, so the person knows
+  // when it is safe to leave.
+  saveSign(editor) {
+    const sign = (state, text) => ({ state, text });
+    if (editor.journalError) return sign('attention', 'Recovery copy unavailable — keep this page open');
+    if (this.isClosing(this.current) && Object.values(this.current.editors).includes(editor)) return sign('saving', 'Closing — saving on this device…');
+    if (this.localWrites.get(editor.key)?.pending) return sign('saving', 'Saving on this device…');
+    if (editor.unavailable) return sign('device', 'Source or destination unavailable — writing kept on this device');
+    if (editor.authorityRecovery) return sign('attention', 'Runtime changed — review saved version');
+    if (editor.conflict) return sign('attention', 'Not saved — another version needs review');
+    if (editor.cleanupError && !editor.dirty) return sign('', editor.cleanupError);
+    if (!editor.dirty) return sign('saved', 'Saved to Theseus');
+    return this.scheduled.has(editor.key) || this.serverSaves.has(editor.key)
+      ? sign('saving', 'Saved on this device — saving to Theseus…') : sign('device', 'Saved on this device — not yet saved to Theseus');
   }
 
   async neighbors(presentation, { read } = {}) {

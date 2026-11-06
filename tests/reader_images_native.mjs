@@ -110,12 +110,20 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
       const previousHeld = p.held.length;
       await replace(p, `Footer stability ${layout}`);
       const held = await until(() => p.held.slice(previousHeld).find(x => x.payload?.kind === 'draft.save'), 'delayed save confirmation');
-      await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved on this device — not yet saved to Theseus"'), 'device-saved status');
+      // The saving sign: its words, and a mark drawn from the palette (a ring
+      // while the save to Theseus is under way, the accent once it holds).
+      const mark = () => p.evaluate('(s=>({text:s.textContent,state:s.dataset.save,fill:getComputedStyle(s,"::before").backgroundColor,ring:getComputedStyle(s,"::before").borderTopColor,width:getComputedStyle(s,"::before").width,accent:getComputedStyle(document.querySelector("#send-reply")).backgroundColor}))(document.querySelector("#save-state"))');
+      await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved on this device — saving to Theseus…"'), 'device-saved status');
+      const saving = await mark();
+      assert.equal(saving.state, 'saving'); assert.equal(saving.fill, 'rgba(0, 0, 0, 0)', 'a ring while the save is under way'); assert.notEqual(saving.ring, 'rgba(0, 0, 0, 0)');
+      assert.notEqual(saving.width, '0px', 'the mark is drawn');
       const selectors = ['#add-image', '#send-reply', '#writing-body'];
       const before = await Promise.all(selectors.map(s => p.box(s)));
       await shot(p, `restoration-footer-${layout}-pending`);
       p.intercept(null); await p.release(held);
       await until(() => p.evaluate('document.querySelector("#save-state").textContent === "Saved to Theseus"'), 'server-saved status');
+      const saved = await mark();
+      assert.equal(saved.state, 'saved'); assert.equal(saved.fill, saved.accent, 'the accent once Theseus holds the writing');
       const after = await Promise.all(selectors.map(s => p.box(s)));
       observations.push({ name: 'footer geometry', layout, before, after });
       for (let i = 0; i < selectors.length; i++) for (const axis of ['x', 'y', 'width', 'height']) {

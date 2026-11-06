@@ -58,3 +58,18 @@ test('a late paste refusal cannot appear on a different reader', async () => {
   reject(Error('Original image was refused')); await pending;
   assert.deepEqual(f.notices, [], 'a different reader must not inherit the original paste error');
 });
+
+// A paste while Close keeps the writing is refused with the reason: the
+// Reader is closing, not waiting for another message; while a step waits it
+// is the step.
+for (const [closing, notice] of [[true, 'This reply is closing, so the image was not added.'],
+  [false, 'Another message is still opening. Your writing is kept; images and sending wait until it opens.']]) {
+  test(`an image pasted while the Reader ${closing ? 'closes' : 'waits for a step'} is refused and says why`, async () => {
+    const f = fixture(), event = f.event([picture('image.png')]);
+    Object.assign(f.reader.callbacks, { admits: () => false, writes: () => false, closing: shown => closing && shown === f.reader.presentation });
+    await f.reader.paste(event);
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(f.calls.length, 0);
+    assert.deepEqual(f.notices, [notice]);
+  });
+}
