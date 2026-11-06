@@ -14,6 +14,7 @@ from .topic_state import (ASK_WAIT_DOWN, ASK_WAIT_OCCUPIED, ASK_WAIT_SCHEMA, TOP
 from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE_INTENT_SCHEMA,
                            MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA)
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
+from .work import WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -30,6 +31,8 @@ STEPS = (
     # Version 14 records whether a message to someone asks or tells, and makes a topic wait on whoever it asks.
     ("13", "14", MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA, ASK_WAIT_DOWN + MESSAGE_INTENT_DOWN,
      "SELECT (%s) OR (%s)" % (MESSAGE_INTENT_OCCUPIED, ASK_WAIT_OCCUPIED)),
+    # Version 15 keeps the latest hosted turn in each topic, so a topic shows whether work is observed on it.
+    ("14", "15", WORK_SCHEMA, WORK_DOWN, WORK_OCCUPIED),
 )
 
 

@@ -5,6 +5,7 @@ import uuid
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .delivery import _now_ms
+from .work import work_by_topic
 
 
 CONVERSATION_SCHEMA = [
@@ -324,8 +325,9 @@ class Conversation:
         topic = self._topic(db, actor, args.get("topic_id"))
         participants = [dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"])) for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(p.responsibility,1,256) AS responsibility,a.enabled,a.kind FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?", (topic["id"], LIMITS["topic_participants"]))]
         summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
-        waiting_on, asks = self._waits_by_topic(db, [topic["id"]])[topic["id"]]
-        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks)
+        waits = self._waits_by_topic(db, [topic["id"]])
+        waiting_on, asks = waits[topic["id"]]
+        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits)[topic["id"]])
         return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,
                 "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 

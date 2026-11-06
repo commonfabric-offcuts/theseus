@@ -8,6 +8,7 @@ import uuid
 from . import delivery
 from .authority import RunnerGuard
 from .contract import StoreError
+from . import work
 
 
 RUNNER_SCHEMA = [
@@ -355,6 +356,8 @@ class Runner:
                 due = now
         elif pending:
             handed = attempt["captured_seq"]
+            # The turn now holds what its notice named: it is in each of those topics.
+            work.turn_handed(db, attempt["id"], attempt["recipient_id"], attempt["handed_seq"], turn["announced_seq"], now)
         # Only a delivery that arrived after the claim makes the recipient due again.
         if pending and row["last_seq"] > attempt["captured_seq"]:
             due = now
@@ -414,6 +417,9 @@ class Runner:
                 # Usage is the turn's, so it lands once: on the first handed row.
                 db.execute("UPDATE hosted_turns SET " + ",".join(key + "=?" for key in sorted(counts)) + " WHERE attempt_id=?",
                            [counts[key] for key in sorted(counts)] + [rows[0]["attempt_id"]])
+            if status == "completed":
+                for row in rows:
+                    work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
             rearmed = False
             for recipient in sorted({row["recipient_id"] for row in rows}):
                 schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()

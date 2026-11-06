@@ -110,6 +110,33 @@ Schema version 14 adds `messages.intent` and, on `topic_waiting`, `said`
 (1 for every row from before) and `ask_message_id`. Stepping back to 13 is
 refused while any message asks or tells or any row holds an ask.
 
+## Work observed
+
+One server rule says whether anyone is seen working on a topic
+(`aim_next/work.py`): work is observed when someone posted in the topic or took
+a hosted turn in it within the last hour, or when the topic waits on someone
+(said or asked). A hosted turn is in a topic when it was handed deliveries from
+that topic; its activity is when it was handed and when it completed. A turn
+that failed, was interrupted or was lost adds nothing when it ends. Theseus
+sees only work that leaves a trace in it, so nothing says that nobody is
+working: a topic without observed work reads "no activity seen since" its last
+activity, or "no activity seen" when it has none.
+
+Topic reads and `workspace_topics` items carry `work`: `{observed, seen_ms, by,
+how, waits}`, where `how` is `posted` or `turn`, whichever was later. Each fact
+is one keyed row per topic (the latest message through `topic_summaries`, the
+latest turn in `topic_turns`, the waits in `topic_waiting`), so a page of
+topics costs one lookup per topic on it, whatever their history. The value is
+worked out when the page is read: a row read at 9:00 that saw activity at 8:30
+still shows it until the list is read again, and its title always gives the
+time. A turn's start or end does not itself make the list read again; the
+posts a turn makes do. The pipeline's NOW list will count as observed work
+once NOW is a record; `observed()` takes it as `in_now`.
+
+Schema version 15 adds `topic_turns` (the latest turn per topic) and
+`hosted_turn_topics` (the topics each handed turn holds). Stepping back to 14
+is refused once either holds a row.
+
 ## Marked unread
 
 A person can mark a message unread so that they can come back to it. The mark
