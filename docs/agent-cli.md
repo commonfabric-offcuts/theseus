@@ -274,5 +274,30 @@ The `actors` view lists every enabled person and agent who can be named.
 Retain an opening's publish request before sending it; on uncertainty look up
 that operation, and resend the identical request only.
 
+## The pipeline
+
+An outcome's pipeline ([pipeline.md](pipeline.md)) has its own verbs. Times
+are absolute local times.
+
+- `pipeline OUTCOME [--section now|next|later|candidates|shipped|dropped]`
+  lists items in order, with their stage, where they came from and any ask.
+- `item OUTCOME N` shows one item with its stages and events.
+- `pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off]`
+  turns it on or off (the owner only).
+- `stages OUTCOME [--set FILE]` lists the stages, or replaces them from JSON.
+- `add OUTCOME --title T [--size S] [--section S] [--group G] [--from MSG,...] [--note N] [--raised-by A] TEXT`
+  adds an item; `add-source OUTCOME N --from MSG,...|--page ID|--note N` adds
+  where it came from.
+- `move OUTCOME N --above M | --below M | --to SECTION | --undo EVENT [--underway] [--because MSG]`.
+- `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
+  work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
+  `stage-note PIECE TEXT`, `combine OUTCOME --release N --pieces P,... --topic T [--commit SHA]`
+  and `finish PIECE` move it along.
+- `post --subject item:92,item:93` names the items a message is about; an ask
+  about an item puts it in the asked person's "Waiting on you".
+
+The import from the hand-written page is an operator act:
+`bin/aim-next-admin pipeline-import --profile P --seed S --as ACTOR`.
+
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.

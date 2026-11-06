@@ -82,7 +82,7 @@ WRITTEN_UPGRADE = ("DROP INDEX message_replies",
 WRITTEN_DOWN = (UNANSWERED_SCHEMA[1], "DELETE FROM reply_horizons") + tuple(UNANSWERED_BACKFILL)
 
 
-POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent"}
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "subjects"}
 
 
 def _preview(value, size=1024):
@@ -204,10 +204,16 @@ class Conversation:
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"topic_id"} or "body" not in args or set(args) - POST_FIELDS:
             raise Refusal("INVALID_ARGUMENT", "A post names one topic and carries its body, and optionally attachments, addressees, intent, reply_to and quotes")
-        snapshot = self._writing(args)
+        subjects = args.get("subjects")
+        snapshot = self._writing({key: value for key, value in args.items() if key != "subjects"})
         if snapshot.get("reply_to") is not None:
             _identifier(snapshot["reply_to"], "reply_to")
-        return self._publish(db, actor, envelope["operation_id"], _identifier(target["topic_id"], "topic_id"), snapshot)
+        result, affected = self._publish(db, actor, envelope["operation_id"], _identifier(target["topic_id"], "topic_id"), snapshot)
+        if subjects is not None:
+            # A post's subjects are written with it, so an ask and its subject never come apart (pipeline.py).
+            workspace_id = db.execute("SELECT workspace_id FROM topics WHERE id=?", (target["topic_id"],)).fetchone()[0]
+            self._record_subjects(db, workspace_id, result["message_id"], subjects)
+        return result, affected
 
     def _command_topic_read_through(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]

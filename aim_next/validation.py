@@ -25,6 +25,17 @@ COMMANDS = {
     "message.mark": "_command_message_mark",
     "color.set": "_command_color_set",
     "responsibility.set": "_command_responsibility_set",
+    "pipeline.configure": "_command_pipeline_configure",
+    "pipeline.stages_set": "_command_pipeline_stages_set",
+    "pipeline.item_add": "_command_pipeline_item_add",
+    "pipeline.source_add": "_command_pipeline_source_add",
+    "pipeline.item_edit": "_command_pipeline_item_edit",
+    "pipeline.item_move": "_command_pipeline_item_move",
+    "pipeline.piece_start": "_command_pipeline_piece_start",
+    "pipeline.stage_enter": "_command_pipeline_stage_enter",
+    "pipeline.stage_note": "_command_pipeline_stage_note",
+    "pipeline.combine": "_command_pipeline_combine",
+    "pipeline.piece_finish": "_command_pipeline_piece_finish",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -36,7 +47,18 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "opening.save": {"opening_revision"},
             "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"},
             "message.mark": {"mark_revision"}, "color.set": {"color_revision"},
-            "responsibility.set": {"responsibility_revision"}}
+            "responsibility.set": {"responsibility_revision"},
+            "pipeline.configure": {"pipeline_revision"},
+            "pipeline.stages_set": {"pipeline_revision"},
+            "pipeline.item_add": set(),
+            "pipeline.source_add": {"item_revision"},
+            "pipeline.item_edit": {"item_revision"},
+            "pipeline.item_move": {"item_revision"},
+            "pipeline.piece_start": set(),
+            "pipeline.stage_enter": {"piece_revision"},
+            "pipeline.stage_note": {"piece_revision"},
+            "pipeline.combine": set(),
+            "pipeline.piece_finish": {"piece_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision", "topic.update": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
@@ -66,6 +88,9 @@ VIEWS = {
     "source_topics": {"message_id", "cursor", "limit"},
     "wakes": set(),
     "releases": {"cursor", "limit"},
+    "pipeline": {"workspace_id", "section", "cursor", "limit"},
+    "pipeline_item": {"workspace_id", "number"},
+    "pipeline_row": {"workspace_id"},
 }
 
 

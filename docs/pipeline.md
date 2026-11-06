@@ -1,0 +1,103 @@
+# The pipeline
+
+An outcome may keep a pipeline: every piece of work it delivers, numbered,
+from the message it grew out of to the release that shipped it. It is a record
+in Theseus (schema version 27), not a page anyone keeps by hand. The tables
+and commands are `aim_next/pipeline.py`; the rules it shares with the outcome
+light (the glyph, stage names by round, typical times) are
+`aim_next/outcome_rules.py`; the page is `web/pipeline.mjs`, with its words in
+`web/pipeline-words.mjs`.
+
+## What it holds
+
+- **The pipeline** (`pipelines`): on or off, its title, its unit ("item",
+  "items"), whether items are sized small, medium or large, whether it ships in
+  numbered releases, and the words for its four sections.
+- **Stages** (`pipeline_stages`): the outcome's own, in order, each with what
+  done means, what gates it (checks by name, the owner's word, or words), its
+  rounds (`none`, `together`, or `split`: the first round apart) and whether a
+  piece or a whole release passes through it. A change applies to items that
+  enter a stage after it; past times stay with the stage they were measured in.
+- **Items** (`pipeline_items`): a number that never changes, a title, words, a
+  size, who raised it, its section (`now`, `next`, `later`, `candidates`,
+  `dropped`) and place, its candidate group, the items it waits for, and, when
+  it is still gathering context, the reply thread or Notebook page that holds it.
+- **Where an item came from** (`pipeline_item_sources`): messages, Notebook
+  pages or notes. A message is shown only to someone who can open it; others see
+  "a message you can't open".
+- **Pieces** (`pipeline_pieces`, `pipeline_piece_members`): the work on one or
+  more items in one topic, and a release's piece combined from approved ones.
+  Each stage a piece enters is a row in `pipeline_stage_entries`, with when it
+  entered and left and how it left (approved, sent back, passed, held, done).
+- **Events** (`pipeline_events`): every change, with who made it and the place
+  before and after. Undo is a new event naming the one it undoes.
+- **Message subjects** (`message_subjects`): `message.post` may name the items
+  a message is about (`subjects: [{kind: "item", ref: 92}]`). An open ask about
+  an item is what makes it "Waiting on you"; nothing else does.
+- **Release notes** (`release_notes`): the smaller changes a release shipped
+  with no number of their own.
+
+Shipped is read from the release records (`releases`, written by
+`record-release`): an item a recorded release names has shipped in it.
+
+## Who changes what
+
+The owner and the coordinator steer: they add, move, drop and restore items,
+change the stages and turn the pipeline on or off (configure is the owner's
+alone). An item the owner placed is moved only by the owner
+(`OWNER_PLACED`). Dropping an item that is being built needs a confirmation
+(`ITEM_UNDERWAY`). A stage gated on the owner's word is left only by the owner.
+
+## Commands and views
+
+Commands, each with the revision it checks:
+
+| Command | Target | Expected |
+| --- | --- | --- |
+| `pipeline.configure` | `{workspace_id}` | `pipeline_revision` (0 to create) |
+| `pipeline.stages_set` | `{workspace_id}` | `pipeline_revision` |
+| `pipeline.item_add` | `{workspace_id}` | none |
+| `pipeline.source_add` | `{workspace_id, number}` | `item_revision` |
+| `pipeline.item_edit` | `{workspace_id, number}` | `item_revision` |
+| `pipeline.item_move` | `{workspace_id, number}` | `item_revision` |
+| `pipeline.piece_start` | `{workspace_id}` | none |
+| `pipeline.stage_enter` | `{piece_id}` | `piece_revision` (optional) |
+| `pipeline.stage_note` | `{piece_id}` | `piece_revision` (optional) |
+| `pipeline.combine` | `{workspace_id}` | none |
+| `pipeline.piece_finish` | `{piece_id}` | `piece_revision` (optional) |
+
+A source is `{message_id}`, `{message_seq}` (a message by its number,
+as people say it), `{memory_item_id}` or `{note}`. `item_move` takes `section`,
+`above` or `below` (a number in the same section), `undo_of` (an event), and
+`underway_confirmed`.
+
+Views:
+
+- `pipeline {workspace_id, section, cursor, limit}`: one section's items, in
+  order, paged by an offset cursor. Section `now` also carries the head: the
+  facts boxes, the banner for the live release until a stage is entered after its deploy, the release
+  being put together, what waits on the reader, the pieces in Now and the
+  table of typical stage times. Section `shipped` gives groups, newest first.
+- `pipeline_item {workspace_id, number}`: one item with every source, piece and
+  event.
+- `pipeline_row {workspace_id}`: the rail's row (title, how many asks wait on
+  the reader, the newest work seen in a Now piece's topic), and `you_own`.
+
+## The import
+
+`tools/pipeline/export_seed.py` reads the hand-written Release pipeline page
+(as `view source` returns it), `tools/pipeline/items.json` and a file of
+gathered sources, and writes one seed. `bin/aim-next-admin pipeline-import
+--profile P --seed S --as fable` writes it in one transaction: the pipeline,
+its stages, every item with its number, sources and progress, and the release
+notes. It refuses when the outcome already has a pipeline, when the page has
+moved on since the seed was built, when a source cannot be found, or when the
+seed disagrees with a release record. A question or a 🔨 on the page is not
+carried: a question comes only from an open ask, a stage only from a tool.
+
+## Not yet
+
+- A stage's checks are shown, not enforced: they become records with the
+  outcome's checks.
+- A piece cannot yet start from a release (`RELEASE_NOT_HELD`).
+- A release's piece is closed by its release record rather than by the deploy.

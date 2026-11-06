@@ -27,6 +27,7 @@ from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPON
 from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
 from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
+from .pipeline import PIPELINE_DOWN, PIPELINE_OCCUPIED, PIPELINE_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -84,6 +85,11 @@ STEPS = (
     # activity. Activity times are worked out from what is kept, so stepping
     # back loses nothing.
     ("25", "26", TURN_ACTIVITY_BACKFILL, TURN_ACTIVITY_DOWN, TURN_ACTIVITY_OCCUPIED),
+    # Version 27 keeps each outcome's pipeline: its stages and numbered items,
+    # where each came from, its pieces of work and their stage entries, every
+    # placement and edit, the messages whose subject is an item, and the release
+    # notes written by hand. Stepping back is refused once any of them exists.
+    ("26", "27", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
 )
 
 
