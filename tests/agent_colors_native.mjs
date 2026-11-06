@@ -197,6 +197,21 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
       assert.deepEqual([opened.role, opened.label, opened.inView, opened.pressed], ['dialog', 'Color for aim-ux', true, ['Default (violet)']], width + ': a labelled popover in view, the agent\'s own pressed');
       assert.equal(opened.focused, 'Default (violet)', width + ': the current choice has the focus');
       assert.equal(await p.evaluate("document.querySelector('#reader').open"), false, width + ': the message did not open');
+      // Each swatch: its name tag's color, on the picker's own background,
+      // big enough to see, with its name in words inside the swatch.
+      const swatches = await p.evaluate(`[...document.querySelectorAll('.color-picker .swatch')].map(s=>{const t=s.querySelector('.swatch-tag'),n=s.querySelector('.swatch-name'),r=s.getBoundingClientRect(),w=n?.getBoundingClientRect();
+        return {name:s.getAttribute('aria-label'),tag:t&&getComputedStyle(t).backgroundColor,fill:getComputedStyle(s).backgroundColor,words:n?.textContent,
+          shown:Boolean(w&&w.width>0&&w.height>0&&w.left>=r.left&&w.right<=r.right&&w.bottom<=r.bottom),tall:t?Math.round(t.getBoundingClientRect().height):0}})`);
+      const panel = await p.evaluate("getComputedStyle(document.querySelector('.color-picker')).backgroundColor");
+      assert.equal(swatches.length, 9, width + ': a swatch per palette color');
+      for (const swatch of swatches) {
+        const [, tag] = await tokens(p, swatch.name);
+        assert.deepEqual([swatch.tag, swatch.fill, swatch.words, swatch.shown], [rgbOf(tag), panel, swatch.name, true], `${width}: ${swatch.name} shows its name tag color on the picker, named`);
+        assert.ok(swatch.tall >= 24, `${width}: ${swatch.name}'s color is ${swatch.tall}px tall`);
+      }
+      // No tap highlight over the picker, the card or the participant's name.
+      const taps = await p.evaluate(`[${JSON.stringify(card)},'.color-picker .swatch','.color-picker .swatch-default','#participants .chip-name'].map(s=>getComputedStyle(document.querySelector(s)).getPropertyValue('-webkit-tap-highlight-color'))`);
+      assert.deepEqual(taps, Array(4).fill('rgba(0, 0, 0, 0)'), width + ': no tap highlight');
       await shot(p, 'agent-color-picker-' + width);
       // Keyboard: the arrows move round the swatches; Escape closes and the card has the focus.
       await p.key('ArrowRight'); assert.equal((await picker(p)).focused, 'green', width + ': ArrowRight goes round to the first swatch');

@@ -130,10 +130,13 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .chip .chip-name{min-height:2rem;padding:0 .4rem;border:0;border-radius:.3rem;background:var(--agent-tag);color:var(--ink)}.chip .chip-name:hover{background:var(--agent-tag);text-decoration:underline}
 .color-picker{z-index:20;width:max-content;max-width:calc(100vw - 16px);padding:.6rem .7rem .7rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);box-shadow:0 6px 24px rgb(0 0 0 / .18)}
 .color-picker-title{margin:0 0 .45rem;font-size:.8rem;font-weight:650}
-.color-picker-swatches{display:grid;grid-template-columns:repeat(5,2.75rem);gap:.35rem;margin-bottom:.45rem}
-.color-picker .swatch{width:2.75rem;height:2.75rem;min-height:0;padding:0;display:flex;align-items:center;justify-content:center;border:2px solid var(--muted);border-radius:.5rem;background:var(--agent-card)}
-.color-picker .swatch:hover{background:var(--agent-hover)}
-.color-picker .swatch-tag{width:1.1rem;height:1.1rem;border-radius:50%;background:var(--agent-tag)}
+.color-picker-swatches{display:grid;grid-template-columns:repeat(5,3.4rem);gap:.4rem;margin-bottom:.5rem}
+.color-picker .swatch{width:3.4rem;min-height:0;padding:.3rem .3rem .2rem;display:flex;flex-direction:column;align-items:stretch;gap:.2rem;border:2px solid var(--muted);border-radius:.5rem;background:var(--panel)}
+.color-picker .swatch:hover{background:var(--panel);border-color:var(--ink)}
+.color-picker .swatch-tag{display:block;height:1.6rem;border-radius:.3rem;background:var(--agent-tag)}
+.color-picker .swatch-name{display:block;font-size:.72rem;line-height:1.2;color:var(--ink);text-align:center}
+/* A tap on a phone leaves no wash over the picker, the card whose name opened it, or a participant's name; focus rings stay. */
+.color-picker button,.message-card.agent-card,.chip .chip-name{-webkit-tap-highlight-color:transparent}
 .color-picker .swatch[aria-pressed=true],.color-picker .swatch-default[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
 .color-picker .swatch-default{width:100%;border:2px solid var(--muted);font-size:.85rem}
 .color-picker .notice{margin:.45rem 0 0;font-size:.8rem}

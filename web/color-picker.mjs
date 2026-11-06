@@ -38,7 +38,8 @@ export function openColorPicker({ anchor, back = anchor, agent, palette, chosen,
   for (const name of palette) {
     const swatch = element(doc, 'button', { type: 'button', className: `swatch agent-${name}`, title: name });
     swatch.setAttribute('aria-label', name); swatch.setAttribute('aria-pressed', String(chosen === name));
-    swatch.append(element(doc, 'span', { className: 'swatch-tag' }));
+    // Its color as the agent's name tag wears it, and its name in words.
+    swatch.append(element(doc, 'span', { className: 'swatch-tag' }), element(doc, 'span', { className: 'swatch-name', textContent: name }));
     press(swatch, name); swatches.append(swatch);
   }
   const reset = element(doc, 'button', { type: 'button', className: `swatch-default agent-${own}`, textContent: `Default (${own})` });

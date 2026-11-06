@@ -239,12 +239,16 @@ one, else the agent's default.
 The picker (`web/color-picker.mjs`) is a non-modal popover labelled "Color
 for" the agent: a swatch per palette color, each a button named for its
 color, and "Default (its own color)", with the current choice pressed and
-focused. Each swatch is outlined in the quiet text color, at 3:1 or better
+focused. Each swatch shows its color as an agent's name tag wears it (its
+`--agent-tag`, the strongest the palette paints for that hue) on the picker's
+own background, with the color's name in words under it, in ink at 4.5:1 or
+better. Each swatch is outlined in the quiet text color, at 3:1 or better
 against the picker in both themes (WCAG 1.4.11), and the pressed one also
-wears an ink ring. The arrow keys, Home and End move between them, and Tab goes round
-them while it is open; Escape closes it and gives the focus back; a press
-outside closes it; pressing the name again closes it. It is placed once, fixed
-to the window, so when a scroll moves its name away it closes rather than float
+wears an ink ring. A tap on a phone paints no highlight over the picker, an
+agent's card or a participant's name; the focus ring still shows. The arrow
+keys, Home and End move between them, and Tab goes round them while it is
+open; Escape closes it and gives the focus back; a press outside closes it;
+pressing the name again closes it. It is placed once, fixed to the window, so when a scroll moves its name away it closes rather than float
 away from it, giving the focus back to the name if it held it; a scroll that
 leaves the name where it was (to within a pixel), such as the page holding its
 place while a message arrives above, leaves it open. A choice closes it once

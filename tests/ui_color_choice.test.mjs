@@ -284,6 +284,9 @@ test('the picker is a labelled popover of the palette and the agent\'s own color
   assert.equal(p.root.getAttribute('aria-label'), 'Color for fable');
   assert.equal(p.root.parent, doc.body);
   assert.deepEqual(buttons().map(b => b.getAttribute('aria-label') ?? b.textContent), [...AGENT_PALETTE, 'Default (green)']);
+  // Each swatch says its color's name in words under its color, and in its title.
+  assert.deepEqual(buttons().slice(0, -1).map(b => [b.title, b.children.map(c => [c.className, c.textContent ?? ''])]),
+    AGENT_PALETTE.map(name => [name, [['swatch-tag', ''], ['swatch-name', name]]]));
   assert.deepEqual(buttons().filter(b => b.getAttribute('aria-pressed') === 'true').map(b => b.title), ['rose']);
   assert.equal(doc.activeElement.title, 'rose', 'the current color has the focus');
   assert.deepEqual(p.root.style, { position: 'fixed', top: '104px', left: '40px' }, 'just below its name');

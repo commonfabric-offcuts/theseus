@@ -98,6 +98,36 @@ test('each swatch in the picker is outlined at 3:1 or better against the picker,
   assert.match(chosen, /box-shadow:0 0 0 2px var\(--ink\)/, 'the chosen swatch wears a ring outside its outline');
 });
 
+// Each swatch shows its color as the agent's name tag wears it, the strongest
+// the palette paints for that hue, on the picker's own background, with the
+// color's name under it in words that keep 4.5:1 (WCAG AA), in light and dark.
+test('each swatch shows its name tag\'s color on the picker\'s background, with its name in readable words', () => {
+  const rule = selector => { const at = css.indexOf(selector + '{'); assert.ok(at >= 0, 'aim.css sets ' + selector); return css.slice(at, css.indexOf('}', at)); };
+  assert.match(rule('.color-picker .swatch'), /background:var\(--panel\)/, 'the swatch is the picker\'s own background');
+  assert.match(rule('.color-picker .swatch:hover'), /background:var\(--panel\)/, 'and stays it under the pointer');
+  assert.match(rule('.color-picker .swatch-tag'), /background:var\(--agent-tag\)/, 'its color is the name tag\'s');
+  assert.match(rule('.color-picker .swatch-tag'), /height:1\.6rem/, 'large enough to see');
+  const words = rule('.color-picker .swatch-name').match(/color:var\(--([\w-]+)\)/)?.[1];
+  assert.ok(words, 'the name has a color');
+  for (const page of [tokens(css, ':root'), tokens(css, '@media(prefers-color-scheme:dark){:root')])
+    assert.ok(contrast(page[words], page.panel) >= 4.5, `--${words} on the picker ${contrast(page[words], page.panel).toFixed(2)}`);
+  for (const name of AGENT_PALETTE) for (const text of [css, dark]) {
+    const tag = tokens(text, '.agent-' + name)['agent-tag'];
+    assert.ok(tag, name + ' has a name tag color');
+  }
+});
+
+// A tap on a phone leaves no blue wash over the picker, the agent's card whose
+// name opened it, or a participant's name; the focus ring still shows.
+test('the picker and the names that open it paint no tap highlight, and keep their focus ring', () => {
+  const at = css.indexOf('-webkit-tap-highlight-color:transparent');
+  assert.ok(at >= 0, 'aim.css turns the tap highlight off');
+  const selectors = css.slice(css.lastIndexOf('}', at) + 1, css.lastIndexOf('{', at)).replace(/\/\*[\s\S]*?\*\//g, '').split(',').map(s => s.trim());
+  assert.deepEqual(selectors, ['.color-picker button', '.message-card.agent-card', '.chip .chip-name']);
+  assert.match(css, /button:focus-visible[^{]*\{outline:2px solid var\(--focus\)/, 'every button keeps its focus ring');
+  assert.doesNotMatch(css, /\.color-picker[^{}]*:focus[^{}]*\{[^}]*outline:\s*(none|0)/, 'the picker never hides it');
+});
+
 // The Reader's page: an agent's message is read on its card's color under the
 // pointer, the card just pressed, in the color the reader sees that agent in;
 // the person's own message, another person's and a Notebook page on a neutral
