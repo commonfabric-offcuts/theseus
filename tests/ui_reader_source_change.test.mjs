@@ -7,7 +7,7 @@ import { Editor } from '../web/editor.mjs';
 // Reader.paintStatus over stand-in nodes.
 function reader(editor, shown) {
   const nodes = new Map();
-  const $ = id => { if (!nodes.has(id)) nodes.set(id, { id, hidden: false, disabled: false, textContent: '', replaceChildren() {} }); return nodes.get(id); };
+  const $ = id => { if (!nodes.has(id)) nodes.set(id, { id, hidden: false, disabled: false, textContent: '', dataset: {}, replaceChildren() {} }); return nodes.get(id); };
   const r = Object.assign(Object.create(Reader.prototype), {
     $, mode: 'reply', sessions: { reply: editor, note: editor }, source: { source_ref: shown }, presentation: {},
     field: { readOnly: false }, callbacks: {}, paintImages() {}, paintOffer() {}, paintAccess() {},

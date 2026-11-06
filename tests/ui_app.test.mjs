@@ -1119,6 +1119,43 @@ test('local recovery success alone never claims a server acknowledgement', async
   assert.equal(editor.dirty, true); assert.doesNotMatch(f.registry.status(editor), /^Saved to Theseus$/);
 });
 
+// The saving sign beside the writing: a short word, and a state the page
+// marks it with. It says whether this device and Theseus each hold the
+// writing yet, and says so while Close keeps it, so the person knows when it
+// is safe to leave.
+test('the saving sign follows the writing to this device, then to Theseus, and through Close', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const put = f.backend.put, command = f.transport.command;
+  t.after(() => { f.backend.put = put; f.transport.command = command; });
+  const sign = () => [f.registry.saveSign?.(reply).state, f.registry.status(reply)];
+  let held = deferred(), entered = deferred();
+  f.backend.put = async row => { entered.resolve(); await held.promise; return put(row); };
+  reply.edit({ body: 'Signed writing' });
+  const local = f.registry.edited(reply); await entered.promise;
+  assert.deepEqual(sign(), ['saving', 'Saving on this device…']);
+  held.resolve(); await local; f.backend.put = put;
+  assert.deepEqual(sign(), ['saving', 'Saved on this device — saving to Theseus…'], 'a save to Theseus is on its way');
+  held = deferred(); entered = deferred();
+  f.transport.command = async envelope => { entered.resolve(); await held.promise; return command(envelope); };
+  const saving = f.registry.flush(reply); await entered.promise;
+  assert.deepEqual(sign(), ['saving', 'Saved on this device — saving to Theseus…'], 'the save to Theseus is under way');
+  held.resolve(); await saving;
+  assert.deepEqual(sign(), ['saved', 'Saved to Theseus'], 'safe to leave from anywhere');
+  f.transport.command = async () => { throw Error('Offline fixture'); };
+  reply.edit({ body: 'Signed writing, offline' }); await f.registry.edited(reply); await f.registry.flush(reply);
+  assert.deepEqual(sign(), ['device', 'Saved on this device — not yet saved to Theseus'], 'nothing is on its way to Theseus');
+  held = deferred(); entered = deferred();
+  f.backend.put = async row => { entered.resolve(); await held.promise; return put(row); };
+  reply.edit({ body: 'Signed writing at Close' });
+  const closing = f.registry.close(x, { explicit: true }); await entered.promise;
+  assert.deepEqual(sign(), ['saving', 'Closing — saving on this device…']);
+  held.resolve(); assert.equal(await closing, true);
+  f.backend.put = async () => { throw Error('Injected recovery failure'); };
+  const y = await f.open(0), again = y.editors.reply;
+  again.edit({ body: 'Not kept' }); await f.registry.edited(again).catch(() => {});
+  assert.deepEqual([f.registry.saveSign?.(again).state, f.registry.status(again)], ['attention', 'Recovery copy unavailable — keep this page open']);
+});
+
 test('late close after another source opened does not close the new presentation', async t => {
   const f = await fixture(t), x = await f.open(), entered = deferred(), release = deferred();
   const put = f.backend.put;

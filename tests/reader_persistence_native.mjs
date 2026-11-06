@@ -1178,6 +1178,7 @@ try {
         await p.point('#reader-close');
         await until(() => p.evaluate('window.closeHold.entered'), 'Close keeps the writing on this device');
         assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), true, 'the field takes no typing while Close keeps the writing');
+        assert.deepEqual(await p.evaluate('(s=>[s.textContent,s.dataset.save])(document.querySelector("#save-state"))'), ['Closing — saving on this device…', 'saving'], 'the saving sign says Close is keeping the writing');
         await p.point('#writing-body'); await p.send('Input.insertText', { text: ' typed during Close' });
         const shown = await field(p);
         await p.evaluate('window.closeHold.release()');

@@ -895,7 +895,7 @@ async function initialize() {
     reach: recipientReach,
     uploads: editor => registry.sessionFor(editor).uploads,
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
-    status: editor => registry.status(editor), needsReview,
+    status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, needsReview,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: (host, editor, p) => pendingButton(host, editor, p),
@@ -909,6 +909,7 @@ async function initialize() {
     retrySource: () => run(retrySource),
     uploads: editor => registry?.sessionFor(editor).uploads,
     edit: editor => run(() => { if (registry.isWritable(reader.presentation, editor)) return registry.edited(editor); }), status: editor => registry.status(editor),
+    sign: editor => registry.saveSign(editor).state,
     mode: mode => {
       const cancelled = Boolean(registry.pendingOpen);
       reader.presentation = registry.setMode(mode); changed(reader.editor); retainRevisionTargets();

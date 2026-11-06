@@ -436,8 +436,8 @@ export class Reader {
   paintStatus() {
     if (!this.editor) return;
     const editor = this.editor;
-    const state = writingState(editor, { active: this.admits(editor), writable: this.writes(editor), note: this.mode === 'note', status: this.callbacks.status });
-    this.$('save-state').textContent = state.message;
+    const state = writingState(editor, { active: this.admits(editor), writable: this.writes(editor), note: this.mode === 'note', status: this.callbacks.status, sign: this.callbacks.sign });
+    this.$('save-state').textContent = state.message; this.$('save-state').dataset.save = state.sign;
     this.$('send-reply').disabled = state.sendDisabled;
     const change = sourceChange(editor, this.source.source_ref);
     this.$('source-update').textContent = change;

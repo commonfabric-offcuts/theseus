@@ -30,7 +30,7 @@ export class EditorRegistry {
     if (!(saveDelayMs > 0 && maxSaveDelayMs >= saveDelayMs)) throw Error('Saves need bounded idle and maximum delays.');
     Object.assign(this, { api, bootstrap: copy(bootstrap), journal, present, closed, changed, activity, saveDelayMs, maxSaveDelayMs, pendingPageSize, timers });
     this.runtime = new RuntimeAuthority({ api, instanceId: bootstrap.instance_id, authority: bootstrap.authority });
-    this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map();
+    this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map(); this.serverSaves = new Map();
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
     this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null; this.closing = null;
     this.neighborGeneration = 0;
@@ -256,7 +256,20 @@ export class EditorRegistry {
     this.scheduled.delete(editor.key);
   }
 
-  flush(editor) { this.cancelSave(editor); return editor.unavailable ? this.persistLocal(editor).then(() => null) : this.sessionFor(editor).save(); }
+  flush(editor) {
+    this.cancelSave(editor);
+    if (editor.unavailable) return this.persistLocal(editor).then(() => null);
+    // Saves to Theseus under way, for the saving sign.
+    const saved = this.sessionFor(editor).save();
+    this.serverSaves.set(editor.key, (this.serverSaves.get(editor.key) ?? 0) + 1); this.changed(editor);
+    const settled = () => {
+      const left = this.serverSaves.get(editor.key) - 1;
+      if (left) this.serverSaves.set(editor.key, left); else this.serverSaves.delete(editor.key);
+      this.changed(editor);
+    };
+    saved.then(settled, settled);
+    return saved;
+  }
   send(editor, options = {}) {
     if (options.presentation && !this.isCurrent(options.presentation, editor)) throw Error('Return to this writing before sending.');
     if (editor.unavailable) throw Error('The source or destination is unavailable. Your writing is kept on this device.');
@@ -324,14 +337,23 @@ export class EditorRegistry {
   }
 
   checkConfirmation(editor) { return this.sessionFor(editor).reconcile(); }
-  status(editor) {
-    if (editor.journalError) return 'Recovery copy unavailable — keep this page open';
-    if (this.localWrites.get(editor.key)?.pending) return 'Saving recovery copy';
-    if (editor.unavailable) return 'Source or destination unavailable — writing kept on this device';
-    if (editor.authorityRecovery) return 'Runtime changed — review saved version';
-    if (editor.conflict) return 'Not saved — another version needs review';
-    if (editor.cleanupError && !editor.dirty) return editor.cleanupError;
-    return editor.dirty ? 'Saved on this device — not yet saved to Theseus' : 'Saved to Theseus';
+  status(editor) { return this.saveSign(editor).text; }
+  // The saving sign beside the writing: its words, and its state (saving,
+  // device, saved or attention) the page marks them with. It says whether
+  // this device and Theseus each hold the writing yet, so the person knows
+  // when it is safe to leave.
+  saveSign(editor) {
+    const sign = (state, text) => ({ state, text });
+    if (editor.journalError) return sign('attention', 'Recovery copy unavailable — keep this page open');
+    if (this.closing && Object.values(this.current?.editors ?? {}).includes(editor)) return sign('saving', 'Closing — saving on this device…');
+    if (this.localWrites.get(editor.key)?.pending) return sign('saving', 'Saving on this device…');
+    if (editor.unavailable) return sign('device', 'Source or destination unavailable — writing kept on this device');
+    if (editor.authorityRecovery) return sign('attention', 'Runtime changed — review saved version');
+    if (editor.conflict) return sign('attention', 'Not saved — another version needs review');
+    if (editor.cleanupError && !editor.dirty) return sign('', editor.cleanupError);
+    if (!editor.dirty) return sign('saved', 'Saved to Theseus');
+    return this.scheduled.has(editor.key) || this.serverSaves.has(editor.key)
+      ? sign('saving', 'Saved on this device — saving to Theseus…') : sign('device', 'Saved on this device — not yet saved to Theseus');
   }
 
   async neighbors(presentation, { read } = {}) {

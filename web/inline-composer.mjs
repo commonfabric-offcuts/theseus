@@ -57,7 +57,7 @@ export class InlineComposer {
   $(name) { return this.root.querySelector(`#inline-${name}`); }
   get editor() { return this.presentation?.editors.reply; }
   admits(p = this.presentation, editor = this.editor) { return Boolean(editor && this.callbacks.admits(p, editor)); }
-  state() { return writingState(this.editor, { active: this.admits(), status: this.callbacks.status }); }
+  state() { return writingState(this.editor, { active: this.admits(), status: this.callbacks.status, sign: this.callbacks.sign }); }
   caret() { return this.input.caret(); }
   show(p) {
     this.presentation = p; this.root.hidden = false;
@@ -138,6 +138,7 @@ export class InlineComposer {
     const state = this.state(), editor = this.editor, active = this.admits();
     this.root.inert = !active; this.field.readOnly = state.readOnly;
     this.$('save-state').textContent = this.presentation.availabilityUnconfirmed ? 'Topic access unconfirmed — writing kept on this device' : state.message;
+    this.$('save-state').dataset.save = this.presentation.availabilityUnconfirmed ? '' : state.sign;
     this.$('retry').textContent = 'Retry access';
     this.$('retry').hidden = Boolean(editor.authorityRecovery || this.presentation.availabilityChecking || !(this.presentation.availabilityUnconfirmed || editor.unavailable));
     this.$('send').disabled = state.sendDisabled;
