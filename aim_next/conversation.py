@@ -117,11 +117,21 @@ class Conversation:
         if not isinstance(present, bool):
             raise Refusal("INVALID_ARGUMENT", "Participation must be explicitly true or false")
         member = self._recipients(db, [args.get("actor_id")], require_enabled=present)[0]
-        old = self._participant(db, topic["id"], member)
-        if present and not (old and old["active"]) and not self._room(db, topic["id"]):
-            raise Refusal("TOO_MANY_PARTICIPANTS", "Topic participant limit includes its creator")
+        old = db.execute("SELECT * FROM topic_participants WHERE topic_id=? AND actor_id=?", (topic["id"], member)).fetchone()
+        if present and (not old or not old["active"]):
+            count = db.execute("SELECT count(*) FROM topic_participants WHERE topic_id=? AND active=1", (topic["id"],)).fetchone()[0]
+            if count >= LIMITS["topic_participants"]:
+                raise Refusal("TOO_MANY_PARTICIPANTS", "Topic participant limit includes its creator")
+        # Every actual transition advances this member's fence. Re-adding them
+        # cannot make an earlier subscription reason eligible again.
+        epoch = old["epoch"] if old else 0
+        if old is None or bool(old["active"]) != present:
+            epoch += 1
+            if old is not None and old["active"]:
+                self._cancel_subscription(db, member, topic["id"], old["epoch"])
         responsibility = _body(args.get("responsibility", old["responsibility"] if old else ""))
-        epoch = self._set_participant(db, topic["id"], member, present, old, responsibility)
+        db.execute("INSERT INTO topic_participants VALUES (?,?,?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET active=excluded.active,epoch=excluded.epoch,responsibility=excluded.responsibility",
+                   (topic["id"], member, int(present), epoch, responsibility))
         unwaited = not present and self._unwait(db, member, "id", topic["id"])
         version = self._touch_topic(db, topic)
         self._change(db, "actor", member, "participation", topic["id"], version)
@@ -129,27 +139,6 @@ class Conversation:
             self._change(db, "actor", member, "waiting", topic["id"], version)
         return {"topic_id": topic["id"], "actor_id": member, "present": present, "epoch": epoch,
                 "responsibility": responsibility, "version": version}, [{"kind": "topic", "id": topic["id"], "version": version}]
-
-    def _participant(self, db, topic_id, member):
-        return db.execute("SELECT * FROM topic_participants WHERE topic_id=? AND actor_id=?", (topic_id, member)).fetchone()
-
-    def _room(self, db, topic_id):
-        """Whether the topic can take another participant; its creator counts."""
-        count = db.execute("SELECT count(*) FROM topic_participants WHERE topic_id=? AND active=1", (topic_id,)).fetchone()[0]
-        return count < LIMITS["topic_participants"]
-
-    def _set_participant(self, db, topic_id, member, present, old, responsibility):
-        """Record whether member takes part in the topic, given their row as it was; return its epoch."""
-        # Every actual transition advances this member's fence. Re-adding them
-        # cannot make an earlier subscription reason eligible again.
-        epoch = old["epoch"] if old else 0
-        if old is None or bool(old["active"]) != present:
-            epoch += 1
-            if old is not None and old["active"]:
-                self._cancel_subscription(db, member, topic_id, old["epoch"])
-        db.execute("INSERT INTO topic_participants VALUES (?,?,?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET active=excluded.active,epoch=excluded.epoch,responsibility=excluded.responsibility",
-                   (topic_id, member, int(present), epoch, responsibility))
-        return epoch
 
     def _command_topic_create_and_send(self, db, actor, envelope):
         return self._send(db, actor, envelope, opening=True)
@@ -351,18 +340,10 @@ class Conversation:
         # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
         answered = [actor] if self._answered(db, topic_id, actor) else []
         asked = self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else []
-        # Writing in a topic makes its author one of its participants, unless the
-        # topic has no room for another; the writing goes either way.
-        old = self._participant(db, topic_id, actor)
-        joined = not (old and old["active"]) and self._room(db, topic_id)
-        if joined:
-            self._set_participant(db, topic_id, actor, True, old, old["responsibility"] if old else "")
         version = self._touch_topic(db, topic)
         for member in answered + asked:
             self._change(db, "actor", member, "waiting", topic_id, version)
-        if joined:
-            self._change(db, "actor", actor, "participation", topic_id, version)
-        return {"message_id": message_id, "topic": {"id": topic_id, "version": version}, "joined": joined,
+        return {"message_id": message_id, "topic": {"id": topic_id, "version": version},
                 "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
 
     def _message_access(self, db, actor, message_id):

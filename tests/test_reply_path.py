@@ -113,13 +113,12 @@ class ReplyPathCase(ReaderCase):
         self.committed(self.prepare("third", "t2", submission="third", send_op="third-send"))
         self.committed(self.command("message.send", {"submission_id": "third"}, target={"topic_id": "t2"}, op="third-send"))
 
-    def test_workspace_nonparticipant_can_reply_explicitly_and_so_takes_part(self):
+    def test_workspace_nonparticipant_can_reply_explicitly_without_enrollment(self):
         sent = self.send("Request", ["agent-b"])
         before = self.sql("SELECT * FROM topic_participants ORDER BY rowid")
         envelope, _ = self.prepare_reply(["owner"], actor="agent-b", source={"kind": "message", "id": sent["id"]})
         result = self.committed(self.store.command("agent-b", envelope))
-        # Writing in a topic makes the writer one of its participants.
-        self.assertEqual(self.sql("SELECT * FROM topic_participants ORDER BY rowid"), before + [("t1", "agent-b", 1, 1, "")])
+        self.assertEqual(self.sql("SELECT * FROM topic_participants ORDER BY rowid"), before)
         self.assertEqual(self.sql("SELECT reason FROM delivery_reasons r JOIN deliveries d ON d.id=r.delivery_id WHERE d.message_id=? AND d.recipient_id='owner' ORDER BY reason", (result["message_id"],)), [("addressed",), ("subscription",)])
 
 
