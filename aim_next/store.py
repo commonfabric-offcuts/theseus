@@ -33,9 +33,10 @@ from . import delivery as _delivery
 from .releases import Releases, RELEASE_SCHEMA, write_release
 from .outcome_light import OutcomeLight
 from .whispers import WHISPER_SCHEMA
+from .standing_conversation import StandingConversation, STANDING_SCHEMA
 
 
-SCHEMA_VERSION = "27"
+SCHEMA_VERSION = "28"
 
 
 def commit_identity_intact(metadata):
@@ -109,7 +110,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -142,7 +143,8 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Releases, OutcomeLight):
+class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Releases, OutcomeLight,
+            StandingConversation):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -473,9 +475,13 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         db.execute("INSERT INTO workspaces VALUES (?,?,?,?,?,1)",
                    (workspace_id, actor, title, _body(args.get("purpose", "")), coordinator))
         db.executemany("INSERT INTO workspace_members VALUES (?,?)", [(workspace_id, member) for member in team])
-        self._outcome_change(db, workspace_id, 1)
-        return {"workspace": {"id": workspace_id, "owner_id": actor, "title": title, "version": 1}}, [
-            {"kind": "workspace", "id": workspace_id, "version": 1}]
+        # Every outcome has its conversation from the moment it is made (standing_conversation.py).
+        conversation_id = self._start_conversation(db, workspace_id, [], actor)
+        version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace_id,)).fetchone()[0]
+        self._outcome_change(db, workspace_id, version)
+        return {"workspace": {"id": workspace_id, "owner_id": actor, "title": title, "version": version},
+                "conversation_id": conversation_id}, [
+            {"kind": "workspace", "id": workspace_id, "version": version}]
 
     def _view_workspace(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))
@@ -568,6 +574,8 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         # A removed coordinator no longer coordinates; the workspace names nobody.
         coordinator = None if not present and member == workspace["coordinator_id"] else workspace["coordinator_id"]
         db.execute("UPDATE workspaces SET version=version+1,coordinator_id=? WHERE id=?", (coordinator, workspace["id"]))
+        # The conversation's people follow the team, and its coordinator (standing_conversation.py).
+        self._sync_participants(db, workspace["id"])
         version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace["id"],)).fetchone()[0]
         self._outcome_change(db, workspace["id"], version)
         self._change(db, "actor", member, "workspace", workspace["id"], version)
@@ -623,7 +631,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             # latest_seq is the sequence of the topic's newest message, read through its one-row summary.
             rows += db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t INDEXED BY workspace_topic_order "
                                "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
-                               "WHERE t.workspace_id=? AND t.archived=? AND (t.state='done')=?" + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
+                               "WHERE t.workspace_id=? AND t.archived=? AND (t.state='done')=? AND t.kind='topic'" + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
                                " ORDER BY t.activity_ms DESC,t.id DESC LIMIT ?",
                                (workspace["id"], int(archived), flag) + (after[1:] if keyset else ()) + (limit + 1 - len(rows),)).fetchall()
             if len(rows) > limit:
@@ -639,9 +647,9 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             item["work"] = work[item["id"]]
         last = items[-1] if items else None
         # How many topics the folded lists hold, each counted in its own stretch of the index.
-        groups = {"done": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=0 AND (state='done')=1",
+        groups = {"done": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=0 AND (state='done')=1 AND kind='topic'",
                                      (workspace["id"],)).fetchone()[0],
-                  "archived": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=1",
+                  "archived": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=1 AND kind='topic'",
                                          (workspace["id"],)).fetchone()[0]}
         return {"instance_id": self.instance_id, "items": items, "groups": groups,
                 "next_cursor": order_cursor(last["state"] == "done", last["activity_ms"], last["id"]) if len(rows) > limit else None,

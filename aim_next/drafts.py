@@ -95,7 +95,7 @@ class Drafts:
         for recipient in result["addressees"]:
             _identifier(recipient, "addressee")
         result["addressees"] = list(dict.fromkeys(result["addressees"]))
-        for name in ("reply_to", "exchange_id", "caret", "opening", "intent", "whisper"):
+        for name in ("reply_to", "exchange_id", "caret", "opening", "intent", "whisper", "part"):
             if name in args:
                 result[name] = args[name]
         whispers.whispering(result)
@@ -181,7 +181,7 @@ class Drafts:
         snapshot = json.loads(row["payload"])
         # The durable saved revision, never a late HTTP payload, is the source
         # of the frozen act. Callers may echo fields, but cannot override them.
-        for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent", "whisper"):
+        for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent", "whisper", "part"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
         # A message to someone says whether it asks or tells; a person's that

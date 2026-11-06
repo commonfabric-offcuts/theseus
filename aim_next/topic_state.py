@@ -119,6 +119,7 @@ class TopicState:
         topic = self._topic(db, actor, target["topic_id"])
         _revision(envelope.get("expected", {}), "topic_revision", topic["version"])
         args = envelope.get("args", {})
+        self._conversation_update_refused(topic, args)
         if not args or not set(args) <= {"title", "archived", "state", "note", "waiting_on"}:
             raise Refusal("INVALID_ARGUMENT", "A topic update changes its title, whether it is archived, its state, note or who it waits on")
         manager = organises(topic, actor) or actor == topic["creator_id"]

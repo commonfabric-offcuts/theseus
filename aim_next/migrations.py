@@ -28,6 +28,7 @@ from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
 from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
+from .standing_conversation import STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -89,6 +90,12 @@ STEPS = (
     # only. Once a whisper exists the step back is refused, since release 22
     # would show it to everyone.
     ("26", "27", WHISPER_SCHEMA, WHISPER_DOWN, WHISPER_OCCUPIED),
+    # Version 28 gives each outcome its conversation: a topic of kind
+    # `conversation`, its items and what became of each, and its open asks.
+    # Older outcomes get theirs from the operator (conversation-start). Once a
+    # conversation exists the step back is refused: release 22 would show it as
+    # an ordinary topic and lose what became of its items.
+    ("27", "28", STANDING_SCHEMA, STANDING_DOWN, STANDING_OCCUPIED),
 )
 
 

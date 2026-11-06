@@ -25,6 +25,7 @@ COMMANDS = {
     "message.mark": "_command_message_mark",
     "color.set": "_command_color_set",
     "responsibility.set": "_command_responsibility_set",
+    "workspace.coordinator_set": "_command_workspace_coordinator_set",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -36,7 +37,7 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "opening.save": {"opening_revision"},
             "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"},
             "message.mark": {"mark_revision"}, "color.set": {"color_revision"},
-            "responsibility.set": {"responsibility_revision"}}
+            "responsibility.set": {"responsibility_revision"}, "workspace.coordinator_set": {"workspace_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision", "topic.update": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
@@ -45,14 +46,14 @@ REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision
                      "opening.save": "opening_revision",
                      "opening.publish": "opening_revision", "opening.discard": "opening_revision",
                      "message.mark": "mark_revision", "color.set": "color_revision",
-                     "responsibility.set": "responsibility_revision"}
+                     "responsibility.set": "responsibility_revision", "workspace.coordinator_set": "workspace_revision"}
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
     "workspaces": {"cursor", "limit"},
     "outcome_light": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done"}, "topic": {"topic_id"},
-    "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction"}, "source": {"source_ref", "kind", "id", "revision"},
+    "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items"}, "source": {"source_ref", "kind", "id", "revision"},
     "memory_items": {"owner_scope", "cursor", "limit"},
     "media": {"media_id", "source_ref"},
     "editor_state": {"source_ref", "topic_id", "cursor", "limit"},
@@ -66,6 +67,7 @@ VIEWS = {
     "source_topics": {"message_id", "cursor", "limit"},
     "wakes": set(),
     "releases": {"cursor", "limit"},
+    "conversation": {"workspace_id"},
 }
 
 
@@ -124,6 +126,8 @@ def _view_arguments(name, args):
     if name == "topic_messages" and (args.get("audience", "all") not in ("all", "reader")
                                       or args.get("direction", "after") not in ("before", "after")):
         raise Refusal("INVALID_ARGUMENT", "Invalid message audience or direction")
+    if name == "topic_messages" and args.get("items") not in (None, "open"):
+        raise Refusal("INVALID_ARGUMENT", "items is \"open\" or absent")
     if (name == "editor_state" and args.get("topic_id") is None
             and isinstance(args.get("source_ref"), dict) and args["source_ref"].get("kind") not in ("new_topic", "topic")):
         # A private note has no reply destination. Normalize only this view;

@@ -8,6 +8,7 @@ from .delivery import _now_ms
 from .responsibility import responsibility_note
 from .work import OTHER_MESSAGE, work_by_topic
 from . import whispers
+from .standing_conversation import open_items_clause
 
 
 CONVERSATION_SCHEMA = [
@@ -83,7 +84,7 @@ WRITTEN_UPGRADE = ("DROP INDEX message_replies",
 WRITTEN_DOWN = (UNANSWERED_SCHEMA[1], "DELETE FROM reply_horizons") + tuple(UNANSWERED_BACKFILL)
 
 
-POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper"}
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent", "whisper", "part"}
 
 
 def _preview(value, size=1024):
@@ -124,6 +125,7 @@ class Conversation:
 
     def _command_participation_set(self, db, actor, envelope):
         topic = self._topic(db, actor, envelope.get("target", {}).get("topic_id"), manage=True)
+        self._conversation_participation_refused(topic)
         _revision(envelope.get("expected", {}), "topic_revision", topic["version"])
         args = envelope.get("args", {})
         present = args.get("present")
@@ -196,11 +198,18 @@ class Conversation:
         # quotes only what its person chose: it answers nothing, so the
         # whisper itself stays between the two. A whisper about a whisper answers it.
         source = snapshot["source_ref"]
+        snapshot.pop("about_id", None)
         if source.get("kind") == "message" and snapshot.get("reply_to") is None:
             parent = db.execute("SELECT topic_id,private_to FROM messages WHERE id=?", (source.get("id"),)).fetchone()
             if (parent is not None and parent["topic_id"] == topic_id
                     and (parent["private_to"] is None or whispers.whispering(snapshot))):
                 snapshot["reply_to"] = source["id"]
+            elif parent is not None and parent["private_to"] is None and not whispers.whispering(snapshot):
+                # Writing about a message in another topic, sent to the outcome's conversation,
+                # links back to that message (standing_conversation.py).
+                destination = db.execute("SELECT kind FROM topics WHERE id=?", (topic_id,)).fetchone()
+                if destination is not None and destination["kind"] == "conversation":
+                    snapshot["about_id"] = source["id"]
         result, affected = self._publish(db, actor, envelope["operation_id"], topic_id, snapshot)
         self._change(db, "actor", actor, "submission", snapshot["id"], 2)
         return dict(result, submission_id=snapshot["id"]), affected
@@ -310,6 +319,8 @@ class Conversation:
                 # A state check, not a shape error: it is recorded like the others.
                 raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
         private = whispers.check_publish(db, actor, snapshot, parent)
+        # In an outcome's conversation an agent answers only the items it answers (standing_conversation.py).
+        self._conversation_check_publish(db, actor, topic, snapshot, snapshot.get("reply_to"), private)
         intent = self._intent(db, actor, snapshot)
         if snapshot["addressees"] and intent is None and private is None:
             raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED, recorded=False)
@@ -352,9 +363,9 @@ class Conversation:
             raise Refusal("TOO_MANY_RECIPIENTS", "Resolved recipients exceed the limit; nobody was sent a partial message")
         self._recipients(db, list(audience))
         message_id, sent_ms = "m-" + uuid.uuid4().hex, _now_ms()
-        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms,intent,private_to) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms,intent,private_to,about_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
-                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private)).lastrowid
+                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent, private, snapshot.get("about_id"))).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         # The author has written in this topic (TopicState._may_say); a whisper is not writing in it.
         if private is None:
@@ -392,11 +403,15 @@ class Conversation:
         db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
                    (actor, message_id, topic_id))
         self._message_activity(db, topic, actor, message_id, sent_ms)
-        # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
-        answered = [actor] if self._answered(db, topic_id, actor) else []
-        asked = self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else []
+        if topic["kind"] == "conversation":
+            # A conversation keeps its items, what became of each, and its waits ask by ask.
+            waited = self._conversation_record(db, actor, topic, message_id, snapshot, intent)
+        else:
+            # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
+            waited = ([actor] if self._answered(db, topic_id, actor) else []) + (
+                self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else [])
         version = self._touch_topic(db, topic)
-        for member in answered + asked:
+        for member in dict.fromkeys(waited):
             self._change(db, "actor", member, "waiting", topic_id, version)
         return {"message_id": message_id, "topic": {"id": topic_id, "version": version},
                 "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
@@ -438,7 +453,7 @@ class Conversation:
         participants = []
         for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(CAST(p.responsibility AS BLOB),1,1025) AS note_prefix,p.responsibility_revision,a.enabled,a.kind "
                               "FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?",
-                              (topic["id"], LIMITS["topic_participants"])):
+                              (topic["id"], LIMITS["workspace_members" if topic["kind"] == "conversation" else "topic_participants"])):
             item = dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"]))
             item["responsibility"], item["responsibility_truncated"] = _prefix(item.pop("note_prefix") or b"")
             participants.append(item)
@@ -465,7 +480,12 @@ class Conversation:
         # Every form reads only what the reader may see (whispers.VISIBLE), so a
         # page never stalls on, counts or folds a whisper between others.
         values = {"topic": topic["id"], "actor": actor, "cursor": cursor, "limit": limit + 1}
-        if args.get("audience", "all") == "reader":
+        if args.get("items") is not None:
+            if args["items"] != "open" or topic["kind"] != "conversation":
+                raise Refusal("INVALID_ARGUMENT", "items is \"open\", and only in an outcome's conversation")
+            rows = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=:topic AND m.seq" + relation + ":cursor AND "
+                              + whispers.VISIBLE + open_items_clause() + " ORDER BY m.seq " + order + " LIMIT :limit", values).fetchall()
+        elif args.get("audience", "all") == "reader":
             unaddressed = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=:topic AND m.addressees='[]' AND m.seq" + relation + ":cursor AND " + whispers.VISIBLE + " ORDER BY m.seq " + order + " LIMIT :limit", values).fetchall()
             addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=:topic AND actor_id=:actor AND seq" + relation + ":cursor ORDER BY seq " + order + " LIMIT :limit) a JOIN messages m ON m.seq=a.seq" + parent + " WHERE " + whispers.VISIBLE, values).fetchall()
             rows = sorted(unaddressed + addressed, key=lambda row: row["seq"], reverse=backwards)[:limit + 1]
@@ -495,6 +515,7 @@ class Conversation:
             last = row["seq"]
         if backwards:
             items.reverse()
+        self._item_fields(db, actor, topic, items)
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
                 "relevant_versions": {"topic": topic["version"]}, **self._new_line(db, actor, topic["id"])}
 
