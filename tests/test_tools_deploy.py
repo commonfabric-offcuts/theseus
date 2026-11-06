@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import tempfile
@@ -15,6 +16,8 @@ from unittest import mock
 from tools import deploy, release_check
 
 SHA = "c" * 40
+# os.kill before any test replaces it with a recorder.
+REAL_KILL = os.kill
 HEAD = "b" * 40
 
 
@@ -43,12 +46,12 @@ class FakeHost:
     """Answers the deploy's ps and git calls from a table and records every call; nothing real runs."""
 
     def __init__(self, config, servers=(111,), runners=(222,), dirty="", ff=True, backup=0, merge=0, migrate=0,
-                 log=SHIPPED, keeps=True, releases=(page(19), 0), cli=0, recorded=0):
+                 log=SHIPPED, keeps=True, releases=(page(19), 0), cli=0, recorded=0, on_cli=None):
         self.config, self.calls = config, []
         self.servers, self.runners = list(servers), list(runners)
         self.dirty, self.ff, self.backup, self.merge, self.migrate = dirty, ff, backup, merge, migrate
         self.log, self.keeps, self.releases, self.cli, self.recorded = log, keeps, releases, cli, recorded
-        self.written = []
+        self.written, self.on_cli = [], on_cli
 
     def __call__(self, argv, **kw):
         self.calls.append(argv)
@@ -84,6 +87,8 @@ class FakeHost:
         elif "migrate" in argv:
             code = self.migrate
         elif argv[-1] == "binding":
+            if self.on_cli:
+                self.on_cli()
             out, code = "i-1\n", self.cli
         else:
             raise AssertionError("unexpected command %r" % argv)
@@ -272,6 +277,12 @@ class ReleasePlan(DeployCase):
                 self.assertIn("does not name pipeline item numbers", self.refused(host))
                 self.assertEqual((self.kills, host.ran("-c")), ([], []))
 
+    def test_a_record_the_store_would_refuse_stops_the_deploy_before_anything_stops(self):
+        # 501 items: more than a record holds, so the record could never be written once the release is live.
+        host = FakeHost(self.config, log=log(("Everything", [", ".join(str(n) for n in range(1, 502))])))
+        self.assertIn("the release record would be refused: items is a list of at most 500", self.refused(host))
+        self.assertEqual((self.kills, host.ran("-c"), self.records()[-1]), ([], [], "02-checkout"))
+
     def test_a_release_that_names_no_item_says_so_or_stops_before_anything_stops(self):
         quiet = log(("A check", []), ("Another check", []))
         host = FakeHost(self.config, log=quiet)
@@ -308,7 +319,7 @@ STUB_SERVER = """import http.server, json, sys
 port = int(sys.argv[sys.argv.index("--port") + 1])
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        self.send_response(200)
+        self.send_response(%(root)d if self.path == "/" else 200)
         self.end_headers()
         self.wfile.write(json.dumps({"stub": %(nonce)r, "path": self.path}).encode())
     def log_message(self, *args):
@@ -342,9 +353,10 @@ class FullDeploy(DeployCase):
         self.nonce = os.urandom(8).hex()
         self.stubs()
 
-    def stubs(self, status="ready", event="acquired"):
+    def stubs(self, status="ready", event="acquired", root=200):
         (self.config.live / "bin").mkdir(parents=True, exist_ok=True)
-        (self.config.live / "bin/aim-next-server").write_text(STUB_SERVER % {"nonce": self.nonce, "status": status})
+        (self.config.live / "bin/aim-next-server").write_text(STUB_SERVER % {"nonce": self.nonce, "status": status,
+                                                                             "root": root})
         (self.config.live / "bin/aim-next-runner").write_text(STUB_RUNNER % {"event": event})
 
     def tearDown(self):
@@ -441,12 +453,34 @@ class FullDeploy(DeployCase):
         self.assertEqual([("record-release" in host.calls[index]) for index in order], [False, True])
         self.assertGreaterEqual(datetime.datetime.fromisoformat(written["deployed_at"]), before)
 
-    def test_a_release_that_does_not_verify_is_not_recorded(self):
-        host = FakeHost(self.config, cli=2)
+    def unverified(self, host):
         with self.assertRaises(deploy.Refused) as caught:
             self.run_deploy(host)
         self.assertIn("did not verify, so no release record was written", str(caught.exception))
-        self.assertEqual((host.ran("record-release"), self.records()[-1]), ([], "10-verify"))
+        self.assertEqual(host.ran("record-release"), [])
+        return json.loads((self.evidence / "10-verify.json").read_text())
+
+    def test_a_release_whose_cli_fails_is_not_recorded(self):
+        self.assertEqual(self.unverified(FakeHost(self.config, cli=2))["cli_exit"], 2)
+
+    def test_a_release_whose_reader_does_not_answer_200_is_not_recorded(self):
+        self.stubs(root=500)
+        self.assertEqual(self.unverified(FakeHost(self.config))["root_status"], 500)
+
+    def stop(self, index):
+        """Stop a started stand-in by its captured PID and reap it, so the deploy's check sees it gone.
+
+        The deploy's os.kill is a recorder during the run, so this signals with the real one."""
+        REAL_KILL(self.started[index].pid, signal.SIGKILL)
+        self.started[index].wait()
+
+    def test_a_release_whose_server_stops_before_the_check_ends_is_not_recorded(self):
+        verify = self.unverified(FakeHost(self.config, on_cli=lambda: self.stop(0)))
+        self.assertEqual((verify["server_alive"], verify["runner_alive"], verify["cli_exit"]), (False, True, 0))
+
+    def test_a_release_whose_runner_stops_before_the_check_ends_is_not_recorded(self):
+        verify = self.unverified(FakeHost(self.config, on_cli=lambda: self.stop(1)))
+        self.assertEqual((verify["server_alive"], verify["runner_alive"], verify["root_status"]), (True, False, 200))
 
     def test_a_record_the_instance_refuses_says_the_release_is_live_and_how_to_record_it(self):
         host = FakeHost(self.config, recorded=2)

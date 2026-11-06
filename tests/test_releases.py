@@ -88,6 +88,16 @@ class ReleaseCase(fixtures.StoreCase):
                 self.assertIn("never changes", self.refused(record(**change), "RELEASE_EXISTS"))
         self.assertIn("another commit", self.refused(record(release=19, commit=C), "RELEASE_EXISTS"))
 
+    def test_the_record_file_is_named_by_an_absolute_path(self):
+        written = Path(self.temp.name).resolve() / "release.json"
+        written.write_text(json.dumps(record(release=19)))
+        out, err = io.StringIO(), io.StringIO()
+        relative = Path("..") / written.relative_to(written.parents[1])
+        code = admin.main(["record-release", "--profile", str(self.profile), "--record", str(relative)], stdout=out, stderr=err)
+        self.assertEqual((code, out.getvalue()), (2, ""))
+        self.assertIn("record-release --profile /abs/profile.json --record /abs/release.json", err.getvalue())
+        self.assertEqual(self.sql("SELECT count(*) FROM releases"), [(0,)])
+
     def test_a_record_never_changes_in_the_store(self):
         self.recorded(record(release=19))
         for statement in ("UPDATE releases SET items='[1]'", "DELETE FROM releases"):

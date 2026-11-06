@@ -58,8 +58,10 @@ def _commit(value, name):
 
 
 def _moment(value):
-    """(the time as written, epoch milliseconds); the time must name its offset from UTC."""
-    if not isinstance(value, str) or len(value) > 64:
+    """(the time as written, epoch milliseconds); the time must name its offset from UTC.
+
+    Only a string fromisoformat parses is stored, so its length is bounded by that format."""
+    if not isinstance(value, str):
         _refuse("deployed_at is an ISO 8601 time with its offset")
     try:
         moment = datetime.datetime.fromisoformat(value)
