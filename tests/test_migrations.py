@@ -27,6 +27,8 @@ SCHEMA_11 = (Path(__file__).parent / "fixtures" / "schema_11.sql").read_text().s
 # Version 12 as its step first stood: messages timed, what waits on each reader not yet ordered.
 SCHEMA_12_EARLY = (Path(__file__).parent / "fixtures" / "schema_12_early.sql").read_text().splitlines()
 SCHEMA_12 = (Path(__file__).parent / "fixtures" / "schema_12.sql").read_text().splitlines()
+SCHEMA_13 = (Path(__file__).parent / "fixtures" / "schema_13.sql").read_text().splitlines()
+SCHEMA_14 = (Path(__file__).parent / "fixtures" / "schema_14.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -46,6 +48,19 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 15 keeps the latest hosted turn in each topic.
+        db.execute("DROP TABLE hosted_turn_topics")
+        db.execute("DROP TABLE topic_turns")
+        if version == "14":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
+        # Version 14 records whether a message to someone asks or tells, and what waits on whoever it asks.
+        db.execute("ALTER TABLE topic_waiting DROP COLUMN ask_message_id")
+        db.execute("ALTER TABLE topic_waiting DROP COLUMN said")
+        db.execute("ALTER TABLE messages DROP COLUMN intent")
+        if version == "13":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 13 adds the messages each person marked unread.
         db.execute("DROP TABLE message_marks")
         if version == "12":
@@ -912,6 +927,110 @@ class Schema12Case(MigrationCase):
                 self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class Schema13Case(MigrationCase):
+    """A schema-13 instance: version 14 records whether a message to someone asks or tells."""
+
+    VERSION, FIXTURE = "13", SCHEMA_13
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "13")
+
+    def post(self, **args):
+        return self.command("message.post", dict({"body": "For agent-b", "addressees": ["agent-b"]}, **args),
+                            target={"topic_id": "t1"})
+
+    def test_upgrade_from_13_keeps_records_matches_a_fresh_instance_and_records_intent(self):
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "13", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        # Messages sent before the upgrade said neither.
+        self.assertEqual(self.sql("SELECT DISTINCT intent FROM messages"), [(None,)])
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.post(intent="ask")["status"], "committed")
+        self.assertEqual(self.sql("SELECT intent FROM messages ORDER BY seq DESC LIMIT 1"), [("ask",)])
+
+    def test_step_back_to_13_restores_its_frozen_layout_while_no_message_says_ask_or_tell(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_13))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_a_wait_said_before_the_upgrade_stays_said_and_survives_a_step_back(self):
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE topics SET state='waiting',state_by='owner',state_ms=1234 WHERE id='t1'")
+            db.execute("INSERT INTO topic_waiting(topic_id,actor_id,state_ms,archived) VALUES ('t1','agent-b',1234,0)")
+        self.upgrade()
+        self.assertEqual(self.sql("SELECT topic_id,actor_id,said,ask_message_id FROM topic_waiting"), [("t1", "agent-b", 1, None)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        topic = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]
+        self.assertEqual((topic["waiting_on"], topic["asks"]), (["agent-b"], []))
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(self.sql("SELECT * FROM topic_waiting"), [("t1", "agent-b", 1234, 0)])
+
+    def test_step_back_refuses_once_a_message_asks_or_tells(self):
+        for intent in ("tell", "ask"):
+            with self.subTest(intent=intent):
+                self.upgrade()
+                self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+                self.assertEqual(self.post(intent=intent)["status"], "committed")
+                before = self.unchanged()
+                with self.assertRaises(MigrationError) as raised:
+                    self.step_back()
+                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(self.unchanged(), before)
+                self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+                self.setUp()
+
+
+class Schema14Case(MigrationCase):
+    """A schema-14 instance: version 15 keeps the latest hosted turn in each topic."""
+
+    VERSION, FIXTURE = "14", SCHEMA_14
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "14")
+
+    def test_upgrade_from_14_keeps_records_matches_a_fresh_instance_and_reads_work(self):
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "14", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        # A topic from before the upgrade has its posts as its activity, and no turn.
+        work = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["work"]
+        self.assertEqual((work["by"], work["how"]), ("owner", "posted"))
+
+    def test_step_back_to_14_restores_its_frozen_layout_while_no_turn_is_recorded(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_14))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_refuses_once_a_turn_in_a_topic_is_recorded(self):
+        self.upgrade()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO topic_turns VALUES ('t1',1234,'agent-a')")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -926,6 +1045,10 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema11Case, _name, None)
     if _name.startswith("test_") and _name not in Schema12Case.__dict__:
         setattr(Schema12Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema13Case.__dict__:
+        setattr(Schema13Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema14Case.__dict__:
+        setattr(Schema14Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

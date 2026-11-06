@@ -1,5 +1,5 @@
 import { currentImages } from './upload-state.mjs';
-import { paintState } from './topic-state.mjs';
+import { paintState, paintWork } from './topic-state.mjs';
 
 const validId = id => typeof id === 'string' && id.length > 0 && [...id].length <= 200 && !/[\x00-\x1f]/.test(id);
 const afterId = (id,previous) => {
@@ -210,12 +210,13 @@ export class TopicRail {
       }
       // A row drawn again with what it already shows is left alone, so the
       // pointer's hover and a click under way stay on what they were on.
-      const shows = JSON.stringify([item.title, item.unread, item.addressed, item.state, item.waiting_on, item.state_note]);
+      const shows = JSON.stringify([item.title, item.unread, item.addressed, item.state, item.waiting_on, item.asks, item.state_note, item.work]);
       if (drawn.get(link) !== shows) {
         drawn.set(link, shows);
         link.textContent = item.title;
         paintUnread(link, item);
         paintState(link, item, this.reader);
+        paintWork(link, item, this.reader);
       }
       if (item.id === this.pages.current?.id) link.setAttribute('aria-current', 'page');
       else link.removeAttribute('aria-current');

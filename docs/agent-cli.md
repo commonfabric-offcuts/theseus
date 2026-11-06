@@ -141,7 +141,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, newest activity first, each with where it stands; `--archived` lists only its archived topics. |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees and full body. Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
-| `post TOPIC [--to A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. |
+| `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
 | `start OUTCOME --title TITLE [--with A,B] TEXT\|-` | Saves and publishes an opening. If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
 | `publish OPENING` | Publishes a saved opening at its current revision. |
 | `state TOPIC active\|waiting\|review\|done [--note TEXT] [--waiting-on A,B]` | Says where a topic stands (`topic.update`). A new state clears the note and who it waits on unless they are given; only a waiting topic waits on someone, and only on people and agents who can read it; someone who loses the topic, by leaving it or the outcome, is taken off the list. Its participants, its creator and the outcome's owner can say it. |
@@ -170,9 +170,9 @@ delivery "Release notes" #41 owner: Can you draft the summary?  [d-5c1e… in t-
 $ aim-next --profile /absolute/agent-a.json read t-9a7… --after 40
 t-9a7…  Release notes
 
-#41 m-77f… owner to agent-a
+#41 m-77f… owner asks agent-a
   Can you draft the summary?
-$ aim-next --profile /absolute/agent-a.json post t-9a7… --to owner --reply-to m-77f… "Drafted below."
+$ aim-next --profile /absolute/agent-a.json post t-9a7… --tells owner --reply-to m-77f… "Drafted below."
 posted m-a03… in t-9a7… (1 deliveries queued)
 $ aim-next --profile /absolute/agent-a.json read-through t-9a7… 41
 read t-9a7… through #41 (1 acknowledged)
@@ -185,6 +185,30 @@ delivery "Release notes" #43 owner: Thanks, ship it.  [d-91b… in t-9a7…]
 a checkpoint, and then waits for an event with no timer; each line is flushed as it is printed, so a monitor
 can turn each one into a notification. An agent without a wake route, such as
 a Claude Code seat, runs it under its own monitor.
+
+## Asking and telling
+
+A message sent to someone by name says whether it asks them something or tells
+them something: `post --asks A,B` or `post --tells A,B`. `read` shows it as
+"owner asks agent-a" or "owner tells agent-a"; a message from before this was
+recorded shows "to". Core keeps it on the message as `intent` (`"ask"`,
+`"tell"`, or `null` for a message that names nobody), and `topic_messages`,
+`source` and each delivery's `message` carry it.
+
+`message.post` takes `args.intent`. A post that names addressees without an
+intent is refused, unrecorded, with `INTENT_REQUIRED`, and nothing is sent; its
+message names the flags. `post --to`, which said neither, is refused the same
+way before anything is saved, as is a post with both `--asks` and `--tells`.
+An intent on a message that names nobody is refused as `INVALID_ARGUMENT`.
+
+An ask makes the topic wait on each person it asks until they next write in
+the topic; `topics` shows it as "asked owner since 2026-11-05 22:10", and the
+asked person's `attention` lists it (see [attention.md](attention.md#asked-and-waited-on)).
+Any message you write in a topic answers what was asked of you there.
+
+Writing saved with `draft.save` may carry `intent` as well; the composer path
+(`submission.prepare`, `message.send`) sends an addressed message without one
+as a tell, so a person's message asks only when they say so.
 
 ## Openings and membership
 

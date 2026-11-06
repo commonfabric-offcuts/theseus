@@ -15,24 +15,69 @@ export function readableTime(ms) {
   return `${time} ${day}`;
 }
 
-export function stateLabel(item, reader) {
-  const state = STATES.includes(item?.state) ? item.state : 'active';
-  const waiting = Array.isArray(item?.waiting_on) ? item.waiting_on : [];
-  // The reader comes first, so a list cut short never cuts them.
-  const names = [...waiting.filter(id => id === reader), ...waiting.filter(id => id !== reader)];
-  return state === 'waiting' && names.length ? `Waiting on ${names.map(id => named(id, reader)).join(', ')}` : LABELS[state];
+// The open asks a topic carries: each waits on the person asked until they write in it.
+const asksOf = item => Array.isArray(item?.asks) ? item.asks.filter(ask => typeof ask?.actor_id === 'string') : [];
+
+// Who a topic waits on: those its waiting state names, then those asked and not yet answered.
+export function waitsOn(item) {
+  const said = item?.state === 'waiting' && Array.isArray(item.waiting_on) ? item.waiting_on : [];
+  return [...new Set([...said, ...asksOf(item).map(ask => ask.actor_id)])];
 }
 
-// A row in a topic list says where its topic stands unless it is simply active.
-// The caller has just set the row's text, so the row holds no earlier mark.
+export function stateLabel(item, reader) {
+  const state = STATES.includes(item?.state) ? item.state : 'active';
+  const waiting = waitsOn(item);
+  // The reader comes first, so a list cut short never cuts them.
+  const names = [...waiting.filter(id => id === reader), ...waiting.filter(id => id !== reader)].map(id => named(id, reader)).join(', ');
+  if (!names) return LABELS[state];
+  // An ask waits without changing what was said: a topic ready for review can still wait on an answer.
+  return state === 'waiting' || state === 'active' ? `Waiting on ${names}` : `${LABELS[state]} · waiting on ${names}`;
+}
+
+// "fable asked you, since 7:41 AM Thu Nov 5": how long each open ask has waited.
+export function askLines(item, reader) {
+  return asksOf(item).map(ask => `${named(ask.by, reader)} asked ${ask.actor_id === reader ? 'you' : ask.actor_id}` +
+    (Number.isSafeInteger(ask.since_ms) ? `, since ${readableTime(ask.since_ms)}` : ''));
+}
+
+// Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
+// in words. It never says nobody is working: only when activity was last seen.
+export function workNote(work, reader) {
+  if (!work || typeof work !== 'object') return '';
+  const when = Number.isSafeInteger(work.seen_ms) ? readableTime(work.seen_ms) : null;
+  const what = when && typeof work.by === 'string' ? ` (${named(work.by, reader)} ${work.how === 'turn' ? 'took a turn' : 'posted'})` : '';
+  // The server counts every wait as observed work.
+  if (work.waits) return when ? `Waiting on someone · last activity ${when}${what}` : 'Waiting on someone';
+  if (work.observed && when) return `Activity seen ${when}${what}`;
+  return when ? `No activity seen since ${when}` : 'No activity seen';
+}
+
+// A row with observed work carries a small dot; every row's title and
+// screen-reader text say what was seen and when.
+export function paintWork(host, item, reader) {
+  const note = workNote(item?.work, reader);
+  if (!note) { host.removeAttribute('title'); return; }
+  host.setAttribute('title', note);
+  if (item.work.observed) {
+    const dot = document.createElement('span');
+    dot.className = 'topic-work'; dot.setAttribute('aria-hidden', 'true');
+    host.append(dot);
+  }
+  const words = document.createElement('span');
+  words.className = 'sr-only'; words.textContent = ` · ${note}`;
+  host.append(words);
+}
+
+// A row in a topic list says where its topic stands unless it is simply active
+// and waits on nobody. The caller has just set the row's text, so the row holds no earlier mark.
 export function paintState(host, item, reader) {
-  if (!STATES.includes(item?.state) || item.state === 'active') return;
+  if (!STATES.includes(item?.state) || item.state === 'active' && !waitsOn(item).length) return;
   const mark = document.createElement('span');
-  mark.className = 'topic-state'; mark.dataset.state = item.state;
-  if (item.state === 'waiting' && item.waiting_on?.includes(reader)) mark.classList.add('mine');
+  mark.className = 'topic-state'; mark.dataset.state = waitsOn(item).length ? 'waiting' : item.state;
+  if (waitsOn(item).includes(reader)) mark.classList.add('mine');
   mark.textContent = stateLabel(item, reader);
-  // A long state ends in an ellipsis; its title holds the whole of it.
-  mark.title = typeof item.state_note === 'string' && item.state_note ? `${mark.textContent} · ${item.state_note}` : mark.textContent;
+  // A long state ends in an ellipsis; its title holds the whole of it, and how long each ask has waited.
+  mark.title = [mark.textContent, ...(typeof item.state_note === 'string' && item.state_note ? [item.state_note] : []), ...askLines(item, reader)].join(' · ');
   host.append(mark);
 }
 
@@ -77,12 +122,13 @@ export class TopicStatePanel {
     const reader = this.reader, manager = [topic.owner_id, topic.creator_id].includes(reader);
     const participant = participants.some(person => person.actor_id === reader);
     const mark = element('strong', { className: 'topic-state', textContent: stateLabel(topic, reader), title: stateLabel(topic, reader) });
-    mark.dataset.state = topic.state ?? 'active';
-    if (topic.state === 'waiting' && topic.waiting_on?.includes(reader)) mark.classList.add('mine');
+    mark.dataset.state = waitsOn(topic).length ? 'waiting' : topic.state ?? 'active';
+    if (waitsOn(topic).includes(reader)) mark.classList.add('mine');
     const line = [mark];
     if (topic.state_note) line.push(' · ', element('span', { className: 'state-note', textContent: topic.state_note }));
     if (topic.state_by) line.push(element('span', { className: 'muted', textContent:
       ` — ${named(topic.state_by, reader)}${Number.isSafeInteger(topic.state_ms) ? ', ' + readableTime(topic.state_ms) : ''}` }));
+    for (const ask of askLines(topic, reader)) line.push(element('span', { className: 'muted ask-line', textContent: ` · ${ask}` }));
     if (topic.archived) line.push(element('span', { className: 'muted', textContent: ' · Archived' }));
     this.line.replaceChildren(...line);
     if (!(manager || participant)) this.drop();
@@ -205,6 +251,7 @@ export class TopicStatePanel {
   advance(result) {
     if (result?.topic_id !== this.topic?.id || !Number.isSafeInteger(result.version)) return;
     const { version, title, archived, state, note, waiting_on, state_by, state_ms } = result;
+    // The answer says what was said; the open asks are as the page last read them.
     this.paint({ ...this.topic, version, title, archived, state, state_note: note, waiting_on, state_by, state_ms });
   }
 
@@ -213,7 +260,7 @@ export class TopicStatePanel {
   }
 }
 
-// The topics that say they wait on the reader, newest first.
+// The topics that wait on the reader, newest first: said to, or asked and not yet answered.
 export function paintWaiting(host, answer, open) {
   const items = Array.isArray(answer?.latest_waiting) ? answer.latest_waiting : [];
   const count = Number.isSafeInteger(answer?.waiting_on_me) ? answer.waiting_on_me : 0;
@@ -224,7 +271,10 @@ export function paintWaiting(host, answer, open) {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); open(item.id, item.title);
     };
-    const detail = [item.note, item.state_by ? `${item.state_by}${Number.isSafeInteger(item.state_ms) ? ', ' + readableTime(item.state_ms) : ''}` : ''].filter(Boolean).join(' — ');
+    const ask = item.ask && typeof item.ask.by === 'string'
+      ? `${item.ask.by} asked you${Number.isSafeInteger(item.ask.since_ms) ? ', since ' + readableTime(item.ask.since_ms) : ''}` : '';
+    const said = item.said === false ? '' : [item.note, item.state_by ? `${item.state_by}${Number.isSafeInteger(item.state_ms) ? ', ' + readableTime(item.state_ms) : ''}` : ''].filter(Boolean).join(' — ');
+    const detail = [said, ask].filter(Boolean).join(' · ');
     return element('li', {}, link, ...(detail ? [element('span', { className: 'muted', textContent: ' ' + detail })] : []));
   }));
   host.replaceChildren(element('h2', { textContent: count > items.length ? `Waiting on you (${count}, newest ${items.length} shown)` : `Waiting on you (${count})` }), list);

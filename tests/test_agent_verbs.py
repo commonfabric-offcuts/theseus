@@ -57,7 +57,7 @@ class PostAndOutboxCase(AgentVerbCase):
             seen.append(self.saved())
             return original(store, actor, envelope)
         with mock.patch.object(Store, "command", command):
-            code, out, err = self.run_cli("post", "t1", "--to", "owner", "Hello from the CLI")
+            code, out, err = self.run_cli("post", "t1", "--tells", "owner", "Hello from the CLI")
         self.assertEqual((code, err), (0, ""))
         message = self.latest()
         self.assertEqual(message[2:5], ("agent-a", "Hello from the CLI", '["owner"]'))
@@ -69,7 +69,7 @@ class PostAndOutboxCase(AgentVerbCase):
         saved = json.loads((self.outbox() / request).read_text())
         self.assertEqual(saved["binding"], self.captured)
         self.assertEqual(saved["command"]["kind"], "message.post")
-        self.assertEqual(saved["command"]["args"], {"body": "Hello from the CLI", "addressees": ["owner"]})
+        self.assertEqual(saved["command"]["args"], {"body": "Hello from the CLI", "addressees": ["owner"], "intent": "tell"})
         receipt = json.loads((self.outbox() / (operation + ".receipt.json")).read_text())
         self.assertEqual(receipt, self.store.view("agent-a", "operation", {"operation_id": operation}))
         # The saved request is also a valid legacy command request.
@@ -98,7 +98,7 @@ class PostAndOutboxCase(AgentVerbCase):
         self.assertEqual(self.saved(), [operation + ".receipt.json", request])
 
     def test_refusals_are_recorded_and_reported_with_their_exit(self):
-        code, out, err = self.run_cli("post", "t1", "--to", "outsider", "Nobody can reply")
+        code, out, err = self.run_cli("post", "t1", "--tells", "outsider", "Nobody can reply")
         self.assertEqual((code, out), (2, ""))
         self.assertIn("rejected REPLY_PATH_UNAVAILABLE", err)
         self.assertEqual(len(self.saved()), 2)
@@ -116,7 +116,7 @@ class PostAndOutboxCase(AgentVerbCase):
         self.assertEqual(json.loads(self.run_cli("binding")[1]), {"v": 1, "binding": self.captured})
 
     def test_a_final_unrecorded_refusal_is_not_offered_for_retry(self):
-        code, out, err = self.run_cli("post", "t1", "--to", "x" * 201, "Never sendable")
+        code, out, err = self.run_cli("post", "t1", "--tells", "x" * 201, "Never sendable")
         self.assertEqual((code, out), (2, ""))
         [request] = self.saved()
         operation = request[:-len(".request.json")]
@@ -131,7 +131,7 @@ class PostAndOutboxCase(AgentVerbCase):
         # Python gives argv bytes that are not UTF-8 as lone surrogates.
         before = self.records()
         for argv in (["post", "t1", "caf\udce9 bad byte"], ["start", "w1", "--title", "T\udcff", "words"],
-                     ["post", "t1", "--to", "own\udcffer", "hi"], ["post", "t1", "--reply-to", "m-\udcff", "hi"]):
+                     ["post", "t1", "--tells", "own\udcffer", "hi"], ["post", "t1", "--reply-to", "m-\udcff", "hi"]):
             with self.subTest(argv=argv):
                 code, out, err = self.run_cli(*argv)
                 self.assertEqual((code, out), (2, ""))
@@ -216,6 +216,8 @@ class PostAndOutboxCase(AgentVerbCase):
 
 class ReadingVerbCase(AgentVerbCase):
     def post(self, actor, body, topic="t1", **args):
+        if args.get("addressees"):
+            args.setdefault("intent", "tell")
         receipt = self.store.command(actor, self.envelope("message.post", {"topic_id": topic}, dict(args, body=body)))
         return self.committed(receipt)["message_id"]
 
@@ -474,12 +476,12 @@ class WatchReadingCase(AgentVerbCase):
             "agent-b", "changes", {"scope": {"kind": "actor", "id": "agent-b"}})["checkpoint"]["after_seq"])
 
     def test_a_restarted_watch_names_what_is_pending_before_it_reports_watching(self):
-        self.run_cli("post", "t1", "--to", "agent-b", "Sent while the watch was down")
+        self.run_cli("post", "t1", "--tells", "agent-b", "Sent while the watch was down")
         first = self.latest()
-        self.run_cli("post", "t1", "--to", "agent-b", "Also sent while it was down")
+        self.run_cli("post", "t1", "--tells", "agent-b", "Also sent while it was down")
         second = self.latest()
         settled = self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'", (first[0],))[0][0]
-        self.run_cli("post", "t1", "--to", "agent-b", "Read before the watch started")
+        self.run_cli("post", "t1", "--tells", "agent-b", "Read before the watch started")
         read = self.latest()
         self.assertEqual(self.run_cli("ack", self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'",
                                                       (read[0],))[0][0], actor="agent-b")[0], 0)
@@ -519,7 +521,7 @@ class WatchReadingCase(AgentVerbCase):
         def view(actor, name, args):
             if name == "deliveries" and not posted:
                 # Made after the baseline was read and before the pending read.
-                posted.append(self.run_cli("post", "t1", "--to", "agent-b", "Between the two reads"))
+                posted.append(self.run_cli("post", "t1", "--tells", "agent-b", "Between the two reads"))
             return original(actor, name, args)
         agent.store.view = view
         watch = FakeWatch(dict(dirty=True, stop=False), dict(dirty=False, stop=True))
@@ -539,7 +541,7 @@ class WatchReadingCase(AgentVerbCase):
 
     def delivery_change(self, agent, body, **args):
         cursor = agent.changes(FakeWatch(), None)["checkpoint"]
-        self.run_cli("post", "t1", "--to", "agent-b", body, **args)
+        self.run_cli("post", "t1", "--tells", "agent-b", body, **args)
         [change] = [item for item in agent.changes(FakeWatch(), cursor)["items"] if item["resource_kind"] == "delivery"]
         return change
 
@@ -712,7 +714,7 @@ class WatchVerbCase(AgentVerbCase):
             self.addCleanup(selector.close)
             selector.register(process.stdout, selectors.EVENT_READ)
             self.assertTrue(self.readline(process, selector).startswith("watching agent-b from change "))
-            code, out, _ = self.run_cli("post", "t1", "--to", "agent-b", "Watch for this\nsecond line")
+            code, out, _ = self.run_cli("post", "t1", "--tells", "agent-b", "Watch for this\nsecond line")
             self.assertEqual(code, 0, out)
             message = self.latest()
             delivery = self.sql("SELECT id FROM deliveries WHERE message_id=? AND recipient_id='agent-b'", (message[0],))[0][0]
@@ -769,7 +771,7 @@ class WatchVerbCase(AgentVerbCase):
                     # pipe is filled to 100 bytes short of full.
                     process.send_signal(signal.SIGSTOP)
                     self.committed(self.store.command("agent-a", self.envelope("message.post", {"topic_id": "t1"},
-                                                                                {"body": "w" * 600, "addressees": ["agent-b"]})))
+                                                                                {"body": "w" * 600, "addressees": ["agent-b"], "intent": "tell"})))
                     os.set_blocking(write_fd, False)
                     filled = 0
                     for size in (4096, 512, 64, 1):
@@ -872,7 +874,7 @@ class WatchVerbCase(AgentVerbCase):
             with os.fdopen(fd, "w") as stream:
                 stream.write(json.dumps(dict(record, epoch="e-recovered")) + "\n")
             os.replace(str(replacement), str(anchor))
-            self.assertEqual(self.run_cli("post", "t1", "--to", "agent-b", "Refused at the fence")[0], 2)
+            self.assertEqual(self.run_cli("post", "t1", "--tells", "agent-b", "Refused at the fence")[0], 2)
             self.assertEqual(process.wait(30), 2)
             ended = True
             self.assertEqual(process.stdout.read(), b"")

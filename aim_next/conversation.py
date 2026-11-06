@@ -5,6 +5,7 @@ import uuid
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .delivery import _now_ms
+from .work import work_by_topic
 
 
 CONVERSATION_SCHEMA = [
@@ -30,7 +31,16 @@ MESSAGE_TIME_DOWN = ("ALTER TABLE messages DROP COLUMN sent_ms",)
 MESSAGE_TIME_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM messages WHERE sent_ms IS NOT NULL)"
 
 
-POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes"}
+# Version 14: a message sent to someone by name says whether it asks them
+# something or tells them something. Messages sent before have none.
+MESSAGE_INTENT_SCHEMA = ["ALTER TABLE messages ADD COLUMN intent TEXT CHECK(intent IN ('ask','tell'))"]
+MESSAGE_INTENT_DOWN = ("ALTER TABLE messages DROP COLUMN intent",)
+MESSAGE_INTENT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM messages WHERE intent IS NOT NULL)"
+INTENTS = ("ask", "tell")
+INTENT_REQUIRED = ("A message to someone says whether it asks or tells: post with --asks NAMES or --tells NAMES "
+                   "(message.post args.intent \"ask\" or \"tell\"); nothing was sent")
+
+POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent"}
 
 
 def _preview(value, size=1024):
@@ -128,6 +138,10 @@ class Conversation:
                 raise Refusal("INVALID_ARGUMENT", "The opening belongs to a different workspace")
             self._open_topic(db, actor, topic_id, workspace_id, creation.get("title", ""), creation.get("participants", []),
                              Refusal("INVALID_ARGUMENT", "A topic needs a title"))
+        # Writing from a composer that does not ask is a tell: a person's message
+        # to someone asks only when they say so.
+        if snapshot["addressees"] and snapshot.get("intent") is None:
+            snapshot["intent"] = "tell"
         result, affected = self._publish(db, actor, envelope["operation_id"], topic_id, snapshot)
         self._change(db, "actor", actor, "submission", snapshot["id"], 2)
         return dict(result, submission_id=snapshot["id"]), affected
@@ -135,7 +149,7 @@ class Conversation:
     def _command_message_post(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"topic_id"} or "body" not in args or set(args) - POST_FIELDS:
-            raise Refusal("INVALID_ARGUMENT", "A post names one topic and carries its body, and optionally attachments, addressees, reply_to and quotes")
+            raise Refusal("INVALID_ARGUMENT", "A post names one topic and carries its body, and optionally attachments, addressees, intent, reply_to and quotes")
         snapshot = self._writing(args)
         if snapshot.get("reply_to") is not None:
             _identifier(snapshot["reply_to"], "reply_to")
@@ -215,6 +229,11 @@ class Conversation:
     def _publish(self, db, actor, operation_id, topic_id, snapshot):
         """Publish frozen writing as one message with its deliveries; every send shares this path."""
         topic = self._topic(db, actor, topic_id)
+        intent = snapshot.get("intent")
+        if snapshot["addressees"] and intent is None:
+            raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED, recorded=False)
+        if intent is not None and not snapshot["addressees"]:
+            raise Refusal("INVALID_ARGUMENT", "Only a message to someone asks or tells; name who it is to")
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         if not snapshot["body"].strip() and not snapshot["attachments"]:
             raise Refusal("EMPTY_MESSAGE", "A message needs writing or a ready attachment")
@@ -254,16 +273,21 @@ class Conversation:
         if len(audience) > LIMITS["recipients"]:
             raise Refusal("TOO_MANY_RECIPIENTS", "Resolved recipients exceed the limit; nobody was sent a partial message")
         self._recipients(db, list(audience))
-        message_id = "m-" + uuid.uuid4().hex
-        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+        message_id, sent_ms = "m-" + uuid.uuid4().hex, _now_ms()
+        sequence = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,exchange_id,operation_id,sent_ms,intent) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
-                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, _now_ms())).lastrowid
+                    _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         db.execute("UPDATE topic_summaries SET message_count=message_count+1,latest_message_id=? WHERE topic_id=?", (message_id, topic_id))
+        # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
+        answered = [actor] if self._answered(db, topic_id, actor) else []
+        asked = self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else []
         version = self._touch_topic(db, topic)
+        for member in answered + asked:
+            self._change(db, "actor", member, "waiting", topic_id, version)
         return {"message_id": message_id, "topic": {"id": topic_id, "version": version},
                 "delivery": {"queued": len(audience), "unavailable_subscribers": sorted(unavailable)}}, [{"kind": "topic", "id": topic_id, "version": version}, {"kind": "message", "id": message_id, "version": 1}]
 
@@ -291,7 +315,7 @@ class Conversation:
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
                 "author": row["author_id"], "seq": row["seq"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),
                 "quotes": json.loads(row["quotes"]), "addressees": json.loads(row["addressees"]),
-                "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "version": 1, "current_revision": 1,
+                "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"], "version": 1, "current_revision": 1,
                 "allowed_actions": ["quote", "note.save"]}
 
     def _view_source(self, db, actor, args):
@@ -301,7 +325,9 @@ class Conversation:
         topic = self._topic(db, actor, args.get("topic_id"))
         participants = [dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"])) for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(p.responsibility,1,256) AS responsibility,a.enabled,a.kind FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?", (topic["id"], LIMITS["topic_participants"]))]
         summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
-        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=self._waiting_by_topic(db, [topic["id"]])[topic["id"]])
+        waits = self._waits_by_topic(db, [topic["id"]])
+        waiting_on, asks = waits[topic["id"]]
+        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits)[topic["id"]])
         return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,
                 "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 
@@ -311,7 +337,7 @@ class Conversation:
         backwards = args.get("direction", "after") == "before"
         relation, order = ("<", "DESC") if backwards else (">", "ASC")
         cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
-        columns = "m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms"
+        columns = "m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms,m.intent"
         if args.get("audience", "all") == "reader":
             unaddressed = db.execute("SELECT " + columns + " FROM messages m WHERE m.topic_id=? AND m.addressees='[]' AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
             addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=? AND actor_id=? AND seq" + relation + "? ORDER BY seq " + order + " LIMIT ?) a JOIN messages m ON m.seq=a.seq", (topic["id"], actor, cursor, limit + 1)).fetchall()

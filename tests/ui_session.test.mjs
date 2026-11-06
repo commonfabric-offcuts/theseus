@@ -1553,3 +1553,18 @@ test('a reply editor refuses a new-topic source; new topics are server-owned ope
   assert.throws(() => new Editor(context, { id: 'd', revision: 0, generation: 'g', body: 'Opening words' }), /opening/i);
   assert.throws(() => restoreEditor(context, null, { format: 1, key: JSON.stringify(['ux-fixture', 'fixture-person', 'reply', 'new_topic', 'opening', 'reserved']) }), /opening/i);
 });
+
+test('a reply sent with Ask on is published as an ask, and one with Ask off as a tell', async t => {
+  const f = await fixture(t);
+  f.editor.edit({ body: 'Can you check this?', addressees: ['fixture-person'], intent: 'ask' });
+  await f.session.save();
+  assert.equal((await f.state()).draft.intent, 'ask', 'the saved writing keeps the ask');
+  await f.session.send();
+  const asked = await f.api.view('source', { kind: 'message', id: f.editor.submissions[0].receipt.result.message_id });
+  assert.deepEqual([asked.body, asked.intent], ['Can you check this?', 'ask']);
+  assert.equal(Object.hasOwn(f.editor.draft, 'intent'), false, 'the next reply starts without Ask');
+  f.editor.edit({ body: 'For your information', addressees: ['fixture-person'], intent: null });
+  await f.session.send();
+  const told = await f.api.view('source', { kind: 'message', id: f.editor.submissions[1].receipt.result.message_id });
+  assert.deepEqual([told.body, told.intent], ['For your information', 'tell']);
+});

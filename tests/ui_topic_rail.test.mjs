@@ -129,10 +129,23 @@ test('a row drawn again with what it already shows is left alone, and one whose 
   assert.equal(link.children.at(-2).textContent, '3');
   // Each thing a row shows, changed alone, draws it anew.
   const base = { ...counted('a', 3), state: 'waiting', waiting_on: ['x'] };
-  for (const change of [{ state: 'done' }, { waiting_on: ['y'] }, { state_note: 'note' }, { addressed: 1 }, { title: 'A' }]) {
+  for (const change of [{ state: 'done' }, { waiting_on: ['y'] }, { asks: [{ actor_id: 'y', message_id: 'm1', by: 'x', since_ms: 1 }] },
+    { state_note: 'note' }, { addressed: 1 }, { title: 'A' }, { work: { observed: true, seen_ms: 1, by: 'x', how: 'posted', waits: false } }]) {
     f.queue.push({ instance_id: 'i1', items: [base, f.item('z')], next_cursor: null }); await f.rail.load();
     const before = [...link.children];
     f.queue.push({ instance_id: 'i1', items: [{ ...base, ...change }, f.item('z')], next_cursor: null }); await f.rail.load();
     assert.notDeepEqual(link.children, before, JSON.stringify(change));
   }
+});
+
+test('a row shows the work dot only while the server observes work, and says when activity was last seen', async t => {
+  const f = fixture(t), at = new Date(2026, 10, 5, 7, 41).getTime();
+  const busy = { ...f.item('a'), work: { observed: true, seen_ms: at, by: 'fable', how: 'turn', waits: false } };
+  const quiet = { ...f.item('b'), work: { observed: false, seen_ms: at, by: 'fable', how: 'posted', waits: false } };
+  f.queue.push({ instance_id: 'i1', items: [busy, quiet, f.item('z')], next_cursor: null }); await f.rail.load();
+  const [a, b] = f.host.children;
+  assert.deepEqual(a.children.map(node => node.className), ['topic-work', 'sr-only']);
+  assert.equal(a.attributes.title, 'Activity seen 7:41 AM Thu Nov 5 (fable took a turn)');
+  assert.deepEqual(b.children.map(node => node.className), ['sr-only']);
+  assert.equal(b.attributes.title, 'No activity seen since 7:41 AM Thu Nov 5');
 });

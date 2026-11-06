@@ -231,7 +231,7 @@ class Delivery:
     def _delivery_item(self, db, row, active=True):
         # The message's own sequence and its topic's title prefix let an inbox
         # line or a wake notice name the place without another read.
-        message = dict(db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,substr(m.body,1,256) AS body,length(m.body)>256 AS preview,"
+        message = dict(db.execute("SELECT m.id,m.seq,m.topic_id,m.author_id,m.intent,substr(m.body,1,256) AS body,length(m.body)>256 AS preview,"
                                   "substr(CAST(t.title AS BLOB),1,1025) AS title_prefix FROM messages m JOIN topics t ON t.id=m.topic_id WHERE m.id=?",
                                   (row["message_id"],)).fetchone())
         message["preview"] = bool(message["preview"])

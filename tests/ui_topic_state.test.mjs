@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicStatePanel, paintState, paintWaiting, readableTime, stateLabel } from '../web/topic-state.mjs';
+import { TopicStatePanel, paintState, paintWaiting, paintWork, readableTime, stateLabel, workNote } from '../web/topic-state.mjs';
 
 // A small DOM with parents and one focused element. Detaching the focused
 // element, or an ancestor of it, sends focus to the body, as a browser does;
@@ -348,4 +348,66 @@ test('the waiting list names each topic, opens it, and hides when nothing waits'
   assert.equal(prevented, true);
   assert.deepEqual(opened, [['t9', 'Naming']]);
   assert.equal(host.find(node => node.tag === 'li').text, 'Naming Pick one — fable');
+});
+
+test('an open ask makes a topic wait on whoever it asks, whatever its state, and says since when', t => {
+  dom(t);
+  const since = new Date(2026, 10, 5, 7, 41).getTime(), asked = (actor_id, by = 'fable') => ({ actor_id, message_id: 'm-' + actor_id, by, since_ms: since });
+  assert.equal(stateLabel(topic({ asks: [asked('tony')] }), 'tony'), 'Waiting on you');
+  assert.equal(stateLabel(topic({ state: 'review', asks: [asked('codex')] }), 'tony'), 'Ready for review · waiting on codex');
+  // Someone both said and asked is named once; the reader still comes first.
+  assert.equal(stateLabel(topic({ state: 'waiting', waiting_on: ['codex'], asks: [asked('codex'), asked('tony')] }), 'tony'), 'Waiting on you, codex');
+  // A said list only counts while the topic is waiting, as before.
+  assert.equal(stateLabel(topic({ state: 'done', waiting_on: ['codex'] }), 'tony'), 'Done');
+  const host = new Element('a');
+  paintState(host, topic({ asks: [asked('tony')] }), 'tony');
+  const [mark] = host.children;
+  assert.deepEqual([mark.textContent, mark.dataset.state, mark.classes.has('mine'), mark.title],
+    ['Waiting on you', 'waiting', true, 'Waiting on you · fable asked you, since 7:41 AM Thu Nov 5']);
+  const other = new Element('a');
+  paintState(other, topic({ asks: [asked('codex')] }), 'tony');
+  assert.equal(other.children[0].classes.has('mine'), false);
+  const panel = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
+  panel.paint(topic({ state: 'review', asks: [asked('tony')] }), []);
+  assert.equal(panel.line.find(node => node.classes.has('ask-line')).textContent, ' · fable asked you, since 7:41 AM Thu Nov 5');
+  assert.equal(panel.line.find(node => node.classes.has('topic-state')).dataset.state, 'waiting');
+});
+
+test('the waiting list says who asked and since when, and leaves out a state it was not said in', t => {
+  dom(t);
+  const since = new Date(2026, 10, 5, 7, 41).getTime(), host = new Element('section');
+  paintWaiting(host, { waiting_on_me: 2, latest_waiting: [
+    { id: 't1', title: 'Asked', title_truncated: false, note: 'Someone else\'s note', state_by: 'codex', state_ms: null, said: false,
+      ask: { message_id: 'm1', by: 'fable', since_ms: since } },
+    { id: 't2', title: 'Both', title_truncated: false, note: 'Pick one', state_by: 'codex', state_ms: null, said: true,
+      ask: { message_id: 'm2', by: 'fable', since_ms: since } }] }, () => {});
+  assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text),
+    ['Asked fable asked you, since 7:41 AM Thu Nov 5', 'Both Pick one — codex · fable asked you, since 7:41 AM Thu Nov 5']);
+});
+
+test('a row with observed work carries a dot, and every row says when activity was last seen, never that nobody works', t => {
+  dom(t);
+  const at = new Date(2026, 10, 5, 7, 41).getTime(), when = '7:41 AM Thu Nov 5';
+  const work = (observed, extra = {}) => ({ observed, seen_ms: at, by: 'fable', how: 'posted', waits: false, ...extra });
+  assert.equal(workNote(work(true), 'tony'), `Activity seen ${when} (fable posted)`);
+  assert.equal(workNote(work(true, { by: 'tony', how: 'turn' }), 'tony'), `Activity seen ${when} (you took a turn)`);
+  assert.equal(workNote(work(false), 'tony'), `No activity seen since ${when}`);
+  assert.equal(workNote(work(false, { seen_ms: null, by: null, how: null }), 'tony'), 'No activity seen');
+  assert.equal(workNote(work(true, { waits: true }), 'tony'), `Waiting on someone · last activity ${when} (fable posted)`);
+  assert.equal(workNote(undefined, 'tony'), '', 'a server that does not say gets no words');
+  for (const text of [workNote(work(false), 'tony'), workNote(work(false, { seen_ms: null }), 'tony')]) assert.doesNotMatch(text, /nobody|no one/i);
+  const busy = new Element('a');
+  paintWork(busy, { work: work(true) }, 'tony');
+  assert.deepEqual(busy.children.map(node => [node.className, node.attributes['aria-hidden'] ?? null, node.textContent ?? null]),
+    [['topic-work', 'true', null], ['sr-only', null, ` · Activity seen ${when} (fable posted)`]]);
+  assert.equal(busy.attributes.title, `Activity seen ${when} (fable posted)`);
+  const quiet = new Element('a');
+  quiet.setAttribute('title', 'stale');
+  paintWork(quiet, { work: work(false) }, 'tony');
+  assert.deepEqual(quiet.children.map(node => node.className), ['sr-only'], 'no dot without observed work');
+  assert.equal(quiet.attributes.title, `No activity seen since ${when}`);
+  const unknown = new Element('a');
+  unknown.setAttribute('title', 'stale');
+  paintWork(unknown, {}, 'tony');
+  assert.deepEqual([unknown.children, unknown.attributes.title], [[], undefined]);
 });
