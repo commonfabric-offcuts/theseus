@@ -5,10 +5,11 @@
 //
 // The comparison works on lines first and then on the words of the lines
 // that changed, each a shortest edit script (Myers). A script longer than
-// LIMIT edits is not worked out word by word: that stretch shows as removed
-// and added whole, and when the lines themselves differ that much the page
-// says it was mostly rewritten. The bound keeps the work proportional to the
-// page and the size of the change.
+// LIMIT edits is not worked out: a stretch of changed lines among lines that
+// stand shows as removed and added whole, and a page whose lines differ that
+// much, or that is all one such stretch, says only that it changed in too
+// many places to mark, which is true however much of it changed. The bound
+// keeps the work proportional to the page and the size of the change.
 
 export const LIMIT = 2000;
 export const CONTEXT = 120;
@@ -54,7 +55,8 @@ export function script(a, b, limit = LIMIT) {
 }
 
 // The changes from before to after as runs of [kind, text], neighbouring
-// runs of one kind joined; null when the lines differ by more than LIMIT.
+// runs of one kind joined; null when the lines differ by more than LIMIT, or
+// when every line changed and the words do.
 export function changes(before, after, limit = LIMIT) {
   const byLine = script(lines(before), lines(after), limit);
   if (!byLine) return null;
@@ -66,7 +68,8 @@ export function changes(before, after, limit = LIMIT) {
     for (; at < byLine.length && byLine[at][0] !== 'same'; at++) byLine[at][0] === 'del' ? removed += byLine[at][1] : added += byLine[at][1];
     const byWord = script(words(removed), words(added), limit);
     if (byWord) for (const [kind, text] of byWord) add(kind, text);
-    else { add('del', removed); add('ins', added); }
+    else if (byLine.some(([kind]) => kind === 'same')) { add('del', removed); add('ins', added); }
+    else return null;
   }
   return runs;
 }
@@ -94,7 +97,7 @@ export function paintChanges(host, before, after, doc = globalThis.document) {
   const runs = changes(before, after);
   host.replaceChildren();
   if (!runs) {
-    host.append(node(doc, 'p', 'Most of this page was rewritten since then. The whole page is below.', 'changes-summary'));
+    host.append(node(doc, 'p', 'This page changed in too many places since then to mark them here. The whole page as it now stands is below.', 'changes-summary'));
     return { added: null, removed: null };
   }
   const counted = { added: 0, removed: 0 };

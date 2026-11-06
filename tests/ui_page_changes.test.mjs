@@ -66,12 +66,27 @@ test('long unchanged stretches keep a little context on each side of a change, a
   assert.deepEqual(seen(host).map(p => p[0]), ['gap', 'same', 'del', 'ins', 'same', 'gap', 'same', 'del', 'ins']);
 });
 
-test('a page rewritten past the limit says so, and the work stays bounded', () => {
+test('a page changed in more places than the limit says only that, never how much was rewritten, and the work stays bounded', () => {
   const page = tag => Array.from({ length: 2100 }, (_, i) => `${tag} line ${i}\n`).join('');
   const d = doc(), host = d.createElement('div');
   const started = performance.now();
+  const tooMany = /^This page changed in too many places since then to mark them here\. The whole page as it now stands is below\.$/;
   assert.deepEqual(paintChanges(host, page('old'), page('new'), d), { added: null, removed: null });
-  assert.match(host.children[0].textContent, /^Most of this page was rewritten since then/);
+  assert.match(host.children[0].textContent, tooMany);
+  // A few edits in each of many lines: most of the page is as it was, and the words do not say otherwise.
+  const lines = Array.from({ length: 12000 }, (_, i) => `Line ${i} stays as it was.\n`);
+  const scattered = lines.map((line, i) => i % 9 === 0 ? line.replace('stays', 'moved') : line);
+  assert.deepEqual(paintChanges(host, lines.join(''), scattered.join(''), d), { added: null, removed: null });
+  assert.match(host.children[0].textContent, tooMany);
+  assert.equal(host.children.length, 1, 'nothing struck or marked');
+  // A page of one long line with more word edits than the limit is not drawn struck whole and then added whole.
+  const words = tag => Array.from({ length: 1500 }, (_, i) => `${tag}${i}`).join(' ');
+  assert.equal(changes(words('old'), words('new')), null);
+  assert.deepEqual(paintChanges(host, words('old'), words('new'), d), { added: null, removed: null });
+  assert.match(host.children[0].textContent, tooMany);
+  // One paragraph rewritten past the limit, among lines that stand, still shows removed and added in place.
+  const around = 'Kept above.\n' + words('old') + '\nKept below.\n', revised = 'Kept above.\n' + words('new') + '\nKept below.\n';
+  assert.deepEqual(changes(around, revised)?.map(run => run[0]), ['same', 'del', 'ins', 'same']);
   // A megabyte page with a scattered handful of changes is worked out in place.
   const big = Array.from({ length: 20000 }, (_, i) => `Line ${i} of the long page, padded with words.\n`);
   const edited = big.map((line, i) => i % 1000 === 0 ? line.replace('padded', 'filled') : line);

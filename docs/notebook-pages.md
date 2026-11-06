@@ -69,8 +69,11 @@ the same changes; a page shown next carries none of them.
 
 `web/page-changes.mjs` compares lines, then the words of the lines that
 changed, each by a shortest edit script. A script longer than 2,000 edits is
-not worked out: a stretch of lines is shown removed and added whole, and a
-page whose lines differ that much says it was mostly rewritten. A revision
+not worked out: a stretch of changed lines among lines that stand is shown
+removed and added whole, and a page whose lines differ that much, or whose
+every line is one such stretch, says only "This page changed in too many
+places since then to mark them here", which holds however much of it
+changed, above the whole page as it now stands. A revision
 that changed only the title or attachments says so. A Reader that has moved
 to another source by the time the earlier revision arrives is left alone.
 
