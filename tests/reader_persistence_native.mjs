@@ -1160,6 +1160,28 @@ try {
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'fresh step after restored persistence'); assert.deepEqual(p.errors, []);
       });
 
+      // The held private save keeps the writing off Theseus, so the device is
+      // its only keeper: a step that cannot keep it there does not replace it.
+      await check('correction a step that cannot keep writing typed while it waited stays on the Reader and says why', async () => {
+        const p = await page('failed-step', null, true); await p.open(0);
+        const held = await newHeldStep(p, privateSave);
+        await p.evaluate(`(()=>{window.fixtureTransaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Fixture quota failure','QuotaExceededError');return fixtureTransaction.apply(this,args)}})()`);
+        const body = 'Typed while the step could not keep it';
+        await replace(p, body);
+        await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Recovery copy unavailable")'), 'visible local preservation failure');
+        await p.release(held);
+        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Fixture quota failure"'), 'the refused step says why');
+        assert.ok((await sourceText(p)).startsWith('Source 0 '), 'the step did not replace the Reader');
+        assert.equal(await field(p), body);
+        assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false, 'the Reader takes typing again');
+        assert.ok((await p.evaluate('document.querySelector("#save-state").textContent')).includes('Recovery copy unavailable'), 'the warning stays with the writing');
+        await p.evaluate('IDBDatabase.prototype.transaction=fixtureTransaction'); p.intercept(null);
+        await p.point('#next-message');
+        await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'a fresh step once the device keeps writing');
+        assert.ok((await localRows(p)).some(row => row.snapshot.draft.body === body && row.snapshot.context.sourceRef.id === facts.sources[0].id), 'the writing the step left is kept on this device');
+        assert.deepEqual(p.errors, []);
+      });
+
       await check('correction download navigation completes exact HTML and SVG downloads', async () => {
         const p = await page('downloads', null, true); await p.open(0);
         await cdp('Browser.setDownloadBehavior', { behavior: 'allowAndName', downloadPath, eventsEnabled: true });

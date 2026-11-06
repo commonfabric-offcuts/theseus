@@ -248,6 +248,44 @@ test('a waiting step leaves the Reader writable and nothing else', async t => {
   f.registry.dispose(); assert.equal(f.registry.isWritable(f.registry.current, f.registry.current.editors.reply), false);
 });
 
+// The step replaces the Reader only once the writing typed while it waited is
+// kept on this device; a refused keep leaves the Reader, and its warning, in
+// front, as a refused Close does.
+test('a step refuses to replace a Reader whose writing typed while it waited was not kept', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const held = await holdSource(f), put = f.backend.put;
+  t.after(() => { held.release.resolve(); f.backend.put = put; });
+  f.backend.put = async () => { throw Error('Injected recovery quota failure'); };
+  reply.edit({ body: 'Typed while the step waits' });
+  await assert.rejects(f.registry.edited(reply), /Injected recovery quota failure/);
+  assert.match(f.registry.status(reply), /Recovery copy unavailable/);
+  held.release.resolve();
+  assert.match((await held.opening).error?.message ?? 'the step replaced the Reader', /Injected recovery quota failure/, 'the step is refused and says why');
+  assert.equal(f.registry.current, x); assert.deepEqual(f.shown, [x]); assert.equal(f.registry.pendingOpen, null);
+  assert.equal(f.registry.isCurrent(x, reply), true, 'the Reader takes every act again');
+  assert.match(f.registry.status(reply), /Recovery copy unavailable/, 'the warning stays with the writing');
+  f.backend.put = put;
+  const y = await f.open(1); assert.equal(f.registry.current, y);
+  assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Typed while the step waits');
+});
+
+// The last keep before the step replaces the Reader is the last word: the
+// Reader takes no typing from when it starts until the step is done.
+test('the Reader stops taking typing while a step keeps its writing on this device', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const held = await holdSource(f), put = f.backend.put, entered = deferred(), release = deferred();
+  t.after(() => { held.release.resolve(); release.resolve(); f.backend.put = put; });
+  reply.edit({ body: 'Typed while the step waits' }); await f.registry.edited(reply);
+  assert.equal(f.registry.isWritable(x, reply), true, 'typing goes on while the read waits');
+  f.backend.put = async row => { entered.resolve(); await release.promise; return put(row); };
+  held.release.resolve(); await entered.promise;
+  assert.equal(f.registry.current, x, 'the Reader is in front while its writing is kept');
+  assert.equal(f.registry.isWritable(x, reply), false, 'typing stops so the kept copy is the last word');
+  release.resolve(); const y = (await held.opening).value;
+  assert.equal(f.registry.current, y); assert.equal(f.registry.isWritable(y, y.editors.reply), true);
+  assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Typed while the step waits');
+});
+
 test('newer open wins over explicit close awaiting local preservation', async t => {
   const f = await fixture(t), x = await f.open(0), entered = deferred(), release = deferred(), put = f.backend.put;
   t.after(() => { release.resolve(); f.backend.put = put; });

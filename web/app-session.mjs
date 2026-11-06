@@ -32,7 +32,7 @@ export class EditorRegistry {
     this.runtime = new RuntimeAuthority({ api, instanceId: bootstrap.instance_id, authority: bootstrap.authority });
     this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map();
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
-    this.current = null; this.inline = null; this.generation = 0; this.disposed = false;
+    this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null;
     this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
       changed: editor => this.changed(editor), stopped: () => this.disposed });
@@ -57,9 +57,13 @@ export class EditorRegistry {
   isCurrent(presentation, editor) { return this.holds(presentation, editor) && !this.pendingOpen; }
   // Typing in the Reader goes on while a step to another source waits: each
   // change is kept on this device as it lands, and Close, Escape or Topic
-  // cancel the step and keep it. The inline composer waits, since the open
-  // replaces it in front with the Reader.
-  isWritable(presentation, editor) { return this.holds(presentation, editor) && (!this.pendingOpen || presentation.surface !== 'inline'); }
+  // cancel the step and keep it. Once the step has read its source it stops
+  // the Reader's typing and keeps the writing one last time before replacing
+  // it. The inline composer waits from the start, since the open replaces it
+  // in front with the Reader.
+  isWritable(presentation, editor) {
+    return this.holds(presentation, editor) && (!this.pendingOpen || presentation.surface !== 'inline' && this.leaving !== this.pendingOpen);
+  }
   isSourceCurrent(presentation) { return Boolean(presentation?.source && this.current?.source === presentation.source && !this.pendingOpen && !this.disposed); }
 
   async initializeInline(topic) {
@@ -184,6 +188,11 @@ export class EditorRegistry {
     const context = { instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId };
     const reply = await this.register({ ...context, kind: 'reply' }, state.draft);
     const note = await this.register({ ...context, kind: 'note' }, state.note);
+    if (token !== this.generation || this.disposed) return null;
+    // Writing typed while the step waited is kept on this device before the
+    // step replaces it, or the step is refused and the writing stays in front.
+    this.leaving = token; this.activity();
+    await this.keepLocal(this.interactive);
     if (token !== this.generation || this.disposed) return null;
     reply.unavailable = sourceUnavailable || !state.destination_available;
     note.unavailable = sourceUnavailable;
