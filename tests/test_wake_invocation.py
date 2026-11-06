@@ -671,7 +671,7 @@ class WakeInvocationTests(unittest.TestCase):
         self.assert_reaped(calls[0])
         self.assert_no_live_group(calls[0])
 
-    def test_unconfirmed_cleanup_retains_child_and_refuses_another_invocation(self):
+    def test_unconfirmed_cleanup_retains_child_and_refuses_another_invocation_while_it_stays_unconfirmed(self):
         self.configure("never-read")
         before = list(wake_adapter._UNCONFIRMED_CHILDREN)
         try:
@@ -679,19 +679,67 @@ class WakeInvocationTests(unittest.TestCase):
                     side_effect=wake_adapter.AdapterFault("process_observation_failed")):
                 with self.assertRaises(wake_adapter.AdapterFault) as caught:
                     self.invoke()
-            self.assertEqual(str(caught.exception), "cleanup_unconfirmed")
-            self.assertEqual(len(self.spawned), 1)
-            child = self.spawned[0]["child"]
+                self.assertEqual(str(caught.exception), "cleanup_unconfirmed")
+                self.assertEqual(len(self.spawned), 1)
+                child = self.spawned[0]["child"]
+                self.assertIs(wake_adapter._UNCONFIRMED_CHILDREN[-1], child)
+                self.assertIsNone(child.returncode, "Unconfirmed leader must not be reaped")
+                with self.assertRaises(wake_adapter.AdapterFault) as again:
+                    self.invoke()
+            self.assertEqual(str(again.exception), "cleanup_unconfirmed")
             self.assertIs(wake_adapter._UNCONFIRMED_CHILDREN[-1], child)
-            self.assertIsNone(child.returncode, "Unconfirmed leader must not be reaped")
-            with self.assertRaises(wake_adapter.AdapterFault):
-                self.invoke()
+            self.assertIsNone(child.returncode)
             self.assertEqual(len(self.spawned), 1, "Fault must inhibit another broker")
             self.assertEqual(self.group_signals, [], "Ambiguous identity is not permission to signal")
         finally:
             # Only the independently proven fixture cleanup may end these
             # fixture children. This is not adapter cleanup success evidence.
             self.cleanup_brokers()
+            wake_adapter._UNCONFIRMED_CHILDREN[:] = before
+
+    def test_a_slow_process_list_is_waited_for_within_the_callers_deadline(self):
+        # The real ps, but the clock says 300 ms passed while it started, as under
+        # heavy load: well inside the caller's second, so the observation stands.
+        child, report = self.start_fixture_broker("cleanup-owned")
+        actual_ticks, original = wake_adapter._ticks, subprocess.Popen
+        started = []
+        def slow_ps(args, *a, **kw):
+            helper = original(args, *a, **kw)
+            started.append(300000000)
+            return helper
+        deadline = actual_ticks() + 1000000000
+        with mock.patch.object(subprocess, "Popen", side_effect=slow_ps), \
+                mock.patch.object(wake_adapter, "_ticks", side_effect=lambda: actual_ticks() + sum(started)):
+            try:
+                members = wake_adapter._process_group(child.pid, deadline)
+            except wake_adapter.AdapterFault as fault:
+                self.fail("a slow ps inside the caller's deadline failed the observation: %s" % fault)
+        self.assertEqual(len(started), 1)
+        self.assertIn(child.pid, members)
+        self.assertFalse(members[child.pid].startswith("Z"))
+
+    def test_a_child_one_failed_observation_left_unconfirmed_is_confirmed_by_the_next_invocation(self):
+        self.configure("normal")
+        before = list(wake_adapter._UNCONFIRMED_CHILDREN)
+        try:
+            with mock.patch.object(wake_adapter, "_process_group",
+                    side_effect=wake_adapter.AdapterFault("process_observation_failed")):
+                with self.assertRaises(wake_adapter.AdapterFault) as caught:
+                    self.invoke()
+            self.assertEqual(str(caught.exception), "cleanup_unconfirmed")
+            left = self.spawned[0]["child"]
+            self.assertIs(wake_adapter._UNCONFIRMED_CHILDREN[-1], left)
+            # The next invocation observes again: the first broker's group has
+            # gone, so its leader is reaped and this wake goes ahead.
+            try:
+                result = self.invoke()
+            except wake_adapter.AdapterFault as fault:
+                self.fail("one failed observation refused the next invocation: %s" % fault)
+            self.assertEqual((result.outcome, result.reason), ("accepted", "accepted"))
+            self.assertEqual(len(self.spawned), 2)
+            self.assertNotIn(left, wake_adapter._UNCONFIRMED_CHILDREN)
+            self.assert_reaped(left.pid)
+        finally:
             wake_adapter._UNCONFIRMED_CHILDREN[:] = before
 
     def test_process_helper_rejects_malformed_oversized_missing_and_late_output(self):

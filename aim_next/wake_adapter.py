@@ -58,7 +58,8 @@ class AdapterFault(Exception):
 
 
 # Preserve ownership if cleanup cannot be confirmed. The dedicated runner must
-# pause and exit, not invoke again. Inherited guards independently fence children.
+# pause and exit; an invocation in the same process first confirms these again.
+# Inherited guards independently fence children.
 _UNCONFIRMED_CHILDREN = []
 _PS_LIMIT = 1048576
 
@@ -72,9 +73,12 @@ def _remaining(deadline):
 
 
 def _process_group(pid, deadline):
-    """Bounded observation, never a killpg(0) existence test or broker reap."""
-    end = min(deadline, _ticks() + 250000000)
-    if not _remaining(end):
+    """Bounded observation, never a killpg(0) existence test or broker reap.
+
+    Bounded by the caller's deadline alone, which keeps the invocation inside
+    the runner's lease: ps is waited on for as long as the caller may act, so a
+    ps slowed by load is not a failed observation."""
+    if not _remaining(deadline):
         raise AdapterFault("process_observation_failed")
     helper = subprocess.Popen(["/bin/ps", "-A", "-o", "pid=,pgid=,stat="],
                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -84,7 +88,7 @@ def _process_group(pid, deadline):
     try:
         os.set_blocking(helper.stdout.fileno(), False)
         while True:
-            left = _remaining(end)
+            left = _remaining(deadline)
             if not left:
                 raise AdapterFault("process_observation_failed")
             if not select.select([helper.stdout], [], [], left)[0]:
@@ -95,7 +99,8 @@ def _process_group(pid, deadline):
             raw.extend(block)
             if len(raw) > _PS_LIMIT:
                 raise AdapterFault("process_observation_failed")
-        if helper.wait(timeout=_remaining(end)) != 0:
+        # Its output ended, so it is ending: it is waited on itself.
+        if helper.wait() != 0:
             raise AdapterFault("process_observation_failed")
         members = {}
         seen = set()
@@ -120,10 +125,11 @@ def _process_group(pid, deadline):
     finally:
         helper.stdout.close()
         # This is our separate, direct ps child. It has no descendants. Reaping
-        # it has no bearing on the retained broker leader's process group.
+        # it has no bearing on the retained broker leader's process group; once
+        # killed it ends, so it is waited on itself, past the deadline if need be.
         if helper.poll() is None:
             helper.kill()
-            helper.wait(timeout=max(0.001, _remaining(deadline)))
+            helper.wait()
 
 
 def _cleanup_child(child):
@@ -188,8 +194,15 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
     This neither acknowledges work nor schedules another wake. Fixed faults
     require a durable pause by the caller. No generic child reaper may coexist.
     """
-    if _UNCONFIRMED_CHILDREN:
-        raise AdapterFault("cleanup_unconfirmed")
+    # A child an earlier invocation could not confirm cleaned up is observed
+    # again first: this invocation goes ahead only once a fresh observation
+    # confirms it, so one failed observation does not refuse every later one.
+    for child in list(_UNCONFIRMED_CHILDREN):
+        try:
+            _cleanup_child(child)
+        except BaseException as error:
+            raise AdapterFault("cleanup_unconfirmed") from error
+        _UNCONFIRMED_CHILDREN.remove(child)
     try:
         prepared = prepare_route(route_path, claim, guard)
         pass_fds = guard.pass_fds
