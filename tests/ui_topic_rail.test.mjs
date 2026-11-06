@@ -313,3 +313,42 @@ test('a focused row keeps its focus while rows move around it, and leaves its li
   document.activeElement = null; f.area.handlers.focusout?.({ relatedTarget: null });
   assert.deepEqual(shown(f.host), ['z', 'c']);
 });
+
+test('opening a line under the pointer shows its rows at once, whether it was read before or opens while another read runs', async t => {
+  const f = fixture(t, { folds: true }), done = (...ids) => ({ instance_id: 'i1', items: ids.map(id => as(f, id, { state: 'done' })), next_cursor: null, groups: { done: ids.length, archived: 0 } });
+  f.done.details.open = true;
+  f.queue.push(listed(f, ['a'], { done: 1, archived: 0 }), done('c')); await f.rail.load();
+  assert.deepEqual(shown(f.done.host), ['c']);
+  // Closed, the line is not read; b is said done meanwhile.
+  f.done.details.open = false; f.done.details.handlers.toggle();
+  f.queue.push(listed(f, ['a'], { done: 2, archived: 0 })); await f.rail.load();
+  // The pointer is on the list, as it is whenever the summary is clicked.
+  f.area.handlers.pointerenter?.();
+  f.done.details.open = true;
+  f.queue.push(listed(f, ['a'], { done: 2, archived: 0 }), done('b', 'c'));
+  f.done.details.handlers.toggle(); await f.rail.loading;
+  assert.equal(f.done.label.textContent, 'Done (2)');
+  assert.deepEqual(shown(f.done.host), ['b', 'c'], 'a line read before opens with what it holds now');
+  // A line opened for the first time while another read runs reads once that one ends, and shows at once too.
+  const archived = { instance_id: 'i1', items: [as(f, 'e', { archived: true })], next_cursor: null, groups: { done: 2, archived: 1 } };
+  let release; f.queue.push(() => new Promise(resolve => release = resolve), done('b', 'c'));
+  const running = f.rail.load();
+  f.archived.details.open = true;
+  f.queue.push(listed(f, ['a'], { done: 2, archived: 1 }), done('b', 'c'), archived);
+  f.archived.details.handlers.toggle();
+  const queued = f.rail.queued;
+  release(listed(f, ['a'], { done: 2, archived: 0 })); assert.equal(await running, true, f.message.textContent); assert.equal(await queued, true, f.message.textContent);
+  assert.deepEqual(shown(f.archived.host), ['e'], 'the line opened during a read shows its rows under the pointer');
+  // A reload nobody asked for, after it, still keeps still under the pointer.
+  f.queue.push(listed(f, ['a', 'g'], { done: 2, archived: 1 }), done('b', 'c'), archived);
+  await f.rail.load();
+  assert.deepEqual(shown(f.host), ['z', 'a'], 'an unasked reload still holds rows under the pointer');
+  // So does an unasked reload that waits on another read: an earlier asked one does not carry over.
+  f.queue.push(() => new Promise(resolve => release = resolve), done('b', 'c'), archived);
+  const reading = f.rail.load(), waiting = f.rail.load();
+  f.queue.push(listed(f, ['a', 'g', 'h'], { done: 2, archived: 1 }), done('b', 'c'), archived);
+  release(listed(f, ['a', 'g'], { done: 2, archived: 1 })); assert.equal(await reading, true, f.message.textContent); assert.equal(await waiting, true, f.message.textContent);
+  assert.deepEqual(shown(f.host), ['z', 'a'], 'a waiting reload nobody asked for holds rows under the pointer');
+  f.area.handlers.pointerleave?.();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'g', 'h']);
+});

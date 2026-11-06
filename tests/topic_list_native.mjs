@@ -44,6 +44,16 @@ export async function listChecks({ check, page, until, control, view, shot }) {
     await until(async () => (await line(again, 'done')).open && (await rows(again, '#done-topic-list')).join() === 'list-b', 'Done line open again after a reload');
     await again.point('#done-topics-label');
     await until(async () => !(await line(again, 'done')).open, 'closed again');
+    // A closed line is not read. A topic said done meanwhile is there when the
+    // person opens it again, at once, though the pointer that opened it rests on the list.
+    await state('list-done-c', 'list-c', { state: 'done' });
+    await until(async () => (await line(again, 'done')).label === 'Done (2)', 'the closed line counts the new done topic');
+    await again.point('#done-topics-label');
+    await until(async () => (await rows(again, '#done-topic-list')).join() === 'list-c,list-b', 'the line opened again lists what it holds now');
+    await again.point('#done-topics-label');
+    await until(async () => !(await line(again, 'done')).open, 'closed again');
+    await post('list-done-c-back', 'list-c');
+    await until(async () => (await line(again, 'done')).label === 'Done (1)', 'list-c is back among the active topics');
     await again.close();
     const third = await page('list-done-closed', null, true);
     await until(async () => !(await line(third, 'done')).hidden, 'Done line shown');

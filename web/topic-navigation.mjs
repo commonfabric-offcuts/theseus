@@ -216,7 +216,7 @@ export class TopicNavigation {
 export class TopicRail {
   constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE, done = null, archived = null, storage = null, area = host }) {
     Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax, storage, area });
-    this.denied = false; this.loading = null; this.queued = null; this.failedMore = false; this.serial = 0;
+    this.denied = false; this.loading = null; this.queued = null; this.queuedAsked = false; this.failedMore = false; this.serial = 0;
     this.lists = [{ name: 'active', pages, host, more }];
     const kept = this.kept();
     for (const [name, parts] of [['done', done], ['archived', archived]]) {
@@ -226,10 +226,11 @@ export class TopicRail {
       list.details.open = kept[name] === true;
       list.more.onclick = () => this.load(list);
       // Opening a line reads its list, unless a read of it is under way; a
-      // list read before reads again with the others.
+      // list read before reads again with the others. The person asked for
+      // it, so it shows at once, under the pointer that opened it too.
       list.details.addEventListener('toggle', () => {
         this.keep(name, list.details.open);
-        if (list.details.open && !list.reading) this.load(list.pages.started ? false : list);
+        if (list.details.open && !list.reading) this.load(list.pages.started ? false : list, true);
       });
     }
     more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore, true);
@@ -342,7 +343,9 @@ export class TopicRail {
     const target = more === true ? this.lists[0] : more || null, first = target !== null && !target.pages.started;
     if (this.loading) {
       if (target && !first) return this.loading;
-      this.queued ??= this.loading.then(() => { this.queued = null; return this.load(); });
+      // The read made after it shows at once if any that wait on it was asked for.
+      this.queuedAsked ||= asked;
+      this.queued ??= this.loading.then(() => { const again = this.queuedAsked; this.queued = null; this.queuedAsked = false; return this.load(false, again); });
       return this.queued;
     }
     const cursor = target && !first ? target.pages.next : null;
