@@ -68,6 +68,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 #team-people { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
 .chip.unreachable { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-bg); }
 .chip .reach { color: var(--warn); }
+/* An agent whose wakes are not getting through says so after its name, in words. */
+.chip .wake-light { color: var(--warn); }
 .chip.unreachable button:not([aria-label]) { font-size: .75rem; color: var(--warn); text-decoration: underline; }
 .message-time { font-weight: 400; color: var(--muted); }
 

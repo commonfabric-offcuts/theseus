@@ -97,6 +97,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('Object.assign(globalThis, (()=>{' + attentionSource + '; return {Attention,paintSent}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach,replaceChips}; })())', context);
+  const lightsSource = readFileSync(new URL('../web/wake-lights.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class WakeLights', 'class WakeLights');
+  vm.runInContext('globalThis.WakeLights = (()=>{' + lightsSource + '; return WakeLights; })()', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,reread,PAGE}; })())', context);
   const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -1469,4 +1471,45 @@ test('your own message keeps its own style when it arrives live and when More lo
   const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
   assert.deepEqual(classes, { m33: 'message-card agent-card agent-peach', m32: 'message-card own-message', m31: 'message-card agent-card agent-green',
     m30: 'message-card agent-card agent-green', m29: 'message-card agent-card agent-green', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
+});
+
+// An agent whose wakes are not getting through says so after its name, in the
+// topic's participants and in its outcome's team, from the wakes view; a commit
+// reads the wakes again with everything else, and the words go when it is off.
+const wakesApi = (f, quiet) => {
+  const view = f.api.view;
+  f.api.view = async (name, args) => {
+    if (name !== 'wakes') return view(name, args);
+    f.calls.push({ name, args });
+    return { instance_id: 'fixture', wakes_live: true, quiet: quiet() };
+  };
+};
+const chipWords = host => walk(host).filter(node => node.className === 'chip').map(node => node.textContent + node.children.map(child => child.textContent ?? child).join(''));
+
+test('a participant whose wakes stopped says so on its name until a commit shows it answering', async () => {
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  const f = fixture();
+  pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
+  let quiet = [{ actor_id: 'fable', waiting: 2, since_ms: Date.UTC(2026, 10, 5, 4, 23), why: 'not_answering' }];
+  wakesApi(f, () => quiet);
+  f.useLive(live);
+  await f.initialize();
+  await drain();
+  const [person, agent] = chipWords(f.get('participants'));
+  assert.equal(person, 'fixture-person');
+  assert.match(agent, /^fable · not answering since \d+:\d\d [AP]M \w+ \w+ \d+ · 2 waiting$/);
+  quiet = [];
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await drain();
+  assert.deepEqual(chipWords(f.get('participants')), ['fixture-person', 'fable']);
+});
+
+test('an outcome\'s team says wakes are paused on each agent with work while no runner sends them', async () => {
+  const f = fixture('https://fixture/?workspace=w1');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  pickerApi(f, { workspace: { owner_id: 'tony' } });
+  wakesApi(f, () => [{ actor_id: 'ally', waiting: 4, why: 'wakes_paused' }]);
+  await f.initialize();
+  await drain();
+  assert.deepEqual(chipWords(f.get('team-people')), ['fixture-person', 'ally · wakes paused · 4 waiting']);
 });

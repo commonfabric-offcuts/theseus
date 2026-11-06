@@ -27,6 +27,7 @@ import { placeNewLine } from './unanswered.mjs';
 import { cardClass, agentColor, paneClass } from './author-colors.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
+import { WakeLights } from './wake-lights.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -48,6 +49,9 @@ const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
 let comparison = null, reviewSerial = 0, reviewOpener = null;
+// Whether each agent's wakes are getting through, said on its name where it is not.
+const wakeLights = new WakeLights({ read: async () => checkedView(await api.view('wakes', {}, { readClass: 'background' }), bootstrap.instance_id) });
+const wakeLight = person => person.kind === 'agent' || person.kind === undefined ? wakeLights.words(person.actor_id) : null;
 const sourceIdentity = ref => JSON.stringify(ref);
 const validate = answer => {
   if (answer?.error) throw Error(answer.error.message);
@@ -959,7 +963,8 @@ async function initialize() {
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add a participant to this topic', names: 'directory-names',
-    add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName });
+    add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight });
+  await wakeLights.load();
   // Who can be sent a message here: the topic's participants and the outcome's
   // members. A reader outside the outcome cannot list its members.
   outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null);
@@ -1079,6 +1084,7 @@ async function initialize() {
   // and paged; the open Reader's button follows them.
   commitReload = followCommits(async () => {
     const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks();
+    await wakeLights.load(); participantsPanel?.paint();
     return outcomes !== false && topics !== false && references !== false && marked !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
@@ -1299,10 +1305,11 @@ async function paintTeam(workspace,refresh) {
     .then(receipt=>{run(refresh);return receipt;});
   if(!teamPanel){
     const section=$('outcome-team');$('outcome-page').append(section);
-    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',names:'directory-names',fixed:()=>[teamPanel.owner]});
+    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',names:'directory-names',fixed:()=>[teamPanel.owner],light:wakeLight});
   }
   Object.assign(teamPanel,{owner:workspace.owner_id,add:id=>send(id,true),remove:id=>send(id,false)});
   let members;
+  await wakeLights.load();
   try { members=await readMembers(api,bootstrap.instance_id,workspace.id); }
   catch(error) { teamPanel.error=`The team could not be read: ${error.message}`;members=teamPanel.people; }
   teamPanel.paint(members,workspace.owner_id===bootstrap.actor);teamPanel.error='';

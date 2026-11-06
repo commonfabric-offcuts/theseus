@@ -136,8 +136,8 @@ export function replaceChips(host, field, chips) {
 // never replaced or disabled, so a repaint from someone else's change leaves
 // the person typing in it where they were.
 export class PeoplePanel {
-  constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null }) {
-    Object.assign(this, { host, label, names, fixed, add, remove, named });
+  constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null, light = () => null }) {
+    Object.assign(this, { host, label, names, fixed, add, remove, named, light });
     this.busy = false; this.error = ''; this.people = []; this.manage = false; this.removers = new Map(); this.namers = new Map();
     this.chips = element('div', { className: 'chips' });
     this.input = element('input', { autocomplete: 'off', placeholder: 'Add a name' });
@@ -170,6 +170,9 @@ export class PeoplePanel {
       const named = this.named(person);
       if (named) this.namers.set(person.actor_id, named);
       const chip = named ? element('span', { className: 'chip' }, named) : element('span', { className: 'chip', textContent: person.actor_id });
+      // Whether this agent's wakes are getting through, when they are not.
+      const light = this.light(person);
+      if (light) chip.append(element('span', { className: 'wake-light', textContent: ` · ${light}` }));
       if (manage && !fixed.has(person.actor_id)) {
         const out = element('button', { type: 'button', textContent: '×', disabled: this.busy });
         out.setAttribute('aria-label', `Remove ${person.actor_id}`);
