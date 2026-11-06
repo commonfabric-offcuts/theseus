@@ -25,7 +25,26 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await until(()=>p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(selector)});if(all.length!==1)return false;const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0;})()`),'unique rendered departure target '+selector);
     await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'nearest'})`);await p.point(selector);
   };
-  const choose=(p,id='t2')=>point(p,`#topics a[data-topic-id="${id}"]`);
+  // The rail lists a workspace's topics in ID order, 20 to a page, behind More
+  // (workspace_topics in aim_next/store.py, PAGE in web/topic-navigation.mjs).
+  // Earlier cases in this fixture add topics that sort ahead of t1 and t2, so
+  // the instrument pages the rail natively until its target is rendered, and
+  // fails by name when neither the target nor More appears. A topic choice
+  // loads a new document, whose rail starts again from the first page. Cases
+  // reveal before writing, so no More press falls inside a timed or held act.
+  const reveal=async(p,id)=>{
+    const selector=`#topics a[data-topic-id="${id}"]`;
+    for(let pressed=0;;++pressed){
+      const found=await until(()=>p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(selector)});if(all.length>1)return false;
+        if(all.length===1){const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0&&'rendered';}
+        const more=document.querySelector('#more-topics');return !more.hidden&&!more.hasAttribute('aria-disabled')&&'more';})()`),'unique rendered departure target '+selector+' or More topics');
+      if(found==='rendered')return pressed;
+      const count=await p.evaluate('document.querySelectorAll("#topics a").length');
+      await p.evaluate('document.querySelector("#more-topics").scrollIntoView({block:"center",inline:"nearest"})');await p.point('#more-topics');
+      await until(()=>p.evaluate(`document.querySelectorAll("#topics a").length>${count}`),'More topics rendered a later page');
+    }
+  };
+  const choose=async(p,id='t2')=>{const pressed=await reveal(p,id);await point(p,`#topics a[data-topic-id="${id}"]`);return pressed;};
   const notice=p=>p.evaluate('document.querySelector("#topic-navigation-status").hidden?"":document.querySelector("#topic-navigation-status").textContent');
   const rows=p=>p.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending',2);r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,t=db.transaction('editors'),q=t.objectStore('editors').index('editorKey').getAll(${JSON.stringify(JSON.stringify([facts.instance_id,facts.actor,'reply','topic','t1','t1']))});q.onsuccess=()=>resolve(q.result);q.onerror=()=>reject(q.error);t.oncomplete=()=>db.close();};})`);
   const write=async(p,text)=>{await point(p,'#inline-writing-body');await p.key('a',4);await p.send('Input.insertText',{text});};
@@ -64,6 +83,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
 
   await check('navigation correction active prepare publication reload and settled confirmation',async()=>{
     await setup();const p=await page('departure-active',null,true,{beforeNavigate:observeDeparture}),body='One exact message before switching';
+    await reveal(p,'t2');
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await write(p,body);await p.key('Enter',4);
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held prepare');
@@ -81,7 +101,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await point(p,'#inline-pending button');
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${sending.payload.args.submission_id}"] h3')?.textContent==='Sent to Theseus'`),'publication visibly confirmed');
     await point(p,'#review-close');
-    await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');
+    await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');await reveal(p,'t2');
 
     const unknown='A committed publication awaiting its original confirmation';
     p.intercept(payload=>payload?.kind==='message.send');await write(p,unknown);await p.key('Enter',4);
@@ -105,16 +125,18 @@ export async function departureChecks({check,page,until,facts,view,control,obser
       p=await page('departure-target-readiness',null,true);
       assert.equal(await p.evaluate('document.querySelectorAll("#topics a[data-topic-id=t2]").length'),0,'the held read really prevents the target from existing');
       let observed=0,settled=false;const evaluate=p.evaluate;p.evaluate=async expression=>{try{return await evaluate(expression);}finally{observed++;}};
-      const selecting=choose(p).then(()=>{settled=true;},error=>{settled=true;throw error;});selecting.catch(()=>{});
+      let pressed=null;const selecting=choose(p).then(count=>{settled=true;pressed=count;},error=>{settled=true;throw error;});selecting.catch(()=>{});
       await until(()=>observed>0,'target observation attempted');
       assert.equal(settled,false,'the helper must wait for its absent target instead of attempting a native click');
       await control({method:'read_release',hold_id:hold});await selecting;await ready(p,'t2');
+      observations.push({name:'departure instrument rail pages pressed',pressed});
       assert.deepEqual(p.errors,[]);assert.equal(p.calls.some(c=>c.payload?.kind),false);
     }finally{await control({method:'read_release',hold_id:hold});}
   });
 
   await check('navigation correction blocked before prepare informed departure and retained return',async()=>{
     await setup();const p=await page('departure-blocked',null,true),body='Retain this exact blocked original without replay';
+    await reveal(p,'t2');
     p.intercept(payload=>payload?.kind==='draft.save'&&payload.args.source_ref?.kind==='topic');
     await write(p,body);await p.key('Enter',4);
     const held=await until(()=>p.held.find(h=>h.payload?.kind==='draft.save'),'held original save');
@@ -144,6 +166,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
 
   await check('navigation correction retry chain protects prepare publication and preserves original refusal',async()=>{
     await setup();const p=await page('departure-correction-chain',null,true),body='One exact deliberately corrected publication';
+    await reveal(p,'t2');
     p.intercept(payload=>payload?.kind==='draft.save'&&payload.args.source_ref?.kind==='topic');
     await write(p,body);await p.key('Enter',4);
     const saved=await until(()=>p.held.find(h=>h.payload?.kind==='draft.save'),'original save held before preparation');
@@ -194,7 +217,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
   await check('navigation correction just closed Reader reply and note save inside debounce',async()=>{
     await setup();const p=await page('departure-closed-reader',null,true);
     for(const [index,note] of [[0,false],[1,true]]) {
-      await p.open(index);if(note)await point(p,'#toggle-note');
+      await reveal(p,'t2');await p.open(index);if(note)await point(p,'#toggle-note');
       const body=note?'Exact private note after closing':'Exact reply after closing';
       await point(p,'#writing-body');await p.key('a',4);await p.send('Input.insertText',{text:body});const typedAt=Date.now();
       await point(p,'#reader-close');await until(()=>p.evaluate('!document.querySelector("#reader").open'),'Reader closes');await choose(p);
