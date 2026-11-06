@@ -40,6 +40,34 @@ export function askLines(item, reader) {
     (Number.isSafeInteger(ask.since_ms) ? `, since ${readableTime(ask.since_ms)}` : ''));
 }
 
+// Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
+// in words. It never says nobody is working: only when activity was last seen.
+export function workNote(work, reader) {
+  if (!work || typeof work !== 'object') return '';
+  const when = Number.isSafeInteger(work.seen_ms) ? readableTime(work.seen_ms) : null;
+  const what = when && typeof work.by === 'string' ? ` (${named(work.by, reader)} ${work.how === 'turn' ? 'took a turn' : 'posted'})` : '';
+  // The server counts every wait as observed work.
+  if (work.waits) return when ? `Waiting on someone · last activity ${when}${what}` : 'Waiting on someone';
+  if (work.observed && when) return `Activity seen ${when}${what}`;
+  return when ? `No activity seen since ${when}` : 'No activity seen';
+}
+
+// A row with observed work carries a small dot; every row's title and
+// screen-reader text say what was seen and when.
+export function paintWork(host, item, reader) {
+  const note = workNote(item?.work, reader);
+  if (!note) { host.removeAttribute('title'); return; }
+  host.setAttribute('title', note);
+  if (item.work.observed) {
+    const dot = document.createElement('span');
+    dot.className = 'topic-work'; dot.setAttribute('aria-hidden', 'true');
+    host.append(dot);
+  }
+  const words = document.createElement('span');
+  words.className = 'sr-only'; words.textContent = ` · ${note}`;
+  host.append(words);
+}
+
 // A row in a topic list says where its topic stands unless it is simply active
 // and waits on nobody. The caller has just set the row's text, so the row holds no earlier mark.
 export function paintState(host, item, reader) {

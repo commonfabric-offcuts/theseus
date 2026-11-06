@@ -10,6 +10,7 @@ import { renderChecks } from './render_native.mjs';
 import { inlineChecks } from './reader_inline_native.mjs';
 import { readingColorsCheck } from './reader_colors_native.mjs';
 import { asksChecks } from './reader_asks_native.mjs';
+import { workChecks } from './topic_work_native.mjs';
 import { navigationChecks } from './reader_navigation_native.mjs';
 import { departureChecks, assertDepartureTrace } from './reader_departure_native.mjs';
 import { ReleaseRule } from './release-rule.mjs';
@@ -26,11 +27,11 @@ const phases = { started: Date.now(), cases: [] };
 const [chromePath, evidencePath, mode = '--journal', caseFilter] = process.argv.slice(2);
 const baseline = process.env.AIM_FRESHNESS_BASELINE === 'ba4a00e';
 const legacyAdmission = process.env.AIM_FRESHNESS_LEGACY === '1';
-const liveUpdatesFixture = ['--freshness', '--inline', '--navigation', '--live', '--colors', '--asks'].includes(mode);
+const liveUpdatesFixture = ['--freshness', '--inline', '--navigation', '--live', '--colors', '--asks', '--work'].includes(mode);
 assert.ok(!(baseline && legacyAdmission), 'the shared-two baseline is distinct from single-slot fallback');
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'));
 assert.ok(evidencePath && path.isAbsolute(evidencePath));
-assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images', '--freshness', '--inline', '--navigation', '--live', '--colors', '--asks'].includes(mode));
+assert.ok(['--journal', '--connected', '--correction', '--cleanup', '--images', '--freshness', '--inline', '--navigation', '--live', '--colors', '--asks', '--work'].includes(mode));
 await mkdir(evidencePath, { recursive: true });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(probe, description, timeout = 8000) {
@@ -38,7 +39,7 @@ async function until(probe, description, timeout = 8000) {
   while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
   throw Error(`Timed out: ${description}`);
 }
-const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(['--live','--colors','--asks'].includes(mode) ? ['--live'] : []), ...(liveUpdatesFixture ? ['--freshness', '--images', '--media', ...(legacyAdmission ? ['--legacy-read-admission'] : []), ...(baseline ? ['--baseline-read-admission'] : [])] : mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', ...(['--live','--colors','--asks','--work'].includes(mode) ? ['--live'] : []), ...(liveUpdatesFixture ? ['--freshness', '--images', '--media', ...(legacyAdmission ? ['--legacy-read-admission'] : []), ...(baseline ? ['--baseline-read-admission'] : [])] : mode === '--correction' ? ['--media'] : mode === '--images' ? ['--images'] : [])], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
@@ -55,7 +56,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of [...(mode==='--asks'?['tests/reader_asks_native.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py']:[]), ...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs', ...(mode === '--live' ? ['web/live.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
+for (const filename of [...(mode==='--work'?['tests/topic_work_native.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/work.py']:[]), ...(mode==='--asks'?['tests/reader_asks_native.mjs','web/topic-state.mjs','web/topic-navigation.mjs','aim_next/topic_state.py','aim_next/conversation.py']:[]), ...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs', ...(mode === '--live' ? ['web/live.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -275,6 +276,7 @@ try {
   const check = async (name, action) => {
     if (mode === '--colors' && !name.startsWith('colors ')) return;
     if (mode === '--asks' && !name.startsWith('asks ')) return;
+    if (mode === '--work' && !name.startsWith('work ')) return;
     if (mode === '--cleanup' && !name.startsWith('cleanup ')) return;
     if (mode === '--images' && !name.startsWith('images ')) return;
     if (mode === '--freshness' && !name.startsWith('freshness ')) return;
@@ -545,6 +547,8 @@ try {
       await readingColorsCheck({check,page,until,facts,view,control,field,shot,observations});
     } else if (mode === '--asks') {
       await asksChecks({check,page,until,facts,view,control,replace,shot});
+    } else if (mode === '--work') {
+      await workChecks({check,page,until,control,view,shot});
     } else if (mode === '--inline') {
       await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});
     } else if (mode === '--navigation') {

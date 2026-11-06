@@ -102,3 +102,4 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 #mark-unread[aria-pressed=true]{border-color:var(--accent);background:var(--soft)}
 /* Ask beside a reply's names: an asking reply waits on them until they write in the topic. */
 .ask-choice{display:inline-flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--muted)}.ask-choice[hidden]{display:none}
+/* Work observed on a topic: a small dot, its words in the row title and for screen readers. */.topic-work{display:inline-block;width:.45rem;height:.45rem;margin-left:.45rem;border-radius:50%;background:var(--accent);vertical-align:middle}@media (forced-colors:active){.topic-work{background:CanvasText}}
