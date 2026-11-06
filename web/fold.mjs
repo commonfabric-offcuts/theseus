@@ -5,12 +5,14 @@
 // folds it away again.
 import { paintAuthor } from './marks.mjs';
 
-// A message that names no addressees is for everyone in the topic.
-export function betweenOthers(item, viewer) {
-  if (typeof viewer !== 'string' || !viewer) throw Error('Whether a message is between others depends on who reads it.');
+// A message that names no addressees is for everyone in the topic. Only a
+// person (kind 'human') has messages between others, as Core settles them only
+// for a person: an agent's deliveries are its work, unread until handled.
+export function betweenOthers(item, viewer, kind) {
+  if (typeof viewer !== 'string' || !viewer || !['human', 'agent'].includes(kind)) throw Error('Whether a message is between others depends on who reads it.');
   const to = item.addressees ?? [];
   if (!Array.isArray(to)) throw Error('A message names its addressees in a list.');
-  return to.length > 0 && !to.includes(viewer) && item.author_id !== viewer && item.reply_to_author !== viewer;
+  return kind === 'human' && to.length > 0 && !to.includes(viewer) && item.author_id !== viewer && item.reply_to_author !== viewer;
 }
 
 // What the line says after the author: whom the message is to, and its first words.

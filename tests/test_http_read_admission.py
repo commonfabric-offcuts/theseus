@@ -64,7 +64,7 @@ class StoreProbe:
                 if name == "capabilities":
                     return {"instance_id": "admission-test", "limits": {}, "authority": {
                         "authority_id": "test-anchor", "authority_epoch": "test-epoch",
-                        "continuity": "initial"}}
+                        "continuity": "initial"}, "actor_kind": "human"}
                 return {"instance_id": "admission-test", "name": name}
 
             def command(self, actor, envelope):

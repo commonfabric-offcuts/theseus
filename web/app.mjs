@@ -590,7 +590,7 @@ function paintViews(kind) {
       card.append(node('span', item.body, 'message-preview'));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // A message between others is one quiet line that opens its card.
-      const entry = betweenOthers(item, bootstrap.actor) ? foldCard(card, item, document) : card;
+      const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
       paintFold(entry, marks?.state(item.id)?.marked === true);
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
       $('messages').insertBefore(entry, following ?? null);

@@ -61,6 +61,8 @@ class SharedStoreHTTPTests(unittest.TestCase):
         bootstrap = self.request("/api/bootstrap")
         self.assertEqual(bootstrap["instance_id"], capabilities["instance_id"])
         self.assertEqual(bootstrap["actor"], "test-human")
+        self.assertEqual(bootstrap["actor_kind"], "human")
+        self.assertEqual(self.store.view("test-agent", "capabilities", {})["actor_kind"], "agent", "an agent reading is said to be one")
         self.assertEqual(bootstrap["limits"], capabilities["limits"])
         self.assertEqual(bootstrap["authority"], capabilities["authority"])
         # Where the page's attention starts, read when it opens.

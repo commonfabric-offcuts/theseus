@@ -52,7 +52,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
     createElement: () => new Element(), querySelectorAll: () => [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); } };
-  const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', authority: { id: 'a', epoch: 'e' } };
+  const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
   const api = { bootstrap: async () => bootstrap, view: async (name, args) => {
     calls.push({ name, args });
@@ -1450,6 +1450,19 @@ test('a message between others is one quiet line that opens and folds its card; 
   assert.equal(f.observers[0].targets.includes(fold), true, 'the fold is what is seen on screen');
   f.paintViews('messages');
   assert.equal(f.get('messages').children.filter(child => child.dataset.id === 'm1').length, 1, 'a repaint keeps one fold');
+});
+
+// Core settles a message between others only for a person; for an agent it is
+// work it is woken for, unread until handled, so a page an agent reads folds nothing.
+test('an agent reading the page sees a message between others as a card, since it is still unread for the agent', async () => {
+  const f = fixture();
+  f.bootstrap.actor_kind = 'agent';
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'aim-core', author_kind: 'agent', body: 'Body', topic_id: 't1', addressees: ['aim-ux'] });
+  f.paintViews('messages');
+  const entry = f.get('messages').children.find(child => child.dataset.id === 'm1');
+  assert.equal(entry.className.split(' ')[0], 'message-card', 'not folded for an agent');
 });
 
 test('a folded message the person marked unread carries the pill on its line, the New line under it, and older-below opens it', async () => {

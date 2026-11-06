@@ -22,6 +22,7 @@ class FakeStore:
         self.release_command = threading.Event()
         self.authority = {"authority_id": "authority-test", "authority_epoch": "epoch-test",
                           "continuity": "initial"}
+        self.actor_kind = "human"
 
     def command(self, actor, envelope):
         self.calls.append(("command", actor, envelope))
@@ -38,7 +39,7 @@ class FakeStore:
         self.calls.append(("view", actor, name, args))
         if name == "capabilities":
             return {"instance_id": "new-test", "limits": {"body_utf8_bytes": 1048576, "recipients": 32},
-                    "authority": self.authority}
+                    "authority": self.authority, "actor_kind": self.actor_kind}
         if name == "blocked":
             self.read_started.set()
             self.release_read.wait(5)
@@ -154,9 +155,23 @@ class HTTPContractTests(unittest.TestCase):
         self.assertEqual(raw, b"export const ready = true;")
         status, _, raw = self.request("/api/bootstrap", method="GET")
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(raw), {"instance_id": "new-test", "actor": "test-owner",
+        self.assertEqual(json.loads(raw), {"instance_id": "new-test", "actor": "test-owner", "actor_kind": "human",
                                          "limits": {"body_utf8_bytes": 1048576, "recipients": 32},
                                          "authority": self.store.authority})
+
+    def test_bootstrap_says_whether_the_reader_is_a_person_or_an_agent_and_refuses_anything_else(self):
+        # The page folds a message between others only for a person (docs/attention.md).
+        for kind in ("human", "agent"):
+            with self.subTest(kind=kind):
+                self.store.actor_kind = kind
+                status, _, raw = self.request("/api/bootstrap", method="GET")
+                self.assertEqual((status, json.loads(raw).get("actor_kind")), (200, kind))
+        for kind in (None, "", "robot", 1):
+            with self.subTest(kind=kind):
+                self.store.actor_kind = kind
+                status, _, raw = self.request("/api/bootstrap", method="GET")
+                self.assertEqual(status, 503)
+                self.assertNotIn("actor_kind", json.loads(raw))
 
     def test_bootstrap_forwards_authority_facts_without_inventing_continuity(self):
         for continuity in ("initial", "complete", "incomplete", "unknown"):

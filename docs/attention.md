@@ -51,8 +51,10 @@ person marked unread stays folded; its line carries the Unread pill, and the
 New line sits just below it. Pressing "New · older below" when the oldest
 unread message is such a message opens it and gives its card the focus. The
 page applies the same rule as Core, from the message's addressees and the
-author of the message it answers, so what it folds is exactly what is never
-unread.
+author of the message it answers, and only for a person: `/api/bootstrap`
+says whether the reader is one (`actor_kind`, "human" or "agent"), and a page
+an agent reads folds nothing, since the agent's messages between others are
+work it is woken for. So what it folds is exactly what is never unread.
 
 - `workspace_topics` items carry `unread` and `addressed`: the reader's
   pending deliveries and marked messages in that topic, and how many of the

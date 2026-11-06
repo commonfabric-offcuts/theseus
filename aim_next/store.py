@@ -386,11 +386,11 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             db.execute("BEGIN")
             fence.verify()
             self._check_instance(db)
-            self._actor(db, actor)
+            kind = self._actor(db, actor)["kind"]
             if view_name == "capabilities":
                 return {"instance_id": self.instance_id, "limits": dict(LIMITS), "runtime": runtime,
                         "authority": self._authority.facts(fence.record), "runner": self._runner_facts(db),
-                        "attention": {"after": self._addressed_after(db, actor)}}
+                        "attention": {"after": self._addressed_after(db, actor)}, "actor_kind": kind}
             if view_name == "operation":
                 op_id = _identifier(args.get("operation_id"), "operation_id")
                 row = db.execute("SELECT outcome FROM operations WHERE actor_id=? AND id=?", (actor, op_id)).fetchone()
