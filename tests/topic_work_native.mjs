@@ -43,22 +43,35 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     await phone.close();
   });
 
-  // Writing in a topic makes the writer one of its participants: an agent of
-  // the outcome's team who is not one writes, and the open page lists it among
-  // the participants as its message lands, with no reload.
-  await check('work a teammate who writes in a topic is listed among its participants as the message lands', async () => {
-    const agent = 'fixture-planning-agent';
+  // Having written in a topic lets a teammate say where it stands without
+  // becoming one of its participants: an agent of the outcome's team writes,
+  // then marks the topic ready for review; the open page shows what it said,
+  // with no reload, and does not list it among the participants. What the
+  // person writes next to the whole topic wakes the participants, not it.
+  await check('work a teammate who has written in a topic can say where it stands, and is not woken by later messages', async () => {
+    const agent = 'fixture-planning-agent', participant = 'fixture-notebook-agent';
     const chips = p => p.evaluate(`[...document.querySelectorAll('#participants .chip')].map(chip=>chip.textContent)`);
-    const p = await page('work-writer-joins', null, true);
+    const line = p => p.evaluate(`document.querySelector('#topic-state .state-line')?.textContent ?? ''`);
+    const p = await page('work-writer-says', null, true);
     await until(async () => (await chips(p)).length > 0, 'participants drawn');
     assert.equal((await chips(p)).some(words => words.includes(agent)), false, 'not a participant before writing');
-    const posted = await control({ method: 'agent_message', operation_id: 'work-writer-joins', sender: agent, member: true, body: 'I will take this one.' });
-    assert.equal(posted.result.joined, true, 'Core says the post made it a participant');
+    const posted = await control({ method: 'agent_message', operation_id: 'work-writer-says', sender: agent, member: true, body: 'I will take this one.' });
+    assert.equal('joined' in posted.result, false, 'a post says nothing of joining');
     await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${posted.result.message_id}"]'))`), 'the message lands');
-    await until(async () => (await chips(p)).some(words => words.includes(agent)), 'the writer is listed among the participants');
-    assert.ok((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), 'and Core lists it');
-    await p.evaluate(`document.querySelector('#participants').scrollIntoView({block:'center'})`);
-    await shot(p, 'work-writer-joins');
+    const said = await control({ method: 'agent_state', operation_id: 'work-writer-says-review', sender: agent, args: { state: 'review', note: 'Ready to read' } });
+    assert.equal(said.status, 'committed', 'Core takes the writer\'s word: ' + JSON.stringify(said.error));
+    assert.deepEqual([said.result.state, said.result.state_by], ['review', agent]);
+    const shown = await until(async () => { const words = await line(p); return words.includes('Ready to read') && words; }, 'the page shows where it stands');
+    assert.match(shown, /^Ready for review · Ready to read — fixture-planning-agent, /);
+    assert.equal((await chips(p)).some(words => words.includes(agent)), false, 'still not listed among the participants');
+    assert.equal((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), false, 'nor in Core');
+    const before = await control({ method: 'deliveries_to', actors: [agent, participant] });
+    const next = await control({ method: 'agent_message', operation_id: 'work-writer-says-next', sender: 'person', whole_topic: true, body: 'Reading it now.' });
+    await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${next.result.message_id}"]'))`), 'the next message lands');
+    const after = await control({ method: 'deliveries_to', actors: [agent, participant] });
+    assert.deepEqual([after[agent] - before[agent], after[participant] - before[participant]], [0, 1], 'the participant is woken; the writer is not');
+    await p.evaluate(`document.querySelector('#topic-state').scrollIntoView({block:'center'})`);
+    await shot(p, 'work-writer-says');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

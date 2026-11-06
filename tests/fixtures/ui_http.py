@@ -277,14 +277,14 @@ def main():
         def store():
             return Store(path, instance, expected_binding=dict(binding))
 
-        def command(kind, operation, args, target=None, expected=None, sender=None):
+        def command(kind, operation, args, target=None, expected=None, sender=None, refusable=False):
             envelope = {"v": 1, "instance_id": instance, "kind": kind,
                         "operation_id": operation, "target": target or {},
                         "expected": dict(expected or {}, authority={
                             key: binding[key] for key in ("authority_id", "authority_epoch")}),
                         "args": args}
             answer = store().command(sender or actor, envelope)
-            assert answer["status"] == "committed", answer
+            assert refusable or answer["status"] == "committed", answer
             return answer
 
         command("workspace.create", "fixture-workspace", {
@@ -466,6 +466,17 @@ def main():
                                   for item in request["workspaces"]]
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
+                    elif freshness and request["method"] == "agent_state":
+                        # An agent says where a topic stands, as through its CLI; Core may refuse it.
+                        topic_id, sender = request.get("topic_id", "t1"), request["sender"]
+                        revision = store().view(actor, "topic", {"topic_id": topic_id})["topic"]["version"]
+                        answer = command("topic.update", request["operation_id"], request["args"], {"topic_id": topic_id},
+                                         {"topic_revision": revision}, sender=sender, refusable=True)
+                    elif freshness and request["method"] == "deliveries_to":
+                        # How many messages each actor was ever handed: what would wake them.
+                        with sqlite3.connect(str(path)) as db:
+                            answer = {who: db.execute("SELECT count(*) FROM deliveries WHERE recipient_id=?", (who,)).fetchone()[0]
+                                      for who in request["actors"]}
                     elif freshness and request["method"] == "lost_named_message":
                         # The reader is named in a message in another outcome's
                         # topic and then taken out of it: Core keeps exactly that
