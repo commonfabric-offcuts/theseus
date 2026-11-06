@@ -890,12 +890,26 @@ try {
         } finally { await cdp('Target.closeTarget', { targetId }); pages.delete(targetId); }
       };
       const arrowReady = p => until(() => p.evaluate('!document.querySelector("#next-message").disabled'), 'neighbor arrow ready');
-      const newHeldStep = async p => {
+      // also: other answers the case holds while the step waits.
+      const newHeldStep = async (p, also = () => false) => {
         await arrowReady(p);
-        const before = p.held.length;
-        p.intercept(payload => payload?.name === 'source' && payload.args.id === facts.sources[1].id);
+        const before = p.held.length, step = payload => payload?.name === 'source' && payload.args.id === facts.sources[1].id;
+        p.intercept(payload => also(payload) || step(payload));
         await p.point('#next-message');
-        return until(() => p.held[before], 'held neighboring source');
+        return until(() => p.held.slice(before).find(entry => step(entry.payload)), 'held neighboring source');
+      };
+      // A held private save keeps the device copy unacknowledged, so cleanup
+      // (30186fc) cannot retire it before the case reads it.
+      const privateSave = payload => payload?.kind === 'draft.save';
+      // Since 4b03bc5 no writing surface admits input while an open is under
+      // way (registry.isCurrent includes !pendingOpen, and activity() repaints
+      // the Reader). Whether typing during a waiting step should instead be
+      // admitted, or cancel the step, is not decided; these cases write before
+      // the step and claim only what Close, Escape, Topic and a refused close do.
+      const stepFreezesWriting = async p => {
+        const state = await p.evaluate("({readOnly:document.querySelector('#writing-body').readOnly,body:document.querySelector('#writing-body').value})");
+        observations.push({ writingWhileStepWaits: state });
+        return state;
       };
 
       await check('correction source controls survive mode and quote without redrawing the source', async () => {
@@ -1036,8 +1050,10 @@ try {
       await check('correction explicit Close Escape and Topic cancel pending navigation with preserved writing', async () => {
         for (const action of ['Close', 'Escape', 'Topic']) {
           const p = await page('close-' + action, null, true); await p.open(0);
-          const held = await newHeldStep(p), body = 'Writing while navigation waits: ' + action;
-          await replace(p, body);
+          const body = 'Writing kept through a cancelled step: ' + action;
+          p.intercept(privateSave); await replace(p, body);
+          const held = await newHeldStep(p, privateSave);
+          assert.equal((await stepFreezesWriting(p)).body, body, 'the waiting step leaves the writing in place');
           if (action === 'Escape') await p.key('Escape'); else await p.point(action === 'Topic' ? '#reader-parent' : '#reader-close');
           await until(() => p.evaluate('!document.querySelector("#reader").open'), 'explicit close completes before network');
           assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[0].id, 'connected opener restored');
@@ -1052,11 +1068,15 @@ try {
 
       await check('correction refused local close cancels old navigation and allows a fresh step', async () => {
         const p = await page('failed-close', null, true); await p.open(0);
-        const held = await newHeldStep(p);
+        p.intercept(privateSave); await replace(p, 'Failed close remains editable');
+        const held = await newHeldStep(p, privateSave);
+        await stepFreezesWriting(p);
         await p.evaluate(`(()=>{window.fixtureTransaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Fixture quota failure','QuotaExceededError');return fixtureTransaction.apply(this,args)}})()`);
-        await replace(p, 'Failed close remains editable'); await p.point('#reader-close');
+        await p.point('#reader-close');
         await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Recovery copy unavailable")'), 'visible local preservation failure');
+        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Fixture quota failure"'), 'the refused close says why');
         assert.equal(await p.evaluate('document.querySelector("#reader").open'), true);
+        assert.equal(await field(p), 'Failed close remains editable');
         await p.release(held);
         assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled navigation stays cancelled after failed close');
         assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false);
