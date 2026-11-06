@@ -1040,8 +1040,12 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       await fault('changes', code, status);
       await until(() => hasText(p, '#updates-message', 'Updates delayed'), `visible ${code} delay`);
       assert.ok(p.responses.some(r=>r.payload?.name==='changes' && r.status===status && r.body.error?.code===code), 'the injected refusal was actually received');
-      assert.deepEqual(await p.evaluate('[...observedRegistry.sessions.values()].map(s=>s.editor.cleanupError??null)'), [null,null], 'a server delay never reports a cleanup failure');
-      const failedAt = p.calls.at(-1).at;
+      // Since 4b03bc5 the inline composer holds a session of its own beside
+      // the Reader's reply and note; none of them reports a cleanup failure.
+      const cleanupErrors = await p.evaluate('[...observedRegistry.sessions.values()].map(s=>s.editor.cleanupError??null)');
+      assert.ok(cleanupErrors.length >= 2, 'the Reader and inline sessions are observed');
+      assert.deepEqual(cleanupErrors.filter(error => error !== null), [], 'a server delay never reports a cleanup failure');
+      const failedAt = p.responses.find(r=>r.payload?.name==='changes' && r.status===status && r.body.error?.code===code).at;
       await until(() => p.evaluate('document.querySelector("#updates-status").hidden'), `healthy read after ${code}`);
       const requests = p.calls.filter(c => c.payload?.name === 'changes' && c.at >= failedAt);
       assert.ok(requests.length <= 3, 'one pending retry, no request pile');
@@ -1049,15 +1053,17 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     }
     await fault('changes', 'INVALID_ARGUMENT');
     await until(() => p.evaluate('observedFreshness.stopped'), 'diagnostic stop');
-    const atStop = p.calls.length; await new Promise(resolve => setTimeout(resolve, 650));
-    assert.equal(p.calls.length, atStop, 'malformed/nonretryable reads do not become polling');
+    // Messages on screen are still reported read (4a372d2); no read repeats.
+    const reads = () => p.calls.filter(c => c.payload?.kind !== 'topic.read_through').length;
+    const atStop = reads(); await new Promise(resolve => setTimeout(resolve, 650));
+    assert.equal(reads(), atStop, 'malformed/nonretryable reads do not become polling');
     await p.evaluate('window.scrollTo(0,document.body.scrollHeight)');
     assert.ok((await p.box('#updates-retry')).y < 0, 'the pointer control is deliberately offscreen');
     await assert.rejects(p.point('#updates-retry'), /inside the viewport/, 'the native pointer instrument must reject an offscreen target');
     await p.evaluate('document.querySelector("#updates-retry").scrollIntoView({block:"center"})');
     await p.point('#updates-retry');
     await until(() => p.evaluate('!observedFreshness.stopped && document.querySelector("#updates-status").hidden'), 'explicit retry restores reads');
-    assert.equal(p.calls.filter(c => c.url.endsWith('/api/command')).length, 0);
+    assert.deepEqual(p.calls.filter(c => c.url.endsWith('/api/command')).map(c => c.payload?.kind).filter(kind => kind !== 'topic.read_through'), []);
     await shot(p, 'freshness-read-retry'); assert.deepEqual(p.errors, []);
   });
 }
