@@ -1149,7 +1149,6 @@ async function initialize() {
     },
     open: (id, title) => openDestination({kind:'topic',id},title),
   });
-  topicRail.load();
   outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'),
     list: $('outcome-references-list'), more: $('more-references'), message: $('outcome-references-status'), pageMax: pageMax(),
     denied: error => readFailure(error).kind === 'forbidden',
