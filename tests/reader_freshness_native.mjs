@@ -604,11 +604,35 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await until(() => hasText(p, '#messages', 'Incoming during captured old messages'), 'automatic incoming message after old body');
     await until(() => hasText(p, '#memory-items', 'Notebook revised during captured old list'), 'automatic Notebook summary after old body');
     assert.ok(messageHeld && memoryHeld);
-    assert.equal(p.calls.filter(c => c.url.endsWith('/api/command')).length, 0, 'reading changes never sends or acknowledges');
-    const countsAfter = await control({ method: 'counts' });
-    for (const key of ['http_commands', 'http_media_publications', 'http_delivery_acks', 'acknowledged_deliveries', 'media']) assert.equal(countsAfter[key], countsBefore[key], key);
+    // Since 4a372d2 the page reports the other actors' messages on screen as
+    // read (docs/agents.md, "The browser reports what a person has seen";
+    // docs/attention.md). Reading changes sends nothing else: every command is
+    // such a report over rendered cards that starts and ends on another
+    // actor's message, and Core records exactly those reports and the
+    // deliveries they settle. A report can still be in flight when the cards
+    // paint, so the counts are read once every request has its answer.
+    const commandRequests = () => p.network.filter(e => e.method === 'Network.requestWillBeSent' && e.params.request.url.endsWith('/api/command')).length;
+    const commands = () => p.calls.filter(c => c.url.endsWith('/api/command'));
+    const countsAfter = await until(async () => {
+      const sent = commandRequests(), counts = await control({ method: 'counts' });
+      return sent === commands().length && sent === commandRequests() && counts.http_commands - countsBefore.http_commands === sent ? counts : null;
+    }, 'every command the page sent was answered');
+    const reports = commands();
+    assert.deepEqual(reports.map(c => c.payload?.kind).filter(kind => kind !== 'topic.read_through'), [], 'reading changes sends nothing but what the person has seen');
+    const rendered = await p.evaluate('Object.fromEntries([...document.querySelectorAll("#messages [data-seq]")].map(e=>[e.dataset.seq,e.classList.contains("own-message")]))');
+    for (const { payload } of reports) {
+      const { from_seq: from, seq: through } = payload.args;
+      assert.equal(payload.target.topic_id, 't1');
+      for (let seq = from; seq <= through; seq++) assert.ok(String(seq) in rendered, `report ${from}..${through} holds only rendered messages`);
+      assert.ok(rendered[from] === false && rendered[through] === false, `report ${from}..${through} starts and ends on another actor's message`);
+    }
+    for (const key of ['http_media_publications', 'http_delivery_acks', 'media']) assert.equal(countsAfter[key], countsBefore[key], key);
+    const recorded = countsAfter.read_through_operations - countsBefore.read_through_operations;
+    assert.equal(recorded, reports.length, 'every command was a recorded read-through report');
+    assert.equal(countsAfter.acknowledged_deliveries - countsBefore.acknowledged_deliveries,
+      countsAfter.read_through_acknowledged - countsBefore.read_through_acknowledged, 'only the read-through reports settled deliveries');
     assert.equal(countsAfter.messages, countsBefore.messages + 1, 'only the explicitly attributed fixture message was published');
-    assert.equal(countsAfter.operations, countsBefore.operations + 4, 'only the three fixture send operations and one Notebook revision were recorded');
+    assert.equal(countsAfter.operations, countsBefore.operations + 4 + recorded, 'only the three fixture send operations, one Notebook revision and the read-through reports were recorded');
     const cards = await p.evaluate('[...document.querySelectorAll("#messages [data-id]")].map(e=>e.dataset.id)');
     assert.equal(new Set(cards).size, cards.length);
     observations.push({ name: 'initial race', schedule, countsBefore, countsAfter, changes: p.calls.filter(c => c.payload?.name === 'changes') });
@@ -877,7 +901,9 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     if (sourceDenied) await fault('source', 'FORBIDDEN');
     else {
       const state = await view('editor_state', { source_ref: before.source, topic_id: 't1' }); state.destination_available = false;
-      await control({ method:'read_fault', name:'editor_state', read_class:'background', status:200, body:state, count:1 });
+      // Since 4b03bc5 the inline composer's own editor_state read runs beside
+      // this one and goes first; scope the refusal to the Reader's source.
+      await control({ method:'read_fault', name:'editor_state', source_ref: before.source, read_class:'background', status:200, body:state, count:1 });
     }
     await fault('changes', 'RESYNC_REQUIRED'); await fault('changes', 'FORBIDDEN');
     await until(() => p.evaluate('observedFreshness.stopped'), 'resync denied');
@@ -890,6 +916,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     assert.equal(await p.evaluate('document.querySelector("#quote-selection").disabled'), sourceDenied);
     assert.equal(await p.evaluate('document.querySelector("#send-reply").disabled'), true);
     assert.ok(p.responses.some(r=>r.payload?.name==='source'));
+    if (!sourceDenied) assert.ok(p.responses.some(r=>r.payload?.name==='editor_state' && r.payload.args.source_ref?.kind==='message' && r.body.source_available && r.body.destination_available===false), 'the Reader itself was told its destination is unavailable');
     observations.push({name:'correction A',sourceDenied,before,after}); assert.deepEqual(p.errors, []);
   });
 
@@ -944,8 +971,11 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     // The foreground manual read intentionally defers background dispatch.
     // Inject the app's real access transition callbacks while that response
     // is held; this is a paint-race proof, not a claim of a native denial act.
+    // Denial goes through stopDenied, as a refused Changes read does; since
+    // 4b03bc5 its recheck also reads the inline composer's topic access, which
+    // a denied topic refuses. The Reader is closed, so it never reads a source.
     await p.evaluate(transition==='denial'
-      ? '(async()=>{await observedFreshness.denied(()=>{throw Error("no source is open")},()=>true);observedFreshness.status({kind:"forbidden",code:"FORBIDDEN"})})()'
+      ? '(async()=>{await observedFreshness.stopDenied({kind:"forbidden",code:"FORBIDDEN",message:"Fixture FORBIDDEN"},name=>{if(name==="source")throw Error("no source is open");return Promise.reject(Object.assign(Error("Fixture FORBIDDEN"),{code:"FORBIDDEN"}))},()=>true)})()'
       : '(async()=>{const b=observedFreshness.bootstrap;await observedFreshness.authorityLost({instance_id:b.instance_id,actor_id:b.actor,...b.authority},{code:"INVALID_BINDING"});observedFreshness.status({kind:"authority",code:"INVALID_BINDING"})})()');
     await until(()=>hasText(p,'#updates-message',transition==='denial'?'topic is unavailable':'runtime changed'),'access transition before late manual answer');
     p.intercept(null); await p.release(held);
@@ -1010,8 +1040,12 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       await fault('changes', code, status);
       await until(() => hasText(p, '#updates-message', 'Updates delayed'), `visible ${code} delay`);
       assert.ok(p.responses.some(r=>r.payload?.name==='changes' && r.status===status && r.body.error?.code===code), 'the injected refusal was actually received');
-      assert.deepEqual(await p.evaluate('[...observedRegistry.sessions.values()].map(s=>s.editor.cleanupError??null)'), [null,null], 'a server delay never reports a cleanup failure');
-      const failedAt = p.calls.at(-1).at;
+      // Since 4b03bc5 the inline composer holds a session of its own beside
+      // the Reader's reply and note; none of them reports a cleanup failure.
+      const cleanupErrors = await p.evaluate('[...observedRegistry.sessions.values()].map(s=>s.editor.cleanupError??null)');
+      assert.ok(cleanupErrors.length >= 2, 'the Reader and inline sessions are observed');
+      assert.deepEqual(cleanupErrors.filter(error => error !== null), [], 'a server delay never reports a cleanup failure');
+      const failedAt = p.responses.find(r=>r.payload?.name==='changes' && r.status===status && r.body.error?.code===code).at;
       await until(() => p.evaluate('document.querySelector("#updates-status").hidden'), `healthy read after ${code}`);
       const requests = p.calls.filter(c => c.payload?.name === 'changes' && c.at >= failedAt);
       assert.ok(requests.length <= 3, 'one pending retry, no request pile');
@@ -1019,15 +1053,17 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     }
     await fault('changes', 'INVALID_ARGUMENT');
     await until(() => p.evaluate('observedFreshness.stopped'), 'diagnostic stop');
-    const atStop = p.calls.length; await new Promise(resolve => setTimeout(resolve, 650));
-    assert.equal(p.calls.length, atStop, 'malformed/nonretryable reads do not become polling');
+    // Messages on screen are still reported read (4a372d2); no read repeats.
+    const reads = () => p.calls.filter(c => c.payload?.kind !== 'topic.read_through').length;
+    const atStop = reads(); await new Promise(resolve => setTimeout(resolve, 650));
+    assert.equal(reads(), atStop, 'malformed/nonretryable reads do not become polling');
     await p.evaluate('window.scrollTo(0,document.body.scrollHeight)');
     assert.ok((await p.box('#updates-retry')).y < 0, 'the pointer control is deliberately offscreen');
     await assert.rejects(p.point('#updates-retry'), /inside the viewport/, 'the native pointer instrument must reject an offscreen target');
     await p.evaluate('document.querySelector("#updates-retry").scrollIntoView({block:"center"})');
     await p.point('#updates-retry');
     await until(() => p.evaluate('!observedFreshness.stopped && document.querySelector("#updates-status").hidden'), 'explicit retry restores reads');
-    assert.equal(p.calls.filter(c => c.url.endsWith('/api/command')).length, 0);
+    assert.deepEqual(p.calls.filter(c => c.url.endsWith('/api/command')).map(c => c.payload?.kind).filter(kind => kind !== 'topic.read_through'), []);
     await shot(p, 'freshness-read-retry'); assert.deepEqual(p.errors, []);
   });
 }
