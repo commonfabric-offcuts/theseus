@@ -99,14 +99,17 @@ const element = (tag, props = {}, ...children) => {
 const at = (lead, ms) => Number.isSafeInteger(ms) ? [lead, timeNode(ms, document)] : [];
 // The non-empty groups of parts, with gap between each.
 const joined = (groups, gap) => groups.filter(parts => parts.length).flatMap((parts, index) => index ? [gap, ...parts] : parts);
+// The same, kept on one line so a narrow screen never breaks inside the time.
+const whole = (lead, ms) => Number.isSafeInteger(ms) ? [lead, element('span', { className: 'together' }, timeNode(ms, document))] : [];
 const names = value => [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))];
 const known = state => STATES.includes(state) ? state : 'active';
 const CHANGED = 'This topic changed while you were choosing. What you chose is kept here: check it against the line above and save again.';
 const NOT_SENT = 'That was not sent: another change was still being saved. Press it again.';
 
 // The line under a topic's title, and a form for those who may change it:
-// participants say where it stands; the outcome's owner and the topic's
-// creator also rename and archive it.
+// participants, and whoever has written in it (Core's reader_may_say), say
+// where it stands; the outcome's owner and the topic's creator also rename and
+// archive it.
 //
 // The form is built once per topic and kept across repaints, so focus and
 // whatever the person has typed survive fresh data. A field the person has
@@ -134,17 +137,17 @@ export class TopicStatePanel {
     else if (topic.version < this.topic.version) return;
     this.topic = topic; this.participants = participants;
     const reader = this.reader, manager = [topic.owner_id, topic.creator_id].includes(reader);
-    const participant = participants.some(person => person.actor_id === reader);
+    const says = topic.reader_may_say === true || participants.some(person => person.actor_id === reader);
     const mark = element('strong', { className: 'topic-state', textContent: stateLabel(topic, reader), title: stateLabel(topic, reader) });
     mark.dataset.state = waitsOn(topic).length ? 'waiting' : topic.state ?? 'active';
     if (waitsOn(topic).includes(reader)) mark.classList.add('mine');
     const line = [mark];
     if (topic.state_note) line.push(' · ', element('span', { className: 'state-note', textContent: topic.state_note }));
-    if (topic.state_by) line.push(element('span', { className: 'muted' }, ` — ${named(topic.state_by, reader)}`, ...at(', ', topic.state_ms)));
-    for (const { words, since } of askParts(topic, reader)) line.push(element('span', { className: 'muted ask-line' }, ` · ${words}`, ...at(', since ', since)));
+    if (topic.state_by) line.push(element('span', { className: 'muted' }, ` — ${named(topic.state_by, reader)}`, ...whole(', ', topic.state_ms)));
+    for (const { words, since } of askParts(topic, reader)) line.push(element('span', { className: 'muted ask-line' }, ` · ${words}`, ...whole(', since ', since)));
     if (topic.archived) line.push(element('span', { className: 'muted', textContent: ' · Archived' }));
     this.line.replaceChildren(...line);
-    if (!(manager || participant)) this.drop();
+    if (!(manager || says)) this.drop();
     else {
       if (!this.controls) this.host.insertBefore(this.build(), this.notice);
       this.manage(manager); this.follow();

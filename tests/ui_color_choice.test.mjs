@@ -29,19 +29,19 @@ const page = (items, next = null, palette = AGENT_PALETTE) => ({ instance_id: 'i
 
 test('the page reads every page of the reader\'s choices, and again when it is shown or focused', async () => {
   const { colors, calls, listeners } = store([
-    page([{ actor_id: 'aim-core', color: 'orchid', color_revision: 1 }], 'aim-core'),
+    page([{ actor_id: 'aim-core', color: 'indigo', color_revision: 1 }], 'aim-core'),
     page([{ actor_id: 'fable', color: null, color_revision: 2 }]),
     page([{ actor_id: 'aim-core', color: null, color_revision: 4 }, { actor_id: 'fable', color: 'peach', color_revision: 3 }]),
   ]);
   let painted = 0; colors.listen(() => painted++);
   await colors.load();
   assert.deepEqual(calls.map(c => c.args), [{ limit: 100 }, { limit: 100, cursor: 'aim-core' }]);
-  assert.deepEqual([colors.color('aim-core'), colors.color('fable'), colors.color('warp')], ['orchid', 'green', 'peach'], 'a reset choice is the agent\'s own');
-  assert.deepEqual([colors.chosen('aim-core'), colors.chosen('fable')], ['orchid', null]);
+  assert.deepEqual([colors.color('aim-core'), colors.color('fable'), colors.color('warp')], ['indigo', 'green', 'cyan'], 'a reset choice is the agent\'s own');
+  assert.deepEqual([colors.chosen('aim-core'), colors.chosen('fable')], ['indigo', null]);
   assert.equal(painted, 1);
   listeners.focus(); await colors.loading;
   assert.equal(colors.color('fable'), 'peach', 'a choice made on another device is there when the page is focused');
-  assert.equal(colors.color('aim-core'), 'cyan', 'a choice reset elsewhere is the agent\'s own again');
+  assert.equal(colors.color('aim-core'), 'peach', 'a choice reset elsewhere is the agent\'s own again');
 });
 
 test('a read the person waits on is a foreground read; a read on focus is background, unless a foreground one is asked meanwhile', async () => {
@@ -75,7 +75,8 @@ test('a foreground read asked while a background read fails still runs, and the 
 
 test('a read that cannot be confirmed keeps what the page had, and a color the page cannot draw is refused', async () => {
   for (const bad of [new Error('offline'), { instance_id: 'other', palette: AGENT_PALETTE, items: [], next_cursor: null },
-    page([], null, [...AGENT_PALETTE, 'chartreuse']), page([{ actor_id: 'fable', color: 'red', color_revision: 1 }]),
+    page([], null, [...AGENT_PALETTE, 'chartreuse']), page([], null, [...AGENT_PALETTE, 'orchid']), page([{ actor_id: 'fable', color: 'red', color_revision: 1 }]),
+    page([{ actor_id: 'fable', color: 'orchid', color_revision: 2 }]),
     page([{ actor_id: 'fable', color: 'rose' }])]) {
     const { colors } = store([page([{ actor_id: 'fable', color: 'rose', color_revision: 1 }]), bad]);
     await colors.load();
@@ -292,7 +293,7 @@ test('the picker is a labelled popover of the palette and the agent\'s own color
   assert.deepEqual(p.root.style, { position: 'fixed', top: '104px', left: '40px' }, 'just below its name');
   // A name near the bottom of the window: the picker opens above it.
   const low = new El(doc, 'button'); low.getBoundingClientRect = () => ({ left: 900, top: 700, bottom: 720 }); doc.body.append(low);
-  const lifted = openColorPicker({ anchor: low, agent: 'warp', palette: AGENT_PALETTE, chosen: null, own: 'peach', choose: async () => ({}), doc, win: { innerWidth: 1000, innerHeight: 760 } });
+  const lifted = openColorPicker({ anchor: low, agent: 'warp', palette: AGENT_PALETTE, chosen: null, own: 'cyan', choose: async () => ({}), doc, win: { innerWidth: 1000, innerHeight: 760 } });
   assert.deepEqual(lifted.root.style, { position: 'fixed', top: '546px', left: '792px' }, 'above its name, and inside the window');
   assert.notEqual(anchor, doc.activeElement);
 });
@@ -364,7 +365,7 @@ test('closing gives the focus to what the opener named, such as the card a name 
     addEventListener(name, fn) { this.handlers[name] = fn; }, removeEventListener() {} };
   doc.body = new El(doc, 'body');
   const card = new El(doc, 'button'), name = new El(doc, 'span'); doc.body.append(card); card.append(name);
-  const p = openColorPicker({ anchor: name, back: card, agent: 'warp', palette: AGENT_PALETTE, chosen: null, own: 'peach', choose: async () => ({}), doc, win: {} });
+  const p = openColorPicker({ anchor: name, back: card, agent: 'warp', palette: AGENT_PALETTE, chosen: null, own: 'cyan', choose: async () => ({}), doc, win: {} });
   p.root.handlers.keydown({ key: 'Escape', preventDefault() {} });
   assert.equal(doc.activeElement, card);
 });

@@ -10,7 +10,7 @@ their own time zone:
 | any other day, a later one included | `7:41 AM Thu Nov 5` |
 
 The red New line in a topic says the time of the oldest message the reader
-has not read in the same form: "New · 4:40 AM" (docs/attention.md).
+has not read in the same form: "New above · 4:40 AM" (docs/attention.md).
 
 Today and yesterday are calendar days, not spans of 24 hours: on a day the
 clocks change, yesterday is 23 or 25 hours long and still ends at midnight.

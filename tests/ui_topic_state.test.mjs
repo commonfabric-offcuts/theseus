@@ -75,6 +75,8 @@ test('the panel line says who said it and when; only those who may change it get
   assert.equal(host.hidden, false);
   assert.equal(host.children[0].text, 'Waiting on tony · Which name? — you, 7:41 AM', 'said today: the time alone');
   assert.equal(host.children[0].find(node => node.tag === 'time').title, '7:41 AM Fri Nov 6', 'its title keeps the date');
+  // At 390 the line wraps; a time never breaks inside itself (warp, item 91b).
+  assert.deepEqual(host.children[0].all().filter(node => node.classes.has('together')).map(node => node.text), ['7:41 AM'], 'the time is kept whole');
   const mark = host.children[0].children[0];
   assert.equal(mark.title, 'Waiting on tony', 'its whole words are its title');
   assert.equal(mark.classes.has('mine'), false, 'it waits on someone else');
@@ -86,6 +88,14 @@ test('the panel line says who said it and when; only those who may change it get
   assert.equal(host.find(node => node.id === 'topic-rename'), undefined, 'a participant who is not its creator or owner cannot rename it');
   panel.paint(said, [{ actor_id: 'someone-else' }]);
   assert.equal(host.find(node => node.tag === 'details'), undefined, 'a reader who does not work in it gets no form');
+  // Core says whether the reader may say where it stands: having written in a
+  // topic, they may, without being one of its participants.
+  const writer = new TopicStatePanel({ host: new Element('section'), reader: 'fable', send: async () => ({}) });
+  writer.paint({ ...said, reader_may_say: true }, [{ actor_id: 'someone-else' }]);
+  assert.ok(writer.host.find(node => node.tag === 'details'), 'someone who has written in it may say where it stands');
+  assert.equal(writer.host.find(node => node.id === 'topic-rename'), undefined, 'but cannot rename it');
+  writer.paint({ ...said, version: 5, reader_may_say: false }, [{ actor_id: 'someone-else' }]);
+  assert.equal(writer.host.find(node => node.tag === 'details'), undefined, 'and when Core says they may not, the form goes');
   const owner = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
   owner.paint(said, []);
   assert.ok(owner.host.find(node => node.id === 'topic-rename'));
@@ -370,7 +380,9 @@ test('an open ask makes a topic wait on whoever it asks, whatever its state, and
   assert.equal(other.children[0].classes.has('mine'), false);
   const panel = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
   panel.paint(topic({ state: 'review', asks: [asked('tony')] }), []);
-  assert.equal(panel.line.find(node => node.classes.has('ask-line')).text, ' · fable asked you, since Yesterday 7:41 AM');
+  const line = panel.line.find(node => node.classes.has('ask-line'));
+  assert.equal(line.text, ' · fable asked you, since Yesterday 7:41 AM');
+  assert.deepEqual(line.all().filter(node => node.classes.has('together')).map(node => node.text), ['Yesterday 7:41 AM'], 'the time an ask has waited since is kept whole');
   assert.equal(panel.line.find(node => node.classes.has('topic-state')).dataset.state, 'waiting');
 });
 
@@ -447,4 +459,33 @@ test('a waiting row\'s title and screen-reader words name whom it waits on as it
   paintState(untimed, quiet, 'tony'); paintWork(untimed, quiet, 'tony');
   assert.equal(untimed.attributes.title, 'Waiting on you');
   assert.deepEqual(untimed.children.map(node => String(node.className)), ['topic-state mine', 'topic-work']);
+});
+
+// Work observed on a row was the same filled accent dot as the presence dot by
+// the wordmark, beside the unread count, so it read as unread; and its meaning
+// was only in a hover title, which phones never show (warp, item 91b). It is a
+// hollow ring in the quiet text color, and a key under the topics says what
+// the ring means, at every width.
+test('work observed is a hollow ring, never the filled dot of presence or unread, and a key under the topics says what it means', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
+  const at = css.indexOf('.topic-work{'), ring = css.slice(at, css.indexOf('}', at));
+  assert.ok(at >= 0, 'aim.css draws the work mark');
+  assert.match(ring, /border:1\.5px solid var\(--muted\)/, 'a ring in the quiet text color');
+  assert.match(ring, /background:transparent/, 'hollow');
+  assert.doesNotMatch(ring, /var\(--accent\)/, 'not the accent of presence and unread');
+  const hex = (text, name) => { const h = text.match(new RegExp('--' + name + ':(#[0-9a-f]{6}|#[0-9a-f]{3})(?![0-9a-f])'))[1]; return h.length === 4 ? '#' + [...h.slice(1)].map(c => c + c).join('') : h; };
+  const luminance = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4).reduce((s, c, i) => s + c * [0.2126, 0.7152, 0.0722][i], 0);
+  const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const light = css.slice(css.indexOf(':root{'), css.indexOf('}', css.indexOf(':root{'))), darkAt = css.indexOf('@media(prefers-color-scheme:dark){:root{');
+  for (const [theme, root] of [['light', light], ['dark', css.slice(darkAt, css.indexOf('}', darkAt))]])
+    for (const behind of ['paper', 'panel', 'soft'])
+      assert.ok(contrast(hex(root, 'muted'), hex(root, behind)) >= 3, `${theme}: the ring shows on --${behind} (${contrast(hex(root, 'muted'), hex(root, behind)).toFixed(2)})`);
+  const key = html.match(/<p id="topics-key"([^>]*)>([\s\S]*?)<\/p>/);
+  assert.ok(key, 'index.html has the key under the topics');
+  assert.match(key[1], /aria-hidden="true"/, 'each row already says its work to a screen reader');
+  assert.match(key[1], /\bhidden\b/, 'hidden until a row has the ring');
+  assert.match(key[2], /<span class="topic-work"><\/span>\s*Activity seen/, 'the ring, and in words what it means');
+  assert.ok(html.indexOf('id="topics-key"') > html.indexOf('id="topics"'), 'under the topics');
 });

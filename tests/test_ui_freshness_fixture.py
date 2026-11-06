@@ -151,6 +151,23 @@ class FreshnessFixtureTests(FixtureCase):
         self.assertEqual(seeded["unrelated_changes"], 1000)
         self.assertEqual(self.control("counts")["messages"], after["messages"] + 31)
 
+    def test_a_teammate_who_wrote_says_where_it_stands_and_hears_nothing_next(self):
+        # The controls the native work check drives, without a browser.
+        agent, participant = "fixture-planning-agent", "fixture-notebook-agent"
+        refused = self.control("agent_state", operation_id="writer-early", sender=agent, args={"state": "review"})
+        self.assertEqual(refused["status"], "rejected", refused)
+        posted = self.control("agent_message", operation_id="writer-posts", sender=agent, member=True, body="I will take this one.")
+        self.assertNotIn("joined", posted["result"])
+        said = self.control("agent_state", operation_id="writer-says", sender=agent, args={"state": "review", "note": "Ready to read"})
+        self.assertEqual(said["status"], "committed", said)
+        self.assertEqual((said["result"]["state"], said["result"]["state_by"]), ("review", agent))
+        _, topic = self.view("topic", {"topic_id": "t1"})
+        self.assertNotIn(agent, [row["actor_id"] for row in topic["participants"]])
+        before = self.control("deliveries_to", actors=[agent, participant])
+        self.control("agent_message", operation_id="writer-next", sender="person", whole_topic=True, body="Reading it now.")
+        after = self.control("deliveries_to", actors=[agent, participant])
+        self.assertEqual((after[agent] - before[agent], after[participant] - before[participant]), (0, 1))
+
     def test_command_and_ack_counters_have_a_positive_control(self):
         self.control("agent_message", operation_id="counter-source", body="Counter control",
                      topic_id="t1", addressees=[self.ready["actor"]])

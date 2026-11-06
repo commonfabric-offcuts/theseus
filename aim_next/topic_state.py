@@ -98,9 +98,9 @@ class TopicState:
             db.execute("UPDATE topic_waiting SET archived=? WHERE topic_id=?", (int(args["archived"]), topic["id"]))
         old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? AND said=1 ORDER BY actor_id", (topic["id"],))]
         if args.keys() & {"state", "note", "waiting_on"}:
-            if not manager and not db.execute("SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1",
-                                              (topic["id"], actor)).fetchone():
-                raise Refusal("FORBIDDEN", "Only the topic's participants, its creator or the outcome's owner can say where it stands")
+            if not self._may_say(db, topic, actor):
+                raise Refusal("FORBIDDEN", "Only the topic's participants, those who have written in it, its creator or the outcome's owner "
+                              "can say where it stands; you can say where a topic stands once you have written in it")
             state = args.get("state", topic["state"])
             if state not in STATES:
                 raise Refusal("INVALID_ARGUMENT", "A topic's state is one of: " + ", ".join(STATES))
@@ -132,6 +132,17 @@ class TopicState:
         return {"topic_id": topic["id"], "version": version, "title": row["title"], "archived": bool(row["archived"]), "state": row["state"],
                 "note": row["state_note"], "waiting_on": waiting, "state_by": row["state_by"], "state_ms": row["state_ms"]}, [
                     {"kind": "topic", "id": topic["id"], "version": version}]
+
+    def _may_say(self, db, topic, actor):
+        """Whether actor, who can read topic, may say where it stands: its creator,
+        the outcome's owner, its participants and whoever has written in it.
+        Having written grants no participation, so it wakes no one."""
+        # Every message's author has a reply horizon in its topic: each publish
+        # writes one, version 16 made one for every earlier author, and nothing
+        # else writes them.
+        return actor in (topic["owner_id"], topic["creator_id"]) or bool(db.execute(
+            "SELECT 1 FROM topic_participants WHERE topic_id=?1 AND actor_id=?2 AND active=1 "
+            "UNION ALL SELECT 1 FROM reply_horizons WHERE topic_id=?1 AND actor_id=?2", (topic["id"], actor)).fetchone())
 
     def _waiting_on(self, db, topic, members):
         # The limit bounds the list as sent, before any name is looked up, as for addressees.

@@ -1,7 +1,7 @@
-// The red "New" line in a topic: just below the oldest message the reader has
-// not read (docs/attention.md, "The New line"). Messages are newest first, so
-// the line sits under that message's card, with every message newer than it
-// above.
+// The red New line in a topic ("New above"): just below the oldest message
+// the reader has not read (docs/attention.md, "The New line"). Messages are
+// newest first, so the line sits under that message's card, with every
+// message newer than it above.
 import { datedTime, shownTime, timeNode } from './times.mjs';
 
 const integer = n => Number.isSafeInteger(n) && n >= 1;
@@ -20,23 +20,26 @@ export function oldestUnreadOf(answer) {
   return { value, at };
 }
 
-const LABELS = { new: 'New', older: 'New · older below' };
+// The line's label sits in an element of its own (span.new-line-label), apart
+// from the time the line shows after it.
+const LABELS = { new: 'New above', older: 'More new below' };
 const TITLES = {
-  new: sent => `Just above: the oldest message you have not read${sent}`,
-  older: sent => `The oldest message you have not read is further back${sent}: press to load it`,
+  new: sent => `Above: the messages you have not read, the oldest just above this line${sent}`,
+  older: sent => `Messages you have not read are further back${sent}: press to load down to the oldest`,
 };
 
 // Puts the line just below the card of message seq, or takes it away when
-// there is none. When that message is older than every loaded card, the line
-// sits at the bottom of what is loaded, says "New · older below", and is a
-// button that calls loadOlder; once the card is loaded, the line takes its
-// place below it. loadOlder is null when nothing older is left to load; then
+// there is none. It says "New above": messages are newest first, so what the
+// reader has not read is above it. When that message is older than every
+// loaded card, the line sits at the bottom of what is loaded, says "More new
+// below", and is a button that calls loadOlder; once the card is loaded, the
+// line takes its place below it. loadOlder is null when nothing older is left to load; then
 // no line promises older messages. A message among the loaded ones with no
 // card here has no line. The line carries no data-seq or data-id, so nothing that looks cards
 // up by them ever finds it.
 //
 // sent is when that message was sent, or null: the line then says it after
-// its label ("New · 4:40 AM", docs/times.md), the label and the time each in
+// its label ("New above · 4:40 AM", docs/times.md), the label and the time each in
 // a span of their own, inside one span of words.
 export function placeNewLine(list, seq, doc = document, loadOlder, sent = null) {
   const children = [...list.children];

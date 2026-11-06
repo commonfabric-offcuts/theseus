@@ -140,8 +140,13 @@ time. A turn's start or end does not itself make the list read again; the
 posts a turn makes do. The pipeline's NOW list will count as observed work
 once NOW is a record; `observed()` takes it as `in_now`.
 
-In the web app a topic row with observed work carries a small dot and
-nothing else; every row's title and screen-reader text say what was seen:
+In the web app a topic row with observed work carries a small hollow ring in
+the quiet text color (`--muted`) and nothing else. It was the filled accent
+dot that presence and unread use, beside the unread count, so it read as
+unread (warp, item 91b). While any row has the ring, a key under the topics
+says in words what it means ("Activity seen"), at every width, since a phone
+shows no title; the key is hidden from screen readers, which hear each row's
+own words. Every row's title and screen-reader text say what was seen:
 "Activity seen <time> (<who> posted)", "No activity seen since <time>", or
 "No activity seen". A waiting row's words begin with what its pill says,
 "Waiting on you · last activity <time>", and say "Waiting on someone" only
@@ -257,7 +262,7 @@ clear a mark.
 
 ## The New line
 
-In each topic the reader sees a red line marked "New" just below the oldest
+In each topic the reader sees a red line marked "New above" just below the oldest
 message they have not read. Its job is to keep them from missing anything.
 Messages are listed newest first, so everything the line sits under is either
 newer than that message or that message itself.
@@ -306,28 +311,34 @@ column and the index and works the horizons out again from the messages, so
 no record is lost and version 17 code finds its line as before.
 
 The page keeps the newest answer as said above. It draws the line under that
-message's card when the card is loaded. The line is text ("New"), with no
-message identity, in the alert colour, so nothing that looks for cards finds
-it. The page reads `topic_unread` again after each announced commit (beside
+message's card when the card is loaded. The line is text ("New above": in a newest-first list the messages the
+reader has not read are above it), with no message identity, in the alert
+colour, so nothing that looks for cards finds it. Its label is an element of
+its own (`.new-line-label`), apart from the time the line shows after it. The page reads `topic_unread` again after each announced commit (beside
 its rails and marks, in the same reload), so the line follows reading live as
 it happens, in this page or any other; a repaint keeps the card the reader is
 looking at where it was.
 
-The line says "New" and when that message was sent, from `oldest_unread`'s
-`sent_ms`, as every time on the page is shown (docs/times.md): "New · 4:40 AM",
-"New · Yesterday 9:12 PM". The label and the time are separate spans, and the
+The line says "New above" and when that message was sent, from
+`oldest_unread`'s `sent_ms`, as every time on the page is shown
+(docs/times.md): "New above · 4:40 AM", "New above · Yesterday 9:12 PM". The label and the time are separate spans, and the
 time's title keeps the date. A message from before times were kept (`sent_ms`
 null) gets the label alone.
 
 When that message is further back than the page has loaded, which is when the
 reader is most behind, the line sits at the bottom of what is loaded and reads
-"New · older below" and the time. There it is a button: pressing it, by pointer or
-keyboard, reads older pages one after another, as More does, until that
-message's card is loaded or no older page is left, and then gives that
-message the focus, with the line in its true place just below it; once on
-screen the message is read, and the line moves on as reading moves it. A read that
-cannot go on (a review pending, or a refusal, which the page reports) ends it
-with the line still at the bottom. When no older page is left to read, there
+"More new below" and the time, saying which way the unread messages lie ("New
+· older below" read as new above and older below, the opposite of what it
+meant; warp, item 91b). There it is a button, framed and filled as the page's
+other buttons are: pressing it, by pointer or keyboard, reads older pages one
+after another, as More does, until that message's card is loaded or no older
+page is left, and then gives that message the focus, with the line in its true
+place just below it; once on screen the message is read, and the line moves on
+as reading moves it. While it shows, it is the one way to load older messages:
+More messages, which sat just below it doing much the same, is hidden, and
+comes back once the line is in its place. A read that cannot go on (a review
+pending, or a refusal, which the page reports) ends it with the line still at
+the bottom. When no older page is left to read, there
 is nothing the button could load, so no line is drawn. A message among the
 loaded ones that has no card on the page has no line.
 

@@ -48,3 +48,27 @@ test('Fable\'s card keeps its own hover', () => {
   const { light, dark } = themes();
   assert.deepEqual([light.green['--agent-hover'], dark.green['--agent-hover']], ['#dfece5', '#29403a']);
 });
+
+// Release 19's hover changed an agent card by only 1.5 to 2.3 (CIEDE2000), so
+// the pointer's place was lost on most cards (warp, item 91b). Every card but
+// your own now also shows a neutral ring, the quiet text color, on all four
+// sides under a pointer that can hover: the signal your own card already
+// uses, never a colored edge. Your own card keeps its own hover.
+test('any card but your own shows a neutral ring on all four sides under the pointer', () => {
+  const found = css.match(/@media\s*\(hover:\s*hover\)\s*\{\s*\.message-card:not\(\.own-message\):hover\s*\{([^{}]*)\}\s*\}/);
+  assert.ok(found, 'aim.css rings a hovered card where the pointer can hover');
+  assert.equal(found[1].trim(), 'border-color:var(--muted)', 'one color for the whole border, so every side alike');
+  const { light, dark } = themes(), split = css.indexOf('@media(prefers-color-scheme:dark){.agent-');
+  const agentWords = text => values(body(text, '.message-card.agent-card'));
+  const agentHovers = text => [...text.matchAll(/--agent-hover:(#[0-9a-f]{6})/g)].map(m => m[1]);
+  for (const [theme, { root, hover }, agents] of [['light', light, css.slice(0, split)], ['dark', dark, css.slice(split)]]) {
+    const ring = { person: { ...root, ...hover }['--muted'], agent: { ...root, ...agentWords(agents) }['--muted'] };
+    for (const [who, color] of Object.entries(ring)) {
+      const rgb = [1, 3, 5].map(i => parseInt(color.slice(i, i + 2), 16));
+      assert.ok(Math.max(...rgb) - Math.min(...rgb) <= 20, `${theme} ${who}: the ring is neutral (${color})`);
+      assert.ok(contrast(color, root['--line']) >= 2, `${theme} ${who}: the ring stands out from the border at rest`);
+    }
+    assert.ok(contrast(ring.person, hover.background) >= 3, `${theme}: the ring shows on a person's hover`);
+    for (const fill of agentHovers(agents)) assert.ok(contrast(ring.agent, fill) >= 3, `${theme}: the ring shows on an agent's hover ${fill}`);
+  }
+});

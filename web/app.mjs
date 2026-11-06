@@ -571,7 +571,9 @@ function paintViews(kind) {
   }
   if (kind === 'messages') placeLine();
   });
-  $('more-messages').hidden = views.olderCursor === null;
+  // While the New line says more new messages lie below, it is the one way to
+  // load older messages; More messages, doing much the same, is hidden.
+  $('more-messages').hidden = views.olderCursor === null || [...$('messages').children].some(child => child.dataset?.line === 'older');
   $('more-memory').hidden = views.memoryCursor === null;
   if (kind === 'messages') noteRead();
 }
@@ -682,7 +684,7 @@ function listPage(kind, more = false) {
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
 }
-// The New line's "older below": older pages, one after another, until the
+// The New line's "More new below": older pages, one after another, until the
 // oldest unread message's card is loaded or no older page is left; then
 // that message takes the focus, with the line in its place below it. A read
 // that moves nothing on (a refusal, or a review pending) ends it.
@@ -1068,7 +1070,7 @@ async function initialize() {
   await initializeInlineComposer();
   initializeOutcomeNavigation(topic.workspace_id); outcomeRail.load();
   topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
-    host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'),
+    host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
       if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
@@ -1297,7 +1299,7 @@ async function initializeOutcomePage(route) {
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);
       await paintTeam(workspace,()=>reload());
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
-        retry:$('retry-topics'),message:$('topics-status'),denied:error=>readFailure(error).kind==='forbidden',
+        retry:$('retry-topics'),message:$('topics-status'),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
         open:id=>openDestination({kind:'topic',id},topicRail.pages.items.find(item=>item.id===id)?.title??id),
         updated:()=>{$('outcome-empty').hidden=!topicRail.pages.started||topicRail.pages.items.length>0||!$('topics-status').hidden;}});

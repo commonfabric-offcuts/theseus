@@ -1407,7 +1407,7 @@ test('the New line is drawn under the oldest unread card, moves as reading happe
   f.views.oldestUnread = { seq: 22, id: 'm22', sent_ms: new Date(2026, 10, 5, 4, 40).getTime() }; f.paintViews('messages');
   const line = f.get('messages').children.find(child => child.dataset.line === 'new');
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
-  assert.equal(text(line), 'New · 4:40 AM');
+  assert.equal(text(line), 'New above · 4:40 AM');
 });
 
 test('the New line for a message further back sits at the bottom, and pressing it loads down to that message', async () => {
@@ -1420,7 +1420,12 @@ test('the New line for a message further back sits at the bottom, and pressing i
   assert.equal(order(), '29 28 27 26 25 24 23 22 21 20 older', 'the line waits at the bottom of what is loaded');
   const marker = f.get('messages').children.at(-1);
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
-  assert.equal(text(marker), 'New · older below', 'a boundary without a time says none');
+  assert.equal(text(marker), 'More new below', 'a line without a time says none');
+  // While the line says more new messages lie below, it is the one control
+  // that loads older messages: More messages, doing much the same, is hidden.
+  assert.equal(f.get('more-messages').hidden, true, 'More messages is hidden while the line shows');
+  f.paintViews('memory');
+  assert.equal(f.get('more-messages').hidden, true, 'and painting the Notebook does not bring it back');
   const pages = [at(10, 19, 10), at(1, 9, null)], reads = [];
   const view = f.api.view;
   f.api.view = async (name, args) => {
@@ -1432,6 +1437,20 @@ test('the New line for a message further back sits at the bottom, and pressing i
   assert.equal(order().split(' ').slice(-7).join(' '), '6 5 new 4 3 2 1', 'loaded: the line is in its true place');
   assert.equal(f.get('messages').children.filter(child => child.dataset.line).length, 1, 'one line');
   assert.equal(f.document.activeElement?.dataset.seq, 5, 'the message it was for has the focus');
+});
+
+test('once the line is in its place, More messages loads what is older again', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = (from, through, next) => ({ ...page(from, through, next), oldest_unread: { seq: 15, id: 'm15' }, commit_seq: 1 });
+  views.messagesPage(at(20, 29, 20), { initial: true }); await settle();
+  assert.equal(f.get('more-messages').hidden, true, 'hidden while the line says more new below');
+  const view = f.api.view;
+  f.api.view = async (name, args) => name === 'topic_messages' ? at(10, 19, 10) : view(name, args);
+  await f.get('messages').children.at(-1).onclick(); await settle();
+  assert.equal(f.get('messages').children.find(child => child.dataset.line)?.dataset.line, 'new', 'the line is in its place');
+  assert.equal(f.get('more-messages').hidden, false, 'More messages is back, with older messages left to load');
 });
 
 test('with nothing older left to load, no line promises older messages below', async () => {
@@ -1530,7 +1549,7 @@ test('an agent\'s card in the topic log carries its color, and the person\'s own
   add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'dan', 'human'); add(4, 'warp', 'agent');
   f.paintViews('messages');
   const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
-  assert.deepEqual(classes, { m4: 'message-card agent-card agent-peach', m3: 'message-card', m2: 'message-card own-message', m1: 'message-card agent-card agent-green' });
+  assert.deepEqual(classes, { m4: 'message-card agent-card agent-cyan', m3: 'message-card', m2: 'message-card own-message', m1: 'message-card agent-card agent-green' });
 });
 
 test('your own message keeps its own style when it arrives live and when More loads it, among agents\' colors', async () => {
@@ -1543,6 +1562,6 @@ test('your own message keeps its own style when it arrives live and when More lo
   views.messagesPage(page([item(32, 'fixture-person'), item(33, 'warp')], null, 2), { live: true, cursor: views.newest }); await settle();
   views.messagesPage(page([item(27, 'aim-lead'), item(28, 'fixture-person')], null, 2), { cursor: views.olderCursor }); await settle();
   const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
-  assert.deepEqual(classes, { m33: 'message-card agent-card agent-peach', m32: 'message-card own-message', m31: 'message-card agent-card agent-green',
+  assert.deepEqual(classes, { m33: 'message-card agent-card agent-cyan', m32: 'message-card own-message', m31: 'message-card agent-card agent-green',
     m30: 'message-card agent-card agent-green', m29: 'message-card agent-card agent-green', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
 });

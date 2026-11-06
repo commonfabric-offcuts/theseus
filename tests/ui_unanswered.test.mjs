@@ -9,6 +9,7 @@ import { clock } from '../web/times.mjs';
 
 // Every time is read at noon on Thursday 5 November 2026.
 clock.now = () => new Date(2026, 10, 5, 12, 0).getTime();
+import { readFileSync } from 'node:fs';
 
 class Element {
   constructor(tag = 'div') { Object.assign(this, { tag, children: [], dataset: {}, className: '', textContent: '', parent: null }); }
@@ -36,7 +37,9 @@ test('the line sits just below the card of the oldest unread message, and moves 
   const host = list(50, 40, 30, 20);
   const line = placeNewLine(host, 30, doc);
   assert.deepEqual(order(host), [50, 40, 30, 'new', 20]);
-  assert.equal(line.text, 'New');
+  // Messages are newest first: what the reader has not read is above the line.
+  assert.equal(line.text, 'New above');
+  assert.equal(line.find('new-line-label').text, 'New above', 'its words say where the new messages are, in an element of their own');
   assert.equal(line.className, 'new-line');
   assert.equal(line.dataset.seq, undefined, 'the line is never taken for a card');
   assert.equal(line.dataset.id, undefined);
@@ -55,14 +58,15 @@ test('the line sits just below the card of the oldest unread message, and moves 
 // When the oldest unread message is further back than what is loaded, the
 // line sits at the bottom of what is loaded, says so, and loads the older
 // messages when activated; once its card is loaded, the line takes its place.
-test('a line for a message not loaded yet sits at the bottom, says older below, and loads it when pressed', () => {
+test('a line for a message not loaded yet sits at the bottom, says more new below, and loads it when pressed', () => {
   const host = list(50, 40, 30, 20), loads = [];
   const load = () => loads.push('older');
   const marker = placeNewLine(host, 10, doc, load);
   assert.deepEqual(order(host), [50, 40, 30, 20, 'older'], 'at the bottom of what is loaded');
   assert.equal(marker.tag, 'button', 'a control the person can press, by pointer or keyboard');
   assert.equal(marker.type, 'button');
-  assert.equal(marker.text, 'New · older below');
+  assert.equal(marker.text, 'More new below');
+  assert.equal(marker.find('new-line-label').text, 'More new below', 'it says the unread messages lie further down');
   assert.equal(marker.className, 'new-line new-line-older');
   assert.equal(marker.dataset.seq, undefined, 'never taken for a card');
   marker.onclick();
@@ -74,7 +78,7 @@ test('a line for a message not loaded yet sits at the bottom, says older below, 
   const reached = list(10); host.insertBefore(reached.children[0], null);
   const line = placeNewLine(host, 10, doc, load);
   assert.deepEqual(order(host), [50, 40, 30, 20, 15, 10, 'new'], 'loaded: the line takes its true place, and the marker goes');
-  assert.equal(line.text, 'New');
+  assert.equal(line.text, 'New above');
   assert.notEqual(line.tag, 'button', 'in its place the line is not a control');
   placeNewLine(host, 40, doc, load);
   assert.deepEqual(order(host), [50, 40, 'new', 30, 20, 15, 10]);
@@ -107,24 +111,24 @@ test('the line says when that message was sent, today\'s time alone, and its tit
   const host = list(50, 40, 30, 20), loads = [];
   const sent = new Date(2026, 10, 5, 4, 40).getTime(), yesterday = new Date(2026, 10, 4, 21, 12).getTime();
   const line = placeNewLine(host, 30, doc, undefined, sent);
-  assert.equal(line.text, 'New · 4:40 AM');
-  assert.deepEqual([line.find('new-line-label')?.text, line.find('new-line-time')?.text], ['New', ' · 4:40 AM'], 'the label and the time are separate spans');
+  assert.equal(line.text, 'New above · 4:40 AM');
+  assert.deepEqual([line.find('new-line-label')?.text, line.find('new-line-time')?.text], ['New above', ' · 4:40 AM'], 'the label and the time are separate spans');
   assert.equal(line.find('new-line-time').children[1].title, '4:40 AM Thu Nov 5', 'the time\'s title keeps the date');
   assert.match(line.title, /4:40 AM Thu Nov 5/, 'and so does the line\'s');
   // Placed again after midnight, the same line says it was yesterday.
   const now = clock.now;
   clock.now = () => new Date(2026, 10, 6, 0, 5).getTime();
-  try { placeNewLine(host, 30, doc, undefined, sent); assert.equal(line.text, 'New · Yesterday 4:40 AM'); }
+  try { placeNewLine(host, 30, doc, undefined, sent); assert.equal(line.text, 'New above · Yesterday 4:40 AM'); }
   finally { clock.now = now; }
   placeNewLine(host, 30, doc, undefined, sent);
   assert.equal(placeNewLine(host, 40, doc, undefined, yesterday), line, 'moved by an answer, it is the same line');
-  assert.equal(line.text, 'New · Yesterday 9:12 PM', 'its time follows the message it sits under');
+  assert.equal(line.text, 'New above · Yesterday 9:12 PM', 'its time follows the message it sits under');
   placeNewLine(host, 40, doc, undefined, null);
-  assert.equal(line.text, 'New', 'a message from before times were kept has none');
+  assert.equal(line.text, 'New above', 'a message from before times were kept has none');
   assert.equal(line.find('new-line-time'), null);
   const marker = placeNewLine(host, 10, doc, () => loads.push('older'), new Date(2026, 10, 1, 7, 41).getTime());
-  assert.equal(marker.text, 'New · older below · 7:41 AM Sun Nov 1', 'the line for a message further back says when, dated');
-  assert.equal(marker.find('new-line-label').text, 'New · older below');
+  assert.equal(marker.text, 'More new below · 7:41 AM Sun Nov 1', 'the line for a message further back says when, dated');
+  assert.equal(marker.find('new-line-label').text, 'More new below');
 });
 
 test('the latest commit an answer was read at decides where the line is, from a page or from topic_unread', async () => {
@@ -161,4 +165,24 @@ test('the latest commit an answer was read at decides where the line is, from a 
   assert.deepEqual(views.oldestUnread, { seq: 6, id: 'm6' });
   await assert.rejects(views.readUnread(answer(21, null, 't2')), /another topic or says nothing/);
   await assert.rejects(views.readUnread(async () => ({ instance_id: 'i', topic_id: 't1' })), /another topic or says nothing/, 'an answer that does not say is refused');
+});
+
+// "More new below" is a control, and looks like one: framed and filled as the
+// page's other buttons are (warp, item 91b: with no border or background it
+// read as a label), its red words readable at rest and under the pointer.
+test('the line for messages further back is drawn as a button, its words readable', () => {
+  const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');
+  const rule = selector => { const at = css.indexOf(selector + '{'); assert.ok(at >= 0, 'aim.css sets ' + selector); return css.slice(at + selector.length + 1, css.indexOf('}', at)); };
+  const older = rule('.new-line-older');
+  assert.match(older, /border:1px solid var\(--line\)/, 'framed as a button');
+  assert.match(older, /background:var\(--panel\)/, 'filled as a button');
+  assert.doesNotMatch(css, /\.new-line-older[^{}]*\{[^}]*(border:0|background:none)/, 'never a bare label');
+  const hex = (text, name) => { const h = text.match(new RegExp('--' + name + ':(#[0-9a-f]{6}|#[0-9a-f]{3})(?![0-9a-f])'))[1]; return h.length === 4 ? '#' + [...h.slice(1)].map(c => c + c).join('') : h; };
+  const root = css.slice(css.indexOf(':root{'), css.indexOf('}', css.indexOf(':root{'))), darkAt = css.indexOf('@media(prefers-color-scheme:dark){:root{');
+  const dark = css.slice(darkAt, css.indexOf('}', darkAt));
+  const luminance = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4).reduce((s, c, i) => s + c * [0.2126, 0.7152, 0.0722][i], 0);
+  const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  for (const [theme, text] of [['light', root], ['dark', dark]])
+    for (const fill of ['panel', 'soft'])
+      assert.ok(contrast(hex(text, 'alert'), hex(text, fill)) >= 4.5, `${theme}: the red words on --${fill} ${contrast(hex(text, 'alert'), hex(text, fill)).toFixed(2)}`);
 });

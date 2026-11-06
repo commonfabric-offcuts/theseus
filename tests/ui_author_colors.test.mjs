@@ -6,15 +6,21 @@ import { readFileSync } from 'node:fs';
 import { AGENT_PALETTE, agentColor, cardClass, paneClass } from '../web/author-colors.mjs';
 
 test('the team\'s agents have fixed colors, and any other agent always gets the same one', () => {
+  // aim-core is peach and warp cyan: aim-core's cyan card sat 4.1 (CIEDE2000)
+  // from Fable's green and 3.2 from aim-lead's blue in light (warp, item 91).
   assert.deepEqual(['aim-lead', 'aim-ux', 'fable', 'aim-core', 'aim-spec', 'warp'].map(agentColor),
-    ['blue', 'violet', 'green', 'cyan', 'rose', 'peach']);
-  // FNV-1a over the UTF-8 bytes, worked out separately, picks between the
-  // colors no team agent has, so no other agent is mistaken for one of them.
-  assert.deepEqual(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent', 'weft', 'og', 'networking', 'aim-next-agent'].map(agentColor),
-    ['indigo', 'indigo', 'olive', 'indigo', 'olive', 'olive', 'olive', 'indigo']);
-  assert.equal(agentColor('codex'), agentColor('codex'));
-  const used = new Set(Array.from({ length: 200 }, (_, n) => agentColor('agent-' + n)));
-  assert.deepEqual([...used].sort(), ['indigo', 'olive'], 'other agents spread over both colors the team does not use');
+    ['blue', 'violet', 'green', 'peach', 'rose', 'cyan']);
+  // Every other agent is olive, which no team agent has. Indigo's light card
+  // is 2.3 (CIEDE2000) from aim-ux's violet, so an agent outside the team in
+  // indigo looked like aim-ux; olive is the free color farthest from the team
+  // (warp, item 91b).
+  const used = new Set(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent', 'weft', 'og', 'networking', 'aim-next-agent',
+    ...Array.from({ length: 200 }, (_, n) => 'agent-' + n)].map(agentColor));
+  assert.deepEqual([...used], ['olive'], 'every agent outside the team is olive');
+  // Indigo stays a color a person can choose for an agent.
+  assert.ok(AGENT_PALETTE.includes('indigo'), 'indigo stays a color a person can choose');
+  // Two purples, not three: orchid sat 2.4 (CIEDE2000) from violet.
+  assert.deepEqual(AGENT_PALETTE, ['green', 'blue', 'indigo', 'violet', 'rose', 'peach', 'cyan', 'olive']);
   assert.equal(agentColor('constructor'), agentColor('constructor'));
   assert.ok(AGENT_PALETTE.includes(agentColor('toString')), 'a name on Object.prototype is just another id');
   for (const bad of ['', null, undefined, 3]) assert.throws(() => agentColor(bad), /agent id/);
@@ -63,6 +69,76 @@ test('every agent color keeps the card\'s words at 4.5:1 or better, in light and
   assert.equal(seen.dark.size, AGENT_PALETTE.length, 'and in dark');
 });
 
+// CIELAB (D65) lightness and chroma, the measure warp used for each tint.
+const lab = hex => {
+  const lin = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const [x, y, z] = [[0.4124564, 0.3575761, 0.1804375, 0.95047], [0.2126729, 0.7151522, 0.0721750, 1], [0.0193339, 0.1191920, 0.9503041, 1.08883]]
+    .map(([r, g, b, white]) => (r * lin[0] + g * lin[1] + b * lin[2]) / white);
+  const f = t => t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116;
+  const a = 500 * (f(x) - f(y)), b = 200 * (f(y) - f(z));
+  return { L: 116 * f(y) - 16, a, b, C: Math.hypot(a, b), H: (Math.atan2(b, a) * 180 / Math.PI + 360) % 360 };
+};
+
+// CIEDE2000 (Sharma, Wu and Dalal 2005), the distance warp measured every tint by.
+const deltaE = (one, two) => {
+  const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+  const [p, q] = [lab(one), lab(two)];
+  const mean = (Math.hypot(p.a, p.b) + Math.hypot(q.a, q.b)) / 2;
+  const g = 0.5 * (1 - Math.sqrt(mean ** 7 / (mean ** 7 + 25 ** 7)));
+  const prime = ({ L, a, b }) => { const A = (1 + g) * a, C = Math.hypot(A, b); return { L, C, h: C ? (deg(Math.atan2(b, A)) + 360) % 360 : 0 }; };
+  const [s, t] = [prime(p), prime(q)];
+  let dh = t.h - s.h; if (s.C * t.C === 0) dh = 0; else if (dh > 180) dh -= 360; else if (dh < -180) dh += 360;
+  const dH = 2 * Math.sqrt(s.C * t.C) * Math.sin(rad(dh / 2)), L = (s.L + t.L) / 2, C = (s.C + t.C) / 2;
+  const h = s.C * t.C === 0 ? s.h + t.h : Math.abs(s.h - t.h) <= 180 ? (s.h + t.h) / 2 : (s.h + t.h + (s.h + t.h < 360 ? 360 : -360)) / 2;
+  const T = 1 - 0.17 * Math.cos(rad(h - 30)) + 0.24 * Math.cos(rad(2 * h)) + 0.32 * Math.cos(rad(3 * h + 6)) - 0.2 * Math.cos(rad(4 * h - 63));
+  const SL = 1 + 0.015 * (L - 50) ** 2 / Math.sqrt(20 + (L - 50) ** 2), SC = 1 + 0.045 * C, SH = 1 + 0.015 * C * T;
+  const RT = -Math.sin(rad(60 * Math.exp(-(((h - 275) / 25) ** 2)))) * 2 * Math.sqrt(C ** 7 / (C ** 7 + 25 ** 7));
+  const [dL, dC, dHs] = [(t.L - s.L) / SL, (t.C - s.C) / SC, dH / SH];
+  return Math.sqrt(dL ** 2 + dC ** 2 + dHs ** 2 + RT * dC * dHs);
+};
+
+test('the CIEDE2000 instrument agrees with the published test pairs', () => {
+  // Black on white is 100 and pure red to pure green 86.6, as published
+  // calculators give; the same color is 0; and warp's 2.3 for the light
+  // indigo and violet cards of release 19.
+  assert.equal(deltaE('#000000', '#ffffff').toFixed(1), '100.0');
+  assert.equal(deltaE('#ff0000', '#00ff00').toFixed(1), '86.6');
+  assert.equal(deltaE('#e8f1ec', '#e8f1ec'), 0);
+  assert.ok(Math.abs(deltaE('#ececf9', '#f2edf8') - 2.3) < 0.05, 'base indigo and violet light cards, as warp measured them');
+});
+
+// Light cards were too pale for their hue to show (CIELAB chroma 3.8 to 6.7),
+// so most light pairs sat under 5 apart while every dark pair was at least
+// 7.9 (warp, item 91b). Each light card but Fable's green is at chroma about
+// 8 at the lightness and hue it had; its hover is one step deeper, as before.
+test('the team\'s light cards are far enough apart to tell at a glance, and an agent outside the team is never taken for one', () => {
+  const team = { fable: 'green', 'aim-lead': 'blue', 'aim-ux': 'violet', 'aim-core': 'peach', 'aim-spec': 'rose', warp: 'cyan' };
+  const card = name => tokens(css, '.agent-' + name)['agent-card'];
+  for (const name of AGENT_PALETTE.filter(name => name !== 'green')) {
+    const color = tokens(css, '.agent-' + name);
+    assert.ok(lab(color['agent-card']).C >= 7.2, `light ${name}: card chroma ${lab(color['agent-card']).C.toFixed(1)}`);
+    assert.ok(Math.abs(lab(color['agent-card']).H - lab(color['agent-tag']).H) <= 8, `light ${name}: card and name tag are one hue`);
+    assert.ok(lab(color['agent-hover']).L < lab(color['agent-card']).L && deltaE(color['agent-card'], color['agent-hover']) >= 2,
+      `light ${name}: hover one step deeper (${deltaE(color['agent-card'], color['agent-hover']).toFixed(2)})`);
+    assert.ok(contrast('#56616a', color['agent-card']) >= 5.4, `light ${name}: quiet words ${contrast('#56616a', color['agent-card']).toFixed(2)} on the card`);
+  }
+  const names = Object.keys(team);
+  for (const [i, one] of names.entries()) for (const two of names.slice(i + 1))
+    assert.ok(deltaE(card(team[one]), card(team[two])) >= 5, `light ${one} and ${two}: ${deltaE(card(team[one]), card(team[two])).toFixed(2)}`);
+  for (const one of names) assert.ok(deltaE(card(agentColor('someone-else')), card(team[one])) >= 4.5,
+    `light: an agent outside the team and ${one}: ${deltaE(card(agentColor('someone-else')), card(team[one])).toFixed(2)}`);
+});
+
+// Peach on a dark card read brown and heavy at chroma 11.9 (#3c2b20); its
+// card and hover are a quieter peach, and its name's tag keeps the hue.
+test('the dark peach card is a quiet peach, not brown', () => {
+  const peach = tokens(dark, '.agent-peach');
+  for (const surface of ['agent-card', 'agent-hover'])
+    assert.ok(lab(peach[surface]).C <= 8, `dark peach ${surface} chroma ${lab(peach[surface]).C.toFixed(1)}`);
+  assert.ok(lab(peach['agent-tag']).C <= 12, `dark peach tag chroma ${lab(peach['agent-tag']).C.toFixed(1)}`);
+  assert.ok(lab(peach['agent-card']).C >= 5, 'still a tint, not grey');
+});
+
 // Fable's cards keep the green the live app already paints them (Tony,
 // #452: "your color as it stands"): the live --soft, #e8f1ec in light and
 // #263d35 in dark, which is what a Fable card under the pointer and the
@@ -73,7 +149,6 @@ test('Fable keeps the green it has on the live app, in light and in dark', () =>
   assert.equal(agentColor('fable'), 'green');
   assert.equal(tokens(css, '.agent-green')['agent-card'], live.light, 'light: a Fable card is the live green');
   assert.equal(tokens(dark, '.agent-green')['agent-card'], live.dark, 'dark: a Fable card is the live green');
-  assert.ok(AGENT_PALETTE.includes('orchid'), 'orchid stays a color an agent can be given');
 });
 
 test('an agent\'s card is colored across its whole face, never by an edge or bar', () => {
@@ -82,20 +157,31 @@ test('an agent\'s card is colored across its whole face, never by an edge or bar
   for (const rule of rules) assert.doesNotMatch(rule, /border-left|border-inline-start|inset|::before|::after|border-color|border-width|outline/, rule);
 });
 
-// The picker's swatches are told apart from the picker by their outline, at
-// 3:1 or better (WCAG 1.4.11), and the chosen one by a ring of its own.
-test('each swatch in the picker is outlined at 3:1 or better against the picker, in light and in dark, and the chosen one is ringed', () => {
+// The picker (warp, item 91b): every swatch and Default wore the same heavy
+// grey frame, so the current choice showed only as a thicker one, and before
+// any choice the ringed Default read as a confirm button. Each choice that is
+// not current has a light frame (--line); the current one keeps the ink frame
+// and ring, at 3:1 or better against the picker (WCAG 1.4.11), and a check
+// before its name that is for the eye only (aria-pressed says it).
+test('the picker frames each choice lightly, and the current one alone in ink with a check before its name', () => {
   const rule = selector => { const at = css.indexOf(selector + '{'); assert.ok(at >= 0, 'aim.css sets ' + selector); return css.slice(at, css.indexOf('}', at)); };
   const themes = { light: tokens(css, ':root'), dark: tokens(css, '@media(prefers-color-scheme:dark){:root') };
   assert.match(rule('.color-picker'), /background:var\(--panel\)/);
-  for (const selector of ['.color-picker .swatch', '.color-picker .swatch-default']) {
-    const outline = rule(selector).match(/border:2px solid var\(--([\w-]+)\)/)?.[1];
-    assert.ok(outline, selector + ' has an outline');
-    for (const [theme, page] of Object.entries(themes))
-      assert.ok(contrast(page[outline], page.panel) >= 3, `${theme} ${selector}: --${outline} on the picker ${contrast(page[outline], page.panel).toFixed(2)}`);
-  }
+  for (const selector of ['.color-picker .swatch', '.color-picker .swatch-default'])
+    assert.match(rule(selector), /border:1px solid var\(--line\)/, selector + ' has a light frame');
+  assert.doesNotMatch(css, /\.color-picker[^{}]*\{[^}]*border:2px solid/, 'no choice wears the heavy frame');
   const chosen = rule('.color-picker .swatch[aria-pressed=true],.color-picker .swatch-default[aria-pressed=true]');
-  assert.match(chosen, /box-shadow:0 0 0 2px var\(--ink\)/, 'the chosen swatch wears a ring outside its outline');
+  assert.match(chosen, /border-color:var\(--ink\)/, 'the current choice is framed in ink');
+  assert.match(chosen, /box-shadow:0 0 0 2px var\(--ink\)/, 'and ringed outside its frame');
+  for (const [theme, page] of Object.entries(themes))
+    assert.ok(contrast(page.ink, page.panel) >= 3, `${theme}: the current choice's ink shows on the picker`);
+  const check = rule('.color-picker .swatch[aria-pressed=true] .swatch-name::before,.color-picker .swatch-default[aria-pressed=true]::before');
+  assert.match(check, /content:"\\2713\\00a0" \/ ""/, 'a check before the name, silent to a screen reader');
+  assert.doesNotMatch(css, /\.color-picker[^{}]*:not\(\[aria-pressed=true\]\)[^{}]*::before/, 'nothing else wears a check');
+  for (const selector of ['.color-picker .swatch:hover', '.color-picker .swatch-default:hover']) {
+    assert.match(rule(selector), /border-color:var\(--muted\)/, selector + ': the pointer deepens the frame, short of the ink that marks the current choice');
+    assert.ok(css.indexOf(selector + '{') < css.indexOf(chosen), selector + ': comes before the current choice\'s rule, so the pointer never takes its ink away');
+  }
 });
 
 // Each swatch shows its color as the agent's name tag wears it, the strongest
@@ -134,7 +220,7 @@ test('the picker and the names that open it paint no tap highlight, and keep the
 // page, never the green that is Fable's card. Every word on it keeps 4.5:1.
 test('the Reader shows an agent\'s message on its color, and anything else on the neutral page', () => {
   const message = (author, author_kind) => ({ source_ref: { kind: 'message', id: 'm' }, author, author_kind });
-  assert.equal(paneClass(message('fixture-notebook-agent', 'agent'), 'tony'), 'reading-pane agent-pane agent-indigo');
+  assert.equal(paneClass(message('fixture-notebook-agent', 'agent'), 'tony'), 'reading-pane agent-pane agent-olive');
   assert.equal(paneClass(message('fable', 'agent'), 'tony', () => 'rose'), 'reading-pane agent-pane agent-rose', 'the reader\'s choice for the agent');
   assert.equal(paneClass(message('tony', 'human'), 'tony'), 'reading-pane', 'your own message');
   assert.equal(paneClass(message('fable', 'agent'), 'fable'), 'reading-pane', 'an agent reading its own message');

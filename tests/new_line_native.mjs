@@ -1,5 +1,5 @@
 // The red New line, as painted: just below the card of the oldest message the
-// person has not read, as the server names it (topic_unread); red words "New"
+// person has not read, as the server names it (topic_unread); red words "New above" and when that message was sent,
 // readable on the page in light and dark. Reading on screen moves it live,
 // with the card being read held still; a message that arrives while the
 // person is caught up brings it back; Mark unread moves it down. At the top of
@@ -21,6 +21,10 @@ const narrowLine = p => p.evaluate(`(()=>{const line=document.querySelector('#me
   return {text:line.textContent,lines:Math.round(r.height/parseFloat(getComputedStyle(words).lineHeight)),right:l.right,width:innerWidth,scroll:document.documentElement.scrollWidth}})()`);
 const phone = { width: 390, height: 844, deviceScaleFactor: 3, mobile: true }, desk = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
 const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+
+// What loads older messages: More messages, or the New line while it says
+// more new messages lie below, which hides More.
+export const olderControl = p => p.evaluate("document.querySelector('#more-messages').hidden && document.querySelector('#messages .new-line-older') ? '#messages .new-line-older' : '#more-messages'");
 
 export async function newLineCheck({ check, page, until, view, control, shot, observations, facts }) {
   // A topic of the person's own, with count agent messages in it, oldest first; their ids.
@@ -78,8 +82,8 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
           seq:line.dataset.seq??null,id:line.dataset.id??null,color:c.color,rule:rule.backgroundColor,
           page:getComputedStyle(document.documentElement).backgroundColor}})()`);
       assert.equal(placed.count, 1, theme + ': one New line');
-      assert.match(placed.text, new RegExp('^New · ' + SHOWN + '$'), theme + ': its words are "New" and when that message was sent');
-      assert.equal(placed.label, 'New', theme + ': the label is a span of its own');
+      assert.match(placed.text, new RegExp('^New above · ' + SHOWN + '$'), theme + ': its words say the new messages are above it, and when that message was sent');
+      assert.equal(placed.label, 'New above', theme + ': the label is a span of its own');
       assert.deepEqual([placed.time, placed.title], [placed.cardTime, placed.cardTitle], theme + ': the time its card shows, with the same dated title');
       assert.match(placed.title, DATED, theme + ': its title keeps the date');
       assert.equal(placed.timeCase, 'none', theme + ': the time is not in capitals');
@@ -159,13 +163,19 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await until(() => p.evaluate("Boolean(document.querySelector('#messages .new-line'))"), theme + ': a line drawn');
       const marker = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),line=list.querySelector('.new-line');
         const c=getComputedStyle(line);return {count:list.querySelectorAll('.new-line').length,last:list.lastElementChild===line,tag:line.tagName,kind:line.dataset.line,text:line.textContent,
-          color:c.color,page:getComputedStyle(document.documentElement).backgroundColor,loaded:Boolean(list.querySelector('[data-id="${ids[0]}"]'))}})()`);
-      assert.deepEqual([marker.count, marker.last, marker.tag, marker.kind, marker.loaded], [1, true, 'BUTTON', 'older', false], theme + ': at the bottom of what is loaded');
-      assert.match(marker.text, new RegExp('^New · older below · ' + SHOWN + '$'), theme + ': saying older below, and when that message was sent');
-      assert.ok(contrast(marker.color, marker.page) >= 4.5, theme + ': readable');
+          label:line.querySelector('.new-line-label')?.textContent??null,
+          color:c.color,page:getComputedStyle(document.documentElement).backgroundColor,loaded:Boolean(list.querySelector('[data-id="${ids[0]}"]')),
+          fill:c.backgroundColor,border:[c.borderTopWidth,c.borderBottomWidth,c.borderLeftWidth,c.borderRightWidth],more:document.querySelector('#more-messages').hidden,
+          button:(b=>({fill:getComputedStyle(b).backgroundColor,border:getComputedStyle(b).borderTopColor}))(document.querySelector('#more-messages')),borderColor:c.borderTopColor}})()`);
+      assert.deepEqual([marker.count, marker.last, marker.tag, marker.kind, marker.label, marker.loaded], [1, true, 'BUTTON', 'older', 'More new below', false], theme + ': at the bottom of what is loaded, saying more new messages are below');
+      assert.match(marker.text, new RegExp('^More new below · ' + SHOWN + '$'), theme + ': and when that message was sent');
+      assert.ok(contrast(marker.color, marker.fill) >= 4.5, theme + ': readable');
+      // A control that looks like one: framed and filled as the page's other buttons.
+      assert.deepEqual([marker.border, marker.fill, marker.borderColor], [Array(4).fill('1px'), marker.button.fill, marker.button.border], theme + ': framed and filled as a button: ' + JSON.stringify(marker));
+      assert.equal(marker.more, true, theme + ': More messages is hidden while the line shows');
       await p.send('Emulation.setDeviceMetricsOverride', phone);
       const narrowMarker = await narrowLine(p);
-      assert.equal(narrowMarker.lines, 1, theme + ': at 390 wide "older below" and its time fit on one line');
+      assert.equal(narrowMarker.lines, 1, theme + ': at 390 wide "More new below" and its time fit on one line');
       assert.ok(narrowMarker.right <= narrowMarker.width && narrowMarker.scroll <= narrowMarker.width, theme + ': and inside the page');
       await p.send('Emulation.setDeviceMetricsOverride', desk);
       await p.evaluate("document.querySelector('#messages .new-line').scrollIntoView({block:'center'})");
@@ -181,8 +191,12 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const placed = await p.evaluate(`(()=>{const card=document.querySelector('#messages [data-id="${ids[0]}"]'),r=card.getBoundingClientRect();
         return {inView:r.top<innerHeight&&r.bottom>0,lines:document.querySelectorAll('#messages .new-line').length}})()`);
       assert.equal(placed.inView, true, theme + ': the message is in view');
-      assert.match(await p.evaluate("document.querySelector('#messages .new-line').textContent"), new RegExp('^New · ' + SHOWN + '$'),
+      assert.match(await p.evaluate("document.querySelector('#messages .new-line').textContent"), new RegExp('^New above · ' + SHOWN + '$'),
         theme + ': the line in its place says when its message was sent');
+      // More messages is back exactly when older messages are left to load.
+      const lowest = await p.evaluate("Math.min(...[...document.querySelectorAll('#messages .message-card')].map(card=>Number(card.dataset.seq)))");
+      const older = await view('topic_messages', { topic_id: topic, audience: 'all', direction: 'before', cursor: lowest, limit: 1 });
+      assert.equal(await p.evaluate("document.querySelector('#more-messages').hidden"), older.items.length === 0, theme + `: More messages is back for what is older (${older.items.length} below #${lowest})`);
       await shot(p, 'new-line-older-' + theme + '-reached');
       // At a phone's width, both forms of the line keep their words on one line, inside the page.
       await p.send('Emulation.setDeviceMetricsOverride', phone);

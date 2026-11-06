@@ -1142,6 +1142,24 @@ class Schema16Case(MigrationCase):
         self.assertEqual(self.choose("rose", 0)["result"]["color_revision"], 1)
         self.assertEqual(self.store.view("owner", "colors", {})["items"], [{"actor_id": "agent-a", "color": "rose", "color_revision": 1}])
 
+    def test_upgrade_makes_no_earlier_writer_a_participant(self):
+        # A member who wrote in t1 without taking part: having written lets them
+        # say where it stands, and wakes them for nothing that follows.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO actors(id,kind,name) VALUES ('writer','agent','writer')")
+            db.execute("INSERT INTO workspace_members(workspace_id,actor_id) VALUES ('w1','writer')")
+            seq = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
+                             "VALUES ('m-16','t1','writer','Written','[]','[]','[]','op-16')").lastrowid
+            # Version 16 gave every writer a horizon with each message.
+            db.execute("INSERT INTO reply_horizons VALUES ('t1','writer',?)", (seq + 1,))
+        participants = self.sql("SELECT * FROM topic_participants ORDER BY rowid")
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT * FROM topic_participants ORDER BY rowid"), participants)
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        self.assertEqual(self.command("topic.update", {"state": "review"}, target={"topic_id": "t1"},
+                                      expected={"topic_revision": version}, actor="writer")["status"], "committed")
+
     def test_step_back_to_16_restores_its_frozen_layout_while_no_choice_exists(self):
         self.upgrade()
         records = self.records()
