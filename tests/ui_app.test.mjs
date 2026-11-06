@@ -431,6 +431,19 @@ test('typing after the last save is guarded from the keystroke until this device
   assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Typed as the next page loads');
 });
 
+// An image still being chosen or kept holds the Reader as it holds Close: a
+// step says so in the image's words, not in the words for writing the device
+// could not keep, and the Reader stays in front.
+test('a step over an image still being kept says so in its own words', async t => {
+  const f = await fixture(t), x = await f.open(0), uploads = f.registry.sessionFor(x.editors.reply).uploads;
+  const token = uploads.reserve(x);
+  const { error } = await f.open(1).then(value => ({ value }), error => ({ error }));
+  assert.equal(error?.message, 'Keep this page open until the selected image is saved or removed.');
+  assert.equal(f.registry.current, x); assert.deepEqual(f.shown, [x]);
+  uploads.cancel(token);
+  assert.notEqual(await f.open(1), x, 'with the image cancelled, the step goes');
+});
+
 // A second press of Close supersedes the first while the Reader stays in
 // front: only the newer close reports the refusal, once.
 test('of two explicit closes refused while preservation fails, only the newer one says why', async t => {
