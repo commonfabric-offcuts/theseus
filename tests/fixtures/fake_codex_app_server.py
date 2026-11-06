@@ -29,6 +29,8 @@ The script may also set:
   bad_turns_list_once  the first thread/turns/list answers a last turn with this status
   echo_widened         thread/start and thread/resume echo a sandbox wider than asked
   resume_status        the thread status thread/resume reports
+  steer_refusal        the message a steer with no active turn is refused with
+                       (default "no active turn to steer")
 
 A turn behaviour (consumed in order across restarts) may hold:
   reply      text posted in each topic ("{history}" is this thread's previous reply)
@@ -42,6 +44,8 @@ A turn behaviour (consumed in order across restarts) may hold:
   fail       a codexErrorInfo key: the turn fails without acting
   busy       refuse turn/start as activeTurnNotSteerable
   silent     start the turn but never answer turn/start or announce the turn
+  vanish     the same, and the turn is gone at once while the thread's history
+             still lists it in progress (a turn its app-server lost)
   garble     answer turn/start with a line that is not JSON, then wait
   server_request  a server request method sent mid-turn; the turn waits for its answer
   bad_notification  before answering turn/start, notify turn/started with a threadId that is a list
@@ -247,6 +251,9 @@ class Fake:
         self.active[thread_id] = turn
         self.state["threads"][thread_id]["turns"].append({"id": turn["id"], "status": "inProgress"})
         self.save()
+        if behaviour.get("vanish"):
+            del self.active[thread_id]
+            return
         if behaviour.get("silent"):
             return
         if behaviour.get("end_first"):
@@ -275,7 +282,7 @@ class Fake:
         thread_id = params["threadId"]
         turn = self.active.get(thread_id)
         if turn is None:
-            return self.error(request, -32600, "no active turn to steer")
+            return self.error(request, -32600, self.script.get("steer_refusal", "no active turn to steer"))
         if params["expectedTurnId"] != turn["id"]:
             return self.error(request, -32600, "expected turn id mismatch")
         mode = turn["behaviour"].get("steer")

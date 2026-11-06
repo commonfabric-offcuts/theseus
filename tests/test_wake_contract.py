@@ -29,6 +29,8 @@ The integration cases the wake plan lists keep their own guards:
   test_codex_broker, test_valid_incomplete_scan_stops_after_two_pages_then_adds_once;
 - a stale in-progress turn is not trusted unless its thread is active:
   test_codex_host, test_a_turn_left_open_by_a_dead_runner_is_settled_lost_on_restart;
+  and one believed running only from the thread's history falls back to a
+  start on any steer refusal: test_codex_host, StaleInProgressCase;
 - a failed, lost or dropped turn hands its work back:
   test_hosted_schedule, test_a_dropped_steer_re_arms_and_a_seen_steer_does_not.
 """

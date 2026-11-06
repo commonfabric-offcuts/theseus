@@ -272,8 +272,11 @@ when the config names one.
    `expectedTurnId`; otherwise `turn/start` with `approvalPolicy: never` and
    the `workspaceWrite` sandbox policy. Both carry
    `clientUserMessageId: theseus:<attempt_id>`. A refused steer falls back to
-   one `turn/start` when the host has already seen that turn end, or the error
-   text says there is no active turn or the id is stale.
+   one `turn/start` when the host has already seen that turn end, when it
+   knew the turn as running only from that last-turn read (a turn the history
+   lists in progress may be one the app-server lost, and any refusal says it
+   is not running), or the error text says there is no active turn or the id
+   is stale.
    `activeTurnNotSteerable` settles `busy`; any other error `error`; a child
    gone before answering `unavailable`. A steer answered after the host saw its
    turn end is settled `handed`, logged `steer_late`, and that turn's end is
