@@ -1323,6 +1323,8 @@ test('at the top of a topic a new message comes into view; read further down, th
   assert.deepEqual(scrolls, [100], 'read further down, the card in view is held where it was');
   listTop = -100; add(28); paint();
   assert.deepEqual(scrolls, [100, 100], 'the newest card just out of sight above: the card that heads the view is held too');
+  listTop = -50; add(29); paint();
+  assert.deepEqual(scrolls, [100, 100, 100], 'the newest card partly above the top is being read, not shown from its top edge: it is held');
 });
 
 test('an agent\'s card in the topic log carries its color, and the person\'s own keeps its black', async () => {
