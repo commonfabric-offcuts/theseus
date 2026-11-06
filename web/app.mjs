@@ -24,6 +24,7 @@ import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
+import { betweenOthers, foldCard, cardIn, paintFold, opened } from './fold.mjs';
 import { cardClass, agentColor, paneClass } from './author-colors.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
@@ -502,9 +503,9 @@ function keepListAnchor(paint) {
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && at.matches('input, textarea, select') && inView(at);
   const anchor = writing ? inline.field : field ? at
-    : [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(inView);
+    : [...document.querySelectorAll('#messages > [data-seq], #memory-items .memory-card')].find(inView);
   const top = anchor?.getBoundingClientRect().top;
-  const atTop = !writing && !field && anchor && anchor === document.querySelector('#messages .message-card') && top >= 0;
+  const atTop = !writing && !field && anchor && anchor === document.querySelector('#messages > [data-seq]') && top >= 0;
   paint();
   if (anchor?.isConnected && !atTop) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
 }
@@ -552,9 +553,12 @@ function paintViews(kind) {
       if (answers) card.append(node('span', answers, 'message-reply-to'));
       card.append(node('span', item.body, 'message-preview'));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
+      // A message between others is one quiet line that opens its card.
+      const entry = betweenOthers(item, bootstrap.actor) ? foldCard(card, item, document) : card;
+      paintFold(entry, marks?.state(item.id)?.marked === true);
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
-      $('messages').insertBefore(card, following ?? null);
-      cardObserver?.observe(card); middleObserver?.observe(card);
+      $('messages').insertBefore(entry, following ?? null);
+      cardObserver?.observe(entry); middleObserver?.observe(entry);
     }
   }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
@@ -579,8 +583,8 @@ function paintViews(kind) {
 const agentShown = id => colors?.color(id) ?? agentColor(id);
 // Every loaded card, the participants and the Reader's page, in the reader's colors as they now stand.
 function paintAgentColors() {
-  for (const card of $('messages').children) {
-    const item = views?.messages.get(card.dataset.id);
+  for (const entry of $('messages').children) {
+    const card = cardIn(entry), item = views?.messages.get(card.dataset.id);
     if (item) card.className = cardClass(item, bootstrap.actor, agentShown);
   }
   if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintTone(reader.source);
@@ -621,9 +625,9 @@ function paintMarks() {
   $('topic-marks-words').textContent = marksWords(count);
   $('topic-marks').hidden = !count || topicUnavailable;
   keepListAnchor(() => {
-    for (const card of $('messages').children) {
-      const item = views.messages.get(card.dataset.id);
-      if (item) paintCardAuthor(card.querySelector('.message-author'), item);
+    for (const entry of $('messages').children) {
+      const card = cardIn(entry), item = views.messages.get(card.dataset.id);
+      if (item) { paintCardAuthor(card.querySelector('.message-author'), item); paintFold(entry, marks.state(item.id)?.marked === true); }
     }
   });
   paintReaderMark();
@@ -695,7 +699,8 @@ async function loadToUnread() {
     await listPage('messages', true);
     if (!shared && views.olderCursor === before) break;
   }
-  loaded()?.focus();
+  const entry = loaded();
+  if (entry) opened(entry).focus();
 }
 // Where the oldest unread message is, read again after each commit and on
 // Refresh: reading, marks and replies move it without changing the topic.

@@ -101,6 +101,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,reread,PAGE}; })())', context);
   const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + marksSource + '; return {Marks,paintMarkButton,paintAuthor,marksWords}; })())', context);
+  const foldSource = readFileSync(new URL('../web/fold.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + foldSource + '; return {betweenOthers,foldCard,cardIn,paintFold,opened}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
   vm.runInContext('globalThis.OutcomeRail = (()=>{' + outcomeSource + '; return OutcomeRail; })()', context);
   const referencesSource = readFileSync(new URL('../web/outcome-references.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeReferences', 'class OutcomeReferences');
@@ -1386,6 +1388,60 @@ test('an agent in the participants is a button that opens its color picker, in i
   assert.equal(opened[0].back, agent);
 });
 
+test('a message between others is one quiet line that opens and folds its card; one for the person stays a card', async () => {
+  const f = fixture();
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  const me = f.bootstrap.actor, say = (id, seq, more) => f.views.messages.set(id, { id, seq, author_id: 'aim-core', author_kind: 'agent', body: 'Body', topic_id: 't1', addressees: [], ...more });
+  say('m1', 1, { addressees: ['aim-ux', 'warp'], body: '\n  the wake check fails on\nthe second line' });
+  say('m2', 2, { addressees: [me] });
+  say('m3', 3);
+  say('m4', 4, { addressees: ['aim-ux'], reply_to: 'm5', reply_to_author: me });
+  say('m5', 5, { author_id: me, author_kind: 'human', addressees: ['aim-ux'] });
+  say('m6', 6, { author_id: 'dan', author_kind: 'human', addressees: ['aim-ux', me] });
+  say('m7', 7, { addressees: ['aim-ux'], reply_to: 'm6', reply_to_author: 'dan' });
+  f.paintViews('messages');
+  const entry = id => f.get('messages').children.find(child => child.dataset.id === id);
+  const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
+  assert.deepEqual(['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7'].map(id => entry(id).className.split(' ')[0]),
+    ['message-fold', 'message-card', 'message-card', 'message-card', 'message-card', 'message-card', 'message-fold'],
+    'to the person, to everyone, a reply to the person, their own, and one naming them stay cards');
+  const fold = entry('m1'), [line, card] = fold.children;
+  assert.deepEqual([fold.dataset.seq, line.type, line.className, text(line)], [1, 'button', 'fold-line', 'aim-core to aim-ux, warp: the wake check fails on']);
+  assert.deepEqual([card.className.split(' ')[0], card.dataset.id, card.hidden, line['aria-expanded'], line['aria-controls']], ['message-card', 'm1', true, 'false', card.id]);
+  line.onclick();
+  assert.deepEqual([card.hidden, line['aria-expanded']], [false, 'true'], 'pressed, it opens the card below it');
+  line.onclick();
+  assert.deepEqual([card.hidden, line['aria-expanded']], [true, 'false'], 'pressed again, it folds it away');
+  assert.equal(f.observers[0].targets.includes(fold), true, 'the fold is what is seen on screen');
+  f.paintViews('messages');
+  assert.equal(f.get('messages').children.filter(child => child.dataset.id === 'm1').length, 1, 'a repaint keeps one fold');
+});
+
+test('a folded message the person marked unread carries the pill on its line, the New line under it, and older-below opens it', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const between = (from, through) => messages(from, through).map(item => ({ ...item, addressees: item.seq === 5 ? ['agent-b'] : [] }));
+  const at = (from, through, next) => ({ instance_id: 'fixture', items: between(from, through), next_cursor: next, relevant_versions: { topic: 1 }, oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 });
+  views.messagesPage(at(10, 19, 10), { initial: true }); await settle();
+  const marker = f.get('messages').children.at(-1);
+  const pages = [at(1, 9, null)], view = f.api.view;
+  f.api.view = async (name, args) => name === 'topic_messages' ? pages.shift() : view(name, args);
+  await marker.onclick(); await settle();
+  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  assert.equal(order().split(' ').slice(-7).join(' '), '6 5 new 4 3 2 1', 'the New line sits just below the fold');
+  const fold = f.get('messages').children.find(child => child.dataset.id === 'm5'), [line, card] = fold.children;
+  assert.equal(fold.className, 'message-fold');
+  assert.deepEqual([card.hidden, line['aria-expanded'], f.document.activeElement], [false, 'true', card], 'older-below opened the fold and focused its card');
+  const pills = node => typeof node === 'string' ? 0 : (node.className === 'unread-mark' ? 1 : 0) + node.children.reduce((n, child) => n + pills(child), 0);
+  assert.equal(pills(line), 0);
+  f.owners().marks.learn('m5', 1, { topicId: 't1', seq: 5 });
+  assert.equal(pills(line), 1, 'marked unread: the pill on its line');
+  f.owners().marks.learn('m5', 2, { topicId: 't1', seq: 5 });
+  assert.equal(pills(line), 0, 'cleared: no pill');
+});
+
 test('the New line is drawn under the card of the message it holds, moves with it, and goes', async () => {
   const { f } = await readingPage();
   for (let seq = 20; seq <= 25; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
@@ -1461,7 +1517,7 @@ test('during a visit the New line holds as the person reads, moves to show more,
   let listTop = 0;
   const list = f.get('messages'), cards = () => list.children.filter(child => child.dataset.seq);
   f.document.querySelectorAll = () => cards();
-  f.document.querySelector = selector => selector === '#messages .message-card' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
+  f.document.querySelector = selector => selector === '#messages > [data-seq]' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
   const layout = () => { for (const child of list.children) child.getBoundingClientRect ??= () => {
     let top = listTop; for (const before of list.children.slice(0, list.children.indexOf(child))) top += before.dataset.line ? 30 : 100;
     return { top, bottom: top + (child.dataset.line ? 30 : 90) }; }; };
@@ -1517,7 +1573,7 @@ test('at the top of a topic a new message comes into view; read further down, th
   const cards = () => f.get('messages').children.filter(child => child.dataset.seq);
   for (const kind of ['querySelectorAll', 'querySelector']) assert.equal(typeof f.document[kind], 'function');
   f.document.querySelectorAll = () => cards();
-  f.document.querySelector = selector => selector === '#messages .message-card' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
+  f.document.querySelector = selector => selector === '#messages > [data-seq]' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
   const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
   const paint = () => { f.paintViews('messages'); for (const card of cards()) card.getBoundingClientRect ??= () => { const top = listTop + cards().indexOf(card) * 100; return { top, bottom: top + 90 }; }; };
   for (let seq = 20; seq <= 25; seq++) add(seq);

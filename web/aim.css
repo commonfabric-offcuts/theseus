@@ -112,6 +112,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 /* Work observed on a topic: a small dot, its words in the row title and for screen readers. */.topic-work{display:inline-block;width:.45rem;height:.45rem;margin-left:.45rem;border-radius:50%;background:var(--accent);vertical-align:middle}@media (forced-colors:active){.topic-work{background:CanvasText}}
 /* A reply card says, quietly and on one line, which message it answers. */
 .message-reply-to{display:block;margin:-.2rem 0 .35rem;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* A message between others (docs/attention.md): one quiet line, a button that opens its card below it. The line never widens the page: it ends in an ellipsis instead. */
+.message-fold{margin-bottom:.75rem}.fold-line{display:block;width:100%;contain:inline-size;min-height:2.75rem;padding:.3rem 1.15rem;border:0;border-radius:.75rem;background:none;color:var(--muted);font-size:.85rem;font-weight:400;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fold-line:hover{background:var(--soft);color:var(--ink)}.fold-line[aria-expanded=true]{color:var(--ink)}.fold-author{font-weight:650}.message-fold>.message-card{margin:.25rem 0 0}
 /* The New line: red (--alert), just below the oldest message the reader has not replied to. */
 .new-line{display:flex;align-items:center;gap:.6rem;margin:-.25rem 0 .85rem;color:var(--alert);font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1.2}
 .new-line::before{content:"";flex:1;height:2px;border-radius:1px;background:var(--alert)}

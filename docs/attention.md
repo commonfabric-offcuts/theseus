@@ -40,6 +40,20 @@ mark: one more unread, holding the New line, until they open it to read it or
 clear the mark. Reading through the topic leaves the mark, as it does
 anywhere.
 
+In the topic page, a message between others is one quiet line, such as
+"aim-core to aim-ux: the wake check fails on…": its author, whom it is to, and
+its first words, on one line that ends in an ellipsis rather than widen the
+page on a narrow screen. The line is a button, reached with Tab like any
+other: a tap, a click, or Enter or Space opens the full card below it, and
+pressing it again folds the card away. The open card is a card like any
+other, opened in the Reader by a click. A message between others that the
+person marked unread stays folded; its line carries the Unread pill, and the
+New line sits just below it. Pressing "New · older below" when the oldest
+unread message is such a message opens it and gives its card the focus. The
+page applies the same rule as Core, from the message's addressees and the
+author of the message it answers, so what it folds is exactly what is never
+unread.
+
 - `workspace_topics` items carry `unread` and `addressed`: the reader's
   pending deliveries and marked messages in that topic, and how many of the
   pending deliveries name the reader.
