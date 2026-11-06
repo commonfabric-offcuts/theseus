@@ -59,6 +59,8 @@ m[28]['what']='Each agent gets its own background colour: on its name, and kept 
 m[29]['title']='A red line marks the messages you have not replied to'
 m[29]['what']='A red "New" line sits just below the oldest message you have not replied to. When you reply, it moves up to just below the next most recent message you have not replied to, and it goes when you have replied to all of them. Knowing which message a reply answers comes from 10.'
 m[81]['what']=m[81]['what']+" Only the outcome's coordinator answers what is posted there, and other agents only when named, so a post never draws several agents saying the same thing. It aims to be natural enough that a separate Q&A is not needed."
+m[28]['what']="Your black and Fable's dark green stay as they are; every other agent gets its own background colour, on its name and kept consistent as the background of the cards that carry its messages, in light and dark. Clicking an agent's name lets you change its colour, and your choice is kept for you on every device. No coloured left edges on cards. The look is judged by eye, by Fable with Warp as the eval."
+m.append({'title':'Cmd-A in the writing selects only the message text','what':'In the Reader and the inline composer, Cmd-A while writing selects all of the message text and nothing else on the page or in the controls around it.','asked_by':'tony','size':'S'})
 GLYPH={}
 PROGRESS={27:'Still broken at 5:45 PM Thu Nov 5 (you).',12:'First step ships with this release: a Measurements page on the outcome, updated by hand at each release. Filling it on every deploy is the rest of this item.',1:'All 22 are fixed and each group was reviewed independently; the final run of every check is under way.',2:'Done for refusals: × now says why it cannot close and keeps the draft and image. The saving sign is still to build.'}
 who={'tony':'you','fable':'Fable','found-in-review':'found in review','aim-core':'aim-core','aim-ux':'aim-ux','aim-spec':'aim-spec','warp':'warp'}
@@ -79,24 +81,27 @@ PROGRESS.update({
 })
 PROGRESS.update({1:'Started 3:26 PM Thu Nov 5. The network drop at about 7:40 PM stopped one agent; its fixes were kept. Every check passed once the Mac was quiet, and the review of the fixes approved them. Now: the review of the stale-page fix, then the merge, one more full run, a last review, then deploy.'})
 PROGRESS.update({2:'Started 3:26 PM Thu Nov 5, inside the repair in 1. Done for refusals: × now says why it cannot close and keeps the draft and image. The saving sign rides with 87 in NEXT.',3:'Started 4:55 PM Thu Nov 5. This release runs every check mode before deploy. The deploy refusing to ship on a failed check rides in NEXT, because the journeys (6) need it.'})
+PROGRESS.update({2:'The refusals part shipped in release 18. Now: the saving sign, built with 87.',3:'Release 18 ran every check mode before deploy. Now: the deploy refuses to ship on a failed check, built with 83.',12:'First step shipped with release 18: the Measurements page, updated by hand at each deploy. Filling it on every deploy comes with 88 and 83.'})
 SEC={'NOW':'🔨','NEXT':'⏭','LATER':'💤','CANDIDATES':'💤'}
 groups=[
- ("NOW: being built for the next release, which started 3:26 PM Thu Nov 5",[1,2,3,4,12]),
- ("NEXT: the release you chose at 10 PM Thu Nov 5, built overnight once NOW lands, with what it needs. Pieces merge as their dependencies land; nothing is cut to meet a time",[87,83,37,10,30,51,29,59,58,71,73,88,70,48,82,47,84,86,8,35,34]),
- ("LATER: the order I plan after that",[89,69,72,22,74,76,75,77,85,26,27,28,78,25,23,24,79,80,81,17]),
+ ("NOW: being built overnight, started 10:30 PM Thu Nov 5. Pieces merge and deploy as their dependencies land; nothing is cut to meet a time",[87,90,2,3,83,37,10,30,51,29,59,58,71,73,88,70,48,82,47,84,14,86,8,69,17,35,34,12]),
+ ("NEXT: the release after NOW. I decide this order; tell me if you disagree",[89,72,22,74,76,75,77,85]),
+ ("LATER: the order I plan after that",[26,27,28,78,25,23,24,79,80,81]),
  ("CANDIDATES: things you asked for in the app",[11,31,61,62]),
- ("CANDIDATES: how we work, measure and know it's right",[9,13,14,15,16,18,19,20,21,32,33,5,63,68]),
+ ("CANDIDATES: how we work, measure and know it's right",[9,13,15,16,18,19,20,21,32,33,5,63,68]),
  ("CANDIDATES: agents, wakes and hosting",[36,38,39,40,41,42,43,44,45,46]),
  ("CANDIDATES: smaller fixes and polish",[49,50,52,53,54,55,56,57,60,64,65,66,67,6]),
 ]
-seen=[n for _,g in groups for n in g]+[7]
-assert sorted(seen)==list(range(1,90)), (set(range(1,90))-set(seen), [n for n in seen if seen.count(n)>1])
+seen=[n for _,g in groups for n in g]+[7,1,4]
+assert sorted(seen)==list(range(1,91)), (set(range(1,91))-set(seen), [n for n in seen if seen.count(n)>1])
 for head,g in groups:
     for n in g: GLYPH[n]=SEC[head.split(':')[0]]
+BUILDING={87,90,2,3,83,10,30,51,29,59,58,71,73}
+for n in [87,90,2,3,83,37,10,30,51,29,59,58,71,73,88,70,48,82,47,84,14,86,8,69,17,35,34,12]: GLYPH[n]='🔨' if n in BUILDING else '💤'
 GLYPH[31]='❓'
 out=["""Release pipeline
 
-Changed 10:30 PM Thu Nov 5: your answers are in: 29 is a background colour per agent on its name and cards, with no coloured edges; 30's line follows your replies, so 10 joins NEXT; 82 has one answering agent; 6 moves to the end of CANDIDATES. 89 (search) is new, first in LATER.
+Changed 10:59 PM Thu Nov 5: release 18 is live, so 1 and 4 moved to SHIPPED; tonight's set is now NOW, with 🔨 on what is being built; NEXT starts with 89 (search).
 
 🔨 being built   ⏭ next   💤 not started   ❓ needs your decision   ✅ shipped
 
@@ -110,6 +115,16 @@ for head,g in groups:
     out.append("\n"+head+"\n\n"+"\n".join(item(n) for n in g))
 out.append("""
 SHIPPED
+
+Release 18, 10:57 PM Thu 5 November 2026
+✅ 1. Fix the 22 browser checks that failed on the live app. All 11 modes pass: 152 browser cases.
+✅ 4. Each case that failed only sometimes was fixed at its cause, or shown to fail only when the Mac was overloaded.
+- A Notebook page you reply to no longer goes stale: once it is revised, opening it shows the new revision and your next reply is about the page you see. Only writing you have started keeps its older revision, and the Reader says so.
+- Typing in the Reader while another message is opening is kept, saved on this device as you type. Sending, images and Save note wait until it opens, and say why. If the device cannot keep your writing, the Reader stays put rather than replacing it.
+- × and Close say why they cannot close, and keep the draft and image (part of 2).
+- A version check that is blocked says your saved version was read, instead of "unavailable".
+- Removing an image in the inline composer no longer takes focus away from your writing.
+- Every check mode ran before deploy (part of 3), and the Measurements page has the numbers (first step of 12).
 
 5 November 2026
 ✅ 7. This page.
