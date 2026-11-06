@@ -215,7 +215,9 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await click(p, 't1'); await ready(p, 't1');
     // The debounce timing below measures writing-to-activation, not the rail read.
     await rendered(p, 't2');
-    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})'); await p.point('#inline-writing-body');
+    // t1 may already hold a saved draft (the outcomes root case leaves one), and
+    // the composer shows it; this writing replaces it, as the newer writing does below.
+    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})'); await p.point('#inline-writing-body'); await p.key('a', 4);
     const text = 'A precise inline draft kept across a topic switch';
     await p.send('Input.insertText', { text }); const writtenAt = Date.now(); await click(p, 't2');
     assert.ok(Date.now()-writtenAt < 450, 'link is activated inside the actual450ms autosave debounce');
