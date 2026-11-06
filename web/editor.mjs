@@ -72,15 +72,16 @@ export class Editor {
   // was started on. A reply or note with nothing in it, saved as it stands
   // (on opening, once an emptied one is saved, once a sent one's place is
   // empty), is about the revision in front of the person. A refused
-  // preparation left its writing in Core's slot, so that slot keeps its
-  // revision until the refusal is prepared again.
+  // preparation left its writing in Core's slot, so the slot keeps its
+  // revision while it still holds that writing: until the refusal is prepared
+  // again, or new writing is saved or sent in its place.
   read(ref) { this.reading = copy(ref); this.follow(); }
   follow() {
     const ref = this.reading, pinned = this.sourceRef;
     if (ref?.kind !== 'memory' || pinned?.kind !== 'memory' || ref.id !== pinned.id || ref.revision === pinned.revision) return;
     if (this.dirty || this.conflict || holdsWriting(this.draft) || this.imageReservation || this.imageBusy || this.uploadOpaque ||
         this.uploadState?.entries?.some(entry => entry.selected) ||
-        this.submissions.some(item => item.status === 'preparing' && !item.detached || refusedAtDraft(item))) return;
+        this.submissions.some(item => item.status === 'preparing' && !item.detached || refusedAtDraft(item, this.draft))) return;
     this.sourceRef = copy(ref);
     if (Object.hasOwn(this.draft, 'source_ref')) this.draft.source_ref = copy(ref);
   }

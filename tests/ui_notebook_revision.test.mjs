@@ -71,6 +71,42 @@ async function fixture(t) {
   return { facts, api, load, listed, saved, revise, write, topicId: facts.topic_id };
 }
 
+// Core refuses the next `count` preparations (each names a draft Core does not
+// hold) and keeps the reply's writing in its slot, unrotated.
+function refusePreparations(f, count) {
+  const command = f.api.command.bind(f.api);
+  f.api.command = async envelope => {
+    if (envelope.kind !== 'submission.prepare' || count <= 0) return command(envelope);
+    count -= 1;
+    return command({ ...envelope, args: { ...envelope.args, draft_id: 'not-this-draft' } });
+  };
+}
+
+// A reply refused at preparation, with the composer left empty and the
+// writing still in Core's slot at revision one.
+async function refusedReply(f, registry) {
+  const shown = await registry.open(await f.listed(), { topicId: f.topicId });
+  const reply = shown.editors.reply;
+  reply.edit({ body: 'A reply about revision one' }); await registry.edited(reply);
+  const refused = await registry.send(reply, { stay: true });
+  assert.deepEqual([refused.status, refused.receipt?.error?.code], ['refused', 'FORBIDDEN']);
+  assert.deepEqual([(await f.saved()).draft.body, reply.draft.body], ['A reply about revision one', '']);
+  return { reply, refused };
+}
+
+// The page revised to revision two and opened again, on the same page or
+// after a reload: it shows revision two, and the reply's place, holding no
+// writing in Core's slot, is about revision two and saves there.
+async function opensCurrent(f, registry, reload, label) {
+  if (reload) { registry.dispose(); registry = await f.load(); }
+  const shown = await registry.open(await f.listed(), { topicId: f.topicId });
+  const reply = shown.editors.reply;
+  assert.deepEqual(shown.source.source_ref, page(2), `${label}: the page shows its current revision`);
+  assert.deepEqual(reply.sourceRef, page(2), `${label}: the empty reply is about the revision shown`);
+  await f.write(registry, reply, 'The next reply');
+  assert.deepEqual((await f.saved()).draft.source_ref, page(2), `${label}: the next writing is saved about the revision shown`);
+}
+
 test('a reply sent from an older revision leaves no pin: the page opens current and new writing is about it', async t => {
   const f = await fixture(t);
   let registry = await f.load(), shown = await registry.open(await f.listed(), { topicId: f.topicId });
@@ -130,15 +166,7 @@ test('writing started on an older revision keeps it while the page shows the cur
 
 test('a refused reply still holds its revision: the page opens current and the reply can be prepared again as written', async t => {
   const f = await fixture(t);
-  // Core refuses the first preparation (it names a draft Core does not hold)
-  // and keeps the reply's writing in its slot, unrotated.
-  const command = f.api.command.bind(f.api);
-  let refuse = true;
-  f.api.command = async envelope => {
-    if (envelope.kind !== 'submission.prepare' || !refuse) return command(envelope);
-    refuse = false;
-    return command({ ...envelope, args: { ...envelope.args, draft_id: 'not-this-draft' } });
-  };
+  refusePreparations(f, 1);
   const registry = await f.load();
   let shown = await registry.open(await f.listed(), { topicId: f.topicId });
   const reply = shown.editors.reply;
@@ -159,6 +187,67 @@ test('a refused reply still holds its revision: the page opens current and the r
   const prepared = await f.api.view('submission', { submission_id: corrected.id });
   assert.deepEqual([sent.body, prepared.body, prepared.source_ref], ['A reply about revision one', 'A reply about revision one', page(1)]);
   assert.deepEqual(reply.sourceRef, page(2), 'once its place is empty, the next reply is about the page shown');
+});
+
+for (const reload of [false, true]) {
+  const where = reload ? 'after a reload' : 'on the same page';
+  test(`a refused reply followed by a sent one leaves no pin ${where}`, async t => {
+    const f = await fixture(t);
+    refusePreparations(f, 1);
+    const registry = await f.load();
+    const { reply } = await refusedReply(f, registry);
+    // New writing goes into the same slot, is sent and confirmed: the slot is
+    // an empty new generation and the refusal's writing is no longer in it.
+    reply.edit({ body: 'A second reply' }); await registry.edited(reply);
+    assert.equal((await registry.send(reply, { stay: true })).status, 'confirmed');
+    assert.deepEqual((await f.saved()).draft.body, '');
+    await f.revise(1, 'Revision two.');
+    await opensCurrent(f, registry, reload, where);
+  });
+
+  test(`a refused reply whose place the person emptied leaves no pin ${where}`, async t => {
+    const f = await fixture(t);
+    refusePreparations(f, 1);
+    const registry = await f.load();
+    const { reply } = await refusedReply(f, registry);
+    // The person clears the reply: its empty composer is saved over the
+    // refused writing, so Core's slot holds nothing.
+    await f.write(registry, reply, '');
+    assert.deepEqual((await f.saved()).draft.body, '');
+    await f.revise(1, 'Revision two.');
+    await opensCurrent(f, registry, reload, where);
+  });
+}
+
+test('a refused reply can be prepared again after its emptied place followed a revised page, and not over writing about that page', async t => {
+  const f = await fixture(t);
+  refusePreparations(f, 1);
+  const registry = await f.load();
+  const { reply, refused } = await refusedReply(f, registry);
+  await f.write(registry, reply, '');
+  await f.revise(1, 'Revision two.');
+  await registry.open(await f.listed(), { topicId: f.topicId });
+  assert.deepEqual(reply.sourceRef, page(2));
+  const correct = async () => {
+    const state = await f.saved();
+    return registry.sessionFor(reply).correctPreparation(refused, state.draft, reply.localVersion,
+      { stay: true, acknowledgePossiblePriorPublication: true });
+  };
+  // Writing about revision two is in the place: preparing the refused reply
+  // again would put writing about revision one over it.
+  await f.write(registry, reply, 'Words about revision two');
+  await assert.rejects(correct(), /Writing changed since it was reviewed/);
+  // Emptied again, the place is saved about revision two and holds nothing:
+  // the refused reply is prepared again as written, about revision one.
+  await f.write(registry, reply, '');
+  assert.deepEqual((await f.saved()).draft.source_ref, page(2));
+  const corrected = await correct();
+  assert.equal(corrected.status, 'confirmed', 'the refused reply is prepared again as written');
+  const prepared = await f.api.view('submission', { submission_id: corrected.id });
+  assert.deepEqual([prepared.body, prepared.source_ref], ['A reply about revision one', page(1)]);
+  assert.deepEqual(reply.sourceRef, page(2), 'the next reply is about the page shown');
+  await f.write(registry, reply, 'The next reply');
+  assert.deepEqual((await f.saved()).draft.source_ref, page(2));
 });
 
 test('a runtime review accepts a saved empty reply at an older revision as the same writing slot, and nothing else', () => {
