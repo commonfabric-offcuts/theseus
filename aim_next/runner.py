@@ -307,7 +307,7 @@ class Runner:
                 return {"status": "stale"}, False
             if outcome == "handed":
                 return self._hand(db, now, attempt, row, turn), True
-            retry, delay = _backoff(row["retry_count"]) if outcome in {"busy", "error"} else (0, 60000)
+            retry, delay = _backoff(row["retry_count"]) if outcome in {"busy", "error"} else (0, delivery.REWAKE_MS)
             head = self._pending_head(db, row["recipient_id"])
             if row["pending_count"] == 0:
                 due, retry = None, 0
@@ -424,16 +424,25 @@ class Runner:
             rearmed = False
             for recipient in sorted({row["recipient_id"] for row in rows}):
                 schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
-                if status == "completed" and not unseen:
+                clean = status == "completed" and not unseen
+                if clean:
                     db.execute("UPDATE recipient_schedule SET retry_count=0 WHERE recipient_id=?", (recipient,))
-                    continue
                 head = self._pending_head(db, recipient)
                 if schedule["handed_seq"] is None or head is None or head > schedule["handed_seq"]:
                     continue
-                retry, delay = _backoff(schedule["retry_count"])
                 live = schedule["claim_token"] is not None and schedule["claim_until_ms"] > now
+                if clean:
+                    # The turn ended with work it was handed still pending (it
+                    # read one page, or left one unanswered): it is named again
+                    # after the same minute an accepted wake waits, unless newer
+                    # work already made it due.
+                    retry = 0
+                    due = schedule["next_due_ms"] if self._pending_above(db, recipient, schedule["handed_seq"]) else now + delivery.REWAKE_MS
+                else:
+                    retry, delay = _backoff(schedule["retry_count"])
+                    due = now + delay
                 db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=? WHERE recipient_id=?",
-                           (retry, schedule["claim_until_ms"] if live else now + delay, recipient))
+                           (retry, schedule["claim_until_ms"] if live else due, recipient))
                 rearmed = True
             return {"status": "ended", "final_status": status, "rows": len(rows), "unseen": unseen, "rearmed": rearmed}, True
         return self._effect(guard, action)

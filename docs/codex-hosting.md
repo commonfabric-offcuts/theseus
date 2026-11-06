@@ -47,8 +47,8 @@ Schedule effect, in the same transaction as the `wake_results` row and the
 
 - `handed_seq` becomes the claim's `captured_seq` (NULL if nothing is pending).
 - `next_due_ms` is now if a delivery arrived after the claim and is still
-  pending, otherwise NULL: handed work does not re-wake on its own, and a
-  delivery the turn already acknowledged makes no follow-up.
+  pending, otherwise NULL: handed work does not re-wake while its turn runs,
+  and a delivery the turn already acknowledged makes no follow-up.
 - `retry_count` is kept. A clean turn end resets it (below).
 
 Two hands record the turn row but hand nothing (`handed_seq` NULL), so the
@@ -102,7 +102,12 @@ error_code=None, usage=None)` finishes every open row of that turn:
   `handed_seq`, then `handed_seq` becomes NULL, `retry_count` grows by one and
   `next_due_ms` is now plus the backoff (1 s doubling to 60 s), or the live
   claim's end. A clean end (completed, every steer seen) resets `retry_count`
-  to 0 and leaves the schedule quiet.
+  to 0. If it leaves a delivery it was handed still pending (the turn read
+  one page, or left one unanswered), `handed_seq` becomes NULL and
+  `next_due_ms` is now plus one minute (the wait after an accepted notice), or
+  the live claim's end; newer pending work that was already due stays due.
+  With nothing it was handed left pending, a clean end leaves the schedule
+  quiet.
 - Result: `{"status": "ended", "final_status", "rows", "unseen", "rearmed"}`,
   or `{"status": "unknown"}` when no open row has that thread and turn.
 

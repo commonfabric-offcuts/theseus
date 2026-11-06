@@ -27,6 +27,11 @@ NAMED_OUTSIDE_LISTS = ("(t.archived=0 OR NOT EXISTS (SELECT 1 FROM workspaces w 
                        "WHERE m.workspace_id=w.id AND m.actor_id=d.recipient_id))))")
 
 
+# How long work a recipient was told of, and left pending, waits before it is
+# named again: after an accepted notice, and after a hosted turn completed.
+REWAKE_MS = 60000
+
+
 def _now_ms():
     return int(time.time() * 1000)
 

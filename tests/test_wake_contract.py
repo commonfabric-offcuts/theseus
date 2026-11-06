@@ -29,7 +29,25 @@ def own_cases(cls):
 
 
 @own_cases
-class HostedMidTurnCase(hosted_tests.HostedCase):
+class HostedFixture(hosted_tests.HostedCase):
+    def claim_now(self):
+        self.fresh_lease()
+        return self.claim(self.hosting, self.runner)
+
+    def fresh_lease(self):
+        """Renew the singleton, or take it again if Core's clock moved past its lease."""
+        if self.store.renew_runner(self.hosting, self.runner)["status"] != "renewed":
+            self.runner = self.token(self.hosting)
+
+    def claims_now(self):
+        self.fresh_lease()
+        result = self.store.claim_wakes(self.hosting, self.runner, ["agent-a"])
+        self.assertEqual(result["status"], "ok", result)
+        return result["claims"]
+
+
+@own_cases
+class HostedMidTurnCase(HostedFixture):
     """A turn holds the work up to its notice; what arrives while it runs."""
 
     def test_a_delivery_handled_during_the_turn_makes_no_follow_up(self):
@@ -67,6 +85,47 @@ class HostedMidTurnCase(hosted_tests.HostedCase):
         self.assertEqual(self.schedule()["next_due_ms"], self.now)
         follow = self.claim_now()
         self.assertGreater(follow["captured_seq"], claim["captured_seq"])
+
+
+@own_cases
+class HostedTurnEndCase(HostedFixture):
+    """What a turn's end does with work it was handed and left pending."""
+
+    def test_a_turn_that_read_one_page_and_completed_is_woken_again_for_the_rest(self):
+        for _ in range(3):
+            self.send_next()
+        claim = self.claim_now()
+        self.hand(claim)
+        # The turn reads one page, acknowledges what it read, and completes.
+        first = self.pending(limit=2)["items"]
+        for item in first:
+            self.ack(item["id"])
+        ended = self.end("completed")
+        self.assertTrue(ended["rearmed"], ended)
+        self.assertEqual(self.schedule(), {"next_due_ms": self.now + 60000, "retry_count": 0, "handed_seq": None, "pending_count": 2})
+        self.now += 59999
+        self.assertEqual(self.claims_now(), [])
+        self.now += 1
+        again = self.claim_now()
+        # Nothing is held any more: the notice names every pending delivery again.
+        self.assertIsNone(again["handed_seq"])
+
+    def test_a_turn_that_completed_with_newer_work_pending_keeps_it_due_now(self):
+        claim = self.claim_now()
+        self.hand(claim)
+        self.send_next("B, after the turn's last read")
+        self.now += 5000
+        self.end("completed")
+        # B was due when it arrived; the turn's end does not push it back a minute.
+        self.assertEqual(self.schedule()["next_due_ms"], self.now - 5000)
+
+    def test_a_turn_that_completed_with_everything_acknowledged_leaves_nothing_due(self):
+        claim = self.claim_now()
+        self.hand(claim)
+        for item in self.pending()["items"]:
+            self.ack(item["id"])
+        self.assertFalse(self.end("completed")["rearmed"])
+        self.nothing_due()
 
 
 if __name__ == "__main__":
