@@ -904,6 +904,7 @@ async function initialize() {
   reader = new Reader({
     admits: (p, editor) => registry?.isCurrent(p, editor),
     writes: (p, editor) => registry?.isWritable(p, editor),
+    closing: p => registry?.isClosing(p),
     reach: recipientReach,
     revisionOffer,
     retrySource: () => run(retrySource),

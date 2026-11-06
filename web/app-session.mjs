@@ -72,6 +72,8 @@ export class EditorRegistry {
     return this.holds(presentation, editor) && !this.closing &&
       (!this.pendingOpen || presentation.surface !== 'inline' && this.leaving !== this.pendingOpen);
   }
+  // A close under way is keeping this presentation's writing on this device.
+  isClosing(presentation) { return Boolean(presentation && this.closing?.presentation === presentation); }
   isSourceCurrent(presentation) { return Boolean(presentation?.source && this.current?.source === presentation.source && !this.pendingOpen && !this.disposed); }
 
   async initializeInline(topic) {
@@ -303,7 +305,7 @@ export class EditorRegistry {
     // it is unchanged the presentation is still current.
     // Typing and every act on the writing wait while it is kept on this
     // device, so the Reader never closes over writing the device did not keep.
-    const stop = this.closing = {};
+    const stop = this.closing = { presentation };
     this.activity();
     try {
       // A refused explicit close says why to the person who asked for it,
@@ -356,7 +358,7 @@ export class EditorRegistry {
   saveSign(editor) {
     const sign = (state, text) => ({ state, text });
     if (editor.journalError) return sign('attention', 'Recovery copy unavailable — keep this page open');
-    if (this.closing && Object.values(this.current?.editors ?? {}).includes(editor)) return sign('saving', 'Closing — saving on this device…');
+    if (this.isClosing(this.current) && Object.values(this.current.editors).includes(editor)) return sign('saving', 'Closing — saving on this device…');
     if (this.localWrites.get(editor.key)?.pending) return sign('saving', 'Saving on this device…');
     if (editor.unavailable) return sign('device', 'Source or destination unavailable — writing kept on this device');
     if (editor.authorityRecovery) return sign('attention', 'Runtime changed — review saved version');

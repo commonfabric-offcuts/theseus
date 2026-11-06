@@ -1196,6 +1196,31 @@ test('the saving sign follows the writing to this device, then to Theseus, and t
   assert.deepEqual([f.registry.saveSign?.(again).state, f.registry.status(again)], ['attention', 'Recovery copy unavailable — keep this page open']);
 });
 
+// The Closing words belong to the Reader being closed; the topic composer
+// behind it keeps its own sign.
+test('the Closing words mark only the writing being closed', async t => {
+  const f = await fixture(t);
+  const topic = (await f.api.view('topic', { topic_id: f.facts.topic_id })).topic;
+  const composer = (await f.registry.initializeInline(topic)).editors.reply;
+  const x = await f.open(0), reply = x.editors.reply, put = f.backend.put, entered = deferred(), release = deferred();
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  f.backend.put = async row => { entered.resolve(); await release.promise; return put(row); };
+  reply.edit({ body: 'Closing writing' });
+  const closing = f.registry.close(x, { explicit: true }); await entered.promise;
+  assert.equal(f.registry.status(reply), 'Closing — saving on this device…');
+  assert.deepEqual(f.registry.saveSign(composer), { state: 'saved', text: 'Saved to Theseus' });
+  release.resolve(); assert.equal(await closing, true);
+  // A mode change during Close leaves the Reader open, so it is not closing.
+  const y = await f.open(1), again = y.editors.reply, held = deferred(), kept = deferred();
+  t.after(() => kept.resolve());
+  f.backend.put = async row => { held.resolve(); await kept.promise; return put(row); };
+  again.edit({ body: 'Writing that stays' });
+  const abandoned = f.registry.close(y, { explicit: true }); await held.promise;
+  f.registry.setMode('note');
+  assert.equal(f.registry.status(again), 'Saving on this device…');
+  kept.resolve(); assert.equal(await abandoned, false);
+});
+
 test('late close after another source opened does not close the new presentation', async t => {
   const f = await fixture(t), x = await f.open(), entered = deferred(), release = deferred();
   const put = f.backend.put;

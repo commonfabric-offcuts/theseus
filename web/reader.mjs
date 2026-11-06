@@ -7,6 +7,7 @@ import { recipientChoices, writingState, pasteImageError, namedPastedImage, imag
 import { WritingInput } from './writing-input.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
+const CLOSING = 'This reply is closing, so the image was not added.';
 const QUOTE_STOPS = 'button,a,input,select,summary,[role="separator"]';
 
 const node = (tag, text, className) => {
@@ -104,7 +105,7 @@ export class Reader {
       const editor = this.editor, presentation = this.presentation;
       const refusal = pasteImageError(editor, this.mode, this.writingReadOnly());
       if (refusal) throw Error(refusal);
-      if (!this.admits(editor, presentation)) throw Error(STEP_WAITS);
+      if (!this.admits(editor, presentation)) throw Error(this.callbacks.closing?.(presentation) ? CLOSING : STEP_WAITS);
       const uploads = this.callbacks.uploads?.(editor);
       if (!uploads) throw Error('Images are not available in this reply yet.');
       // Capture clipboard files and their original editor/cycle before any
