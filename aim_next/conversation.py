@@ -284,8 +284,9 @@ class Conversation:
             raise Refusal("EMPTY_MESSAGE", "A message needs writing or a ready attachment")
         if snapshot.get("exchange_id"):
             raise Refusal("INVALID_EXCHANGE", "No matching exchange is available")
+        parent = None
         if snapshot.get("reply_to"):
-            parent = db.execute("SELECT topic_id FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
+            parent = db.execute("SELECT topic_id,author_id FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
             if not parent or parent["topic_id"] != topic_id:
                 # A state check, not a shape error: it is recorded like the others.
                 raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
@@ -337,7 +338,6 @@ class Conversation:
         # named nor the author of the message it answers: their delivery is
         # recorded settled, so it counts nowhere and holds no New line. An
         # agent's deliveries are its work, queued as ever.
-        parent = snapshot.get("reply_to") and db.execute("SELECT author_id FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
         answers = parent["author_id"] if parent else None
         for recipient, reasons in audience.items():
             between = bool(snapshot["addressees"]) and "addressed" not in reasons and recipient != answers
