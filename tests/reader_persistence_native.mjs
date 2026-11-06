@@ -1183,7 +1183,7 @@ try {
           const close=EditorRegistry.prototype.close;
           EditorRegistry.prototype.close=function(...args){
             const hold=window.closeHold;
-            if(!hold.armed){hold.armed=true;const backend=this.journal.backend,put=backend.put;hold.restore=()=>{backend.put=put;};
+            if(!hold.armed){hold.armed=true;hold.writer=this.journal.writerId;const backend=this.journal.backend,put=backend.put;hold.restore=()=>{backend.put=put;};
               backend.put=async(row,guard)=>{if(++hold.puts===1){hold.entered=true;await hold.released;return put(row,guard);}throw new DOMException('Fixture quota failure','QuotaExceededError');};}
             return close.apply(this,args);
           };
@@ -1197,7 +1197,10 @@ try {
         await p.evaluate('window.closeHold.release()');
         await until(() => p.evaluate('!document.querySelector("#reader").open'), 'Close completes once the device keeps the writing');
         await p.evaluate('window.closeHold.restore()');
-        const kept = (await localRows(p)).find(row => row.snapshot.context.sourceRef.id === facts.sources[0].id && row.snapshot.context.kind === 'reply');
+        // This page's own row: pages before it left rows for the same message.
+        const writer = await p.evaluate('window.closeHold.writer');
+        assert.equal(typeof writer, 'string', 'the page that closed is known by its writer');
+        const kept = (await localRows(p)).find(row => row.writerId === writer && row.snapshot.context.sourceRef.id === facts.sources[0].id && row.snapshot.context.kind === 'reply');
         assert.equal(kept?.snapshot.draft.body, shown, 'the device holds what the Reader held when it closed');
         assert.equal(shown, 'Kept before Close');
         p.intercept(null); for (const held of p.held) await p.release(held);
