@@ -1187,8 +1187,11 @@ test('the saving sign follows the writing to this device, then to Theseus, and t
   held = deferred(); entered = deferred();
   f.backend.put = async row => { entered.resolve(); await held.promise; return put(row); };
   reply.edit({ body: 'Signed writing at Close' });
+  const painted = [];
+  f.registry.activity = () => painted.push([f.registry.isWritable(x, reply), ...sign()]);
   const closing = f.registry.close(x, { explicit: true }); await entered.promise;
   assert.deepEqual(sign(), ['saving', 'Closing — saving on this device…']);
+  assert.deepEqual(painted, [[false, 'saving', 'Closing — saving on this device…']], 'the page is told as Close starts');
   held.resolve(); assert.equal(await closing, true);
   f.backend.put = async () => { throw Error('Injected recovery failure'); };
   const y = await f.open(0), again = y.editors.reply;
