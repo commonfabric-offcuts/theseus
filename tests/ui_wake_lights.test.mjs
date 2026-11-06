@@ -72,6 +72,7 @@ test('while wakes are not going out, an owner is told why, since when and how ma
     [{ live: false, state: 'exited', reason: 'killed', since_ms: SINCE }, 2, `Wakes are not going out: the agent runner was killed at ${readableTime(SINCE)}. 2 agents have work waiting.`],
     [{ live: false, state: 'exited', reason: 'lease_lost', since_ms: SINCE }, 1, `Wakes are not going out: the agent runner lost its lease at ${readableTime(SINCE)}. 1 agent has work waiting.`],
     [{ live: false, state: 'exited', reason: 'failed', since_ms: SINCE }, 1, `Wakes are not going out: the agent runner failed at ${readableTime(SINCE)}. 1 agent has work waiting.`],
+    [{ live: false, state: 'exited', reason: 'ended', since_ms: SINCE }, 1, `Wakes are not going out: the agent runner ended at ${readableTime(SINCE)}. 1 agent has work waiting.`],
     [{ live: false, state: 'exited', reason: 'stopped_unrecorded', since_ms: SINCE }, 1, `Wakes are not going out: the agent runner stopped at ${readableTime(SINCE)}. 1 agent has work waiting.`],
     [{ live: false, state: 'stopped', since_ms: SINCE }, 3, `Wakes are not going out: the agent runner was stopped at ${readableTime(SINCE)}. 3 agents have work waiting.`],
     [{ live: false, state: 'unrenewed', since_ms: SINCE }, 1, `Wakes are not going out: the agent runner stopped answering at ${readableTime(SINCE)}. 1 agent has work waiting.`],

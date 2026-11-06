@@ -58,6 +58,36 @@ class RunnerExitCase(hosted_tests.HostedCase):
         with self.assertRaises(RunnerError):
             self.store.record_runner_exit(holder, "9")
 
+    def test_an_end_the_server_saw_is_recorded_at_once_and_the_supervisors_account_still_counts(self):
+        """The server sees the runner's process end but not how; the supervisor's later account names how, and counts as recorded."""
+        holder = os.getpid()
+        self.assertEqual(self.store.record_runner_exit(holder + 1, None)["status"], "not_holder")
+        self.now += 7000
+        seen = self.now
+        self.assertEqual(self.store.record_runner_exit(holder, None)["status"], "recorded")
+        self.assertEqual(self.state(), {"state": "exited", "reason_code": "ended", "lease_until_ms": seen, "ended_ms": seen})
+        self.assertEqual(self.wakes()["runner"], {"live": False, "state": "exited", "reason": "ended", "since_ms": seen})
+        self.assertEqual(self.store.record_runner_exit(holder, None)["status"], "not_holder")
+        self.now += 50
+        # A supervisor that restarts only on a recorded exit still restarts.
+        self.assertEqual(self.store.record_runner_exit(holder, -9)["status"], "recorded")
+        self.assertEqual(self.state(), {"state": "exited", "reason_code": "killed", "lease_until_ms": seen, "ended_ms": seen})
+        # Once the supervisor has said how, nobody says it again.
+        self.assertEqual(self.store.record_runner_exit(holder, None)["status"], "not_holder")
+        self.assertEqual(self.store.record_runner_exit(holder, 1)["status"], "not_holder")
+        self.assertEqual(self.state()["reason_code"], "killed")
+
+    def test_the_server_never_records_an_end_over_a_clean_stop_or_a_pause(self):
+        self.store.stop_runner(self.hosting, self.runner)
+        before = self.state()
+        self.assertEqual(self.store.record_runner_exit(os.getpid(), None)["status"], "not_holder")
+        self.assertEqual(self.state(), before)
+        self.runner = self.token(self.hosting)
+        self.store.pause_runner(self.hosting, self.runner, "operator_pause")
+        before = self.state()
+        self.assertEqual(self.store.record_runner_exit(os.getpid(), None)["status"], "not_holder")
+        self.assertEqual(self.state(), before)
+
     def test_each_exit_is_named_by_how_it_ended(self):
         for code, reason in ((75, "lease_lost"), (-9, "killed"), (1, "failed"), (0, "stopped_unrecorded")):
             with self.subTest(code=code):

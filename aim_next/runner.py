@@ -556,11 +556,15 @@ class Runner:
         Written only while that process is the one Core records as running,
         so a later runner's record is never touched. It needs no guard: the
         process is gone, and a child it left may still hold the guard. Its
-        lease ends now, so a restarted runner does not wait one out."""
+        lease ends now, so a restarted runner does not wait one out.
+
+        exit_status None is the server's account: it saw the process end but
+        cannot know how (reason "ended"). The supervisor's account of that same
+        process may still follow; it names how, keeps when, and is recorded."""
         _bounded(pid, 1, 2147483647, "pid")
-        if type(exit_status) is not int or not -255 <= exit_status <= 255:
+        if exit_status is not None and (type(exit_status) is not int or not -255 <= exit_status <= 255):
             raise RunnerError("INVALID_ARGUMENT", "exit_status is the reaped process's return code")
-        reason = EXIT_REASONS.get(exit_status, "killed" if exit_status < 0 else "failed")
+        reason = "ended" if exit_status is None else EXIT_REASONS.get(exit_status, "killed" if exit_status < 0 else "failed")
         from .store import _connect
         try:
             with self._authority.shared() as fence:
@@ -570,9 +574,10 @@ class Runner:
                     fence.verify()
                     self._check_instance(db)
                     state, now = self._runner_state(db), delivery._now_ms()
-                    if state["state"] != "running" or state["runner_pid"] != pid:
+                    seen = state["state"] == "exited" and state["reason_code"] == "ended" and exit_status is not None
+                    if (state["state"] != "running" and not seen) or state["runner_pid"] != pid:
                         return {"status": "not_holder", "instance_id": self.instance_id}
-                    db.execute("UPDATE runner_state SET state='exited',version=version+1,reason_code=?,lease_until_ms=MIN(lease_until_ms,?),ended_ms=? WHERE id=1",
+                    db.execute("UPDATE runner_state SET state='exited',version=version+1,reason_code=?,lease_until_ms=MIN(lease_until_ms,?),ended_ms=COALESCE(ended_ms,?) WHERE id=1",
                                (reason, now, now))
                     self._advance_commit_seq(db)
                     db.commit()

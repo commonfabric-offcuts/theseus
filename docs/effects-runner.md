@@ -134,8 +134,24 @@ while Core records that pid as running, so a later runner's record is never
 touched and a paused runner stays paused. The state becomes `exited`, with
 `reason_code` `lease_lost` (75), `stopped_unrecorded` (0: a clean stop Core
 could not record), `killed` (a signal) or `failed`, and the lease ends no
-later than now. Acquiring clears `ended_ms`. A runner that stops renewing
-without either record is known gone when its lease ends.
+later than now. Acquiring clears `ended_ms`.
+
+The server watches too, so a runner that dies with its supervisor (or with no
+supervisor) is not left for its lease to run out. Its live feed already reads
+after every commit; with each read it learns which pid Core records as the
+running runner and asks the kernel for that process's exit event. When the
+process ends, or is already gone when the server first sees it (a server
+started after the runner died), the server calls `record_runner_exit(pid,
+None)` at once: reason `ended`, since it cannot know how. The record's commit
+reaches every open page, which says so. The supervisor's own account of the
+same process may follow; it names how (`killed`, `failed`, ...), keeps
+`ended_ms`, and is `recorded`, so the supervisor still brings the runner back.
+Once a runner is no longer running (stopped, paused, or its end recorded) the
+server forgets its pid, so a clean stop is never said to have ended. The
+server writes one `runner_gone` JSON line to stderr with Core's answer. A
+runner that is alive but stops renewing has no process event; it is known gone
+when its lease ends, on the next read. Proof: `tests/test_http_live.py`,
+`tests/test_runner_exit.py`.
 
 The `wakes` view carries `runner`: `{live: true}`, or `{live: false, state}`
 with `paused` and its reason, `stopped` or `exited` with `since_ms` (and the
