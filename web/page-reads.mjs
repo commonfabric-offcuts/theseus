@@ -9,9 +9,13 @@ export class PageReads {
   // still shows what Core now holds.
   constructor({ send, recorded = () => {} }) {
     Object.assign(this, { send, recorded });
+    // id -> { revision, since }: what changed in a revision shown here, kept
+    // for as long as the page is open, so showing it again shows it again.
+    this.since = new Map();
   }
   // The revision the person had read before this one, when it is older than
-  // the one shown, else null: a page never read, or read as it stands.
+  // the one shown, else null: a page never read, or read as it stands. A
+  // revision shown again here keeps what it was compared with the first time.
   async opened(source) {
     const ref = source?.source_ref;
     if (ref?.kind !== 'memory' || typeof ref.id !== 'string' || !Number.isSafeInteger(ref.revision) || ref.revision < 1) {
@@ -25,6 +29,11 @@ export class PageReads {
     }
     this.recorded();
     const before = receipt.result?.previous_revision;
-    return Number.isSafeInteger(before) && before > 0 && before < ref.revision ? before : null;
+    if (Number.isSafeInteger(before) && before > 0 && before < ref.revision) {
+      this.since.set(ref.id, { revision: ref.revision, since: before });
+      return before;
+    }
+    const kept = this.since.get(ref.id);
+    return kept?.revision === ref.revision ? kept.since : null;
   }
 }

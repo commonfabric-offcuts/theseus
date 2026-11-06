@@ -1508,9 +1508,9 @@ test('a Notebook page read at an older revision shows what changed since then; o
   Object.assign(f.reader, { show() {}, paintPending() {}, paintRecipients() {}, showChanges: (...args) => shown.push(args) });
   Object.assign(f.views, { revisions: { observe() {}, offer: () => null } });
   f.registry.neighbors = async () => null;
-  const open = async (previous, revision = 3) => {
+  const open = async (previous, revision = 3, id = 'p1') => {
     answers.push({ status: 'committed', recorded: true, result: { previous_revision: previous } });
-    const source_ref = { kind: 'memory', id: 'p1', revision };
+    const source_ref = { kind: 'memory', id, revision };
     f.registry.current = { surface: 'reader', mode: 'reply', source: { source_ref, title: 'Page', body: 'Revision 3 words, now longer.', attachments: [], topic_id: 't1' },
       editors: { reply: { key: 'r', context: { kind: 'reply', topicId: 't1', sourceRef: source_ref }, submissions: [] }, note: { key: 'n', context: { kind: 'note' }, submissions: [] } } };
     f.registry.options.present(f.registry.current); for (let n = 0; n < 4; n++) await settle();
@@ -1518,13 +1518,17 @@ test('a Notebook page read at an older revision shows what changed since then; o
   await open(1);
   assert.deepEqual(JSON.parse(JSON.stringify(f.calls.filter(c => c.name === 'source').map(c => c.args))), [{ kind: 'memory', id: 'p1', revision: 1 }], 'the revision read before is read');
   assert.deepEqual(shown, [[1, 'Revision 1 words.', 'Revision 3 words, now longer.']]);
-  for (const previous of [0, 3]) await open(previous);
+  for (const previous of [0, 3]) await open(previous, 3, 'p2');
   assert.equal(shown.length, 1, 'nothing to compare for a page never read or read as it stands');
   assert.equal(f.calls.filter(c => c.name === 'source').length, 1);
+  // Shown again, though Core now has it read, the page shows the same changes.
+  await open(3);
+  assert.deepEqual(shown, [[1, 'Revision 1 words.', 'Revision 3 words, now longer.'], [1, 'Revision 1 words.', 'Revision 3 words, now longer.']]);
+  shown.length = 1;
   // The Reader moved on while the earlier revision was read: nothing is drawn over what it shows now.
   whileReading = () => { f.registry.current = { ...f.registry.current, source: { ...f.registry.current.source } }; };
   await open(2);
-  assert.equal(f.calls.filter(c => c.name === 'source').length, 2, 'the earlier revision was asked for');
+  assert.equal(f.calls.filter(c => c.name === 'source').length, 3, 'the earlier revision was asked for');
   assert.equal(shown.length, 1, 'a Reader showing something else is left alone');
 });
 

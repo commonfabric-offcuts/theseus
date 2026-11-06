@@ -43,3 +43,18 @@ test('only an exact Notebook revision is read', async () => {
   }
   assert.deepEqual(f.sent, []);
 });
+
+test('a page shown again at the same revision shows the same changes, though Core now has it read', async () => {
+  let previous = 1;
+  const f = fixture(() => committed(previous));
+  assert.equal(await f.reads.opened(page(3)), 1);
+  previous = 3;
+  assert.equal(await f.reads.opened(page(3)), 1, 'shown again, what changed since revision 1 is still what changed');
+  assert.equal(await f.reads.opened({ source_ref: { kind: 'memory', id: 'p2', revision: 3 } }), null, 'another page has its own');
+  previous = 3;
+  assert.equal(await f.reads.opened(page(4)), 3, 'a newer revision compares with the one read before it');
+  previous = 4;
+  assert.equal(await f.reads.opened(page(4)), 3);
+  assert.equal(await f.reads.opened(page(3)), null, 'an older revision shown again has nothing to compare');
+  assert.equal(f.sent.length, 6, 'each showing is still sent');
+});
