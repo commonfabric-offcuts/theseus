@@ -61,9 +61,11 @@ list items carry `state_message_id`, null for a state someone said.
 - Every page carries `groups: {done, archived}`, how many topics the done list
   and the archived list hold, so a client can say "Done (3)" without reading
   them.
-- Each page, and each count, is read from one index on (outcome, archived,
-  done, activity time, id), so its cost follows the page, not the outcome's
-  history.
+- Each page is read from one index on (outcome, archived, done, activity
+  time, id), so its cost follows the page, not the outcome's history. Each
+  count is read from its own stretch of that index, index entries only and no
+  topic rows, so it costs one entry per done or archived topic: it grows with
+  how many topics the outcome has done or archived, and every page carries it.
 
 ## In the web app
 

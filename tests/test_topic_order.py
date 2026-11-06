@@ -167,6 +167,11 @@ class TopicOrderCase(fixtures.ReaderCase):
                 plan = [row[-1] for row in db.execute("EXPLAIN QUERY PLAN " + statement)]
                 self.assertTrue(any("workspace_topic_order" in line for line in plan), (statement, plan))
                 self.assertFalse(any("TEMP B-TREE" in line or line.startswith("SCAN") for line in plan), (statement, plan))
+                # A count reads index entries alone, one per done or archived topic, never the topics' rows
+                # (docs/topic-list.md): it grows with how many there are, not with what they hold.
+                if "count(" in statement:
+                    self.assertTrue(all("USING COVERING INDEX workspace_topic_order" in line for line in plan), (statement, plan))
+            self.assertEqual(sum("count(" in statement for statement in listing), 8, "two counts for each of the four pages")
         finally:
             db.close()
 
