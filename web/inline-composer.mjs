@@ -121,7 +121,12 @@ export class InlineComposer {
         control.onclick = async () => {
           if (!this.admits(p, editor) || this.state().readOnly) return;
           control.disabled = true;
-          try { await uploads[action.method](choice.id); if (action.method === 'remove' && this.admits(p, editor)) this.$('add-image').focus(); }
+          try {
+            await uploads[action.method](choice.id);
+            // Remove takes its own button away; focus lands on Add image only if
+            // it was still there. Where the person has since put it, it stays.
+            if (action.method === 'remove' && this.admits(p, editor) && [null, document.body, control].includes(document.activeElement)) this.$('add-image').focus();
+          }
           catch (error) { this.notice(error.message, p, editor); }
           finally { if (control.isConnected) control.disabled = !this.admits(p, editor) || this.state().readOnly; this.paintStatus(); }
         }; row.append(control);

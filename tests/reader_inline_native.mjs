@@ -318,4 +318,47 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     observations.push({ name: 'inline exact publication', receipt, source, modalDraft });
     await shot(p, 'inline-after-send'); assert.deepEqual(p.errors, []);
   });
+  await check('inline Remove moves focus to Add image only while the person has not moved it', async () => {
+    const p = await page('inline-remove-focus', null, true);
+    const inlineBody = () => p.evaluate('document.querySelector("#inline-writing-body").value');
+    const center = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+    const removed = () => p.evaluate('!document.querySelector("#inline-attachments").textContent.includes("screen.png")');
+    const choose = async () => {
+      await center('#inline-add-image');
+      const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#inline-add-image');
+      const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'inline chooser');
+      await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
+      await until(() => p.evaluate('document.querySelector("#inline-attachments .image-choice span")?.textContent === "screen.png · Ready" && [...document.querySelectorAll("#inline-attachments button")].some(b=>b.textContent==="Remove"&&!b.disabled)'), 'ready inline image with Remove');
+      await p.evaluate('[...document.querySelectorAll("#inline-attachments button")].find(b=>b.textContent==="Remove").dataset.inlineRemove=""');
+      await center('[data-inline-remove]');
+    };
+    // Another tab of this person holds the recovery store, so Remove's strict
+    // write finishes only after the person has clicked into the writing and
+    // begun typing.
+    await choose();
+    const holder = await page('inline-remove-focus-holder');
+    await holder.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors','readwrite',{durability:'strict'}),s=t.objectStore('editors');window.release=false;const keep=()=>{if(!window.release)s.get('inline-remove-focus-hold').onsuccess=keep};keep();t.oncomplete=()=>{d.close();window.released=true};resolve()}})`);
+    await p.point('[data-inline-remove]');
+    assert.equal(await p.evaluate('Boolean(document.querySelector("[data-inline-remove]")?.isConnected)'), true, 'Remove is still writing behind the held store');
+    await center('#inline-writing-body'); await p.point('#inline-writing-body'); await p.key('a', 4);
+    await p.send('Input.insertText', { text: 'Typed while Remove waits' });
+    await holder.evaluate('window.release=true');
+    await until(() => holder.evaluate('window.released===true'), 'held store released');
+    await until(removed, 'Remove finished');
+    await p.evaluate('new Promise(resolve=>setTimeout(resolve,0))');
+    assert.equal(await p.evaluate('document.activeElement.id'), 'inline-writing-body', 'a finished Remove leaves focus where the person put it');
+    await p.send('Input.insertText', { text: ' and after' });
+    assert.equal(await inlineBody(), 'Typed while Remove waits and after', 'typing goes on into the writing');
+    // Untouched, focus leaves the removed button for Add image.
+    await choose(); await p.point('[data-inline-remove]');
+    await until(removed, 'second Remove finished');
+    await until(() => p.evaluate('document.activeElement.id === "inline-add-image"'), 'focus on Add image after an untouched Remove');
+    assert.equal(await inlineBody(), 'Typed while Remove waits and after');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+    // The topic draft is shared with any case that follows: leave it empty.
+    await center('#inline-writing-body'); await p.point('#inline-writing-body'); await p.key('a', 4); await p.key('k', 2);
+    assert.equal(await inlineBody(), '');
+    await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'emptied topic draft saved');
+    assert.deepEqual(p.errors, []);
+  });
 }
