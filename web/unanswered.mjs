@@ -18,8 +18,9 @@ export function unansweredOf(answer) {
 // there is none. When that message is older than every loaded card, the line
 // sits at the bottom of what is loaded, says "New · older below", and is a
 // button that calls loadOlder; once the card is loaded, the line takes its
-// place below it. A message among the loaded ones with no card here has no
-// line. The line carries no data-seq or data-id, so nothing that looks cards
+// place below it. loadOlder is null when nothing older is left to load; then
+// no line promises older messages. A message among the loaded ones with no
+// card here has no line. The line carries no data-seq or data-id, so nothing that looks cards
 // up by them ever finds it.
 export function placeNewLine(list, seq, doc = document, loadOlder) {
   const children = [...list.children];
@@ -28,8 +29,8 @@ export function placeNewLine(list, seq, doc = document, loadOlder) {
   const card = seq ? cards.find(child => Number(child.dataset?.seq) === seq) : null;
   const oldest = cards.at(-1);
   const further = Boolean(seq && !card && oldest && seq < Number(oldest.dataset.seq));
-  if (further && typeof loadOlder !== 'function') throw Error('A New line for a message further back needs what loads the older messages.');
-  const kind = card ? 'new' : further ? 'older' : null;
+  if (further && loadOlder !== null && typeof loadOlder !== 'function') throw Error('A New line for a message further back needs what loads the older messages.');
+  const kind = card ? 'new' : further && loadOlder ? 'older' : null;
   let line = found.find(child => child.dataset.line === kind) ?? null;
   for (const stale of found) if (stale !== line) stale.remove();
   if (!kind) return null;

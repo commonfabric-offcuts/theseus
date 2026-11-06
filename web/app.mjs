@@ -561,7 +561,8 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
-  if (kind === 'messages') placeNewLine($('messages'), views.unanswered?.seq ?? null, document, () => run(loadToUnanswered));
+  if (kind === 'messages') placeNewLine($('messages'), views.unanswered?.seq ?? null, document,
+    views.olderCursor === null ? null : () => run(loadToUnanswered));
   });
   $('more-messages').hidden = views.olderCursor === null;
   $('more-memory').hidden = views.memoryCursor === null;

@@ -70,6 +70,12 @@ test('a line for a message not loaded yet sits at the bottom, says older below, 
   placeNewLine(host, 40, doc, load);
   assert.deepEqual(order(host), [50, 40, 'new', 30, 20, 15, 10]);
   assert.throws(() => placeNewLine(list(50, 40), 10, doc), /loads the older messages/, 'a line for a message further back needs a way to load it');
+  // Nothing older to load (null): the line promises nothing, and one drawn
+  // before goes.
+  const top = list(50, 40);
+  placeNewLine(top, 10, doc, load);
+  assert.equal(placeNewLine(top, 10, doc, null), null);
+  assert.deepEqual(order(top), [50, 40], 'no older line when nothing older can be loaded');
 });
 
 test('the boundary a page carries is read strictly', () => {

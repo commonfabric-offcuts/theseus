@@ -1398,6 +1398,15 @@ test('the New line for a message further back sits at the bottom, and pressing i
   assert.equal(f.document.activeElement?.dataset.seq, 5, 'the message it was for has the focus');
 });
 
+test('with nothing older left to load, no line promises older messages below', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  views.messagesPage({ ...page(20, 29, null), unanswered: { seq: 5, id: 'm5' } }, { initial: true }); await settle();
+  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  assert.equal(order(), '29 28 27 26 25 24 23 22 21 20', 'no line: there is nothing it could load');
+});
+
 test('pressing the older-below line while the page may not read stops at once and reads nothing', async () => {
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });

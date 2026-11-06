@@ -214,8 +214,9 @@ keyboard, reads older pages one after another, as More does, until that
 message's card is loaded or no older page is left, and then gives that
 message the focus, with the line in its true place just below it. A read that
 cannot go on (a review pending, or a refusal, which the page reports) ends it
-with the line still at the bottom. A message among the loaded ones that has no
-card on the page has no line.
+with the line still at the bottom. When no older page is left to read, there
+is nothing the button could load, so no line is drawn. A message among the
+loaded ones that has no card on the page has no line.
 
 When the reader is at the top of a topic, with the newest card showing from
 its top edge, a message that arrives comes into view above it; the page does
