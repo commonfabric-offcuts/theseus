@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 // name, in the warning colour and no box or edge of its own; when the agent
 // runner is killed the outcome's owner sees one notice saying so, and the
 // agent's name says wakes are paused rather than blaming it; when a runner
-// takes the role again the notice goes, live, with no reload.
+// takes the role again the notice goes, live, with no reload, and on the
+// outcomes page as soon as the person goes back to it.
 export async function wakesChecks({ check, page, until, control, view, facts, shot }) {
   const agent = facts.agent;
   const chip = `[...document.querySelectorAll('#participants .chip')].find(c=>c.textContent.startsWith(${JSON.stringify(agent)}))`;
@@ -60,11 +61,17 @@ export async function wakesChecks({ check, page, until, control, view, facts, sh
     await until(async () => !(await readNotice(p)).hidden, 'the topic page shows the notice');
     assert.equal((await control({ method: 'wakes', action: 'runner_live' })).status, 'acquired');
     await until(async () => (await readNotice(p)).hidden, 'the notice goes on the commit');
-    await until(async () => (await readNotice(home)).hidden, 'and on the outcomes page');
     assert.equal((await readNotice(p)).text, '');
     // The agent is still parked: with wakes going out, its own light comes back.
     await until(async () => /not answering since/.test((await readChip(p))?.light ?? ''), 'the parked light again');
     await shot(p, 'wakes-runner-back');
+    // The outcomes page, in the tab behind, reads nothing while hidden; going
+    // back to it, the person finds the notice gone there too, with no reload.
+    assert.equal(await home.evaluate('document.visibilityState'), 'hidden', 'the outcomes page is the tab behind');
+    const loaded = await home.evaluate('performance.timeOrigin');
+    await home.send('Page.bringToFront');
+    await until(async () => (await readNotice(home)).hidden, 'and on the outcomes page');
+    assert.equal(await home.evaluate('performance.timeOrigin'), loaded, 'the outcomes page was not reloaded');
     assert.deepEqual([...home.errors, ...p.errors], []);
   });
 }
