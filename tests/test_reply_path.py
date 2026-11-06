@@ -193,6 +193,23 @@ class ReplyRecordCase(ReaderCase):
         post("owner", "To the first", reply_to=first)
         self.assertEqual((state(first), state(other), unread()), ("acknowledged", "pending", 1))
 
+    def test_a_persons_reply_settles_their_own_delivery_and_never_another_readers(self):
+        # Two people in the topic, each sent both messages; each answers one.
+        self.participation("other-reader", True)
+        def post(actor, body, **args):
+            return self.committed(self.command("message.post", dict(args, body=body), target={"topic_id": "t1"}, actor=actor))["message_id"]
+        def states(message_id):
+            return dict(self.sql("SELECT recipient_id,state FROM deliveries WHERE message_id=? AND recipient_id IN ('owner','other-reader')", (message_id,)))
+        first, second = post("agent-a", "First"), post("agent-a", "Second")
+        unread = lambda actor: self.store.view(actor, "attention", {})["unread"]
+        before = {actor: unread(actor) for actor in ("owner", "other-reader")}
+        post("owner", "The owner answers the first", reply_to=first)
+        self.assertEqual(states(first), {"owner": "acknowledged", "other-reader": "pending"}, "the owner's reply reads it for the owner alone")
+        post("other-reader", "The other reader answers the second", reply_to=second)
+        self.assertEqual(states(second), {"owner": "pending", "other-reader": "acknowledged"}, "and the other reader's for them alone")
+        # Each read one message and was sent the other's answer.
+        self.assertEqual({actor: unread(actor) for actor in before}, before)
+
     def test_a_reply_leaves_a_cancelled_delivery_as_it_was(self):
         # The owner leaves the topic and can still reply there; what their
         # subscription left pending stays uncounted, and is not counted down twice.

@@ -181,12 +181,9 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     // the outcome around it, and sent by name, so every count shape is drawn.
     await control({ method: 'navigation_topics', topics: [{ id: 'render-other', title: 'A neighbouring topic with a title long enough to wrap in the rail' }] });
     const { message_ids: seeded } = await control({ method: 'seed', messages: 40 });
-    // Two messages the person marked unread, one of them their own, so the
-    // Unread pill is drawn on both kinds of card; a third, unmarked, opens the
-    // Reader with its Mark unread button, pressed and not.
-    const own = await control({ method: 'agent_message', operation_id: 'render-own', body: 'My own message, marked to come back to', topic_id: 't1', addressees: [], sender: 'person' });
-    const markedIds = [seeded.at(-1), own.result.message_id], unmarked = seeded.at(-2);
-    await control({ method: 'mark', operation_id: 'render-marks', message_ids: markedIds, marked: true });
+    // A third message, unmarked, opens the Reader with its Mark unread
+    // button, pressed and not; two marked unread follow, below.
+    const unmarked = seeded.at(-2);
     await control({ method: 'agent_message', operation_id: 'render-named', body: 'For you by name', topic_id: 'render-other', addressees: ['fixture-person'], join: true });
     await control({ method: 'agent_message', operation_id: 'render-plain', body: 'For anyone', topic_id: 'render-other', addressees: [] });
     // Titles that end without a place to break, a rail with more counted rows
@@ -205,6 +202,12 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     const waiters = ['fixture-planning-agent', 'fixture-reviewing-agent', 'fixture-writing-agent'];
     await control({ method: 'topic_state', operation_id: 'render-state-long', topic_id: 't1', participants: waiters,
       args: { state: 'waiting', waiting_on: ['fixture-notebook-agent', ...waiters, 'fixture-person'] } });
+    // Two messages the person marked unread: an agent's card, and a message
+    // between two agents (a mark on the person's own counts nowhere), so the
+    // Unread pill is drawn on a card and on a folded line.
+    const between = await control({ method: 'agent_message', operation_id: 'render-between', body: 'Between agents, marked to come back to', topic_id: 't1', source: 'topic', addressees: [waiters[0]] });
+    const markedIds = [seeded.at(-1), between.result.message_id];
+    await control({ method: 'mark', operation_id: 'render-marks', message_ids: markedIds, marked: true });
     const counted = ['t1', 'render-other', ...crowd.map(topic => topic.id)];
     const shots = join(evidencePath, 'rendering'); mkdirSync(shots, { recursive: true });
     const found = [];

@@ -25,6 +25,7 @@ import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
+import { betweenOthers, foldCard, cardIn, paintFold, opened } from './fold.mjs';
 import { cardClass, agentColor, paneClass } from './author-colors.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
@@ -538,21 +539,22 @@ function keepListAnchor(paint) {
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
   const field = !writing && $('main').contains(at) && at.matches('input, textarea, select') && inView(at);
   const anchor = writing ? inline.field : field ? at
-    : [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(inView);
+    : [...document.querySelectorAll('#messages > [data-seq], #memory-items .memory-card')].find(inView);
   const top = anchor?.getBoundingClientRect().top;
-  const atTop = !writing && !field && anchor && anchor === document.querySelector('#messages .message-card') && top >= 0;
+  const atTop = !writing && !field && anchor && anchor === document.querySelector('#messages > [data-seq]') && top >= 0;
   paint();
   if (anchor?.isConnected && !atTop) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
-// The New line, just below the oldest message the reader has not read.
+// The New line, just below the oldest message the reader had not read when the
+// topic opened, or further back as more became unread (TopicViews.line).
 function placeLine() {
-  placeNewLine($('messages'), views.oldestUnread?.seq ?? null, document,
-    views.olderCursor === null ? null : () => run(loadToUnread), views.oldestUnread?.sent_ms ?? null);
+  placeNewLine($('messages'), views.line?.seq ?? null, document,
+    views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null);
 }
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
-  // Reading moves the line under the reader's eyes: the card they are looking at stays where it is.
+  // The line moves under the reader's eyes: the card they are looking at stays where it is.
   if (kind === 'line') { keepListAnchor(placeLine); return; }
   if (kind === 'topic') {
     if (authorityReviewPending()) return;
@@ -587,9 +589,12 @@ function paintViews(kind) {
       if (answers) card.append(node('span', answers, 'message-reply-to'));
       card.append(node('span', item.body, 'message-preview'));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
+      // A message between others is one quiet line that opens its card.
+      const entry = betweenOthers(item, bootstrap.actor) ? foldCard(card, item, document) : card;
+      paintFold(entry, marks?.state(item.id)?.marked === true);
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
-      $('messages').insertBefore(card, following ?? null);
-      cardObserver?.observe(card); middleObserver?.observe(card);
+      $('messages').insertBefore(entry, following ?? null);
+      cardObserver?.observe(entry); middleObserver?.observe(entry);
     }
   }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
@@ -619,8 +624,8 @@ function paintViews(kind) {
 const agentShown = id => colors?.color(id) ?? agentColor(id);
 // Every loaded card, the participants and the Reader's page, in the reader's colors as they now stand.
 function paintAgentColors() {
-  for (const card of $('messages').children) {
-    const item = views?.messages.get(card.dataset.id);
+  for (const entry of $('messages').children) {
+    const card = cardIn(entry), item = views?.messages.get(card.dataset.id);
     if (item) card.className = cardClass(item, bootstrap.actor, agentShown);
   }
   if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintTone(reader.source);
@@ -661,9 +666,9 @@ function paintMarks() {
   $('topic-marks-words').textContent = marksWords(count);
   $('topic-marks').hidden = !count || topicUnavailable;
   keepListAnchor(() => {
-    for (const card of $('messages').children) {
-      const item = views.messages.get(card.dataset.id);
-      if (item) paintCardAuthor(card.querySelector('.message-author'), item);
+    for (const entry of $('messages').children) {
+      const card = cardIn(entry), item = views.messages.get(card.dataset.id);
+      if (item) { paintCardAuthor(card.querySelector('.message-author'), item); paintFold(entry, marks.state(item.id)?.marked === true); }
     }
   });
   paintReaderMark();
@@ -699,6 +704,9 @@ async function toggleMark() {
     if (registry.isSourceCurrent(p)) reader.notice('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.');
     return;
   }
+  // An explicit Mark read places the New line afresh, wherever the oldest
+  // unread message now is; a read that fails is owed, as after any commit.
+  if (receipt?.status === 'committed' && state.marked) { views.placeAfresh(); if (commitReload) run(commitReload); }
   if (!registry.isSourceCurrent(p)) return;
   if (receipt?.error?.code === 'REVISION_CONFLICT') {
     reader.notice(`This message's mark changed in another tab or device: it is ${marks.state(ref.id)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
@@ -732,21 +740,24 @@ function listPage(kind, more = false) {
   listLoads.set(kind, run); return run;
 }
 // The New line's "More new below": older pages, one after another, until the
-// oldest unread message's card is loaded or no older page is left; then
-// that message takes the focus, with the line in its place below it. A read
-// that moves nothing on (a refusal, or a review pending) ends it.
+// line's message's card is loaded or no older page is left; then that
+// message takes the focus, with the line in its place below it. A read that
+// moves nothing on (a refusal, or a review pending) ends it.
 async function loadToUnread() {
-  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.oldestUnread?.seq);
-  while (views.oldestUnread && !loaded() && views.olderCursor !== null) {
+  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.line?.seq);
+  while (views.line && !loaded() && views.olderCursor !== null) {
     const before = views.olderCursor, shared = listLoads.has('messages');
     await listPage('messages', true);
     if (!shared && views.olderCursor === before) break;
   }
-  loaded()?.focus();
+  const entry = loaded();
+  if (entry) opened(entry).focus();
 }
-// Where the New line sits, read again after each commit and on Refresh:
-// reading, marks and replies move it without changing the topic. Settles true
-// when it was read, false when it was not, as the marks do.
+// Where the oldest unread message is, read again after each commit and on
+// Refresh: reading, marks and replies move it without changing the topic.
+// During a visit the line follows it only to show more unread; placed afresh
+// (Refresh, the person's explicit Mark read) it goes wherever it is. Settles
+// true when it was read, false when it was not, as the marks do.
 function loadUnread() {
   if (!views || topicUnavailable) return Promise.resolve(true);
   if (authorityReviewPending()) return Promise.resolve(false);
@@ -758,7 +769,7 @@ async function refreshLists() {
   if (authorityReviewPending()) {
     status('The runtime changed. Review your saved writing before reloading this page.'); return;
   }
-  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks(); await loadUnread();
+  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks(); views?.placeAfresh(); await loadUnread();
   if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
   if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
   await listPage('messages'); await listPage('memory');

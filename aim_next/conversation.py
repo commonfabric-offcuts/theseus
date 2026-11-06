@@ -301,8 +301,9 @@ class Conversation:
             raise Refusal("EMPTY_MESSAGE", "A message needs writing or a ready attachment")
         if snapshot.get("exchange_id"):
             raise Refusal("INVALID_EXCHANGE", "No matching exchange is available")
+        parent = None
         if snapshot.get("reply_to"):
-            parent = db.execute("SELECT topic_id FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
+            parent = db.execute("SELECT topic_id,author_id FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
             if not parent or parent["topic_id"] != topic_id:
                 # A state check, not a shape error: it is recorded like the others.
                 raise Refusal("INVALID_REPLY", "Reply context must belong to the destination topic")
@@ -353,8 +354,15 @@ class Conversation:
                                   (snapshot["reply_to"], actor)).fetchone()
             if answered is not None:
                 self._acknowledge(db, actor, answered)
+        # A message sent by name to others is not for a person who is neither
+        # named nor the author of the message it answers: their delivery is
+        # recorded settled, so it counts nowhere and holds no New line. An
+        # agent's deliveries are its work, queued as ever.
+        answers = parent["author_id"] if parent else None
         for recipient, reasons in audience.items():
-            delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
+            between = bool(snapshot["addressees"]) and "addressed" not in reasons and recipient != answers
+            settled = between and self._actor(db, recipient)["kind"] == "human"
+            delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons, settled=settled)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         # Who wrote the latest message before this one decides whether it is now the latest by someone else (work.py).
         db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",

@@ -11,6 +11,9 @@ listing need no join to the messages.
 
 A mark is the person's own reminder: it changes no delivery, schedule or wake.
 It counts as unread (Delivery._unread) and is cleared only by message.mark.
+A message the person wrote is never unread for them, so a mark on one is kept
+but counts nowhere: not in the counts, the marks view, the Reader's mark, or
+the New line.
 """
 
 from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
@@ -27,10 +30,11 @@ MARK_DOWN = ("DROP INDEX reader_marks", "DROP TABLE message_marks")
 # revisions at 0, and a stale clear could then remove a fresh mark.
 MARK_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM message_marks)"
 
-# The person's marked messages, each counted while no eligible delivery (pending
-# in an active group) already counts the same message. Read with message_marks k,
-# topics t and workspaces w; k.actor_id is the reader.
+# The person's marked messages by others, each counted while no eligible delivery
+# (pending in an active group) already counts the same message. Read with
+# message_marks k, topics t and workspaces w; k.actor_id is the reader.
 MARKED = ("k.revision%2=1 AND " + READABLE.replace(":actor", "k.actor_id") + " AND NOT EXISTS ("
+          "SELECT 1 FROM messages o WHERE o.id=k.message_id AND o.author_id=k.actor_id) AND NOT EXISTS ("
           "SELECT 1 FROM deliveries d CROSS JOIN delivery_groups g ON g.id=d.group_id "
           "WHERE d.message_id=k.message_id AND d.recipient_id=k.actor_id AND d.state='pending' AND g.active=1)")
 
@@ -41,9 +45,9 @@ class Marks:
         return row[0] if row else 0
 
     def _mark_state(self, db, actor, message_id):
-        """{marked, mark_revision} for a message whose topic the actor can read, else None."""
-        row = db.execute("SELECT topic_id FROM messages WHERE id=?", (message_id,)).fetchone()
-        if row is None:
+        """{marked, mark_revision} for someone else's message whose topic the actor can read, else None."""
+        row = db.execute("SELECT topic_id,author_id FROM messages WHERE id=?", (message_id,)).fetchone()
+        if row is None or row["author_id"] == actor:
             return None
         try:
             self._topic(db, actor, row["topic_id"])
@@ -86,12 +90,13 @@ class Marks:
             {"kind": "mark", "id": message_id, "version": revision}]
 
     def _view_marks(self, db, actor, args):
-        """The actor's marked messages in one topic, oldest first, paged by sequence."""
+        """The actor's marked messages by others in one topic, oldest first, paged by sequence."""
         topic = self._topic(db, actor, args.get("topic_id"))
         limit = _page_size(args)
-        rows = db.execute("SELECT message_id,seq,revision FROM message_marks INDEXED BY reader_marks "
-                          "WHERE actor_id=? AND topic_id=? AND revision%2=1 AND seq>? ORDER BY seq LIMIT ?",
-                          (actor, topic["id"], args.get("cursor", 0), limit + 1)).fetchall()
+        rows = db.execute("SELECT k.message_id,k.seq,k.revision FROM message_marks k INDEXED BY reader_marks "
+                          "CROSS JOIN messages m ON m.id=k.message_id "
+                          "WHERE k.actor_id=? AND k.topic_id=? AND k.revision%2=1 AND k.seq>? AND m.author_id<>? ORDER BY k.seq LIMIT ?",
+                          (actor, topic["id"], args.get("cursor", 0), actor, limit + 1)).fetchall()
         return _bounded_page({"instance_id": self.instance_id, "topic_id": topic["id"]}, rows, limit,
                              lambda row: {"message_id": row["message_id"], "seq": row["seq"], "mark_revision": row["revision"]},
                              "seq")

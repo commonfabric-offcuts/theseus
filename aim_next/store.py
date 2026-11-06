@@ -15,7 +15,7 @@ from .openings import Openings, OPENING_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA, MESSAGE_INTENT_SCHEMA, MESSAGE_TIME_SCHEMA, WRITTEN_SCHEMA
 from .validation import COMMANDS, _command_envelope, _view_arguments
 from .authority import Authority, AuthorityError, prepare_authority, publish_initial
-from .delivery import Delivery, DELIVERY_SCHEMA, DELIVERY_TOPIC_SCHEMA, _now_ms
+from .delivery import Delivery, DELIVERY_SCHEMA, DELIVERY_TOPIC_FRESH, _now_ms
 from . import initialization
 from .runner import Runner, RUNNER_SCHEMA, HOSTED_SCHEMA
 from .memory import Memory, MEMORY_READ_SCHEMA, MEMORY_SCHEMA
@@ -33,7 +33,7 @@ from . import delivery as _delivery
 from .releases import Releases, RELEASE_SCHEMA, write_release
 
 
-SCHEMA_VERSION = "24"
+SCHEMA_VERSION = "25"
 
 
 def commit_identity_intact(metadata):
@@ -107,7 +107,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_SCHEMA + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))

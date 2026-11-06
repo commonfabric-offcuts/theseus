@@ -188,18 +188,22 @@ class NewLineCase(ReaderCase):
         self.assertNotIn("error", result, result)
         return result, count[0]
 
-    def bulk(self, count, topic, state, addressed=False):
-        """count messages by agent-a in topic, each delivered to the owner in state."""
+    def bulk(self, count, topic, state, addressed=False, cancelled=False):
+        """count messages by agent-a in topic, each delivered to the owner in state.
+
+        cancelled: by a subscription the owner left, whose group is inactive and
+        whose pending rows stay pending for good."""
         with sqlite3.connect(str(self.path)) as db:
             db.row_factory = sqlite3.Row
             if not db.execute("SELECT 1 FROM topics WHERE id=?", (topic,)).fetchone():
                 row = dict(db.execute("SELECT * FROM topics WHERE id='t1'").fetchone(), id=topic)
                 db.execute("INSERT INTO topics(%s) VALUES (%s)" % (",".join(row), ",".join("?" * len(row))), list(row.values()))
-            key = ("owner", "direct", "", 0) if addressed else ("owner", "subscription", topic, 1)
-            db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", key)
+            key = ("owner", "direct", "", 0) if addressed else ("owner", "subscription", topic, 0 if cancelled else 1)
+            db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch,active) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",
+                       key + (0 if cancelled else 1,))
             group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? AND participant_epoch=?", key).fetchone()[0]
             for index in range(count):
-                message = "bulk-%s-%s-%s-%d" % (topic, state, addressed, index)
+                message = "bulk-%s-%s-%s-%s-%d" % (topic, state, addressed, cancelled, index)
                 seq = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
                                  "VALUES (?,?,'agent-a','Bulk','[]','[]',?,?)", (message, topic, '["owner"]' if addressed else "[]", "op-" + message)).lastrowid
                 if addressed:
@@ -229,9 +233,31 @@ class NewLineCase(ReaderCase):
         print("oldest unread work: short %d, long %d" % (short_work, long_work))
         self.assertLess(long_work, short_work + 200, (short_work, long_work))
 
+    def test_rows_a_left_subscription_left_pending_cost_nothing(self):
+        # Leaving a topic cancels the subscription's group and leaves its pending
+        # rows pending for good; the line passes over none of them, one by one.
+        self.caught_up()
+        waiting = self.post("agent-a", "Waiting")
+        view = lambda: self.store.view("owner", "topic_unread", {"topic_id": "t1"})
+        short, short_work = self.measured(view)
+        self.assertEqual(short["oldest_unread"], self.at(waiting))
+        self.read(waiting)
+        # 5,000 rows a cancelled subscription left pending in this topic, older
+        # than what now waits, by subscription and by name.
+        self.bulk(5000, "t1", "pending", cancelled=True)
+        waiting = self.post("agent-a", "Waiting after the stale rows")
+        named = self.post("agent-a", "Named after the stale rows", addressees=["owner"], intent="tell")
+        long, long_work = self.measured(view)
+        self.assertEqual(long["oldest_unread"], self.at(waiting))
+        self.read(waiting)
+        self.assertEqual(self.line(), self.at(named), "the one direct group is probed too")
+        print("oldest unread work with stale rows: short %d, long %d" % (short_work, long_work))
+        self.assertLess(long_work, short_work + 200, (short_work, long_work))
+
     def test_the_queries_read_through_their_indexes(self):
         # The statements topic_unread actually ran, values filled in, as SQLite plans them.
         self.post("agent-a", "Waiting")
+        self.post("agent-a", "Named", addressees=["owner"], intent="tell")
         original, statements = store_module._connect, []
         def connect(path, *args, **kwargs):
             db, settings = original(path, *args, **kwargs)
@@ -239,11 +265,16 @@ class NewLineCase(ReaderCase):
             return db, settings
         with mock.patch.object(store_module, "_connect", connect):
             self.line()
-        deliveries = [sql for sql in statements if "pending_topic_deliveries" in sql]
-        marks = [sql for sql in statements if "FROM message_marks k INDEXED BY reader_marks" in sql]
-        self.assertTrue(deliveries and marks, statements)
+        # The first view's statements: the subscription group, the direct group, a probe of each, the marks.
+        first = statements[:next(index for index, sql in enumerate(statements) if "FROM message_marks k INDEXED BY reader_marks" in sql) + 1]
+        groups = [sql for sql in first if "FROM topic_participants p CROSS JOIN delivery_groups g" in sql]
+        deliveries = [sql for sql in first if "pending_group_topic_deliveries" in sql]
+        marks = [sql for sql in first if "FROM message_marks k INDEXED BY reader_marks" in sql]
+        self.assertEqual((len(groups), len(deliveries), len(marks)), (1, 2, 1), first)
         with sqlite3.connect(str(self.path)) as db:
-            for query, indexes in ((deliveries[0], ("pending_topic_deliveries", "INTEGER PRIMARY KEY", "sqlite_autoindex_messages_1")),
+            for query, indexes in ((groups[0], ("SEARCH p USING", "sqlite_autoindex_delivery_groups_1")),
+                                   (deliveries[0], ("pending_group_topic_deliveries", "sqlite_autoindex_messages_1")),
+                                   (deliveries[1], ("pending_group_topic_deliveries", "sqlite_autoindex_messages_1")),
                                    (marks[0], ("reader_marks", "sqlite_autoindex_messages_1"))):
                 plan = " ".join(row[3] for row in db.execute("EXPLAIN QUERY PLAN " + query))
                 print("plan:", plan)
@@ -251,6 +282,15 @@ class NewLineCase(ReaderCase):
                     self.assertIn(index, plan)
                 self.assertNotIn("SCAN ", plan)
                 self.assertNotIn("TEMP B-TREE", plan)
+
+    def test_every_new_delivery_names_its_topic(self):
+        # The line is found by each delivery's topic: a row without one would
+        # never hold it, so the store refuses it at insert, whatever writes it.
+        self.post("agent-a", "Waiting")
+        message, group = self.sql("SELECT message_id,group_id FROM deliveries WHERE recipient_id='owner' LIMIT 1")[0]
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "a delivery names its topic"):
+            self.sql("INSERT INTO deliveries(id,message_id,recipient_id,group_id) VALUES ('d-headless',?,'agent-b',?)", (message, group))
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE topic_id IS NULL"), [(0,)])
 
     def test_it_needs_the_topic(self):
         answer = self.store.view("outsider", "topic_unread", {"topic_id": "t1"})

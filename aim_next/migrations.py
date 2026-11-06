@@ -16,7 +16,8 @@ from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE
                            MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA,
                            UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED, UNANSWERED_SCHEMA,
                            WRITTEN_DOWN, WRITTEN_UPGRADE)
-from .delivery import DELIVERY_TOPIC_BACKFILL, DELIVERY_TOPIC_DOWN, DELIVERY_TOPIC_SCHEMA
+from .delivery import (DELIVERY_GROUP_TOPIC_DOWN, DELIVERY_GROUP_TOPIC_UP, DELIVERY_TOPIC_BACKFILL, DELIVERY_TOPIC_DOWN,
+                       DELIVERY_TOPIC_SCHEMA)
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 from .work import OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED, OTHERS_SCHEMA, WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
@@ -71,6 +72,12 @@ STEPS = (
     # Version 24 keeps, beside each topic's latest message and turn, the latest
     # by someone else, so nobody's own activity is work they see.
     ("23", "24", OTHERS_SCHEMA + OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED),
+    # Version 25 indexes the pending deliveries by group and topic, so the New
+    # line reads only the reader's live groups, and refuses a delivery with no
+    # topic. It settles each person's pending delivery of a message between
+    # others, which is never unread for them. Stepping back puts the version-24
+    # index back; what was settled stays settled, and nothing is lost.
+    ("24", "25", DELIVERY_GROUP_TOPIC_UP, DELIVERY_GROUP_TOPIC_DOWN, "SELECT 0"),
 )
 
 

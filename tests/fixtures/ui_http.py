@@ -380,7 +380,12 @@ def main():
                 # A post to the whole topic, replying to no message: from the
                 # person, it answers everything before it.
                 return command("message.post", operation, {"body": request["body"]}, {"topic_id": topic_id}, sender=sender)
-            current = store().view(sender, "editor_state", {"source_ref": sources[0], "topic_id": topic_id})
+            # Written from the person's first message, or with "source": "topic"
+            # from the topic itself, for an agent that cannot read that message,
+            # or with "reply_to" from that message, which it then answers.
+            source = ({"kind": "message", "id": request["reply_to"]} if request.get("reply_to") else
+                      {"kind": "topic", "id": topic_id} if request.get("source") == "topic" else sources[0])
+            current = store().view(sender, "editor_state", {"source_ref": source, "topic_id": topic_id})
             assert not current.get("error"), current
             draft = current["draft"] or {"id": operation + "-draft", "generation": operation + "-generation", "revision": 0}
             # Optional attachments, each published by the agent: {"name", "text"}.
@@ -397,7 +402,7 @@ def main():
                 assert store().publish_media(sender, envelope, io.BytesIO(data))["status"] == "committed"
                 attached.append({"id": media_id})
             command("draft.save", operation + "-save", dict({
-                "source_ref": sources[0], "topic_id": topic_id, "generation": draft["generation"],
+                "source_ref": source, "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
                 # An agent's message to someone says ask or tell; a case that names
                 # no intent tells.
@@ -406,8 +411,13 @@ def main():
             command("submission.prepare", operation + "-prepare", {
                 "draft_id": draft["id"], "submission_id": operation + "-submission",
                 "send_operation_id": operation}, {"topic_id": topic_id}, {"draft_revision": draft["revision"] + 1}, sender=sender)
-            return command("message.send", operation, {"submission_id": operation + "-submission"},
+            sent = command("message.send", operation, {"submission_id": operation + "-submission"},
                            {"topic_id": topic_id}, sender=sender)
+            # With "read": true the person has read the whole topic since, as
+            # reading it on screen would, so nothing there waits on them.
+            if request.get("read"):
+                command("topic.read_through", operation + "-read", {"seq": 9223372036854775807}, {"topic_id": topic_id})
+            return sent
 
         seed_number = 0
         thread = threading.Thread(target=server.serve_forever, daemon=True)

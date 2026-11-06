@@ -53,7 +53,7 @@ class DeliveryBoundsCase(DeliveryCase):
                     group_id = db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES ('agent-a','subscription',?,1)", (topic_id,)).lastrowid
                 mid, did = "bulk-message-%s" % index, "bulk-delivery-%s" % index
                 db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) VALUES (?,?,'owner','Bulk body','[]','[]','[]',?)", (mid, topic_id, "bulk-op-%s" % index))
-                seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id) VALUES (?,?,'agent-a',?)", (did, mid, group_id)).lastrowid
+                seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id) VALUES (?,?,'agent-a',?,?)", (did, mid, group_id, topic_id)).lastrowid
                 db.execute("INSERT INTO delivery_reasons VALUES (?,'subscription',?,?)", (did, topic_id, 1 if new_groups else group["participant_epoch"]))
                 db.execute("UPDATE delivery_groups SET pending_count=pending_count+1,first_pending_seq=COALESCE(first_pending_seq,?) WHERE id=?", (seq, group_id))
             db.execute("UPDATE recipient_schedule SET pending_count=pending_count+?,wake_generation=wake_generation+?,last_seq=(SELECT max(seq) FROM deliveries) WHERE recipient_id='agent-a'", (count, count))

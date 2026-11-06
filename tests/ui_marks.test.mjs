@@ -35,7 +35,7 @@ function page() {
 }
 
 async function fixture(t) {
-  const child = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py'], { cwd: new URL('..', import.meta.url) });
+  const child = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--freshness'], { cwd: new URL('..', import.meta.url) });
   let serial = 0, errors = '';
   const pending = new Map(), rows = new Map(), calls = [], recorded = [], answers = [];
   child.stderr.on('data', data => { errors += data; });
@@ -74,7 +74,12 @@ async function fixture(t) {
   const marks = new Marks({ api: { command: envelope => transport.command(envelope) }, instanceId: bootstrap.instance_id,
     authority: () => registry.runtime.current, cancelOpen: () => registry.cancelOpen(), recorded: receipt => { recorded.push(receipt); answers.shift()?.(receipt); },
     doc: screen.doc, win: screen.win });
-  const source = index => facts.sources[index];
+  // Two messages by an agent: a person's own message is never unread for them,
+  // so it offers no mark.
+  const sources = [];
+  for (const index of [0, 1]) sources.push({ kind: 'message', id: (await control({ method: 'agent_message', operation_id: 'marks-source-' + index,
+    body: `Source ${index} by an agent. `.repeat(20), join: index === 0 })).result.message_id });
+  const source = index => sources[index];
   const open = (index, act) => marks.open(registry, source(index), { topicId: facts.topic_id }, act);
   const clears = () => calls.filter(c => c.type === 'command' && c.envelope.kind === 'message.mark');
   const revision = async index => (await api.view('editor_state', { source_ref: source(index), topic_id: facts.topic_id })).mark.mark_revision;

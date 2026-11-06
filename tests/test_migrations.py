@@ -38,6 +38,7 @@ SCHEMA_20 = (Path(__file__).parent / "fixtures" / "schema_20.sql").read_text().s
 SCHEMA_21 = (Path(__file__).parent / "fixtures" / "schema_21.sql").read_text().splitlines()
 SCHEMA_22 = (Path(__file__).parent / "fixtures" / "schema_22.sql").read_text().splitlines()
 SCHEMA_23 = (Path(__file__).parent / "fixtures" / "schema_23.sql").read_text().splitlines()
+SCHEMA_24 = (Path(__file__).parent / "fixtures" / "schema_24.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -57,6 +58,14 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 25 indexes the pending deliveries by group and topic instead of
+        # by reader and topic, and refuses a delivery with no topic.
+        db.execute("DROP TRIGGER delivery_topic_required")
+        db.execute("DROP INDEX pending_group_topic_deliveries")
+        db.execute("CREATE INDEX pending_topic_deliveries ON deliveries(recipient_id,topic_id,seq) WHERE state='pending'")
+        if version == "24":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 24 keeps the latest message and turn by someone else beside each topic's latest.
         db.execute("ALTER TABLE topic_turns DROP COLUMN other_by")
         db.execute("ALTER TABLE topic_turns DROP COLUMN other_ms")
@@ -961,10 +970,10 @@ class Schema12Case(MigrationCase):
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, "12")
 
-    def mark(self, marked, revision):
+    def mark(self, marked, revision, actor="owner"):
         message = self.sql("SELECT id FROM messages ORDER BY seq LIMIT 1")[0][0]
         return self.command("message.mark", {"marked": marked}, target={"message_id": message},
-                            expected={"mark_revision": revision})
+                            expected={"mark_revision": revision}, actor=actor)
 
     def test_upgrade_from_12_keeps_records_matches_a_fresh_instance_and_marks(self):
         before = self.records()
@@ -976,8 +985,9 @@ class Schema12Case(MigrationCase):
         fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
         self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.assertEqual(self.mark(True, 0)["result"]["mark_revision"], 1)
-        self.assertEqual(self.store.view("owner", "attention", {})["unread"], 1)
+        # The one message is the owner's, and a mark on your own counts nowhere: agent-b marks it.
+        self.assertEqual(self.mark(True, 0, actor="agent-b")["result"]["mark_revision"], 1)
+        self.assertEqual(self.store.view("agent-b", "attention", {})["unread"], 1)
 
     def test_step_back_to_12_restores_its_frozen_layout_while_no_mark_exists(self):
         self.upgrade()
@@ -1681,7 +1691,7 @@ def fresh_schema(directory):
 # Release 19 stores schema 17; release 20 takes it to SCHEMA_VERSION through
 # every step in between, each with its own frozen layout.
 RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("20", SCHEMA_20),
-                     ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23))
+                     ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23), ("24", SCHEMA_24))
 
 
 class Release19ChainCase(MigrationCase):
@@ -1844,6 +1854,92 @@ class LiveShapedChainCase(MigrationCase):
         self.assertLess(upgraded_in, 60, "the upgrade of %d messages took %.1f s" % (counts["messages"], upgraded_in))
 
 
+class Schema24Case(MigrationCase):
+    """A schema-24 instance: version 25 finds the New line in the reader's live groups alone."""
+
+    VERSION, FIXTURE = "24", SCHEMA_24
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "24")
+
+    def headless(self):
+        """Queues a delivery to agent-b with no topic, as the table alone allows."""
+        with sqlite3.connect(str(self.path)) as db:
+            message, group = db.execute("SELECT m.id,d.group_id FROM messages m JOIN deliveries d ON d.message_id=m.id LIMIT 1").fetchone()
+            db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id) VALUES ('d-headless',?,'owner',?)", (message, group))
+
+    def test_upgrade_from_24_keeps_records_matches_a_fresh_instance_and_needs_a_topic(self):
+        opening = self.sql("SELECT id,seq,sent_ms FROM messages ORDER BY seq LIMIT 1")[0]
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "24", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.store.view("agent-a", "topic_unread", {"topic_id": "t1"})["oldest_unread"], {"seq": opening[1], "id": opening[0], "sent_ms": opening[2]})
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "a delivery names its topic"):
+            self.headless()
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE topic_id IS NULL"), [(0,)])
+
+    def test_upgrade_gives_a_delivery_version_24_kept_with_no_topic_its_message_topic(self):
+        self.headless()
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT d.topic_id=m.topic_id FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.id='d-headless'"), [(1,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE topic_id IS NULL"), [(0,)])
+
+    def test_upgrade_settles_what_version_24_left_pending_for_a_person_between_others(self):
+        # As version 24 queued them: every delivery pending, counted in its group and schedule.
+        with sqlite3.connect(str(self.path)) as db:
+            group = lambda actor, kind: db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? "
+                                                   "AND active=1", (actor, kind, "" if kind == "direct" else "t1")).fetchone()[0]
+            db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES ('owner','direct','',0),('agent-b','direct','',0) ON CONFLICT DO NOTHING")
+            db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) SELECT actor_id,'subscription',topic_id,epoch "
+                       "FROM topic_participants WHERE topic_id='t1' AND actor_id IN ('owner','agent-b') AND active=1 ON CONFLICT DO NOTHING")
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('owner',1),('agent-b',1) ON CONFLICT DO NOTHING")
+            def message(key, addressees, reply_to=None):
+                seq = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,operation_id) "
+                                 "VALUES (?,'t1','agent-a',?,'[]','[]',?,?,?)", (key, key, json.dumps(addressees), reply_to, "op-" + key)).lastrowid
+                db.executemany("INSERT INTO message_addressees VALUES ('t1',?,?)", [(actor, seq) for actor in addressees])
+                for actor, reason in (("owner", "addressed" if "owner" in addressees else "subscription"),
+                                      ("agent-b", "addressed" if "agent-b" in addressees else "subscription")):
+                    kind = "direct" if reason == "addressed" else "subscription"
+                    delivery = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id) VALUES (?,?,?,?,'t1')",
+                                          ("d-%s-%s" % (key, actor), key, actor, group(actor, kind))).lastrowid
+                    db.execute("INSERT INTO delivery_reasons VALUES (?,?,'t1',?)", ("d-%s-%s" % (key, actor), reason, None if kind == "direct" else 1))
+                    db.execute("UPDATE delivery_groups SET pending_count=pending_count+1,first_pending_seq=coalesce(first_pending_seq,?) WHERE id=?",
+                               (delivery, group(actor, kind)))
+                    db.execute("UPDATE recipient_schedule SET pending_count=pending_count+1,next_due_ms=1 WHERE recipient_id=?", (actor,))
+            opening = db.execute("SELECT id FROM messages WHERE author_id='owner' ORDER BY seq LIMIT 1").fetchone()[0]
+            message("between", ["agent-b"])
+            message("named", ["owner"])
+            message("answer", ["agent-b"], reply_to=opening)
+            message("everyone", [])
+        state = lambda key, actor="owner": self.sql("SELECT state FROM deliveries WHERE id=?", ("d-%s-%s" % (key, actor),))[0][0]
+        self.upgrade()
+        self.assertEqual([state(key) for key in ("between", "named", "answer", "everyone")], ["acknowledged", "pending", "pending", "pending"])
+        self.assertEqual([state(key, "agent-b") for key in ("between", "named", "answer", "everyone")], ["pending"] * 4, "an agent's work is left as it was")
+        # Every live group and schedule of a person counts exactly its pending rows.
+        self.assertEqual(self.sql("SELECT g.id FROM delivery_groups g WHERE g.active=1 AND (g.pending_count<>(SELECT count(*) FROM deliveries d "
+                                  "WHERE d.group_id=g.id AND d.state='pending') OR coalesce(g.first_pending_seq,0)<>coalesce((SELECT min(seq) "
+                                  "FROM deliveries d WHERE d.group_id=g.id AND d.state='pending'),0))"), [])
+        self.assertEqual(self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'"), [(3,)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.store.view("owner", "attention", {})["unread"], 3, "named, the answer to the owner, and the message to everyone")
+
+    def test_step_back_to_24_restores_its_frozen_layout(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_24))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+        self.headless()
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1884,6 +1980,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema22Case, _name, None)
     if _name.startswith("test_") and _name not in Schema23Case.__dict__:
         setattr(Schema23Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema24Case.__dict__:
+        setattr(Schema24Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

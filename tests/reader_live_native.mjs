@@ -456,14 +456,20 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
-  // Mark unread. Each check marks in a topic of its own, whose first message
-  // is the person's, so nothing else there waits on them and no reading
-  // through settles anything while the counts are compared.
+  // Mark unread. Each check marks in a topic of its own, on an agent's message
+  // there (a mark on the person's own message counts nowhere), which the
+  // person has already read, so nothing else there waits on them and no
+  // reading through settles anything while the counts are compared. With
+  // older, that many of the person's own messages follow it, so it is older
+  // than the first page.
   let markSerial = 0;
-  const markTopic = async title => {
+  const markTopic = async (title, older = 0) => {
     const id = `live-marks-${++markSerial}`;
-    const [created] = await control({ method: 'navigation_topics', topics: [{ id, title }] });
-    return { id, message: created.result.message_id, url: `${origin}/?topic=${id}` };
+    await control({ method: 'navigation_topics', topics: [{ id, title }] });
+    const sent = await control({ method: 'agent_message', operation_id: id + '-agent', topic_id: id, source: 'topic', join: true, read: true,
+      body: 'Fixture conversation, from the agent in ' + id });
+    for (let n = 0; n < older; n++) await control({ method: 'agent_message', operation_id: `${id}-own-${n}`, topic_id: id, source: 'topic', sender: 'person', body: `The person's own message ${n}.` });
+    return { id, message: sent.result.message_id, url: `${origin}/?topic=${id}` };
   };
   const markAs = async (ids, marked) => control({ method: 'mark', operation_id: `live-mark-${++markSerial}`, message_ids: ids, marked });
   const counts = () => control({ method: 'counts' });
@@ -554,17 +560,17 @@ export async function liveChecks({ check, page, until, control, observations, or
   });
 
   await check('live Read it lands on a message older than the first page and clears it', async () => {
-    const oldest = facts.sources[0].id;
+    const topic = await markTopic('Marks: Read it, further back', 30), oldest = topic.message;
     const [marked] = await markAs([oldest], true);
-    const p = await page('live-mark-read-it', null, true); await settled(p);
+    const p = await page('live-mark-read-it', null, true, { url: topic.url }); await settled(p);
     await until(async () => await line(p) === '1 message marked unread', 'the topic says one message is marked');
     assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card(oldest))}))`), false, 'the marked message is older than the loaded page');
     await p.evaluate("document.querySelector('#read-mark').focus()");
     await p.key('Enter');
-    await until(() => readerShows(p, 'Source 0 exact passage.'), 'Read it opens the marked message whole');
+    await until(() => readerShows(p, 'Fixture conversation, from the agent in ' + topic.id), 'Read it opens the marked message whole');
     await until(async () => await line(p) === '', 'the line goes once the mark is cleared');
     assert.deepEqual(markCalls(p).map(m => [m.target.message_id, m.args.marked, m.expected.mark_revision]), [[oldest, false, marked.mark_revision]]);
-    assert.equal((await view('editor_state', { source_ref: facts.sources[0], topic_id: 't1' })).mark.marked, false);
+    assert.equal((await view('editor_state', { source_ref: { kind: 'message', id: oldest }, topic_id: topic.id })).mark.marked, false);
     assert.deepEqual(p.errors, []); await p.close();
   });
 
@@ -744,7 +750,7 @@ export async function liveChecks({ check, page, until, control, observations, or
     const topic = await markTopic('Marks: many');
     const ids = [];
     for (let n = 0; n < 52; n++) {
-      const sent = await control({ method: 'agent_message', operation_id: `live-mark-many-${n}`, body: `Marked message ${n} of many`, topic_id: topic.id, addressees: [], join: n === 0 });
+      const sent = await control({ method: 'agent_message', operation_id: `live-mark-many-${n}`, body: `Marked message ${n} of many`, topic_id: topic.id, addressees: [] });
       ids.push(sent.result.message_id);
     }
     await markAs(ids, true);
