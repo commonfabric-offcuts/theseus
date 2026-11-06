@@ -216,10 +216,12 @@ export async function renderChecks({ check, page, until, control, origin, eviden
       writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
       for (const problem of [...answer.problems, ...judgePixels(image, answer), ...legibility]) found.push({ state, ...problem });
     };
-    const topicRows = [...markedIds.map(id => `#messages [data-id="${id}"]`), '#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#topics [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
-    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine')) && ${JSON.stringify(markedIds)}.every(id => document.querySelector('#messages [data-id="' + id + '"] .unread-mark'))`],
+    const topicRows = [...markedIds.map(id => `#messages [data-id="${id}"]`), '#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#done-topic-list [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
+    // A done topic is listed under the Done line, which the person opens.
+    const listed = "(id => document.querySelector(':is(#topics, #done-topic-list) [data-topic-id=\"' + id + '\"] .unread-count'))";
+    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(${listed}) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine')) && ${JSON.stringify(markedIds)}.every(id => document.querySelector('#messages [data-id="' + id + '"] .unread-mark'))`],
       // A plain state on the row shaded as the current topic.
-      ['done', origin + '/?topic=render-crowd-2', ['#topics [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(id => document.querySelector('#topics [data-topic-id="' + id + '"] .unread-count')) && Boolean(document.querySelector('#topics [aria-current=page] .topic-state[data-state=done]')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`],
+      ['done', origin + '/?topic=render-crowd-2', ['#done-topic-list [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(${listed}) && Boolean(document.querySelector('#done-topic-list [aria-current=page] .topic-state[data-state=done]')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`],
       ['outcomes', origin + '/', ['#workspaces [data-workspace-id="w1"]'], `Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`]]) {
       for (const scheme of ['light', 'dark']) {
         for (const [layout, metrics] of [['laptop', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false }], ['phone', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }]]) {
@@ -230,12 +232,14 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             } });
           // Every row named here carries its count, and its state where it has
           // one. Topics left by earlier checks may sort before these, past the
-          // rail's first page: the person asks for more until every row is drawn.
-          // Bringing More into view scrolls the page, so where the page stood on
-          // arrival is kept for the captures at rest.
+          // rail's first page: the person asks for more until every row is drawn,
+          // and opens the Done line, where the done topic is listed. Bringing
+          // More into view scrolls the page, so where the page stood on arrival
+          // is kept for the captures at rest.
           const arrived = await p.evaluate('[scrollX, scrollY]');
           await until(async () => {
             if (await p.evaluate(ready)) return true;
+            if (await p.evaluate(`(line => Boolean(line && !line.hidden && !line.open) && (line.scrollIntoView({ block: 'center' }), true))(document.querySelector('#done-topics'))`)) await p.point('#done-topics-label');
             if (await p.evaluate(`(more => Boolean(more && !more.hidden && more.getAttribute('aria-disabled') !== 'true') && (more.scrollIntoView({ block: 'center', inline: 'center' }), true))(document.querySelector('#more-topics'))`)) await p.point('#more-topics');
             return false;
           }, 'every counted row is drawn with its count');
@@ -243,8 +247,11 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             let box = null;
             const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, hovered: row.matches(':hover') }; })()`;
             // At rest the page stands where it opened, and the pointer is off
-            // its content.
+            // its content. On a phone a rail with this many rows (the key, the
+            // Done line and the outcome's Notebook pages among them) fills the
+            // first screen, and the person scrolls on to the topic's header.
             if (row === null) await p.evaluate(`scrollTo(${arrived[0]}, ${arrived[1]})`);
+            if (row === null && route === 'topic') await p.evaluate(`(state => state.getBoundingClientRect().bottom > innerHeight && state.scrollIntoView({ block: 'center' }))(document.querySelector('#topic-state'))`);
             if (row === null) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
             if (row !== null) assert.ok(await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); row?.scrollIntoView({ block: 'center', inline: 'center' }); return Boolean(row); })()`), `${row} is drawn on the ${route} page`);
             const state = `${route}-${scheme}-${layout}-${row === null ? 'rest' : 'hover-' + row.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;

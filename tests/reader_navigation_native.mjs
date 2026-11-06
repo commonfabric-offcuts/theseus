@@ -272,10 +272,16 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const p = await page('navigation-pages-mobile', null, true);
     await until(() => p.evaluate('document.querySelectorAll("#topics a").length===21'), 'first20 plus current topic outside the page');
     assert.equal(await p.evaluate('document.querySelectorAll("#topics a[aria-current=page]").length'), 1);
+    // The rail lists topics by latest activity, so the next page's first
+    // link is whichever of its topics was active last, read from the rail.
+    const shown = () => p.evaluate('[...document.querySelectorAll("#topics a")].map(a=>a.dataset.topicId)');
+    const firstPage = await shown();
     await p.evaluate('document.querySelector("#more-topics").scrollIntoView({block:"center"})'); await p.point('#more-topics');
     await until(() => p.evaluate('document.querySelectorAll("#topics a").length===23 && document.querySelector("#more-topics").hidden'), 'next page appends without duplicating current topic');
     assert.equal(await p.evaluate('new Set([...document.querySelectorAll("#topics a")].map(a=>a.dataset.topicId)).size'), 23);
-    assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), 't2', 'last More hands focus to the next new link');
+    const added = (await shown()).filter(id => !firstPage.includes(id));
+    assert.deepEqual([...added].sort(), ['t2', 't3'], 'the next page holds the two topics left');
+    assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), added[0], 'last More hands focus to the next new link');
     await control({ method: 'read_fault', name: 'workspace_topics', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'Topic list delayed', retryable: true } }, count: 1 });
     await p.evaluate('document.querySelector("#refresh").scrollIntoView({block:"center"})'); await p.point('#refresh');
     await until(() => p.evaluate('!document.querySelector("#retry-topics").hidden'), 'topic list failure exposes Retry');
@@ -293,7 +299,10 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.equal(b.viewportWidth,390, 'horizontal rail does not widen the mobile layout viewport');
     assert.ok(b.height >= 44 && b.width > 44, 'named link is at least44px tall');
     const touch = async (x,y) => { await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{x,y}] }); await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
-    const neighbor = await p.box(link('t3')); const gap = b.x+b.width+Math.max(1,(neighbor.x-b.x-b.width)/2);
+    // Its neighbour is the link after it, whichever topic the activity order puts there.
+    const after = await p.evaluate(`(links=>links[links.findIndex(a=>a.dataset.topicId==='t2')+1]?.dataset.topicId??null)([...document.querySelectorAll('#topics a')])`);
+    assert.ok(after, 'a link follows t2 in the rail');
+    const neighbor = await p.box(link(after)); const gap = b.x+b.width+Math.max(1,(neighbor.x-b.x-b.width)/2);
     assert.ok(gap < neighbor.x && gap < b.viewportWidth, 'measured actual gap between topic links');
     await p.evaluate(`(()=>{for(const type of ['touchstart','touchend','click'])document.addEventListener(type,e=>console.log('navigation-touch',JSON.stringify({type,target:e.target.closest('a')?.dataset.topicId??e.target.id,x:e.changedTouches?.[0]?.clientX??e.clientX,y:e.changedTouches?.[0]?.clientY??e.clientY,rawTarget:document.elementFromPoint(e.changedTouches?.[0]?.clientX??e.clientX,e.changedTouches?.[0]?.clientY??e.clientY)?.id})),true)})()`);
     await touch(gap,b.y+b.height/2);
