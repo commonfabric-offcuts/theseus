@@ -1201,13 +1201,13 @@ function followCommits(load) {
   }
   return reload;
 }
-// The Done and Archived lines under the topic list, and where the person's
-// choice to keep each open is remembered.
+// The Done and Archived lines under the topic list, where the person's choice
+// to keep each open is remembered, and the area the lists keep still under.
 function topicFolds() {
   let storage = null;
   try { storage = window.localStorage; } catch { /* each line starts closed */ }
   const fold = name => ({ details: $(`${name}-topics`), label: $(`${name}-topics-label`), host: $(`${name}-topic-list`), more: $(`more-${name}-topics`) });
-  return { done: fold('done'), archived: fold('archived'), storage };
+  return { done: fold('done'), archived: fold('archived'), storage, area: $('topic-navigation') };
 }
 // Rows a reload may ask for at once, from the server's own limits.
 const pageMax = () => Number.isSafeInteger(bootstrap.limits?.page_max) ? bootstrap.limits.page_max : undefined;

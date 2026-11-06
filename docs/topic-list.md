@@ -78,6 +78,14 @@ The open topic's row sits in the list its own state puts it in, in its place
 by activity, before the lists are read again. A topic that two lists hold,
 because it moved between their reads, shows once, in the list read last.
 
+The lists keep still under the pointer. While the pointer is over the topic
+lists, a change found in a read changes what rows say (unread counts, state,
+work) but moves no row; the rows take their new order when the pointer leaves.
+A change the person asked for (More, Retry, opening a line) shows at once. A
+row with keyboard focus keeps it: rows move around it rather than it moving,
+and a focused topic that leaves its list (said done, say) stays where it is
+until focus moves on.
+
 ## The CLI
 
 `topics OUTCOME` prints the topics that are neither done nor archived, latest

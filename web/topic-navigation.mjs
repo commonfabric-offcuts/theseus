@@ -214,8 +214,8 @@ export class TopicNavigation {
 // and an "Archived (N)" line that each open to list theirs. Whether each line
 // is open is kept per person on this browser; a closed one is not read.
 export class TopicRail {
-  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE, done = null, archived = null, storage = null }) {
-    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax, storage });
+  constructor({ pages, host, more, retry, message, read, open, denied, updated, reader = null, pageMax = PAGE, done = null, archived = null, storage = null, area = host }) {
+    Object.assign(this, { pages, host, more, retry, message, read, open, isDenied: denied, updated, reader, pageMax, storage, area });
     this.denied = false; this.loading = null; this.queued = null; this.failedMore = false; this.serial = 0;
     this.lists = [{ name: 'active', pages, host, more }];
     const kept = this.kept();
@@ -232,7 +232,16 @@ export class TopicRail {
         if (list.details.open && !list.reading) this.load(list.pages.started ? false : list);
       });
     }
-    more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore);
+    more.onclick = () => this.load(true); retry.onclick = () => this.load(this.failedMore, true);
+    // The lists keep still under the pointer: a change found while it is over
+    // them changes what rows say, and moves rows once it leaves. A row with
+    // keyboard focus keeps it: rows move around it, and it leaves its list
+    // only once focus moves on.
+    this.pointed = false; this.owed = false;
+    area.addEventListener('pointerenter', () => { this.pointed = true; });
+    area.addEventListener('pointerleave', () => { this.pointed = false; if (this.owed) this.paint(); });
+    area.addEventListener('focusin', () => { if (this.owed) this.paint(); });
+    area.addEventListener('focusout', event => { if (this.owed && !area.contains(event.relatedTarget)) this.paint(); });
     // Mobile browsers can retarget a gap tap to a nearby link. Only accept a
     // synthesized click when the raw touch ended inside that link's bounds.
     for (const list of this.lists) list.host.addEventListener('touchend', event => {
@@ -286,7 +295,9 @@ export class TopicRail {
     else link.removeAttribute('aria-current');
     return link;
   }
-  paint() {
+  // asked: the person asked for this change (More, Retry, opening a line), so
+  // it shows at once, under the pointer too.
+  paint(asked = false) {
     // A topic two lists hold, because one was read before it moved, is shown
     // where the list read last puts it.
     const owner = new Map();
@@ -294,12 +305,24 @@ export class TopicRail {
       const held = owner.get(item.id);
       if (!held || list.pages.readAt > held.pages.readAt) owner.set(item.id, list);
     }
-    for (const list of this.lists) {
-      const items = list.pages.items.filter(item => owner.get(item.id) === list);
-      arrange(list.host, items.map(item => this.row(item)));
-      list.more.hidden = this.denied || list.pages.next === null;
+    const rows = this.lists.map(list => list.pages.items.filter(item => owner.get(item.id) === list).map(item => this.row(item)));
+    const hold = this.pointed && !asked, focused = document.activeElement;
+    this.owed = hold;
+    if (!hold) {
+      // The focused row stays in the list that holds it, where it is, until focus moves on.
+      const kept = this.lists.find(list => [...list.host.children].includes(focused));
+      this.lists.forEach((list, index) => {
+        let nodes = rows[index];
+        if (kept && list !== kept) nodes = nodes.filter(node => node !== focused);
+        if (list === kept && !nodes.includes(focused)) {
+          this.owed = true;
+          nodes = [...nodes]; nodes.splice(Math.min([...list.host.children].indexOf(focused), nodes.length), 0, focused);
+        }
+        arrange(list.host, nodes, focused);
+      });
+      for (const [id, link] of this.links) if (!owner.has(id) && link !== focused) { link.remove(); this.links.delete(id); }
     }
-    for (const [id, link] of this.links) if (!owner.has(id)) { link.remove(); this.links.delete(id); }
+    for (const list of this.lists) list.more.hidden = this.denied || list.pages.next === null;
     const groups = this.groups;
     for (const list of this.lists.slice(1)) {
       const shown = list.pages.items.length, count = groups ? groups[list.name] : shown;
@@ -315,7 +338,7 @@ export class TopicRail {
   // reads its list from the start, as a reload does. Settles true when the
   // lists were read, false when they were not. more is true for the first
   // list's More, or the list whose More or line was pressed.
-  load(more = false) {
+  load(more = false, asked = more !== false) {
     const target = more === true ? this.lists[0] : more || null, first = target !== null && !target.pages.started;
     if (this.loading) {
       if (target && !first) return this.loading;
@@ -336,7 +359,7 @@ export class TopicRail {
       .then(() => {
         const focused = document.activeElement;
         this.denied = false;
-        this.message.hidden = true; this.retry.hidden = true; this.paint();
+        this.message.hidden = true; this.retry.hidden = true; this.paint(asked);
         const pressed = this.lists.find(list => list.more === focused);
         if ((pressed || focused === this.retry) && focused.hidden) {
           const links = [...(pressed ?? this.lists[0]).host.children];
@@ -345,7 +368,7 @@ export class TopicRail {
         return true;
       }).catch(error => {
         const focused = document.activeElement;
-        if (this.isDenied(error)) { this.denied = true; this.paint(); }
+        if (this.isDenied(error)) { this.denied = true; this.paint(asked); }
         this.failedMore = target && !first && !this.denied ? target : false;
         this.message.textContent = this.denied ? 'Workspace topics are unavailable. Retry to check access.' : error.message + ' Retry topics.';
         this.message.hidden = false; this.retry.hidden = false;
@@ -361,11 +384,18 @@ export class TopicRail {
   }
 }
 
-// Puts exactly nodes in host, in their order, moving only what is out of place.
-export function arrange(host, nodes) {
+// Puts exactly nodes in host, in their order, moving only what is out of place,
+// and never fixed: moving a node takes it out of the page for a moment, which
+// takes away its focus, so the others move around it instead.
+export function arrange(host, nodes, fixed = null) {
   const wanted = new Set(nodes);
   for (const child of [...host.children]) if (!wanted.has(child)) child.remove();
-  nodes.forEach((node, index) => { if (host.children[index] !== node) host.insertBefore(node, host.children[index] ?? null); });
+  nodes.forEach((node, index) => {
+    if (node === fixed && [...host.children].includes(fixed)) {
+      // What sits where the fixed node belongs belongs after it: send it to the end until the fixed node is in place.
+      while (host.children[index] !== fixed) host.insertBefore(host.children[index], null);
+    } else if (host.children[index] !== node) host.insertBefore(node, host.children[index] ?? null);
+  });
 }
 
 // A count of what waits unread in a topic or outcome, marked when part of it

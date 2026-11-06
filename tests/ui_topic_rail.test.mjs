@@ -9,9 +9,11 @@ function fixture(t, { folds = false, storage = null, current = null } = {}) {
     getBoundingClientRect() { return this.box; }
     setAttribute(k,v) { this.attributes[k] = v; } removeAttribute(k) { delete this.attributes[k]; }
     insertBefore(child, before) { child.remove(); const index = before ? this.children.indexOf(before) : this.children.length; this.children.splice(index,0,child); child.parent = this; }
-    remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
+    // As in a browser, a node taken out of the page, even to be put back elsewhere, loses focus.
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); if (document.activeElement === this) document.activeElement = null; }
     focus() { document.activeElement = this; }
-    append(...nodes) { this.children.push(...nodes); }
+    append(...nodes) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
+    contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
   }
   globalThis.document = { createElement: () => new Element(), activeElement: null }; t.after(() => { globalThis.document = previous; });
   // Ids in letter order were active latest first; the open topic z was active
@@ -19,10 +21,12 @@ function fixture(t, { folds = false, storage = null, current = null } = {}) {
   const at = id => 3e8 - [...id.padEnd(4, '\0')].slice(0, 4).reduce((sum, c) => sum * 128 + c.charCodeAt(0), 0);
   const item = id => ({ id, title: id, workspace_id: 'w1', activity_ms: at(id) }), pos = id => topicPosition(item(id));
   const page = (ids,next=null) => ({ instance_id: 'i1', items: ids.map(item), next_cursor: next === null ? null : pos(next) });
-  const nodes = Object.fromEntries(['host','more','retry','message'].map(key => [key,new Element()]));
+  const nodes = Object.fromEntries(['host','more','retry','message','area'].map(key => [key,new Element()]));
+  nodes.area.append(nodes.host, nodes.more, nodes.retry);
   // The Done and Archived lines: a details element, its summary's words, its list and its More.
   const fold = () => ({ details: new Element(), label: new Element(), host: new Element(), more: new Element() });
   const lines = folds ? { done: fold(), archived: fold() } : {};
+  for (const line of Object.values(lines)) { nodes.area.append(line.details); line.details.append(line.host, line.more); }
   const calls = [], opened = [], queue = [];
   const rail = new TopicRail({ ...nodes, ...lines, storage, reader: 'tony', pages: new TopicPages('i1','w1',current ?? { ...item('z'), activity_ms: 4e8 }), read: args => { calls.push(args); const r = queue.shift(); return typeof r==='function'?r():Promise.resolve(r); }, open: (id, title) => opened.push(title === id ? id : [id, title]), denied: error => error.status===403 });
   return { ...nodes, ...lines, rail, calls, opened, queue, item, page, pos };
@@ -248,4 +252,64 @@ test('the outcome is empty only when no list holds a topic', async t => {
   assert.equal(f.rail.empty, false, 'so is an archived one');
   f.queue.push(listed(f, [], { done: 0, archived: 0 })); await f.rail.load();
   assert.equal(f.rail.empty, true);
+});
+
+// The list keeps still under the pointer and around the focused row.
+const moved = (f, id, activity_ms, fields = {}) => ({ ...f.item(id), activity_ms, ...fields });
+
+test('a change found while the pointer is over the list redraws its rows in place and moves them once the pointer leaves', async t => {
+  const f = fixture(t);
+  f.queue.push(f.page(['a', 'b', 'c'])); await f.rail.load();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'b', 'c']);
+  const rows = [...f.host.children];
+  f.area.handlers.pointerenter?.();
+  // c is written in, so it comes first after z; b is renamed; a new topic arrives.
+  f.queue.push({ instance_id: 'i1', items: [moved(f, 'c', 3.5e8), moved(f, 'aa', 3.4e8), f.item('a'), { ...f.item('b'), title: 'B renamed' }], next_cursor: null });
+  await f.rail.load();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'b', 'c'], 'nothing moves under the pointer');
+  assert.deepEqual([...f.host.children], rows);
+  assert.equal(rows[2].textContent, 'B renamed', 'what a row says is current');
+  f.area.handlers.pointerleave?.();
+  assert.deepEqual(shown(f.host), ['z', 'c', 'aa', 'a', 'b'], 'once the pointer leaves, the list takes its order');
+  // A later change with the pointer away moves at once.
+  f.queue.push(f.page(['a', 'b', 'c'])); await f.rail.load();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'b', 'c']);
+});
+
+test('what the person asks for under the pointer shows at once', async t => {
+  const f = fixture(t);
+  f.queue.push(f.page(['a', 'b'], 'b')); await f.rail.load();
+  f.area.handlers.pointerenter?.();
+  f.queue.push(f.page(['c'])); await f.more.onclick();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'b', 'c'], 'More adds its rows under the pointer');
+  f.queue.push(() => Promise.reject(Error('Offline'))); await f.rail.load();
+  f.queue.push({ instance_id: 'i1', items: [moved(f, 'c', 3.5e8), f.item('a'), f.item('b')], next_cursor: null }); await f.retry.onclick();
+  assert.deepEqual(shown(f.host), ['z', 'c', 'a', 'b'], 'and so does Retry');
+});
+
+test('a focused row keeps its focus while rows move around it, and leaves its list only once focus moves on', async t => {
+  const f = fixture(t, { folds: true });
+  f.done.details.open = true;
+  const empty = { instance_id: 'i1', items: [], next_cursor: null, groups: { done: 0, archived: 0 } };
+  f.queue.push(listed(f, ['a', 'b', 'c'], { done: 0, archived: 0 }), empty); await f.rail.load();
+  const b = f.host.children.find(x => x.dataset.topicId === 'b'); b.focus();
+  // b is written in: it moves to the top, and keeps the focus.
+  f.queue.push(listed(f, [], { done: 0, archived: 0 }, { items: [moved(f, 'b', 3.5e8), f.item('a'), f.item('c')] }), empty);
+  await f.rail.load();
+  assert.deepEqual(shown(f.host), ['z', 'b', 'a', 'c']);
+  assert.equal(document.activeElement, b, 'the focused row was not taken out to move it');
+  // b is said done elsewhere: it stays where it is, focused, until focus moves on.
+  f.queue.push(listed(f, ['a', 'c'], { done: 1, archived: 0 }), { ...empty, items: [as(f, 'b', { state: 'done' })], groups: { done: 1, archived: 0 } });
+  await f.rail.load();
+  assert.deepEqual(shown(f.host), ['z', 'b', 'a', 'c']); assert.deepEqual(shown(f.done.host), []);
+  assert.equal(document.activeElement, b);
+  const a = f.host.children.find(x => x.dataset.topicId === 'a'); a.focus(); f.area.handlers.focusin?.();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'c']); assert.deepEqual(shown(f.done.host), ['b']);
+  assert.equal(document.activeElement, a);
+  // A topic that leaves every list while focused stays until focus leaves the lists.
+  f.queue.push(listed(f, ['c'], { done: 1, archived: 0 }), { ...empty, items: [as(f, 'b', { state: 'done' })], groups: { done: 1, archived: 0 } });
+  await f.rail.load();
+  assert.deepEqual(shown(f.host), ['z', 'a', 'c']); assert.equal(document.activeElement, a);
+  document.activeElement = null; f.area.handlers.focusout?.({ relatedTarget: null });
+  assert.deepEqual(shown(f.host), ['z', 'c']);
 });
