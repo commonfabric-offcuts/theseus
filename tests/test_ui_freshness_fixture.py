@@ -289,6 +289,37 @@ class FreshnessFixtureTests(FixtureCase):
         self.assertEqual(result["fatal"], [])
 
 
+class WakesFixtureTests(FixtureCase):
+    """The wakes control the native wakes check drives, read back through the real server."""
+
+    def wakes(self):
+        status, view = self.view("wakes", read_class="background")
+        self.assertEqual(status, 200, view)
+        return view
+
+    def test_the_agent_parked_then_the_runner_killed_then_back(self):
+        self.assertEqual(self.control("wakes", action="route")["status"], "provisioned")
+        self.control("agent_message", operation_id="wakes-person-asks", body="Over to you", topic_id="t1",
+                     sender="person", addressees=["fixture-notebook-agent"])
+        live = self.control("wakes", action="runner_live")
+        self.assertEqual(live["status"], "acquired", live)
+        # The longest lease a runner may take: a slow browser start cannot let it lapse into "unrenewed"
+        # before the native check has read the page.
+        self.assertGreater(live["lease_until_ms"] - time.time() * 1000, 110000)
+        self.assertEqual(self.wakes()["runner"], {"live": True})
+        self.control("wakes", action="park")
+        quiet = self.wakes()["quiet"]
+        self.assertEqual([(q["actor_id"], q["why"]) for q in quiet], [("fixture-notebook-agent", "not_answering")])
+        self.assertGreaterEqual(quiet[0]["waiting"], 1)
+        self.assertEqual(self.control("wakes", action="runner_killed")["status"], "recorded")
+        view = self.wakes()
+        self.assertEqual((view["runner"]["state"], view["runner"]["reason"]), ("exited", "killed"))
+        self.assertEqual(view["notice"], {"waiting_agents": 1})
+        self.assertEqual([q["why"] for q in view["quiet"]], ["wakes_paused"])
+        self.control("wakes", action="runner_live")
+        self.assertNotIn("notice", self.wakes())
+
+
 class LegacyObservationTests(FixtureCase):
     fixture_flags = ("--legacy-read-admission",)
 

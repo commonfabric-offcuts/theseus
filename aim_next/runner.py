@@ -9,6 +9,7 @@ from . import delivery
 from .authority import RunnerGuard
 from .contract import StoreError
 from . import work
+from .wake_health import ANSWERING
 
 
 RUNNER_SCHEMA = [
@@ -23,6 +24,10 @@ RUNNER_SCHEMA = [
     "CREATE TRIGGER immutable_wake_result_update BEFORE UPDATE ON wake_results BEGIN SELECT RAISE(ABORT,'immutable wake result'); END",
     "CREATE TRIGGER immutable_wake_result_delete BEFORE DELETE ON wake_results BEGIN SELECT RAISE(ABORT,'immutable wake result'); END",
 ]
+
+
+# How a runner process that did not stop itself ended, from its exit status.
+EXIT_REASONS = {75: "lease_lost", 0: "stopped_unrecorded"}
 
 
 def _write_once(table, columns):
@@ -59,7 +64,9 @@ HOSTED_OCCUPIED = ("SELECT EXISTS (SELECT 1 FROM hosted_turns) OR EXISTS (SELECT
                    "OR EXISTS (SELECT 1 FROM metadata WHERE key LIKE 'route_pin.v1:%' AND "
                    "CASE WHEN json_valid(value) THEN json_extract(value,'$.destination.kind') END='codex-hosted-stdio')")
 
-OUTCOMES = frozenset(("accepted", "handed", "busy", "unavailable", "error"))
+# queued: the notice was already waiting unread in the agent's chat. It is
+# scheduled like accepted, and is not a wake the agent left unanswered.
+OUTCOMES = frozenset(("accepted", "queued", "handed", "busy", "unavailable", "error"))
 TURN_FIELDS = frozenset(("thread_id", "turn_id", "mode", "client_id", "announced_seq"))
 TURN_STATUSES = frozenset(("completed", "interrupted", "failed", "lost"))
 USAGE_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "cli_calls")
@@ -214,7 +221,7 @@ class Runner:
     def _acquire(self, db, guard, now, lease_ms):
         token = "r-" + uuid.uuid4().hex
         until = now + lease_ms
-        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=NULL,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1",
+        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=NULL,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
                    (token, guard.runner_id, guard.generation, until, os.getpid(), now))
         return {"status": "acquired", "runner_token": token, "lease_until_ms": until}, True
 
@@ -246,9 +253,9 @@ class Runner:
 
     def _next_due(self, db, routed=None):
         if routed is None:
-            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
+            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
         else:
-            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL ORDER BY next_due_ms,recipient_id LIMIT 1", (routed,)).fetchone()
+            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT 1", (routed,)).fetchone()
         return row[0] if row else None
 
     def claim_wakes(self, guard, runner_token, recipients, limit=1, lease_ms=20000):
@@ -266,7 +273,7 @@ class Runner:
                 raise RunnerError("LEASE_TOO_SHORT", "Renew the singleton before claiming this full lease", retryable=True)
             # Each routed recipient is one primary-key probe; people and agents
             # without a route are never read, claimed or attempted here.
-            rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
+            rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
             claims = []
             for row in rows:
                 if row["claim_token"] is not None and row["claim_until_ms"] > now:
@@ -307,7 +314,7 @@ class Runner:
                 return {"status": "stale"}, False
             if outcome == "handed":
                 return self._hand(db, now, attempt, row, turn), True
-            retry, delay = _backoff(row["retry_count"]) if outcome in {"busy", "error"} else (0, 60000)
+            retry, delay = _backoff(row["retry_count"]) if outcome in {"busy", "error"} else (0, delivery.REWAKE_MS)
             head = self._pending_head(db, row["recipient_id"])
             if row["pending_count"] == 0:
                 due, retry = None, 0
@@ -317,6 +324,12 @@ class Runner:
                 due = now + delay
             db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], outcome, now))
             db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,retry_count=? WHERE recipient_id=?", (due, retry, row["recipient_id"]))
+            if outcome == "accepted" and row["pending_count"]:
+                # The notice reached the agent's chat; it stays unanswered until the agent acts.
+                self._wake_unanswered(db, row["recipient_id"], now, attempt["captured_seq"])
+            elif outcome == "queued" and row["pending_count"]:
+                # The notice already waiting unread leads the agent to this work too.
+                self._wake_named(db, row["recipient_id"], attempt["captured_seq"])
             db.execute("UPDATE runner_state SET child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1 AND child_claim_token=?", (claim_token,))
             return {"status": "settled", "wake_status": outcome, "next_due_ms": due, "pending_count": row["pending_count"]}, True
         return self._effect(guard, action)
@@ -358,8 +371,9 @@ class Runner:
             handed = attempt["captured_seq"]
             # The turn now holds what its notice named: it is in each of those topics.
             work.turn_handed(db, attempt["id"], attempt["recipient_id"], attempt["handed_seq"], turn["announced_seq"], now)
-        # Only a delivery that arrived after the claim makes the recipient due again.
-        if pending and row["last_seq"] > attempt["captured_seq"]:
+        # Only a delivery that arrived after the claim, and is still pending,
+        # makes the recipient due again: one the turn already handled is not.
+        if pending and row["last_seq"] > attempt["captured_seq"] and self._pending_above(db, attempt["recipient_id"], attempt["captured_seq"]):
             due = now
         db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], "handed", now))
         db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,error_code,finished_ms) "
@@ -370,6 +384,11 @@ class Runner:
         # retry_count is otherwise kept: a turn that fails again backs off further, and only a clean turn end resets it.
         db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,handed_seq=?,retry_count=? WHERE recipient_id=?",
                    (due, handed, retry, attempt["recipient_id"]))
+        if handed is not None and turn["mode"] == "start":
+            # A turn started with this work; a steer joins a turn already counted.
+            self._wake_unanswered(db, attempt["recipient_id"], now, handed)
+        elif handed is not None:
+            self._wake_named(db, attempt["recipient_id"], handed)
         db.execute("UPDATE runner_state SET child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1 AND child_claim_token=?", (attempt["claim_token"],))
         return {"status": "settled", "wake_status": "handed", "next_due_ms": due, "pending_count": pending, "handed_seq": handed}
 
@@ -420,19 +439,34 @@ class Runner:
             if status == "completed":
                 for row in rows:
                     work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
+            else:
+                # A turn that did not complete never gave the agent its wake to answer.
+                for row in rows:
+                    if row["mode"] == "start":
+                        self._wake_withdrawn(db, row["recipient_id"])
             rearmed = False
             for recipient in sorted({row["recipient_id"] for row in rows}):
                 schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
-                if status == "completed" and not unseen:
+                clean = status == "completed" and not unseen
+                if clean:
                     db.execute("UPDATE recipient_schedule SET retry_count=0 WHERE recipient_id=?", (recipient,))
-                    continue
                 head = self._pending_head(db, recipient)
                 if schedule["handed_seq"] is None or head is None or head > schedule["handed_seq"]:
                     continue
-                retry, delay = _backoff(schedule["retry_count"])
                 live = schedule["claim_token"] is not None and schedule["claim_until_ms"] > now
-                db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=? WHERE recipient_id=?",
-                           (retry, schedule["claim_until_ms"] if live else now + delay, recipient))
+                if clean:
+                    # The turn ended with work it was handed still pending (it
+                    # read one page, or left one unanswered): it is named again
+                    # after the same minute an accepted wake waits, unless newer
+                    # work already made it due.
+                    retry = 0
+                    due = schedule["next_due_ms"] if self._pending_above(db, recipient, schedule["handed_seq"]) else now + delivery.REWAKE_MS
+                else:
+                    retry, delay = _backoff(schedule["retry_count"])
+                    due = now + delay
+                # Work handed back was never read: what named it goes again, parked or not.
+                db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=?,named_seq=CASE WHEN ? THEN named_seq END WHERE recipient_id=?",
+                           (retry, schedule["claim_until_ms"] if live else due, clean, recipient))
                 rearmed = True
             return {"status": "ended", "final_status": status, "rows": len(rows), "unseen": unseen, "rearmed": rearmed}, True
         return self._effect(guard, action)
@@ -504,6 +538,61 @@ class Runner:
             db.execute("UPDATE hosted_children SET exited_ms=?,exit_status=?,cleanup=? WHERE id=?", (now, exit_status, cleanup, child_id))
             return {"status": "recorded"}, True
         return self._effect(guard, action)
+
+    def stop_runner(self, guard, runner_token):
+        """A graceful stop says so, and frees the lease at once for the next runner."""
+        def action(db, now):
+            state = self._runner_state(db)
+            ownership = self._ownership(state, guard, runner_token, now, allow_expired=True)
+            if ownership != "running":
+                return {"status": ownership}, False
+            db.execute("UPDATE runner_state SET state='stopped',version=version+1,reason_code=NULL,lease_until_ms=?,ended_ms=? WHERE id=1", (now, now))
+            return {"status": "stopped", "ended_ms": now}, True
+        return self._effect(guard, action)
+
+    def record_runner_exit(self, pid, exit_status):
+        """What a supervisor saw: the runner process pid exited with exit_status (negative: the signal that ended it).
+
+        Written only while that process is the one Core records as running,
+        so a later runner's record is never touched. It needs no guard: the
+        process is gone, and a child it left may still hold the guard. Its
+        lease ends now, so a restarted runner does not wait one out.
+
+        exit_status None is the server's account: it saw the process end but
+        cannot know how (reason "ended"). The supervisor's account of that same
+        process may still follow; it names how, keeps when, and is recorded."""
+        _bounded(pid, 1, 2147483647, "pid")
+        if exit_status is not None and (type(exit_status) is not int or not -255 <= exit_status <= 255):
+            raise RunnerError("INVALID_ARGUMENT", "exit_status is the reaped process's return code")
+        reason = "ended" if exit_status is None else EXIT_REASONS.get(exit_status, "killed" if exit_status < 0 else "failed")
+        from .store import _connect
+        try:
+            with self._authority.shared() as fence:
+                db, _ = _connect(self.path)
+                try:
+                    db.execute("BEGIN IMMEDIATE")
+                    fence.verify()
+                    self._check_instance(db)
+                    state, now = self._runner_state(db), delivery._now_ms()
+                    seen = state["state"] == "exited" and state["reason_code"] == "ended" and exit_status is not None
+                    if (state["state"] != "running" and not seen) or state["runner_pid"] != pid:
+                        return {"status": "not_holder", "instance_id": self.instance_id}
+                    db.execute("UPDATE runner_state SET state='exited',version=version+1,reason_code=?,lease_until_ms=MIN(lease_until_ms,?),ended_ms=COALESCE(ended_ms,?) WHERE id=1",
+                               (reason, now, now))
+                    self._advance_commit_seq(db)
+                    db.commit()
+                    return {"status": "recorded", "reason": reason, "ended_ms": now, "instance_id": self.instance_id}
+                finally:
+                    try:
+                        if db.in_transaction:
+                            db.rollback()
+                    finally:
+                        db.close()
+        except (sqlite3.Error, OSError) as error:
+            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
+                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+                raise RunnerError("DATABASE_BUSY", "Runner state is busy; the exit was not recorded", retryable=True) from error
+            raise RunnerError("RUNNER_STORAGE_ERROR", "The runner's exit could not be confirmed") from error
 
     def pause_runner(self, guard, runner_token, reason_code):
         if reason_code not in ("cleanup_failed", "route_binding_changed", "storage_failure", "operator_pause"):
@@ -587,7 +676,7 @@ class Runner:
                 self._check_instance(db)
                 result = self._runner_facts(db)
                 result.update(instance_id=self.instance_id, next_due_ms=self._next_due(db))
-                result["due_count"] = db.execute("SELECT count(*) FROM recipient_schedule WHERE enabled=1 AND pending_count>0 AND next_due_ms<=?", (delivery._now_ms(),)).fetchone()[0]
+                result["due_count"] = db.execute("SELECT count(*) FROM recipient_schedule WHERE enabled=1 AND pending_count>0 AND next_due_ms<=? AND " + ANSWERING, (delivery._now_ms(),)).fetchone()[0]
                 row = db.execute("SELECT a.id AS attempt_id,a.recipient_id,a.lease_until_ms FROM recipient_schedule s INDEXED BY active_claim_end JOIN wake_attempts a ON a.claim_token=s.claim_token WHERE s.claim_token IS NOT NULL AND s.claim_until_ms>? ORDER BY s.claim_until_ms LIMIT 1", (delivery._now_ms(),)).fetchone()
                 result["claim"] = dict(row) if row else None
                 return result

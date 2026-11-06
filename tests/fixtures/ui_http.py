@@ -485,6 +485,36 @@ def main():
                         with sqlite3.connect(str(path)) as db:
                             answer = {who: db.execute("SELECT count(*) FROM deliveries WHERE recipient_id=?", (who,)).fetchone()[0]
                                       for who in request["actors"]}
+                    elif freshness and request["method"] == "wakes":
+                        # The fixture agent's wakes, through Core's own runner record:
+                        # "route" gives it a pin here, "runner_live" takes the runner
+                        # role (as this process, for a lease), "runner_killed" records
+                        # that process's exit as a supervisor would. "park" sets the
+                        # count three unanswered wakes leave, which takes three
+                        # minutes of real claims; the units prove how it gets there.
+                        agent, action = "fixture-notebook-agent", request["action"]
+                        if action == "route":
+                            home = root / "agent-home"
+                            home.mkdir(mode=0o700, exist_ok=True)
+                            with store().runner_guard("fixture-route") as guard:
+                                answer = store().provision_route_pin(guard, agent, {
+                                    "kind": "codex-queue-stdio", "protocol_version": 1, "codex_home": str(home),
+                                    "thread_id": "12345678-1234-4234-8234-000000000001"})
+                        elif action == "runner_live":
+                            with store().runner_guard("fixture-runner") as guard:
+                                # The longest lease a runner may take, so a slow browser start
+                                # cannot let it lapse into "unrenewed" mid-check.
+                                answer = store().acquire_runner(guard, lease_ms=120000)
+                            answer = {"status": answer["status"], "lease_until_ms": answer.get("lease_until_ms")}
+                        elif action == "runner_killed":
+                            answer = store().record_runner_exit(os.getpid(), -9)
+                        elif action == "park":
+                            with sqlite3.connect(str(path)) as db:
+                                db.execute("UPDATE recipient_schedule SET unanswered_wakes=3,unanswered_since_ms=? WHERE recipient_id=?",
+                                           (int(time.time() * 1000), agent))
+                            answer = {"parked": agent}
+                        else:
+                            raise ValueError("Unknown wakes action")
                     elif freshness and request["method"] == "lost_named_message":
                         # The reader is named in a message in another outcome's
                         # topic and then taken out of it: Core keeps exactly that

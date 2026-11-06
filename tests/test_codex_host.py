@@ -636,6 +636,30 @@ class AbandonedDispatchCase(HostCase):
         self.stopped_cleanly(runner)
 
 
+class StaleInProgressCase(HostCase):
+    """The thread's history lists a turn in progress that its app-server no longer runs, and a steer into it
+    is refused in words the host does not recognise."""
+    turns = [{"vanish": True}, {"reply": "picked up"}]
+    script = dict(HostCase.script, steer_refusal="nothing is running on this thread")
+
+    def test_a_turn_believed_running_only_from_history_falls_back_to_a_start_on_any_steer_refusal(self):
+        runner = self.runner()
+        self.open_topic("Anyone?")
+        runner.event("host_dispatch_abandoned")
+        # The re-read finds the lost turn listed in progress; the steer into it is refused.
+        refused = runner.event("host_steer_refused")
+        self.assertFalse(refused["turn_ended"])
+        started = runner.event("host_dispatch")
+        self.assertEqual((started["outcome"], started.get("mode")), ("handed", "start"))
+        self.assertEqual(refused["attempt"], started["attempt"])
+        runner.event("host_turn_end", status="completed")
+        self.assertEqual(self.replies(), ["picked up"])
+        self.assertEqual(self.pending(), [])
+        sent = [entry["in"]["method"] for entry in self.wire() if "in" in entry and entry["in"].get("method", "").startswith(("turn/", "thread/turns"))]
+        self.assertEqual(sent, ["thread/turns/list", "turn/start", "thread/turns/list", "turn/steer", "turn/start"])
+        self.stopped_cleanly(runner)
+
+
 class LateSteerCase(HostCase):
     turns = [{"hold": "steer", "steer": "late", "reply": "first"}, {"reply": "second"}]
 

@@ -14,9 +14,11 @@ import tempfile
 import textwrap
 import threading
 import unittest
+from unittest import mock
 
 from aim_next import initialize, Store
 from aim_next import live as live_module
+from aim_next import server as server_module
 from aim_next.effects_watch import WatchError
 from aim_next.server import create_server
 
@@ -204,6 +206,175 @@ class LiveStreamTests(unittest.TestCase):
             connection.close()
         self.assertEqual((receipt["status"], receipt["result"]["mark_revision"]), ("committed", 1), receipt)
         self.assertEqual((self.line(client), self.seq()), ({"seq": start + 1}, start + 1))
+
+    def runner_state(self):
+        with sqlite3.connect(str(self.db)) as db:
+            return db.execute("SELECT state,reason_code,runner_pid FROM runner_state").fetchone()
+
+    def runner_process(self):
+        """A stand-in runner process: it runs until this test ends it."""
+        child = subprocess.Popen([sys.executable, "-I", "-c", "import sys; sys.stdin.read()"], stdin=subprocess.PIPE)
+        self.addCleanup(lambda: (child.kill(), child.wait(), child.stdin.close()))
+        return child
+
+    def telling(self):
+        """Serve again, keeping what the server says when a runner process ends; self.told_one is set at each."""
+        told, self.told_one = [], threading.Event()
+        def tell(event):
+            told.append(event)
+            self.told_one.set()
+        self.stop()
+        with mock.patch.object(server_module, "_stderr", tell):
+            self.start()
+        return told
+
+    def take_runner(self, pid):
+        """Take the runner role and record pid as its process, as the runner's own acquire records itself."""
+        with self.store.runner_guard("live-runner") as guard:
+            self.assertEqual(self.store.acquire_runner(guard)["status"], "acquired")
+        with sqlite3.connect(str(self.db)) as db:
+            db.execute("UPDATE runner_state SET runner_pid=? WHERE id=1", (pid,))
+
+    def settled(self, client):
+        """Commit twice and read up to the second: the feed has finished acting on everything before the first."""
+        for _ in range(2):
+            self.commit()
+            seq = self.seq()
+            while True:
+                line = self.line(client)
+                self.assertIn("seq", line, "the feed ended")
+                if line["seq"] >= seq:
+                    break
+
+    def announced(self, client):
+        """The stream's next line; the socket's timeout, which guards a hang, fails the test."""
+        try:
+            return self.line(client)
+        except socket.timeout:
+            self.fail("nothing more was announced; the runner is recorded as %r" % (self.runner_state(),))
+
+    def until_runner(self, client, state, lines=4):
+        """Read the stream's commits until the runner's recorded state is this one."""
+        for _ in range(lines):
+            if self.runner_state()[0] == state:
+                return self.runner_state()
+            self.assertIn("seq", self.announced(client), "the feed ended")
+        return self.runner_state()
+
+    def test_a_runner_process_that_ends_without_a_word_is_recorded_and_announced_at_once(self):
+        told = self.telling()
+        client = self.open()
+        self.line(client)
+        child = self.runner_process()
+        self.take_runner(child.pid)
+        self.settled(client)
+        # The server learned of the runner from a commit; it learns of its end from the kernel, with no clock.
+        child.kill()
+        child.wait()
+        # The next line every open page gets is the commit that records the end, and the feed goes on.
+        line = self.announced(client)
+        self.assertEqual((line, self.runner_state()), ({"seq": self.seq()}, ("exited", "ended", child.pid)))
+        self.settled(client)
+        view = self.store.view("test-human", "wakes", {})
+        self.assertEqual((view["runner"]["state"], view["runner"]["reason"]), ("exited", "ended"))
+        self.assertEqual([(event["event"], event["pid"], event["record"]["status"]) for event in told],
+                         [("runner_gone", child.pid, "recorded")])
+
+    def test_a_runner_process_already_gone_when_the_server_starts_is_recorded_at_once(self):
+        self.stop()
+        child = self.runner_process()
+        child.kill()
+        child.wait()
+        self.take_runner(child.pid)
+        self.start()
+        client = self.open()
+        self.assertEqual(self.until_runner(client, "exited"), ("exited", "ended", child.pid))
+
+    def test_a_runner_process_the_kernel_will_not_watch_leaves_the_feed_running(self):
+        """Another user's runner cannot be watched: its end is known from its lease, and every commit is still announced."""
+        client = self.open()
+        self.line(client)
+        child = self.runner_process()
+        refused = mock.patch.object(live_module.NativeWatch, "watch_process", side_effect=WatchError("watch_unavailable"))
+        with refused as watch_process:
+            self.take_runner(child.pid)
+            self.settled(client)
+        self.assertEqual(watch_process.call_args.args, (child.pid,))
+        self.settled(client)
+        self.assertEqual(self.runner_state(), ("running", None, child.pid))
+
+    def test_a_runner_that_stopped_cleanly_is_not_said_to_have_ended_when_its_process_goes(self):
+        told = self.telling()
+        client = self.open()
+        self.line(client)
+        child = self.runner_process()
+        with self.store.runner_guard("live-runner") as guard:
+            token = self.store.acquire_runner(guard)["runner_token"]
+            with sqlite3.connect(str(self.db)) as db:
+                db.execute("UPDATE runner_state SET runner_pid=? WHERE id=1", (child.pid,))
+            # The server watches this process now.
+            self.settled(client)
+            self.assertEqual(self.store.stop_runner(guard, token)["status"], "stopped")
+        self.settled(client)
+        child.kill()
+        child.wait()
+        self.settled(client)
+        self.assertEqual(self.runner_state(), ("stopped", None, child.pid))
+        self.assertEqual(told, [])
+
+    def test_a_runner_end_core_was_too_busy_to_take_is_recorded_with_the_next_commit(self):
+        told = self.telling()
+        client = self.open()
+        self.line(client)
+        child = self.runner_process()
+        self.take_runner(child.pid)
+        self.settled(client)
+        # Another writer holds its lock past the store's own wait while the server tells Core.
+        holder = sqlite3.connect(str(self.db), isolation_level=None)
+        try:
+            holder.execute("BEGIN IMMEDIATE")
+            child.kill()
+            child.wait()
+            self.assertTrue(self.told_one.wait(10), "the server never told Core the runner ended")
+        finally:
+            holder.execute("ROLLBACK")
+            holder.close()
+        self.assertEqual([(event["pid"], event["record"]) for event in told],
+                         [(child.pid, {"status": "unrecorded", "code": "DATABASE_BUSY"})])
+        self.assertEqual(self.runner_state(), ("running", None, child.pid))
+        # No clock asks again: the next commit, whoever makes it, does.
+        self.commit()
+        self.assertEqual(self.until_runner(client, "exited"), ("exited", "ended", child.pid))
+        self.assertEqual([event["record"]["status"] for event in told], ["unrecorded", "recorded"])
+        self.settled(client)
+
+    def test_a_runner_whose_stop_and_exit_arrive_together_is_not_said_to_have_ended(self):
+        told = self.telling()
+        client = self.open()
+        self.line(client)
+        child = self.runner_process()
+        entered, release, wait = threading.Event(), threading.Event(), live_module.NativeWatch.wait
+        def held(watch, timeout):
+            # The feed's first wait after this point holds until the stop and the exit are both queued for it.
+            if not release.is_set():
+                entered.set()
+                release.wait(10)
+            return wait(watch, timeout)
+        with self.store.runner_guard("live-runner") as guard:
+            token = self.store.acquire_runner(guard)["runner_token"]
+            with sqlite3.connect(str(self.db)) as db:
+                db.execute("UPDATE runner_state SET runner_pid=? WHERE id=1", (child.pid,))
+            self.settled(client)
+            with mock.patch.object(live_module.NativeWatch, "wait", held):
+                self.commit()
+                self.assertTrue(entered.wait(10), "the feed never waited again")
+                self.assertEqual(self.store.stop_runner(guard, token)["status"], "stopped")
+                child.kill()
+                child.wait()
+                release.set()
+                self.settled(client)
+        self.assertEqual(self.runner_state(), ("stopped", None, child.pid))
+        self.assertEqual(told, [])
 
     def test_a_read_announces_nothing(self):
         client = self.open()

@@ -466,6 +466,8 @@ class Dispatch:
     def __init__(self, claim, thread, notice, started):
         self.claim, self.thread, self.notice, self.started = claim, thread, notice, started
         self.fallback = self.resumed = self.abandoned = self.settled = False
+        # The turn this dispatch steers into is known running only from the thread's history.
+        self.from_history = False
         self.client_id = CLIENT_PREFIX + claim["attempt_id"]
 
 
@@ -595,7 +597,8 @@ class Host:
                 if error is GONE:
                     return self._settle(work, "unavailable", None, "child_exited")
                 if error is None:
-                    self._last_turn(thread, result)
+                    last = self._last_turn(thread, result)
+                    work.from_history = last is not None and last["status"] == "inProgress"
                     thread.uncertain = False
                 self._send(work)
             return self._request(work, "thread/turns/list", dict(LAST_TURN, threadId=thread.id), learned)
@@ -643,7 +646,9 @@ class Host:
             if _not_steerable(error):
                 return self._settle(work, "busy", None, "not_steerable")
             ended = work.thread.active_turn != expected
-            if not work.fallback and (ended or STEER_REFUSAL.search(error["message"])):
+            # A turn the history lists in progress may be one its app-server lost:
+            # any refusal of a steer into it means it is not running, so start one.
+            if not work.fallback and (ended or work.from_history or STEER_REFUSAL.search(error["message"])):
                 work.fallback = True
                 self.log.write("steer_refused", attempt=work.claim["attempt_id"], turn_ended=ended)
                 return self._send(work)

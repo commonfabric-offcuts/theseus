@@ -60,6 +60,7 @@ VIEWS = {
     "marks": {"topic_id", "cursor", "limit"}, "topic_unread": {"topic_id"},
     "colors": {"cursor", "limit"},
     "source_topics": {"message_id", "cursor", "limit"},
+    "wakes": set(),
 }
 
 

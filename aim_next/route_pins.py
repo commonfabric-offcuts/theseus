@@ -69,8 +69,11 @@ def _request(store, actor_id, destination):
         raise RoutePinError("INVALID_ROUTE_DESTINATION", "Use an explicit bounded stdio destination with an existing root and canonical thread UUID") from error
 
 
+KEY_PREFIX = "route_pin.v1:"
+
+
 def _key(binding):
-    return "route_pin.v1:" + hashlib.sha256(_json(binding).encode("utf-8")).hexdigest()
+    return KEY_PREFIX + hashlib.sha256(_json(binding).encode("utf-8")).hexdigest()
 
 
 def _unique(pairs):

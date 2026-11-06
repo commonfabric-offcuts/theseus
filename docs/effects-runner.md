@@ -13,6 +13,10 @@ A map with a hosted Codex route (see [codex-hosting.md](codex-hosting.md)) also
 needs `--host-dir /absolute/private-dir`; the process then hosts those agents'
 `codex app-server` children itself.
 
+`bin/aim-next-runner supervise` followed by the same arguments runs this
+checkout's runner under a supervisor that brings it back when that is safe;
+see "When the runner stops" below.
+
 All configured routes and pins must validate before ownership is acquired. The
 mapping is loaded once; changing its membership requires a restart. Each claim
 gets a fresh comparison of the selected route, config and Core pin. The first
@@ -80,6 +84,113 @@ lease loss; 2 means a refusal or pause requiring inspection. A stored pause
 survives restart. Explicit `--resume-version INTEGER` uses the observed pause
 version with a fresh guard; there is no automatic resume. Service installation
 and its restart policy require the separate activation review.
+
+## Unanswered wakes
+
+Core counts, per recipient, the wakes that reached it and were followed by
+nothing from it: an `accepted` notice (one the broker added), or a hosted turn
+`start` handed its work (a steer into a running turn is not counted, and a turn
+that fails or is lost takes its count back). `queued` (the earlier notice is
+still waiting unread, as while the agent works through one long turn), `busy`,
+`error` and `unavailable` put nothing new in front of the agent and are not
+counted. After three in a row the recipient is parked:
+`claim_wakes`, the due reads and `due_count` skip it while nothing pending is
+newer than what the last wake that reached it named (`last_seq` not above
+`named_seq`), so it is not woken again for work it was told of, and nothing it
+was sent is dropped or settled. `named_seq` is set when a wake settles
+`accepted` or `queued` (the waiting notice leads to the new work too) or hands
+work to a turn, start or steer; it is never set by a claim, so a new-work wake
+that settles `busy`, `error` or `unavailable`, or whose claim expires with its
+runner, goes again by the usual backoff. A turn that hands its work back (it
+failed, was lost or interrupted, or never saw a steer) clears it, and that work
+is named again. A new delivery still wakes the parked agent, and that notice
+names everything pending; a hosted agent can act only in a turn a wake starts,
+so this is how a parked hosted agent comes back. Any recorded command by the
+recipient (a post, an acknowledgment, a read-through) is a sign of life: the
+count clears, and a parked recipient with work waiting is due at once, unless
+a hosted turn that holds its work is the one acting. Reaching nothing pending
+clears the count too. Reads stay write-free, so a read is not a sign of life.
+The counts are derived from wakes, not anyone's records, so stepping back to
+version 21 drops them and is never refused for them.
+
+The `wakes` view lists the agents whose wakes are not getting through: while a
+runner holds a live lease, each parked agent with work, as `{actor_id,
+waiting, since_ms, why: "not_answering"}` (`since_ms` is the first unanswered
+wake); while none does, each agent with a route pin here and work waiting, as
+`why: "wakes_paused"`, so no agent is blamed for wakes that are not being sent.
+Proof: `tests/test_wake_health.py`.
+
+## When the runner stops
+
+Core records how the runner ended, so a page can say so from facts rather than
+from silence. A graceful stop (TERM or INT, after the host has stopped its
+children) calls `stop_runner`: the state becomes `stopped`, `ended_ms` is set
+and the lease ends at once, so the next runner does not wait one out; the
+result carries `stop_recorded`. A runner that ends any other way cannot say
+so itself, so whatever started it reports the exit it reaped with
+`record_runner_exit(pid, status)`. That write needs no guard (the process is
+gone, and a broker child it left may still hold the guard) and lands only
+while Core records that pid as running, so a later runner's record is never
+touched and a paused runner stays paused. The state becomes `exited`, with
+`reason_code` `lease_lost` (75), `stopped_unrecorded` (0: a clean stop Core
+could not record), `killed` (a signal) or `failed`, and the lease ends no
+later than now. Acquiring clears `ended_ms`.
+
+The server watches too, so a runner that dies with its supervisor (or with no
+supervisor) is not left for its lease to run out. Its live feed already reads
+after every commit; with each read it learns which pid Core records as the
+running runner and asks the kernel for that process's exit event. When the
+process ends, or is already gone when the server first sees it (a server
+started after the runner died), the server calls `record_runner_exit(pid,
+None)` at once: reason `ended`, since it cannot know how. The record's commit
+reaches every open page, which says so. The supervisor's own account of the
+same process may follow; it names how (`killed`, `failed`, ...), keeps
+`ended_ms`, and is `recorded`, so the supervisor still brings the runner back.
+Once a runner is no longer running (stopped, paused, or its end recorded) the
+server forgets its pid, so a clean stop is never said to have ended; an exit
+is acted on by the read after it, so a stop committed just before it is seen
+first. The server writes one `runner_gone` JSON line to stderr with Core's
+answer. When Core could not take the account (`unrecorded`, for instance
+`DATABASE_BUSY` while another writer held the lock past the store's wait), the
+next commit's read finds the pid still recorded as running and gone, and the
+server tells Core again; there is no timer. A
+runner that is alive but stops renewing has no process event; it is known gone
+when its lease ends, on the next read. Proof: `tests/test_http_live.py`,
+`tests/test_runner_exit.py`.
+
+The `wakes` view carries `runner`: `{live: true}`, or `{live: false, state}`
+with `paused` and its reason, `stopped` or `exited` with `since_ms` (and the
+exit's reason), `unrenewed` with `since_ms` the lease's end, or `never_run`.
+While it is not live and work waits for an agent routed here, a reader who
+owns an outcome where that work waits also gets `notice: {waiting_agents}`,
+counting the agents with work waiting in the reader's outcomes: someone has to
+start the runner again, or see why it stopped. The list holds routed agents
+only, so agents without a route here never crowd one out of its 100 places. The page says it under its header
+("Wakes are not going out: the agent runner was killed at 8:23 PM. 2 agents
+have work waiting."), on topic pages and the outcomes page, and drops it on
+the commit that shows a runner holding the role again. Stepping back to version 21 turns a
+`stopped` or `exited` row into `idle`, the only not-running state 21 knows.
+Proof: `tests/test_runner_exit.py`, and for the loop's own stop
+`tests/test_effects_runner.py`.
+
+`bin/aim-next-runner supervise ARGS` starts the runner (`bin/aim-next-runner
+ARGS`, in its own process group with no signal blocked), waits on the
+kernel's exit event for it, and reports the exit with `record_runner_exit`.
+TERM or INT is passed to the runner, the one process it started, and nothing
+more is started. Otherwise it starts the runner again only when Core recorded
+the exit (the runner still held the role, so no other runner took over and
+nothing paused it), the runner neither stopped cleanly (0) nor refused or
+paused (2), and fewer than three runs in a row ended within 30 seconds of
+starting. An exit Core could not record is reported as `unrecorded`, not as
+no role, and is not restarted. Before a restart it waits until no process
+holds the runner guard, since the ended runner's broker children inherit it.
+The runner's own output passes through, so its last stdout line is still its
+result; the supervisor's events (`runner_started`, `runner_exited`,
+`restarting`, `not_restarting` with why, `stopped`) go to stderr. It keeps no
+timer and never polls. `tools/deploy.py` starts the runner this way and stops
+it by stopping the supervisor; it finds the supervised runner as the
+supervisor's child, by parent rather than by command line, since the
+supervisor starts it by its own interpreter and resolved checkout path. Proof: `tests/test_supervisor.py`.
 
 Focused proof lives in `tests/test_effects_runner.py`,
 `tests/test_effects_watch.py` and, for hosted routes, `tests/test_codex_host.py`. It uses isolated real Stores, owned fixture

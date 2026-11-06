@@ -143,6 +143,10 @@ delivery requires a separately tested broker with durable acceptance/dedup.
   with wake/no ack/new message five seconds later: only the latter waits for the
   cooldown. A maximum seen sequence is not sufficient evidence if earlier
   captured deliveries remain pending.
+- Broker exits 10: queued. The hint it would add was already waiting unread in
+  the agent's queue, so nothing new reached the agent. Core schedules it like
+  accepted, and does not count it as a wake the agent left unanswered: an agent
+  busy in one long turn is not blamed for a notice it has not reached yet.
 - Broker exits 75: busy. Other nonzero exits or a deadline: error. There is no
   implicit stop/disable interpretation for a child exit code in the new runtime.
 - Busy/error use Core's durable 1,2,4,8,16,32,60-second capped backoff;

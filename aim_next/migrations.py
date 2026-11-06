@@ -23,6 +23,7 @@ from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
 from .memory import MEMORY_READ_DOWN, MEMORY_READ_OCCUPIED, MEMORY_READ_SCHEMA
 from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPONSIBILITY_SCHEMA
 from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
+from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -62,6 +63,8 @@ STEPS = (
     # Version 21 gives each participant's responsibility note a revision, and keeps the message each topic was started from.
     ("20", "21", RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA, SOURCE_DOWN + RESPONSIBILITY_DOWN,
      "SELECT (%s) OR (%s)" % (RESPONSIBILITY_OCCUPIED, SOURCE_OCCUPIED)),
+    # Version 22 counts the wakes each recipient left unanswered, so a silent agent stops being woken.
+    ("21", "22", WAKE_HEALTH_SCHEMA, WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED),
 )
 
 

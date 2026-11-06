@@ -256,8 +256,8 @@ class CodexBrokerCase(unittest.TestCase):
                                            ensure_ascii=False,allow_nan=False),text_elements=[])])
 
     def assertAccepted(self,result,rows,added=True):
-        self.assertEqual(result.outcome,'accepted')
-        self.assertEqual(result.exit_code,0)
+        # A hint already queued and unread put nothing new in front of the agent, and says so.
+        self.assertEqual((result.outcome,result.exit_code),('accepted',0) if added else ('queued',10))
         self.assertEqual([r['kind'] for r in rows][-2:],['eof','exit'])
         self.assertEqual(len(self.requests(rows,'thread/queue/add')),int(added))
         self.assertTrue(set(r['method'] for r in self.requests(rows)) <= {

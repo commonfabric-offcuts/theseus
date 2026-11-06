@@ -92,7 +92,7 @@ class HostedCase(runner_tests.RunnerCase):
         # Settling B as handed sees that C arrived after its claim: due now, not quiet.
         self.assertEqual(self.hand(second, mode="steer")["next_due_ms"], self.now)
 
-    def test_a_completed_turn_with_unacked_deliveries_is_not_re_due(self):
+    def test_a_completed_turn_with_unacked_deliveries_is_named_again_after_a_minute(self):
         for _ in range(2):
             self.send_next()
         claim = self.claim_now()
@@ -100,9 +100,8 @@ class HostedCase(runner_tests.RunnerCase):
         # The agent acknowledges one of three and leaves two unacked.
         self.ack(self.pending()["items"][0]["id"])
         ended = self.end("completed", usage={"input_tokens": 10, "output_tokens": 3})
-        self.assertEqual((ended["status"], ended["rearmed"], ended["unseen"]), ("ended", False, False))
-        self.assertEqual(self.schedule(), {"next_due_ms": None, "retry_count": 0, "handed_seq": claim["captured_seq"], "pending_count": 2})
-        self.nothing_due()
+        self.assertEqual((ended["status"], ended["rearmed"], ended["unseen"]), ("ended", True, False))
+        self.assertEqual(self.schedule(), {"next_due_ms": self.now + 60000, "retry_count": 0, "handed_seq": None, "pending_count": 2})
         self.assertEqual(self.sql("SELECT count(*) FROM wake_attempts"), [(1,)])
 
     def test_a_failed_turn_is_re_due_with_backoff_that_grows_until_a_clean_turn(self):
@@ -119,6 +118,8 @@ class HostedCase(runner_tests.RunnerCase):
             self.now += 1
         claim = self.claim_now()
         self.hand(claim, turn_id="turn-clean")
+        for item in self.pending()["items"]:
+            self.ack(item["id"])
         self.assertFalse(self.end("completed", turn_id="turn-clean")["rearmed"])
         self.assertEqual(self.schedule()["retry_count"], 0)
         self.assertEqual(self.sql("SELECT final_status,error_code FROM hosted_turns ORDER BY handed_ms"),
@@ -145,9 +146,12 @@ class HostedCase(runner_tests.RunnerCase):
                 self.hand(steer, turn_id=turn_id, mode="steer")
                 if seen:
                     self.assertEqual(self.store.hosted_turn_seen(self.hosting, self.runner, "theseus:" + steer["attempt_id"])["status"], "recorded")
+                    # The turn read and handled everything it was told of.
+                    for item in self.pending()["items"]:
+                        self.ack(item["id"])
                 ended = self.end("completed", turn_id=turn_id)
                 self.assertEqual((ended["rows"], ended["unseen"], ended["rearmed"]), (2, not seen, not seen))
-                self.assertEqual(self.schedule()["handed_seq"], None if not seen else steer["captured_seq"])
+                self.assertEqual(self.schedule()["handed_seq"], None)
                 if seen:
                     self.nothing_due()
                 else:
@@ -156,6 +160,7 @@ class HostedCase(runner_tests.RunnerCase):
 
     def test_an_unseen_start_row_alone_does_not_re_arm(self):
         self.hand(self.claim_now())
+        self.ack(self.pending()["items"][0]["id"])
         self.assertEqual(self.end("completed"), {"status": "ended", "final_status": "completed", "rows": 1,
                                                  "unseen": False, "rearmed": False, "instance_id": "test-instance"})
         self.nothing_due()
@@ -197,7 +202,8 @@ class HostedCase(runner_tests.RunnerCase):
         self.hand(self.claim_now())
         self.send_next("Follow-up")
         live = self.claim_now()
-        # The first turn completes cleanly while the follow-up is being handed: nothing was handed back.
+        # The first turn handles its work and completes cleanly while the follow-up is being handed: nothing was handed back.
+        self.ack(self.pending()["items"][0]["id"])
         self.assertFalse(self.end("completed")["rearmed"])
         self.assertEqual(self.hand(live, turn_id="turn-2")["handed_seq"], live["captured_seq"])
         self.nothing_due()
@@ -208,12 +214,13 @@ class HostedCase(runner_tests.RunnerCase):
         self.assertEqual(self.store.hosted_turn_seen(self.hosting, self.runner, "theseus:" + first["attempt_id"])["status"], "recorded")
         self.send_next("Also give the total")
         steer = self.claim_now()
-        # The turn ends before the steer's answer is read: only the start row exists, and it ends clean.
+        # The turn handles its work and ends before the steer's answer is read: only the start row exists, and it ends clean.
+        self.ack(self.pending()["items"][0]["id"])
         self.assertEqual(self.end("completed")["rearmed"], False)
         self.now += 5
         result = self.hand(steer, mode="steer")
         self.assertEqual((result["handed_seq"], result["next_due_ms"]), (None, self.now + 1000))
-        self.assertEqual(self.schedule(), {"next_due_ms": self.now + 1000, "retry_count": 1, "handed_seq": None, "pending_count": 2})
+        self.assertEqual(self.schedule(), {"next_due_ms": self.now + 1000, "retry_count": 1, "handed_seq": None, "pending_count": 1})
         # The late row is born finished, so no open row waits on a turn that is over.
         self.assertEqual(self.sql("SELECT mode,final_status,finished_ms FROM hosted_turns ORDER BY handed_ms"),
                          [("start", "completed", self.now - 5), ("steer", "completed", self.now)])
@@ -230,6 +237,9 @@ class HostedCase(runner_tests.RunnerCase):
                 # Another claim's start into the same turn id stands in for a turn the host saw end first.
                 earlier = self.claim_now()
                 self.hand(earlier, turn_id=turn_id)
+                if status == "completed":
+                    for item in self.pending()["items"]:
+                        self.ack(item["id"])
                 self.end(status, turn_id=turn_id)
                 self.now = max(self.now, self.schedule()["next_due_ms"] or self.now)
                 self.send_next("More")

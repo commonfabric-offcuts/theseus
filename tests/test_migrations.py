@@ -35,6 +35,7 @@ SCHEMA_17 = (Path(__file__).parent / "fixtures" / "schema_17.sql").read_text().s
 SCHEMA_18 = (Path(__file__).parent / "fixtures" / "schema_18.sql").read_text().splitlines()
 SCHEMA_19 = (Path(__file__).parent / "fixtures" / "schema_19.sql").read_text().splitlines()
 SCHEMA_20 = (Path(__file__).parent / "fixtures" / "schema_20.sql").read_text().splitlines()
+SCHEMA_21 = (Path(__file__).parent / "fixtures" / "schema_21.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -54,6 +55,14 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 22 counts the wakes each recipient left unanswered, and keeps when the runner stopped.
+        db.execute("ALTER TABLE runner_state DROP COLUMN ended_ms")
+        db.execute("ALTER TABLE recipient_schedule DROP COLUMN named_seq")
+        db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_since_ms")
+        db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_wakes")
+        if version == "21":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 21 gives each participant's responsibility note a revision, and keeps the message each topic was started from.
         db.execute("DROP INDEX topic_sources")
         db.execute("ALTER TABLE topics DROP COLUMN source_message_id")
@@ -1485,6 +1494,60 @@ class Schema20Case(MigrationCase):
         self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class Schema21Case(MigrationCase):
+    """A schema-21 instance: version 22 counts the wakes each recipient left unanswered."""
+
+    VERSION, FIXTURE = "21", SCHEMA_21
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "21")
+
+    def test_upgrade_from_21_keeps_records_matches_a_fresh_instance_and_counts_from_zero(self):
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "21", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.assertEqual(self.sql("SELECT DISTINCT unanswered_wakes,unanswered_since_ms,named_seq FROM recipient_schedule"), [(0, None, None)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.store.view("owner", "wakes", {})["quiet"], [])
+
+    def test_step_back_to_21_restores_its_frozen_layout_while_every_wake_is_answered(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_21))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_to_21_says_a_stopped_runner_is_idle(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        with self.store.runner_guard("stepping-back") as guard:
+            self.store.stop_runner(guard, self.store.acquire_runner(guard)["runner_token"])
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_21))
+        self.assertEqual(self.sql("SELECT state,reason_code FROM runner_state"), [("idle", None)])
+
+    def test_step_back_to_21_drops_the_unanswered_counts_which_are_nobodys_records(self):
+        self.upgrade()
+        records = self.records()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=5,named_seq=1 WHERE recipient_id='agent-a'")
+        # The count is derived from wakes, not anyone's record: stepping back must not be refused for it.
+        try:
+            stepped = self.step_back()
+        except MigrationError as refused:
+            self.fail("step back refused: " + refused.code)
+        self.assertTrue(stepped["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_21))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1515,6 +1578,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema19Case, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema21Case.__dict__:
+        setattr(Schema21Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

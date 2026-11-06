@@ -103,6 +103,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('Object.assign(globalThis, (()=>{' + attentionSource + '; return {Attention,paintSent}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach,replaceChips}; })())', context);
+  const lightsSource = readFileSync(new URL('../web/wake-lights.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class WakeLights', 'class WakeLights');
+  vm.runInContext('globalThis.WakeLights = (()=>{' + lightsSource + '; return WakeLights; })()', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,paintChanged,changedSince,reread,PAGE}; })())', context);
   const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -1764,4 +1766,80 @@ test('a Notebook page counts as read only once the person can see it: shown in a
   f.registry.current = null;
   f.document.focused = true; fire('window-handler', 'focus'); await settle(); await settle();
   assert.deepEqual(reads(), [['p1', 2], ['p3', 4]], 'a page the Reader closed before the tab came forward was never seen, so it is not read');
+});
+
+// An agent whose wakes are not getting through says so after its name, in the
+// topic's participants and in its outcome's team, from the wakes view; a commit
+// reads the wakes again with everything else, and the words go when it is off.
+const wakesApi = (f, quiet, more = () => ({ runner: { live: true } })) => {
+  const view = f.api.view;
+  f.api.view = async (name, args) => {
+    if (name !== 'wakes') return view(name, args);
+    f.calls.push({ name, args });
+    return { instance_id: 'fixture', quiet: quiet(), ...more() };
+  };
+};
+const chipWords = host => walk(host).filter(node => node.className === 'chip').map(node => node.textContent + node.children.map(child => child.textContent ?? child).join(''));
+
+test('a participant whose wakes stopped says so on its name until a commit shows it answering', async () => {
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  const f = fixture();
+  pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
+  let quiet = [{ actor_id: 'fable', waiting: 2, since_ms: Date.UTC(2026, 10, 5, 4, 23), why: 'not_answering' }];
+  wakesApi(f, () => quiet);
+  f.useLive(live);
+  await f.initialize();
+  await drain();
+  const [person, agent] = chipWords(f.get('participants'));
+  assert.equal(person, 'fixture-person');
+  assert.match(agent, /^fable · not answering since \d+:\d\d [AP]M \w+ \w+ \d+ · 2 waiting$/);
+  quiet = [];
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await drain();
+  assert.deepEqual(chipWords(f.get('participants')), ['fixture-person', 'fable']);
+});
+
+test('an outcome\'s team says wakes are paused on each agent with work while no runner sends them', async () => {
+  const f = fixture('https://fixture/?workspace=w1');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  pickerApi(f, { workspace: { owner_id: 'tony' } });
+  wakesApi(f, () => [{ actor_id: 'ally', waiting: 4, why: 'wakes_paused' }]);
+  await f.initialize();
+  await drain();
+  assert.deepEqual(chipWords(f.get('team-people')), ['fixture-person', 'ally · wakes paused · 4 waiting']);
+});
+
+test('while wakes are not going out, the page says so once, and the words go when a commit shows them going out again', async () => {
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  const f = fixture();
+  pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
+  let more = { runner: { live: false, state: 'exited', reason: 'killed', since_ms: Date.UTC(2026, 10, 5, 4, 23) }, notice: { waiting_agents: 2 } };
+  wakesApi(f, () => [], () => more);
+  f.useLive(live);
+  await f.initialize();
+  await drain();
+  const notice = f.get('wakes-status');
+  assert.equal(notice.hidden, false);
+  assert.match(notice.textContent, /^Wakes are not going out: the agent runner was killed at \d+:\d\d [AP]M .+\. 2 agents have work waiting\.$/);
+  more = { runner: { live: true } };
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await drain();
+  assert.equal(notice.hidden, true);
+  assert.equal(notice.textContent, '');
+});
+
+test('the outcomes page an owner lands on says so too, and reads the wakes again on each commit', async () => {
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  const f = fixture('https://fixture/');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  let more = { runner: { live: false, state: 'stopped', since_ms: Date.UTC(2026, 10, 5, 4, 23) }, notice: { waiting_agents: 1 } };
+  wakesApi(f, () => [], () => more);
+  f.useLive(live);
+  await f.initialize();
+  await drain();
+  assert.match(f.get('wakes-status').textContent, /^Wakes are not going out: the agent runner was stopped at .+\. 1 agent has work waiting\.$/);
+  more = { runner: { live: true } };
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await drain();
+  assert.equal(f.get('wakes-status').hidden, true);
 });

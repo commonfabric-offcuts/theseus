@@ -77,7 +77,7 @@ else:
     if mode == "output":
         os.write(1, b"x" * 1048576)
         os.write(2, b"x" * 1048576)
-    sys.exit({"busy": 75, "error": 3}.get(mode, 0))
+    sys.exit({"busy": 75, "error": 3, "queued": 10}.get(mode, 0))
 '''
 
 
@@ -359,7 +359,9 @@ class WakeInvocationTests(unittest.TestCase):
         self.assert_reaped(report["pid"])
 
     def test_busy_other_exit_and_large_discarded_output(self):
-        for mode, outcome, code in [("busy", "busy", 75), ("error", "error", 3), ("output", "accepted", 0)]:
+        # 10: the notice was already waiting unread in the agent's chat; nothing new reached it.
+        for mode, outcome, code in [("busy", "busy", 75), ("error", "error", 3), ("output", "accepted", 0),
+                                    ("queued", "queued", 10)]:
             with self.subTest(mode=mode):
                 self.configure(mode, ["literal;$(touch never)", "one argument"])
                 result = self.invoke()

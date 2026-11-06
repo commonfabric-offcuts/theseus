@@ -37,9 +37,20 @@ class LiveFeed:
 
     The feed ends, and says why, when the database or the authority anchor is
     moved, when the commit number cannot be read, or when the server stops.
+
+    With each read it also learns which process Core records as the running
+    agent runner, and asks the kernel for that process's exit event. When the
+    process ends, or is already gone when first seen, it calls runner_gone(pid)
+    from this thread, so whoever must be told that wakes stopped is told at
+    once, with no clock involved. Core decides whether that pid still held the
+    role. An exit is acted on by the read that follows it, so a commit that
+    came with it (the runner's own clean stop) is seen first. runner_gone
+    returns whether Core answered; when it did not (a writer held the lock past
+    the store's wait), the pid is forgotten, and the read after the next commit
+    finds it still recorded as running, and gone, and says so again.
     """
 
-    def __init__(self, db_path, companions=(), max_streams=8):
+    def __init__(self, db_path, companions=(), max_streams=8, runner_gone=None):
         self.db_path = Path(db_path)
         self.lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(max_streams)
@@ -49,6 +60,8 @@ class LiveFeed:
         self.stopped = False
         self.reading = False  # the thread is in a read that may wait on a writer's lock
         self.detached = False  # stop() left the thread to close what it holds
+        self.runner_gone = runner_gone
+        self.runner_pid = None  # the runner process whose exit this feed asked the kernel for
         self.stop_read, self.stop_write = os.pipe()
         self.watch = None
         try:
@@ -74,14 +87,15 @@ class LiveFeed:
         try:
             db.execute("PRAGMA query_only=ON")
             row = db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()
+            runner = db.execute("SELECT runner_pid FROM runner_state WHERE id=1 AND state='running'").fetchone()
         finally:
             db.close()
         if row is None or not isinstance(row[0], str) or not row[0].isascii() or not row[0].isdigit():
             raise ValueError("commit_seq is unreadable")
-        return int(row[0])
+        return int(row[0]), runner[0] if runner else None
 
     def _settled_seq(self):
-        """The commit number once no writer holds the lock, or None if the feed is stopping.
+        """The commit number and the running runner's pid once no writer holds the lock, or None if the feed is stopping.
 
         The read waits on the writer's lock for as long as it is held, so the
         feed never ends, or fails to start, because a commit was slow.
@@ -91,12 +105,12 @@ class LiveFeed:
                 return None
             self.reading = True
         try:
-            seq = self._read_seq()
+            read = self._read_seq()
         finally:
             with self.lock:
                 self.reading = False
                 stopped = self.stopped
-        return None if stopped else seq
+        return None if stopped else read
 
     def _run(self):
         reason = "stopped"
@@ -105,20 +119,26 @@ class LiveFeed:
             dirty = True
             while True:
                 if dirty:
-                    seq = self._settled_seq()
-                    if seq is None:
+                    read = self._settled_seq()
+                    if read is None:
                         break
+                    seq, runner = read
                     with self.lock:
                         if seq != self.seq:
                             self.seq = seq
                             self._wake_all()
+                    if not self._watch_runner(runner):
+                        break
                 result = self.watch.wait(None)
                 if self.stop_read in result["readable"]:
                     break
                 if self.watch.companion_moved:
                     reason = "binding_changed"
                     break
-                dirty = result["dirty"]
+                exited = self.runner_pid in result["exited"]
+                if exited:
+                    self.runner_pid = None
+                dirty = result["dirty"] or exited
         except WatchError:
             reason = "database_moved"
         except (sqlite3.Error, StoreError, ValueError, OSError):
@@ -132,6 +152,41 @@ class LiveFeed:
             self._close_watch()
             if detached:
                 self._close_pipe()
+
+    def _watch_runner(self, pid):
+        """Ask for the exit event of a runner process not yet watched; False if the feed is stopping.
+
+        A runner no longer running (stopped, paused, or its end already
+        recorded) is forgotten: its process's end says nothing new."""
+        if self.runner_gone is None or pid == self.runner_pid:
+            return True
+        self.runner_pid = pid
+        if pid is None:
+            return True
+        try:
+            if self.watch.watch_process(pid):
+                return True
+        except WatchError:
+            # The kernel will not report this process's exit (another user's
+            # runner): its end is known when its lease runs out, as before.
+            return True
+        return self._runner_ended(pid)
+
+    def _runner_ended(self, pid):
+        """Say the runner process ended; False if the feed is stopping. The call may wait on a writer's lock."""
+        with self.lock:
+            if self.stopped:
+                return False
+            self.reading = True
+        try:
+            answered = self.runner_gone(pid)
+        finally:
+            with self.lock:
+                self.reading = False
+                stopped = self.stopped
+        if not answered:
+            self.runner_pid = None
+        return not stopped
 
     def _wake_all(self):
         for waker in self.wakers.values():

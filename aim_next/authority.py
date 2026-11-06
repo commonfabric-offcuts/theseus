@@ -155,6 +155,17 @@ class Authority:
     def runner_guard(self, runner_id):
         return RunnerGuard(self, runner_id)
 
+    def wait_for_runner_guard(self):
+        """Block until no process holds the runner guard, then let it go at once.
+
+        A runner's broker children inherit its guard, so it is held until the
+        last of them exits even after the runner itself has gone."""
+        fd = _open_private(Path(str(self.path) + ".runner.lock"), os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        finally:
+            os.close(fd)
+
     def facts(self, validated_record):
         # These are display facts, never permission to replay an old-epoch act.
         # Missing metadata cannot establish the absence of a recovery gap.

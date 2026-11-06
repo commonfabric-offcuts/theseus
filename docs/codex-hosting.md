@@ -46,8 +46,9 @@ Schedule effect, in the same transaction as the `wake_results` row and the
 `hosted_turns` row:
 
 - `handed_seq` becomes the claim's `captured_seq` (NULL if nothing is pending).
-- `next_due_ms` is now if a delivery arrived after the claim, otherwise NULL:
-  handed work does not re-wake on its own.
+- `next_due_ms` is now if a delivery arrived after the claim and is still
+  pending, otherwise NULL: handed work does not re-wake while its turn runs,
+  and a delivery the turn already acknowledged makes no follow-up.
 - `retry_count` is kept. A clean turn end resets it (below).
 
 Two hands record the turn row but hand nothing (`handed_seq` NULL), so the
@@ -63,7 +64,8 @@ next claim names every pending delivery again:
   ended under the live claim and Core handed its work back, so this notice
   (which named only newer deliveries) left that work out. `next_due_ms` is now.
 
-`accepted`, `busy`, `unavailable` and `error` behave as before.
+`accepted`, `busy`, `unavailable` and `error` behave as before; `queued` (a
+broker found its hint already waiting unread) is scheduled like `accepted`.
 
 Each claim from `claim_wakes` also carries `handed_seq`, the recipient's value
 when it was claimed (NULL or an integer), so the notice can name only what is
@@ -74,6 +76,10 @@ newer. A broker route accepts the field and never sends it to its child.
 - A new delivery whose seq is greater than a non-NULL `handed_seq` makes the
   recipient due now (or at the live claim's end), so a follow-up steers into a
   running turn within one claim cycle.
+- An acknowledgment that leaves nothing pending above a non-NULL `handed_seq`
+  makes `next_due_ms` NULL (or the live claim's end): the running turn handled
+  what arrived after it was handed its work, so it gets no empty follow-up. A
+  delivery still pending above `handed_seq` keeps the recipient due.
 - When the recipient's pending count reaches 0, `handed_seq` becomes NULL.
 
 ## Turn records
@@ -97,7 +103,12 @@ error_code=None, usage=None)` finishes every open row of that turn:
   `handed_seq`, then `handed_seq` becomes NULL, `retry_count` grows by one and
   `next_due_ms` is now plus the backoff (1 s doubling to 60 s), or the live
   claim's end. A clean end (completed, every steer seen) resets `retry_count`
-  to 0 and leaves the schedule quiet.
+  to 0. If it leaves a delivery it was handed still pending (the turn read
+  one page, or left one unanswered), `handed_seq` becomes NULL and
+  `next_due_ms` is now plus one minute (the wait after an accepted notice), or
+  the live claim's end; newer pending work that was already due stays due.
+  With nothing it was handed left pending, a clean end leaves the schedule
+  quiet.
 - Result: `{"status": "ended", "final_status", "rows", "unseen", "rearmed"}`,
   or `{"status": "unknown"}` when no open row has that thread and turn.
 
@@ -262,8 +273,11 @@ when the config names one.
    `expectedTurnId`; otherwise `turn/start` with `approvalPolicy: never` and
    the `workspaceWrite` sandbox policy. Both carry
    `clientUserMessageId: theseus:<attempt_id>`. A refused steer falls back to
-   one `turn/start` when the host has already seen that turn end, or the error
-   text says there is no active turn or the id is stale.
+   one `turn/start` when the host has already seen that turn end, when it
+   knew the turn as running only from that last-turn read (a turn the history
+   lists in progress may be one the app-server lost, and any refusal says it
+   is not running), or the error text says there is no active turn or the id
+   is stale.
    `activeTurnNotSteerable` settles `busy`; any other error `error`; a child
    gone before answering `unavailable`. A steer answered after the host saw its
    turn end is settled `handed`, logged `steer_late`, and that turn's end is
