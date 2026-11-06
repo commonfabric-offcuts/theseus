@@ -140,3 +140,13 @@ test('every word on the Reader\'s page keeps 4.5:1, on the neutral page and on e
     }
   }
 });
+
+// No colored edge anywhere on the page (Tony: "please no left edge card
+// highlights"): a left or inline-start border is either none or the shared
+// line every other side has, and no inset shadow draws a bar.
+test('nothing on the page wears a colored left edge or bar', () => {
+  const edges = [...css.matchAll(/border-(?:left|inline-start)(?:-color|-width)?\s*:\s*([^;}]+)/g)].map(m => [m[0], m[1].trim()]);
+  assert.ok(edges.length > 0, 'the rule finds the left borders aim.css sets');
+  for (const [declaration, value] of edges) assert.ok(['0', '1px solid var(--line)'].includes(value), declaration);
+  assert.doesNotMatch(css, /box-shadow:\s*inset/, 'no inset shadow draws a bar');
+});
