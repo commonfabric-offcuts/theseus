@@ -41,12 +41,15 @@ INTENT_REQUIRED = ("A message to someone says whether it asks or tells: post wit
                    "(args.intent \"ask\" or \"tell\" on message.post or draft.save); nothing was sent")
 
 
-# Version 16 found what a reader had not replied to, and version 18 drops it,
-# since the New line follows what the reader has read (Delivery._oldest_unread).
-# Each reader's horizon in a topic was a sequence below which every message was
-# theirs, answered by a reply of theirs, or older than a post of theirs to the
-# whole topic. An index found each message's replies by author. The 15->16
-# step adds them and the 18->17 step works them out again from the messages.
+# Version 16 found what a reader had not replied to: each reader's horizon in a
+# topic was a sequence below which every message was theirs, answered by a
+# reply of theirs, or older than a post of theirs to the whole topic, and an
+# index found each message's replies by author. Version 18's New line follows
+# what the reader has read instead (Delivery._oldest_unread), so it drops the
+# index. It keeps the table as the record of who has written in each topic,
+# which TopicState._may_say reads: a row for every (topic, author), its seq one
+# past the author's newest message there. The 15->16 step adds both and the
+# 18->17 step works the horizons out again from the messages.
 UNANSWERED_SCHEMA = [
     "CREATE TABLE reply_horizons (topic_id TEXT NOT NULL REFERENCES topics(id), actor_id TEXT NOT NULL REFERENCES actors(id), "
     "seq INTEGER NOT NULL, PRIMARY KEY(topic_id,actor_id))",
@@ -67,6 +70,15 @@ UNANSWERED_DOWN = ("DROP INDEX message_replies", "DROP TABLE reply_horizons")
 # Horizons are worked out from the messages, which stay: the step back loses
 # no record, and the next upgrade works them out again.
 UNANSWERED_OCCUPIED = "SELECT 0"
+# A fresh instance at version 18 has the table without the index.
+WRITTEN_SCHEMA = UNANSWERED_SCHEMA[:1]
+# The upgrade to 18 drops the index and makes every row say one past its
+# author's newest message in the topic, as each publish then writes it.
+WRITTEN_UPGRADE = ("DROP INDEX message_replies",
+                   "UPDATE reply_horizons SET seq=coalesce((SELECT max(m.seq)+1 FROM messages m WHERE m.topic_id=reply_horizons.topic_id "
+                   "AND m.author_id=reply_horizons.actor_id),seq)")
+# The step back to 17 puts the index back and works out each horizon again.
+WRITTEN_DOWN = (UNANSWERED_SCHEMA[1], "DELETE FROM reply_horizons") + tuple(UNANSWERED_BACKFILL)
 
 
 POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent"}
@@ -323,6 +335,9 @@ class Conversation:
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
+        # The author has written in this topic (TopicState._may_say).
+        db.execute("INSERT INTO reply_horizons VALUES (?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
+                   (topic_id, actor, sequence + 1))
         # A person replying to a message has read it: their delivery of it, if
         # still pending where it counts, is settled as reading it on screen
         # would. An agent's deliveries are its work, which it acknowledges

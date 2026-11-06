@@ -304,11 +304,15 @@ subscription left pending or marks on the reader's own messages, so the cost
 does not grow with the topic, other topics, or what the reader has read.
 
 Schema version 18 adds each delivery's topic (copied on upgrade from its
-message) and that index, and drops what version 16 kept for the line's first
-form, which followed replies: each reader's reply horizon and the index of
-each message's replies. Nothing else read them. Stepping back to 17 drops the
-column and the index and works the horizons out again from the messages, so
-no record is lost and version 17 code finds its line as before.
+message) and that index. Of what version 16 kept for the line's first form,
+which followed replies, it drops the index of each message's replies, which
+nothing reads any more. It keeps the reply horizons as the record of who has
+written in each topic, which decides who may say where a topic stands
+(docs/agent-cli.md, `state`): every author has a row in each topic they wrote
+in, its `seq` one past their newest message there, set on upgrade and by each
+post. Stepping back to 17 drops the column and the index, puts the reply
+index back and works the horizons out again from the messages, so no record
+is lost and version 17 code finds its line as before.
 
 The page keeps the newest answer as said above. It draws the line under that
 message's card when the card is loaded. The line is text ("New above": in a newest-first list the messages the

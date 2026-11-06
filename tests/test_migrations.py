@@ -52,14 +52,11 @@ def step_back_by_hand(path, version):
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
         # Version 18 keeps each delivery's topic and indexes the pending ones by
-        # reader and topic, and drops what version 16 added: each reader's reply
-        # horizon and the index of each message's replies.
+        # reader and topic, and drops the index of each message's replies that
+        # version 16 added (its reply horizons stay).
         db.execute("DROP INDEX pending_topic_deliveries")
         db.execute("ALTER TABLE deliveries DROP COLUMN topic_id")
-        if version in ("17", "16"):
-            db.execute("CREATE TABLE reply_horizons (topic_id TEXT NOT NULL REFERENCES topics(id), actor_id TEXT NOT NULL REFERENCES actors(id), "
-                       "seq INTEGER NOT NULL, PRIMARY KEY(topic_id,actor_id))")
-            db.execute("CREATE INDEX message_replies ON messages(reply_to,author_id) WHERE reply_to IS NOT NULL")
+        db.execute("CREATE INDEX message_replies ON messages(reply_to,author_id) WHERE reply_to IS NOT NULL")
         if version == "17":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return
@@ -68,6 +65,9 @@ def step_back_by_hand(path, version):
         if version == "16":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return
+        # Version 16 keeps each reader's reply horizon and indexes each message's replies.
+        db.execute("DROP TABLE reply_horizons")
+        db.execute("DROP INDEX message_replies")
         if version == "15":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return
@@ -1236,9 +1236,46 @@ class Schema17Case(MigrationCase):
         self.assertEqual(stepped, self.horizons())
         waiting = self.sql("SELECT seq FROM messages WHERE body='waiting'")[0][0]
         self.assertIn(("t1", "owner", waiting), stepped, "the owner answered the ask, not the message after it")
-        # And it moves up again.
+        # And it moves up again, keeping who has written where.
         self.assertTrue(self.upgrade()["migrated"])
-        self.assertEqual(self.sql("SELECT name FROM sqlite_master WHERE name IN ('reply_horizons','message_replies')"), [])
+        self.assertEqual(self.sql("SELECT name FROM sqlite_master WHERE name IN ('reply_horizons','message_replies')"), [("reply_horizons",)])
+        self.assertEqual(self.horizons(), self.newest_plus_one())
+
+    def newest_plus_one(self):
+        return sorted(self.sql("SELECT topic_id,author_id,max(seq)+1 FROM messages GROUP BY topic_id,author_id"))
+
+    def test_upgrade_from_17_keeps_who_has_written_in_each_topic(self):
+        # Written at version 17: agent-a asks twice and the owner answers the
+        # first, so agent-a's horizon sits below its newest message.
+        with sqlite3.connect(str(self.path)) as db:
+            def post(key, author, reply_to=None):
+                db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,operation_id) "
+                           "VALUES (?,'t1',?,'Body','[]','[]','[]',?,?)", (key, author, reply_to, "op-" + key))
+            post("m-asked", "agent-a")
+            post("m-waiting", "agent-a")
+            post("m-answer", "owner", "m-asked")
+            # agent-a has left the topic.
+            db.execute("UPDATE topic_participants SET active=0 WHERE topic_id='t1' AND actor_id='agent-a'")
+            db.execute("DELETE FROM reply_horizons")
+            from aim_next.conversation import UNANSWERED_BACKFILL
+            for statement in UNANSWERED_BACKFILL:
+                db.execute(statement)
+        at_17 = self.horizons()
+        self.assertNotEqual(at_17, self.newest_plus_one(), "version 17's horizons are not one past each newest message")
+        self.upgrade()
+        self.assertEqual(self.horizons(), self.newest_plus_one(), "every writer keeps a row, one past their newest message")
+        self.assertEqual([row[:2] for row in self.horizons()], [row[:2] for row in at_17], "and only writers have one")
+        # agent-a wrote in t1 at version 17 and is no participant: it may still say where t1 stands.
+        self.assertEqual(self.sql("SELECT count(*) FROM topic_participants WHERE topic_id='t1' AND actor_id='agent-a' AND active=1"), [(0,)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        revision = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        receipt = self.command("topic.update", {"state": "review"}, target={"topic_id": "t1"}, actor="agent-a",
+                               expected={"topic_revision": revision})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        # A post at version 18 moves the writer's row past it.
+        posted = self.command("message.post", {"body": "More"}, target={"topic_id": "t1"}, actor="agent-a", op="post-more")
+        self.assertEqual(posted["status"], "committed", posted)
+        self.assertEqual(self.horizons(), self.newest_plus_one())
 
 
 # Do not rerun the inherited StoreCase tests during module discovery.

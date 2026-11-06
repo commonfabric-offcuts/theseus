@@ -138,8 +138,8 @@ class TopicState:
         the outcome's owner, its participants and whoever has written in it.
         Having written grants no participation, so it wakes no one."""
         # Every message's author has a reply horizon in its topic: each publish
-        # writes one, version 16 made one for every earlier author, and nothing
-        # else writes them.
+        # writes one, version 16 made one for every earlier author, version 18
+        # keeps them, and nothing else writes them.
         return actor in (topic["owner_id"], topic["creator_id"]) or bool(db.execute(
             "SELECT 1 FROM topic_participants WHERE topic_id=?1 AND actor_id=?2 AND active=1 "
             "UNION ALL SELECT 1 FROM reply_horizons WHERE topic_id=?1 AND actor_id=?2", (topic["id"], actor)).fetchone())
