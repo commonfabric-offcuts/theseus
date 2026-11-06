@@ -312,6 +312,21 @@ export async function imageChecks({ check, page, until, root, facts, view, repla
     await shot(p, 'image-opened');
     assert.deepEqual(p.errors, []);
   });
+  await check('images close pressed while an image is being chosen keeps the Reader open and says why', async () => {
+    const p = await page('images-close-refused', null, true); await p.open(1);
+    await replace(p, 'Writing kept while the image is chosen');
+    await p.send('Page.setInterceptFileChooserDialog', { enabled: true });
+    await p.point('#add-image'); await until(() => p.evaluate('!document.querySelector("#cancel-image").hidden'), 'image selection reserved');
+    await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'native file chooser activation');
+    assert.deepEqual(await p.evaluate("({hidden:document.querySelector('#reader-notice').hidden,text:document.querySelector('#reader-notice').textContent})"), { hidden: true, text: '' });
+    await p.point('#reader-close');
+    await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Keep this page open until the selected image is saved or removed."'), 'the refused close says why');
+    assert.equal(await p.evaluate('document.querySelector("#reader").open'), true, 'the Reader stays open');
+    assert.equal(await field(p), 'Writing kept while the image is chosen');
+    await p.point('#cancel-image');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close once the selection is released');
+    assert.deepEqual(p.errors, []);
+  });
   for (const failure of ['abort', 'quota']) {
     await check(`images atomic capture ${failure} preserves text and never dispatches bytes`, async () => {
       const p = await page('image-' + failure);

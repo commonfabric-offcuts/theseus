@@ -912,7 +912,7 @@ async function initialize() {
     },
     saveNote: editor => run(() => registry.saveNote(editor)),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
-    close: () => registry.close(reader.presentation, { explicit: true }),
+    close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error.message); return false; }),
     step: async direction => {
       const presentation = registry.current, neighbors = presentation.neighbors ?? await registry.neighbors(presentation);
       if (!registry.isCurrent(presentation)) return;
