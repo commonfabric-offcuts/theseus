@@ -60,9 +60,17 @@ export function openColorPicker({ anchor, back = anchor, agent, palette, chosen,
     buttons[next].focus({ preventScroll: true });
   };
   const outside = event => { if (!root.contains(event.target) && !anchor.contains(event.target)) picker.close(false); };
-  // It is placed once, fixed to the window: when anything but the picker
-  // scrolls, its name moves away, so it closes, giving the focus back if it held it.
-  const scrolled = event => { if (!root.contains(event.target)) picker.close(root.contains(doc.activeElement)); };
+  // It is placed once, fixed to the window: when a scroll moves its name away
+  // (or the name is gone), it closes, giving the focus back if it held it. A
+  // scroll that leaves the name where it was, such as the page holding its
+  // place while a message arrives above, or one inside the picker, keeps it.
+  const scrolled = event => {
+    if (root.contains(event.target)) return;
+    const now = anchor.isConnected === false ? null : anchor.getBoundingClientRect();
+    // Holding a place scrolls by whole pixels, so the name can land a fraction off.
+    if (now && Math.abs(now.top - box.top) < 1 && Math.abs(now.left - box.left) < 1) return;
+    picker.close(root.contains(doc.activeElement));
+  };
   root.addEventListener('keydown', keys);
   doc.addEventListener('pointerdown', outside, true);
   doc.addEventListener('scroll', scrolled, true);

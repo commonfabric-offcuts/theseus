@@ -254,7 +254,7 @@ class El {
   contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
   closest() { return null; }
   focus(options) { this.doc.activeElement = this; this.doc.focusOptions = options; }
-  getBoundingClientRect() { return { left: 40, bottom: 100 }; }
+  getBoundingClientRect() { return { left: 40, top: 80, bottom: 100 }; }
   get isConnected() { let at = this; while (at.parent) at = at.parent; return at === this.doc.body; }
   get offsetWidth() { return 200; }
   get offsetHeight() { return 150; }
@@ -327,16 +327,29 @@ test('the picker closes when the page under it scrolls, so it never floats away 
   assert.equal(doc.focusOptions?.preventScroll, true, 'taking the focus as it opens scrolls nothing, so it does not close itself');
   doc.handlers.scroll({ target: p.root });
   assert.equal(p.root.parent, doc.body, 'a scroll inside the picker keeps it open');
-  buttons()[1].focus();
+  // A scroll that leaves the name where it was, such as the page holding its
+  // place while a message arrives above, or a scroll of something else, keeps it.
   doc.handlers.scroll({ target: doc });
-  assert.equal(p.root.parent, null, 'the page scrolled: closed');
+  assert.equal(p.root.parent, doc.body, 'the name held still: still open');
+  anchor.getBoundingClientRect = () => ({ left: 40, top: 79.7, bottom: 99.7 });
+  doc.handlers.scroll({ target: doc });
+  assert.equal(p.root.parent, doc.body, 'held to within a pixel, as a whole-pixel scroll holds it: still open');
+  buttons()[1].focus();
+  anchor.getBoundingClientRect = () => ({ left: 40, top: 60, bottom: 80 });
+  doc.handlers.scroll({ target: doc });
+  assert.equal(p.root.parent, null, 'the page scrolled the name away: closed');
   assert.equal(doc.handlers.scroll, undefined, 'and it stops listening');
   assert.equal(doc.activeElement, anchor, 'the focus was in the picker: it goes back to the name, not to nowhere');
   // With the focus elsewhere, closing leaves it there.
   const again = picker(), elsewhere = new El(again.doc, 'input'); again.doc.body.append(elsewhere); elsewhere.focus();
+  again.anchor.getBoundingClientRect = () => ({ left: 40, top: 300, bottom: 320 });
   again.doc.handlers.scroll({ target: again.doc });
   assert.equal(again.p.root.parent, null);
   assert.equal(again.doc.activeElement, elsewhere);
+  // A name that is gone has nowhere to float from: the picker closes.
+  const gone = picker(); gone.anchor.remove();
+  gone.doc.handlers.scroll({ target: gone.doc });
+  assert.equal(gone.p.root.parent, null, 'its name is gone: closed');
 });
 
 test('closing gives the focus to what the opener named, such as the card a name sits in', () => {

@@ -244,8 +244,10 @@ against the picker in both themes (WCAG 1.4.11), and the pressed one also
 wears an ink ring. The arrow keys, Home and End move between them, and Tab goes round
 them while it is open; Escape closes it and gives the focus back; a press
 outside closes it; pressing the name again closes it. It is placed once, fixed
-to the window, so when the page under it scrolls it closes rather than float
-away from its name, giving the focus back to the name if it held it. A choice closes it once
+to the window, so when a scroll moves its name away it closes rather than float
+away from it, giving the focus back to the name if it held it; a scroll that
+leaves the name where it was (to within a pixel), such as the page holding its
+place while a message arrives above, leaves it open. A choice closes it once
 Core has committed it, and a refusal is said inside it. When the answer is
 lost on the way, the picker says it is unknown whether the color was saved and
 that a press again sends the same request: the page keeps one request per

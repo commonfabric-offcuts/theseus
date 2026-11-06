@@ -169,6 +169,8 @@ export async function agentColorsCheck({ check, page, until, facts, control, sho
 // own color back. Screenshots: agent-color-picker-*.png.
 export async function agentColorChoiceCheck({ check, page, until, control, shot, observations }) {
   await check('colors clicking an agent\'s name changes its color for you, kept across reloads and pages', async () => {
+    // Older agent messages below aim-ux's, for a picker opened lower down.
+    for (let n = 0; n < 5; n++) await control({ method: 'agent_message', operation_id: 'agent-color-choice-older-' + n, body: `An older agent message ${n}.` });
     const id = (await control({ method: 'agent_message', operation_id: 'agent-color-choice', sender: 'aim-ux', join: true, body: 'aim-ux, about to be recolored.' })).result.message_id;
     const card = `#messages [data-id="${id}"]`;
     const fill = (p, selector) => p.evaluate(`getComputedStyle(document.querySelector(${JSON.stringify(selector)})).backgroundColor`);
@@ -177,7 +179,8 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
     const picker = p => p.evaluate(`(()=>{const r=document.querySelector('.color-picker');if(!r)return null;const b=r.getBoundingClientRect();
       return {role:r.getAttribute('role'),label:r.getAttribute('aria-label'),focused:document.activeElement?.getAttribute('aria-label')??document.activeElement?.textContent,
         inView:b.left>=0&&b.top>=0&&b.right<=innerWidth&&b.bottom<=innerHeight,pressed:[...r.querySelectorAll('[aria-pressed=true]')].map(e=>e.getAttribute('aria-label')??e.textContent)}})()`);
-    for (const [width, metrics] of Object.entries({ laptop: { width: 1280, height: 900, mobile: false }, phone: { width: 390, height: 844, mobile: true } })) {
+    // The phone first: it chooses nothing, so both widths start from aim-ux's own violet.
+    for (const [width, metrics] of Object.entries({ phone: { width: 390, height: 844, mobile: true }, laptop: { width: 1280, height: 900, mobile: false } })) {
       const p = await page('agent-color-picker-' + width, null, true, { beforeNavigate: async p => {
         await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
         await p.send('Emulation.setDeviceMetricsOverride', { ...metrics, deviceScaleFactor: 1 });
@@ -200,11 +203,31 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
       await p.key('Escape');
       assert.equal(await picker(p), null, width + ': Escape closes it');
       assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(card)})`), true, width + ': the card has the focus');
-      // A press outside closes it.
+      // A press outside closes it: on the topic's title, with the title and
+      // the card both in view, so the press itself scrolls nothing.
+      await p.evaluate("document.querySelector('#topic-title').scrollIntoView({block:'start'})");
+      assert.equal(await p.evaluate(`(r=>r.top>=0&&r.bottom<=innerHeight)(document.querySelector(${JSON.stringify(card + ' .author-name')}).getBoundingClientRect())`), true, width + ': the name is in view below the title');
       await p.point(`${card} .author-name`); await until(() => picker(p), width + ': opened again');
       await p.point('#topic-title');
       assert.equal(await picker(p), null, width + ': a press outside closes it');
       if (width === 'phone') { assert.equal(await p.evaluate('document.documentElement.scrollWidth<=innerWidth'), true, 'phone: no horizontal overflow'); await p.close(); continue; }
+      // A message arriving above while the person reads lower down, with the
+      // picker open on an older agent card's name and the newest out of view: the page holds its place, so
+      // the name stays put and the picker stays open. Scrolling the name away
+      // closes it, and the focus goes back to that card.
+      const lower = `#messages [data-id="${await p.evaluate("[...document.querySelectorAll('#messages .message-card.agent-card')][4].dataset.id")}"]`;
+      await p.evaluate(`scrollTo(0, document.querySelector(${JSON.stringify(lower)}).getBoundingClientRect().top + scrollY - 200)`);
+      await p.point(`${lower} .author-name`); await until(() => picker(p), width + ': opened lower down');
+      const nameAt = () => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(lower + ' .author-name')}).getBoundingClientRect().top)`);
+      const heldAt = await nameAt();
+      const above = (await control({ method: 'agent_message', operation_id: 'agent-color-picker-arrival-' + width, body: 'Arriving above the open picker.' })).result.message_id;
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${above}"]'))`), width + ': the arrival is drawn above');
+      assert.equal(await nameAt(), heldAt, width + ': the page held the name in place');
+      assert.notEqual(await picker(p), null, width + ': the picker stays open when its name does not move');
+      await p.evaluate('scrollBy(0, 120)');
+      await until(async () => !(await picker(p)), width + ': scrolling the name away closes the picker');
+      assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(lower)})`), true, width + ': the focus went back to the card');
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
       // Choosing rose recolors the card at once.
       await p.point(`${card} .author-name`); await until(() => picker(p), 'opened to choose');
       await p.point('.color-picker [aria-label="rose"]');
