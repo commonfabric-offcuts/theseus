@@ -106,7 +106,10 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const placed = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),lines=list.querySelectorAll('.new-line'),card=list.querySelector('[data-id="${boundary.id}"]');
         const r=card.getBoundingClientRect();return {count:lines.length,after:lines[0]?.previousElementSibling===card,tag:lines[0]?.tagName,text:lines[0]?.textContent,inView:r.top<innerHeight&&r.bottom>0}})()`);
       assert.deepEqual(placed, { count: 1, after: true, tag: 'DIV', text: 'New above', inView: true }, theme + ': the line in its true place, the message in view');
-      assert.equal(await p.evaluate("document.querySelector('#more-messages').hidden"), false, theme + ': More messages is back for what is older');
+      // More messages is back exactly when older messages are left to load.
+      const lowest = await p.evaluate("Math.min(...[...document.querySelectorAll('#messages .message-card')].map(card=>Number(card.dataset.seq)))");
+      const older = await view('topic_messages', { topic_id: 't1', audience: 'all', direction: 'before', cursor: lowest, limit: 1 });
+      assert.equal(await p.evaluate("document.querySelector('#more-messages').hidden"), older.items.length === 0, theme + `: More messages is back for what is older (${older.items.length} below #${lowest})`);
       await shot(p, 'new-line-older-' + theme + '-reached');
       observations.push({ name: 'new line further back', theme, boundary, marker, placed });
       assert.deepEqual(p.errors, []);

@@ -435,7 +435,7 @@ export async function liveChecks({ check, page, until, control, observations, or
   // button.
   await check('live More messages shows the older messages where its button was', async () => {
     await control({ method: 'seed', messages: 45 });
-    await control({ method: 'agent_message', operation_id: 'live-more-answered', sender: 'person', body: 'Answering the topic, so nothing older waits on me.' });
+    await control({ method: 'agent_message', operation_id: 'live-more-answered', sender: 'person', whole_topic: true, body: 'Answering the topic, so nothing older waits on me.' });
     const p = await page('live-more', null, true);
     await settled(p);
     await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), 'More is offered');

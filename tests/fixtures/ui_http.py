@@ -368,6 +368,10 @@ def main():
                 revision = store().view(actor, "workspace", {"workspace_id": workspace_id})["workspace"]["version"]
                 command("workspace.member_set", operation + "-member", {"actor_id": sender, "present": True},
                         {"workspace_id": workspace_id}, {"workspace_revision": revision})
+            if request.get("whole_topic"):
+                # A post to the whole topic, replying to no message: from the
+                # person, it answers everything before it.
+                return command("message.post", operation, {"body": request["body"]}, {"topic_id": topic_id}, sender=sender)
             current = store().view(sender, "editor_state", {"source_ref": sources[0], "topic_id": topic_id})
             assert not current.get("error"), current
             draft = current["draft"] or {"id": operation + "-draft", "generation": operation + "-generation", "revision": 0}
