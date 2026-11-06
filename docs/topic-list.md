@@ -23,8 +23,22 @@ leaves it as it was. Topic reads and list items carry it.
 
 Schema version 18 adds `activity_ms`, worked out on upgrade from each topic's
 newest message and its state time (0 for a topic with neither, which sorts
-last), and the index the lists read. Stepping back to 17 drops it; the next
-upgrade works it out again.
+last), the index the lists read, and `state_message_id` (below). Stepping back
+to 17 drops the activity times, which the next upgrade works out again, and is
+refused once any topic was reopened by a message, since that record would be
+lost.
+
+## A message in a done topic
+
+A new message in a done topic brings it back among the active ones, in the
+same transaction that sends the message: its state becomes `active`, said by
+the message's author (`state_by`) at the message's send time (`state_ms`),
+with the note "Reopened by a new message" and `state_message_id` naming the
+message. A post, a prepared send and a reply all do this; a refused send
+changes nothing. A message in a topic that is active, waiting or ready for
+review leaves its state as it was. The next `topic.update` that says where the
+topic stands replaces all of it and clears `state_message_id`. Topic reads and
+list items carry `state_message_id`, null for a state someone said.
 
 ## `workspace_topics`
 

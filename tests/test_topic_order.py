@@ -162,5 +162,51 @@ class TopicOrderCase(fixtures.ReaderCase):
         finally:
             db.close()
 
+class ReopenCase(TopicOrderCase):
+    """A new message in a done topic brings it back among the active ones."""
+
+    def test_a_message_in_a_done_topic_makes_it_active_again_in_the_same_act_and_says_who_and_why(self):
+        self.open_topic("t2", "Second")
+        self.update("t1", {"state": "done", "note": "Shipped"}, actor="agent-a")
+        self.assertEqual(self.order(), ["t2"])
+        before = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        result = self.post("t1", "One more thing", actor="agent-a")
+        topic = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]
+        sent = self.sql("SELECT sent_ms FROM messages WHERE id=?", (result["message_id"],))[0][0]
+        self.assertEqual((topic["state"], topic["state_by"], topic["state_ms"], topic["state_note"], topic["state_message_id"]),
+                         ("active", "agent-a", sent, "Reopened by a new message", result["message_id"]))
+        # One act: the send's own topic version carries the state.
+        self.assertEqual((result["topic"]["version"], topic["version"]), (before + 1, before + 1))
+        self.assertEqual(self.order(), ["t1", "t2"])
+        self.assertEqual(self.order(done=True), [])
+        self.assertEqual(self.page()["groups"]["done"], 0)
+        # Saying where it stands again replaces the reason.
+        self.update("t1", {"state": "review"}, actor="agent-a")
+        self.assertIsNone(self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["state_message_id"])
+
+    def test_a_message_reopens_only_a_done_topic_and_a_refused_post_reopens_nothing(self):
+        self.update("t1", {"state": "waiting", "note": "Which name?", "waiting_on": ["owner"]}, actor="agent-a")
+        self.post("t1", "A thought", actor="agent-b")
+        topic = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]
+        self.assertEqual((topic["state"], topic["state_note"], topic["state_by"], topic["state_message_id"]),
+                         ("waiting", "Which name?", "agent-a", None))
+        self.update("t1", {"state": "done"}, actor="agent-a")
+        refused = self.command("message.post", {"body": "Reply", "reply_to": "m-not-here"}, target={"topic_id": "t1"})
+        self.rejected(refused, "INVALID_REPLY")
+        self.assertEqual(self.sql("SELECT state,state_message_id FROM topics WHERE id='t1'"), [("done", None)])
+        self.assertEqual(self.order(done=True), ["t1"])
+
+    def test_a_prepared_send_reopens_a_done_topic_as_a_post_does(self):
+        self.update("t1", {"state": "done"}, actor="agent-a")
+        sent = self.send("Picked back up")
+        self.assertEqual(self.sql("SELECT state,state_by,state_message_id FROM topics WHERE id='t1'"), [("active", "owner", sent["id"])])
+
+
+# The reopen cases share the clock and helpers, not the listing cases.
+for _name in list(vars(TopicOrderCase)):
+    if _name.startswith("test_"):
+        setattr(ReopenCase, _name, None)
+
+
 if __name__ == "__main__":
     unittest.main()

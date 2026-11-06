@@ -91,6 +91,8 @@ ACTIVITY_DOWN = ("DROP INDEX workspace_topic_order", "CREATE INDEX workspace_lis
                  "ALTER TABLE topics DROP COLUMN state_message_id", "ALTER TABLE topics DROP COLUMN activity_ms")
 # Activity times are worked out again on the next upgrade; who reopened a topic is not.
 ACTIVITY_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM topics WHERE state_message_id IS NOT NULL)"
+# A message in a done topic makes it active again; the state's note says so.
+REOPENED_NOTE = "Reopened by a new message"
 
 
 def order_cursor(done, activity_ms, topic_id):
@@ -171,7 +173,12 @@ class TopicState:
                     {"kind": "topic", "id": topic["id"], "version": version}]
 
     def _message_activity(self, db, topic, author, message_id, sent_ms):
-        """A message was sent in the topic: it is the topic's latest activity."""
+        """A message was sent in the topic: it is the topic's latest activity, and a done
+        topic is active again, said by the message's author when it was sent, with the
+        message as why. The caller's transaction is the send's own."""
+        if topic["state"] == "done":
+            db.execute("UPDATE topics SET state='active',state_note=?,state_by=?,state_ms=?,state_message_id=? WHERE id=?",
+                       (REOPENED_NOTE, author, sent_ms, message_id, topic["id"]))
         db.execute("UPDATE topics SET activity_ms=max(activity_ms,?) WHERE id=?", (sent_ms, topic["id"]))
 
     def _waiting_on(self, db, topic, members):
