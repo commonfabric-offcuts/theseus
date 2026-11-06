@@ -75,8 +75,59 @@ const lab = hex => {
   const [x, y, z] = [[0.4124564, 0.3575761, 0.1804375, 0.95047], [0.2126729, 0.7151522, 0.0721750, 1], [0.0193339, 0.1191920, 0.9503041, 1.08883]]
     .map(([r, g, b, white]) => (r * lin[0] + g * lin[1] + b * lin[2]) / white);
   const f = t => t > 216 / 24389 ? Math.cbrt(t) : (24389 / 27 * t + 16) / 116;
-  return { L: 116 * f(y) - 16, C: Math.hypot(500 * (f(x) - f(y)), 200 * (f(y) - f(z))) };
+  const a = 500 * (f(x) - f(y)), b = 200 * (f(y) - f(z));
+  return { L: 116 * f(y) - 16, a, b, C: Math.hypot(a, b), H: (Math.atan2(b, a) * 180 / Math.PI + 360) % 360 };
 };
+
+// CIEDE2000 (Sharma, Wu and Dalal 2005), the distance warp measured every tint by.
+const deltaE = (one, two) => {
+  const rad = d => d * Math.PI / 180, deg = r => r * 180 / Math.PI;
+  const [p, q] = [lab(one), lab(two)];
+  const mean = (Math.hypot(p.a, p.b) + Math.hypot(q.a, q.b)) / 2;
+  const g = 0.5 * (1 - Math.sqrt(mean ** 7 / (mean ** 7 + 25 ** 7)));
+  const prime = ({ L, a, b }) => { const A = (1 + g) * a, C = Math.hypot(A, b); return { L, C, h: C ? (deg(Math.atan2(b, A)) + 360) % 360 : 0 }; };
+  const [s, t] = [prime(p), prime(q)];
+  let dh = t.h - s.h; if (s.C * t.C === 0) dh = 0; else if (dh > 180) dh -= 360; else if (dh < -180) dh += 360;
+  const dH = 2 * Math.sqrt(s.C * t.C) * Math.sin(rad(dh / 2)), L = (s.L + t.L) / 2, C = (s.C + t.C) / 2;
+  const h = s.C * t.C === 0 ? s.h + t.h : Math.abs(s.h - t.h) <= 180 ? (s.h + t.h) / 2 : (s.h + t.h + (s.h + t.h < 360 ? 360 : -360)) / 2;
+  const T = 1 - 0.17 * Math.cos(rad(h - 30)) + 0.24 * Math.cos(rad(2 * h)) + 0.32 * Math.cos(rad(3 * h + 6)) - 0.2 * Math.cos(rad(4 * h - 63));
+  const SL = 1 + 0.015 * (L - 50) ** 2 / Math.sqrt(20 + (L - 50) ** 2), SC = 1 + 0.045 * C, SH = 1 + 0.015 * C * T;
+  const RT = -Math.sin(rad(60 * Math.exp(-(((h - 275) / 25) ** 2)))) * 2 * Math.sqrt(C ** 7 / (C ** 7 + 25 ** 7));
+  const [dL, dC, dHs] = [(t.L - s.L) / SL, (t.C - s.C) / SC, dH / SH];
+  return Math.sqrt(dL ** 2 + dC ** 2 + dHs ** 2 + RT * dC * dHs);
+};
+
+test('the CIEDE2000 instrument agrees with the published test pairs', () => {
+  // Black on white is 100 and pure red to pure green 86.6, as published
+  // calculators give; the same color is 0; and warp's 2.3 for the light
+  // indigo and violet cards of release 19.
+  assert.equal(deltaE('#000000', '#ffffff').toFixed(1), '100.0');
+  assert.equal(deltaE('#ff0000', '#00ff00').toFixed(1), '86.6');
+  assert.equal(deltaE('#e8f1ec', '#e8f1ec'), 0);
+  assert.ok(Math.abs(deltaE('#ececf9', '#f2edf8') - 2.3) < 0.05, 'base indigo and violet light cards, as warp measured them');
+});
+
+// Light cards were too pale for their hue to show (CIELAB chroma 3.8 to 6.7),
+// so most light pairs sat under 5 apart while every dark pair was at least
+// 7.9 (warp, item 91b). Each light card but Fable's green is at chroma about
+// 8 at the lightness and hue it had; its hover is one step deeper, as before.
+test('the team\'s light cards are far enough apart to tell at a glance, and an agent outside the team is never taken for one', () => {
+  const team = { fable: 'green', 'aim-lead': 'blue', 'aim-ux': 'violet', 'aim-core': 'peach', 'aim-spec': 'rose', warp: 'cyan' };
+  const card = name => tokens(css, '.agent-' + name)['agent-card'];
+  for (const name of AGENT_PALETTE.filter(name => name !== 'green')) {
+    const color = tokens(css, '.agent-' + name);
+    assert.ok(lab(color['agent-card']).C >= 7.2, `light ${name}: card chroma ${lab(color['agent-card']).C.toFixed(1)}`);
+    assert.ok(Math.abs(lab(color['agent-card']).H - lab(color['agent-tag']).H) <= 8, `light ${name}: card and name tag are one hue`);
+    assert.ok(lab(color['agent-hover']).L < lab(color['agent-card']).L && deltaE(color['agent-card'], color['agent-hover']) >= 2,
+      `light ${name}: hover one step deeper (${deltaE(color['agent-card'], color['agent-hover']).toFixed(2)})`);
+    assert.ok(contrast('#56616a', color['agent-card']) >= 5.4, `light ${name}: quiet words ${contrast('#56616a', color['agent-card']).toFixed(2)} on the card`);
+  }
+  const names = Object.keys(team);
+  for (const [i, one] of names.entries()) for (const two of names.slice(i + 1))
+    assert.ok(deltaE(card(team[one]), card(team[two])) >= 5, `light ${one} and ${two}: ${deltaE(card(team[one]), card(team[two])).toFixed(2)}`);
+  for (const one of names) assert.ok(deltaE(card(agentColor('someone-else')), card(team[one])) >= 4.5,
+    `light: an agent outside the team and ${one}: ${deltaE(card(agentColor('someone-else')), card(team[one])).toFixed(2)}`);
+});
 
 // Peach on a dark card read brown and heavy at chroma 11.9 (#3c2b20); its
 // card and hover are a quieter peach, and its name's tag keeps the hue.

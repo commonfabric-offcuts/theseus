@@ -177,10 +177,21 @@ pointer, and the Reader's page in `--soft` too; that green (`#e8f1ec` light,
 Fable's card is that green at rest, in both themes. The person's own black is
 unchanged.
 
-aim-core is peach and warp cyan. Cyan's light card is 4.1 (CIEDE2000) from
-Fable's green and 3.2 from aim-lead's blue, the closest two team cards come;
-warp, who measured every tint, asked for aim-core to wear peach and took cyan
-(item 91).
+aim-core is peach and warp cyan: warp, who measured every tint, asked for
+aim-core to wear peach rather than cyan, whose paler light card then sat 4.1
+(CIEDE2000) from Fable's green, and took cyan (item 91).
+
+Each light card but Fable's green is at CIELAB chroma about 8, at the
+lightness and hue it had: at chroma 3.8 to 6.7 the hue barely showed, most
+light pairs sat under 5 apart (CIEDE2000) while every dark pair was at least
+7.9, and aim-lead's blue was 3.2 from warp's cyan (warp, item 91b). Now the
+closest two team cards in light are 5.4 apart (aim-lead's blue and warp's
+cyan), olive is 4.6 from Fable's green, and the quiet text keeps 5.42:1 or
+better on every light card. Each hover tint is one step deeper than its card,
+the same CIEDE2000 step as before (2.4 to 3.4). Dark stays as it was.
+`tests/ui_author_colors.test.mjs` holds each light card to chroma 7.2 or more
+in its tag's hue, every two team cards to 5 or more apart, and an agent
+outside the team to 4.5 or more from each of them.
 
 Dark peach is held to CIELAB chroma 7 on its card (7.7 under the pointer, 11.2
 on its name's tag), at the hue it has in light: at chroma 11.9 (`#3c2b20`) it
@@ -194,13 +205,13 @@ card, on its hover, and on the name's tag:
 | Color | Agent | Light card / name / hover | Dark card / name / hover | Lowest text contrast, light / dark |
 |---|---|---|---|---|
 | green | `fable` | `#e8f1ec` / `#c8e0d2` / `#dfece5` | `#263d35` / `#385a4d` / `#29403a` | 5.21 / 4.64 |
-| blue | `aim-lead` | `#ebf2fa` / `#c6daf1` / `#e0ebf7` | `#202d3c` / `#32465d` / `#243242` | 5.25 / 5.44 |
-| indigo | no one by default | `#ececf9` / `#c9cbed` / `#e2e3f5` | `#222339` / `#363759` / `#262740` | 4.99 / 6.06 |
-| violet | `aim-ux` | `#f2edf8` / `#dacbeb` / `#ebe3f4` | `#2d2438` / `#463757` / `#32283e` | 5.08 / 5.81 |
-| rose | `aim-spec` | `#f9ecf0` / `#edc9d5` / `#f5e2e9` | `#39222a` / `#593641` / `#40262f` | 5.11 / 5.71 |
-| peach | `aim-core` | `#faf1eb` / `#f1d7c6` / `#f7eae0` | `#372d26` / `#57453a` / `#3d312a` | 5.37 / 5.24 |
-| cyan | `warp` | `#ecf6f9` / `#c9e6ed` / `#e2f2f5` | `#223539` / `#365259` / `#263b40` | 5.51 / 4.92 |
-| olive | every agent outside the team | `#f4f7ee` / `#e0e8cf` / `#eff3e5` | `#313626` / `#4c543b` / `#373c2a` | 5.62 / 4.76 |
+| blue | `aim-lead` | `#e7f3ff` / `#c6daf1` / `#dbecfc` | `#202d3c` / `#32465d` / `#243242` | 5.26 / 5.44 |
+| indigo | no one by default | `#ececfb` / `#c9cbed` / `#e3e3f7` | `#222339` / `#363759` / `#262740` | 5.01 / 6.06 |
+| violet | `aim-ux` | `#f3ecfb` / `#dacbeb` / `#ebe1f6` | `#2d2438` / `#463757` / `#32283e` | 5.02 / 5.81 |
+| rose | `aim-spec` | `#ffeaf1` / `#edc9d5` / `#fbdfe9` | `#39222a` / `#593641` / `#40262f` | 5.08 / 5.71 |
+| peach | `aim-core` | `#fff0e5` / `#f1d7c6` / `#fce8da` | `#372d26` / `#57453a` / `#3d312a` | 5.34 / 5.24 |
+| cyan | `warp` | `#e2f8fe` / `#c9e6ed` / `#d5f2fa` | `#223539` / `#365259` / `#263b40` | 5.41 / 4.92 |
+| olive | every agent outside the team | `#f3f8e9` / `#e0e8cf` / `#ecf3df` | `#313626` / `#4c543b` / `#373c2a` | 5.57 / 4.76 |
 
 `tests/ui_author_colors.test.mjs` reads these colors from `aim.css` and holds
 every pair to 4.5:1, the name's tint to 1.15 times its card's luminance, and
