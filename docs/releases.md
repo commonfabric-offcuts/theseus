@@ -33,10 +33,10 @@ before anything is stopped.
 
 | field | meaning |
 | --- | --- |
-| `release` | the release number. A deploy's record follows the latest one; the first record an instance keeps names its own number |
+| `release` | the release number. A deploy's record follows the latest one; the first record an instance keeps names its own number, which the deploy takes from the records the repository keeps |
 | `commit` | the full commit the release put live |
 | `previous` | the commit that was live before it, or `null` when that is not known |
-| `deployed_at` | when the deploy's checks of the new release passed, ISO 8601 with its offset from UTC |
+| `deployed_at` | when the deploy's checks of the new release passed, ISO 8601 with its offset from UTC; for a release recorded afterwards, when its server started at that commit |
 | `items` | the pipeline item numbers it shipped, each once, in the order their commits came |
 | `measurements` | from the release check's summary, or `null` when no summary was kept (below) |
 | `source` | `deploy` when the deploy wrote it, `backfill` when it was recorded afterwards |
@@ -79,11 +79,22 @@ record without a number on an instance with none is refused with
 `tools/deploy.py` writes the record (docs/tools.md); `tools/pipeline/build_pipeline.py`
 reads it to build the pipeline page.
 
-## Releases 18 and 19, recorded afterwards
+## Releases recorded afterwards
 
-Releases 18 and 19 shipped before the deploy wrote records. Their records are
-in `tools/pipeline/releases/` and are written once, on the live instance,
-after it is migrated to schema 18:
+A release can go live without its record: releases 18 and 19 shipped before
+deploys wrote records, and a deploy can stop after the restart. The system
+records them from what it keeps:
+
+- The repository keeps the records of releases 18 and 19 in
+  `tools/pipeline/releases/`. A deploy to an instance that keeps no records
+  writes them first, when the newest is the live commit or one of its
+  ancestors, so the next release's number follows 19 without being typed.
+- A deploy whose live commit is not the latest record's commit records the
+  live commit first, as the next release, from the commits since the latest
+  record and the time the live server's run record says it started.
+
+The same records can also be written by hand on an instance at schema 18,
+without a deploy, once per file:
 
 ```sh
 LIVE=/path/to/live/checkout INSTANCE=/path/to/instance
@@ -91,6 +102,8 @@ LIVE=/path/to/live/checkout INSTANCE=/path/to/instance
 "$LIVE/bin/aim-next-admin" record-release --profile "$INSTANCE/tony.profile.json" --record "$LIVE/tools/pipeline/releases/release-19.json"
 ```
 
-Running them again changes nothing. Release 19's measurements come from its
-release check's summary; release 18 ran before that tool existed, so its
-measurements are `null`.
+Running them again changes nothing, and neither does a deploy after them.
+Release 19's measurements come from its release check's summary. Release 18
+ran before that tool kept a summary, so its measurements are `null`: the only
+count for it is a sentence written by hand on the pipeline page, and a record
+holds what a check measured, not what someone wrote down.

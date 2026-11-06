@@ -11,6 +11,8 @@ commit between the live HEAD and the commit it deploys, merges included.
 import re
 
 NUMBER = re.compile(r"[1-9][0-9]*")
+# Release records the repository keeps for releases recorded afterwards (docs/releases.md).
+KEPT = "tools/pipeline/releases"
 # Fields of one commit in `git log --format`, each Pipeline trailer's value, and the end of each commit.
 FIELD, VALUE, END = "\x1f", "\x1d", "\x1e"
 LOG_FORMAT = "--format=%H%x1f%s%x1f%(trailers:key=Pipeline,valueonly,separator=%x1d)%x1e"

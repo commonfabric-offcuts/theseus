@@ -32,8 +32,16 @@ def log(*commits):
 SHIPPED = log(("One change", ["88"]))
 
 
-def page(*numbers):
-    return json.dumps({"instance_id": "i-1", "items": [{"release": n} for n in numbers], "next_cursor": None}) + "\n"
+def release(number, commit, items=(), **more):
+    return dict({"release": number, "commit": commit, "previous": None, "deployed_at": "2026-11-06T05:28:35-08:00",
+                 "items": list(items), "measurements": None, "source": "backfill", "evidence": None}, **more)
+
+
+def page(*records):
+    """The CLI's --json page; a bare number is a record with no items, the first of them at the live HEAD."""
+    records = [record if isinstance(record, dict) else release(record, HEAD if index == 0 else "%040x" % record)
+               for index, record in enumerate(records)]
+    return json.dumps({"instance_id": "i-1", "items": records, "next_cursor": None}) + "\n"
 
 
 def summary(commit=SHA, failed=()):
@@ -46,12 +54,16 @@ class FakeHost:
     """Answers the deploy's ps and git calls from a table and records every call; nothing real runs."""
 
     def __init__(self, config, servers=(111,), runners=(222,), dirty="", ff=True, backup=0, merge=0, migrate=0,
-                 log=SHIPPED, keeps=True, releases=(page(19), 0), cli=0, recorded=0, on_cli=None):
+                 log=SHIPPED, keeps=True, releases=(page(19), 0), cli=0, recorded=0, on_cli=None, logs=None,
+                 kept=(), ancestors=()):
         self.config, self.calls = config, []
         self.servers, self.runners = list(servers), list(runners)
         self.dirty, self.ff, self.backup, self.merge, self.migrate = dirty, ff, backup, merge, migrate
         self.log, self.keeps, self.releases, self.cli, self.recorded = log, keeps, releases, cli, recorded
         self.written, self.on_cli = [], on_cli
+        # git log answers per range (default: self.log); kept: the records tools/pipeline/releases holds at SHA;
+        # ancestors: the commits merge-base calls ancestors of HEAD.
+        self.logs, self.kept, self.ancestors = logs or {}, list(kept), set(ancestors)
 
     def __call__(self, argv, **kw):
         self.calls.append(argv)
@@ -68,12 +80,19 @@ class FakeHost:
             out = HEAD + "\n"
         elif argv[0] == "git" and "status" in argv:
             out = self.dirty
-        elif argv[0] == "git" and "merge-base" in argv:
+        elif argv[0] == "git" and "merge-base" in argv and argv[-1] == SHA:
             code = 0 if self.ff else 1
+        elif argv[0] == "git" and "merge-base" in argv:
+            code = 0 if argv[-1] == HEAD and (argv[-2] == HEAD or argv[-2] in self.ancestors) else 1
         elif argv[0] == "git" and "merge" in argv:
             code = self.merge
         elif argv[0] == "git" and "log" in argv:
-            out = self.log
+            out = self.logs.get(argv[-1], self.log)
+        elif argv[0] == "git" and "ls-tree" in argv:
+            out = "".join("tools/pipeline/releases/release-%s.json\n" % record["release"] for record in self.kept)
+        elif argv[0] == "git" and "show" in argv:
+            out = json.dumps([record for record in self.kept
+                              if argv[-1] == "%s:tools/pipeline/releases/release-%s.json" % (SHA, record["release"])][0])
         elif argv[0] == "git" and "cat-file" in argv:
             code = 0 if self.keeps else 128
         elif "releases" in argv:
@@ -132,9 +151,14 @@ class DeployCase(unittest.TestCase):
             deploy.deploy(self.config, sha, self.evidence, self.summary, dry, **release)
 
     def refused(self, host, dry=False, sha=SHA, **release):
-        with self.assertRaises(deploy.Refused) as caught:
+        """The deploy's refusal; a crash is not one."""
+        try:
             self.deploy(host, dry, sha, **release)
-        return str(caught.exception)
+        except deploy.Refused as refusal:
+            return str(refusal)
+        except Exception as error:  # the failure under test: anything but a refusal
+            self.fail("the deploy did not refuse, it raised %r" % error)
+        self.fail("the deploy was not refused")
 
     def records(self):
         return sorted(path.stem for path in self.evidence.glob("*.json"))
@@ -300,13 +324,96 @@ class ReleasePlan(DeployCase):
         self.assertEqual(self.plan()["record"]["release"], 20)
         # Live code that keeps records, none written yet.
         self.assertIn("--release", self.refused(FakeHost(self.config, releases=(page(), 0))))
-        self.assertIn("would not follow the latest recorded, 19", self.refused(FakeHost(self.config), number=21))
+        self.assertIn("would not follow the latest, 19", self.refused(FakeHost(self.config), number=21))
         self.deploy(FakeHost(self.config), dry=True, number=20)
         self.assertEqual(self.plan()["record"]["release"], 20)
         self.assertEqual(self.kills, [])
 
+    def launched(self, revision, at="2026-11-07T05:00:00-08:00"):
+        """The live server's run record, as the deploy that started it wrote it."""
+        (self.instance / "run-server-03" / "launch.json").write_text(json.dumps({"at": at, "revision": revision}))
+
+    def test_a_live_commit_no_record_names_is_recorded_first_from_its_servers_run_record(self):
+        # Release 20 went live at HEAD, but its deploy stopped before writing the record.
+        X = "a" * 40
+        logs = {"%s..%s" % (X, HEAD): log(("Search", ["89"]), ("Ring", ["74"])), "%s..%s" % (HEAD, SHA): SHIPPED}
+        answer = (page(release(19, X, [87])), 0)
+        self.launched(HEAD)
+        self.deploy(FakeHost(self.config, releases=answer, logs=logs, ancestors=[X]), dry=True)
+        plan = self.plan()
+        self.assertEqual(plan["before"], [{"release": 20, "commit": HEAD, "previous": X, "items": [89, 74],
+                                           "deployed_at": "2026-11-07T05:00:00-08:00", "measurements": None,
+                                           "source": "backfill", "evidence": None}])
+        self.assertEqual({key: plan["record"][key] for key in ("release", "previous", "items")},
+                         {"release": 21, "previous": HEAD, "items": [88]})
+        self.assertEqual(plan["latest_recorded"], 20)
+        self.assertEqual(self.kills, [])
+
+    def test_when_no_run_record_says_when_the_live_commit_went_live_the_deploy_needs_that_time(self):
+        X = "a" * 40
+        answer = (page(release(19, X, [87])), 0)
+        host = FakeHost(self.config, releases=answer, logs={"%s..%s" % (X, HEAD): log()}, ancestors=[X])
+        self.assertIn("name that time with --live-since", self.refused(host))
+        self.launched("d" * 40)  # the server's run record names another commit
+        self.assertIn("name that time with --live-since", self.refused(host))
+        self.deploy(host, dry=True, live_since="2026-11-07T04:00:00-08:00")
+        self.assertEqual([(record["release"], record["deployed_at"]) for record in self.plan()["before"]],
+                         [(20, "2026-11-07T04:00:00-08:00")])
+        self.launched(HEAD)
+        self.assertIn("--live-since is not needed", self.refused(host, live_since="2026-11-07T04:00:00-08:00"))
+        self.assertIn("--live-since names when an unrecorded live commit went live",
+                      self.refused(FakeHost(self.config), live_since="2026-11-07T04:00:00-08:00"))
+        # The time it is given is checked like any record's.
+        (self.instance / "run-server-03" / "launch.json").unlink()
+        self.assertIn("the release record would be refused: deployed_at", self.refused(host, live_since="yesterday"))
+        self.assertEqual(self.kills, [])
+
+    def test_a_live_commit_that_does_not_follow_the_latest_record_stops_the_deploy(self):
+        answer = (page(release(19, "a" * 40, [87])), 0)
+        self.launched(HEAD)
+        self.assertIn("does not follow", self.refused(FakeHost(self.config, releases=answer)))
+        self.assertEqual(self.kills, [])
+
+    def test_an_instance_with_no_records_starts_from_the_records_the_repository_keeps(self):
+        kept = [release(18, "1" * 40, [1, 4]), release(19, HEAD, [87, 2])]
+        # Live code from before release records keeps none; the records kept at SHA name the live HEAD.
+        host = FakeHost(self.config, keeps=False, kept=kept)
+        self.deploy(host, dry=True)
+        plan = self.plan()
+        self.assertEqual((plan["before"], plan["record"]["release"], plan["latest_recorded"]), (kept, 20, 19))
+        self.assertIn("would not follow the latest, 19", self.refused(FakeHost(self.config, keeps=False, kept=kept), number=2))
+        # An instance whose live commit the kept records do not reach starts from the number it is given.
+        elsewhere = [release(18, "1" * 40, [1, 4]), release(19, "2" * 40, [87, 2])]
+        self.assertIn("name this one's number with --release", self.refused(FakeHost(self.config, keeps=False, kept=elsewhere)))
+        self.deploy(FakeHost(self.config, keeps=False, kept=elsewhere), dry=True, number=1)
+        self.assertEqual((self.plan()["before"], self.plan()["record"]["release"]), ([], 1))
+        # A kept record that is not one, or names no number, stops the deploy.
+        for broken, reason in ((dict(kept[1], items="87"), "is not one: items"), (dict(kept[1], release=None), "names no release number")):
+            with self.subTest(reason):
+                self.assertIn(reason, self.refused(FakeHost(self.config, keeps=False, kept=[kept[0], broken])))
+        # Records already on the instance are the line; the kept ones are not read.
+        host = FakeHost(self.config, kept=kept, releases=(page(release(19, HEAD, [87, 2])), 0))
+        self.deploy(host, dry=True)
+        self.assertEqual((self.plan()["before"], host.ran("ls-tree")), ([], []))
+        self.assertEqual(self.kills, [])
+
+    def test_an_item_an_earlier_release_shipped_stops_the_deploy_before_anything_stops(self):
+        host = FakeHost(self.config, releases=(page(release(19, HEAD, [88])), 0))
+        self.assertIn("pipeline item 88 shipped in release 19; release 20 names it again", self.refused(host))
+        kept = [release(18, "1" * 40, [88]), release(19, HEAD, [87])]
+        self.assertIn("pipeline item 88 shipped in release 18; release 20 names it again",
+                      self.refused(FakeHost(self.config, keeps=False, kept=kept)))
+        X = "a" * 40
+        self.launched(HEAD)
+        recovered = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), ancestors=[X],
+                             logs={"%s..%s" % (X, HEAD): log(("Again", ["87"]))})
+        self.assertIn("pipeline item 87 shipped in release 19; release 20 names it again", self.refused(recovered))
+        self.assertEqual(self.kills, [])
+
     def test_live_records_that_cannot_be_read_stop_the_deploy_rather_than_count_as_none(self):
-        for answer in (("", 1), ('{"instance_id":"i-1","error":{"code":"DATABASE_BUSY"}}\n', 75), ("not json\n", 0)):
+        for answer in (("", 1), ('{"instance_id":"i-1","error":{"code":"DATABASE_BUSY"}}\n', 75), ("not json\n", 0),
+                       (page(19) + '{"instance_id":"i-1","error":{"code":"DATABASE_BUSY"}}\n', 75),
+                       ('{"instance_id":"i-1","items":[{"release":19}],"next_cursor":null}\n', 0)):
             with self.subTest(answer):
                 host = FakeHost(self.config, releases=answer)
                 self.assertIn("could not be read", self.refused(host, number=20))
@@ -399,7 +506,7 @@ class FullDeploy(DeployCase):
             self.fail("the deploy did not complete: %r" % error)
         self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "02-release", "03-stopped",
                                           "04-backup", "05-fast-forward", "06-migrate", "07-server", "09-runner",
-                                          "10-verify", "11-release", "release-record"])
+                                          "10-verify", "11-release", "release-20"])
         self.assertEqual(self.kills, [(222, 15), (111, 15)])
         # The backup reads the server's profile, the one bound to the database.
         backup = host.ran("-c")[0][-1]
@@ -444,7 +551,7 @@ class FullDeploy(DeployCase):
         self.assertEqual({key: written[key] for key in ("release", "commit", "previous", "items", "source", "evidence")},
                          {"release": 20, "commit": SHA, "previous": HEAD, "items": [88], "source": "deploy",
                           "evidence": str(self.evidence.resolve())})
-        self.assertEqual(json.loads((self.evidence / "11-release.json").read_text())["record"], written)
+        self.assertEqual(json.loads((self.evidence / "11-release.json").read_text())["records"], [written])
         # Written by the new code's admin verb, with the server's profile, after the verify read the new server.
         argv = host.ran("record-release")[0]
         self.assertEqual(argv[3:5], [str(self.config.live / "bin/aim-next-admin"), "record-release"])
@@ -456,8 +563,15 @@ class FullDeploy(DeployCase):
     def unverified(self, host):
         with self.assertRaises(deploy.Refused) as caught:
             self.run_deploy(host)
-        self.assertIn("did not verify, so no release record was written", str(caught.exception))
+        message = str(caught.exception)
+        self.assertIn("did not verify, so no release record was written", message)
         self.assertEqual(host.ran("record-release"), [])
+        # It leaves the record and the command that writes it, for when the release is made to work by hand.
+        kept = self.evidence / "release-20.json"
+        self.assertEqual(json.loads(kept.read_text())["commit"], SHA)
+        self.assertIn("%s is live; once it works, record it with: %s" % (SHA[:12], " ".join([
+            self.config.python, "-I", "-B", str(self.config.live / "bin/aim-next-admin"), "record-release",
+            "--profile", str(self.config.server_profile), "--record", str(kept.resolve())])), message)
         return json.loads((self.evidence / "10-verify.json").read_text())
 
     def test_a_release_whose_cli_fails_is_not_recorded(self):
@@ -482,14 +596,34 @@ class FullDeploy(DeployCase):
         verify = self.unverified(FakeHost(self.config, on_cli=lambda: self.stop(1)))
         self.assertEqual((verify["server_alive"], verify["runner_alive"], verify["root_status"]), (True, False, 200))
 
+    def test_the_records_the_instance_lacks_are_written_first_in_order(self):
+        kept = [release(18, "1" * 40, [1, 4]), release(19, HEAD, [87, 2])]
+        host = FakeHost(self.config, keeps=False, kept=kept)
+        self.run_deploy(host)
+        self.assertEqual([written["release"] for written in host.written], [18, 19, 20])
+        self.assertEqual(host.written[:2], kept)
+        self.assertEqual([write["exit"] for write in json.loads((self.evidence / "11-release.json").read_text())["writes"]],
+                         [0, 0, 0])
+
+    def test_when_a_record_is_refused_nothing_after_it_is_tried_and_every_command_left_is_given(self):
+        kept = [release(18, "1" * 40, [1, 4]), release(19, HEAD, [87, 2])]
+        host = FakeHost(self.config, keeps=False, kept=kept, recorded=2)
+        with self.assertRaises(deploy.Refused) as caught:
+            self.run_deploy(host)
+        commands = [" ".join(argv) for argv in host.ran("record-release")]
+        self.assertEqual(len(commands), 1)
+        self.assertIn("release 20 is live but the record of release 18 was not written", str(caught.exception))
+        self.assertIn(commands[0] + " && ", str(caught.exception))
+        self.assertIn(str((self.evidence / "release-20.json").resolve()), str(caught.exception))
+
     def test_a_record_the_instance_refuses_says_the_release_is_live_and_how_to_record_it(self):
         host = FakeHost(self.config, recorded=2)
         with self.assertRaises(deploy.Refused) as caught:
             self.run_deploy(host)
         message = str(caught.exception)
-        self.assertIn("release 20 is live but its record was not written", message)
+        self.assertIn("release 20 is live but the record of release 20 was not written", message)
         self.assertIn(" ".join(host.ran("record-release")[0]), message)
-        self.assertEqual(json.loads((self.evidence / "11-release.json").read_text())["exit"], 2)
+        self.assertEqual(json.loads((self.evidence / "11-release.json").read_text())["writes"][-1]["exit"], 2)
 
 
 class ReleaseCheckGate(DeployCase):
