@@ -72,3 +72,19 @@ record without a number on an instance with none is refused with
 
 `tools/deploy.py` writes the record (docs/tools.md); `tools/pipeline/build_pipeline.py`
 reads it to build the pipeline page.
+
+## Releases 18 and 19, recorded afterwards
+
+Releases 18 and 19 shipped before the deploy wrote records. Their records are
+in `tools/pipeline/releases/` and are written once, on the live instance,
+after it is migrated to schema 18:
+
+```sh
+LIVE=/path/to/live/checkout INSTANCE=/path/to/instance
+"$LIVE/bin/aim-next-admin" record-release --profile "$INSTANCE/tony.profile.json" --record "$LIVE/tools/pipeline/releases/release-18.json"
+"$LIVE/bin/aim-next-admin" record-release --profile "$INSTANCE/tony.profile.json" --record "$LIVE/tools/pipeline/releases/release-19.json"
+```
+
+Running them again changes nothing. Release 19's measurements come from its
+release check's summary; release 18 ran before that tool existed, so its
+measurements are `null`.

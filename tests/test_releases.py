@@ -140,10 +140,45 @@ class ReleaseCase(fixtures.StoreCase):
         self.assertEqual([[item["release"] for item in page["items"]] for page in pages], [[19]])
 
 
+ROOT = Path(__file__).resolve().parents[1]
+BACKFILL = ROOT / "tools" / "pipeline" / "releases"
+
+
+class Backfill(ReleaseCase):
+    """Releases 18 and 19 shipped before deploys wrote records; docs/releases.md has the one-off command that records them."""
+
+    def test_the_documented_command_records_releases_18_and_19_once(self):
+        files = sorted(BACKFILL.glob("release-*.json"))
+        self.assertEqual([path.name for path in files], ["release-18.json", "release-19.json"])
+        doc = (ROOT / "docs" / "releases.md").read_text()
+        for path in files:
+            self.assertIn('--record "$LIVE/tools/pipeline/releases/%s"' % path.name, doc)
+        for _ in range(2):
+            answers = [self.recorded(json.loads(path.read_text())) for path in files]
+        self.assertEqual([answer["recorded"] for answer in answers], [False, False], "the second run adds nothing")
+        listed = {item["release"]: item for item in self.releases()["items"]}
+        self.assertEqual(sorted(listed), [18, 19])
+        self.assertEqual((listed[19]["commit"], listed[19]["previous"], listed[19]["deployed_at"], listed[19]["items"]),
+                         ("485759bc81874b210ec58ab8a949464508f7d11f", "71e504df1a1bd2042a9886bfee23273f5691d4d1",
+                          "2026-11-06T05:28:35-08:00", [87, 90, 2, 3, 83, 10, 30, 51, 29, 59, 58, 71, 73]))
+        self.assertEqual((listed[18]["commit"], listed[18]["previous"], listed[18]["deployed_at"], listed[18]["items"]),
+                         ("71e504df1a1bd2042a9886bfee23273f5691d4d1", "85fefab1d0c71409930417d5319d83a976c3e76f",
+                          "2026-11-05T22:57:59-08:00", [1, 4]))
+        self.assertEqual({item["source"] for item in listed.values()}, {"backfill"})
+        # Release 19's counts are its release check's; release 18 ran before that check existed.
+        measured = listed[19]["measurements"]
+        self.assertEqual((measured["python_units"], measured["node_units"]["tests"], measured["native"]["pass"],
+                          measured["native"]["total"]), ({"tests": 1106}, 740, 188, 188))
+        self.assertIsNone(listed[18]["measurements"])
+
+
 # Do not rerun the inherited StoreCase tests.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_"):
         setattr(ReleaseCase, _name, None)
+for _name in list(ReleaseCase.__dict__):
+    if _name.startswith("test_"):
+        setattr(Backfill, _name, None)
 
 
 if __name__ == "__main__":
