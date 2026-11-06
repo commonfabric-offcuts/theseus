@@ -31,7 +31,7 @@ test('the page reads every page of the reader\'s choices, and again when it is s
   const { colors, calls, listeners } = store([
     page([{ actor_id: 'aim-core', color: 'orchid', color_revision: 1 }], 'aim-core'),
     page([{ actor_id: 'fable', color: null, color_revision: 2 }]),
-    page([{ actor_id: 'fable', color: 'peach', color_revision: 3 }]),
+    page([{ actor_id: 'aim-core', color: null, color_revision: 4 }, { actor_id: 'fable', color: 'peach', color_revision: 3 }]),
   ]);
   let painted = 0; colors.listen(() => painted++);
   await colors.load();
@@ -41,7 +41,7 @@ test('the page reads every page of the reader\'s choices, and again when it is s
   assert.equal(painted, 1);
   listeners.focus(); await colors.loading;
   assert.equal(colors.color('fable'), 'peach', 'a choice made on another device is there when the page is focused');
-  assert.equal(colors.color('aim-core'), 'cyan', 'a choice no longer listed is gone');
+  assert.equal(colors.color('aim-core'), 'cyan', 'a choice reset elsewhere is the agent\'s own again');
 });
 
 test('a read that cannot be confirmed keeps what the page had, and a color the page cannot draw is refused', async () => {
@@ -69,6 +69,36 @@ test('choosing sends the palette name on the revision last read, and a stale one
   assert.deepEqual(calls[1].expected.color_revision, 5);
   assert.equal(calls[1].args.color, null, 'the agent\'s own is chosen with null');
   assert.equal(colors.color('fable'), 'cyan', 'refused as stale: the page shows what was chosen elsewhere');
+});
+
+test('a read answered before a choice, landing after it, does not undo the choice', async () => {
+  let answer; const late = new Promise(resolve => answer = resolve);
+  const { colors, listeners } = store([page([{ actor_id: 'fable', color: 'rose', color_revision: 1 }]), late],
+    [{ status: 'committed', result: { actor_id: 'fable', color: 'olive', color_revision: 2 } },
+     { status: 'committed', result: { actor_id: 'warp', color: 'cyan', color_revision: 1 } }]);
+  await colors.load();
+  listeners.focus(); const reading = colors.loading;
+  await colors.choose('fable', 'olive');
+  await colors.choose('warp', 'cyan');
+  // The read was answered before either choice was made.
+  answer(page([{ actor_id: 'fable', color: 'rose', color_revision: 1 }, { actor_id: 'aim-core', color: 'violet', color_revision: 3 }]));
+  await reading;
+  assert.deepEqual([colors.color('fable'), colors.chosen('fable')], ['olive', 'olive'], 'the older revision does not replace the newer');
+  assert.equal(colors.color('warp'), 'cyan', 'a first choice the read had not seen is kept: Core never forgets a choice, it holds null for the agent\'s own');
+  assert.equal(colors.color('aim-core'), 'violet', 'what the read did bring is taken');
+});
+
+test('a read whose next page does not move past the last is refused, and asks for no more', async () => {
+  for (const [first, next] of [['fable', 'fable'], ['fable', 'aim-core'], ['', null]]) {
+    const pages = [page([{ actor_id: 'fable', color: 'rose', color_revision: 1 }]),
+      page([], first), page([], next), page([{ actor_id: 'fable', color: 'olive', color_revision: 2 }])];
+    const { colors, calls } = store(pages);
+    await colors.load(); calls.length = 0;
+    if (first === '') { await assert.rejects(colors.load(), /could not be confirmed/); assert.equal(calls.length, 1); continue; }
+    await assert.rejects(colors.load(), /could not be confirmed/, `${first} then ${next}`);
+    assert.equal(calls.length, 2, 'it stopped at the page that did not move on');
+    assert.equal(colors.color('fable'), 'rose', 'and keeps what it had');
+  }
 });
 
 // Just enough of a page for the picker.

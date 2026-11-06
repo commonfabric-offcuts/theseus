@@ -51,7 +51,12 @@ export class AgentColors {
       this.palette = [...page.palette];
       cursor = page.next_cursor;
     } while (cursor !== null);
-    this.choices = read; this.loaded = true;
+    // A read may have been answered before a choice this page then committed:
+    // each agent keeps the newer revision. Core never deletes a choice (the
+    // agent's own is held as null), so an agent the read lacks is one it had
+    // not seen yet.
+    for (const [agent, choice] of read) if (!(this.choices.get(agent)?.revision > choice.revision)) this.choices.set(agent, choice);
+    this.loaded = true;
     this.emit();
   }
 
