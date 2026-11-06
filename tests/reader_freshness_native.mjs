@@ -901,7 +901,9 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     if (sourceDenied) await fault('source', 'FORBIDDEN');
     else {
       const state = await view('editor_state', { source_ref: before.source, topic_id: 't1' }); state.destination_available = false;
-      await control({ method:'read_fault', name:'editor_state', read_class:'background', status:200, body:state, count:1 });
+      // Since 4b03bc5 the inline composer's own editor_state read runs beside
+      // this one and goes first; scope the refusal to the Reader's source.
+      await control({ method:'read_fault', name:'editor_state', source_ref: before.source, read_class:'background', status:200, body:state, count:1 });
     }
     await fault('changes', 'RESYNC_REQUIRED'); await fault('changes', 'FORBIDDEN');
     await until(() => p.evaluate('observedFreshness.stopped'), 'resync denied');
@@ -914,6 +916,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     assert.equal(await p.evaluate('document.querySelector("#quote-selection").disabled'), sourceDenied);
     assert.equal(await p.evaluate('document.querySelector("#send-reply").disabled'), true);
     assert.ok(p.responses.some(r=>r.payload?.name==='source'));
+    if (!sourceDenied) assert.ok(p.responses.some(r=>r.payload?.name==='editor_state' && r.payload.args.source_ref?.kind==='message' && r.body.source_available && r.body.destination_available===false), 'the Reader itself was told its destination is unavailable');
     observations.push({name:'correction A',sourceDenied,before,after}); assert.deepEqual(p.errors, []);
   });
 
