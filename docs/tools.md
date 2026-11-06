@@ -32,7 +32,7 @@ It refuses (exit 2) before running anything when:
 
 - the checkout has tracked or untracked changes, so a result would not speak for its commit;
 - any directory above the checkout is writable by anyone, such as `/private/tmp`, where `tests/test_codex_broker.py` refuses its parents;
-- `--out` is relative or already holds files, a native harness is missing, or `node` or Python cannot be run.
+- `--out` is relative, already holds files, or is inside the checkout without being ignored (`work/` is ignored), a native harness is missing, or `node` or Python cannot be run.
 
 Then it runs, one at a time:
 

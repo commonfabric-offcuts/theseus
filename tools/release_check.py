@@ -114,6 +114,12 @@ def preflight(root, out, chrome, python, node):
         raise Refused("--out must be absolute: %s" % out)
     if out.exists() and any(out.iterdir()):
         raise Refused("--out already holds files; each run gets a fresh directory: %s" % out)
+    try:
+        inside = out.resolve().relative_to(Path(root).resolve())
+    except ValueError:
+        inside = None
+    if inside is not None and git(root, "check-ignore", "-q", str(inside)).returncode != 0:
+        raise Refused("--out is inside the checkout and not ignored, so the run would change it: %s" % out)
     for tool in (python, node):
         if not tool or not os.access(tool, os.X_OK):
             raise Refused("not an executable: %r" % tool)

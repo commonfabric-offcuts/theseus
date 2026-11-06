@@ -171,6 +171,16 @@ class ReleaseCheckRefuses(FakeCheckout):
         with self.assertRaises(release_check.Refused):
             release_check.check(self.root, self.out, "/c", self.python, self.node)
 
+    def test_out_inside_the_checkout_must_be_ignored(self):
+        self.assertIn("not ignored", self.refusal(out=self.root / "evidence" / "run"))
+        (self.root / ".gitignore").write_text("work/\n")
+        subprocess.run(["git", "-C", str(self.root), "add", ".gitignore"], check=True)
+        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                        "commit", "-qm", "ignore"], check=True)
+        self.out = self.root / "work" / "evidence" / "run"
+        summary = self.check()
+        self.assertTrue(summary["passed"], [s for s in summary["steps"] if not s["passed"]])
+
     def test_missing_interpreter_or_harness_is_refused(self):
         self.assertIn("not an executable", self.refusal(node=None))
         subprocess.run(["git", "-C", str(self.root), "rm", "-q", "tests/reader_native.mjs"], check=True)
