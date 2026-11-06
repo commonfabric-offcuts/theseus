@@ -17,6 +17,8 @@ class AgentLoopCase(fixtures.ReaderCase):
 
     def post(self, actor="agent-a", topic="t1", op=None, **args):
         args.setdefault("body", "Posted words")
+        if args.get("addressees"):
+            args.setdefault("intent", "tell")
         return self.command("message.post", args, target={"topic_id": topic}, actor=actor, op=op)
 
     def pending(self, actor):

@@ -10,7 +10,8 @@ from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
 from .runner import HOSTED_DOWN, HOSTED_OCCUPIED, HOSTED_SCHEMA
 from .topic_state import TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA, WAITING_ORDER_DOWN, WAITING_ORDER_SCHEMA
-from .conversation import MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA
+from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE_INTENT_SCHEMA,
+                           MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA)
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 
 
@@ -25,6 +26,8 @@ STEPS = (
     ("11", "12", MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA, WAITING_ORDER_DOWN + MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED),
     # Version 13 keeps the messages each person marked unread.
     ("12", "13", MARK_SCHEMA, MARK_DOWN, MARK_OCCUPIED),
+    # Version 14 records whether a message to someone asks or tells.
+    ("13", "14", MESSAGE_INTENT_SCHEMA, MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED),
 )
 
 

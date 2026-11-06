@@ -93,9 +93,12 @@ class Drafts:
         for recipient in result["addressees"]:
             _identifier(recipient, "addressee")
         result["addressees"] = list(dict.fromkeys(result["addressees"]))
-        for name in ("reply_to", "exchange_id", "caret", "opening"):
+        for name in ("reply_to", "exchange_id", "caret", "opening", "intent"):
             if name in args:
                 result[name] = args[name]
+        # Whether a message to someone asks or tells; none means the sender has not said.
+        if result.get("intent") not in (None, "ask", "tell"):
+            raise Refusal("INVALID_ARGUMENT", "A message asks or tells")
         return result
 
     def _command_draft_save(self, db, actor, envelope):
@@ -172,7 +175,7 @@ class Drafts:
         snapshot = json.loads(row["payload"])
         # The durable saved revision, never a late HTTP payload, is the source
         # of the frozen act. Callers may echo fields, but cannot override them.
-        for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening"):
+        for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)

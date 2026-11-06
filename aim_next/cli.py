@@ -168,7 +168,7 @@ LEGACY_VERBS = ("binding", "view", "command")
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes | new-outcome --title TITLE [--purpose TEXT] [--team A,B] "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | post TOPIC [--to A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] TEXT|- "
+         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION}")
@@ -211,7 +211,10 @@ def _parser():
     verb("inbox")
     post = verb("post")
     post.add_argument("topic")
-    post.add_argument("--to", default="")
+    # A message to someone asks or tells them; --to, which said neither, is refused by name.
+    post.add_argument("--asks")
+    post.add_argument("--tells")
+    post.add_argument("--to")
     post.add_argument("--reply-to")
     post.add_argument("text")
     start = verb("start")
@@ -524,7 +527,7 @@ class Agent:
                 body = self.view("source", {"source_ref": {"kind": "message", "id": item["id"]}})["body"]
             heading = "#%s %s %s" % (item["seq"], item["id"], item["author_id"])
             if item["addressees"]:
-                heading += " to " + ", ".join(item["addressees"])
+                heading += {"ask": " asks ", "tell": " tells "}.get(item.get("intent"), " to ") + ", ".join(item["addressees"])
             if item["reply_to"]:
                 heading += " replying to " + item["reply_to"]
             self.out.plain("")
@@ -553,7 +556,13 @@ class Agent:
 
     def do_post(self):
         options = self.options
-        args = {"body": self.text(), "addressees": _names(options.to)}
+        if options.to is not None or (options.asks is not None and options.tells is not None):
+            self.refuse("INTENT_REQUIRED", "A message to someone says whether it asks or tells: use --asks A,B or --tells A,B "
+                        "(not --to, and not both); nothing was sent")
+        named = options.asks if options.asks is not None else options.tells
+        args = {"body": self.text(), "addressees": _names(named or "")}
+        if args["addressees"]:
+            args["intent"] = "ask" if options.asks is not None else "tell"
         if options.reply_to:
             args["reply_to"] = options.reply_to
         result = self.command("message.post", {"topic_id": options.topic}, args)
