@@ -8,6 +8,9 @@ import { createHash } from 'node:crypto';
 export async function navigationChecks({ check, page, until, root, evidencePath, facts, view, control, shot, observations }) {
   const link = id => `#topics a[data-topic-id="${id}"]`;
   const topics = [{ id: 't2', title: 'Design discussion' }, { id: 't3', title: 'Greenlight discussion' }];
+  // A wait that spans a document replacement can probe the new document after
+  // it commits and before its body is parsed. Readiness probes read
+  // document.body?.dataset, so that moment reads as not ready yet.
   const ready = (p, id) => until(async () => { try { return await p.evaluate(`document.body.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')===${JSON.stringify(id)} && Boolean(document.querySelector(${JSON.stringify(link(id))}))`); } catch { return false; } }, 'topic '+id+' ready');
   // The rail fills from its own workspace_topics read, which may settle after
   // the page is ready; a native choice waits for its actual rendered link.
@@ -63,21 +66,21 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.equal(await p.evaluate('document.querySelectorAll("#workspaces a").length'),22);
     assert.equal(await p.evaluate('document.activeElement.dataset.workspaceId'),'outcome-20');
     await activate('#workspaces a[data-workspace-id="outcome-00"]');
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'empty outcome');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'empty outcome');
     assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Same outcome');
     assert.match(await p.evaluate('document.querySelector("#outcome-empty").textContent'),/No topics yet/);
     assert.equal(await p.evaluate('document.querySelector("#inline-composer").hidden'),true);
     await shot(p,'outcomes-empty');
     // A keyboard user chooses the real outcome and topic through ordinary links.
     await activate('#outcomes-home');
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" && !location.search'),'root again');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && !location.search'),'root again');
     await until(()=>p.evaluate('!document.querySelector("#more-workspaces").hidden'),'root More available');
     await activate('#more-workspaces');
     await until(()=>p.evaluate('Boolean(document.querySelector("#workspaces a[data-workspace-id=w1]"))'),'original outcome visible');
     await p.key('Tab');
     assert.equal(await p.evaluate('document.activeElement.dataset.workspaceId'),'w1');
     await p.key('Enter');
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" && Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'),'workspace topics');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'),'workspace topics');
     await control({method:'read_fault',name:'workspace',status:403,body:{error:{code:'FORBIDDEN',message:'Outcome access denied'}},count:1});
     await activate('#refresh');
     await until(()=>p.evaluate('document.querySelector("#topic-navigation").hidden'),'denied outcome hides its previous topic choices');
@@ -90,7 +93,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const body='Writing preserved when choosing Outcomes';await p.send('Input.insertText',{text:body});const entered=Date.now();
     await activate('#outcomes-home');
     assert.ok(Date.now()-entered<450,'outcome link activated before autosave debounce');
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" && !location.search'),'guarded root departure');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && !location.search'),'guarded root departure');
     assert.equal((await state()).draft.body,body);
     await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
     await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
@@ -106,7 +109,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.equal(await p.evaluate('location.search'),'','a neighboring gap does not choose an outcome');
     await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:b.x+b.width/2,y:b.y+b.height/2}]});
     await p.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'mobile outcome selection');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'mobile outcome selection');
     await shot(p,'outcomes-mobile-empty');
     noActs(p);noPrompt(p);assert.deepEqual(p.errors,[]);
   });
@@ -189,7 +192,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     // Outcomes is now the selected bare-root behavior; pending topic headers
     // stay empty, while a resolved root has its own real selection heading.
     await p.send('Page.navigate',{url:facts.origin+'/'});
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'bare-root outcome selection');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'bare-root outcome selection');
     assert.equal((await header()).generic,false);
     noActs(p);noPrompt(p);assert.deepEqual(p.errors,[]);
   });
@@ -348,7 +351,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   await check('navigation outcome creation saves a form resumes and creates once by keyboard',async()=>{
     const p=await page('create-outcome',null,true,{url:facts.origin+'/'});
     const click=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await p.point(selector);};
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'root ready');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'root ready');
     assert.equal(await p.evaluate('document.querySelector("#new-outcome").disabled'),false,'New outcome must be discoverable and enabled');
     await click('#new-outcome');await until(()=>p.evaluate('Boolean(document.querySelector("#outcome-title-input"))'),'outcome form');
     assert.equal(await p.evaluate('document.activeElement.id'),'outcome-title-input');
@@ -388,7 +391,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
       });
     }});
     const click=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await p.point(selector);};
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" && Boolean(document.querySelector("#outcome-title-input"))'),'uncertain form ready');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector("#outcome-title-input"))'),'uncertain form ready');
     await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
     await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
     await click('#outcome-title-input');await p.send('Input.insertText',{text:'Mobile uncertain outcome'});
@@ -425,7 +428,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await until(()=>other.evaluate('document.querySelector("#outcome-page").textContent.includes("read-only")'),'read-only Refresh settled');
     assert.equal(other.calls.some(c=>c.payload?.kind),false,'read-only Refresh cannot dispatch a write');
     assert.deepEqual(storageActs(other),[],'actual intent/recovery stores and journal entry points stay unwritten after Refresh');
-    await click(other,'#creation-later');await until(()=>other.evaluate('document.body.dataset.ready==="true" && location.search===""'),'competing tab can leave');
+    await click(other,'#creation-later');await until(()=>other.evaluate('document.body?.dataset.ready==="true" && location.search===""'),'competing tab can leave');
     assert.deepEqual(storageActs(other),[],'read-only departure attempts no journal write or delete');noPrompt(other);await other.close();
     p.intercept(payload=>payload?.kind==='workspace.create');await click(p,'#create-outcome');
     const held=await until(()=>p.held.find(h=>h.payload?.kind==='workspace.create'),'creation response held after effect');
@@ -438,7 +441,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await click(p,'#outcomes-home');
     await until(()=>p.evaluate('document.querySelector("#topic-navigation-status").textContent.includes("again")'),'named informed departure');
     assert.equal(await p.evaluate('location.href'),route);
-    await click(p,'#outcomes-home');await until(()=>p.evaluate('document.body.dataset.ready==="true" && location.search===""'),'second explicit choice leaves');
+    await click(p,'#outcomes-home');await until(()=>p.evaluate('document.body?.dataset.ready==="true" && location.search===""'),'second explicit choice leaves');
     await click(p,'#unfinished-work a');await until(()=>p.evaluate('Boolean(document.querySelector("#check-outcome"))'),'retained creation resumed');
     assert.equal(await p.evaluate('location.href'),route);assert.equal(await p.evaluate('document.querySelector("#outcome-title-input").value'),'Guarded outcome');
     assert.equal(p.calls.filter(c=>c.payload?.kind==='workspace.create').length,1,'Resume cannot replay uncertain creation');
