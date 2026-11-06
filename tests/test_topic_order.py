@@ -80,6 +80,14 @@ class TopicOrderCase(fixtures.ReaderCase):
         self.update("t2", {"archived": False})
         self.assertEqual(self.order(), ["t1", "t2"])
 
+    def test_activity_never_goes_back_when_a_later_act_reads_an_earlier_clock(self):
+        self.post("t1")
+        high = self.now
+        for act in (lambda: self.update("t1", {"state": "review"}), lambda: self.post("t1")):
+            self.now = high - 500
+            act()
+            self.assertEqual(self.page()["items"][0]["activity_ms"], high)
+
     def test_done_topics_are_listed_apart_and_counted_and_archived_ones_are_listed_alone(self):
         for topic in ("t2", "t3", "t4"):
             self.open_topic(topic, topic)
@@ -183,6 +191,18 @@ class ReopenCase(TopicOrderCase):
         # Saying where it stands again replaces the reason.
         self.update("t1", {"state": "review"}, actor="agent-a")
         self.assertIsNone(self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["state_message_id"])
+
+    def test_the_next_word_on_where_a_reopened_topic_stands_replaces_the_whole_reopen_record(self):
+        for args in ({"state": "active"}, {"waiting_on": []}, {"state": "waiting", "waiting_on": ["agent-a"]}):
+            self.update("t1", {"state": "done", "note": "Shipped"}, actor="agent-a")
+            self.post("t1", "One more thing", actor="agent-a")
+            self.update("t1", args)
+            topic = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]
+            self.assertEqual((topic["state_note"], topic["state_by"], topic["state_message_id"]), ("", "owner", None), args)
+        # A note someone said stays while the state does, as before.
+        self.update("t1", {"state": "review", "note": "Look"}, actor="agent-a")
+        self.update("t1", {"waiting_on": []})
+        self.assertEqual(self.sql("SELECT state,state_note,state_by FROM topics WHERE id='t1'"), [("review", "Look", "owner")])
 
     def test_a_message_reopens_only_a_done_topic_and_a_refused_post_reopens_nothing(self):
         self.update("t1", {"state": "waiting", "note": "Which name?", "waiting_on": ["owner"]}, actor="agent-a")

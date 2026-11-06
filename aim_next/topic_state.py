@@ -142,8 +142,10 @@ class TopicState:
             state = args.get("state", topic["state"])
             if state not in STATES:
                 raise Refusal("INVALID_ARGUMENT", "A topic's state is one of: " + ", ".join(STATES))
-            # A new state starts with its own note unless one is given.
-            note = args.get("note", topic["state_note"] if state == topic["state"] else "")
+            # A new state starts with its own note unless one is given; so does
+            # any word after a reopen, whose note was the message's, not said.
+            said = state == topic["state"] and topic["state_message_id"] is None
+            note = args.get("note", topic["state_note"] if said else "")
             note = _body(note)
             if len(note.encode("utf-8")) > NOTE_UTF8_BYTES:
                 raise Refusal("BODY_TOO_LARGE", "A state note is at most %d bytes" % NOTE_UTF8_BYTES)
