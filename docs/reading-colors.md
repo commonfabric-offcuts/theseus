@@ -169,14 +169,11 @@ screenshots for review.
 
 ## Hovering your own message
 
-On a light page the border change alone did not show on a hovered own card.
-Hovering it now lifts the whole card from black to `#22292d` (1.42:1 against
-black), as well as changing its border: a change of the whole face, never an
-edge or bar, and at rest the card stays black. Its words keep their contrast
-on the lifted card (body 11.84:1, quiet text 6.16:1, excerpt cue 7.43:1).
-`tests/ui_own_hover.test.mjs` holds those numbers from `aim.css`, and the
-native colors check reads the hovered card's fill from screenshot pixels on
-both sides.
+Your own card is black, at rest and under the pointer, exactly as it was
+live: hovering changes only its border, from the accent to the ink color,
+never its fill and never with an edge or bar. `tests/ui_own_hover.test.mjs`
+holds this from `aim.css`, and the native colors check reads the hovered
+card's fill from screenshot pixels on both sides.
 
 ## Choosing an agent's color
 

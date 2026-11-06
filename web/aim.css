@@ -92,8 +92,7 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
   color: var(--ink);
   border-color: var(--accent);
 }
-/* Hovering your own message lifts the whole card off black, which shows on a light page too. */
-.message-card.own-message:hover { background: #22292d; border-color: var(--ink); }
+.message-card.own-message:hover { background: #000; border-color: var(--ink); }
 /* On a wide screen the rail scrolls on its own, so nothing it shows can move the conversation, and the conversation cannot move it. Scrolling past its end moves the page, which brings the rail's last rows below the header into view. */
 @media(min-width:761px){.rail{position:sticky;top:0;align-self:start;max-height:100dvh;overflow-y:auto}}
 .sent-whole{white-space:pre-wrap;overflow-wrap:anywhere;margin:.3rem 0}
