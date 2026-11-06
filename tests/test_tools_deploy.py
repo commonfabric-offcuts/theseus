@@ -353,6 +353,7 @@ class ReleasePlan(DeployCase):
                          {"release": 20, "commit": SHA, "previous": HEAD, "items": [87, 2, 90], "source": "deploy"})
         self.assertEqual([commit["items"] for commit in plan["commits"]], [[87, 2], [], [2, 90]])
         self.assertEqual(plan["latest_recorded"], 19)
+        self.assertIsNone(plan["restart_of"], "a deploy that ships a release restarts none")
         log_call = host.ran("log")[0]
         self.assertEqual(log_call[-1], "%s..%s" % (HEAD, SHA))
         self.assertIn("--reverse", log_call)
@@ -930,6 +931,8 @@ class FullDeploy(DeployCase):
             self.run_deploy(host, sha=HEAD)
         self.assertIn("the restart of release 19 did not verify, so no release record was written: ", str(caught.exception))
         self.assertNotIn("record-release", str(caught.exception))
+        self.assertNotIn("record it with", str(caught.exception), "no offer of commands when there are none")
+        self.assertTrue(str(caught.exception).endswith("%s is live" % HEAD[:12]), str(caught.exception)[-120:])
         self.assertEqual(host.ran("record-release"), [])
 
     def test_a_record_the_instance_refuses_says_the_release_is_live_and_how_to_record_it(self):
