@@ -69,6 +69,8 @@ const downloadPath = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-download-'
 let chrome, chromeExit, socket, cdp, facts, finalHealth, fixtureExitCode;
 const pages = new Set();
 const freshnessPages = new Map();
+// Every connected page of the running case, in every mode, for failed-case diagnostics.
+const connectedPages = new Map();
 try {
   facts = await control({ method: 'ready' });
   phases.fixtureReady = Date.now();
@@ -170,7 +172,7 @@ try {
         ...(name === 'Enter' && !modifiers ? { text: '\r', unmodifiedText: '\r' } : {}) });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
     };
-    const close = async () => { if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); };
+    const close = async () => { connectedPages.delete(targetId); if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); };
     if (connected) {
       if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
       const connectedPage = { targetId, send, evaluate, close, box, point, key, calls, held, errors, events, network, responses,
@@ -202,6 +204,7 @@ try {
           await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
         },
       };
+      connectedPages.set(targetId, connectedPage);
       if (liveUpdatesFixture) {
         freshnessPages.set(targetId, connectedPage);
         await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, ...(['--freshness', '--live'].includes(mode) ? [{ urlPattern: facts.origin + '/app.mjs', requestStage: 'Response' }, { urlPattern: facts.origin + '/upload-cleanup.mjs', requestStage: 'Response' }] : [])] });
@@ -258,7 +261,7 @@ try {
     const timing = { name, started: Date.now() };
     // These recovery cases deliberately leave abandoned copies behind. Each
     // gets a fresh owned storage context, shared only by that case's tabs.
-    if (/^images X[1234] /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
+    if (/^images X[1234] /.test(name) || /^epoch recovery /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
     try {
       timing.actionStarted = Date.now();
       await action();
@@ -272,9 +275,9 @@ try {
     }
     catch (error) {
       results.push({ name, passed: false, error: error.stack });
-      for (const [targetId, p] of freshnessPages) {
+      for (const [targetId, p] of connectedPages) {
         let state;
-        try { state = await p.evaluate('({departure:window.departureState?.(),departureTrace:window.departureDiagnostics,snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
+        try { state = await p.evaluate('({departure:window.departureState?.(),departureTrace:window.departureDiagnostics,snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},reader:{open:document.querySelector("#reader")?.open,notice:document.querySelector("#reader-notice")?.textContent,saveState:document.querySelector("#save-state")?.textContent,writingReadOnly:document.querySelector("#writing-body")?.readOnly,focus:document.activeElement?.id},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
         catch (error) { state = { diagnosticError: error.message }; }
         observations.push({ name: 'failed case diagnostics', case: name, targetId, state, errors: p.errors, calls: p.calls });
       }
@@ -299,7 +302,7 @@ try {
         if(p.errors.length)observations.push({name:'interception failure lifecycle',case:name,targetId,errors:p.errors,network:p.network.filter(e=>['Network.loadingFailed','Network.requestWillBeSent'].includes(e.method))});
       }
       for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear();
-      freshnessPages.clear();
+      freshnessPages.clear(); connectedPages.clear();
       if (recoveryContext) { await cdp('Target.disposeBrowserContext', { browserContextId: recoveryContext }); recoveryContext = null; }
       timing.cleanupEnded = Date.now(); phases.cases.push(timing);
     }
@@ -1233,13 +1236,27 @@ try {
       const p = await page('epoch', null, true); await p.open(1); await replace(p, 'Before fixture epoch');
       await until(async () => (await privateState()).draft?.body === 'Before fixture epoch', 'E1 private acknowledgement');
       await p.evaluate(`(()=>{window.readOwnRecovery=()=>new Promise((resolve,reject)=>{const request=indexedDB.open('aim-next-pending');request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,tx=db.transaction('editors'),key=JSON.stringify([${JSON.stringify(facts.instance_id)},${JSON.stringify(facts.actor)},'reply','message',${JSON.stringify(facts.sources[1].id)},'t1']),writer=sessionStorage.getItem('aim-next-recovery-hint:'+JSON.stringify([${JSON.stringify(facts.instance_id)},${JSON.stringify(facts.actor)}]));tx.objectStore('editors').get(JSON.stringify([key,writer])).onsuccess=e=>resolve(e.target.result?.snapshot);tx.oncomplete=()=>db.close();}})})()`);
-      const originalEnvelopes = (await p.evaluate('readOwnRecovery()')).attempts.map(attempt => attempt.envelope);
       await control({ method: 'epoch', epoch: 'native-epoch-2', complete: false, drop_private: true });
       await replace(p, 'Keep this after epoch');
       await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Runtime changed")'), 'explicit authority recovery status');
+      // Read the device copy once the writing is parked: since 30186fc an
+      // acknowledged copy is retired, but parked writing is unacknowledged and
+      // keeps the operations it attempted under the old authority.
+      const parked = await p.evaluate('readOwnRecovery()');
+      assert.ok(parked, 'parked writing keeps its device copy');
+      const originalEnvelopes = parked.attempts.map(attempt => attempt.envelope);
+      observations.push({ epochParkedAttempts: originalEnvelopes.map(envelope => ({ kind: envelope.kind, epoch: envelope.expected?.authority?.authority_epoch })) });
+      assert.ok(originalEnvelopes.some(envelope => envelope.expected?.authority?.authority_epoch !== 'native-epoch-2'), 'the parked copy holds an operation pinned to the old authority');
       const geometry = await p.box('#writing-body');
+      // The page parks the writing when it learns of the change, or reads the
+      // new runtime at once when its save is refused first. Until that read is
+      // done the saved version is unknown, and the comparison must not claim
+      // there is none (6e29a82).
+      const phase = await until(async () => { const value = (await p.evaluate('readOwnRecovery()'))?.authorityRecovery?.phase; return value && value !== 'loading' ? value : null; }, 'settled runtime review phase');
+      observations.push({ epochFirstReviewPhase: phase });
       await p.point('#review-versions');
-      await until(() => p.evaluate('document.querySelector("#review-content").textContent.includes("No saved version here")'), 'missing current private version');
+      const saved = phase === 'ready' ? 'No saved version here' : 'Saved version unavailable. Retry to read it; your writing is kept.';
+      await until(() => p.evaluate(`document.querySelector("#review-content").textContent.includes(${JSON.stringify(saved)})`), 'saved private version as far as it is known');
       assert.equal(await p.evaluate('document.activeElement.id'), 'review-title', 'comparison never focuses its write action');
       await p.point('#review-keep'); await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'Keep both closes comparison');
       assert.equal(await field(p), 'Keep this after epoch');
@@ -1262,6 +1279,7 @@ try {
       await until(() => p.evaluate('(await readOwnRecovery()).authorityRecovery?.phase === "ready"'), 'current review durably settled after held read');
       await p.point('#review-versions');
       await until(() => p.evaluate('document.querySelector("#review-content").textContent.includes("Typed while recovery read was held")'), 'current writing comparison refreshed');
+      assert.ok(await p.evaluate('document.querySelector("#review-content").textContent.includes("No saved version here")'), 'missing current private version');
       await until(() => p.evaluate('!document.querySelector("#review-save").disabled'), 'explicit private choice ready');
       await p.point('#review-save');
       await until(async () => (await privateState()).draft?.body === 'Typed while recovery read was held', 'private resume with new authority');
@@ -1271,7 +1289,7 @@ try {
       const pinned = p.calls.filter(call => call.payload?.kind === 'draft.save').map(call => call.payload.expected.authority.authority_epoch);
       assert.ok(pinned.includes('native-epoch-2')); assert.ok(pinned.some(epoch => epoch !== 'native-epoch-2'));
       const retained = await p.evaluate('readOwnRecovery()');
-      for (const envelope of originalEnvelopes) assert.deepEqual(retained.attempts.find(attempt=>attempt.envelope.operation_id===envelope.operation_id).envelope,envelope,'original operation and authority pin survive the private choice');
+      for (const envelope of originalEnvelopes) assert.deepEqual(retained.attempts.find(attempt=>attempt.envelope.operation_id===envelope.operation_id)?.envelope,envelope,'original operation and authority pin survive the private choice');
       await shot(p, 'epoch-recovered'); assert.deepEqual(p.errors, []);
     });
 
