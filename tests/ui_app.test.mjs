@@ -287,6 +287,24 @@ test('the Reader stops taking typing while a step keeps its writing on this devi
   assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Typed while the step waits');
 });
 
+// Escape while that last keep runs drops the step, as before the read
+// answered: the Reader stays in front and takes typing again.
+test('Escape while a step keeps the Reader\'s writing drops the step and the Reader takes typing again', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const held = await holdSource(f), put = f.backend.put, entered = deferred(), release = deferred();
+  t.after(() => { held.release.resolve(); release.resolve(); f.backend.put = put; });
+  reply.edit({ body: 'Typed while the step waits' }); await f.registry.edited(reply);
+  f.backend.put = async row => { entered.resolve(); await release.promise; return put(row); };
+  held.release.resolve(); await entered.promise;
+  assert.equal(f.registry.isWritable(x, reply), false);
+  assert.equal(f.registry.cancelOpen(), true);
+  assert.equal(f.registry.isWritable(x, reply), true, 'Escape gives the Reader its typing back');
+  release.resolve();
+  assert.equal((await held.opening).value, null, 'the dropped step shows nothing');
+  assert.equal(f.registry.current, x); assert.deepEqual(f.shown, [x]);
+  assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Typed while the step waits');
+});
+
 // A topic chosen on the rail while a step waits leaves with the writing typed
 // during the wait saved to Theseus and kept on this device. If the step
 // replaces the Reader while that save is out, the rail stays.
