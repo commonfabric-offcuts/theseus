@@ -237,8 +237,11 @@ class LiveStreamTests(unittest.TestCase):
         for _ in range(2):
             self.commit()
             seq = self.seq()
-            while self.line(client)["seq"] < seq:
-                pass
+            while True:
+                line = self.line(client)
+                self.assertIn("seq", line, "the feed ended")
+                if line["seq"] >= seq:
+                    break
 
     def until_runner(self, client, state, lines=4):
         """Read the stream's commits until the runner's recorded state is this one (the socket's timeout guards a hang)."""
@@ -276,6 +279,19 @@ class LiveStreamTests(unittest.TestCase):
         self.start()
         client = self.open()
         self.assertEqual(self.until_runner(client, "exited"), ("exited", "ended", child.pid))
+
+    def test_a_runner_process_the_kernel_will_not_watch_leaves_the_feed_running(self):
+        """Another user's runner cannot be watched: its end is known from its lease, and every commit is still announced."""
+        client = self.open()
+        self.line(client)
+        child = self.runner_process()
+        refused = mock.patch.object(live_module.NativeWatch, "watch_process", side_effect=WatchError("watch_unavailable"))
+        with refused as watch_process:
+            self.take_runner(child.pid)
+            self.settled(client)
+        self.assertEqual(watch_process.call_args.args, (child.pid,))
+        self.settled(client)
+        self.assertEqual(self.runner_state(), ("running", None, child.pid))
 
     def test_a_runner_that_stopped_cleanly_is_not_said_to_have_ended_when_its_process_goes(self):
         told = self.telling()
