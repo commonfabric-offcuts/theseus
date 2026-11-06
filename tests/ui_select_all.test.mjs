@@ -45,8 +45,12 @@ for (const [platform, mac, chord, other] of [['on a Mac', true, { metaKey: true 
     for (const [where, target] of [['the writing field', f.field], ['the recipient field', f.recipient]])
       assert.deepEqual(f.press(target, chord), { prevented: false, selected: [] }, `${where}: the browser selects the field's own text`);
     assert.deepEqual(f.press(f.sourceBody, other), { prevented: false, selected: [] }, 'the other modifier is not Select All here');
-    for (const extra of [{ shiftKey: true }, { altKey: true }, { key: 'b', code: 'KeyB' }])
+    for (const extra of [{ shiftKey: true }, { altKey: true }, { key: 'b', code: 'KeyB' }, { key: 'q', code: 'KeyA' }])
       assert.deepEqual(f.press(f.sourceBody, { ...chord, ...extra }), { prevented: false, selected: [] }, JSON.stringify(extra));
+    // The key named A wherever the layout puts it (AZERTY), and on a layout
+    // with no Latin letters, the key where A sits (a Russian layout names it ф).
+    for (const layout of [{ key: 'a', code: 'KeyQ' }, { key: 'A', code: 'KeyA' }, { key: 'ф', code: 'KeyA' }, { key: 'ش', code: 'KeyA' }])
+      assert.deepEqual(f.press(f.sourceBody, { ...chord, ...layout }), { prevented: true, selected: [f.sourceBody] }, JSON.stringify(layout));
   });
 }
 

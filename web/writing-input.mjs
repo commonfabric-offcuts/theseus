@@ -3,8 +3,11 @@ import { recoveryReadOnly } from './upload-state.mjs';
 // Whether the page runs on a Mac, where ⌘ is the command key and Ctrl-A moves
 // to the start of a line; elsewhere Ctrl is the command key.
 export const onMac = (nav = globalThis.navigator) => /mac|iphone|ipad|ipod/i.test(nav?.userAgentData?.platform || nav?.platform || '');
-// Select All: ⌘A on a Mac, Ctrl-A elsewhere, with no other modifier.
-export const selectAllKey = (event, mac) => event.key?.toLowerCase() === 'a' && !event.altKey && !event.shiftKey &&
+// Select All: ⌘A on a Mac, Ctrl-A elsewhere, with no other modifier. A is the
+// key the layout names A; on a layout with no Latin letters, it is the key in
+// A's place, as the browser's own shortcut takes it.
+const latinLetter = key => /^[a-z]$/i.test(key ?? '');
+export const selectAllKey = (event, mac) => (latinLetter(event.key) ? event.key.toLowerCase() === 'a' : event.code === 'KeyA') && !event.altKey && !event.shiftKey &&
   (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
 
 // Textarea interaction only. Editor and EditorSession own writing and its acts;
