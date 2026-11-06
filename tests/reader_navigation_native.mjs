@@ -442,6 +442,8 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await until(()=>p.evaluate('document.querySelector("#topic-navigation-status").textContent.includes("again")'),'named informed departure');
     assert.equal(await p.evaluate('location.href'),route);
     await click(p,'#outcomes-home');await until(()=>p.evaluate('document.body?.dataset.ready==="true" && location.search===""'),'second explicit choice leaves');
+    // The unfinished list reads this browser's journal after the page is ready.
+    await until(()=>p.evaluate('Boolean(document.querySelector("#unfinished-work a"))'),'retained creation listed');
     await click(p,'#unfinished-work a');await until(()=>p.evaluate('Boolean(document.querySelector("#check-outcome"))'),'retained creation resumed');
     assert.equal(await p.evaluate('location.href'),route);assert.equal(await p.evaluate('document.querySelector("#outcome-title-input").value'),'Guarded outcome');
     assert.equal(p.calls.filter(c=>c.payload?.kind==='workspace.create').length,1,'Resume cannot replay uncertain creation');
