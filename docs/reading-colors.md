@@ -288,7 +288,9 @@ text color under the pointer; the current one alone is framed in ink and
 ringed in ink outside its frame, at 3:1 or better against the picker in both
 themes (WCAG 1.4.11), with a check before its name. The check is for the eye:
 the button's pressed state says it to a screen reader, and the check is
-silent (`content: "✓ " / ""`). Default is as wide as its words, one more
+silent (`content: "✓ " / ""`). A plain `content: "✓ "` declared just before
+it keeps the check in a browser that drops the silent form (Safari before 17.4,
+Firefox before 128), where a screen reader may then also say it. Default is as wide as its words, one more
 choice rather than a bar across the picker, so before any choice it does not
 read as a confirm button (warp, item 91b: every choice had worn the same heavy
 grey frame, so the current one showed only as a thicker frame). A tap on a phone paints no highlight over the picker, an

@@ -147,9 +147,9 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .color-picker button,.message-card.agent-card,.chip .chip-name{-webkit-tap-highlight-color:transparent}
 .color-picker .swatch-default{width:auto;border:1px solid var(--line);font-size:.85rem}
 .color-picker .swatch-default:hover{background:var(--panel);border-color:var(--muted)}
-/* Each choice in a light frame; the current one alone in ink, ringed, with a check before its name for the eye (aria-pressed says it). Default is one more choice, as wide as its words, not a confirm button. */
+/* Each choice in a light frame; the current one alone in ink, ringed, with a check before its name for the eye (aria-pressed says it; a browser without alternative text for generated content keeps the plain check). Default is one more choice, as wide as its words, not a confirm button. */
 .color-picker .swatch[aria-pressed=true],.color-picker .swatch-default[aria-pressed=true]{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
-.color-picker .swatch[aria-pressed=true] .swatch-name::before,.color-picker .swatch-default[aria-pressed=true]::before{content:"\2713\00a0" / ""}
+.color-picker .swatch[aria-pressed=true] .swatch-name::before,.color-picker .swatch-default[aria-pressed=true]::before{content:"\2713\00a0";content:"\2713\00a0" / ""}
 .color-picker .notice{margin:.45rem 0 0;font-size:.8rem}
 /* Done and archived topics fold into a line each at the bottom of the topic list; their rows (.topic-list) share every #topics rule. */.topic-group{margin-top:.4rem}.topic-group>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;padding:0 .65rem;color:var(--muted);font-size:.85rem}
 /* An outcome's Notebook pages sit in the sidebar beside its topics, each a row like a topic's. */

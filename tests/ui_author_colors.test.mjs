@@ -177,6 +177,11 @@ test('the picker frames each choice lightly, and the current one alone in ink wi
     assert.ok(contrast(page.ink, page.panel) >= 3, `${theme}: the current choice's ink shows on the picker`);
   const check = rule('.color-picker .swatch[aria-pressed=true] .swatch-name::before,.color-picker .swatch-default[aria-pressed=true]::before');
   assert.match(check, /content:"\\2713\\00a0" \/ ""/, 'a check before the name, silent to a screen reader');
+  // A browser without alternative text for generated content (Safari before
+  // 17.4, Firefox before 128) drops that whole declaration: a plain one just
+  // before it keeps the check there, and a browser with it takes the silent one.
+  const plain = check.indexOf('content:"\\2713\\00a0";'), silent = check.indexOf('content:"\\2713\\00a0" / ""');
+  assert.ok(plain >= 0 && plain < silent, 'a plain check declared just before the silent one: ' + check);
   assert.doesNotMatch(css, /\.color-picker[^{}]*:not\(\[aria-pressed=true\]\)[^{}]*::before/, 'nothing else wears a check');
   for (const selector of ['.color-picker .swatch:hover', '.color-picker .swatch-default:hover']) {
     assert.match(rule(selector), /border-color:var\(--muted\)/, selector + ': the pointer deepens the frame, short of the ink that marks the current choice');
