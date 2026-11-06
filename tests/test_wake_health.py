@@ -98,6 +98,46 @@ class ParkingCase(Fixture):
         self.assertIsNotNone(due)
         self.assertLessEqual(due, self.now)
 
+    def new_work_wake_that_did_not_reach(self, outcome):
+        """A parked agent's new-work wake that never reached it goes again; once one reaches it, the repeats stop."""
+        first = self.park()
+        self.send_next("More while it is silent")
+        result = self.settle(outcome)
+        self.assertIsNotNone(result["next_due_ms"])
+        self.now = result["next_due_ms"]
+        self.assertEqual(len(self.claims()), 1)
+        self.store.finish_wake(self.runner_guard, self.runner, self.sql(
+            "SELECT claim_token FROM recipient_schedule WHERE recipient_id='agent-a'")[0][0], "accepted")
+        self.assertEqual(self.unanswered(), (PARKED_AFTER + 1, first))
+        self.now += 3600000
+        self.assertEqual(self.claims(), [])
+
+    def test_a_new_work_wake_the_broker_was_too_busy_to_queue_goes_again(self):
+        self.new_work_wake_that_did_not_reach("busy")
+
+    def test_a_new_work_wake_that_failed_goes_again(self):
+        self.new_work_wake_that_did_not_reach("error")
+
+    def test_a_new_work_wake_with_nowhere_to_go_goes_again(self):
+        self.new_work_wake_that_did_not_reach("unavailable")
+
+    def test_a_new_work_claim_lost_with_its_runner_is_claimed_again(self):
+        """The crash the supervisor restarts from: a runner killed holding a parked agent's new-work claim."""
+        self.park()
+        self.send_next("More while it is silent")
+        claims = self.claims()
+        self.assertEqual(len(claims), 1)
+        self.now = claims[0]["lease_until_ms"] + 1
+        self.assertEqual(len(self.claims()), 1)
+
+    def test_new_work_whose_notice_already_waits_unread_is_not_repeated(self):
+        """The unread notice already leads the agent to everything pending, the new work included."""
+        self.park()
+        self.send_next("More while it is silent")
+        self.settle("queued")
+        self.now += 3600000
+        self.assertEqual(self.claims(), [])
+
     def test_anything_the_agent_does_wakes_it_again_at_once(self):
         self.park()
         self.reply()
@@ -214,6 +254,64 @@ class HostedParkingCase(HostedFixture):
         self.end("completed", turn_id="turn-new")
         # It left the work unread, so it is named again a minute later, all of it.
         self.assertEqual((self.schedule()["handed_seq"], self.schedule()["next_due_ms"]), (None, self.now + 60000))
+
+    def new_work_turn_that_did_not_complete(self, status):
+        """A parked hosted agent's new-work turn that never completed is started again; one that did ends the repeats."""
+        self.park_hosted()
+        self.send_next("Are you there?")
+        self.hand(self.claim_now(), turn_id="turn-new")
+        self.end(status, turn_id="turn-new", error_code="usageLimitExceeded")
+        due = self.schedule()["next_due_ms"]
+        self.assertIsNotNone(due)
+        self.now = due
+        self.hand(self.claim_now(), turn_id="turn-again")
+        self.end("completed", turn_id="turn-again")
+        self.nothing_due()
+
+    def test_a_new_work_turn_that_failed_is_started_again(self):
+        self.new_work_turn_that_did_not_complete("failed")
+
+    def test_a_new_work_turn_that_was_lost_is_started_again(self):
+        self.new_work_turn_that_did_not_complete("lost")
+
+    def test_a_new_work_wake_whose_app_server_was_gone_goes_again(self):
+        self.park_hosted()
+        self.send_next("Are you there?")
+        result = self.store.finish_wake(self.hosting, self.runner, self.claim_now()["claim_token"], "unavailable")
+        self.now = result["next_due_ms"]
+        self.assertEqual(len(self.claims_now()), 1)
+
+    def test_new_work_steered_into_a_turn_that_never_saw_it_goes_again(self):
+        """A parked agent whose new work was steered into a turn that ended before reading it is woken for it again."""
+        self.park_hosted()
+        self.send_next("Are you there?")
+        start = self.claim_now()
+        self.hand(start, turn_id="turn-new")
+        self.end("completed", turn_id="turn-new")
+        self.send_next("And this")
+        # Work read by no turn waits out the minute before it is named again, new work with it.
+        self.now = self.schedule()["next_due_ms"]
+        self.hand(self.claim_now(), turn_id="turn-other")
+        self.send_next("One more")
+        self.hand(self.claim_now(), turn_id="turn-other", mode="steer")
+        # The turn completed without the steer ever showing in its thread.
+        self.end("completed", turn_id="turn-other")
+        due = self.schedule()["next_due_ms"]
+        self.assertIsNotNone(due)
+        self.now = due
+        self.assertEqual(len(self.claims_now()), 1)
+
+    def test_new_work_steered_into_a_turn_that_saw_it_is_not_repeated(self):
+        """A parked agent told of new work in its running turn, which ended leaving it unread, stays parked."""
+        self.park_hosted()
+        self.send_next("Are you there?")
+        self.hand(self.claim_now(), turn_id="turn-new")
+        self.send_next("And this")
+        steer = self.claim_now()
+        self.hand(steer, turn_id="turn-new", mode="steer")
+        self.store.hosted_turn_seen(self.hosting, self.runner, "theseus:" + steer["attempt_id"])
+        self.end("completed", turn_id="turn-new")
+        self.nothing_due()
 
     def test_an_agent_acting_in_the_turn_that_holds_its_work_gets_no_extra_wake(self):
         for index in range(PARKED_AFTER):

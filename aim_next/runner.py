@@ -326,7 +326,10 @@ class Runner:
             db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,retry_count=? WHERE recipient_id=?", (due, retry, row["recipient_id"]))
             if outcome == "accepted" and row["pending_count"]:
                 # The notice reached the agent's chat; it stays unanswered until the agent acts.
-                self._wake_unanswered(db, row["recipient_id"], now)
+                self._wake_unanswered(db, row["recipient_id"], now, attempt["captured_seq"])
+            elif outcome == "queued" and row["pending_count"]:
+                # The notice already waiting unread leads the agent to this work too.
+                self._wake_named(db, row["recipient_id"], attempt["captured_seq"])
             db.execute("UPDATE runner_state SET child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1 AND child_claim_token=?", (claim_token,))
             return {"status": "settled", "wake_status": outcome, "next_due_ms": due, "pending_count": row["pending_count"]}, True
         return self._effect(guard, action)
@@ -383,7 +386,9 @@ class Runner:
                    (due, handed, retry, attempt["recipient_id"]))
         if handed is not None and turn["mode"] == "start":
             # A turn started with this work; a steer joins a turn already counted.
-            self._wake_unanswered(db, attempt["recipient_id"], now)
+            self._wake_unanswered(db, attempt["recipient_id"], now, handed)
+        elif handed is not None:
+            self._wake_named(db, attempt["recipient_id"], handed)
         db.execute("UPDATE runner_state SET child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1 AND child_claim_token=?", (attempt["claim_token"],))
         return {"status": "settled", "wake_status": "handed", "next_due_ms": due, "pending_count": pending, "handed_seq": handed}
 
@@ -459,8 +464,9 @@ class Runner:
                 else:
                     retry, delay = _backoff(schedule["retry_count"])
                     due = now + delay
-                db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=? WHERE recipient_id=?",
-                           (retry, schedule["claim_until_ms"] if live else due, recipient))
+                # Work handed back was never read: what named it goes again, parked or not.
+                db.execute("UPDATE recipient_schedule SET handed_seq=NULL,retry_count=?,next_due_ms=?,named_seq=CASE WHEN ? THEN named_seq END WHERE recipient_id=?",
+                           (retry, schedule["claim_until_ms"] if live else due, clean, recipient))
                 rearmed = True
             return {"status": "ended", "final_status": status, "rows": len(rows), "unseen": unseen, "rearmed": rearmed}, True
         return self._effect(guard, action)

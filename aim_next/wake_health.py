@@ -5,10 +5,12 @@ from __future__ import annotations
 A wake that reached an agent (an accepted notice, or a hosted turn started
 with its work) and was followed by nothing from that agent is unanswered.
 After PARKED_AFTER of them in a row the agent is parked: it is not woken again
-for work it was already told of, so a silent agent is not woken over and over,
-and nothing it was sent is dropped. A delivery newer than its last wake still
-wakes it once, naming everything pending, since a hosted agent can act only in
-a turn a wake starts. Anything the agent then does through its profile (any
+for work a wake that reached it already named (named_seq), so a silent agent is
+not woken over and over, and nothing it was sent is dropped. A delivery newer
+than that still wakes it, naming everything pending, since a hosted agent can
+act only in a turn a wake starts; and that wake goes again, as any wake does,
+until one reaches the agent: a busy or failed notice, a turn that failed or
+never saw its input, or a claim lost with its runner names nothing. Anything the agent then does through its profile (any
 recorded command: a post, an acknowledgment, a read-through) is a sign of
 life: the count clears and, if it was parked with work waiting, it is due at
 once and its next notice names everything still pending. Its work reaching
@@ -26,14 +28,16 @@ from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 
 PARKED_AFTER = 3
 # What claims and due reads take into account: a parked recipient is due only
-# for work newer than its last wake named (captured_seq), so the repeats stop
+# for work newer than the last wake that reached it named, so the repeats stop
 # and new work still reaches it.
-ANSWERING = "(unanswered_wakes<%d OR last_seq>captured_seq)" % PARKED_AFTER
+ANSWERING = "(unanswered_wakes<%d OR named_seq IS NULL OR last_seq>named_seq)" % PARKED_AFTER
 QUIET_LIMIT = 100
 
 WAKE_HEALTH_SCHEMA = [
     "ALTER TABLE recipient_schedule ADD COLUMN unanswered_wakes INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE recipient_schedule ADD COLUMN unanswered_since_ms INTEGER",
+    # The last delivery a wake that reached the recipient named; NULL once that wake is taken back.
+    "ALTER TABLE recipient_schedule ADD COLUMN named_seq INTEGER",
     # When the runner stopped or exited; its state says which ('stopped', 'exited').
     "ALTER TABLE runner_state ADD COLUMN ended_ms INTEGER",
 ]
@@ -41,6 +45,7 @@ WAKE_HEALTH_DOWN = (
     # Version 17 knows a runner that is not running only as idle, with no lease.
     "UPDATE runner_state SET state='idle',reason_code=NULL WHERE state IN ('stopped','exited')",
     "ALTER TABLE runner_state DROP COLUMN ended_ms",
+    "ALTER TABLE recipient_schedule DROP COLUMN named_seq",
     "ALTER TABLE recipient_schedule DROP COLUMN unanswered_since_ms",
     "ALTER TABLE recipient_schedule DROP COLUMN unanswered_wakes",
 )
@@ -50,10 +55,14 @@ WAKE_HEALTH_OCCUPIED = "SELECT 0"
 
 
 class WakeHealth:
-    def _wake_unanswered(self, db, recipient, now):
-        """A wake reached the recipient; it stays unanswered until the recipient does something."""
-        db.execute("UPDATE recipient_schedule SET unanswered_wakes=unanswered_wakes+1,unanswered_since_ms=COALESCE(unanswered_since_ms,?) "
-                   "WHERE recipient_id=?", (now, recipient))
+    def _wake_named(self, db, recipient, seq):
+        """A notice naming every delivery through seq is in front of the recipient."""
+        db.execute("UPDATE recipient_schedule SET named_seq=? WHERE recipient_id=?", (seq, recipient))
+
+    def _wake_unanswered(self, db, recipient, now, seq):
+        """A wake reached the recipient, naming work through seq; it stays unanswered until the recipient does something."""
+        db.execute("UPDATE recipient_schedule SET unanswered_wakes=unanswered_wakes+1,unanswered_since_ms=COALESCE(unanswered_since_ms,?),named_seq=? "
+                   "WHERE recipient_id=?", (now, seq, recipient))
 
     def _wake_withdrawn(self, db, recipient):
         """A counted wake turned out not to reach the recipient (its turn failed or was lost)."""

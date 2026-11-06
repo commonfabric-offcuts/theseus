@@ -95,11 +95,17 @@ still waiting unread, as while the agent works through one long turn), `busy`,
 `error` and `unavailable` put nothing new in front of the agent and are not
 counted. After three in a row the recipient is parked:
 `claim_wakes`, the due reads and `due_count` skip it while nothing pending is
-newer than its last wake named (`last_seq` not above `captured_seq`), so it is
-not woken again for work it was told of, and nothing it was sent is dropped or
-settled. A new delivery still wakes it once, and that notice names everything
-pending; a hosted agent can act only in a turn a wake starts, so this is how a
-parked hosted agent comes back. Any recorded command by the
+newer than what the last wake that reached it named (`last_seq` not above
+`named_seq`), so it is not woken again for work it was told of, and nothing it
+was sent is dropped or settled. `named_seq` is set when a wake settles
+`accepted` or `queued` (the waiting notice leads to the new work too) or hands
+work to a turn, start or steer; it is never set by a claim, so a new-work wake
+that settles `busy`, `error` or `unavailable`, or whose claim expires with its
+runner, goes again by the usual backoff. A turn that hands its work back (it
+failed, was lost or interrupted, or never saw a steer) clears it, and that work
+is named again. A new delivery still wakes the parked agent, and that notice
+names everything pending; a hosted agent can act only in a turn a wake starts,
+so this is how a parked hosted agent comes back. Any recorded command by the
 recipient (a post, an acknowledgment, a read-through) is a sign of life: the
 count clears, and a parked recipient with work waiting is due at once, unless
 a hosted turn that holds its work is the one acting. Reaching nothing pending

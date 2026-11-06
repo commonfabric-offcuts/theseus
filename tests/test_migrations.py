@@ -53,6 +53,7 @@ def step_back_by_hand(path, version):
     with sqlite3.connect(str(path)) as db:
         # Version 18 counts the wakes each recipient left unanswered, and keeps when the runner stopped.
         db.execute("ALTER TABLE runner_state DROP COLUMN ended_ms")
+        db.execute("ALTER TABLE recipient_schedule DROP COLUMN named_seq")
         db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_since_ms")
         db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_wakes")
         if version == "17":
@@ -1181,7 +1182,7 @@ class Schema17Case(MigrationCase):
         fresh.mkdir()
         fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
         self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
-        self.assertEqual(self.sql("SELECT DISTINCT unanswered_wakes,unanswered_since_ms FROM recipient_schedule"), [(0, None)])
+        self.assertEqual(self.sql("SELECT DISTINCT unanswered_wakes,unanswered_since_ms,named_seq FROM recipient_schedule"), [(0, None, None)])
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         self.assertEqual(self.store.view("owner", "wakes", {})["quiet"], [])
 
@@ -1206,7 +1207,7 @@ class Schema17Case(MigrationCase):
         self.upgrade()
         records = self.records()
         with sqlite3.connect(str(self.path)) as db:
-            db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=5 WHERE recipient_id='agent-a'")
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=5,named_seq=1 WHERE recipient_id='agent-a'")
         # The count is derived from wakes, not anyone's record: stepping back must not be refused for it.
         try:
             stepped = self.step_back()
