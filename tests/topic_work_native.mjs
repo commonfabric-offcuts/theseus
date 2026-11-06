@@ -30,7 +30,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
       return {fill:c.backgroundColor,border:[c.borderTopColor,c.borderRightColor,c.borderBottomColor,c.borderLeftColor],quiet:getComputedStyle(k).color,
         key:!k.hidden&&b.height>0&&b.width>0&&b.right<=innerWidth,words:k.textContent.trim(),hiddenFromReaders:k.getAttribute('aria-hidden')}})()`);
     const laptop = await ring(p);
-    assert.deepEqual([laptop.fill, laptop.border, laptop.key, laptop.words, laptop.hiddenFromReaders], ['rgba(0, 0, 0, 0)', Array(4).fill(laptop.quiet), true, 'Activity seen', 'true'], 'a hollow ring, and its key: ' + JSON.stringify(laptop));
+    assert.deepEqual([laptop.fill, laptop.border, laptop.key, laptop.words, laptop.hiddenFromReaders], ['rgba(0, 0, 0, 0)', Array(4).fill(laptop.quiet), true, 'Posted in or worked on in the last hour, or waiting on an answer', 'true'], 'a hollow ring, and its key: ' + JSON.stringify(laptop));
     await shot(p, 'work-row-dot');
     assert.deepEqual(p.errors, []);
     const phone = await page('work-row-phone', null, true, { beforeNavigate: async q => {
@@ -39,7 +39,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     } });
     await until(async () => (await read(phone))?.dot, 'phone: the row has its ring');
     const small = await ring(phone);
-    assert.deepEqual([small.fill, small.key, small.words], ['rgba(0, 0, 0, 0)', true, 'Activity seen'], 'phone: the key says what the ring means, where no title shows: ' + JSON.stringify(small));
+    assert.deepEqual([small.fill, small.key, small.words], ['rgba(0, 0, 0, 0)', true, 'Posted in or worked on in the last hour, or waiting on an answer'], 'phone: the key says what the ring means, where no title shows: ' + JSON.stringify(small));
     await phone.evaluate("document.querySelector('#topics-key').scrollIntoView({block:'center'})");
     await shot(phone, 'work-row-ring-phone');
     assert.deepEqual(phone.errors, []);

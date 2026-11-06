@@ -155,7 +155,10 @@ In the web app a topic row with observed work carries a small hollow ring in
 the quiet text color (`--muted`) and nothing else. It was the filled accent
 dot that presence and unread use, beside the unread count, so it read as
 unread (warp, item 91b). While any row has the ring, a key under the topics
-says in words what it means ("Activity seen"), at every width, since a phone
+says in words what it means: "Posted in or worked on in the last hour, or
+waiting on an answer", the rule above as the reader sees it (their own posts
+and turns light nothing, so what lit a ring was someone else's), in the words
+of the outcome page (warp, item 86). It shows at every width, since a phone
 shows no title; the key is hidden from screen readers, which hear each row's
 own words. Every row's title and screen-reader text say what was seen:
 "Activity seen <time> (<who> posted)", "No activity seen since <time>", or

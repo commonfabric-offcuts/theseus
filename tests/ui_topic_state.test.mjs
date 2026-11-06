@@ -486,7 +486,9 @@ test('work observed is a hollow ring, never the filled dot of presence or unread
   assert.ok(key, 'index.html has the key under the topics');
   assert.match(key[1], /aria-hidden="true"/, 'each row already says its work to a screen reader');
   assert.match(key[1], /\bhidden\b/, 'hidden until a row has the ring');
-  assert.match(key[2], /<span class="topic-work"><\/span>\s*Activity seen/, 'the ring, and in words what it means');
+  // The key says the server's rule (aim_next/work.py, held true by tests/test_work_observed.py): a post or turn by
+  // someone else within the hour, or a wait; warp asked it match the outcome page's words (item 86).
+  assert.match(key[2], /^<span class="topic-work"><\/span>\s*Posted in or worked on in the last hour, or waiting on an answer$/, 'the ring, and in words what it means');
   assert.ok(html.indexOf('id="topics-key"') > html.indexOf('id="topics"'), 'under the topics');
 });
 

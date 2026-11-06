@@ -2,6 +2,8 @@ from __future__ import annotations
 
 """Work observed: one rule for whether anyone is seen working on a topic."""
 
+from pathlib import Path
+import re
 import sqlite3
 import unittest
 from unittest import mock
@@ -23,6 +25,26 @@ class WorkRuleCase(unittest.TestCase):
         self.assertTrue(work.observed(0, True, now))
         # The seam for the pipeline's NOW list.
         self.assertTrue(work.observed(None, False, now, in_now=True))
+
+
+class WorkKeyCase(unittest.TestCase):
+    """The words under the topic list that say what the ring means, held to the rule that lights it."""
+
+    def test_the_key_under_the_topics_says_the_rule_that_lights_the_ring(self):
+        html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text()
+        key = re.search(r'<p id="topics-key"[^>]*><span class="topic-work"></span>\s*([^<]*)</p>', html)
+        self.assertIsNotNone(key, "index.html keeps the key")
+        self.assertEqual(key.group(1).strip(), "Posted in or worked on in the last hour, or waiting on an answer")
+        # "In the last hour": the window is an hour, up to and including it.
+        self.assertEqual(WORK_WINDOW_MS, 60 * 60 * 1000)
+        now = 10 * WORK_WINDOW_MS
+        self.assertTrue(work.observed(now - WORK_WINDOW_MS, False, now))
+        self.assertFalse(work.observed(now - WORK_WINDOW_MS - 1, False, now))
+        # "Or waiting on an answer": a wait lights it however old the activity, or with none.
+        self.assertTrue(work.observed(None, True, now))
+        self.assertTrue(work.observed(0, True, now))
+        # Nothing else does.
+        self.assertFalse(work.observed(None, False, now))
 
 
 class WorkObservedCase(hosted.HostedCase):
