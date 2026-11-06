@@ -318,7 +318,8 @@ reader is most behind, the line sits at the bottom of what is loaded and reads
 "New · older below". There it is a button: pressing it, by pointer or
 keyboard, reads older pages one after another, as More does, until that
 message's card is loaded or no older page is left, and then gives that
-message the focus, with the line in its true place just below it. A read that
+message the focus, with the line in its true place just below it; once on
+screen the message is read, and the line moves on as reading moves it. A read that
 cannot go on (a review pending, or a refusal, which the page reports) ends it
 with the line still at the bottom. When no older page is left to read, there
 is nothing the button could load, so no line is drawn. A message among the

@@ -549,7 +549,7 @@ try {
       await readingColorsCheck({check,page,until,facts,view,control,field,shot,observations});
       await agentColorsCheck({check,page,until,facts,control,shot,observations});
       await agentColorChoiceCheck({check,page,until,control,shot,observations});
-      await newLineCheck({check,page,until,view,control,shot,observations});
+      await newLineCheck({check,page,until,view,control,shot,observations,facts});
     } else if (mode === '--asks') {
       await asksChecks({check,page,until,facts,view,control,replace,shot});
     } else if (mode === '--work') {

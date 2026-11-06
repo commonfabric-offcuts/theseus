@@ -71,7 +71,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     runtime: { current: bootstrap.authority },
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
-  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
+  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
@@ -1359,27 +1359,27 @@ test('an agent in the participants is a button that opens its color picker, in i
   assert.equal(opened[0].back, agent);
 });
 
-test('the New line is drawn under the oldest unanswered card, moves with each answer, and goes', async () => {
+test('the New line is drawn under the oldest unread card, moves as reading happens, and goes', async () => {
   const { f } = await readingPage();
   for (let seq = 20; seq <= 25; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
   const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
-  f.views.unanswered = { seq: 22, id: 'm22' }; f.paintViews('messages');
+  f.views.oldestUnread = { seq: 22, id: 'm22' }; f.paintViews('messages');
   assert.equal(order(), '25 24 23 22 new 21 20');
   f.views.messages.set('m26', { id: 'm26', seq: 26, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
-  f.views.unanswered = { seq: 24, id: 'm24' }; f.paintViews('messages');
-  assert.equal(order(), '26 25 24 new 23 22 21 20', 'an answer moves it up; a new card goes above it');
+  f.views.oldestUnread = { seq: 24, id: 'm24' }; f.paintViews('messages');
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'reading moves it up; a new card goes above it');
   f.views.messages.set('m19', { id: 'm19', seq: 19, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
   f.paintViews('messages');
   assert.equal(order(), '26 25 24 new 23 22 21 20 19', 'an older card loaded by More goes below it');
-  f.views.unanswered = null; f.paintViews('messages');
-  assert.equal(order(), '26 25 24 23 22 21 20 19', 'nothing left unanswered: no line');
+  f.views.oldestUnread = null; f.paintViews('messages');
+  assert.equal(order(), '26 25 24 23 22 21 20 19', 'nothing left unread: no line');
 });
 
 test('the New line for a message further back sits at the bottom, and pressing it loads down to that message', async () => {
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
-  const at = (from, through, next) => ({ ...page(from, through, next), unanswered: { seq: 5, id: 'm5' } });
+  const at = (from, through, next) => ({ ...page(from, through, next), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 });
   views.messagesPage(at(20, 29, 20), { initial: true }); await settle();
   const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order(), '29 28 27 26 25 24 23 22 21 20 older', 'the line waits at the bottom of what is loaded');
@@ -1402,7 +1402,7 @@ test('with nothing older left to load, no line promises older messages below', a
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
-  views.messagesPage({ ...page(20, 29, null), unanswered: { seq: 5, id: 'm5' } }, { initial: true }); await settle();
+  views.messagesPage({ ...page(20, 29, null), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 }, { initial: true }); await settle();
   const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order(), '29 28 27 26 25 24 23 22 21 20', 'no line: there is nothing it could load');
 });
@@ -1411,7 +1411,7 @@ test('pressing the older-below line while the page may not read stops at once an
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
-  views.messagesPage({ ...page(20, 29, 20), unanswered: { seq: 5, id: 'm5' } }, { initial: true }); await settle();
+  views.messagesPage({ ...page(20, 29, 20), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 }, { initial: true }); await settle();
   const reads = [], view = f.api.view;
   f.api.view = async (name, args) => { if (name === 'topic_messages') reads.push(args.cursor); return view(name, args); };
   // The runtime changed: the page asks for a review before it reads again.
@@ -1419,6 +1419,46 @@ test('pressing the older-below line while the page may not read stops at once an
   await f.get('messages').children.at(-1).onclick(); await settle();
   assert.deepEqual(reads, [], 'nothing was read');
   assert.equal(f.get('messages').children.at(-1).dataset.line, 'older', 'the line still waits at the bottom');
+});
+
+test('after each commit the page reads where the New line is, and moves it without moving the card being read', async () => {
+  const scrolls = [];
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y) }, innerHeight: 800 });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  const live = stream(); f.useLive(live);
+  await f.initialize(); await settle();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  // Children are laid out from where the list starts: a card is 100px, the line 30px.
+  let listTop = 0;
+  const list = f.get('messages'), cards = () => list.children.filter(child => child.dataset.seq);
+  f.document.querySelectorAll = () => cards();
+  f.document.querySelector = selector => selector === '#messages .message-card' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
+  const layout = () => { for (const child of list.children) child.getBoundingClientRect ??= () => {
+    let top = listTop; for (const before of list.children.slice(0, list.children.indexOf(child))) top += before.dataset.line ? 30 : 100;
+    return { top, bottom: top + (child.dataset.line ? 30 : 90) }; }; };
+  views.messagesPage({ ...page(20, 26, null), oldest_unread: { seq: 22, id: 'm22' }, commit_seq: 5 }, { initial: true }); await settle(); layout();
+  const order = () => list.children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  assert.equal(order(), '26 25 24 23 22 new 21 20');
+  // The person is reading #23, three cards down; #22 and #21 were read on screen, elsewhere.
+  listTop = -300;
+  const reads = [], view = f.api.view;
+  let answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 7 };
+  f.api.view = async (name, args) => { if (name === 'topic_unread') { reads.push(args); return { instance_id: 'fixture', topic_id: 't1', ...answer }; } return view(name, args); };
+  live.emit({ kind: 'commit', seq: 7 }); for (let n = 0; n < 5; n++) await settle(); layout();
+  assert.deepEqual(reads, [{ topic_id: 't1' }], 'the reload a commit sets off reads where the line is');
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'the line moved up to the oldest unread message');
+  assert.deepEqual(scrolls, [30], 'the card being read is held where it was');
+  answer = { oldest_unread: null, commit_seq: 9 };
+  await f.refreshLists(); await settle();
+  assert.equal(reads.length, 2, 'Refresh reads it too');
+  assert.equal(order(), '26 25 24 23 22 21 20', 'everything read: the line goes');
+  assert.deepEqual(scrolls, [30, -30], 'and the card being read still holds still');
+  // A read that fails leaves the line where it was, and the reload is owed.
+  f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
+  await f.refreshLists(); await settle();
+  assert.equal(order(), '26 25 24 23 22 21 20');
 });
 
 test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {

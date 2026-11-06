@@ -1,5 +1,5 @@
 import { checkedView, RevisionTargets } from './freshness.mjs';
-import { unansweredOf } from './unanswered.mjs';
+import { oldestUnreadOf } from './unanswered.mjs';
 
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
@@ -16,9 +16,11 @@ export class TopicViews {
     this.runs = new Map(); this.runCount = 0;
     this.olderCursor = null; this.memoryCursor = null; this.newest = 0; this.memoryTail = 0;
     this.topic = null; this.messageTarget = null; this.unloadedChanged = false;
-    // The oldest message the reader has not replied to, as the newest topic
-    // version that said so had it; any page of the topic's messages says it.
-    this.unanswered = null; this.unansweredVersion = -1;
+    // The oldest message the reader has not read, as the latest commit any
+    // answer was read at had it: every page of the topic's messages says it,
+    // and topic_unread, which the page reads again after each commit, since
+    // reading, marks and replies move it without changing the topic.
+    this.oldestUnread = null; this.unreadAt = -1;
     this.currentItem = null; this.openingItem = null;
   }
   retain(current = this.currentItem, opening = this.openingItem) {
@@ -46,9 +48,8 @@ export class TopicViews {
   }
   messagesPage(answer, { initial = false, cursor, live = false } = {}) {
     this.page(answer, 'topic');
-    const unanswered = unansweredOf(answer), version = answer.relevant_versions.topic;
-    if (unanswered !== undefined && version >= this.unansweredVersion) { this.unanswered = unanswered; this.unansweredVersion = version; }
-    if (!initial && !live && cursor !== this.olderCursor || live && cursor !== this.newest) return false;
+    const moved = this.learnUnread(answer);
+    if (!initial && !live && cursor !== this.olderCursor || live && cursor !== this.newest) { if (moved) this.paint('line'); return false; }
     let previous = -1;
     const ids = new Set();
     for (const item of answer.items) {
@@ -72,6 +73,23 @@ export class TopicViews {
     this.newest = Math.max(this.newest, ...answer.items.map(item => item.seq));
     if (!live) this.olderCursor = answer.next_cursor;
     this.paint('messages'); return true;
+  }
+  // Keeps what an answer says of the oldest unread message unless an answer
+  // read at a later commit said otherwise; true when the line moves.
+  learnUnread(answer) {
+    const said = oldestUnreadOf(answer);
+    if (said === undefined || said.at < this.unreadAt) return false;
+    const moved = this.oldestUnread?.id !== said.value?.id;
+    this.oldestUnread = said.value; this.unreadAt = said.at;
+    return moved;
+  }
+  // Reads where the line sits now, and moves it when it moved.
+  async readUnread(read, current = () => true) {
+    const answer = checkedView(await read('topic_unread', { topic_id: this.topicId }), this.instanceId);
+    if (!current()) return false;
+    if (answer.topic_id !== this.topicId || oldestUnreadOf(answer) === undefined) throw invalid('The oldest unread answer is for another topic or says nothing.');
+    if (this.learnUnread(answer)) this.paint('line');
+    return true;
   }
   runOf(id) { return this.runs.get(id); }
   validMemory(item) {
