@@ -358,8 +358,9 @@ class Runner:
             handed = attempt["captured_seq"]
             # The turn now holds what its notice named: it is in each of those topics.
             work.turn_handed(db, attempt["id"], attempt["recipient_id"], attempt["handed_seq"], turn["announced_seq"], now)
-        # Only a delivery that arrived after the claim makes the recipient due again.
-        if pending and row["last_seq"] > attempt["captured_seq"]:
+        # Only a delivery that arrived after the claim, and is still pending,
+        # makes the recipient due again: one the turn already handled is not.
+        if pending and row["last_seq"] > attempt["captured_seq"] and self._pending_above(db, attempt["recipient_id"], attempt["captured_seq"]):
             due = now
         db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], "handed", now))
         db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,error_code,finished_ms) "

@@ -56,6 +56,12 @@ class Delivery:
         row = db.execute("SELECT first_pending_seq FROM delivery_groups INDEXED BY eligible_heads WHERE recipient_id=? AND active=1 AND pending_count>0 ORDER BY first_pending_seq LIMIT 1", (actor,)).fetchone()
         return row[0] if row else None
 
+    def _pending_above(self, db, actor, seq):
+        """True if a delivery newer than seq is still pending in one of the actor's active groups."""
+        return db.execute("SELECT 1 FROM delivery_groups g INDEXED BY eligible_groups CROSS JOIN deliveries d INDEXED BY pending_group_deliveries "
+                          "ON d.group_id=g.id AND d.state='pending' AND d.seq>? WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 LIMIT 1",
+                          (seq, actor)).fetchone() is not None
+
     def _eligibility_changed(self, db, actor, delta, last_seq=None):
         old = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (actor,)).fetchone()
         pending = old["pending_count"] + delta
@@ -67,6 +73,10 @@ class Delivery:
             due, retry, handed = None, 0, None
         elif old["pending_count"] == 0 or captured_done or arrived_after_handing:
             due, retry = _now_ms(), 0
+        elif delta < 0 and handed is not None and not self._pending_above(db, actor, handed):
+            # The running turn handled what arrived after it was handed its
+            # work: only work it already holds is left, so no follow-up.
+            due = None
         if pending and old["claim_token"] is not None and old["claim_until_ms"] > _now_ms():
             due = old["claim_until_ms"]
         db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=?,handed_seq=? WHERE recipient_id=?",

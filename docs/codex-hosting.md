@@ -46,8 +46,9 @@ Schedule effect, in the same transaction as the `wake_results` row and the
 `hosted_turns` row:
 
 - `handed_seq` becomes the claim's `captured_seq` (NULL if nothing is pending).
-- `next_due_ms` is now if a delivery arrived after the claim, otherwise NULL:
-  handed work does not re-wake on its own.
+- `next_due_ms` is now if a delivery arrived after the claim and is still
+  pending, otherwise NULL: handed work does not re-wake on its own, and a
+  delivery the turn already acknowledged makes no follow-up.
 - `retry_count` is kept. A clean turn end resets it (below).
 
 Two hands record the turn row but hand nothing (`handed_seq` NULL), so the
@@ -74,6 +75,10 @@ newer. A broker route accepts the field and never sends it to its child.
 - A new delivery whose seq is greater than a non-NULL `handed_seq` makes the
   recipient due now (or at the live claim's end), so a follow-up steers into a
   running turn within one claim cycle.
+- An acknowledgment that leaves nothing pending above a non-NULL `handed_seq`
+  makes `next_due_ms` NULL (or the live claim's end): the running turn handled
+  what arrived after it was handed its work, so it gets no empty follow-up. A
+  delivery still pending above `handed_seq` keeps the recipient due.
 - When the recipient's pending count reaches 0, `handed_seq` becomes NULL.
 
 ## Turn records
