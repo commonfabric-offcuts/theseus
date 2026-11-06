@@ -36,7 +36,7 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
   t.after(() => { globalThis.document = previous; });
   const chips = Object.assign(new Element('div'), { root: true }), input = new Element('input');
   let inTopic = false, answer = { status: 'refused', error: { message: 'No permission for this topic' } };
-  const editor = { draft: { addressees: ['fable', 'stranger'] }, edit(patch) { Object.assign(this.draft, patch); } };
+  const editor = { draft: { addressees: ['fable', 'stranger'] }, edit(patch) { Object.assign(this.draft, patch); }, declineAddressee() {} };
   const reader = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply: editor }, presentation: {}, admits: () => true,
     $: id => ({ 'recipient-chips': chips, 'recipient-input': input, 'ask-choice': new Element('label'), 'ask-toggle': new Element('input') })[id],

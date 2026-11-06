@@ -27,6 +27,29 @@ One act that carries its content, for a topic that already exists.
 Prepared sends (`draft.save`, `submission.prepare`, `message.send`) remain
 for clients that keep private drafts.
 
+### Which message a reply answers
+
+A message's `reply_to` names the message it answers, in the same topic, or is
+null. `message.post` takes it as given (`post --reply-to MESSAGE` in the CLI,
+which must be a message ID in that topic). A prepared send whose writing was
+about a message in the topic it goes to (its `source_ref` is that message)
+answers that message, whether or not it quotes it; the frozen submission keeps
+the writing exactly as saved, and the send records `reply_to` from its source.
+Writing from a topic's own composer, a Notebook page, or a message in another
+topic answers none.
+
+`topic_messages` items carry `reply_to`, and with it `reply_to_author` and
+`reply_to_excerpt` (the first 120 characters of that message), both null for a
+message that answers none, so every reader can say which message a reply
+answers without another read. The CLI's `read` prints `replying to ID`; the
+web page shows a quiet "Replying to AUTHOR: first words" line on the card.
+
+The Reader addresses a reply to the author of the message it answers, unless
+that author is the person writing: the author is offered as a recipient while
+the reply holds nothing, joins its recipients with the first thing written,
+and stays off once the person removes them. Writing kept from before keeps its
+own recipients.
+
 ### Wakes go only to reachable actors
 
 The effects runner claims a recipient only when its route map names that

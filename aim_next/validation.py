@@ -21,6 +21,7 @@ COMMANDS = {
     "opening.save": "_command_opening_save", "opening.publish": "_command_opening_publish",
     "opening.discard": "_command_opening_discard",
     "message.mark": "_command_message_mark",
+    "color.set": "_command_color_set",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -30,14 +31,14 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
             "workspace.member_set": {"workspace_revision"}, "opening.save": {"opening_revision"},
             "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"},
-            "message.mark": {"mark_revision"}}
+            "message.mark": {"mark_revision"}, "color.set": {"color_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision", "topic.update": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision",
                      "workspace.member_set": "workspace_revision", "opening.save": "opening_revision",
                      "opening.publish": "opening_revision", "opening.discard": "opening_revision",
-                     "message.mark": "mark_revision"}
+                     "message.mark": "mark_revision", "color.set": "color_revision"}
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
@@ -53,6 +54,7 @@ VIEWS = {
     "workspace_members": {"workspace_id", "cursor", "limit"},
     "attention": set(), "actors": {"cursor", "limit", "kind"},
     "marks": {"topic_id", "cursor", "limit"},
+    "colors": {"cursor", "limit"},
 }
 
 
@@ -130,7 +132,7 @@ def _view_arguments(name, args):
             if cursor is None:
                 raise Refusal("INVALID_ARGUMENT", "Invalid delivery page cursor")
             _position(cursor)
-        elif name in ("workspaces", "workspace_topics", "openings", "workspace_members", "actors"):
+        elif name in ("workspaces", "workspace_topics", "openings", "workspace_members", "actors", "colors"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):

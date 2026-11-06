@@ -1,4 +1,5 @@
 import { checkedView, RevisionTargets } from './freshness.mjs';
+import { unansweredOf } from './unanswered.mjs';
 
 const integer = n => Number.isSafeInteger(n) && n >= 0;
 const invalid = message => Object.assign(Error(message), { code: 'INVALID_FRESHNESS_VIEW' });
@@ -15,6 +16,9 @@ export class TopicViews {
     this.runs = new Map(); this.runCount = 0;
     this.olderCursor = null; this.memoryCursor = null; this.newest = 0; this.memoryTail = 0;
     this.topic = null; this.messageTarget = null; this.unloadedChanged = false;
+    // The oldest message the reader has not replied to, as the newest topic
+    // version that said so had it; any page of the topic's messages says it.
+    this.unanswered = null; this.unansweredVersion = -1;
     this.currentItem = null; this.openingItem = null;
   }
   retain(current = this.currentItem, opening = this.openingItem) {
@@ -42,6 +46,8 @@ export class TopicViews {
   }
   messagesPage(answer, { initial = false, cursor, live = false } = {}) {
     this.page(answer, 'topic');
+    const unanswered = unansweredOf(answer), version = answer.relevant_versions.topic;
+    if (unanswered !== undefined && version >= this.unansweredVersion) { this.unanswered = unanswered; this.unansweredVersion = version; }
     if (!initial && !live && cursor !== this.olderCursor || live && cursor !== this.newest) return false;
     let previous = -1;
     const ids = new Set();

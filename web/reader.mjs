@@ -4,7 +4,7 @@ import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { markReach, replaceChips } from './people.mjs';
 import { readableTime } from './topic-state.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
-import { WritingInput } from './writing-input.mjs';
+import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -24,6 +24,7 @@ export class Reader {
     this.dialog = document.querySelector('#reader');
     this.field = document.querySelector('#writing-body');
     this.sourceBody = document.querySelector('#source-body');
+    this.mac = onMac();
     this.mode = 'reply';
     this.positions = new Map();
     this.hover = null;
@@ -326,7 +327,9 @@ export class Reader {
     if (editor.adopting || recoveryReadOnly(editor)) { this.notice('Review saved image copies before changing this reply.'); return; }
     const prefix = editor.draft.body ? (editor.draft.body.endsWith('\n\n') ? '' : editor.draft.body.endsWith('\n') ? '\n' : '\n\n') : '';
     const addition = prefix + excerpt.split('\n').map(line => `> ${line}`).join('\n') + '\n\n';
-    editor.draft.quotes.push({ source: structuredClone(this.source.source_ref), excerpt });
+    // The quote is writing like any other, so it goes through the editor's
+    // edit, which brings in the author a reply is offered to.
+    editor.edit({ quotes: [...editor.draft.quotes, { source: structuredClone(this.source.source_ref), excerpt }] });
     this.field.focus();
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
     this.insertText(addition);
@@ -372,15 +375,23 @@ export class Reader {
 
   paintRecipients() {
     const editor = this.sessions.reply, presentation = this.presentation;
-    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices(editor.draft.addressees).map(({ name, removeLabel }) => {
+    // The author a reply answers is offered first. Removing someone declines
+    // any offer of them, and writes only when the writing already names them:
+    // typing takes the offer without redrawing these chips, so the press, not
+    // the drawing, decides which.
+    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices([...(editor.offeredAddressees ?? []), ...editor.draft.addressees]).map(({ name, removeLabel }) => {
       const chip = node('span', name, 'chip'); chip.dataset.name = name;
       const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
       remove.onclick = () => {
         if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
-        const rest = editor.draft.addressees.filter(item => item !== name);
-        // A message to nobody neither asks nor tells.
-        editor.edit({ addressees: rest, ...(rest.length ? {} : { intent: null }) });
-        this.callbacks.edit(editor); this.paintRecipients(); this.paintAsk();
+        editor.declineAddressee(name);
+        if (editor.draft.addressees.includes(name)) {
+          const rest = editor.draft.addressees.filter(item => item !== name);
+          // A message to nobody neither asks nor tells.
+          editor.edit({ addressees: rest, ...(rest.length ? {} : { intent: null }) });
+          this.callbacks.edit(editor);
+        }
+        this.paintRecipients(); this.paintAsk();
       };
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));
@@ -392,7 +403,7 @@ export class Reader {
     if (!name || !this.sessions) return;
     const editor = this.sessions.reply;
     if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return;
-    if (!editor.draft.addressees.includes(name)) {
+    if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name] });
       this.callbacks.edit(editor); this.paintRecipients(); this.paintAsk();
     }
@@ -606,6 +617,14 @@ export class Reader {
       const stops = [...this.dialog.querySelectorAll('button,textarea,select,input,a[href],[tabindex="0"]')].filter(visible);
       if (event.shiftKey && target === stops[0]) { event.preventDefault(); stops.at(-1)?.focus(); }
       else if (!event.shiftKey && target === stops.at(-1)) { event.preventDefault(); stops[0]?.focus(); }
+      return;
+    }
+    // Select All outside a text field takes the message's text, never the
+    // Reader's buttons and labels; in a field the browser selects its own text.
+    if (selectAllKey(event, this.mac) && !target.closest('input,textarea,select')) {
+      event.preventDefault();
+      const range = document.createRange(), selection = window.getSelection();
+      range.selectNodeContents(this.sourceBody); selection.removeAllRanges(); selection.addRange(range);
       return;
     }
     if (target === this.field && this.writingReadOnly()) return;

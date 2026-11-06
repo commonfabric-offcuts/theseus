@@ -12,9 +12,11 @@ from .runner import HOSTED_DOWN, HOSTED_OCCUPIED, HOSTED_SCHEMA
 from .topic_state import (ASK_WAIT_DOWN, ASK_WAIT_OCCUPIED, ASK_WAIT_SCHEMA, TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA,
                           WAITING_ORDER_DOWN, WAITING_ORDER_SCHEMA)
 from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE_INTENT_SCHEMA,
-                           MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA)
+                           MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA,
+                           UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED, UNANSWERED_SCHEMA)
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 from .work import WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
+from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -33,6 +35,11 @@ STEPS = (
      "SELECT (%s) OR (%s)" % (MESSAGE_INTENT_OCCUPIED, ASK_WAIT_OCCUPIED)),
     # Version 15 keeps the latest hosted turn in each topic, so a topic shows whether work is observed on it.
     ("14", "15", WORK_SCHEMA, WORK_DOWN, WORK_OCCUPIED),
+    # Version 16 keeps where each reader's unanswered messages begin in each
+    # topic, worked out from the messages, and indexes each message's replies.
+    ("15", "16", UNANSWERED_SCHEMA + UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED),
+    # Version 17 keeps the color each person chose for an agent.
+    ("16", "17", COLOR_SCHEMA, COLOR_DOWN, COLOR_OCCUPIED),
 )
 
 

@@ -13,6 +13,11 @@ import { Live, liveOffered, reloader } from '../web/live.mjs';
 import { Attention, paintSent } from '../web/attention.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
+import { replyLine } from '../web/replies.mjs';
+import { placeNewLine } from '../web/unanswered.mjs';
+import { cardClass, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
+import { AgentColors } from '../web/colors.mjs';
+import { openColorPicker } from '../web/color-picker.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -33,7 +38,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
     focus() { document.activeElement = this; }
     scrollIntoView() {}
-    contains() { return false; }
+    contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
+    closest(selector) { for (let at = this; at; at = at.parent) if (selector.startsWith('.') && String(at.className ?? '').split(' ').includes(selector.slice(1))) return at; return null; }
     remove() { if (this.parent) this.parent.children = this.parent.children.filter(x => x !== this); }
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
@@ -47,6 +53,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     if (name === 'topic') return { instance_id: 'fixture', topic, participants: [] };
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
     if (name === 'marks') return { instance_id: 'fixture', topic_id: args.topic_id, items: [], next_cursor: null };
+    if (name === 'colors') return { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null };
     return { instance_id: 'fixture', items: [], next_cursor: null };
   }, command: async envelope => { calls.push({ kind: envelope.kind, envelope }); return { recorded: true }; } };
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
@@ -70,7 +77,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -102,8 +109,8 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent,
-    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; },
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
+    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail}; } };`, context);
@@ -739,7 +746,8 @@ test('a topic\'s creator who does not own the outcome manages its participants; 
   await f.initialize();
   const nodes = walk(f.get('participants'));
   assert.deepEqual([nodes.find(node => node.className === 'people-add').hidden, nodes.some(node => node.textContent === '×')], [true, false]);
-  assert.deepEqual(nodes.filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'fable']);
+  // A chip's words, as the DOM's textContent gives them: an agent's name is a button inside it.
+  assert.deepEqual(nodes.filter(node => node.className === 'chip').map(node => node.textContent + node.children.map(child => child.textContent ?? child).join('')), ['fixture-person', 'fable']);
 });
 
 test('the directory and the team behind the composer are read again when someone starts naming', async () => {
@@ -949,9 +957,54 @@ test('a card in the topic log says when its message was sent, and a message from
   f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'fable', body: 'Untimed', topic_id: 't1', sent_ms: null });
   f.paintViews('messages');
   const author = id => f.get('messages').children.find(card => card.dataset.id === id).children[0];
-  const parts = id => author(id).children.map(node => typeof node === 'string' ? node : node.textContent);
+  const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
+  const parts = id => author(id).children.map(text);
   assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM Thu Nov 5']);
   assert.deepEqual(parts('m2'), ['fable']);
+});
+
+test('a reply card says quietly which message it answers, and a message answering none says nothing', async () => {
+  const f = fixture();
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'fable', body: 'Ship the table', topic_id: 't1', sent_ms: null, reply_to: null });
+  f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'tony', body: 'Yes', topic_id: 't1', sent_ms: null,
+    reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Ship the table' });
+  f.paintViews('messages');
+  const card = id => f.get('messages').children.find(node => node.dataset.id === id);
+  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.textContent);
+  assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
+  assert.deepEqual(lines('m1'), []);
+  assert.deepEqual(card('m2').children.map(node => node.className), ['message-author', 'message-reply-to', 'message-preview'], 'between the author and the words');
+});
+
+test('a reply to someone else\'s message in this topic is offered to its author, once; one to anything else is not', () => {
+  const f = fixture();
+  const offers = [];
+  const reply = (topicId = 't1') => ({ context: { topicId }, offerAddressees(names) { this.offered = names; offers.push(names.join(',')); } });
+  const message = (author, topicId = 't1') => ({ source_ref: { kind: 'message', id: 'm1' }, topic_id: topicId, author });
+  const offered = (source, editor = reply(), extra = {}) => { offers.length = 0; f.offerAuthor({ source, editors: { reply: editor }, ...extra }); return [...offers]; };
+  assert.deepEqual(offered(message('fable')), ['fable']);
+  assert.deepEqual(offered(message('fixture-person')), [], 'never to the person themselves');
+  assert.deepEqual(offered(message('fable', 't2')), [], 'not for a message from another topic');
+  assert.deepEqual(offered({ source_ref: { kind: 'memory', id: 'n1', revision: 1 }, topic_id: 't1', author: 'fable' }), [], 'not for a Notebook page');
+  assert.deepEqual(offered(message('fable'), reply(), { sourceUnavailable: true }), [], 'not for a source that could not be read');
+  const kept = reply(); kept.offered = [];
+  assert.deepEqual(offered(message('fable'), kept), [], 'an offer the person declined is not made again');
+});
+
+test('a reply is offered only to an author a message would reach', () => {
+  const f = fixture();
+  const offers = [];
+  const reply = () => ({ context: { topicId: 't1' }, offerAddressees(names) { this.offered = names; offers.push(names.join(',')); } });
+  const offered = author => { offers.length = 0; f.offerAuthor({ source: { source_ref: { kind: 'message', id: 'm1' }, topic_id: 't1', author }, editors: { reply: reply() } }); return [...offers]; };
+  f.views.participants = [{ actor_id: 'fixture-person', enabled: true }, { actor_id: 'fable', enabled: true }, { actor_id: 'idle', enabled: false }];
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.inline, topic: f.topic, views: f.views, freshness: f.fresh,
+    outcomeMembers: [{ actor_id: 'fixture-person' }, { actor_id: 'teammate' }] });
+  assert.deepEqual(offered('fable'), ['fable'], 'a participant');
+  assert.deepEqual(offered('teammate'), ['teammate'], 'a member of the outcome\'s team, who can see the topic');
+  assert.deepEqual(offered('idle'), [], 'a switched-off author would make the reply refused');
+  assert.deepEqual(offered('gone'), [], 'nor one who left the topic and is not on the team');
 });
 
 // Every element under a node; text children are skipped.
@@ -1234,4 +1287,186 @@ test('attention is read again when the stream comes back, and not when it goes d
   live.emit({ kind: 'state', state: 'live' }); await drain();
   assert.equal(reads(), before + 1, 'the stream coming back reads attention');
   assert.equal(f.owners().attention.unread, 2);
+});
+
+test('clicking an agent\'s name on its card opens its color picker, not the message; a choice recolors its cards', async () => {
+  const opened = [];
+  const f = fixture(undefined, { openColorPicker: options => { opened.push(options); return {}; } });
+  Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  const add = (seq, author_id, author_kind) => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id, author_kind, body: 'Body', topic_id: 't1' });
+  add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'fable', 'agent'); add(4, 'dan', 'human');
+  f.paintViews('messages');
+  const card = id => f.get('messages').children.find(child => child.dataset.id === id);
+  const name = id => card(id).children[0].children[0];
+  const opens = () => f.calls.filter(c => c.name === 'source' || c.name === 'editor_state').length;
+  const before = opens();
+  await card('m3').onclick({ target: name('m3') }); await settle();
+  assert.equal(opened.length, 1, 'the picker opened');
+  assert.deepEqual([opened[0].anchor, opened[0].agent, opened[0].own, opened[0].chosen, opened[0].palette], [name('m3'), 'fable', 'green', null, AGENT_PALETTE]);
+  assert.equal(opened[0].back, card('m3'), 'closing it gives the focus to the card, which can hold it');
+  assert.equal(opens(), before, 'the message was not opened');
+  // Choosing goes to Core, and every card of that agent changes.
+  f.api.command = async envelope => { f.calls.push({ kind: envelope.kind, envelope }); return { status: 'committed', recorded: true, result: { actor_id: 'fable', color: 'rose', color_revision: 1 } }; };
+  assert.equal((await opened[0].choose('rose')).status, 'committed');
+  const sent = f.calls.find(c => c.kind === 'color.set').envelope;
+  assert.deepEqual([sent.target, sent.args, sent.expected.color_revision], [{ actor_id: 'fable' }, { color: 'rose' }, 0]);
+  assert.deepEqual(['m1', 'm2', 'm3', 'm4'].map(id => card(id).className),
+    ['message-card agent-card agent-rose', 'message-card own-message', 'message-card agent-card agent-rose', 'message-card']);
+  // Your own name and a person's open no picker.
+  for (const id of ['m2', 'm4']) await card(id).onclick({ target: name(id) });
+  assert.equal(opened.length, 1, 'only an agent\'s name opens a picker');
+});
+
+test('the reader\'s agent colors are read with the page, in the foreground, so the first cards wear them', async () => {
+  const f = fixture();
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  const classes = [], view = f.api.view;
+  f.api.view = async (name, args, options) => { if (name === 'colors') classes.push(options?.readClass); return view(name, args, options); };
+  await f.initialize(); await settle();
+  assert.deepEqual(classes, ['foreground'], 'not in the background lane, which turns a busy start away');
+});
+
+test('an agent in the participants is a button that opens its color picker, in its color; people are plain names', async () => {
+  const opened = [];
+  const f = fixture(undefined, { openColorPicker: options => { opened.push(options); return {}; } });
+  Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  Object.assign(f.views, { topic: f.topic, participants: [{ actor_id: 'dan', kind: 'human' }, { actor_id: 'fable', kind: 'agent' }, { actor_id: 'fixture-person', kind: 'human' }] });
+  f.paintViews('topic');
+  const chips = f.get('participants').children[0].children;
+  const names = chips.map(chip => chip.children[0] ?? chip.textContent);
+  assert.deepEqual(names.map(n => typeof n === 'string' ? n : n.textContent), ['dan', 'fable', 'fixture-person']);
+  const agent = names[1];
+  assert.equal(typeof names[0], 'string', 'a person is a plain name');
+  assert.equal(agent.type, 'button');
+  assert.equal(agent.className, 'chip-name agent-green', 'in the agent\'s color');
+  assert.equal(agent['aria-haspopup'], 'dialog');
+  await agent.onclick(); await settle();
+  assert.deepEqual([opened.length, opened[0]?.anchor, opened[0]?.agent], [1, agent, 'fable']);
+  f.api.command = async () => ({ status: 'committed', recorded: true, result: { actor_id: 'fable', color: 'olive', color_revision: 1 } });
+  await opened[0].choose('olive');
+  const now = f.get('participants').children[0].children[1].children[0];
+  assert.equal(now.className, 'chip-name agent-olive', 'the name takes the choice at once');
+  // The choice repainted the participants; the picker gives the focus back to
+  // the name it opened from, so that name is still the one on the page.
+  assert.equal(now, agent, 'the name that opened the picker is the one in the participants after the repaint');
+  assert.equal(opened[0].back, agent);
+});
+
+test('the New line is drawn under the oldest unanswered card, moves with each answer, and goes', async () => {
+  const { f } = await readingPage();
+  for (let seq = 20; seq <= 25; seq++) f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  f.views.unanswered = { seq: 22, id: 'm22' }; f.paintViews('messages');
+  assert.equal(order(), '25 24 23 22 new 21 20');
+  f.views.messages.set('m26', { id: 'm26', seq: 26, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  f.views.unanswered = { seq: 24, id: 'm24' }; f.paintViews('messages');
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'an answer moves it up; a new card goes above it');
+  f.views.messages.set('m19', { id: 'm19', seq: 19, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  f.paintViews('messages');
+  assert.equal(order(), '26 25 24 new 23 22 21 20 19', 'an older card loaded by More goes below it');
+  f.views.unanswered = null; f.paintViews('messages');
+  assert.equal(order(), '26 25 24 23 22 21 20 19', 'nothing left unanswered: no line');
+});
+
+test('the New line for a message further back sits at the bottom, and pressing it loads down to that message', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = (from, through, next) => ({ ...page(from, through, next), unanswered: { seq: 5, id: 'm5' } });
+  views.messagesPage(at(20, 29, 20), { initial: true }); await settle();
+  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  assert.equal(order(), '29 28 27 26 25 24 23 22 21 20 older', 'the line waits at the bottom of what is loaded');
+  const marker = f.get('messages').children.at(-1);
+  assert.equal(marker.textContent, 'New · older below');
+  const pages = [at(10, 19, 10), at(1, 9, null)], reads = [];
+  const view = f.api.view;
+  f.api.view = async (name, args) => {
+    if (name === 'topic_messages') { reads.push(args.cursor); return pages.shift(); }
+    return view(name, args);
+  };
+  await marker.onclick(); await settle();
+  assert.deepEqual(reads, [20, 10], 'it read older pages until the message was loaded, and no further');
+  assert.equal(order().split(' ').slice(-7).join(' '), '6 5 new 4 3 2 1', 'loaded: the line is in its true place');
+  assert.equal(f.get('messages').children.filter(child => child.dataset.line).length, 1, 'one line');
+  assert.equal(f.document.activeElement?.dataset.seq, 5, 'the message it was for has the focus');
+});
+
+test('with nothing older left to load, no line promises older messages below', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  views.messagesPage({ ...page(20, 29, null), unanswered: { seq: 5, id: 'm5' } }, { initial: true }); await settle();
+  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  assert.equal(order(), '29 28 27 26 25 24 23 22 21 20', 'no line: there is nothing it could load');
+});
+
+test('pressing the older-below line while the page may not read stops at once and reads nothing', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  views.messagesPage({ ...page(20, 29, 20), unanswered: { seq: 5, id: 'm5' } }, { initial: true }); await settle();
+  const reads = [], view = f.api.view;
+  f.api.view = async (name, args) => { if (name === 'topic_messages') reads.push(args.cursor); return view(name, args); };
+  // The runtime changed: the page asks for a review before it reads again.
+  f.registry.runtime.current = { authority_id: 'other', authority_epoch: 'e2' };
+  await f.get('messages').children.at(-1).onclick(); await settle();
+  assert.deepEqual(reads, [], 'nothing was read');
+  assert.equal(f.get('messages').children.at(-1).dataset.line, 'older', 'the line still waits at the bottom');
+});
+
+test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {
+  const scrolls = [];
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y) }, innerHeight: 800 });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  // Cards are laid out 100px apart from where the list starts, measured when
+  // asked: a new card above pushes the rest down.
+  let listTop = 0;
+  const cards = () => f.get('messages').children.filter(child => child.dataset.seq);
+  for (const kind of ['querySelectorAll', 'querySelector']) assert.equal(typeof f.document[kind], 'function');
+  f.document.querySelectorAll = () => cards();
+  f.document.querySelector = selector => selector === '#messages .message-card' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
+  const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  const paint = () => { f.paintViews('messages'); for (const card of cards()) card.getBoundingClientRect ??= () => { const top = listTop + cards().indexOf(card) * 100; return { top, bottom: top + 90 }; }; };
+  for (let seq = 20; seq <= 25; seq++) add(seq);
+  paint();
+  listTop = 120; add(26); paint();
+  assert.deepEqual(scrolls, [], 'the newest card showed from its top edge: the new one comes into view above it');
+  listTop = -450; add(27); paint();
+  assert.deepEqual(scrolls, [100], 'read further down, the card in view is held where it was');
+  listTop = -100; add(28); paint();
+  assert.deepEqual(scrolls, [100, 100], 'the newest card just out of sight above: the card that heads the view is held too');
+  listTop = -50; add(29); paint();
+  assert.deepEqual(scrolls, [100, 100, 100], 'the newest card partly above the top is being read, not shown from its top edge: it is held');
+});
+
+test('an agent\'s card in the topic log carries its color, and the person\'s own keeps its black', async () => {
+  const { f } = await readingPage();
+  const add = (seq, author_id, author_kind) => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id, author_kind, body: 'Body', topic_id: 't1' });
+  add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'dan', 'human'); add(4, 'warp', 'agent');
+  f.paintViews('messages');
+  const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
+  assert.deepEqual(classes, { m4: 'message-card agent-card agent-peach', m3: 'message-card', m2: 'message-card own-message', m1: 'message-card agent-card agent-green' });
+});
+
+test('your own message keeps its own style when it arrives live and when More loads it, among agents\' colors', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const item = (seq, author_id) => ({ id: 'm' + seq, seq, author_id, author_kind: author_id === 'fixture-person' ? 'human' : 'agent', body: 'Body ' + seq, topic_id: 't1' });
+  const page = (items, next, version) => ({ instance_id: 'fixture', items, next_cursor: next, relevant_versions: { topic: version } });
+  views.messagesPage(page([29, 30, 31].map(seq => item(seq, 'fable')), 29, 1), { initial: true }); await settle();
+  views.messagesPage(page([item(32, 'fixture-person'), item(33, 'warp')], null, 2), { live: true, cursor: views.newest }); await settle();
+  views.messagesPage(page([item(27, 'aim-lead'), item(28, 'fixture-person')], null, 2), { cursor: views.olderCursor }); await settle();
+  const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
+  assert.deepEqual(classes, { m33: 'message-card agent-card agent-peach', m32: 'message-card own-message', m31: 'message-card agent-card agent-green',
+    m30: 'message-card agent-card agent-green', m29: 'message-card agent-card agent-green', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
 });

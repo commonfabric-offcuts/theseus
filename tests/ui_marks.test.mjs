@@ -344,14 +344,14 @@ test('a card\'s Unread pill keeps the name\'s last character with it, and leaves
   t.after(() => { globalThis.document = previous; });
   const author = new Node('span');
   const shape = () => author.children.map(child => child.nodeType === 3 ? child.data
-    : [child.className, ...child.children.map(c => c.nodeType === 3 ? c.data : [c.className, c.textContent ?? '', c.attributes['aria-hidden'] ?? null])]);
+    : [child.className, ...child.children.map(c => c.nodeType === 3 ? c.data : [c.className, c.textContent ?? c.children.map(x => x.data).join(''), c.attributes['aria-hidden'] ?? null])]);
   paintAuthor(author, 'agent-👨‍👩‍👧', '3:04 PM', true);
-  assert.deepEqual(shape(), ['agent-', ['together', '👨‍👩‍👧', ['unread-mark', 'Unread', 'true'], ['sr-only', ', marked unread', null]], ['message-time']]);
+  assert.deepEqual(shape(), [['author-name author-name-start', 'agent-'], ['together', ['author-name author-name-end', '👨‍👩‍👧', null], ['unread-mark', 'Unread', 'true'], ['sr-only', ', marked unread', null]], ['message-time']]);
   assert.equal(author.children[2].textContent, ' · 3:04 PM');
   paintAuthor(author, 'agent-👨‍👩‍👧', '3:04 PM', false);
-  assert.deepEqual(shape(), ['agent-👨‍👩‍👧', ['message-time']]);
+  assert.deepEqual(shape(), [['author-name', 'agent-👨‍👩‍👧'], ['message-time']]);
   paintAuthor(author, 'alice', null, true);
-  assert.deepEqual(shape(), ['alic', ['together', 'e', ['unread-mark', 'Unread', 'true'], ['sr-only', ', marked unread', null]]]);
+  assert.deepEqual(shape(), [['author-name author-name-start', 'alic'], ['together', ['author-name author-name-end', 'e', null], ['unread-mark', 'Unread', 'true'], ['sr-only', ', marked unread', null]]]);
 });
 
 test('a superseded open cannot discard the current reading open deferred until focus', async t => {

@@ -40,6 +40,39 @@ INTENTS = ("ask", "tell")
 INTENT_REQUIRED = ("A message to someone says whether it asks or tells: post with --asks NAMES or --tells NAMES "
                    "(message.post args.intent \"ask\" or \"tell\"); nothing was sent")
 
+
+# Version 16 finds what a reader has not replied to. Each reader's horizon in
+# a topic is a sequence below which every message is theirs, answered by a
+# reply of theirs, or older than a post of theirs to the whole topic; each post
+# moves it forward. An index finds each message's replies by author.
+UNANSWERED_SCHEMA = [
+    "CREATE TABLE reply_horizons (topic_id TEXT NOT NULL REFERENCES topics(id), actor_id TEXT NOT NULL REFERENCES actors(id), "
+    "seq INTEGER NOT NULL, PRIMARY KEY(topic_id,actor_id))",
+    "CREATE INDEX message_replies ON messages(reply_to,author_id) WHERE reply_to IS NOT NULL",
+]
+# The upgrade works out every author's horizon from the messages already there:
+# just below the oldest message after their last post to the whole topic that
+# is someone else's and that no reply of theirs names, else past the newest.
+UNANSWERED_BACKFILL = [
+    "INSERT INTO reply_horizons(topic_id,actor_id,seq) SELECT a.topic_id,a.author_id,coalesce("
+    "(SELECT min(m.seq) FROM messages m WHERE m.topic_id=a.topic_id AND m.author_id<>a.author_id "
+    "AND m.seq>coalesce((SELECT max(p.seq) FROM messages p WHERE p.topic_id=a.topic_id AND p.author_id=a.author_id AND p.reply_to IS NULL),0) "
+    "AND NOT EXISTS (SELECT 1 FROM messages r WHERE r.reply_to=m.id AND r.author_id=a.author_id)),"
+    "(SELECT max(t.seq)+1 FROM messages t WHERE t.topic_id=a.topic_id)) "
+    "FROM (SELECT DISTINCT topic_id,author_id FROM messages) a",
+]
+UNANSWERED_DOWN = ("DROP INDEX message_replies", "DROP TABLE reply_horizons")
+# Horizons are worked out from the messages, which stay: the step back loses
+# no record, and the next upgrade works them out again.
+UNANSWERED_OCCUPIED = "SELECT 0"
+# The oldest message at or after the reader's horizon that someone else wrote
+# and no reply of the reader's names. Bound: topic, reader, reader, reader, reader.
+FIRST_UNANSWERED = ("SELECT m.id,m.seq FROM messages m INDEXED BY topic_messages WHERE m.topic_id=?1 "
+                    "AND m.seq>=coalesce((SELECT h.seq FROM reply_horizons h WHERE h.topic_id=?1 AND h.actor_id=?2),0) "
+                    "AND m.author_id<>?2 AND NOT EXISTS (SELECT 1 FROM messages r INDEXED BY message_replies "
+                    "WHERE r.reply_to=m.id AND r.author_id=?2) ORDER BY m.seq LIMIT 1")
+
+
 POST_FIELDS = {"body", "attachments", "addressees", "reply_to", "quotes", "intent"}
 
 
@@ -142,6 +175,13 @@ class Conversation:
         # to someone asks only when they say so.
         if snapshot["addressees"] and snapshot.get("intent") is None:
             snapshot["intent"] = "tell"
+        # Writing about a message in the topic it goes to answers that message,
+        # quoted or not. The frozen source names it, so every send of it does.
+        source = snapshot["source_ref"]
+        if source.get("kind") == "message" and snapshot.get("reply_to") is None:
+            parent = db.execute("SELECT topic_id FROM messages WHERE id=?", (source.get("id"),)).fetchone()
+            if parent is not None and parent["topic_id"] == topic_id:
+                snapshot["reply_to"] = source["id"]
         result, affected = self._publish(db, actor, envelope["operation_id"], topic_id, snapshot)
         self._change(db, "actor", actor, "submission", snapshot["id"], 2)
         return dict(result, submission_id=snapshot["id"]), affected
@@ -278,6 +318,12 @@ class Conversation:
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
+        # A post to the whole topic answers everything before it; a reply may
+        # answer the oldest message its author had left, so the horizon moves on
+        # to the next one, or past this message when none is left.
+        waiting = None if not snapshot.get("reply_to") else db.execute(FIRST_UNANSWERED, (topic_id, actor)).fetchone()
+        db.execute("INSERT INTO reply_horizons VALUES (?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
+                   (topic_id, actor, waiting["seq"] if waiting else sequence + 1))
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
@@ -337,13 +383,17 @@ class Conversation:
         backwards = args.get("direction", "after") == "before"
         relation, order = ("<", "DESC") if backwards else (">", "ASC")
         cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
-        columns = "m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms,m.intent"
+        # A reply says whose message it answers, and how that message begins;
+        # every message says whether a person or an agent wrote it.
+        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms,m.intent,"
+                   "p.author_id AS reply_to_author,substr(p.body,1,120) AS reply_to_excerpt")
+        parent = " JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
         if args.get("audience", "all") == "reader":
-            unaddressed = db.execute("SELECT " + columns + " FROM messages m WHERE m.topic_id=? AND m.addressees='[]' AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
-            addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=? AND actor_id=? AND seq" + relation + "? ORDER BY seq " + order + " LIMIT ?) a JOIN messages m ON m.seq=a.seq", (topic["id"], actor, cursor, limit + 1)).fetchall()
+            unaddressed = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=? AND m.addressees='[]' AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
+            addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=? AND actor_id=? AND seq" + relation + "? ORDER BY seq " + order + " LIMIT ?) a JOIN messages m ON m.seq=a.seq" + parent, (topic["id"], actor, cursor, limit + 1)).fetchall()
             rows = sorted(unaddressed + addressed, key=lambda row: row["seq"], reverse=backwards)[:limit + 1]
         else:
-            rows = db.execute("SELECT " + columns + " FROM messages m WHERE m.topic_id=? AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
+            rows = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=? AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
         items, size, last = [], 1024, None
         for row in rows[:limit]:
             item = dict(row)
@@ -359,7 +409,21 @@ class Conversation:
         if backwards:
             items.reverse()
         return {"instance_id": self.instance_id, "items": items, "next_cursor": last if len(rows) > len(items) else None,
-                "relevant_versions": {"topic": topic["version"]}}
+                "relevant_versions": {"topic": topic["version"]}, "unanswered": self._oldest_unanswered(db, actor, topic["id"])}
+
+    def _oldest_unanswered(self, db, actor, topic_id):
+        """The oldest message in the topic the reader has not replied to, as {seq, id}, or None.
+
+        A message is unanswered when someone else wrote it after the reader's
+        last post to the whole topic (one that replies to no particular
+        message), and no reply of the reader's names it. The search starts at
+        the reader's horizon, which each of their posts leaves on their oldest
+        unanswered message or past the newest; whatever arrived since is
+        someone else's and unanswered. So it stops at the first row it reads,
+        whatever the topic's length. Reading and marks change nothing here;
+        only the reader's own posts move it."""
+        row = db.execute(FIRST_UNANSWERED, (topic_id, actor)).fetchone()
+        return {"seq": row["seq"], "id": row["id"]} if row else None
 
     def _effective_reasons(self, db, delivery):
         rows = db.execute("SELECT r.reason,r.participant_epoch,p.active,p.epoch FROM delivery_reasons r LEFT JOIN topic_participants p ON p.topic_id=r.topic_id AND p.actor_id=? WHERE r.delivery_id=? ORDER BY r.reason", (delivery["recipient_id"], delivery["id"])).fetchall()

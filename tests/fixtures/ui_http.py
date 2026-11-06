@@ -267,6 +267,10 @@ def main():
             actors.append({"id": "fixture-outside-agent", "kind": "agent"})
             # Agents a topic can wait on, so a waiting list can run long.
             actors.extend({"id": "fixture-%s-agent" % name, "kind": "agent"} for name in ("planning", "reviewing", "writing"))
+        if "--agent-colors" in sys.argv:
+            # The team's agents, each with its own color, and one the page
+            # colors by its id alone.
+            actors.extend({"id": name, "kind": "agent"} for name in ("aim-lead", "aim-ux", "fable", "aim-core", "aim-spec", "warp", "fixture-guest-agent"))
         binding = initialize(path, instance, actors,
                              authority_path=root / "control" / "authority.json")["binding"]
 
@@ -348,8 +352,9 @@ def main():
 
         def agent_message(request):
             operation = request["operation_id"]
-            # The person may write one too, so their own message is drawn.
-            sender = actor if request.get("sender") == "person" else "fixture-notebook-agent"
+            # The person may write one too, so their own message is drawn, or
+            # another agent of the fixture's.
+            sender = actor if request.get("sender") == "person" else request.get("sender") or "fixture-notebook-agent"
             topic_id = request.get("topic_id", "t1")
             if request.get("join"):
                 # The person brings the agent into a topic of theirs first.

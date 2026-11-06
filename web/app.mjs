@@ -22,6 +22,11 @@ import { Attention, paintSent } from './attention.mjs';
 import { TopicStatePanel, paintWaiting, readableTime } from './topic-state.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
+import { replyLine } from './replies.mjs';
+import { placeNewLine } from './unanswered.mjs';
+import { cardClass, agentColor } from './author-colors.mjs';
+import { AgentColors } from './colors.mjs';
+import { openColorPicker } from './color-picker.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -36,7 +41,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null;
+let topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
@@ -365,6 +370,7 @@ async function present(presentation) {
   if (presentation.surface === 'inline') inline.show(presentation);
   else {
     retainRevisionTargets(presentation);
+    offerAuthor(presentation);
     revokeMedia(); reader.presentation = presentation;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
@@ -383,6 +389,17 @@ async function present(presentation) {
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   sourceAttachments(presentation);
+}
+// A reply to someone else's message in this topic goes to its author unless
+// the person removes them; the offer is made once for each reply editor, and
+// not to an author the reply would not reach (switched off, or gone from the
+// topic and its outcome's team), whose name would make the send refused.
+function offerAuthor(presentation) {
+  const source = presentation.source, reply = presentation.editors.reply;
+  if (presentation.sourceUnavailable || reply.offered !== undefined || source.source_ref.kind !== 'message' ||
+      source.topic_id !== reply.context.topicId || !source.author || source.author === bootstrap.actor ||
+      recipientReach(source.author)?.reachable === false) return;
+  reply.offerAddressees([source.author]);
 }
 // A checked page of saved copies: the first page replaces what was listed,
 // and a page that continues it is added, as the editor's image copies are.
@@ -477,15 +494,19 @@ async function openSource(ref, opener, act = null) {
 // A repaint leaves in place what the person is at: the inline writing, a
 // field on the page they are typing in, or else the first card in view. A
 // button keeps no place: More would hold itself still and scroll past what
-// it loaded.
+// it loaded. At the top of the topic, where its newest card shows from its
+// top edge, nothing is held: what arrives comes into view above that card,
+// with the New line under it, instead of landing out of sight.
 function keepListAnchor(paint) {
   const at = document.activeElement;
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
-  const anchor = writing ? inline.field : $('main').contains(at) && at.matches('input, textarea, select') && inView(at) ? at
+  const field = !writing && $('main').contains(at) && at.matches('input, textarea, select') && inView(at);
+  const anchor = writing ? inline.field : field ? at
     : [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(inView);
   const top = anchor?.getBoundingClientRect().top;
+  const atTop = !writing && !field && anchor && anchor === document.querySelector('#messages .message-card') && top >= 0;
   paint();
-  if (anchor?.isConnected) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
+  if (anchor?.isConnected && !atTop) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 function paintViews(kind) {
@@ -508,10 +529,20 @@ function paintViews(kind) {
     if (!card) {
       const ref = { kind: 'message', id: item.id };
       // The revision a click or keypress may clear is the one the card shows.
-      card = button('', () => openSource(ref, card, marks.capture(item.id))); card.className = item.author_id === bootstrap.actor ? 'message-card own-message' : 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
+      card = button('', () => openSource(ref, card, marks.capture(item.id))); card.className = cardClass(item, bootstrap.actor, agentShown); card.dataset.id = item.id; card.dataset.seq = item.seq;
+      // An agent's name on its card opens its color picker instead of the message.
+      const open = card.onclick;
+      card.onclick = event => {
+        const name = event?.target?.closest?.('.author-name');
+        if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
+        return open(event);
+      };
       const author = node('span', undefined, 'message-author');
       paintCardAuthor(author, item);
-      card.append(author, node('span', item.body, 'message-preview'));
+      card.append(author);
+      const answers = replyLine(item);
+      if (answers) card.append(node('span', answers, 'message-reply-to'));
+      card.append(node('span', item.body, 'message-preview'));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
       $('messages').insertBefore(card, following ?? null);
@@ -530,10 +561,45 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
+  if (kind === 'messages') placeNewLine($('messages'), views.unanswered?.seq ?? null, document,
+    views.olderCursor === null ? null : () => run(loadToUnanswered));
   });
   $('more-messages').hidden = views.olderCursor === null;
   $('more-memory').hidden = views.memoryCursor === null;
   if (kind === 'messages') noteRead();
+}
+// The color the reader sees an agent in: their choice, or the agent's own.
+const agentShown = id => colors?.color(id) ?? agentColor(id);
+// Every loaded card and the participants, in the reader's colors as they now stand.
+function paintAgentColors() {
+  for (const card of $('messages').children) {
+    const item = views?.messages.get(card.dataset.id);
+    if (item) card.className = cardClass(item, bootstrap.actor, agentShown);
+  }
+  participantsPanel?.paint();
+}
+// The picker for one agent's color, under its name (anchor); closing it gives
+// the focus to back. The choices are read first if the page has not read them.
+async function pickColor(agent, anchor, back = anchor) {
+  if (!colors.loaded) await colors.load('foreground').catch(() => { throw Error('The agent colors could not be read. Try again.'); });
+  return openColorPicker({ anchor, back, agent, palette: colors.palette, chosen: colors.chosen(agent), own: agentColor(agent),
+    choose: color => colors.choose(agent, color) });
+}
+// An agent in the participants: its name, in its color, opens its picker. An
+// agent keeps one name button across repaints, so a choice that repaints the
+// participants leaves the picker's opener on the page to take the focus back.
+const participantNames = new Map();
+function participantName(person) {
+  if (person.kind !== 'agent' || person.actor_id === bootstrap.actor) return null;
+  let name = participantNames.get(person.actor_id);
+  if (!name) {
+    name = node('button', person.actor_id); name.type = 'button';
+    name.setAttribute('aria-haspopup', 'dialog'); name.title = `Change ${person.actor_id}'s color`;
+    name.onclick = () => run(() => pickColor(person.actor_id, name));
+    participantNames.set(person.actor_id, name);
+  }
+  name.className = `chip-name agent-${agentShown(person.actor_id)}`;
+  return name;
 }
 // Messages sent before times were kept have none.
 function paintCardAuthor(author, item) {
@@ -607,6 +673,19 @@ function listPage(kind, more = false) {
     else views.memoryPage(page, { initial: !more, cursor });
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
+}
+// The New line's "older below": older pages, one after another, until the
+// oldest unanswered message's card is loaded or no older page is left; then
+// that message takes the focus, with the line in its place below it. A read
+// that moves nothing on (a refusal, or a review pending) ends it.
+async function loadToUnanswered() {
+  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.unanswered?.seq);
+  while (views.unanswered && !loaded() && views.olderCursor !== null) {
+    const before = views.olderCursor, shared = listLoads.has('messages');
+    await listPage('messages', true);
+    if (!shared && views.olderCursor === before) break;
+  }
+  loaded()?.focus();
 }
 async function refreshLists() {
   if (authorityReviewPending()) {
@@ -861,6 +940,12 @@ async function initialize() {
     return;
   }
   const topicId = route.id;
+  // The reader's agent colors, read alongside the topic so the first cards wear them.
+  if (!colors) {
+    colors = new AgentColors({ api, instanceId: bootstrap.instance_id, authority: () => registry?.runtime.current ?? bootstrap.authority });
+    colors.listen(paintAgentColors);
+  }
+  const colorsRead = colors.load('foreground').catch(() => {});
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version) });
@@ -873,7 +958,7 @@ async function initialize() {
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add a participant to this topic', names: 'directory-names',
-    add: id => setParticipation(id, true), remove: id => setParticipation(id, false) });
+    add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName });
   // Who can be sent a message here: the topic's participants and the outcome's
   // members. A reader outside the outcome cannot list its members.
   outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null);
@@ -889,6 +974,7 @@ async function initialize() {
   // both initial list bodies have arrived after the captured feed baseline.
   const messageAnswer = checkedView(await api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }), bootstrap.instance_id);
   const memoryAnswer = checkedView(await api.view('memory_items', { owner_scope: views.scope, limit: 20 }), bootstrap.instance_id);
+  await colorsRead;
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
   inline = new InlineComposer({
     admits: (p, editor) => registry?.isCurrent(p, editor),

@@ -114,3 +114,124 @@ catch both applied reviewer mutants in both themes. Each mutant is restored
 byte-for-byte. `green` passes with the hint at 4.75:1 in light and 4.87:1 in dark;
 all four runs close their browser and fixture cleanly. The local report and
 verification manifest retain the exact sources, pixel readings and screenshots.
+
+## Agent colors
+
+Each agent has its own color. Its cards in a topic are tinted with it across
+their whole face, and its name on each card sits on a deeper tint of the same
+hue. There is no colored edge, bar or border: the card's border stays the
+shared line color on every side. The person's own messages keep their black
+and carry no tint, whoever they are; other people's cards keep the plain
+card. Hovering an agent's card deepens its tint a little.
+
+`topic_messages` items carry `author_kind` (`human` or `agent`, from the
+actor record), and only an `agent` card is tinted. `web/author-colors.mjs`
+gives the team's agents fixed colors and any other agent indigo or olive,
+which no team agent has, picked by FNV-1a over its id's UTF-8 bytes: the
+same agent always gets the same color, on every page and every device, and
+no other agent is taken for one of the team. The colors themselves are
+classes in `web/aim.css`, one per palette name, for light and dark.
+
+Fable's color is the green its cards already had. Before agent colors, the
+live app painted every agent's card plain at rest and in `--soft` under the
+pointer, and the Reader's page in `--soft` too; that green (`#e8f1ec` light,
+`#263d35` dark) is what Tony called Fable's color as it stands (#452), so
+Fable's card is that green at rest, in both themes. The person's own black is
+unchanged. Orchid, which Fable had for a while, belongs to no one by default
+and stays in the palette for anyone to be given. Green's nearest neighbours
+are olive and cyan, at CIEDE2000 7.0 and 9.4 apart on the name's tag in light
+(10.1 and 11.1 in dark); the palette's closest pair, violet and orchid, is
+4.4, so no agent's default needed to move.
+
+The other hues stay clear of the warning amber and the red New line. On a tinted light card the quiet text (`--muted`) is darkened to
+`#56616a`, and on a tinted dark card the excerpt cue (`--accent`) is lightened
+to `#79c7ab`, so that body, name, time and cue all keep at least 4.5:1 on the
+card, on its hover, and on the name's tag:
+
+| Color | Agent | Light card / name / hover | Dark card / name / hover | Lowest text contrast, light / dark |
+|---|---|---|---|---|
+| green | `fable` | `#e8f1ec` / `#c8e0d2` / `#dfece5` | `#263d35` / `#385a4d` / `#29403a` | 5.21 / 4.64 |
+| blue | `aim-lead` | `#ebf2fa` / `#c6daf1` / `#e0ebf7` | `#202d3c` / `#32465d` / `#243242` | 5.25 / 5.44 |
+| indigo | fallback only | `#ececf9` / `#c9cbed` / `#e2e3f5` | `#222339` / `#363759` / `#262740` | 4.99 / 6.06 |
+| violet | `aim-ux` | `#f2edf8` / `#dacbeb` / `#ebe3f4` | `#2d2438` / `#463757` / `#32283e` | 5.08 / 5.81 |
+| orchid | no one by default | `#f7edf7` / `#e9cee9` / `#f3e5f3` | `#372537` / `#553a55` / `#3d293d` | 5.22 / 5.54 |
+| rose | `aim-spec` | `#f9ecf0` / `#edc9d5` / `#f5e2e9` | `#39222a` / `#593641` / `#40262f` | 5.11 / 5.71 |
+| peach | `warp` | `#faf1eb` / `#f1d7c6` / `#f7eae0` | `#3c2b20` / `#5d4332` / `#423024` | 5.37 / 5.22 |
+| cyan | `aim-core` | `#ecf6f9` / `#c9e6ed` / `#e2f2f5` | `#223539` / `#365259` / `#263b40` | 5.51 / 4.92 |
+| olive | fallback only | `#f4f7ee` / `#e0e8cf` / `#eff3e5` | `#313626` / `#4c543b` / `#373c2a` | 5.62 / 4.76 |
+
+`tests/ui_author_colors.test.mjs` reads these colors from `aim.css` and holds
+every pair to 4.5:1, the name's tint to 1.15 times its card's luminance, and
+the rules to no edge or bar. `tests/agent_colors_native.mjs` (run with
+`--colors`) checks the painted result: every agent's card and name in light
+and dark, at laptop and phone width, from screenshot pixels, and saves those
+screenshots for review.
+
+## Hovering your own message
+
+On a light page the border change alone did not show on a hovered own card.
+Hovering it now lifts the whole card from black to `#22292d` (1.42:1 against
+black), as well as changing its border: a change of the whole face, never an
+edge or bar, and at rest the card stays black. Its words keep their contrast
+on the lifted card (body 11.84:1, quiet text 6.16:1, excerpt cue 7.43:1).
+`tests/ui_own_hover.test.mjs` holds those numbers from `aim.css`, and the
+native colors check reads the hovered card's fill from screenshot pixels on
+both sides.
+
+## Choosing an agent's color
+
+Each agent's color above is its default. A person can choose another for any
+agent, for themselves alone: clicking the agent's name, on one of its cards or
+in the topic's participants, opens a small picker with the palette's colors
+and the agent's default. The choice is kept by Core, so it follows the person
+to every page and device; it changes nothing anyone else sees, and no
+message, delivery or wake. The person's own messages keep their black: there
+is no choice for oneself, and a person's cards are never tinted.
+
+Contract:
+
+- Record: `color_choices`, one row per (chooser, agent): `color`, a palette
+  name or null for the agent's default, and a `revision` that only grows. Rows
+  are never deleted, so a revision is never reused. Schema version 17 adds the
+  table; stepping back to 16 is refused while any row exists, reset rows
+  included, since dropping one would restart its revisions.
+- Command `color.set`: target `{actor_id}` (an agent, not the chooser),
+  args `{color}` (a palette name, or null to go back to the default),
+  expected `{color_revision}` (the revision the page last read, 0 for none).
+  A palette name is the only color accepted: no CSS ever comes from a request.
+  A stale revision is refused with the current one, so a late request never
+  undoes a newer choice. Choosing the color already chosen changes nothing.
+  The choice adds an actor-scoped change (`color`, the agent's id).
+- View `colors` (`cursor`, `limit`): the reader's own choices, reset ones
+  included, in agent id order, each `{actor_id, color, color_revision}`, and
+  `palette`, the colors a choice may name, in the order a picker offers them.
+  Core owns the palette; the browser draws each name as a class in
+  `web/aim.css`, and a check holds the two to the same names.
+
+The page reads `colors` when it opens and again when it is shown or focused,
+so a choice made on another device is there when the person comes back to
+this one. The read at opening, and one a picker or a refused choice waits on,
+goes in the foreground read lane, since the first cards wait on it; the read
+on focus goes in the background lane. A read may land after a choice the page made while it was out, so
+each agent keeps whichever choice has the higher revision, and an agent the
+read does not list keeps its choice (Core deletes none, so the read had not
+seen it). A card's color is the reader's choice for its agent when there is
+one, else the agent's default.
+
+The picker (`web/color-picker.mjs`) is a non-modal popover labelled "Color
+for" the agent: a swatch per palette color, each a button named for its
+color, and "Default (its own color)", with the current choice pressed and
+focused. Each swatch is outlined in the quiet text color, at 3:1 or better
+against the picker in both themes (WCAG 1.4.11), and the pressed one also
+wears an ink ring. The arrow keys, Home and End move between them, and Tab goes round
+them while it is open; Escape closes it and gives the focus back; a press
+outside closes it; pressing the name again closes it. A choice closes it once
+Core has committed it, and a refusal is said inside it. A card is itself a
+button that opens the message, and a control inside a button is not reachable
+or announced as one, so on a card the name is a pointer shortcut: a click on
+it opens the picker instead of the message, and the focus returns to the
+card. The keyboard way is the topic's participants, where each agent's name is
+a button of its own, in the agent's color; an agent keeps the same button
+across repaints, so the focus goes back to it after a choice. The page reads the choices before
+it first draws the cards, so they wear the chosen colors from the start; a
+read that fails leaves the defaults, and opening the picker reads again.

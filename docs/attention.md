@@ -246,6 +246,63 @@ clear a mark.
   does any other open (a Reader step, the Notebook, a correction). A mark
   renewed while the open was under way survives, as its revision moved on.
 
+## Not yet replied to
+
+Unread is about reading; this is about answering. In each topic the reader
+sees a red line marked "New" just below the oldest message they have not
+replied to. Messages are listed newest first, so everything the line sits
+under is either newer than that message or that message itself.
+
+A message is not yet replied to when someone else wrote it after the reader's
+last post to the whole topic (a post with no `reply_to`), and no reply of the
+reader's has that message as its `reply_to`. A post to the whole topic answers
+everything before it. A reply moves the line up to below the next message the
+reader has not answered; when none is left, the line goes. Only the reader's
+own posts move it: reading through, `delivery.ack`, a mark, and other people's
+replies do not.
+
+`topic_messages` returns it as `unanswered`, `{seq, id}` or null, on every
+page in either direction, worked out in the same read as the page. It does not
+depend on deliveries, so the value a page gets is the same before and after
+that page's read-through. One indexed query finds it, starting from the
+reader's horizon in the topic: a sequence below which every message is the
+reader's own, answered by a reply of theirs, or older than a post of theirs to
+the whole topic. Each post of the reader's moves their horizon in the same
+transaction: a post to the whole topic moves it past that post; a reply moves
+it to the oldest message they still have not answered, or past the reply when
+none is left. Whatever arrives after that is someone else's and unanswered
+until the reader posts again, so the read stops at the first message it looks
+at, and its cost does not grow with the topic, other topics, or how many
+messages the reader has answered. A reply that moves the horizon looks only
+at messages between the old horizon and the new one, each answered or theirs,
+so across a topic's life each message is passed once per reader. An index on
+(`reply_to`, author) says whether the reader replied to a message. Schema
+version 16 adds the horizons, worked out on upgrade from the messages already
+there, and that index; stepping back to 15 drops both and loses no record,
+since the horizons come from the messages.
+
+The page keeps the boundary from the newest topic version any page said it
+at, so an older page loaded with More never brings back a line a later reply
+moved. It draws the line under that message's card when the card is loaded.
+The line is text ("New"), with no message identity, in the alert colour, so
+nothing that looks for cards finds it.
+
+When that message is further back than the page has loaded, which is when the
+reader is most behind, the line sits at the bottom of what is loaded and reads
+"New · older below". There it is a button: pressing it, by pointer or
+keyboard, reads older pages one after another, as More does, until that
+message's card is loaded or no older page is left, and then gives that
+message the focus, with the line in its true place just below it. A read that
+cannot go on (a review pending, or a refusal, which the page reports) ends it
+with the line still at the bottom. When no older page is left to read, there
+is nothing the button could load, so no line is drawn. A message among the
+loaded ones that has no card on the page has no line.
+
+When the reader is at the top of a topic, with the newest card showing from
+its top edge, a message that arrives comes into view above it; the page does
+not scroll to keep the old card in place. Further down the topic, the card the
+reader is looking at stays where it was.
+
 ## In the browser
 
 The page reads `attention` at start, after each announced commit, when the
