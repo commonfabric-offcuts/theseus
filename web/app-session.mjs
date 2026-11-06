@@ -311,7 +311,7 @@ export class EditorRegistry {
       // close (a prepared send, a saved note) stays quietly open.
       try { await this.keepLocal(presentation); }
       catch (error) {
-        if (explicit && requestGeneration === this.generation) throw this.closeRefusal(presentation, error);
+        if (explicit && requestGeneration === this.generation) throw this.closeRefusal(error);
         return false;
       }
       if (requestGeneration !== this.generation) return false;
@@ -319,10 +319,10 @@ export class EditorRegistry {
     } finally { if (this.closing === stop) this.closing = null; this.activity(); }
   }
 
-  // A device save that failed is said in plain words; any other refusal (an
-  // image still being kept) already is.
-  closeRefusal(presentation, error) {
-    if (!Object.values(presentation.editors).some(editor => editor.journalError)) return error;
+  // A device save that failed is said in plain words; the image refusal
+  // already is.
+  closeRefusal(error) {
+    if (error instanceof ImageHeld) return error;
     return Error(`Not closed: this device could not keep your writing (${error.message}). It stays here; keep this page open.`);
   }
 

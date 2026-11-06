@@ -230,6 +230,21 @@ test('Close pressed while an image is being chosen is refused, and the chosen im
   assert.equal(f.registry.isWritable(x, reply), true, 'the Reader takes typing');
 });
 
+// An image whose bytes this device could not keep refuses Close in its own
+// words, not in the words for writing the device could not keep.
+test('Close refused over an image the device could not keep says so in its own words', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply, uploads = f.registry.sessionFor(reply).uploads;
+  const image = await fixtureImage();
+  t.after(() => { delete f.backend.capture; });
+  f.backend.capture = async () => { throw Error('Injected byte quota failure'); };
+  await uploads.add(image, { start: false });
+  assert.equal(uploads.current()[0].bytes_state, 'memory-only');
+  await assert.rejects(f.registry.close(x, { explicit: true }), error => {
+    assert.equal(error.message, 'Keep this page open until the selected image is saved or removed.'); return true;
+  });
+  assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+});
+
 test('failed explicit close still cancels navigation and permits a fresh step', async t => {
   const f = await fixture(t), x = await f.open(0), held = await holdSource(f);
   const put = f.backend.put; t.after(() => { held.release.resolve(); f.backend.put = put; });
