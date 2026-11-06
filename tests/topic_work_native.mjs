@@ -23,4 +23,24 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     await shot(p, 'work-row-dot');
     assert.deepEqual(p.errors, []);
   });
+
+  // Writing in a topic makes the writer one of its participants: an agent of
+  // the outcome's team who is not one writes, and the open page lists it among
+  // the participants as its message lands, with no reload.
+  await check('work a teammate who writes in a topic is listed among its participants as the message lands', async () => {
+    const agent = 'fixture-planning-agent';
+    const chips = p => p.evaluate(`[...document.querySelectorAll('#participants .chip')].map(chip=>chip.textContent)`);
+    const p = await page('work-writer-joins', null, true);
+    await until(async () => (await chips(p)).length > 0, 'participants drawn');
+    assert.equal((await chips(p)).some(words => words.includes(agent)), false, 'not a participant before writing');
+    const posted = await control({ method: 'agent_message', operation_id: 'work-writer-joins', sender: agent, member: true, body: 'I will take this one.' });
+    assert.equal(posted.result.joined, true, 'Core says the post made it a participant');
+    await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${posted.result.message_id}"]'))`), 'the message lands');
+    await until(async () => (await chips(p)).some(words => words.includes(agent)), 'the writer is listed among the participants');
+    assert.ok((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), 'and Core lists it');
+    await p.evaluate(`document.querySelector('#participants').scrollIntoView({block:'center'})`);
+    await shot(p, 'work-writer-joins');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }

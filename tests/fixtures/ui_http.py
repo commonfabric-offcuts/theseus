@@ -361,6 +361,13 @@ def main():
                 revision = store().view(actor, "topic", {"topic_id": topic_id})["topic"]["version"]
                 command("participation.set", operation + "-join", {"actor_id": sender, "present": True},
                         {"topic_id": topic_id}, {"topic_revision": revision})
+            if request.get("member"):
+                # The person makes the agent one of the outcome's team, so it can
+                # write in the topic without being one of its participants.
+                workspace_id = store().view(actor, "topic", {"topic_id": topic_id})["topic"]["workspace_id"]
+                revision = store().view(actor, "workspace", {"workspace_id": workspace_id})["workspace"]["version"]
+                command("workspace.member_set", operation + "-member", {"actor_id": sender, "present": True},
+                        {"workspace_id": workspace_id}, {"workspace_revision": revision})
             current = store().view(sender, "editor_state", {"source_ref": sources[0], "topic_id": topic_id})
             assert not current.get("error"), current
             draft = current["draft"] or {"id": operation + "-draft", "generation": operation + "-generation", "revision": 0}
