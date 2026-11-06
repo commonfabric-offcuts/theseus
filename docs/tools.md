@@ -71,3 +71,7 @@ The config is a JSON object. Paths for profiles and routes are relative to `inst
 | `python` | optional; absolute interpreter, default `/usr/bin/python3` |
 
 An unknown or missing key is refused. Keep the live config beside the instance it describes, not in the repository.
+
+## Release pipeline page: `tools/pipeline/build_pipeline.py`
+
+`tools/pipeline/build_pipeline.py [OUTPUT]` writes the hand-written Release pipeline page from `tools/pipeline/items.json` and the edits each revision appends to the script. It fails when an item number is missing or listed twice. Item 84 replaces it with pipeline records in Theseus; until then, edit it here rather than in a temporary copy.
