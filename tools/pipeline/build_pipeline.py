@@ -44,7 +44,13 @@ options.add_argument("--releases", required=True, help="the --json output of `bi
 options.add_argument("output", nargs="?", default="release-pipeline.txt")
 options = options.parse_args()
 RELEASES = read_releases(sys.stdin.read() if options.releases == "-" else Path(options.releases).read_text())
-SHIPPED = {item: record for record in reversed(RELEASES) for item in record["items"]}
+SHIPPED = {}
+for record in reversed(RELEASES):
+    for number in record["items"]:
+        if number in SHIPPED:
+            raise SystemExit("item %d is named by releases %d and %d; an item ships in one release"
+                             % (number, SHIPPED[number]["release"], record["release"]))
+        SHIPPED[number] = record
 
 m=json.load(open(Path(__file__).resolve().parent / 'items.json'))['items']
 m.append({'title':'A Notebook page shows when it changed since you last read it','what':'A Notebook page you have read gets a mark when it is revised, like an unread count, until you open it again; the Reader shows what changed.','asked_by':'tony','size':'M'})

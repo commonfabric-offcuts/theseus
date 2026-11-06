@@ -11,7 +11,8 @@ own fact about itself, so every member of the instance reads it, through the
 A record never changes once written: rows cannot be updated or deleted. The
 same record written again (a retried deploy step, a backfill run twice) is
 the record already there, not a second one; a different record for a number
-or commit already recorded is refused.
+or commit already recorded is refused, and so is an item an earlier record
+already shipped.
 """
 
 import datetime
@@ -139,6 +140,12 @@ def write_release(db, record, now_ms):
         number = latest + 1
     elif db.execute("SELECT 1 FROM releases WHERE number=?", (number,)).fetchone():
         raise Refusal("RELEASE_EXISTS", "Release %d is already recorded for another commit" % number)
+    shipped = {item: earlier for earlier, items in db.execute("SELECT number, items FROM releases")
+               for item in json.loads(items)}
+    for item in json.loads(row["items"]):
+        if item in shipped:
+            raise Refusal("ITEM_SHIPPED", "Pipeline item %d shipped in release %d; an item ships in one release"
+                          % (item, shipped[item]))
     db.execute("INSERT INTO releases(number,commit_sha,previous_sha,deployed_at,deployed_ms,items,measurements,source,evidence,"
                "recorded_ms) VALUES (?,?,?,?,?,?,?,?,?,?)",
                (number, row["commit_sha"], row["previous_sha"], row["deployed_at"], row["deployed_ms"], row["items"],

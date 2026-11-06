@@ -189,7 +189,8 @@ binding as the server and is never exposed over HTTP.
   from a JSON file ([releases.md](releases.md)) and returns
   `{instance_id, release, recorded}`; the same record again is
   `recorded: false`, a different one for a recorded commit or number is
-  `RELEASE_EXISTS`, and a first record without a number is
+  `RELEASE_EXISTS`, one naming an item an earlier record shipped is
+  `ITEM_SHIPPED`, and a first record without a number is
   `RELEASE_NUMBER_REQUIRED`.
 - Each prints one JSON object. Success is `{ok: true, ...}` with exit 0; a
   refusal is `{ok: false, error: {code, message, retryable}}` with exit 2, or

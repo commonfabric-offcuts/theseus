@@ -98,6 +98,12 @@ class ReleaseCase(fixtures.StoreCase):
         self.assertIn("record-release --profile /abs/profile.json --record /abs/release.json", err.getvalue())
         self.assertEqual(self.sql("SELECT count(*) FROM releases"), [(0,)])
 
+    def test_an_item_ships_in_one_release_only(self):
+        self.recorded(record(release=19))
+        message = self.refused(record(commit=C, previous=A, items=[88, 2]), "ITEM_SHIPPED")
+        self.assertIn("2 shipped in release 19", message)
+        self.assertEqual(self.recorded(record(commit=C, previous=A, items=[88]))["release"]["release"], 20)
+
     def test_a_record_never_changes_in_the_store(self):
         self.recorded(record(release=19))
         for statement in ("UPDATE releases SET items='[1]'", "DELETE FROM releases"):
@@ -121,7 +127,7 @@ class ReleaseCase(fixtures.StoreCase):
     def test_every_member_reads_the_records_newest_first_a_page_at_a_time(self):
         self.assertEqual(self.releases(), {"instance_id": "test-instance", "items": [], "next_cursor": None})
         for number, commit in ((18, B), (19, A), (20, C)):
-            self.recorded(record(release=number, commit=commit))
+            self.recorded(record(release=number, commit=commit, items=[number]))
         first = self.releases("agent-a", limit=2)
         self.assertEqual([item["release"] for item in first["items"]], [20, 19])
         self.assertEqual(first["next_cursor"], 19)

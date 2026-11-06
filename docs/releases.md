@@ -57,7 +57,9 @@ The view adds `deployed_ms` (the same time in epoch milliseconds) and
 A record never changes: the store refuses to update or delete one. Writing the
 same record again returns the one already there (`"recorded": false`), so a
 retried deploy step or a backfill run twice adds nothing. A different record
-for a commit or a number already recorded is refused with `RELEASE_EXISTS`. A
+for a commit or a number already recorded is refused with `RELEASE_EXISTS`. An
+item ships in one release: a record naming an item an earlier record names is
+refused with `ITEM_SHIPPED`. A
 record without a number on an instance with none is refused with
 `RELEASE_NUMBER_REQUIRED`.
 

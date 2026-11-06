@@ -71,6 +71,12 @@ class PipelineBuilder(unittest.TestCase):
                         shipped.index("Release 18, 10:57 PM Thu 5 November 2026\n✅ 1. "))
         self.assertIn("\nChanged 5:28 AM Fri 6 November 2026: release 19 is live, so 87, 90, 2 moved to SHIPPED.\n", page_text)
 
+    def test_an_item_two_records_name_is_refused(self):
+        twice = release(20, [88, 2], "2026-11-07T05:28:35-08:00", "5")
+        page_text, err = self.build(page(twice, R19, R18))
+        self.assertIsNone(page_text)
+        self.assertIn("item 2 is named by releases 19 and 20", err)
+
     def test_without_the_record_of_a_shipped_item_the_page_is_refused(self):
         # Release 18's 1 and 4 are in no section: the page cannot be built without its record.
         page_text, err = self.build(page(R19))
