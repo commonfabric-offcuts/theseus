@@ -15,8 +15,8 @@ from urllib.parse import urlsplit
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "ui_http.py"
 
 # Runs the fixture unchanged, and reports on a private pipe each time the
-# fixture's own code enters and leaves an exclusive flock. The Store's locks
-# go through unreported.
+# fixture's own code enters and leaves an exclusive flock, with the inode of
+# the file it locks. The Store's locks go through unreported.
 OBSERVED = """
 import fcntl, os, runpy, sys
 marks, fixture = int(sys.argv[1]), sys.argv[2]
@@ -24,7 +24,8 @@ real = fcntl.flock
 def flock(fd, operation):
     ours = sys._getframe(1).f_code.co_filename == fixture and operation & fcntl.LOCK_EX
     if ours:
-        os.write(marks, b"entered\\n")
+        inode = os.fstat(fd if isinstance(fd, int) else fd.fileno()).st_ino
+        os.write(marks, b"entered %d\\n" % inode)
     try:
         return real(fd, operation)
     finally:
@@ -145,7 +146,10 @@ class ImagesFixtureControls(unittest.TestCase):
             # As a request in flight does: the authority held shared.
             fcntl.flock(held, fcntl.LOCK_SH)
             self.send("epoch", epoch="controls-epoch-2", complete=False)
-            self.assertEqual(self.mark(), "entered", "the control reached its exclusive lock while it was held shared")
+            # The same file this test holds shared, so the lock can only be
+            # granted once the test lets it go.
+            self.assertEqual(self.mark(), "entered %d" % os.fstat(held).st_ino,
+                             "the control reached its exclusive lock on the authority lock this test holds shared")
         finally:
             fcntl.flock(held, fcntl.LOCK_UN)
             os.close(held)
