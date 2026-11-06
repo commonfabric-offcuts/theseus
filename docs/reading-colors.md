@@ -122,7 +122,10 @@ their whole face, and its name on each card sits on a deeper tint of the same
 hue. There is no colored edge, bar or border: the card's border stays the
 shared line color on every side. The person's own messages keep their black
 and carry no tint, whoever they are; other people's cards keep the plain
-card. Hovering an agent's card deepens its tint a little.
+card. Hovering an agent's card deepens its tint a little. Hovering another
+person's card gives it a neutral grey tint (`#eff0f0` light, `#252b2e` dark),
+not the green that is Fable's card at rest, with its quiet words deepened so
+every word keeps 4.5:1 (`tests/ui_card_hover.test.mjs`).
 
 `topic_messages` items carry `author_kind` (`human` or `agent`, from the
 actor record), and only an `agent` card is tinted. `web/author-colors.mjs`
