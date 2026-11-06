@@ -184,7 +184,7 @@ class OpeningsCase(fixtures.StoreCase):
         message_id = result["message_id"]
         self.assertEqual(result, {"opening_id": "o1", "opening_revision": 2, "message_id": message_id,
                                   "topic": {"id": "t-new", "version": 1},
-                                  "delivery": {"queued": 1, "unavailable_subscribers": []}})
+                                  "delivery": {"queued": 1, "unavailable_subscribers": []}, "joined": False})
         self.assertEqual(receipt["affected"], [{"kind": "topic", "id": "t-new", "version": 1},
                                                {"kind": "message", "id": message_id, "version": 1},
                                                {"kind": "opening", "id": "o1", "version": 2}])
@@ -352,7 +352,7 @@ class OpeningsCase(fixtures.StoreCase):
         result = self.committed(receipt)
         message_id = result["message_id"]
         self.assertEqual(result, {"message_id": message_id, "submission_id": "legacy", "topic": {"id": "t-legacy", "version": 1},
-                                  "delivery": {"queued": 1, "unavailable_subscribers": []}})
+                                  "delivery": {"queued": 1, "unavailable_subscribers": []}, "joined": False})
         self.assertEqual(receipt["affected"], [{"kind": "topic", "id": "t-legacy", "version": 1},
                                                {"kind": "message", "id": message_id, "version": 1}])
         delivery = self.sql("SELECT id FROM deliveries")[0][0]

@@ -100,7 +100,8 @@ class TopicState:
         if args.keys() & {"state", "note", "waiting_on"}:
             if not manager and not db.execute("SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1",
                                               (topic["id"], actor)).fetchone():
-                raise Refusal("FORBIDDEN", "Only the topic's participants, its creator or the outcome's owner can say where it stands")
+                raise Refusal("FORBIDDEN", "Only the topic's participants, its creator or the outcome's owner can say where it stands; "
+                              "writing in the topic makes you a participant")
             state = args.get("state", topic["state"])
             if state not in STATES:
                 raise Refusal("INVALID_ARGUMENT", "A topic's state is one of: " + ", ".join(STATES))

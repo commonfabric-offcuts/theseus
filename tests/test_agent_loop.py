@@ -41,7 +41,7 @@ class MessagePostCase(AgentLoopCase):
         self.participation("other-reader", True)
         receipt = self.post(body="Hello from the loop", addressees=["agent-b"], op="post-one")
         result = self.committed(receipt)
-        self.assertEqual(set(result), {"message_id", "topic", "delivery"})
+        self.assertEqual(set(result), {"message_id", "topic", "delivery", "joined"})
         self.assertEqual(result["topic"]["id"], "t1")
         self.assertEqual(result["delivery"], {"queued": 3, "unavailable_subscribers": []})
         message = self.source({"kind": "message", "id": result["message_id"]})
