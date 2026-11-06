@@ -261,7 +261,7 @@ def _size(size_bytes):
     """A size as a person says it: "622 bytes", "137 KB", "1.5 MB"."""
     if size_bytes < 1024:
         return "%d bytes" % size_bytes
-    if size_bytes < 1024 * 1024:
+    if round(size_bytes / 1024.0) < 1024:
         return "%d KB" % round(size_bytes / 1024.0)
     return "%.1f MB" % (size_bytes / (1024.0 * 1024.0))
 

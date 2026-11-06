@@ -2,10 +2,13 @@ from __future__ import annotations
 
 """Agents see a message's attachments in `read`, and save one's bytes with `attachment`."""
 
+import errno
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
+from unittest import mock
 
 from aim_next import cli
 import test_agent_verbs
@@ -79,10 +82,19 @@ class AttachmentCase(test_agent_verbs.AgentVerbCase):
         self.assertIn("OUT_EXISTS", err)
         self.assertEqual(self.out.read_bytes(), b"keep me")
 
+    def test_a_failed_write_keeps_no_partial_file(self):
+        def fail(fd):
+            raise OSError(errno.ENOSPC, os.strerror(errno.ENOSPC))
+        with mock.patch.object(cli.os, "fsync", fail):
+            code, out, err = self.run_cli("attachment", self.media_id, "--message", self.message_id, "--out", str(self.out))
+        self.assertEqual((code, out), (2, ""))
+        self.assertIn("OUT_UNAVAILABLE", err)
+        self.assertIn("nothing was kept", err)
+        self.assertFalse(self.out.exists())
 
     def test_sizes_read_as_a_person_would_say_them(self):
-        self.assertEqual([cli._size(n) for n in (0, 1023, 1024, 140 * 1024 + 300, 1536 * 1024)],
-                         ["0 bytes", "1023 bytes", "1 KB", "140 KB", "1.5 MB"])
+        self.assertEqual([cli._size(n) for n in (0, 1023, 1024, 140 * 1024 + 300, 1024 * 1024 - 513, 1024 * 1024 - 1, 1024 * 1024, 1536 * 1024)],
+                         ["0 bytes", "1023 bytes", "1 KB", "140 KB", "1023 KB", "1.0 MB", "1.0 MB", "1.5 MB"])
 
 
 # Do not rerun the inherited cases.

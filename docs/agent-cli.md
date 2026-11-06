@@ -243,7 +243,9 @@ as it was). It reads through the same Core read as the web page's
 so it follows the same rule: only someone who can read the message gets its
 attachments. Anyone else, or an attachment the named message does not carry,
 is refused with `FORBIDDEN` and no file is written. Core checks the bytes
-against the attachment's size and sha256 before handing them over. It prints
+against the attachment's size and sha256 before handing them over. A write
+that fails part way (a full disk, say) is refused with `OUT_UNAVAILABLE` and
+the part written is removed, so FILE never holds a partial copy. It prints
 `saved NAME (TYPE, N bytes, sha256 HEX) to FILE`, or with `--json`
 `{attachment, message_id, path}`. It sends no command and acknowledges nothing.
 
