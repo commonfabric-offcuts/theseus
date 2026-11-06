@@ -430,12 +430,12 @@ export async function liveChecks({ check, page, until, control, observations, or
   // Older messages that More loads appear where the loaded messages ended, so
   // the person reads on from where they asked, and what they read holds still;
   // the button's focus holds nothing still. While the oldest message not yet
-  // answered is further back, the New line says "More new below" and hides
-  // More, so the person answers the topic first: the list then ends at More's
-  // button.
+  // read is further back, the New line says "More new below" and hides More,
+  // so the person reads the topic and answers it first: the list then ends at
+  // More's button.
   await check('live More messages shows the older messages where its button was', async () => {
     await control({ method: 'seed', messages: 45 });
-    await control({ method: 'agent_message', operation_id: 'live-more-answered', sender: 'person', whole_topic: true, body: 'Answering the topic, so nothing older waits on me.' });
+    await control({ method: 'agent_message', operation_id: 'live-more-answered', sender: 'person', whole_topic: true, read: true, body: 'Answering the topic, so nothing older waits on me.' });
     const p = await page('live-more', null, true);
     await settled(p);
     await until(() => p.evaluate("document.querySelector('#more-messages').hidden === false"), 'More is offered');
@@ -878,12 +878,15 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  // A Notebook page's row by its title, without the light a page revised
+  // since the person read it wears after its title.
+  const pageTitle = "(row => { const title = row.cloneNode(true); title.querySelectorAll('.unread-count, .sr-only').forEach(light => light.remove()); return title.textContent; })";
   // Last, because it adds to the outcome's Notebook, which every later topic
   // page would list.
   await check('live the outcome Notebook pages sit in the sidebar beside the topics, open whole in the Reader, and follow a revision', async () => {
     const p = await page('live-outcome-references', null, true);
     await settled(p);
-    const rows = () => p.evaluate("[...document.querySelectorAll('#outcome-references-list .reference')].map(row => row.textContent)");
+    const rows = () => p.evaluate(`[...document.querySelectorAll('#outcome-references-list .reference')].map(${pageTitle})`);
     assert.equal(await p.evaluate("document.querySelector('#outcome-references').hidden"), true, 'an outcome with no Notebook shows nothing');
     await control({ method: 'outcome_reference', operation_id: 'live-outcome-reference', item_id: 'live-outcome-reference',
       title: 'Architecture', body: 'The outcome passage every topic stands on.' });
@@ -894,6 +897,8 @@ export async function liveChecks({ check, page, until, control, observations, or
     const boxes = await p.evaluate("(()=>{const t=document.querySelector('#topics .nav-item').getBoundingClientRect(),r=document.querySelector('#outcome-references-list .reference').getBoundingClientRect();return {topic:[t.left,t.height],page:[r.left,r.height]}})()");
     assert.equal(boxes.page[0], boxes.topic[0], 'pages line up with topics');
     assert.ok(boxes.page[1] >= 44, 'a page row is a full touch target: ' + boxes.page[1]);
+    // Below the topics the earlier checks left, in the sidebar's own scroll.
+    await p.evaluate("document.querySelector('#outcome-references-list .reference').scrollIntoView({block:'center'})");
     await p.point('#outcome-references-list .reference');
     await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes('The outcome passage every topic stands on.')"), 'the Reader shows the item whole');
     await control({ method: 'memory_revise', operation_id: 'live-outcome-reference-revise', item_id: 'live-outcome-reference',
@@ -918,7 +923,7 @@ export async function liveChecks({ check, page, until, control, observations, or
       expected_revision: expected, title, body });
     const has = (selector, text) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent.includes(${JSON.stringify(text)})`);
     const open = async title => {
-      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.textContent === ${JSON.stringify(title)}`), `the outcome Notebook lists ${title}`);
+      await until(() => p.evaluate(`(row => row && ${pageTitle}(row))(document.querySelector(${JSON.stringify(row)})) === ${JSON.stringify(title)}`), `the outcome Notebook lists ${title}`);
       await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
       await p.point(row);
       await until(() => p.evaluate("document.querySelector('#reader').open"), 'the Reader opens the page');

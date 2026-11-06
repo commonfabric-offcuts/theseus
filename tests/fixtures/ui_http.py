@@ -376,10 +376,16 @@ def main():
                 revision = store().view(actor, "workspace", {"workspace_id": workspace_id})["workspace"]["version"]
                 command("workspace.member_set", operation + "-member", {"actor_id": sender, "present": True},
                         {"workspace_id": workspace_id}, {"workspace_revision": revision})
+            # With "read": true the person has read the whole topic since, as
+            # reading it on screen would, so nothing there waits on them.
+            def read(sent):
+                if request.get("read"):
+                    command("topic.read_through", operation + "-read", {"seq": 9223372036854775807}, {"topic_id": topic_id})
+                return sent
             if request.get("whole_topic"):
                 # A post to the whole topic, replying to no message: from the
                 # person, it answers everything before it.
-                return command("message.post", operation, {"body": request["body"]}, {"topic_id": topic_id}, sender=sender)
+                return read(command("message.post", operation, {"body": request["body"]}, {"topic_id": topic_id}, sender=sender))
             # Written from the person's first message, or with "source": "topic"
             # from the topic itself, for an agent that cannot read that message,
             # or with "reply_to" from that message, which it then answers.
@@ -411,13 +417,8 @@ def main():
             command("submission.prepare", operation + "-prepare", {
                 "draft_id": draft["id"], "submission_id": operation + "-submission",
                 "send_operation_id": operation}, {"topic_id": topic_id}, {"draft_revision": draft["revision"] + 1}, sender=sender)
-            sent = command("message.send", operation, {"submission_id": operation + "-submission"},
-                           {"topic_id": topic_id}, sender=sender)
-            # With "read": true the person has read the whole topic since, as
-            # reading it on screen would, so nothing there waits on them.
-            if request.get("read"):
-                command("topic.read_through", operation + "-read", {"seq": 9223372036854775807}, {"topic_id": topic_id})
-            return sent
+            return read(command("message.send", operation, {"submission_id": operation + "-submission"},
+                                {"topic_id": topic_id}, sender=sender))
 
         seed_number = 0
         thread = threading.Thread(target=server.serve_forever, daemon=True)
