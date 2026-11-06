@@ -3,7 +3,8 @@
 // (topic_unread); red words "New" readable on the page in light and dark.
 // During the visit reading never moves it up, so it does not vanish as the
 // person reads; it moves to show more (Mark unread further back, an arrival
-// while caught up) and on the person's explicit Mark read, and Refresh or
+// while caught up; Mark unread above the line leaves it) and on the person's
+// explicit Mark read, and Refresh or
 // opening the topic again places it afresh, with the card being read held
 // still wherever it moves. At the top of the topic a message that arrives
 // comes into view above. Each case reads in a topic of its own, so what
@@ -123,7 +124,7 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
     }
   });
 
-  await check('colors a message arriving while the person is caught up brings the line under it, Mark unread moves it down, Mark read places it afresh, and an arrival at the top comes into view', async () => {
+  await check('colors a message arriving while the person is caught up brings the line under it, Mark unread moves it down (not up), Mark read places it afresh, and an arrival at the top comes into view', async () => {
     for (const theme of ['light', 'dark']) {
       const topic = 'new-line-arrive-' + theme, ids = await topicWith(topic, 24);
       const p = await open(topic, 'new-line-arrive-' + theme, theme);
@@ -172,6 +173,21 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       assert.ok(shown.top >= 0 && shown.bottom <= shown.height, theme + ': and it is in view');
       assert.equal((await drawn(p)).after, arrival, theme + ': the line still holds under the first arrival, below the newest');
       await shot(p, 'new-line-' + theme + '-top-arrival');
+      // Mark unread in the Reader on that newest message, above the line: it is
+      // already shown as new, so the line holds; Mark read then places it
+      // afresh, and with nothing unread there is none.
+      await until(async () => await unread(topic) === null, theme + ': the newest, on screen, is read');
+      await p.point(`#messages [data-id="${top}"]`);
+      await until(() => p.evaluate("document.querySelector('#reader').open && !document.querySelector('#mark-unread').hidden"), theme + ': the Reader is open on the newest');
+      const marking = Date.now();
+      await p.point('#mark-unread');
+      await until(async () => (await unread(topic))?.id === top, theme + ': the newest is marked unread');
+      await pageRead(p, marking, theme + ': marked above the line');
+      assert.equal((await drawn(p)).after, arrival, theme + ': Mark unread above the line leaves it where it is');
+      await p.point('#mark-unread');
+      await until(async () => (await drawn(p)).count === 0 && await unread(topic) === null, theme + ': Mark read places the line afresh: none');
+      await p.point('#reader-close');
+      await until(() => p.evaluate("!document.querySelector('#reader').open"), theme + ': the Reader closed again');
       observations.push({ name: 'new line on arrival', theme, held, arrival, shown });
       assert.deepEqual(p.errors, []);
       await p.close();

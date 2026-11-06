@@ -362,8 +362,10 @@ def main():
                 command("participation.set", operation + "-join", {"actor_id": sender, "present": True},
                         {"topic_id": topic_id}, {"topic_revision": revision})
             # Written from the person's first message, or with "source": "topic"
-            # from the topic itself, for an agent that cannot read that message.
-            source = {"kind": "topic", "id": topic_id} if request.get("source") == "topic" else sources[0]
+            # from the topic itself, for an agent that cannot read that message,
+            # or with "reply_to" from that message, which it then answers.
+            source = ({"kind": "message", "id": request["reply_to"]} if request.get("reply_to") else
+                      {"kind": "topic", "id": topic_id} if request.get("source") == "topic" else sources[0])
             current = store().view(sender, "editor_state", {"source_ref": source, "topic_id": topic_id})
             assert not current.get("error"), current
             draft = current["draft"] or {"id": operation + "-draft", "generation": operation + "-generation", "revision": 0}
