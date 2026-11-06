@@ -3,6 +3,9 @@ import { recoveryReadOnly } from './upload-state.mjs';
 // Whether the page runs on a Mac, where ⌘ is the command key and Ctrl-A moves
 // to the start of a line; elsewhere Ctrl is the command key.
 export const onMac = (nav = globalThis.navigator) => /mac|iphone|ipad|ipod/i.test(nav?.userAgentData?.platform || nav?.platform || '');
+// Select All: ⌘A on a Mac, Ctrl-A elsewhere, with no other modifier.
+export const selectAllKey = (event, mac) => event.key?.toLowerCase() === 'a' && !event.altKey && !event.shiftKey &&
+  (mac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey);
 
 // Textarea interaction only. Editor and EditorSession own writing and its acts;
 // the surface keeps context-level send, quote, note and focus routing.

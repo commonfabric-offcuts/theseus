@@ -4,7 +4,7 @@ import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { markReach, replaceChips } from './people.mjs';
 import { readableTime } from './topic-state.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
-import { WritingInput } from './writing-input.mjs';
+import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const QUOTE_STOPS = 'button,a,input,select,summary,[role="separator"]';
@@ -23,6 +23,7 @@ export class Reader {
     this.dialog = document.querySelector('#reader');
     this.field = document.querySelector('#writing-body');
     this.sourceBody = document.querySelector('#source-body');
+    this.mac = onMac();
     this.mode = 'reply';
     this.positions = new Map();
     this.hover = null;
@@ -594,6 +595,14 @@ export class Reader {
       const stops = [...this.dialog.querySelectorAll('button,textarea,select,input,a[href],[tabindex="0"]')].filter(visible);
       if (event.shiftKey && target === stops[0]) { event.preventDefault(); stops.at(-1)?.focus(); }
       else if (!event.shiftKey && target === stops.at(-1)) { event.preventDefault(); stops[0]?.focus(); }
+      return;
+    }
+    // Select All outside a text field takes the message's text, never the
+    // Reader's buttons and labels; in a field the browser selects its own text.
+    if (selectAllKey(event, this.mac) && !target.closest('input,textarea,select')) {
+      event.preventDefault();
+      const range = document.createRange(), selection = window.getSelection();
+      range.selectNodeContents(this.sourceBody); selection.removeAllRanges(); selection.addRange(range);
       return;
     }
     if (target === this.field && this.writingReadOnly()) return;

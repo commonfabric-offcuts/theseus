@@ -38,6 +38,38 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.equal(p.calls.some(c=>['message.send','submission.prepare'].includes(c.payload?.kind)),false,'editing and Undo do not send');
     await shot(p,'shared-writing-reader');assert.deepEqual(p.errors,[]);
   });
+  await check('inline Select All takes the message alone: the field it is in, or the message the Reader shows', async () => {
+    const p=await page('select-all',null,true);
+    const state=selector=>p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(selector)});return {start:f.selectionStart,end:f.selectionEnd,length:f.value.length,page:String(getSelection())}})()`);
+    // The topic's writing field: ⌘A selects its own words and nothing on the page.
+    await p.evaluate("document.querySelector('#inline-writing-body').scrollIntoView({block:'center'})");
+    await p.point('#inline-writing-body');await p.send('Input.insertText',{text:'Inline words to select'});
+    await p.key('a',4);
+    assert.deepEqual(await state('#inline-writing-body'),{start:0,end:22,length:22,page:''},'the inline field selects its own words alone');
+    await p.key('k',2);assert.equal(await p.evaluate("document.querySelector('#inline-writing-body').value"),'');
+    // The Reader's writing field: the same.
+    await p.open(1);await p.point('#writing-body');
+    const kept=await field(p);
+    await p.send('Input.insertText',{text:' and more'});await p.key('a',4);
+    const writing=await state('#writing-body');
+    assert.deepEqual([writing.start,writing.end,writing.page],[0,writing.length,''],'the Reader field selects its own words alone');
+    // The message, clicked to read it, and a control beside it: ⌘A selects the
+    // message's words, none of the Reader's buttons or labels.
+    const message=await p.evaluate("document.querySelector('#source-body').textContent");
+    for(const focus of ["document.querySelector('#source-body').focus()","document.querySelector('#quote-selection').focus()"]) {
+      if(focus.includes('source-body'))await p.point('#source-body');else await p.evaluate(focus);
+      await p.key('a',4);
+      const chosen=await p.evaluate('String(getSelection())');
+      assert.equal(chosen,message,`${focus}: the message's words alone`);
+      for(const control of ['Quote selection','Topic','Wide','Send','Private note','Add image'])assert.equal(chosen.includes(control),false,`${focus}: ${control} is not selected`);
+      assert.equal(await p.evaluate("document.querySelector('#writing-body').value"),kept+' and more','selecting the message leaves the writing as it was');
+    }
+    await shot(p,'select-all-reader');
+    // Leave the reply as the cases that follow expect it.
+    await p.point('#writing-body');await p.key('a',4);if(kept)await p.send('Input.insertText',{text:kept});else await p.key('k',2);
+    await until(async()=>(await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id})).draft?.body===kept,'the reply is back as it was');
+    assert.deepEqual(p.errors,[]);
+  });
   await check('inline messages say when they were sent, in the log and in the reader', async () => {
     const p=await page('message-times',null,true);
     const readable=/^\d{1,2}:\d{2} (AM|PM) (Sun|Mon|Tue|Wed|Thu|Fri|Sat) [A-Z][a-z]{2} \d{1,2}$/;
