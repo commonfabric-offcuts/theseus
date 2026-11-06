@@ -51,7 +51,8 @@ export function timeNode(ms, doc) {
 // Every shown time on the page, in the words for the day it now is.
 export function repaintTimes(doc) {
   for (const node of doc.querySelectorAll('time[data-ms]')) {
-    const words = shownTime(Number(node.dataset.ms));
+    // A time said out loud keeps its form (spokenNode).
+    const words = node.dataset.form ? spokenTime(Number(node.dataset.ms), node.dataset.form) : shownTime(Number(node.dataset.ms));
     if (node.textContent !== words) node.textContent = words;
   }
 }
@@ -82,4 +83,49 @@ export function watchDays({ doc, win, repaint = () => repaintTimes(doc), timers 
     win.removeEventListener('focus', check);
     win.removeEventListener('pageshow', check);
   };
+}
+
+// A time said out loud, as the outcome light says it (item 86), by the
+// reader's calendar day, on the same day boundaries and 12-hour clock as
+// shownTime. Forms:
+//   at     after a verb:    "at 6:45 AM", "yesterday at 9:40 PM", "Tuesday at 4:10 PM", "on Nov 3 at 4:10 PM"
+//   since  after "since":   "1:48 AM", "yesterday at 3:15 PM", "Tuesday at 4:10 PM", "Nov 3 at 4:10 PM"
+//   short  in a rail row:   "6:40 AM", "yesterday 3:15 PM", "Tue 4:10 PM", "Nov 3 4:10 PM"
+//   day                     "5:10 AM", "yesterday", "Tuesday", "Nov 3"
+//   dayShort                "5:10 AM", "yesterday", "Tue", "Nov 3"
+//   part   talk in the hour "this morning", "this afternoon", "this evening", "yesterday", else as day
+//   commaSince, dayAt       as since and day, but today's time with "at"
+// A year other than this one is added ("Nov 3, 2025").
+export function spokenTime(ms, form, now = clock.now()) {
+  const when = new Date(ms), clockWords = hours(when);
+  const days = Math.round((dayStart(now) - dayStart(ms)) / 86400000);
+  const sameYear = when.getFullYear() === new Date(now).getFullYear();
+  const date = when.toLocaleDateString('en-US', sameYear ? { month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric', year: 'numeric' });
+  const weekday = when.toLocaleDateString('en-US', { weekday: 'long' }), weekdayShort = when.toLocaleDateString('en-US', { weekday: 'short' });
+  const kind = days === 0 ? 'today' : days === 1 ? 'yesterday' : days >= 2 && days <= 6 ? 'week' : 'older';
+  if (form === 'part' && kind === 'today') {
+    const hour = when.getHours();
+    return hour < 12 ? 'this morning' : hour < 18 ? 'this afternoon' : 'this evening';
+  }
+  const words = {
+    at: { today: `at ${clockWords}`, yesterday: `yesterday at ${clockWords}`, week: `${weekday} at ${clockWords}`, older: `on ${date} at ${clockWords}` },
+    since: { today: clockWords, yesterday: `yesterday at ${clockWords}`, week: `${weekday} at ${clockWords}`, older: `${date} at ${clockWords}` },
+    short: { today: clockWords, yesterday: `yesterday ${clockWords}`, week: `${weekdayShort} ${clockWords}`, older: `${date} ${clockWords}` },
+    day: { today: clockWords, yesterday: 'yesterday', week: weekday, older: date },
+    dayShort: { today: clockWords, yesterday: 'yesterday', week: weekdayShort, older: date },
+  };
+  // After a sentence or a comma: today's time with "at", any other day as since says it.
+  words.commaSince = { ...words.since, today: words.at.today };
+  // "reached yesterday", or today "reached at 5:10 AM".
+  words.dayAt = { ...words.day, today: words.at.today };
+  return (words[form] ?? words.day)[kind];
+}
+
+// A time said out loud as a <time> element: its words follow the day
+// (repaintTimes keeps its form), its title keeps the date.
+export function spokenNode(ms, form, doc) {
+  const node = timeNode(ms, doc);
+  node.dataset.form = form;
+  node.textContent = spokenTime(ms, form);
+  return node;
 }

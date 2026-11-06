@@ -1,8 +1,11 @@
 import { WorkspacePages, routeHref, paintUnread, reread, PAGE } from './topic-navigation.mjs';
+import { paintRowLight } from './outcome-light.mjs';
 
 export class OutcomeRail {
-  constructor({instanceId,current,host,more,retry,message,empty,read,open,denied,pageMax=PAGE}) {
-    Object.assign(this,{current,host,more,retry,message,empty,read,open,isDenied:denied,pageMax});
+  // peek, when given, opens what a row's light is made of (outcome-light.mjs);
+  // painted hears the rows after every paint, so a line that counts them agrees.
+  constructor({instanceId,current,host,more,retry,message,empty,read,open,denied,pageMax=PAGE,peek=null,painted=()=>{}}) {
+    Object.assign(this,{current,host,more,retry,message,empty,read,open,isDenied:denied,pageMax,peek,painted});
     this.pages=new WorkspacePages(instanceId);this.loading=null;this.queued=null;this.failedMore=false;this.denied=false;
     more.onclick=()=>this.load(true);retry.onclick=()=>this.load(this.failedMore);
     host.addEventListener('touchend',event=>{
@@ -29,13 +32,17 @@ export class OutcomeRail {
         link.append(document.createElement('span'),document.createElement('small'));
       }
       link.children[0].textContent=item.title+(item.title_truncated?'…':'');
-      link.children[1].textContent=item.id+(item.title_truncated?' · title shortened':'');
+      // The grey line carries where the outcome stands (item 86); the id stays at the top of its own page.
+      paintRowLight(link.children[1],item.light);
+      if(item.title_truncated)link.children[1].append(' · title shortened');
+      this.peek?.attach(link,item);
       paintUnread(link.children[0],item);
       if(item.id===this.current)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');
       if(this.host.children[index]!==link)this.host.insertBefore(link,this.host.children[index]??null);
     });
     this.host.hidden=this.denied;this.more.hidden=this.denied||this.pages.next===null;
     this.empty.hidden=this.denied||!this.pages.started||items.length>0;
+    this.painted(this.denied?[]:items);this.peek?.refresh();
   }
   // As TopicRail.load: a More shares a running read, a reload runs once more
   // after it, and a reload reads again every page the reader has loaded.

@@ -1,7 +1,7 @@
 // Where a topic stands, as its participants say: a row mark in topic lists, a
 // line under the topic's title with a form to change it, and the topics that
 // wait on the reader. Core keeps every value; nothing here decides one.
-import { datedTime, timeNode } from './times.mjs';
+import { datedTime, spokenNode, spokenTime, timeNode } from './times.mjs';
 
 export const STATES = ['active', 'waiting', 'review', 'done'];
 const LABELS = { active: 'Active', waiting: 'Waiting', review: 'Ready for review', done: 'Done' };
@@ -38,22 +38,29 @@ export function askLines(item, reader) {
 }
 
 // Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
-// in words. It never says nobody is working: only when activity was last seen.
-// The server reads the rule for this reader, so what it names is never the
-// reader's own: a topic only they wrote in reads "No activity seen".
+// said out loud (item 86): "aim-spec posted at 6:45 AM", "warp worked on it at
+// 6:30 AM", "Quiet since fable posted yesterday at 11:00 PM". It never says
+// nobody is working: only that it is quiet, and since when. The server reads
+// the rule for this reader, so what it names is never the reader's own.
 // A waiting topic's words are its pill's ("Waiting on you"), passed as
-// waiting; without them it waits on someone the page cannot name.
-export function workNote(work, reader, waiting = '') {
+// waiting; without them it waits on someone the page cannot name. When its
+// newest activity is the open ask itself, it says who asked.
+export function workNote(work, reader, waiting = '', asks = []) {
   if (!work || typeof work !== 'object') return '';
-  const when = Number.isSafeInteger(work.seen_ms) ? datedTime(work.seen_ms) : null;
-  const what = when && typeof work.by === 'string' ? ` (${named(work.by, reader)} ${work.how === 'turn' ? 'took a turn' : 'posted'})` : '';
+  const known = Number.isSafeInteger(work.seen_ms);
+  const by = typeof work.by === 'string' ? named(work.by, reader) : null;
+  const did = known ? `${work.how === 'turn' ? 'worked on it' : 'posted'} ${spokenTime(work.seen_ms, 'at')}` : '';
   // The server counts every wait as observed work.
   if (work.waits) {
     const who = waiting || 'Waiting on someone';
-    return when ? `${who} · last activity ${when}${what}` : who;
+    if (!known) return who;
+    const ask = asks.find(item => item.by === work.by && item.since_ms === work.seen_ms);
+    if (ask) return `${who} · ${named(ask.by, reader)} asked ${spokenTime(work.seen_ms, 'at')}`;
+    return `${who} · ${by ? `${by} ${did}` : `Worked on ${spokenTime(work.seen_ms, 'at')}`}`;
   }
-  if (work.observed && when) return `Activity seen ${when}${what}`;
-  return when ? `No activity seen since ${when}` : 'No activity seen';
+  if (work.observed && known) return by ? `${by} ${did}` : `Worked on ${spokenTime(work.seen_ms, 'at')}`;
+  if (!known) return 'Quiet';
+  return by ? `Quiet since ${by} ${did}` : `Quiet since ${spokenTime(work.seen_ms, 'since')}`;
 }
 
 // A row with observed work carries a small dot; every row's title and
@@ -62,7 +69,7 @@ export function workNote(work, reader, waiting = '') {
 // row already says, so they do not say it twice.
 export function paintWork(host, item, reader) {
   const pill = pillMarked(item) && waitsOn(item).length ? stateLabel(item, reader) : '';
-  const note = workNote(item?.work, reader, pill);
+  const note = workNote(item?.work, reader, pill, asksOf(item));
   if (!note) { host.removeAttribute('title'); return; }
   host.setAttribute('title', note);
   if (item.work.observed) {
@@ -97,8 +104,6 @@ const element = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props);
   node.append(...children); return node;
 };
-// A shown time after its lead-in (", since 7:41 AM"), or nothing when there is no time.
-const at = (lead, ms) => Number.isSafeInteger(ms) ? [lead, timeNode(ms, document)] : [];
 // The non-empty groups of parts, with gap between each.
 const joined = (groups, gap) => groups.filter(parts => parts.length).flatMap((parts, index) => index ? [gap, ...parts] : parts);
 // The same, kept on one line so a narrow screen never breaks inside the time.
@@ -348,21 +353,27 @@ export class TopicStatePanel {
   }
 }
 
-// The topics that wait on the reader, newest first: said to, or asked and not yet answered.
+// The topics that wait on the reader, newest first: said to, or asked and not
+// yet answered. Painted on the Outcomes home only; each row says which outcome
+// it is in: "Speaker notes, in Pitch deck — fable asked at 6:20 AM" (item 86).
 export function paintWaiting(host, answer, open) {
   const items = Array.isArray(answer?.latest_waiting) ? answer.latest_waiting : [];
   const count = Number.isSafeInteger(answer?.waiting_on_me) ? answer.waiting_on_me : 0;
   if (!count) { host.hidden = true; host.replaceChildren(); return; }
+  const spoken = (ms, form = 'at') => Number.isSafeInteger(ms) ? [spokenNode(ms, form, document)] : [];
   const list = element('ul', { className: 'waiting-list' }, ...items.map(item => {
     const link = element('a', { href: '?topic=' + encodeURIComponent(item.id), textContent: item.title + (item.title_truncated ? '…' : '') });
     link.onclick = event => {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); open(item.id, item.title);
     };
-    const ask = item.ask && typeof item.ask.by === 'string' ? [`${item.ask.by} asked you`, ...at(', since ', item.ask.since_ms)] : [];
-    const said = item.said === false ? [] : joined([item.note ? [item.note] : [], item.state_by ? [item.state_by, ...at(', ', item.state_ms)] : []], ' — ');
+    const outcome = item.workspace && typeof item.workspace.title === 'string'
+      ? [`, in ${item.workspace.title}${item.workspace.title_truncated ? '…' : ''}`] : [];
+    const ask = item.ask && typeof item.ask.by === 'string' ? [`${item.ask.by} asked`, ...(Number.isSafeInteger(item.ask.since_ms) ? [' ', ...spoken(item.ask.since_ms)] : [])] : [];
+    // A topic whose state also says it waits keeps those words before the ask.
+    const said = item.said === false ? [] : joined([item.note ? [item.note] : [], item.state_by ? [item.state_by, ...(Number.isSafeInteger(item.state_ms) ? [' ', ...spoken(item.state_ms)] : [])] : []], ' — ');
     const detail = joined([said, ask], ' · ');
-    return element('li', {}, link, ...(detail.length ? [element('span', { className: 'muted' }, ' ', ...detail)] : []));
+    return element('li', {}, link, ...outcome, ...(detail.length ? [element('span', { className: 'muted' }, ' — ', ...detail)] : []));
   }));
   host.replaceChildren(element('h2', { textContent: count > items.length ? `Waiting on you (${count}, newest ${items.length} shown)` : `Waiting on you (${count})` }), list);
   host.hidden = false;
