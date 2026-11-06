@@ -50,7 +50,8 @@ const candidates = new Map(), mediaURLs = new Set();
 const review = $('version-review');
 let comparison = null, reviewSerial = 0, reviewOpener = null;
 // Whether each agent's wakes are getting through, said on its name where it is not.
-const wakeLights = new WakeLights({ read: async () => checkedView(await api.view('wakes', {}, { readClass: 'background' }), bootstrap.instance_id) });
+const wakeLights = new WakeLights({ read: async () => checkedView(await api.view('wakes', {}, { readClass: 'background' }), bootstrap.instance_id),
+  painted: () => { const words = wakeLights.notice(); $('wakes-status').textContent = words ?? ''; $('wakes-status').hidden = !words; } });
 const wakeLight = person => person.kind === 'agent' || person.kind === undefined ? wakeLights.words(person.actor_id) : null;
 const sourceIdentity = ref => JSON.stringify(ref);
 const validate = answer => {
@@ -1257,7 +1258,8 @@ async function initializeOutcomePage(route) {
     $('outcomes-heading').textContent='Your outcomes';
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
     initializeOutcomeNavigation();
-    const reload=followCommits(()=>outcomeRail.load());
+    // The page an owner lands on says when wakes are not going out.
+    const reload=followCommits(async()=>{const loaded=await outcomeRail.load();await wakeLights.load();return loaded;});
     $('refresh').onclick=()=>run(reload);
     await reload();
   } else {

@@ -1476,12 +1476,12 @@ test('your own message keeps its own style when it arrives live and when More lo
 // An agent whose wakes are not getting through says so after its name, in the
 // topic's participants and in its outcome's team, from the wakes view; a commit
 // reads the wakes again with everything else, and the words go when it is off.
-const wakesApi = (f, quiet) => {
+const wakesApi = (f, quiet, more = () => ({ runner: { live: true } })) => {
   const view = f.api.view;
   f.api.view = async (name, args) => {
     if (name !== 'wakes') return view(name, args);
     f.calls.push({ name, args });
-    return { instance_id: 'fixture', wakes_live: true, quiet: quiet() };
+    return { instance_id: 'fixture', quiet: quiet(), ...more() };
   };
 };
 const chipWords = host => walk(host).filter(node => node.className === 'chip').map(node => node.textContent + node.children.map(child => child.textContent ?? child).join(''));
@@ -1512,4 +1512,39 @@ test('an outcome\'s team says wakes are paused on each agent with work while no 
   await f.initialize();
   await drain();
   assert.deepEqual(chipWords(f.get('team-people')), ['fixture-person', 'ally · wakes paused · 4 waiting']);
+});
+
+test('while wakes are not going out, the page says so once, and the words go when a commit shows them going out again', async () => {
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  const f = fixture();
+  pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
+  let more = { runner: { live: false, state: 'exited', reason: 'killed', since_ms: Date.UTC(2026, 10, 5, 4, 23) }, notice: { waiting_agents: 2 } };
+  wakesApi(f, () => [], () => more);
+  f.useLive(live);
+  await f.initialize();
+  await drain();
+  const notice = f.get('wakes-status');
+  assert.equal(notice.hidden, false);
+  assert.match(notice.textContent, /^Wakes are not going out: the agent runner was killed at \d+:\d\d [AP]M .+\. 2 agents have work waiting\.$/);
+  more = { runner: { live: true } };
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await drain();
+  assert.equal(notice.hidden, true);
+  assert.equal(notice.textContent, '');
+});
+
+test('the outcomes page an owner lands on says so too, and reads the wakes again on each commit', async () => {
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  const f = fixture('https://fixture/');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  let more = { runner: { live: false, state: 'stopped', since_ms: Date.UTC(2026, 10, 5, 4, 23) }, notice: { waiting_agents: 1 } };
+  wakesApi(f, () => [], () => more);
+  f.useLive(live);
+  await f.initialize();
+  await drain();
+  assert.match(f.get('wakes-status').textContent, /^Wakes are not going out: the agent runner was stopped at .+\. 1 agent has work waiting\.$/);
+  more = { runner: { live: true } };
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await drain();
+  assert.equal(f.get('wakes-status').hidden, true);
 });

@@ -128,7 +128,10 @@ with `paused` and its reason, `stopped` or `exited` with `since_ms` (and the
 exit's reason), `unrenewed` with `since_ms` the lease's end, or `never_run`.
 While it is not live and work waits for an agent routed here, a reader who
 owns an outcome also gets `notice: {waiting_agents}`: someone has to start
-the runner again, or see why it stopped. Stepping back to version 17 turns a
+the runner again, or see why it stopped. The page says it under its header
+("Wakes are not going out: the agent runner was killed at 8:23 PM. 2 agents
+have work waiting."), on topic pages and the outcomes page, and drops it on
+the commit that shows a runner holding the role again. Stepping back to version 17 turns a
 `stopped` or `exited` row into `idle`, the only not-running state 17 knows.
 Proof: `tests/test_runner_exit.py`, and for the loop's own stop
 `tests/test_effects_runner.py`.
