@@ -128,6 +128,13 @@ class Conversation:
                 raise Refusal("INVALID_ARGUMENT", "The opening belongs to a different workspace")
             self._open_topic(db, actor, topic_id, workspace_id, creation.get("title", ""), creation.get("participants", []),
                              Refusal("INVALID_ARGUMENT", "A topic needs a title"))
+        # Writing about a message in the topic it goes to answers that message,
+        # quoted or not. The frozen source names it, so every send of it does.
+        source = snapshot["source_ref"]
+        if source.get("kind") == "message" and snapshot.get("reply_to") is None:
+            parent = db.execute("SELECT topic_id FROM messages WHERE id=?", (source.get("id"),)).fetchone()
+            if parent is not None and parent["topic_id"] == topic_id:
+                snapshot["reply_to"] = source["id"]
         result, affected = self._publish(db, actor, envelope["operation_id"], topic_id, snapshot)
         self._change(db, "actor", actor, "submission", snapshot["id"], 2)
         return dict(result, submission_id=snapshot["id"]), affected
@@ -311,13 +318,16 @@ class Conversation:
         backwards = args.get("direction", "after") == "before"
         relation, order = ("<", "DESC") if backwards else (">", "ASC")
         cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
-        columns = "m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms"
+        # A reply says whose message it answers, and how that message begins.
+        columns = ("m.seq,m.id,m.topic_id,m.author_id,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms,"
+                   "p.author_id AS reply_to_author,substr(p.body,1,120) AS reply_to_excerpt")
+        parent = " LEFT JOIN messages p ON p.id=m.reply_to"
         if args.get("audience", "all") == "reader":
-            unaddressed = db.execute("SELECT " + columns + " FROM messages m WHERE m.topic_id=? AND m.addressees='[]' AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
-            addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=? AND actor_id=? AND seq" + relation + "? ORDER BY seq " + order + " LIMIT ?) a JOIN messages m ON m.seq=a.seq", (topic["id"], actor, cursor, limit + 1)).fetchall()
+            unaddressed = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=? AND m.addressees='[]' AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
+            addressed = db.execute("SELECT " + columns + " FROM (SELECT seq FROM message_addressees WHERE topic_id=? AND actor_id=? AND seq" + relation + "? ORDER BY seq " + order + " LIMIT ?) a JOIN messages m ON m.seq=a.seq" + parent, (topic["id"], actor, cursor, limit + 1)).fetchall()
             rows = sorted(unaddressed + addressed, key=lambda row: row["seq"], reverse=backwards)[:limit + 1]
         else:
-            rows = db.execute("SELECT " + columns + " FROM messages m WHERE m.topic_id=? AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
+            rows = db.execute("SELECT " + columns + " FROM messages m" + parent + " WHERE m.topic_id=? AND m.seq" + relation + "? ORDER BY m.seq " + order + " LIMIT ?", (topic["id"], cursor, limit + 1)).fetchall()
         items, size, last = [], 1024, None
         for row in rows[:limit]:
             item = dict(row)

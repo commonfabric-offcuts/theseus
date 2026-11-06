@@ -89,10 +89,24 @@ export class Editor {
     if (Object.hasOwn(this.draft, 'source_ref')) this.draft.source_ref = copy(ref);
   }
 
+  // Who a reply goes to unless the person says otherwise: the author of the
+  // message it answers. They are offered while the reply holds nothing, become
+  // its recipients with the first thing written, and are dropped when the
+  // person removes them. Writing kept from before keeps its own recipients.
+  offerAddressees(names) { this.offered = [...names]; }
+  declineAddressee(name) { this.offered = (this.offered ?? []).filter(item => item !== name); }
+  get offeredAddressees() {
+    return holdsWriting(this.draft) ? [] : (this.offered ?? []).filter(name => !this.draft.addressees.includes(name));
+  }
+
   edit(patch) {
+    const offered = this.offeredAddressees;
     // Only writing fields may be changed by user input, never its identity.
     for (const field of ['body', 'attachments', 'quotes', 'addressees', 'caret']) {
       if (Object.hasOwn(patch, field)) this.draft[field] = copy(patch[field]);
+    }
+    if (offered.length && holdsWriting(this.draft)) {
+      this.draft.addressees = [...offered, ...this.draft.addressees.filter(name => !offered.includes(name))];
     }
     this.localVersion += 1;
   }

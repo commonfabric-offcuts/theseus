@@ -13,6 +13,7 @@ import { Live, liveOffered, reloader } from '../web/live.mjs';
 import { Attention, paintSent } from '../web/attention.mjs';
 import { TopicViews } from '../web/topic-views.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
+import { replyLine } from '../web/replies.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -70,7 +71,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, replyLine, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -102,7 +103,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
@@ -952,6 +953,36 @@ test('a card in the topic log says when its message was sent, and a message from
   const parts = id => author(id).children.map(node => typeof node === 'string' ? node : node.textContent);
   assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM Thu Nov 5']);
   assert.deepEqual(parts('m2'), ['fable']);
+});
+
+test('a reply card says quietly which message it answers, and a message answering none says nothing', async () => {
+  const f = fixture();
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'fable', body: 'Ship the table', topic_id: 't1', sent_ms: null, reply_to: null });
+  f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'tony', body: 'Yes', topic_id: 't1', sent_ms: null,
+    reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Ship the table' });
+  f.paintViews('messages');
+  const card = id => f.get('messages').children.find(node => node.dataset.id === id);
+  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.textContent);
+  assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
+  assert.deepEqual(lines('m1'), []);
+  assert.deepEqual(card('m2').children.map(node => node.className), ['message-author', 'message-reply-to', 'message-preview'], 'between the author and the words');
+});
+
+test('a reply to someone else\'s message in this topic is offered to its author, once; one to anything else is not', () => {
+  const f = fixture();
+  const offers = [];
+  const reply = (topicId = 't1') => ({ context: { topicId }, offerAddressees(names) { this.offered = names; offers.push(names.join(',')); } });
+  const message = (author, topicId = 't1') => ({ source_ref: { kind: 'message', id: 'm1' }, topic_id: topicId, author });
+  const offered = (source, editor = reply(), extra = {}) => { offers.length = 0; f.offerAuthor({ source, editors: { reply: editor }, ...extra }); return [...offers]; };
+  assert.deepEqual(offered(message('fable')), ['fable']);
+  assert.deepEqual(offered(message('fixture-person')), [], 'never to the person themselves');
+  assert.deepEqual(offered(message('fable', 't2')), [], 'not for a message from another topic');
+  assert.deepEqual(offered({ source_ref: { kind: 'memory', id: 'n1', revision: 1 }, topic_id: 't1', author: 'fable' }), [], 'not for a Notebook page');
+  assert.deepEqual(offered(message('fable'), reply(), { sourceUnavailable: true }), [], 'not for a source that could not be read');
+  const kept = reply(); kept.offered = [];
+  assert.deepEqual(offered(message('fable'), kept), [], 'an offer the person declined is not made again');
 });
 
 // Every element under a node; text children are skipped.

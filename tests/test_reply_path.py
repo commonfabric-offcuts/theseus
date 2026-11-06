@@ -120,3 +120,46 @@ class ReplyPathCase(ReaderCase):
         result = self.committed(self.store.command("agent-b", envelope))
         self.assertEqual(self.sql("SELECT * FROM topic_participants ORDER BY rowid"), before)
         self.assertEqual(self.sql("SELECT reason FROM delivery_reasons r JOIN deliveries d ON d.id=r.delivery_id WHERE d.message_id=? AND d.recipient_id='owner' ORDER BY reason", (result["message_id"],)), [("addressed",), ("subscription",)])
+
+
+class ReplyRecordCase(ReaderCase):
+    """A reply written about a message records which message it answers."""
+
+    def reply(self, source, topic="t1", key="answer", body="Answer", **fields):
+        args = dict(source_ref=source, topic_id=topic, generation="gA", body=body,
+                    attachments=[], quotes=[], addressees=[])
+        args.update(fields)
+        self.committed(self.command("draft.save", args, target={"draft_id": key}, expected={"draft_revision": 0}))
+        self.committed(self.prepare(key, topic, submission=key, send_op=key + "-send"))
+        sent = self.committed(self.command("message.send", {"submission_id": key}, target={"topic_id": topic}, op=key + "-send"))
+        return self.source({"kind": "message", "id": sent["message_id"]})
+
+    def test_a_reply_written_about_a_message_records_it_quoted_or_not(self):
+        plain = self.reply(self.opening)
+        self.assertEqual(plain["reply_to"], self.opening["id"])
+        quoted = self.reply(plain["source_ref"], key="quoted", quotes=[{"source": plain["source_ref"], "excerpt": "Answer"}])
+        self.assertEqual(quoted["reply_to"], plain["source_ref"]["id"])
+        # The frozen act keeps exactly what was written; its source names the message.
+        self.assertNotIn("reply_to", self.store.view("owner", "submission", {"submission_id": "quoted"}))
+
+    def test_writing_about_anything_else_answers_no_message(self):
+        # A topic's own composer, and a message read from another topic, answer nothing here.
+        self.assertIsNone(self.reply({"kind": "topic", "id": "t1"}, key="composer")["reply_to"])
+        self.committed(self.save_draft("second", {"kind": "new_topic", "id": "second", "workspace_id": "w1"}, "t2", "Elsewhere",
+                                       opening={"workspace_id": "w1", "title": "Second", "participants": []}))
+        self.committed(self.prepare("second", "t2", submission="second", send_op="second-send"))
+        elsewhere = self.committed(self.command("topic.create_and_send", {"submission_id": "second"}, target={"topic_id": "t2"}, op="second-send"))
+        crossed = self.reply({"kind": "message", "id": elsewhere["message_id"]}, key="crossed")
+        self.assertEqual(crossed["topic_id"], "t1")
+        self.assertIsNone(crossed["reply_to"])
+
+    def test_the_topic_log_says_whose_message_a_reply_answers(self):
+        answer = self.reply(self.opening, body="Answer")
+        page = self.store.view("agent-a", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 10})
+        item = next(row for row in page["items"] if row["id"] == answer["source_ref"]["id"])
+        opening = next(row for row in page["items"] if row["id"] == self.opening["id"])
+        self.assertEqual((item["reply_to"], item["reply_to_author"]), (self.opening["id"], "owner"))
+        self.assertEqual(item["reply_to_excerpt"], self.source(self.opening)["body"][:120])
+        self.assertEqual((opening["reply_to"], opening["reply_to_author"], opening["reply_to_excerpt"]), (None, None, None))
+        reader = self.store.view("owner", "topic_messages", {"topic_id": "t1", "audience": "reader", "limit": 10})
+        self.assertEqual(next(row for row in reader["items"] if row["id"] == item["id"])["reply_to_author"], "owner")

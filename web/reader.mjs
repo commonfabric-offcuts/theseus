@@ -369,11 +369,15 @@ export class Reader {
 
   paintRecipients() {
     const editor = this.sessions.reply, presentation = this.presentation;
-    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices(editor.draft.addressees).map(({ name, removeLabel }) => {
+    // The author a reply answers is offered first; removing them declines the
+    // offer and writes nothing.
+    const offered = editor.offeredAddressees ?? [];
+    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices([...offered, ...editor.draft.addressees]).map(({ name, removeLabel }) => {
       const chip = node('span', name, 'chip'); chip.dataset.name = name;
       const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
       remove.onclick = () => {
         if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
+        if (offered.includes(name)) { editor.declineAddressee(name); this.paintRecipients(); return; }
         editor.edit({ addressees: editor.draft.addressees.filter(item => item !== name) });
         this.callbacks.edit(editor); this.paintRecipients();
       };
@@ -387,7 +391,7 @@ export class Reader {
     if (!name || !this.sessions) return;
     const editor = this.sessions.reply;
     if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return;
-    if (!editor.draft.addressees.includes(name)) {
+    if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name] });
       this.callbacks.edit(editor); this.paintRecipients();
     }

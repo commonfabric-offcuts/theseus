@@ -22,6 +22,7 @@ import { Attention, paintSent } from './attention.mjs';
 import { TopicStatePanel, paintWaiting, readableTime } from './topic-state.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
+import { replyLine } from './replies.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -365,6 +366,7 @@ async function present(presentation) {
   if (presentation.surface === 'inline') inline.show(presentation);
   else {
     retainRevisionTargets(presentation);
+    offerAuthor(presentation);
     revokeMedia(); reader.presentation = presentation;
     reader.show(presentation.source, presentation.editors, { opener: presentation.opener, topics: [topic], presentation, mode: presentation.mode });
     if (presentation.sourceUnavailable) reader.notice('The source is unavailable. Your private writing is kept.');
@@ -383,6 +385,14 @@ async function present(presentation) {
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
   }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
   sourceAttachments(presentation);
+}
+// A reply to someone else's message in this topic goes to its author unless
+// the person removes them; the offer is made once for each reply editor.
+function offerAuthor(presentation) {
+  const source = presentation.source, reply = presentation.editors.reply;
+  if (presentation.sourceUnavailable || reply.offered !== undefined || source.source_ref.kind !== 'message' ||
+      source.topic_id !== reply.context.topicId || !source.author || source.author === bootstrap.actor) return;
+  reply.offerAddressees([source.author]);
 }
 // A checked page of saved copies: the first page replaces what was listed,
 // and a page that continues it is added, as the editor's image copies are.
@@ -511,7 +521,10 @@ function paintViews(kind) {
       card = button('', () => openSource(ref, card, marks.capture(item.id))); card.className = item.author_id === bootstrap.actor ? 'message-card own-message' : 'message-card'; card.dataset.id = item.id; card.dataset.seq = item.seq;
       const author = node('span', undefined, 'message-author');
       paintCardAuthor(author, item);
-      card.append(author, node('span', item.body, 'message-preview'));
+      card.append(author);
+      const answers = replyLine(item);
+      if (answers) card.append(node('span', answers, 'message-reply-to'));
+      card.append(node('span', item.body, 'message-preview'));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
       $('messages').insertBefore(card, following ?? null);
