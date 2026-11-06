@@ -89,14 +89,16 @@ class WorkObservedCase(hosted.HostedCase):
         self.assertEqual(self.seen("t1"), (True, self.now, "agent-a", "turn", False))
         self.assertEqual(self.seen("t2"), (True, posted_in_two, "owner", "posted", False))
 
-    def test_a_later_claim_is_not_handed_a_delivery_an_earlier_turn_held(self):
-        # A turn in t1 ends without acknowledging its delivery, which stays
-        # pending. Hours later a t2 message brings a second claim: it is handed
-        # only what came after the first turn's range, so t1 keeps its old turn.
+    def test_a_later_claim_is_not_handed_a_delivery_an_earlier_turn_answered(self):
+        # A turn in t1 acknowledges its delivery and ends. Hours later a t2
+        # message brings a second claim: it is handed only what came after the
+        # first turn's range, so t1 keeps its old turn.
         self.topic_two()
         self.send_next("For the agent in t1")
         self.now += 10
         self.hand(self.claim_now(), turn_id="turn-1")
+        for item in self.pending()["items"]:
+            self.ack(item["id"])
         self.now += 10
         self.assertEqual(self.end("completed", turn_id="turn-1")["status"], "ended")
         first_turn = self.now
@@ -106,6 +108,39 @@ class WorkObservedCase(hosted.HostedCase):
         self.hand(self.claim_now(), turn_id="turn-2")
         self.assertEqual(self.seen("t1"), (False, first_turn, "agent-a", "turn", False),
                          "the second turn was not handed t1's delivery")
+        self.assertEqual(self.seen("t2")[:4], (True, self.now, "agent-a", "turn"))
+
+    def test_a_steer_into_a_running_turn_is_handed_only_what_came_after_what_the_turn_holds(self):
+        # turn-1 holds t1's delivery and is still running when a t2 message is
+        # steered into it hours later: only t2 shows the steer; t1 keeps the
+        # time the turn was handed its work.
+        self.topic_two()
+        self.send_next("For the agent in t1")
+        self.now += 10
+        self.hand(self.claim_now(), turn_id="turn-1")
+        handed = self.now
+        self.now += 3 * WORK_WINDOW_MS
+        self.command("message.post", {"body": "In t2"}, target={"topic_id": "t2"})
+        self.now += 10
+        self.hand(self.claim_now(), turn_id="turn-1", mode="steer")
+        self.assertEqual(self.seen("t1"), (False, handed, "agent-a", "turn", False))
+        self.assertEqual(self.seen("t2")[:4], (True, self.now, "agent-a", "turn"))
+
+    def test_a_delivery_an_earlier_turn_left_unread_is_handed_again_and_its_topic_shows_the_new_turn(self):
+        # A turn in t1 ends without acknowledging its delivery, which stays
+        # pending: the agent is woken again for it, and the turn that wakes it
+        # is handed everything still pending, t1's delivery with t2's.
+        self.topic_two()
+        self.send_next("For the agent in t1")
+        self.now += 10
+        self.hand(self.claim_now(), turn_id="turn-1")
+        self.now += 10
+        self.assertEqual(self.end("completed", turn_id="turn-1")["status"], "ended")
+        self.now += 3 * WORK_WINDOW_MS
+        self.command("message.post", {"body": "In t2"}, target={"topic_id": "t2"})
+        self.now += 10
+        self.hand(self.claim_now(), turn_id="turn-2")
+        self.assertEqual(self.seen("t1")[:4], (True, self.now, "agent-a", "turn"))
         self.assertEqual(self.seen("t2")[:4], (True, self.now, "agent-a", "turn"))
 
     def test_a_completed_turn_is_activity_when_it_ends_and_one_that_was_lost_is_not(self):
