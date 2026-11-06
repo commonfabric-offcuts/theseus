@@ -28,7 +28,7 @@ from .marks import Marks, MARK_SCHEMA
 from .colors import Colors, COLOR_SCHEMA
 
 
-SCHEMA_VERSION = "18"
+SCHEMA_VERSION = "17"
 
 
 def commit_identity_intact(metadata):

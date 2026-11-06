@@ -13,7 +13,7 @@ from unittest import mock
 from aim_next import admin, migrations, recovery_io
 from aim_next import store as store_module
 from aim_next.authority import Authority, AuthorityError
-from aim_next.contract import LIMITS, StoreError
+from aim_next.contract import StoreError
 from aim_next.migrations import MigrationError, migrate
 from aim_next.profile import load_profile
 from aim_next.store import SCHEMA_VERSION, Store, StoreOpenError
@@ -31,7 +31,6 @@ SCHEMA_13 = (Path(__file__).parent / "fixtures" / "schema_13.sql").read_text().s
 SCHEMA_14 = (Path(__file__).parent / "fixtures" / "schema_14.sql").read_text().splitlines()
 SCHEMA_15 = (Path(__file__).parent / "fixtures" / "schema_15.sql").read_text().splitlines()
 SCHEMA_16 = (Path(__file__).parent / "fixtures" / "schema_16.sql").read_text().splitlines()
-SCHEMA_17 = (Path(__file__).parent / "fixtures" / "schema_17.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -51,10 +50,6 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
-        # Version 18 changes no layout: it makes each earlier writer a participant.
-        if version == "17":
-            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
-            return
         # Version 17 keeps the color each person chose for an agent.
         db.execute("DROP TABLE color_choices")
         if version == "16":
@@ -1139,6 +1134,18 @@ class Schema16Case(MigrationCase):
         self.assertEqual(self.choose("rose", 0)["result"]["color_revision"], 1)
         self.assertEqual(self.store.view("owner", "colors", {})["items"], [{"actor_id": "agent-a", "color": "rose", "color_revision": 1}])
 
+    def test_upgrade_makes_no_earlier_writer_a_participant(self):
+        # A member who wrote in t1 without taking part: having written lets them
+        # say where it stands, and wakes them for nothing that follows.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO actors(id,kind,name) VALUES ('writer','agent','writer')")
+            db.execute("INSERT INTO workspace_members(workspace_id,actor_id) VALUES ('w1','writer')")
+            db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
+                       "VALUES ('m-16','t1','writer','Written','[]','[]','[]','op-16')")
+        participants = self.sql("SELECT * FROM topic_participants ORDER BY rowid")
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT * FROM topic_participants ORDER BY rowid"), participants)
+
     def test_step_back_to_16_restores_its_frozen_layout_while_no_choice_exists(self):
         self.upgrade()
         records = self.records()
@@ -1159,72 +1166,6 @@ class Schema16Case(MigrationCase):
                 self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
                 self.assertEqual(self.unchanged(), before)
                 self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
-
-
-class Schema17Case(MigrationCase):
-    """A schema-17 instance: version 18 makes each earlier writer in a topic one of its participants."""
-
-    VERSION, FIXTURE = "17", SCHEMA_17
-
-    def step_back(self):
-        return migrate(self.path, "test-instance", self.binding, "17")
-
-    def write_at_17(self, writers, members=(), rows=()):
-        """Messages in t1 by each writer, oldest first, written as version 17 did, by actors made here."""
-        with sqlite3.connect(str(self.path)) as db:
-            for actor in dict.fromkeys(list(writers) + list(members) + [row[0] for row in rows]):
-                db.execute("INSERT OR IGNORE INTO actors(id,kind,name) VALUES (?,'agent',?)", (actor, actor))
-            db.executemany("INSERT INTO workspace_members(workspace_id,actor_id) VALUES ('w1',?)", [(m,) for m in members])
-            db.executemany("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES ('t1',?,?,?)", rows)
-            for n, writer in enumerate(writers):
-                db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) "
-                           "VALUES (?,'t1',?,'Written','[]','[]','[]',?)", ("m-17-%d" % n, writer, "op-17-%d" % n))
-
-    def participants(self):
-        return self.sql("SELECT actor_id,active,epoch FROM topic_participants WHERE topic_id='t1' ORDER BY rowid")
-
-    def test_upgrade_from_17_makes_each_earlier_writer_who_still_reads_the_topic_a_participant(self):
-        # A member who wrote twice and never took part; a member who left after
-        # writing; a writer who has since lost the outcome; and the owner.
-        self.write_at_17(["writer", "writer", "left", "gone", "owner"], members=["writer", "left"], rows=[("left", 0, 2)])
-        before, participants = self.records(), self.participants()
-        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
-        self.assertEqual(self.participants(), participants + [("writer", 1, 1)],
-                         "the member who wrote takes part once; who left stays out, and who lost the outcome gains nothing")
-        self.assertEqual({k: v for k, v in self.records().items() if k not in ("metadata", "topic_participants")},
-                         {k: v for k, v in before.items() if k not in ("metadata", "topic_participants")})
-        fresh = Path(self.temp.name) / "fresh"
-        fresh.mkdir()
-        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
-        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        listed = [row["actor_id"] for row in self.store.view("owner", "topic", {"topic_id": "t1"})["participants"]]
-        self.assertIn("writer", listed)
-        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
-        receipt = self.command("topic.update", {"state": "review"}, target={"topic_id": "t1"}, expected={"topic_revision": version}, actor="writer")
-        self.assertEqual(receipt["status"], "committed", receipt)
-        self.assertEqual(self.store.view("gone", "topic", {"topic_id": "t1"})["error"]["code"], "FORBIDDEN")
-
-    def test_upgrade_from_17_fills_a_topic_only_to_its_participant_limit_oldest_writer_first(self):
-        # owner, agent-a and agent-b take part; others fill the topic to one short of its limit.
-        filler = [("filler-%d" % n, 1, 1) for n in range(LIMITS["topic_participants"] - 4)]
-        self.write_at_17(["first", "second", "second"], members=["first", "second"], rows=filler)
-        self.upgrade()
-        added = [row for row in self.participants() if row[0] in ("first", "second")]
-        self.assertEqual(added, [("first", 1, 1)])
-        self.assertEqual(sum(row[1] for row in self.participants()), LIMITS["topic_participants"])
-
-    def test_step_back_to_17_keeps_its_layout_and_the_participants_and_the_upgrade_again_changes_nothing(self):
-        self.write_at_17(["writer"], members=["writer"])
-        self.upgrade()
-        records = self.records()
-        self.assertTrue(self.step_back()["migrated"])
-        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
-        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
-                         {k: v for k, v in records.items() if k != "metadata"})
-        self.assertTrue(self.upgrade()["migrated"])
-        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
-                         {k: v for k, v in records.items() if k != "metadata"})
 
 
 # Do not rerun the inherited StoreCase tests during module discovery.
@@ -1249,8 +1190,6 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema15Case, _name, None)
     if _name.startswith("test_") and _name not in Schema16Case.__dict__:
         setattr(Schema16Case, _name, None)
-    if _name.startswith("test_") and _name not in Schema17Case.__dict__:
-        setattr(Schema17Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)
