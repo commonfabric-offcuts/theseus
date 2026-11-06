@@ -822,7 +822,7 @@ async function checkAvailability(read, current, topicDenied = true) {
     for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = true;
     $('more-messages').hidden = true; $('topic-title').textContent = 'Topic unavailable'; $('topic-description').textContent = '';
     // No settings for a topic the reader cannot see.
-    settings?.close(); $('settings-open').hidden = true;
+    $('settings-open').hidden = true; settings?.close();
     paintMarks();
     for (const session of registry.sessions.values()) {
       if (session.editor.context.kind === 'reply' && session.editor.context.topicId === topic.id) {
@@ -1047,7 +1047,7 @@ async function initialize() {
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
   paintHeader(topic);
-  settings = new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close') });
+  settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close') });
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
