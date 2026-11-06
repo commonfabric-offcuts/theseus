@@ -39,3 +39,14 @@ test('a page shown after one with changes shows none of them', () => {
   assert.deepEqual(shown, ['Ship on Monday.', 'A page never read.']);
   assert.equal($('source-changes').hidden, true, 'the next page carries none of the first page’s changes');
 });
+
+test('a page\'s changes show open, even after the person closed the panel on the page before', () => {
+  const { r, $ } = reader();
+  r.show(page('p1', 3, 'Ship on Monday.'), sessions);
+  r.showChanges(1, 'Ship on Friday.', 'Ship on Monday.');
+  assert.equal($('source-changes').open, true, 'shown open');
+  $('source-changes').open = false;
+  r.show(page('p2', 4, 'Ship on Tuesday.'), sessions);
+  r.showChanges(2, 'Ship on Monday.', 'Ship on Tuesday.');
+  assert.equal($('source-changes').open, true, 'the next page\'s changes are open again');
+});
