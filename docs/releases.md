@@ -70,4 +70,5 @@ record without a number on an instance with none is refused with
 - `bin/aim-next --profile P releases [--limit N]` prints one line per release,
   newest first; with `--json` it prints each page the view returned.
 
-`tools/deploy.py` writes the record (docs/tools.md).
+`tools/deploy.py` writes the record (docs/tools.md); `tools/pipeline/build_pipeline.py`
+reads it to build the pipeline page.

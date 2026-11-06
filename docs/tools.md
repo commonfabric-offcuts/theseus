@@ -79,4 +79,9 @@ An unknown or missing key is refused. Keep the live config beside the instance i
 
 ## Release pipeline page: `tools/pipeline/build_pipeline.py`
 
-`tools/pipeline/build_pipeline.py [OUTPUT]` writes the hand-written Release pipeline page from `tools/pipeline/items.json` and the edits each revision appends to the script. It fails when an item number is missing or listed twice. Item 84 replaces it with pipeline records in Theseus; until then, edit it here rather than in a temporary copy.
+```sh
+LIVE/bin/aim-next --profile PROFILE --json releases > RECORDS
+tools/pipeline/build_pipeline.py --releases RECORDS [OUTPUT]
+```
+
+writes the Release pipeline page from `tools/pipeline/items.json`, the edits each revision appends to the script, and the instance's release records (`--releases -` reads them from standard input). An item a release record names is shipped: it leaves its section, and SHIPPED lists each release, newest first, with its items and time; the "Changed" line names the newest. It fails when an item number is missing or listed twice. Item 84 replaces it with pipeline records in Theseus; until then, edit it here rather than in a temporary copy.

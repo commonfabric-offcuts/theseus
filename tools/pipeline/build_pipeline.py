@@ -1,17 +1,50 @@
 #!/usr/bin/python3 -I
 from __future__ import annotations
 
-"""Build the hand-written Release pipeline page from items.json and the edits below.
+"""Build the Release pipeline page from items.json, the edits below, and the instance's release records.
 
-Usage: tools/pipeline/build_pipeline.py [OUTPUT]   (default: release-pipeline.txt)
+Usage: tools/pipeline/build_pipeline.py --releases RECORDS [OUTPUT]   (default: release-pipeline.txt)
 
-Moved as it was from a temporary folder; item 84 replaces it with pipeline
-records in Theseus. Each revision appends its edits here, as before.
+RECORDS is what `bin/aim-next --profile P --json releases` prints (one page
+per line), or - for standard input. An item is shipped when a release record
+names it (docs/releases.md): it leaves its section, and SHIPPED is built from
+the records, newest first. Moved as it was from a temporary folder; item 84
+replaces it with pipeline records in Theseus. Each revision appends its
+edits here, as before.
 """
 
+import argparse
+import datetime
 import json
 from pathlib import Path
 import sys
+
+
+def read_releases(text):
+    """The release records in the CLI's JSON pages, newest first; a page that is not a page of records fails loudly."""
+    records = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        page = json.loads(line)
+        if not isinstance(page, dict) or not isinstance(page.get("items"), list):
+            raise SystemExit("not a page of release records: %s" % line[:200])
+        records.extend(page["items"])
+    return sorted(records, key=lambda record: -record["release"])
+
+
+def when(record):
+    """10:57 PM Thu 5 November 2026, in the time zone the deploy wrote."""
+    moment = datetime.datetime.fromisoformat(record["deployed_at"])
+    return moment.strftime("%-I:%M %p %a %-d %B %Y")
+
+
+options = argparse.ArgumentParser(description="Build the Release pipeline page.")
+options.add_argument("--releases", required=True, help="the --json output of `bin/aim-next releases`, or -")
+options.add_argument("output", nargs="?", default="release-pipeline.txt")
+options = options.parse_args()
+RELEASES = read_releases(sys.stdin.read() if options.releases == "-" else Path(options.releases).read_text())
+SHIPPED = {item: record for record in reversed(RELEASES) for item in record["items"]}
 
 m=json.load(open(Path(__file__).resolve().parent / 'items.json'))['items']
 m.append({'title':'A Notebook page shows when it changed since you last read it','what':'A Notebook page you have read gets a mark when it is revised, like an unread count, until you open it again; the Reader shows what changed.','asked_by':'tony','size':'M'})
@@ -92,40 +125,50 @@ groups=[
  ("CANDIDATES: agents, wakes and hosting",[36,38,39,40,41,42,43,44,45,46]),
  ("CANDIDATES: smaller fixes and polish",[49,50,52,53,54,55,56,57,60,64,65,66,67,6]),
 ]
-seen=[n for _,g in groups for n in g]+[7,1,4]
+# A shipped item leaves its section; 7 shipped before releases were recorded.
+groups=[(head,[n for n in g if n not in SHIPPED]) for head,g in groups]
+BEFORE_RECORDS=[7]
+seen=[n for _,g in groups for n in g]+sorted(SHIPPED)+BEFORE_RECORDS
 assert sorted(seen)==list(range(1,91)), (set(range(1,91))-set(seen), [n for n in seen if seen.count(n)>1])
 for head,g in groups:
     for n in g: GLYPH[n]=SEC[head.split(':')[0]]
 BUILDING={87,90,2,3,83,10,30,51,29,59,58,71,73}
 for n in [87,90,2,3,83,37,10,30,51,29,59,58,71,73,88,70,48,82,47,84,14,86,8,69,17,35,34,12]: GLYPH[n]='🔨' if n in BUILDING else '💤'
 GLYPH[31]='❓'
-out=["""Release pipeline
+latest=RELEASES[0] if RELEASES else None
+changed=("Changed %s: release %d is live%s." % (when(latest), latest['release'],
+         ", so %s moved to SHIPPED" % ", ".join(str(n) for n in latest['items']) if latest['items'] else "")
+         if latest else "No release is recorded yet.")
+out=[changed.join(["""Release pipeline
 
-Changed 10:59 PM Thu Nov 5: release 18 is live, so 1 and 4 moved to SHIPPED; tonight's set is now NOW, with 🔨 on what is being built; NEXT starts with 89 (search).
+""","""
 
 🔨 being built   ⏭ next   💤 not started   ❓ needs your decision   ✅ shipped
 
 Every feature and fix we could build next is on this page with a number. A number never changes and is never reused, so you can refer to any item by its number.
 
-Who decides: agents drive the order; you steer. I put what we build next in NEXT. Reply in "What's live and what's next" with numbers only when you want something different, for example "10 before 69" or "drop 62". ❓ marks the few items that need your decision. Every release updates this page: what it shipped moves to SHIPPED with its date. This page is written by hand until 84 makes the pipeline part of Theseus.
+Who decides: agents drive the order; you steer. I put what we build next in NEXT. Reply in "What's live and what's next" with numbers only when you want something different, for example "10 before 69" or "drop 62". ❓ marks the few items that need your decision. SHIPPED comes from the record each deploy keeps in Theseus: an item moves there when a release that names it goes live. The rest of this page is written by hand until 84 makes the pipeline part of Theseus.
 
 Each item says its size (small, medium or large, compared with the others) and who raised it.
-"""]
+"""])]
 for head,g in groups:
     out.append("\n"+head+"\n\n"+"\n".join(item(n) for n in g))
-out.append("""
-SHIPPED
-
-Release 18, 10:57 PM Thu 5 November 2026
-✅ 1. Fix the 22 browser checks that failed on the live app. All 11 modes pass: 152 browser cases.
-✅ 4. Each case that failed only sometimes was fixed at its cause, or shown to fail only when the Mac was overloaded.
+# What a release shipped besides numbered items, in words; keyed by release number.
+NOTES={18:"""- All 11 browser check modes pass: 152 browser cases (1).
+- Each case that failed only sometimes was fixed at its cause, or shown to fail only when the Mac was overloaded (4).
 - A Notebook page you reply to no longer goes stale: once it is revised, opening it shows the new revision and your next reply is about the page you see. Only writing you have started keeps its older revision, and the Reader says so.
 - Typing in the Reader while another message is opening is kept, saved on this device as you type. Sending, images and Save note wait until it opens, and say why. If the device cannot keep your writing, the Reader stays put rather than replacing it.
 - × and Close say why they cannot close, and keep the draft and image (part of 2).
 - A version check that is blocked says your saved version was read, instead of "unavailable".
 - Removing an image in the inline composer no longer takes focus away from your writing.
 - Every check mode ran before deploy (part of 3), and the Measurements page has the numbers (first step of 12).
-
+"""}
+out.append("\nSHIPPED\n")
+for record in RELEASES:
+    out.append("\nRelease %d, %s\n" % (record['release'], when(record)))
+    out.append("".join("✅ %d. %s\n" % (n, m[n-1]['title']) for n in record['items']))
+    out.append(NOTES.get(record['release'], ""))
+out.append("""
 5 November 2026
 ✅ 7. This page.
 - Mark unread: a message you have read can be marked unread again from the Reader. It shows an Unread pill and counts in the topic and outcome until you open it again.
@@ -138,5 +181,5 @@ Release 18, 10:57 PM Thu 5 November 2026
 - Attachments: a refusal names its attachment and clears once the attachment opens.
 - Checks: the page's look is judged from screenshots, on laptop and phone, light and dark.
 """)
-open(sys.argv[1] if len(sys.argv) > 1 else 'release-pipeline.txt','w').write("".join(out))
+open(options.output,'w').write("".join(out))
 print(len("".join(out).encode()))
