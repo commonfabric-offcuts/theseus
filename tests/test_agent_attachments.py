@@ -92,6 +92,20 @@ class AttachmentCase(test_agent_verbs.AgentVerbCase):
         self.assertIn("nothing was kept", err)
         self.assertFalse(self.out.exists())
 
+    def test_a_file_that_is_not_an_image_is_shown_as_a_file(self):
+        notes = b"Line one\nLine two\n"
+        self.committed(self.command("media.begin", {
+            "name": "notes.txt", "content_type": "text/plain", "size_bytes": len(notes),
+            "sha256": hashlib.sha256(notes).hexdigest(), "publish_operation_id": "publish-notes",
+        }, target={"media_id": "media-notes"}, expected={"media_revision": 0}))
+        envelope = self.envelope("media.publish", {"media_id": "media-notes"}, {}, {"media_revision": 1}, op="publish-notes")
+        self.committed(self.store.publish_media("owner", envelope, io.BytesIO(notes)))
+        self.committed(self.command("message.post", {"body": "Notes", "attachments": [{"id": "media-notes"}]}, target={"topic_id": "t1"}))
+        code, out, err = self.run_cli("read", "t1")
+        self.assertEqual((code, err), (0, ""))
+        self.assertIn("  [file: notes.txt, text/plain, %d bytes, id media-notes]\n" % len(notes), out)
+        self.assertIn("  [image: image.png, image/png, ", out)
+
     def test_sizes_read_as_a_person_would_say_them(self):
         self.assertEqual([cli._size(n) for n in (0, 1023, 1024, 140 * 1024 + 300, 1024 * 1024 - 513, 1024 * 1024 - 1, 1024 * 1024, 1536 * 1024)],
                          ["0 bytes", "1023 bytes", "1 KB", "140 KB", "1023 KB", "1.0 MB", "1.0 MB", "1.5 MB"])
