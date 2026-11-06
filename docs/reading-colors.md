@@ -154,3 +154,14 @@ the rules to no edge or bar. `tests/agent_colors_native.mjs` (run with
 `--colors`) checks the painted result: every agent's card and name in light
 and dark, at laptop and phone width, from screenshot pixels, and saves those
 screenshots for review.
+
+## Hovering your own message
+
+On a light page the border change alone did not show on a hovered own card.
+Hovering it now lifts the whole card from black to `#22292d` (1.42:1 against
+black), as well as changing its border: a change of the whole face, never an
+edge or bar, and at rest the card stays black. Its words keep their contrast
+on the lifted card (body 11.84:1, quiet text 6.16:1, excerpt cue 7.43:1).
+`tests/ui_own_hover.test.mjs` holds those numbers from `aim.css`, and the
+native colors check reads the hovered card's fill from screenshot pixels on
+both sides.

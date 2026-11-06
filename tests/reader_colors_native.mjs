@@ -31,8 +31,16 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       for(const c of [ownRest,...secondary])expect(contrast(c.color,'rgb(0, 0, 0)')>=4.5,theme+': all own-card text readable on black');
       await shot(p,'reading-colors-'+theme+'-cards-rest');
       await p.point(own,'move');const ownHover=await style(own);
-      expect(ownHover.background==='rgb(0, 0, 0)',theme+': own card stays black on hover');
+      // The whole card lifts off black: visible on a light page, every side
+      // alike, its words still readable.
+      const luminance=c=>contrast(c,'rgb(0, 0, 0)')*0.05-0.05;
+      expect(ownHover.background!=='rgb(0, 0, 0)'&&contrast(ownHover.background,'rgb(0, 0, 0)')>=1.3&&luminance(ownHover.background)<0.05,theme+': own card lifts to near-black on hover');
       expect(ownHover.border!==ownRest.border,theme+': own hover has a visible change');
+      for(const c of [ownHover,...secondary])expect(contrast(c.color,ownHover.background)>=4.5,theme+': own-card text readable on its hover');
+      const ownBox=await p.box(own),hoverPixels0=pngPixels(Buffer.from((await p.send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+      const midY=Math.round(ownBox.y+ownBox.height/2),lifted=rgb(ownHover.background);
+      const pad=(from,to)=>Array.from({length:to-from},(_,k)=>hoverPixels0.pixel(from+k,midY));
+      expect([...pad(Math.ceil(ownBox.x)+3,Math.ceil(ownBox.x)+14),...pad(Math.floor(ownBox.x+ownBox.width)-14,Math.floor(ownBox.x+ownBox.width)-3)].every(px=>px.every((v,i)=>v===lifted[i])),theme+': the hover fills the card, with no edge or bar');
       await shot(p,'reading-colors-'+theme+'-cards');
       await p.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:2,y:2});
       for(let n=0;n<80&&!await p.evaluate(`document.activeElement.matches(${JSON.stringify(own)})`);n++)await p.key('Tab');
