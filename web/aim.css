@@ -71,10 +71,15 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .chip.unreachable button:not([aria-label]) { font-size: .75rem; color: var(--warn); text-decoration: underline; }
 .message-time { font-weight: 400; color: var(--muted); }
 
-/* Reading colors: paint only; passage bounds and writing geometry stay put. */
-.reading-pane { background: var(--soft); }
+/* Reading colors: paint only; passage bounds and writing geometry stay put. The page is neutral, never the green that is Fable's card; an agent's message is read on its card's color under the pointer. */
+.reading-pane { background: #eff0f0; }
+.reading-pane.agent-pane { background: var(--agent-hover); }
 @media (prefers-color-scheme: light) {
   .source-actions .muted { color: #5f6b73; }
+  .reading-pane.agent-pane .source-actions .muted { color: #56616a; }
+}
+@media (prefers-color-scheme: dark) {
+  .reading-pane { background: #252b2e; }
 }
 .hover-quote {
   background: #000;

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AGENT_PALETTE, agentColor, cardClass } from '../web/author-colors.mjs';
+import { AGENT_PALETTE, agentColor, cardClass, paneClass } from '../web/author-colors.mjs';
 
 test('the team\'s agents have fixed colors, and any other agent always gets the same one', () => {
   assert.deepEqual(['aim-lead', 'aim-ux', 'fable', 'aim-core', 'aim-spec', 'warp'].map(agentColor),
@@ -96,4 +96,47 @@ test('each swatch in the picker is outlined at 3:1 or better against the picker,
   }
   const chosen = rule('.color-picker .swatch[aria-pressed=true],.color-picker .swatch-default[aria-pressed=true]');
   assert.match(chosen, /box-shadow:0 0 0 2px var\(--ink\)/, 'the chosen swatch wears a ring outside its outline');
+});
+
+// The Reader's page: an agent's message is read on its card's color under the
+// pointer, the card just pressed, in the color the reader sees that agent in;
+// the person's own message, another person's and a Notebook page on a neutral
+// page, never the green that is Fable's card. Every word on it keeps 4.5:1.
+test('the Reader shows an agent\'s message on its color, and anything else on the neutral page', () => {
+  const message = (author, author_kind) => ({ source_ref: { kind: 'message', id: 'm' }, author, author_kind });
+  assert.equal(paneClass(message('fixture-notebook-agent', 'agent'), 'tony'), 'reading-pane agent-pane agent-indigo');
+  assert.equal(paneClass(message('fable', 'agent'), 'tony', () => 'rose'), 'reading-pane agent-pane agent-rose', 'the reader\'s choice for the agent');
+  assert.equal(paneClass(message('tony', 'human'), 'tony'), 'reading-pane', 'your own message');
+  assert.equal(paneClass(message('fable', 'agent'), 'fable'), 'reading-pane', 'an agent reading its own message');
+  assert.equal(paneClass(message('dan', 'human'), 'tony'), 'reading-pane', 'another person');
+  assert.equal(paneClass(message('fable'), 'tony'), 'reading-pane', 'a source that does not say the kind');
+  assert.equal(paneClass({ source_ref: { kind: 'memory', id: 'n', revision: 1 }, author: 'fable', author_kind: 'agent' }, 'tony'), 'reading-pane', 'a Notebook page');
+  assert.equal(paneClass(null, 'tony'), 'reading-pane');
+});
+
+test('every word on the Reader\'s page keeps 4.5:1, on the neutral page and on every agent\'s color, and the page is never Fable\'s green', () => {
+  const block = (text, selector) => { const at = text.indexOf(selector + ' {'); assert.ok(at >= 0, 'aim.css sets ' + selector); return text.slice(at, text.indexOf('}', at)); };
+  const hex = (text, property) => { const m = text.match(new RegExp(property + ':\\s*(#[0-9a-f]{6})')); assert.ok(m, property + ' in ' + text); return m[1]; };
+  const lightAt = css.indexOf('@media (prefers-color-scheme: light) {\n  .source-actions .muted'), darkAt = css.indexOf('@media (prefers-color-scheme: dark) {\n  .reading-pane');
+  assert.ok(lightAt >= 0 && darkAt >= 0, 'aim.css sets the Reader\'s page for light and dark');
+  assert.equal(block(css, '.reading-pane.agent-pane').includes('background: var(--agent-hover)'), true, 'an agent\'s page is its hover color');
+  const themes = {
+    light: { page: tokens(css, ':root'), neutral: hex(block(css, '.reading-pane'), 'background'),
+      hint: { neutral: hex(block(css.slice(lightAt), '.source-actions .muted'), 'color'), agent: hex(block(css.slice(lightAt), '.reading-pane.agent-pane .source-actions .muted'), 'color') }, colors: css },
+    dark: { page: tokens(css, '@media(prefers-color-scheme:dark){:root'), neutral: hex(block(css.slice(darkAt), '.reading-pane'), 'background'), colors: dark },
+  };
+  themes.dark.hint = { neutral: themes.dark.page.muted, agent: themes.dark.page.muted };
+  for (const [theme, { page, neutral, hint, colors }] of Object.entries(themes)) {
+    assert.notEqual(neutral, page.soft, `${theme}: the neutral page is not Fable's green`);
+    assert.notEqual(neutral, tokens(colors, '.agent-green')['agent-card'], `${theme}: nor Fable's card`);
+    const rgb = [1, 3, 5].map(i => parseInt(neutral.slice(i, i + 2), 16));
+    assert.ok(Math.max(...rgb) - Math.min(...rgb) <= 10, `${theme}: neutral (${neutral})`);
+    for (const [name, words] of [['ink', page.ink], ['hint', hint.neutral]])
+      assert.ok(contrast(words, neutral) >= 4.5, `${theme} neutral: ${name} ${contrast(words, neutral).toFixed(2)}`);
+    for (const color of AGENT_PALETTE) {
+      const surface = tokens(colors, '.agent-' + color)['agent-hover'];
+      for (const [name, words] of [['ink', page.ink], ['hint', hint.agent]])
+        assert.ok(contrast(words, surface) >= 4.5, `${theme} ${color}: ${name} ${contrast(words, surface).toFixed(2)}`);
+    }
+  }
 });

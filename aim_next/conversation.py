@@ -354,10 +354,10 @@ class Conversation:
         if not isinstance(ref, dict) or ref.get("kind") != "message":
             raise Refusal("INVALID_SOURCE", "Unsupported source reference")
         identity = self._message_access(db, actor, ref.get("id"))
-        row = db.execute("SELECT * FROM messages WHERE id=?", (identity["id"],)).fetchone()
+        row = db.execute("SELECT m.*,a.kind AS author_kind FROM messages m JOIN actors a ON a.id=m.author_id WHERE m.id=?", (identity["id"],)).fetchone()
         return {"instance_id": self.instance_id, "source_ref": {"kind": "message", "id": row["id"]},
                 "owner_scope": {"kind": "topic", "id": row["topic_id"]}, "topic_id": row["topic_id"],
-                "author": row["author_id"], "seq": row["seq"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),
+                "author": row["author_id"], "author_kind": row["author_kind"], "seq": row["seq"], "title": "", "body": row["body"], "attachments": json.loads(row["attachments"]),
                 "quotes": json.loads(row["quotes"]), "addressees": json.loads(row["addressees"]),
                 "reply_to": row["reply_to"], "exchange_id": row["exchange_id"], "sent_ms": row["sent_ms"], "intent": row["intent"], "version": 1, "current_revision": 1,
                 "allowed_actions": ["quote", "note.save"]}

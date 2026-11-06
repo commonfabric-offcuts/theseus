@@ -17,3 +17,12 @@ class AuthorKindCase(ReaderCase):
             self.assertEqual(kinds["From an agent"], ("agent-a", "agent"), audience)
             self.assertEqual(kinds["From a person"], ("owner", "human"), audience)
             self.assertEqual(kinds["To the owner"], ("agent-a", "agent"), audience)
+
+    def test_a_message_opened_to_read_says_what_kind_of_actor_wrote_it(self):
+        # The Reader shows an agent's message on its color, so the source says
+        # who wrote it and what kind of actor they are, as the topic's cards do.
+        for actor, body, kind in (("agent-a", "Read from an agent", "agent"), ("owner", "Read from a person", "human")):
+            with self.subTest(actor=actor):
+                posted = self.committed(self.command("message.post", {"body": body}, target={"topic_id": "t1"}, actor=actor))
+                source = self.source({"kind": "message", "id": posted["message_id"]})
+                self.assertEqual((source["author"], source["author_kind"]), (actor, kind))

@@ -26,3 +26,13 @@ export function cardClass(item, actor, color = agentColor) {
   if (item.author_kind === 'agent') return `message-card agent-card agent-${color(item.author_id)}`;
   return 'message-card';
 }
+
+// The Reader's page for a source: an agent's message on its card's color
+// under the pointer, the card the person just pressed; the person's own
+// message, another person's and a Notebook page on the neutral page, never
+// the green that is Fable's card.
+export function paneClass(source, actor, color = agentColor) {
+  if (source?.source_ref?.kind === 'message' && source.author_kind === 'agent' && source.author !== actor)
+    return `reading-pane agent-pane agent-${color(source.author)}`;
+  return 'reading-pane';
+}

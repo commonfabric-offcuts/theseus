@@ -24,7 +24,7 @@ import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
-import { cardClass, agentColor } from './author-colors.mjs';
+import { cardClass, agentColor, paneClass } from './author-colors.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 
@@ -570,12 +570,13 @@ function paintViews(kind) {
 }
 // The color the reader sees an agent in: their choice, or the agent's own.
 const agentShown = id => colors?.color(id) ?? agentColor(id);
-// Every loaded card and the participants, in the reader's colors as they now stand.
+// Every loaded card, the participants and the Reader's page, in the reader's colors as they now stand.
 function paintAgentColors() {
   for (const card of $('messages').children) {
     const item = views?.messages.get(card.dataset.id);
     if (item) card.className = cardClass(item, bootstrap.actor, agentShown);
   }
+  if (reader?.source && !registry?.current?.sourceUnavailable) reader.paintTone(reader.source);
   participantsPanel?.paint();
 }
 // The picker for one agent's color, under its name (anchor); closing it gives
@@ -1016,6 +1017,7 @@ async function initialize() {
     renderPending: (host, editor) => pendingButton(host, editor, reader.presentation),
     recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
     error: error => reader.notice(error.message),
+    paneClass: source => paneClass(source, bootstrap.actor, agentShown),
   });
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },

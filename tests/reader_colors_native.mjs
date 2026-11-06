@@ -10,6 +10,8 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       const luminance=color=>color.match(/[\d.]+/g).slice(0,3).map(Number).map(c=>{c/=255;return c<=.04045?c/12.92:((c+.055)/1.055)**2.4;}).reduce((s,c,i)=>s+c*[.2126,.7152,.0722][i],0);
       const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);
     };
+    // The neutral page (docs/reading-colors.md): never the green that is Fable's card.
+    const neutral={light:'rgb(239, 240, 240)',dark:'rgb(37, 43, 46)'};
     for(const theme of ['dark','light']) {
       const original=await control({method:'agent_message',operation_id:'reading-colors-original-'+theme,body:'Original other author '+theme+'.'});
       const p=await page('reading-colors-'+theme,null,true,{beforeNavigate:p=>p.send('Emulation.setEmulatedMedia',{features:[{name:'prefers-color-scheme',value:theme}]})});
@@ -46,17 +48,34 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       expect((await style(own)).outline==='solid',theme+': keyboard focus stays visible on own black card');
       await p.evaluate(`document.querySelector(${JSON.stringify(other)}).scrollIntoView({block:'center'})`);
       await p.point(other,'move');const topicHover=await style(other);
+      // Sample a real space between source words: an opaque article background
+      // can hide the pane's correct computed color.
+      const behindWords=async()=>{
+        const point=await p.evaluate(`(()=>{const t=document.querySelector('#source-body [data-start]').firstChild,n=t.textContent.indexOf(' '),r=document.createRange();r.setStart(t,n);r.setEnd(t,n+1);const b=r.getBoundingClientRect();return {x:Math.floor(b.x+b.width/2),y:Math.floor(b.y+b.height/2)}})()`);
+        const pixels=pngPixels(Buffer.from((await p.send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+        assert.ok(point.x>=0&&point.x<pixels.width&&point.y>=0&&point.y<pixels.height,'source background sample is inside the screenshot');
+        return {point,pixel:pixels.pixel(point.x,point.y)};
+      };
+      const painted=(sample,background)=>sample.pixel.length===3&&sample.pixel.every((v,i)=>v===rgb(background)[i]);
+      // An agent's message is read on its card's color under the pointer: the
+      // card just pressed. Every other source is read on the neutral page.
+      await p.point(other);
+      await until(()=>p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#source-body').textContent.includes('Other author for reading colors')`),'the agent message is open');
+      await until(()=>p.evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"),'settled reader');
+      const agentSource=await style('.reading-pane'),agentSample=await behindWords();
+      expect(agentSource.background===topicHover.background,theme+': an agent message is read on its card hover color');
+      expect(painted(agentSample,topicHover.background),theme+': painted background behind the agent message words matches its card hover');
+      const agentHint=await style('.source-actions .muted');
+      expect(contrast(agentHint.color,agentSource.background)>=4.5,theme+': source action hint contrast on the agent color is at least 4.5:1');
+      await shot(p,'reading-colors-'+theme+'-agent-source');
+      await p.point('#reader-close');
+      await until(()=>p.evaluate('!document.querySelector("#reader").open'),'agent message Reader closed');
       await p.open(1);
       const geometry=()=>p.evaluate(`['#source-body','#writing-body'].map(s=>{const e=document.querySelector(s),r=e.getBoundingClientRect();return {s,x:r.x,y:r.y,width:r.width,height:r.height,scrollHeight:e.scrollHeight,text:e.value??e.textContent}})`);
       const before=await geometry(),writing=await style('#writing-body'),source=await style('.reading-pane');
-      expect(source.background===topicHover.background,theme+': Reader source uses topic-hover background');
-      // Sample a real space between source words: an opaque article background
-      // can hide the pane's correct computed color.
-      const backgroundPoint=await p.evaluate(`(()=>{const t=document.querySelector('#source-body [data-start]').firstChild,n=t.textContent.indexOf(' '),r=document.createRange();r.setStart(t,n);r.setEnd(t,n+1);const b=r.getBoundingClientRect();return {x:Math.floor(b.x+b.width/2),y:Math.floor(b.y+b.height/2)}})()`);
-      const sourcePixels=pngPixels(Buffer.from((await p.send('Page.captureScreenshot',{format:'png'})).data,'base64'));
-      assert.ok(backgroundPoint.x>=0&&backgroundPoint.x<sourcePixels.width&&backgroundPoint.y>=0&&backgroundPoint.y<sourcePixels.height,'source background sample is inside the screenshot');
-      const sourcePixel=sourcePixels.pixel(backgroundPoint.x,backgroundPoint.y);
-      expect(sourcePixel.length===3&&sourcePixel.every((v,i)=>v===rgb(topicHover.background)[i]),theme+': painted background behind source words matches topic hover');
+      expect(source.background===neutral[theme],theme+': the person\'s own message is read on the neutral page, not an agent\'s color');
+      const {point:backgroundPoint,pixel:sourcePixel}=await behindWords();
+      expect(painted({pixel:sourcePixel},neutral[theme]),theme+': painted background behind source words is the neutral page');
       const hint=await style('.source-actions .muted'),hintContrast=contrast(hint.color,source.background);
       expect(hintContrast>=4.5,theme+': source action hint contrast is at least 4.5:1');
       const target=await p.evaluate(`(()=>{const spans=[...document.querySelectorAll('#source-body [data-start]')];const s=spans.find(e=>e.getClientRects().length>1&&e.getBoundingClientRect().bottom<innerHeight/2)||spans[0];const range=document.createRange();range.selectNodeContents(s);const r=range.getClientRects()[0];return {start:s.dataset.start,x:r.x+2,y:r.y+r.height/2}})()`);
@@ -105,7 +124,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       await p.evaluate(`document.querySelector('#memory-items .memory-card').scrollIntoView({block:'center'})`);
       await p.point('#memory-items .memory-card');
       await until(()=>p.evaluate(`document.querySelector('#reader').open&&document.querySelector('#reader-origin').textContent.includes('Notebook')`),'Notebook source open');
-      expect((await style('.reading-pane')).background===topicHover.background,theme+': Notebook uses the same source background');
+      expect((await style('.reading-pane')).background===neutral[theme],theme+': a Notebook page is read on the neutral page');
       assert.match(await p.evaluate(`document.querySelector('#reader-origin').textContent`),/Notebook · revision/,'Notebook provenance intact');
       await p.point('#reader-close');
       await until(()=>p.evaluate('!document.querySelector("#reader").open'),'Notebook Reader closed');
@@ -116,7 +135,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       assert.equal(await p.evaluate('document.documentElement.scrollWidth<=innerWidth'),true,'phone cards do not overflow horizontally');
       await shot(p,'reading-colors-'+theme+'-phone-cards');
       await p.open(1);
-      expect((await style('.reading-pane')).background===topicHover.background,theme+': phone Reader retains source background');
+      expect((await style('.reading-pane')).background===neutral[theme],theme+': phone Reader keeps the neutral page for the person\'s own message');
       const phoneBefore=await geometry(),phoneWriting=await field(p),sourceBox=await p.box('#source-body');
       const touch={x:sourceBox.x+10,y:sourceBox.y+10};
       await p.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[touch]});
@@ -126,7 +145,7 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
       assert.deepEqual(await geometry(),phoneBefore,'source touch keeps phone writing geometry');
       assert.equal(await p.evaluate('document.querySelector("#reader").scrollWidth<=innerWidth'),true,'phone Reader does not overflow horizontally');
       await shot(p,'reading-colors-'+theme+'-phone-reader');
-      observations.push({name:'reading colors',theme,initialOwn,initialOther,ownRest,ownHover,otherRest,secondary,topicHover,source,backgroundPoint,sourcePixel,hint,hintContrast,writing,hovered,coverage,selection,bands});
+      observations.push({name:'reading colors',theme,initialOwn,initialOther,ownRest,ownHover,otherRest,secondary,topicHover,agentSource,agentSample,agentHint,source,backgroundPoint,sourcePixel,hint,hintContrast,writing,hovered,coverage,selection,bands});
       assert.deepEqual(p.errors,[]);
       await p.close();
     }

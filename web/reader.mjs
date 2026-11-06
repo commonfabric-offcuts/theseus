@@ -515,10 +515,18 @@ export class Reader {
     const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}` : 'Message';
     const sent = Number.isInteger(source.sent_ms) ? readableTime(source.sent_ms) : '';
     this.$('reader-origin').textContent = [source.author, provenance, sent].filter(Boolean).join(' · ');
+    this.paintTone(source);
+  }
+  // The page the source is read on: an agent's message wears its color, as
+  // its card does under the pointer (callbacks.paneClass); anything else is
+  // the neutral page.
+  paintTone(source) {
+    const pane = this.sourceBody?.closest?.('.reading-pane');
+    if (pane) pane.className = (source && this.callbacks.paneClass?.(source)) || 'reading-pane';
   }
   hideUnavailableSource() {
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
-    this.$('reader-origin').textContent = 'Source unavailable';
+    this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null);
     this.paintStatus();
   }
 

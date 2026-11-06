@@ -14,7 +14,8 @@ hover/range arming and the exact excerpt; this change preserves that behavior.
 ## Trigger and result
 
 - Opening a message in the Reader shows its source text against the existing
-  topic-card hover color (`--soft`). The writing field keeps its background,
+  topic-card hover color (`--soft`). Since agent colors this is per author;
+  see "The Reader's page" below. The writing field keeps its background,
   dimensions and contrast. The shared source-text surface uses the same colors
   for Notebook reading.
 - Hovering an eligible passage paints black behind light, readable text, with
@@ -134,6 +135,22 @@ which no team agent has, picked by FNV-1a over its id's UTF-8 bytes: the
 same agent always gets the same color, on every page and every device, and
 no other agent is taken for one of the team. The colors themselves are
 classes in `web/aim.css`, one per palette name, for light and dark.
+
+## The Reader's page
+
+The Reader shows an agent's message on that agent's color as its card shows
+it under the pointer: the card the person has just pressed, in the color the
+person sees that agent in, their own choice included, and repainted when they
+choose another. Every other source, the person's own message, another
+person's message and a Notebook page, is read on a neutral page (`#eff0f0`
+light, `#252b2e` dark), never the green that is Fable's card, so nothing opens
+looking like Fable's. The message source view says which kind of actor wrote
+it (`author_kind`, as `topic_messages` does), and `paneClass` in
+`web/author-colors.mjs` picks the page. On an agent's color in light the
+small source-actions hint is darkened to `#56616a`, as on its cards, so every
+word on the page keeps 4.5:1 (`tests/ui_author_colors.test.mjs`); the native
+colors check opens an agent's message, the person's own and a Notebook page
+and reads the page's color from screenshot pixels behind the words.
 
 Fable's color is the green its cards already had. Before agent colors, the
 live app painted every agent's card plain at rest and in `--soft` under the
