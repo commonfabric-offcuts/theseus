@@ -1,0 +1,1065 @@
+{
+ "items": [
+  {
+   "title": "Fix the 22 browser checks that fail on the live app",
+   "what": "For each failing check (images 6, freshness 4, correction 5, navigation 6, connected 1), decide whether the check or the app is wrong, fix it, and have each group reviewed independently, so the checks guard the app again.",
+   "why": "About 20 checks were failing on live code without anyone noticing, because nothing ran them before a release. Fable re-ran them today and 22 fail.",
+   "asked_by": "fable",
+   "sources": [
+    "Browser checks #129",
+    "Browser checks #218",
+    "Browser checks #278",
+    "Browser checks #348",
+    "Browser checks #349",
+    "Browser checks #351",
+    "What's live #130",
+    "What's live #190",
+    "What's live #355",
+    "Worthy changes #140",
+    "Worthy changes #145"
+   ],
+   "status": "in-flight",
+   "status_evidence": "Images: fable/baseline-images 7189d30 has 3 check fixes and 1 app fix (a late Remove keeps focus). Freshness: fable/baseline-freshness 5470c99 has 4 check-side commits. Neither branch is reviewed or live. Correction (fable/baseline-correction), navigation and connected have no commits past eab5992.",
+   "kind": "checks-and-evaluation",
+   "size": "L"
+  },
+  {
+   "title": "Closing the Reader shows it is saving, and says when it can't close",
+   "what": "Pressing \u00d7 shows the Reader is saving your draft. If the close is refused (for example while an image is still being kept), it says so and leaves a working Reader with the draft and image intact. \u00d7 and Escape behave the same.",
+   "why": "Today \u00d7 gives no sign while it saves, and a refused save makes \u00d7 do nothing at all. It was found during the check repair, and aim-ux set the requirement.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "Browser checks #351",
+    "Browser checks #352",
+    "Browser checks #353",
+    "What's live #347",
+    "What's live #355"
+   ],
+   "status": "in-flight",
+   "status_evidence": "Live web/app-session.mjs:253 still has 'catch { return false; }'. #355: 'That's in the repair'. No commit seen yet.",
+   "kind": "fix",
+   "size": "M"
+  },
+  {
+   "title": "Every release must pass the full set of browser checks",
+   "what": "Once the repair is done, every release runs every native browser check mode, and any failure blocks the release instead of sitting unseen.",
+   "why": "Checks went red for days without anyone noticing. The vision says a check left red has stopped measuring.",
+   "asked_by": "fable",
+   "sources": [
+    "Browser checks #129",
+    "Browser checks #348",
+    "What's live #355",
+    "Theseus Vision #186"
+   ],
+   "status": "open",
+   "status_evidence": "Promised after the repair (#348, #355). bin/ has no gate script; it holds only aim-next, admin, codex-broker, runner and server.",
+   "kind": "process",
+   "size": "M"
+  },
+  {
+   "title": "Browser checks that pass or fail by luck",
+   "what": "Stabilise the checks that fail only in full runs: images 'lost publication reload' and 'restoration footer touch gap', freshness 'correction C command recovery', and inline 'Ctrl commands and Undo'. Also stop counting Chrome's harmless 'Invalid InterceptionId' answer as a page error.",
+   "why": "Random failures make release evidence noisy. InterceptionId failed one run in four and also hit aim-ux's screens run.",
+   "asked_by": "fable",
+   "sources": [
+    "Browser checks #129",
+    "Browser checks #163",
+    "Browser checks #218",
+    "Browser checks #278"
+   ],
+   "status": "in-flight",
+   "status_evidence": "The images branch adds 'position a card before pressing it' and per-case storage. A grep for InterceptionId in tests/ finds no handling, and nothing addresses correction C.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "Some older checks can pass without proving what they claim",
+   "what": "Replace or strengthen the original native checks whose ordering assertion passes when the expected event is missing, and whose 'healthy again' waits also accept a deferred state.",
+   "why": "Tony's priority is checks that see what he sees. These checks look green but prove less than they say (Fable's review of the scoped-update release).",
+   "asked_by": "found-in-review",
+   "sources": [
+    "docs/scoped-updates-followups.md (Evidence qualifications)"
+   ],
+   "status": "open",
+   "status_evidence": "Stated as a known limit in docs/scoped-updates-followups.md. No later change found.",
+   "kind": "checks-and-evaluation",
+   "size": "M"
+  },
+  {
+   "title": "'Your journeys': checks that walk through Tony's actual day",
+   "what": "A small set of real-browser journeys (laptop and phone, light and dark) that every release must pass: catch up after being away, read a long topic and reply, come back with Mark unread, answer what waits on you. Each step leaves a screenshot, release notes show which journeys passed, each friction Tony files becomes a step that fails before its fix, and the headline measure is how many problems Tony finds that no journey caught.",
+   "why": "Tony asked how success will be validated. Today's misses all passed their own checks but looked wrong to him.",
+   "asked_by": "fable",
+   "sources": [
+    "What's live #318",
+    "What's live #320",
+    "What's live #354"
+   ],
+   "status": "open",
+   "status_evidence": "Proposed in #320 to start after Mark unread. Tony has not said yes or no, and work went to the check repair (#355).",
+   "kind": "checks-and-evaluation",
+   "size": "L"
+  },
+  {
+   "title": "A lettered 'Release pipeline' page Tony can reply to",
+   "what": "A Notebook page at the top of every topic in the outcome. Each candidate has a permanent letter, a one-line description, who asked and a size, grouped into Now, Next and Candidates. Tony picks by replying with letters, and shipped items move to a dated Shipped list.",
+   "why": "Tony asked how the pipeline of features and fixes is managed, and whether there is a numbered or lettered Notebook he can reply to.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #356",
+    "What's live #357",
+    "What's live #141"
+   ],
+   "status": "in-flight",
+   "status_evidence": "#357: fable is building it and gathering every open request first, which is this inventory.",
+   "kind": "process",
+   "size": "S"
+  },
+  {
+   "title": "A 'Where things stand' page, and one cheap place to ask for status",
+   "what": "One outcome Notebook page showing what's live, what's next and when, who owns what, and each journey's latest result. It is updated every release and shown at the top of every topic, so Tony can ask about status in one place without waking several agents.",
+   "why": "Tony has to work out where to ask, and worries that asking makes several agents spend tokens.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #313",
+    "What's live #314",
+    "What's live #320"
+   ],
+   "status": "open",
+   "status_evidence": "Proposed in #320. The strip of standing references exists, but no such page has been reported. It may overlap with the Release pipeline page.",
+   "kind": "feature",
+   "size": "M"
+  },
+  {
+   "title": "Shared understanding of the goal and how it is measured",
+   "what": "Tony and the working agent can each state the intended result, the next useful action and the evidence that settles it. These are recorded and compared, so Tony doesn't have to read every exchange.",
+   "why": "Tony: discussion is not shared understanding of the goal and its measure, and this is 'the big banana'.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #219",
+    "What's live #224",
+    "What's live #318",
+    "Shared targets #221",
+    "Shared targets #240",
+    "Evaluation first baseline #232"
+   ],
+   "status": "in-flight",
+   "status_evidence": "The recording method is in the evaluation Notebook (rev 2, #240). No sample has been taken.",
+   "kind": "checks-and-evaluation",
+   "size": "L"
+  },
+  {
+   "title": "A reply written in the Reader records which message it answers",
+   "what": "A reply from the Reader carries a link to the message being read, and everyone sees that link.",
+   "why": "Tony asked whether agents can see what he is replying to without a quote. They can't: the app never records it, and only agents set the link.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #354",
+    "What's live #355",
+    "What's live #356"
+   ],
+   "status": "open",
+   "status_evidence": "Tony: 'let's track it'. In web/, reply_to appears only as a draft field (editor, cleanup, session), and nothing in the Reader sets it.",
+   "kind": "feature",
+   "size": "M"
+  },
+  {
+   "title": "Messages show tables and formatting",
+   "what": "Tables, lists and headings in a message render readably in the topic and the Reader, as the old AIM message view did, instead of as raw text.",
+   "why": "Tony pastes messages into AIM to read their tables.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #148",
+    "What's live #150",
+    "What's live #151",
+    "What's live #176",
+    "What's live #177",
+    "What's live #193",
+    "What's live #209",
+    "Worthy changes #149"
+   ],
+   "status": "open",
+   "status_evidence": "Message bodies render as white-space:pre-wrap plain text, and web/ has no markdown or table rendering. It is 4th on the road ahead (#193).",
+   "kind": "feature",
+   "size": "M"
+  },
+  {
+   "title": "Every deploy posts its results to the outcome, and a regression stops it",
+   "what": "Every deploy runs the outcome's checks and posts what passed, what failed and the timings to one shared evaluation record on the outcome. A result that got worse blocks the deploy, and a failing check opens a topic to fix it.",
+   "why": "Tony wants evaluation to drive the work. aim-core recommended one durable record that every release updates.",
+   "asked_by": "tony",
+   "sources": [
+    "Theseus Vision #185",
+    "Theseus Vision #186",
+    "Theseus Vision #188",
+    "What's live #321",
+    "Shared targets #221"
+   ],
+   "status": "open",
+   "status_evidence": "The evaluation Notebook exists, but nothing updates it per release and there is no deploy gate.",
+   "kind": "feature",
+   "size": "L"
+  },
+  {
+   "title": "Checks that measure speed, on every deploy",
+   "what": "A small set of timing measures (how long a topic takes to open as history grows, how long a message takes to appear on its reader's page, how long test phases take) runs every release at named data sizes, so the curve is visible.",
+   "why": "Tony: AIM failed as a platform partly because it lacked repeatable diagnostics showing speed holds as data grows. None of the current checks measure time.",
+   "asked_by": "tony",
+   "sources": [
+    "Theseus Vision #185",
+    "Theseus Vision #186",
+    "Theseus Vision #214",
+    "Friction log #192",
+    "Shared targets #221",
+    "Shared targets #243",
+    "Shared targets #245",
+    "Shared targets #254",
+    "What's live #321"
+   ],
+   "status": "open",
+   "status_evidence": "Named 'the first item after this release' (#192). tests/ has only VM-step bound checks (test_*_bounds.py), with no timing suite or reporting.",
+   "kind": "checks-and-evaluation",
+   "size": "M"
+  },
+  {
+   "title": "Outcomes carry their target and the checks that prove it",
+   "what": "Each outcome holds a few sentences saying what done looks like, plus its checks. Whether it is being built or kept comes from the check results, not from a type.",
+   "why": "Tony wants the target legible to people and agents without adding new outcome or topic types.",
+   "asked_by": "tony",
+   "sources": [
+    "Theseus Vision #185",
+    "Theseus Vision #186",
+    "Theseus Vision #187",
+    "Theseus Vision #188",
+    "Theseus Vision #211",
+    "Theseus Vision #214"
+   ],
+   "status": "open",
+   "status_evidence": "Agreed in discussion and in VISION.md; nothing built.",
+   "kind": "feature",
+   "size": "L"
+  },
+  {
+   "title": "An outcome's checks run on every change before it merges",
+   "what": "An outcome's checks run before a change merges, and again at deploy.",
+   "why": "Tony left the call to fable, who chose it: a regression caught before merging costs minutes, and one caught after deploy costs Tony.",
+   "asked_by": "tony",
+   "sources": [
+    "Theseus Vision #188",
+    "Theseus Vision #211",
+    "Theseus Vision #214"
+   ],
+   "status": "open",
+   "status_evidence": "Decided; no pre-merge runner exists.",
+   "kind": "process",
+   "size": "M"
+  },
+  {
+   "title": "Topics can say 'done when this check passes'; agents can close a passing outcome",
+   "what": "A topic can name the check that finishes it, and that check then joins the outcome's standing checks. An agent may close an outcome whose checks all pass; the checks keep running and its skills stay usable.",
+   "why": "This makes 'done' checkable rather than just declared. Tony said agents must be able to close outcomes that are truly done.",
+   "asked_by": "tony",
+   "sources": [
+    "Theseus Vision #188",
+    "Theseus Vision #211",
+    "Theseus Vision #214"
+   ],
+   "status": "open",
+   "status_evidence": "Agreed; not built.",
+   "kind": "feature",
+   "size": "M"
+  },
+  {
+   "title": "Skills and tools have a home outcome",
+   "what": "Each skill or tool an agent builds has a home outcome where it is improved and evaluated, and any outcome can use it. Changing a skill reruns the checks of every outcome that uses it.",
+   "why": "Tony asked where skills and tools fit and how to keep improvements from going backwards.",
+   "asked_by": "tony",
+   "sources": [
+    "Theseus Vision #185",
+    "Theseus Vision #186",
+    "Theseus Vision #187",
+    "Theseus Vision #188",
+    "Theseus Vision #211",
+    "Theseus Vision #214"
+   ],
+   "status": "open",
+   "status_evidence": "Design agreed in discussion; nothing built.",
+   "kind": "feature",
+   "size": "L"
+  },
+  {
+   "title": "Add Tony's later answers to the vision doc",
+   "what": "Add the points settled after the 'evaluation is the engine' section to VISION.md: endless outcomes grow in increments, the target, rings, arrows and bow picture of outcomes versus topics, skills as procedures rather than identities, agents may close passing outcomes, and checks run before merge.",
+   "why": "Fable promised to fold in Tony's answers (#211).",
+   "asked_by": "tony",
+   "sources": [
+    "Theseus Vision #188",
+    "Theseus Vision #191",
+    "Theseus Vision #211",
+    "Theseus Vision #214"
+   ],
+   "status": "open",
+   "status_evidence": "VISION.md was last changed by cd599c9 (10:22 AM) and has no text on arrows, closing outcomes or merging.",
+   "kind": "process",
+   "size": "S"
+  },
+  {
+   "title": "Decisions are followed because a check or the screen enforces them",
+   "what": "Every decision that matters either has a check that fails when it is broken, or sits where the working agent can't miss it. When a topic finishes, decisions that matter beyond it move up into the outcome's standing references.",
+   "why": "Tony asked how decisions get documented and followed without 'bureaucratic kayfabe'.",
+   "asked_by": "tony",
+   "sources": [
+    "Shared targets #259",
+    "Shared targets #261",
+    "Shared targets #266"
+   ],
+   "status": "in-flight",
+   "status_evidence": "Standing references are shown at the top of each topic, but no decision is linked to a check yet, and the move-up step is only proposed.",
+   "kind": "process",
+   "size": "M"
+  },
+  {
+   "title": "Test on real phones and native controls",
+   "what": "Collect real evidence for the things not proven yet: native dropdown selection, long-press selection on a phone, phone keyboard resizing and selection handles, OS notification display, the reading colours in Safari and on a phone, and the tailnet phone page itself.",
+   "why": "aim-ux flagged these as unproven (not broken), and every handoff repeats 'physical phone/Safari unverified'. The tailnet doc leaves phone rendering to Tony.",
+   "asked_by": "aim-ux",
+   "sources": [
+    "Friction log #215",
+    "Friction log #288",
+    "Friction log #310",
+    "What's live #209",
+    "What's live #217",
+    "Shared targets #242",
+    "docs/tailnet-access.md"
+   ],
+   "status": "open",
+   "status_evidence": "#310 still says physical phone/Safari is unverified. The gap is kept as missing evidence in the evaluation record (#242).",
+   "kind": "checks-and-evaluation",
+   "size": "M"
+  },
+  {
+   "title": "A test instance Tony can see, for quick punch-list rounds",
+   "what": "A separate instance Tony can open, where he works through the punch list with the coding agent before changes are fully vetted, and where the baseline walkthrough is run with him.",
+   "why": "Tony wants small UI fixes batched into a quick loop with him in it. The evaluation plan's step 3 is a walkthrough Tony follows.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #219",
+    "What's live #223",
+    "What's live #224",
+    "Shared targets #221",
+    "Shared targets #226",
+    "Shared targets #242"
+   ],
+   "status": "open",
+   "status_evidence": "Not set up. The walkthrough steps are written (#242) but have not been run with Tony.",
+   "kind": "process",
+   "size": "M"
+  },
+  {
+   "title": "The Reader's heading shows the topic name, not 'Message'",
+   "what": "The Reader's large 'Message' heading becomes the source topic's name, the smaller 'Message' on the author and time line goes, and the back button drops the word 'Topic' but keeps its arrow.",
+   "why": "Tony asked for this, with a screenshot.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #251",
+    "What's live #244",
+    "What's live #253"
+   ],
+   "status": "open",
+   "status_evidence": "web/index.html:81-82 still shows '\u2190 Topic' and <h2 id=reader-title>Message</h2>. The server sends title \"\" for a message (conversation.py:292), so reader.mjs:140 falls back to 'Message'.",
+   "kind": "polish",
+   "size": "S"
+  },
+  {
+   "title": "Topic names in messages can be clicked",
+   "what": "A topic named or linked in a message (for example t-\u2026) becomes a link that shows the topic's name and opens it, by pointer, keyboard or touch.",
+   "why": "Tony couldn't click the topic link aim-ux gave him.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #251",
+    "What's live #244",
+    "What's live #253"
+   ],
+   "status": "open",
+   "status_evidence": "Message bodies are plain pre-wrap text, and web/*.mjs has no link-making code.",
+   "kind": "feature",
+   "size": "S"
+  },
+  {
+   "title": "Link to another topic while writing",
+   "what": "An easy way to point at another topic from inside the message you are writing.",
+   "why": "Tony found no simple way to do it.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #215",
+    "Theseus Vision #211",
+    "Theseus Vision #214"
+   ],
+   "status": "open",
+   "status_evidence": "No topic-link authoring in web/. This depends on, or pairs with, clickable topic names.",
+   "kind": "feature",
+   "size": "S"
+  },
+  {
+   "title": "Thumbs-up on a message",
+   "what": "Tony can thumbs-up a specific message instead of typing 'ack'. It stays tied to that message and does not complete the topic.",
+   "why": "Tony asked for it.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #251",
+    "What's live #246",
+    "What's live #253"
+   ],
+   "status": "open",
+   "status_evidence": "No reaction code in web/ or aim_next/.",
+   "kind": "feature",
+   "size": "M"
+  },
+  {
+   "title": "Clicking outside a pop-up closes it",
+   "what": "Clicking the backdrop closes the composer and, by default, every pop-up. It keeps unsent writing, quotes and attachments, returns focus, and never sends. A drag that ends outside does not count as a click.",
+   "why": "Tony wants this as the default for every pop-up.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #251",
+    "What's live #248",
+    "What's live #253"
+   ],
+   "status": "open",
+   "status_evidence": "No backdrop-click handler in web/*.mjs.",
+   "kind": "polish",
+   "size": "S"
+  },
+  {
+   "title": "After quoting, the cursor sits after the quote",
+   "what": "After Return inserts a quote, the visible cursor lands after the quote and its newline, ready to type. Reproduce Tony's exact steps first.",
+   "why": "Tony's cursor does not land after the inserted quote. aim-ux proved focus and insertion, but not where the cursor appears.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #222",
+    "What's live #219",
+    "What's live #223",
+    "What's live #224"
+   ],
+   "status": "open",
+   "status_evidence": "On the punch list; no fix reported.",
+   "kind": "fix",
+   "size": "S"
+  },
+  {
+   "title": "Explain passage selection plainly",
+   "what": "The Reader hint says plainly that Shift-click extends the lit passage and Return inserts it as a quote.",
+   "why": "Tony found the wording unclear. It was explained to him in chat, but the app's hint was not changed.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #222",
+    "What's live #219",
+    "What's live #223",
+    "What's live #224"
+   ],
+   "status": "open",
+   "status_evidence": "web/index.html:96 still reads 'Select a passage, then Return', with no mention of Shift-click.",
+   "kind": "polish",
+   "size": "S"
+  },
+  {
+   "title": "A colour for each author",
+   "what": "Each author, Tony included, gets a consistent colour that fits the palette, so authors can be told apart at a glance. Names stay too.",
+   "why": "Tony wants authors to be recognizable at once.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #222",
+    "What's live #219",
+    "What's live #223"
+   ],
+   "status": "open",
+   "status_evidence": "Only own messages changed colour (docs/reading-colors.md: other authors keep their current look).",
+   "kind": "polish",
+   "size": "M"
+  },
+  {
+   "title": "A strong line where new messages begin",
+   "what": "A clear divider (Tony suggested red) above the first new message in a topic. Its look is still to be designed.",
+   "why": "Tony wants to see at once where new messages start.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #222",
+    "What's live #219",
+    "What's live #223"
+   ],
+   "status": "open",
+   "status_evidence": "No new-message boundary in web/.",
+   "kind": "feature",
+   "size": "S"
+  },
+  {
+   "title": "Decide: background for read messages, and dimming agent-to-agent talk",
+   "what": "Two open design choices: whether a message's background changes once read, and whether messages between agents appear dimmed so Tony doesn't feel he has to read them all.",
+   "why": "Tony raised both as questions, not approvals.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #222",
+    "What's live #219",
+    "What's live #223",
+    "What's live #224"
+   ],
+   "status": "open",
+   "status_evidence": "Recorded as open design questions.",
+   "kind": "polish",
+   "size": "M"
+  },
+  {
+   "title": "Make progress readable for Tony while agent work stays reachable",
+   "what": "A way for Tony to follow how the work is going, perhaps release stacks with a top-level lead conversation over agent-to-agent layers, without hiding the agent work. Leads are coders, so orchestration needs its own answer.",
+   "why": "Tony raised it as a core concern.",
+   "asked_by": "tony",
+   "sources": [
+    "Friction log #222",
+    "What's live #219",
+    "What's live #223",
+    "What's live #224"
+   ],
+   "status": "open",
+   "status_evidence": "Captured only; no design chosen.",
+   "kind": "feature",
+   "size": "L"
+  },
+  {
+   "title": "Agents manage which outcomes and topics exist",
+   "what": "Agents, not Tony, decide and maintain the outcomes and topics and where each piece of work belongs, consistent with where skills, tools and Notebooks live.",
+   "why": "Tony said agent-managed structure 'feels right', and he couldn't tell where to continue the eval discussion.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #219",
+    "Evaluation first baseline #220"
+   ],
+   "status": "open",
+   "status_evidence": "No design or work started.",
+   "kind": "process",
+   "size": "L"
+  },
+  {
+   "title": "Show when an agent stops picking up its wakes",
+   "what": "An agent's name shows how many deliveries wait unacknowledged and since when (for example 'not answering since 8:23 PM'). Repeated wakes stop, and a wake goes again when the agent shows a sign of life, so waiting work is not stranded.",
+   "why": "aim-spec's Codex chat ran nothing overnight while about 60 messages waited and Theseus woke it once a minute, and nothing said so.",
+   "asked_by": "fable",
+   "sources": [
+    "Friction log #172",
+    "Friction log #179",
+    "Friction log #180",
+    "What's live #167",
+    "What's live #168",
+    "What's live #170",
+    "What's live #176",
+    "What's live #183",
+    "What's live #193"
+   ],
+   "status": "open",
+   "status_evidence": "Second on the road ahead (#176, #193). There is no stall display in web/ or aim_next/.",
+   "kind": "reliability",
+   "size": "M"
+  },
+  {
+   "title": "Notice when the agent runner stops",
+   "what": "When the effects runner exits, someone is told at once, and it comes back up without a manual restart where that is safe.",
+   "why": "Per the first-use doc, after the runner exits no agent is woken until someone restarts it on purpose, and there is no immediate alert. Messages to agents would quietly wait.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "docs/first-use.md (runner exit)"
+   ],
+   "status": "unclear",
+   "status_evidence": "First-use doc: 'No automatic restart follows\u2026 new agent wakes wait for a deliberate restart.' No topic discusses it. Not confirmed whether today's operation watches for it.",
+   "kind": "reliability",
+   "size": "M"
+  },
+  {
+   "title": "Prove a delivered message actually gets handled",
+   "what": "Checks that waiting work survives a crash after a partial read, that exact retries never repeat an act, and that new work reaches the intended agent. This is aim-core's point to carry into the plan.",
+   "why": "aim-core's proposed core priority after Mark unread. Fable said he would carry it into the plan.",
+   "asked_by": "aim-core",
+   "sources": [
+    "What's live #321",
+    "Friction log #323"
+   ],
+   "status": "open",
+   "status_evidence": "Proposal only. No later message confirms it entered the plan.",
+   "kind": "checks-and-evaluation",
+   "size": "M"
+  },
+  {
+   "title": "Checks any change to wakes must pass first",
+   "what": "Red tests before any wake change: a delivery handled mid-turn makes no empty follow-up, a new delivery after the last read still wakes the agent, and duplicate hints, one-page reads, crash after read, a stale in-progress turn, an already-queued notice and lost rearming are covered. This includes the integration cases the wake plan lists (lost acceptance reply, 500 pending, sleep).",
+   "why": "aim-ux and aim-core set this contract to protect waiting work. The wake plan says the adapter checks alone do not complete these claims.",
+   "asked_by": "aim-core",
+   "sources": [
+    "Shared targets #257",
+    "Shared targets #263",
+    "docs/wake-adapter-plan.md (step 6)"
+   ],
+   "status": "open",
+   "status_evidence": "#263: 'No code or tests changed'. The wake plan still lists the integration cases as required.",
+   "kind": "checks-and-evaluation",
+   "size": "M"
+  },
+  {
+   "title": "Count wakes, model turns and empty turns separately",
+   "what": "The baseline counts wake attempts, accepted notices, real model turns and turns that start with nothing waiting, so wasted turns are measured.",
+   "why": "Agents found turns that started empty and still did model work. Option C keeps scheduling unchanged and counts them instead.",
+   "asked_by": "aim-spec",
+   "sources": [
+    "Shared targets #245",
+    "Shared targets #250",
+    "Shared targets #254",
+    "Shared targets #255",
+    "Shared targets #256",
+    "Shared targets #262",
+    "Shared targets #265"
+   ],
+   "status": "open",
+   "status_evidence": "#262: fable will measure empty follow-up turns; no result has been posted.",
+   "kind": "checks-and-evaluation",
+   "size": "S"
+  },
+  {
+   "title": "Later: cut empty turns safely with explicit work ownership",
+   "what": "Reduce empty turns through explicit, bounded ownership of processing (or trustworthy live turn ownership with crash recovery), never as a side effect of reading.",
+   "why": "Empty turns still cost model work. aim-core named the safe path after options A and B were rejected.",
+   "asked_by": "aim-core",
+   "sources": [
+    "Shared targets #263"
+   ],
+   "status": "open",
+   "status_evidence": "Named as a later option; nothing started.",
+   "kind": "reliability",
+   "size": "L"
+  },
+  {
+   "title": "Hosted agents run with full permissions",
+   "what": "An agent that Theseus hosts can use any folder, the network and any command, like the bridge agents. A sandbox is available only if chosen.",
+   "why": "Tony: 'I have no use for an agent that only talks.' Hosting as built fences agents in.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #144",
+    "What's live #152",
+    "What's live #153",
+    "What's live #176",
+    "What's live #193",
+    "Worthy changes #154"
+   ],
+   "status": "open",
+   "status_evidence": "aim_next/codex_host.py:409-434 still sends sandbox workspace-write with network_access False, and refuses any other echo.",
+   "kind": "feature",
+   "size": "M"
+  },
+  {
+   "title": "Move the Codex agents into Theseus hosting",
+   "what": "aim-core, aim-ux and aim-spec move one at a time from the Codex desktop bridge to Theseus-hosted sessions, so they don't depend on an open chat and Theseus knows whether each one is working.",
+   "why": "Today Theseus can only nudge a Codex chat, and cannot tell whether the agent is working, stuck or gone.",
+   "asked_by": "fable",
+   "sources": [
+    "What's live #96",
+    "What's live #130",
+    "What's live #141",
+    "What's live #144",
+    "What's live #153",
+    "What's live #176",
+    "Worthy changes #140",
+    "Worthy changes #145",
+    "Worthy changes #154",
+    "Agent loop and Codex hosting #98",
+    "Agent loop and Codex hosting #181"
+   ],
+   "status": "open",
+   "status_evidence": "Tony's Codex sign-in is done (#142). Hosting code is live but switched off (#130), waiting on full-permission hosting. aim-spec still uses the bridge (#181).",
+   "kind": "feature",
+   "size": "L"
+  },
+  {
+   "title": "Prove hosting against real Codex, end to end",
+   "what": "Run the planned probes against the real Codex app server to settle the cautious constants and the sandbox echo rule. Then show a real hosted agent doing real work, handling a follow-up and recovering after a restart, with evidence.",
+   "why": "Reviews so far cover only fake child processes and a stdio handshake.",
+   "asked_by": "aim-core",
+   "sources": [
+    "Agent loop and Codex hosting #119",
+    "Agent loop and Codex hosting #128",
+    "What's live #178",
+    "What's live #183"
+   ],
+   "status": "open",
+   "status_evidence": "docs/codex-hosting.md 'Choices that wait on a probe' still lists every constant as set cautiously. No real run has been reported.",
+   "kind": "checks-and-evaluation",
+   "size": "M"
+  },
+  {
+   "title": "A stopped Codex child is killed on its own deadline",
+   "what": "A hosted child sent TERM gets a fixed deadline of its own, so it is killed even if no new work arrives.",
+   "why": "Recovery depends on new claims arriving. Without one, a child can linger.",
+   "asked_by": "aim-core",
+   "sources": [
+    "Agent loop and Codex hosting #122",
+    "Agent loop and Codex hosting #125",
+    "Agent loop and Codex hosting #128"
+   ],
+   "status": "open",
+   "status_evidence": "Acknowledged as a remaining limit (#125, #128); no fix.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "Remove the 250 ms limit when the wake adapter reads the process list",
+   "what": "The wake adapter waits for the process-list read to finish instead of failing it after 250 ms.",
+   "why": "Under load the read takes longer and fails (process_observation_failed). It turned a broker test red in a full run, and it is the kind of timeout the rules say to remove.",
+   "asked_by": "fable",
+   "sources": [
+    "Friction log #172",
+    "docs/wake-adapter-plan.md (Invocation implementation scope)"
+   ],
+   "status": "open",
+   "status_evidence": "aim_next/wake_adapter.py still has end = min(deadline, _ticks() + 250000000).",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "A newly registered agent appears in the pickers without a reload",
+   "what": "Registering an agent sends a directory change over the live connection, and the directory is read in bounded pages, so pickers stay current.",
+   "why": "aim-core found that register_actor sends no directory change, and the page loads the directory only once.",
+   "asked_by": "aim-core",
+   "sources": [
+    "What's live #155",
+    "What's live #156"
+   ],
+   "status": "open",
+   "status_evidence": "store.py register_actor only advances commit_seq. web/app.mjs loads the directory once (directoryRead ??=), up to 10 pages of 100.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "Pickers show who can be reached now",
+   "what": "An agent's record says what it is for and whether it can be reached right now. Pickers show offline agents as offline instead of hiding them.",
+   "why": "Tony asked how agent facts are stored. aim-ux and aim-core asked to keep 'registered', 'in topic' and 'reachable' distinct.",
+   "asked_by": "aim-ux",
+   "sources": [
+    "What's live #152",
+    "What's live #153",
+    "What's live #155",
+    "What's live #156"
+   ],
+   "status": "open",
+   "status_evidence": "No reachability field in web/people.mjs. This is tied to the stall display and hosting work.",
+   "kind": "feature",
+   "size": "M"
+  },
+  {
+   "title": "Show what each participant is responsible for",
+   "what": "Each topic participant's responsibility note appears on the topic, next to its state.",
+   "why": "The note is stored but never shown. It was part of Tony's topic-state request.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #144",
+    "Worthy changes #145"
+   ],
+   "status": "open",
+   "status_evidence": "topic_participants.responsibility exists in aim_next/conversation.py. Nothing in web/ references it.",
+   "kind": "feature",
+   "size": "S"
+  },
+  {
+   "title": "Starting a topic shows topics already started from the same message",
+   "what": "A new topic can name the message it answers, and starting one lists topics already started from that message, so a second person sees the first before sending.",
+   "why": "aim-ux and aim-spec opened two topics 18 seconds apart for the same discussion, then both archived and pointed at each other, giving Tony two answers to 'where do I continue'.",
+   "asked_by": "warp",
+   "sources": [
+    "Friction log #225",
+    "Friction log #233",
+    "Friction log #237",
+    "What's live #228",
+    "Shared targets #229",
+    "Shared targets #235",
+    "Shared targets #236",
+    "Shared targets #238",
+    "Evaluation first baseline #227",
+    "Evaluation first baseline #230",
+    "Evaluation first baseline #232"
+   ],
+   "status": "open",
+   "status_evidence": "Fable added it to his list (#233). No 'answers' field on topic start in aim_next.",
+   "kind": "feature",
+   "size": "M"
+  },
+  {
+   "title": "After a server restart, an open page can't reconnect with Refresh",
+   "what": "An open page whose server has restarted recovers its session from its own Refresh, keeping unsent writing, instead of needing a browser Reload.",
+   "why": "Known limit from the scoped-update review: the in-page Refresh can't get the new session, and every deploy restarts the server.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "docs/scoped-updates-followups.md (Recovery and access)",
+    "docs/tailnet-access.md"
+   ],
+   "status": "unclear",
+   "status_evidence": "Listed as a follow-up. The tailnet doc still says 'reload the Mac page once' after a restart. No message confirms a fix.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "Pressing More near the top edge makes the page jump",
+   "what": "When the More button sits within about 12 px of the top, the older messages appear where it was instead of the page jumping thousands of pixels.",
+   "why": "Chrome's scroll anchoring moves the page before the app's own correction runs (aim-ux reproduced -2863 px at 3.6 px; correct at 40 px).",
+   "asked_by": "aim-ux",
+   "sources": [
+    "Friction log #192",
+    "What's live #204",
+    "What's live #209"
+   ],
+   "status": "open",
+   "status_evidence": "web/aim.css sets overflow-anchor:none only on the Reader article, not on More buttons. No fix commit.",
+   "kind": "fix",
+   "size": "S"
+  },
+  {
+   "title": "A new reply can land out of view while you read at the top",
+   "what": "When you are at the top of a topic, a reply that arrives is brought into view or clearly announced, instead of landing where you can't see it.",
+   "why": "Known limit from the scoped-update review.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "docs/scoped-updates-followups.md (Work and presentation bounds)"
+   ],
+   "status": "unclear",
+   "status_evidence": "Listed as a follow-up; later 'page stays put' work may or may not cover it.",
+   "kind": "fix",
+   "size": "S"
+  },
+  {
+   "title": "Drawing a long topic slows as more history loads",
+   "what": "Painting stops searching the whole loaded list on each update, so its cost doesn't grow quadratically with loaded history.",
+   "why": "Known limit from the scoped-update review. The 1,000 and 10,000-record measurements cover unrelated history, not a large loaded view. It matters for speed checks.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "docs/scoped-updates-followups.md (Work and presentation bounds)"
+   ],
+   "status": "unclear",
+   "status_evidence": "Listed as a follow-up; no message about a fix.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "Access recovery leaves stale labels and a disabled Retry",
+   "what": "After access returns, the 'Topic updates remain paused' label and hidden More clear, Retry access stays usable, and focus is not pulled from writing. A refused source hides its Notebook title too.",
+   "why": "Known limits from the scoped-update review.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "docs/scoped-updates-followups.md (Recovery and access)"
+   ],
+   "status": "unclear",
+   "status_evidence": "Listed as follow-ups; none confirmed fixed.",
+   "kind": "fix",
+   "size": "S"
+  },
+  {
+   "title": "One save that keeps failing can hold up others",
+   "what": "A save that keeps failing no longer blocks other unsaved items, and old saved receipts can't point at a topic version that can no longer be reached.",
+   "why": "Known limit from the scoped-update review.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "docs/scoped-updates-followups.md (Work and presentation bounds)"
+   ],
+   "status": "unclear",
+   "status_evidence": "Listed as a follow-up; none confirmed fixed.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "A checkbox should not hold the page still like a typing field",
+   "what": "Only real typing fields hold the page in place on repaint; checkboxes and similar controls don't.",
+   "why": "The 'typing field' rule matches every input.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "Friction log #192"
+   ],
+   "status": "open",
+   "status_evidence": "web/app.mjs:481 still uses at.matches('input, textarea, select').",
+   "kind": "fix",
+   "size": "S"
+  },
+  {
+   "title": "Shared reads: the page that waited longest takes over",
+   "what": "When a shared read's first page gives up before the read begins, the longest-waiting page takes over, so no second read is opened and refused with 'Updates delayed'.",
+   "why": "Found in the final release review.",
+   "asked_by": "found-in-review",
+   "sources": [
+    "Friction log #184"
+   ],
+   "status": "open",
+   "status_evidence": "Deferred (#184). The join rule in the server.py docstring is unchanged.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "Reader buttons show a hover again",
+   "what": "Quote selection and the \u2190/\u2192 buttons hover to a colour different from the pane, so hovering them shows something.",
+   "why": "They hover to the pane's own colour (review nit).",
+   "asked_by": "found-in-review",
+   "sources": [
+    "Friction log #292",
+    "Friction log #293",
+    "Friction log #310"
+   ],
+   "status": "open",
+   "status_evidence": "Left as an optional nit (#293, #310).",
+   "kind": "polish",
+   "size": "S"
+  },
+  {
+   "title": "Your own message's hover edge shows in light mode",
+   "what": "Hovering your own message in light mode shows a visible edge.",
+   "why": "The hover border is light grey against the light page (1.18:1), so it all but disappears (review nit).",
+   "asked_by": "found-in-review",
+   "sources": [
+    "Friction log #292",
+    "Friction log #293"
+   ],
+   "status": "open",
+   "status_evidence": "web/aim.css:95 hover border uses --ink, which .own-message redefines as #e0e8e5. That is unchanged since d0bd2af, the reviewed commit.",
+   "kind": "polish",
+   "size": "S"
+  },
+  {
+   "title": "Check that your own messages keep their style when they arrive live or load via More",
+   "what": "Add a check that your own message gets the own-message style when it arrives live or is loaded by More.",
+   "why": "The app is right today, but nothing pins it (review nit).",
+   "asked_by": "found-in-review",
+   "sources": [
+    "Friction log #292",
+    "Friction log #310"
+   ],
+   "status": "open",
+   "status_evidence": "tests/reader_colors_native.mjs covers only another author's live arrival.",
+   "kind": "checks-and-evaluation",
+   "size": "S"
+  },
+  {
+   "title": "Recipient chips: an old Reader refusal shows in the composer",
+   "what": "A person removed and re-added in the inline composer no longer shows the Reader's last refusal.",
+   "why": "The Reader's chips keep shared state after it closes (found in review).",
+   "asked_by": "found-in-review",
+   "sources": [
+    "Friction log #192"
+   ],
+   "status": "unclear",
+   "status_evidence": "Commits 766b204 and 7393117 touched chip ownership, but nothing confirms this case.",
+   "kind": "fix",
+   "size": "S"
+  },
+  {
+   "title": "Readable time in the composer",
+   "what": "The writing box also shows a readable time, as Tony asked alongside message times.",
+   "why": "Tony asked for the time 'here in the composer and on the message'; only messages got it.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #136"
+   ],
+   "status": "open",
+   "status_evidence": "readableTime is used only for message cards, the Reader and topic state. No composer use.",
+   "kind": "polish",
+   "size": "S"
+  },
+  {
+   "title": "Delete a topic",
+   "what": "A way to delete a topic outright, beyond archiving it.",
+   "why": "Part of Tony's create/update/delete question. Delete exists for no one.",
+   "asked_by": "tony",
+   "sources": [
+    "What's live #152",
+    "What's live #153",
+    "What's live #156"
+   ],
+   "status": "unclear",
+   "status_evidence": "Only rename and archive were built. No decision on delete, and no delete verb in aim_next.",
+   "kind": "feature",
+   "size": "S"
+  },
+  {
+   "title": "An experience-guidelines document in the repo",
+   "what": "A full experience-guidelines document under docs/ that the Notebook item links to, tying Tony's requirements to checks.",
+   "why": "aim-ux found none exists.",
+   "asked_by": "aim-ux",
+   "sources": [
+    "Shared targets #266",
+    "Shared targets #268"
+   ],
+   "status": "open",
+   "status_evidence": "No such file in /Users/commonfabric/aim-next/docs.",
+   "kind": "process",
+   "size": "S"
+  },
+  {
+   "title": "Mutation evidence keeps hashes and the mutant checkout",
+   "what": "Mutation-test results record source hashes, and the mutant checkout is kept until review, so a reviewer can verify each kill against the exact revision.",
+   "why": "aim-core could audit only the artifacts of fable's 27-mutant results.",
+   "asked_by": "aim-core",
+   "sources": [
+    "Friction log #316",
+    "Friction log #317",
+    "Friction log #322",
+    "Friction log #325"
+   ],
+   "status": "open",
+   "status_evidence": "#325 states the limit; no change reported.",
+   "kind": "process",
+   "size": "S"
+  },
+  {
+   "title": "Baseline records its cutoff and observation time correctly",
+   "what": "Rename cutoff_ms to latest_message_sent_ms, record the observation time and snapshot identity separately, and tie the baseline-1 numbers to their query.",
+   "why": "aim-core found cutoff_ms is the newest message time, not the snapshot time.",
+   "asked_by": "aim-core",
+   "sources": [
+    "Shared targets #252"
+   ],
+   "status": "unclear",
+   "status_evidence": "No reply. The baseline script is not in the aim-next repo.",
+   "kind": "checks-and-evaluation",
+   "size": "S"
+  },
+  {
+   "title": "A notification never uses up the inbox",
+   "what": "Showing a live or system notification acknowledges nothing; the inbox stays intact through disconnects and restarts.",
+   "why": "aim-core's review constraint for the notification work.",
+   "asked_by": "aim-core",
+   "sources": [
+    "What's live #146"
+   ],
+   "status": "unclear",
+   "status_evidence": "aim-core's integrity review (#213) found no defect but did not state this property explicitly.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "Lock probe misreads a page in the back/forward cache",
+   "what": "The writer-lock probe treats a writer whose page sits in the back/forward cache as held.",
+   "why": "It is latent: pages are sent no-store and reload on a restored pageshow.",
+   "asked_by": "fable",
+   "sources": [
+    "Recovery copies #127"
+   ],
+   "status": "open",
+   "status_evidence": "Still latent; no fix filed.",
+   "kind": "reliability",
+   "size": "S"
+  },
+  {
+   "title": "Move daily coordination from AIM to Theseus",
+   "what": "Everyone, Tony included, coordinates day to day in Theseus instead of AIM.",
+   "why": "Building Theseus with Theseus.",
+   "asked_by": "fable",
+   "sources": [
+    "What's live #96",
+    "What's live #148"
+   ],
+   "status": "in-flight",
+   "status_evidence": "Agents work in Theseus topics. Tony still pastes into AIM to read tables (#148).",
+   "kind": "process",
+   "size": "M"
+  }
+ ],
+ "notes": "I merged the three sweeps into one list of 66 items still open, in flight or unclear, ordered by value to Tony. I also checked their claims against the live code at 85fefab, read the docs, and read every message after #340 in the eight topics I can open.\n\n**New since the sweeps**\n- What's live #357 (fable to Tony): fable is building a 'Release pipeline' Notebook page with permanent letters and Now / Next / Candidates sections. This inventory feeds it. Added as in flight.\n- Branch state:\n  - fable/baseline-images (7189d30) holds 3 check fixes and 1 app fix (a late Remove keeps focus).\n  - fable/baseline-freshness (5470c99) holds 4 check fixes.\n  - fable/baseline-correction has no commits past eab5992.\n  - origin/codex/aim-next is at eab5992; it includes the Notebook-click check fix and the covered-target harness change. Both are test-only.\n\n**Code checks that settled conflicts between readers**\n- Rail wrap shift: shipped. The rail scrolls on its own (a43ea6c), live by #274.\n- Clearer version advice: shipped. store.py and migrations.py carry 'run code that reads version N' (fable/schema-newer-advice).\n- Shift-click wording: still open. It was explained to Tony in chat, but web/index.html:96 still says 'Select a passage, then Return'.\n- Own-message hover edge: open. The hover border is #e0e8e5 on a light page, unchanged since the reviewed commit d0bd2af.\n- Reader 'Message' heading: open. The server sends an empty title for a message, so the Reader falls back to 'Message'.\n- Codex sign-in: done (Tony 'done.' at #142). Reader 3 was wrong to say it was still pending. The move waits on full-permission hosting.\n\n**Merges.** All sources are kept on each merged item.\n- Stalled agent: Friction #172 with What's live #167\u2013#193.\n- More at the top edge: Friction #192 with What's live #204.\n- Real-phone evidence: Friction #215/#288/#310, What's live #209/#217, Shared targets #242, and phone rendering from the tailnet doc.\n- Timing checks: Friction #192, Vision, and Shared targets topic-open / send-to-visible.\n- Journeys: the friction-closure rule, release-note screenshots and 'problems Tony found' all fold into the journeys item.\n- Delivery-to-handling: aim-core's point in Friction #323 with What's live #321.\n- Duplicate topics: warp's 'answers' field with the duplicate-topic process item.\n- Test instance: the punch-list instance with the aim-spec walkthrough.\n- 'Cheap status ask' folded into 'Where things stand'.\n- 'Decisions followed' with 'move decisions up'.\n- 'Deploy results to the outcome' with 'one evaluation record per release'.\n- Real-Codex probes with the end-to-end hosted run.\n- Intermittent checks with Invalid InterceptionId.\n\n**Added in the completeness pass** (mostly marked unclear)\n- From docs/scoped-updates-followups.md, which no topic sweep covered:\n  - an open page can't recover with Refresh after a server restart;\n  - a new reply can land out of view at the top;\n  - painting slows quadratically as loaded history grows;\n  - stale paused label and disabled Retry after access returns;\n  - one failing save blocks others;\n  - older native checks that can pass without proving their claim.\n- From docs/first-use.md: a runner exit has no alert and no automatic restart, so agent wakes silently stop.\n- From docs/wake-adapter-plan.md: the Core/adapter integration cases, folded into the wake-change checks item.\n\n**Not read**\n- Eight topic ids the fable profile cannot open (FORBIDDEN): t-f2e910ab\u2026, t-b6f3067c\u2026, t-36b709a5\u2026, t-180f2dbc\u2026, t-fc406211\u2026, t-f03977fb\u2026, t-2b3416f4\u2026, t-1492845a\u2026. These are probably the ux-greenlight / ux-discussion rooms; requests made only there are missing here.\n- I couldn't find an id for the Theseus Vision topic in my sources, so I relied on reader 3 for it.\n\n**SHIPPED (dropped from the list)**\n- Watch restart prints deliveries already waiting (01dbc80/f4ee49d).\n- Read-through bounded to the current subscription epoch.\n- Schema-mismatch advice when the code is older than the database.\n- Plain version advice for agents (fable/schema-newer-advice).\n- Rail scrolls on its own on wide screens (a43ea6c).\n- Rail Retry stays on screen (06965f1).\n- Duplicate evaluation topics merged.\n- One owner changes topic state during a merge.\n- Reading colours: Reader background, black hover, black own messages (release-16).\n- Reading-colour check catches too-tall highlights and the wrong background.\n- Light-mode Reader hint at 4.75:1.\n- Mark unread (release-17), its Unread pill contrast, and its rendering and leave-page checks.\n- Unread badge pairing; badge stays attached to its title.\n- aim-core's concurrency cases kept as tests (5ef0530).\n- Heavy-test slot booked through the Browser checks topic.\n- Roadmap views go via fable.\n- Use /usr/bin/grep for watch filters.\n- Return quotes the lit passage; sentences don't light while typing.\n- Readable message times (e910860).\n- Codex signed in to its own home (#142).\n- Live connection replaces polling.\n- Unread counts, tab-title count and system notifications.\n- Topic state, kept separate from 'Ready for review'.\n- Rename and archive topics.\n- Agent pickers; naming someone outside the topic offers to add them; Team panel after creation.\n- Agent CLI 'new outcome' (do_new_outcome).\n- Tony no longer woken every minute.\n- Wake option C (count empty turns, don't reschedule) recorded.\n- First baseline numbers posted, and their labels fixed.\n- Evaluation Notebook record.\n- Reviewers added as participants.\n- One home for the evaluation discussion.\n- Standing references in the outcome Notebook, and shown above every topic (outcome-references.mjs).\n- Rendering check on every release, and new pills join its sweep.\n- 'You' first in waiting labels; state labels readable on hover; Mark read takes the first click; focus after the last Sent item.\n- No freeze when leaving the page mid-open; a background-read message is cleared (4a6c58f); focus without a ring (2b71167).\n- Read a lost topic's message in full (6114afb); attachment refusal names the attachment; modest image size.\n- Page stays put on arrival; header wraps on a phone.\n- Topic-state save conflicts and late replies; team list survives busy moments; reconnect backs off.\n- One shared lock lease per writer; cleanup holds another tab's lock only while it works; saved-copy recovery across tabs.\n- Codex host hardening: outbox, early turn end, expired-claim input, unresponsive and TERM kill.\n- Core review of the agent loop.\n- Server-owned topic openings.\n- Tony agrees the build list before work starts.\n- Vision 'evaluation is the engine' section (cd599c9).\n- Native harness names a covered click target (eab5992).\n- Lost Notebook-card click: proven a check fault (#347), check-only fix f45821a/58dd322 on origin codex/aim-next. The app part lives on as the silent-Reader-close item.\n\n**DECLINED**\n- Return quotes even while writing (option A).\n- Fix the 245 repeat wakes: absorbed, cheap.\n- Wake waits while an agent is mid-turn (option A wake): turn history is unreliable.\n- Skip the repeat wake after a read (option B): would strand work.\n- Give hosted agents their own work folder: replaced by full-permission hosting (#153).\n- Move the vision topic: it was already under Building Theseus.\n- Codex agents stuck waiting on OpenAI: Tony said not worth the time.\n- 'Shift-click' explained only in chat: the product hint is still listed as open."
+}
