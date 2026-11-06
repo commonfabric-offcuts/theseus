@@ -21,7 +21,8 @@ export class WakeLights {
       if (Array.isArray(answer?.quiet)) {
         this.quiet = new Map(answer.quiet.map(item => [item.actor_id, item]));
         const waiting = answer.notice?.waiting_agents;
-        this.down = answer.runner?.live === false && Number.isInteger(waiting) && waiting > 0 ? { runner: answer.runner, waiting } : null;
+        // Core sends a notice only while wakes are not going out.
+        this.down = Number.isInteger(waiting) && waiting > 0 ? { runner: answer.runner, waiting } : null;
       }
     } catch {}
     this.painted();
