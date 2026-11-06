@@ -12,6 +12,24 @@ export async function liveChecks({ check, page, until, control, observations, or
   // while the page is still starting, and that retry runs on a timer.
   const settled = p => until(() => p.evaluate('Boolean(window.observedFreshness && !observedFreshness.running && observedFreshness.timer === null && observedFreshness.live?.connected && observedFreshness.live.seq !== null)'), 'live stream connected, no pass running and no retry waiting');
   const reads = p => p.evaluate('freshEvidence.reads.length');
+  // The page reports what it has seen (topic.read_through), and each report
+  // is a commit the live stream announces and the page reads after, like any
+  // other. Caught up: no report waiting or out, the page has heard the
+  // instance's last commit and finished reading for it, and nothing was
+  // committed meanwhile.
+  const reporting = p => p.evaluate('Boolean(window.observedReadThrough && [...observedReadThrough.topics.values()].some(s => s.flight || s.wanted.length))');
+  const caughtUp = async p => {
+    for (;;) {
+      await settled(p);
+      // What the last paint showed is reported once the observers have run.
+      await p.evaluate('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+      await until(async () => !await reporting(p), 'no report of reading waiting or out');
+      const { commit_seq: last } = await control({ method: 'counts' });
+      await until(() => p.evaluate(`observedFreshness.live.seq >= ${last}`), 'the page heard the last commit');
+      await settled(p);
+      if (!await reporting(p) && (await control({ method: 'counts' })).commit_seq === last) return;
+    }
+  };
 
   await check('live an idle topic reads nothing, and a new message shows within a second', async () => {
     const p = await page('live-topic', null, true);
@@ -20,6 +38,7 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.equal(sockets.length, 1, 'one live WebSocket per page');
     assert.equal(await p.evaluate('observedFreshness.live.opened'), 1);
     assert.equal(p.calls.filter(call => call.url.endsWith('/api/live')).length, 0, 'no HTTP stream');
+    await caughtUp(p);
     const idleFrom = await reads(p), callsFrom = p.calls.length;
     await new Promise(resolve => setTimeout(resolve, 2000));
     const idleReads = (await p.evaluate('freshEvidence.reads')).slice(idleFrom);
@@ -37,6 +56,8 @@ export async function liveChecks({ check, page, until, control, observations, or
       assert.equal(work.filter(r => r.name === 'changes').length >= 1, true);
       samples.push({ shownMs, reads: work.map(r => r.name) });
     }
+    assert.equal(await p.evaluate('Boolean(window.observedReadThrough)'), true, 'the page reported reading what arrived, and the check sees those reports');
+    await caughtUp(p);
     const quietFrom = await reads(p);
     await new Promise(resolve => setTimeout(resolve, 1500));
     assert.equal(await reads(p), quietFrom, 'quiet again once the messages are shown');

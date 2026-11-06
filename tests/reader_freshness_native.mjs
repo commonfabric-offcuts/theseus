@@ -15,6 +15,10 @@ for(const method of ['request','retireOwn']){
   const original=ObservedCleanup.prototype[method];
   ObservedCleanup.prototype[method]=function(session,...args){const r={method,at:performance.now(),key:session.editor.key,format:session.snapshot().format,version:session.editor.localVersion};cleanupEvidence.push(r);const result=original.call(this,session,...args);if(method==='retireOwn')return Promise.resolve(result).then(value=>{r.end=performance.now();r.retired=value;return value},error=>{r.end=performance.now();r.error=error.message;throw error});return result};
 }
+// The page's reports of what it has read (topic.read_through): the reporter
+// in use, so a check can tell when none is waiting or out.
+const {ReadThrough:ObservedReadThrough}=await import('./read-through.mjs').catch(()=>({}));
+if(ObservedReadThrough){const observedFlush=ObservedReadThrough.prototype.flush;ObservedReadThrough.prototype.flush=function(...args){window.observedReadThrough=this;return observedFlush.apply(this,args)}}
 window.observedMediaURLs=new Set();
 const observedCreateURL=URL.createObjectURL,observedRevokeURL=URL.revokeObjectURL;
 URL.createObjectURL=function(...args){const url=observedCreateURL.apply(this,args);observedMediaURLs.add(url);return url};

@@ -413,6 +413,7 @@ def main():
                                                "marked": db.execute("SELECT count(*) FROM message_marks WHERE actor_id=? AND revision%2=1", (actor,)).fetchone()[0],
                                                "mark_operations": db.execute("SELECT count(*) FROM operations WHERE kind='message.mark'").fetchone()[0]})
                                 reports = [json.loads(row[0]) for row in db.execute("SELECT outcome FROM operations WHERE kind='topic.read_through'")]
+                                answer.update(commit_seq=int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0]))
                                 answer.update(read_through_operations=len(reports),
                                               read_through_acknowledged=sum((report.get("result") or {}).get("acknowledged", 0) for report in reports))
                                 with controls.lock:
