@@ -42,13 +42,11 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const workspaces=Array.from({length:21},(_,n)=>({id:'outcome-'+String(n).padStart(2,'0'),title:n<2?'Same outcome':'Outcome '+n,purpose:'Purpose '+n}));
     const created=await control({method:'navigation_workspaces',workspaces});
     assert.ok(created.every(r=>r.status==='committed'));
-    const p=await page('outcome-navigation',null,true), start=p.calls.length;
+    const p=await page('outcome-navigation',null,true,{url:facts.origin+'/'});
     const activate=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'center'})`);await p.point(selector);};
-    await p.send('Page.navigate',{url:facts.origin+'/'});
-    await until(()=>p.evaluate('document.body.dataset.ready==="true" || (!document.querySelector("#app-status").hidden && document.querySelector("#app-status").textContent)'), 'root startup settled');
     assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Outcomes','root provides discoverable outcomes rather than requiring a topic URL');
     await until(()=>p.evaluate('document.querySelectorAll("#workspaces a").length===20'),'first bounded outcome page');
-    assert.equal(p.calls.slice(start).some(c=>['topic','topic_messages','editor_state'].includes(c.payload?.name)),false,'root reads no fabricated topic/editor');
+    assert.equal(p.calls.some(c=>['topic','topic_messages','editor_state'].includes(c.payload?.name)),false,'root reads no fabricated topic/editor');
     const labels=await p.evaluate('[...document.querySelectorAll("#workspaces a")].slice(0,2).map(a=>a.textContent)');
     assert.notEqual(labels[0],labels[1]);assert.ok(labels.every(x=>x.includes('Same outcome')&&x.includes('outcome-')));
     await shot(p,'outcomes-root');
@@ -333,7 +331,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await until(()=>old.evaluate('document.querySelector("#inline-attachments").textContent.includes("Ready")'),'old ready image');
     const rows=()=>old.evaluate(`new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending',2);r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,tx=db.transaction('editors');tx.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result.map(row=>({id:row.id,body:row.snapshot?.draft?.body,bytes:row.blob?.size,stamp:row.stamp})));tx.oncomplete=()=>db.close();};})`);
     const before=await until(async()=>{const r=await rows();return r.some(x=>x.body==='Old tab private writing survives')&&r.some(x=>x.bytes>0)?r:null;},'old editor and image recovery rows');
-    const current=await page('new-intents-coexist',null,true);await current.send('Page.navigate',{url:facts.origin+'/?new=outcome&intent=coexist-intent'});
+    const current=await page('new-intents-coexist',null,true,{url:facts.origin+'/?new=outcome&intent=coexist-intent'});
     await until(()=>current.evaluate('Boolean(document.querySelector("#outcome-title-input"))'),'new intent database open');
     assert.equal(await old.evaluate('pendingVersionChanges'),0,'new intents never upgrade old pending DB');
     const after=await rows();for(const row of before)assert.ok(after.some(r=>r.id===row.id&&r.body===row.body&&r.bytes===row.bytes),'old rows survive');
@@ -348,9 +346,8 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   });
 
   await check('navigation outcome creation saves a form resumes and creates once by keyboard',async()=>{
-    const p=await page('create-outcome',null,true);
+    const p=await page('create-outcome',null,true,{url:facts.origin+'/'});
     const click=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await p.point(selector);};
-    await p.send('Page.navigate',{url:facts.origin+'/'});
     await until(()=>p.evaluate('document.body.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'root ready');
     assert.equal(await p.evaluate('document.querySelector("#new-outcome").disabled'),false,'New outcome must be discoverable and enabled');
     await click('#new-outcome');await until(()=>p.evaluate('Boolean(document.querySelector("#outcome-title-input"))'),'outcome form');
@@ -381,15 +378,16 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   });
 
   await check('navigation uncertain creation checks without writing then retries the exact act with mobile boundaries',async()=>{
-    const p=await page('uncertain-outcome',null,true);let drop=true;
-    await p.send('Fetch.enable',{patterns:[{urlPattern:facts.origin+'/api/command',requestStage:'Request'},{urlPattern:facts.origin+'/api/view',requestStage:'Response'}]});
-    p.intercept(async(payload,event)=>{
-      if(drop&&payload?.kind==='workspace.create'){
-        drop=false;await p.send('Fetch.fulfillRequest',{requestId:event.requestId,responseCode:503,responseHeaders:[{name:'Content-Type',value:'application/json'}],body:Buffer.from(JSON.stringify({error:{code:'UNAVAILABLE',message:'Injected loss before commit'}})).toString('base64')});return true;
-      }return false;
-    });
+    let drop=true;
+    const p=await page('uncertain-outcome',null,true,{url:facts.origin+'/?new=outcome&intent=uncertain-native',beforeNavigate:async p=>{
+      await p.send('Fetch.enable',{patterns:[{urlPattern:facts.origin+'/api/command',requestStage:'Request'},{urlPattern:facts.origin+'/api/view',requestStage:'Response'}]});
+      p.intercept(async(payload,event)=>{
+        if(drop&&payload?.kind==='workspace.create'){
+          drop=false;await p.send('Fetch.fulfillRequest',{requestId:event.requestId,responseCode:503,responseHeaders:[{name:'Content-Type',value:'application/json'}],body:Buffer.from(JSON.stringify({error:{code:'UNAVAILABLE',message:'Injected loss before commit'}})).toString('base64')});return true;
+        }return false;
+      });
+    }});
     const click=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await p.point(selector);};
-    await p.send('Page.navigate',{url:facts.origin+'/?new=outcome&intent=uncertain-native'});
     await until(()=>p.evaluate('document.body.dataset.ready==="true" && Boolean(document.querySelector("#outcome-title-input"))'),'uncertain form ready');
     await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
     await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});

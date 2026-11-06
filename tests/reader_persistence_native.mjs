@@ -95,7 +95,7 @@ try {
     const waiter = waiting.get(packet.id); waiting.delete(packet.id);
     if (!waiter) return;
     clearTimeout(waiter.timer);
-    if (packet.error) waiter.reject(Error(JSON.stringify(packet.error))); else waiter.resolve(packet.result);
+    if (packet.error) waiter.reject(Object.assign(Error(JSON.stringify(packet.error)), { cdp: packet.error })); else waiter.resolve(packet.result);
   });
   cdp = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     const id = ++serial;
@@ -114,6 +114,20 @@ try {
       return answer.result.value;
     };
     const errors = [], calls = [], held = [], events = [], network = [], responses = [], finished = new Set();
+    // A paused request the page itself gives up takes its interception with
+    // it, and releasing it is refused with "Invalid InterceptionId". That
+    // refusal is the page's own act, not a page error, but only once the page
+    // shows it gave that very request up: it reports the request cancelled, or
+    // the document that sent it has been replaced by a navigation (Chrome then
+    // reports nothing more for it), before any response reached the page. Every
+    // other failed release counts in errors and fails its case.
+    const cancelled = new Set(), delivered = new Set(), loaders = new Map(), excusedReleases = [], failedReleases = [], unsettledReleases = new Map();
+    let documentLoader = null;
+    const abandoned = id => delivered.has(id) ? null : cancelled.has(id) ? 'cancelled' : loaders.has(id) && documentLoader !== null && loaders.get(id) !== documentLoader ? 'document replaced' : null;
+    const settleRelease = (failure, reason) => {
+      if (reason) excusedReleases.push({ ...failure, reason });
+      else { failedReleases.push(failure); errors.push(failure); }
+    };
     let intercept = null, recordResponses = false;
     listeners.set(sessionId, packet => {
       if (['Page.fileChooserOpened', 'Runtime.bindingCalled'].includes(packet.method)) events.push(packet);
@@ -121,7 +135,18 @@ try {
       if (mode === '--navigation' && packet.method === 'Page.javascriptDialogOpening') { events.push(packet); send('Page.handleJavaScriptDialog', { accept: false }).catch(error => errors.push({ message: error.message })); }
       if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
       if (packet.method.startsWith('Network.')) network.push({ method: packet.method, params: packet.params, observedAt: Date.now() });
+      if (packet.method === 'Network.requestWillBeSent' && packet.params.loaderId) loaders.set(packet.params.requestId, packet.params.loaderId);
+      if (packet.method === 'Page.frameNavigated' && !packet.params.frame.parentId) {
+        documentLoader = packet.params.frame.loaderId;
+        for (const [id, failure] of unsettledReleases) if (abandoned(id)) { unsettledReleases.delete(id); settleRelease(failure, abandoned(id)); }
+      }
       if (['Network.loadingFinished', 'Network.loadingFailed'].includes(packet.method)) finished.add(packet.params.requestId);
+      if (['Network.responseReceived', 'Network.loadingFinished', 'Network.loadingFailed'].includes(packet.method)) {
+        const id = packet.params.requestId;
+        if (packet.method === 'Network.loadingFailed' && packet.params.canceled === true) cancelled.add(id); else delivered.add(id);
+        const failure = unsettledReleases.get(id);
+        if (failure) { unsettledReleases.delete(id); settleRelease(failure, abandoned(id)); }
+      }
       if (packet.method === 'Fetch.requestPaused') {
         const event = packet.params;
         const handle = async () => {
@@ -142,7 +167,12 @@ try {
           }
           if (await intercept?.(payload, event)) { held.push({ event, payload }); return; }
           await send(event.responseStatusCode===undefined?'Fetch.continueRequest':'Fetch.continueResponse', { requestId: event.requestId });
-        }; handle().catch(error => errors.push({ message: error.message,requestId:event.requestId,networkId:event.networkId,url:event.request.url,responseStatusCode:event.responseStatusCode }));
+        }; handle().catch(error => {
+          const failure = { message: error.message,requestId:event.requestId,networkId:event.networkId,url:event.request.url,responseStatusCode:event.responseStatusCode };
+          if (!event.networkId || !/Invalid InterceptionId/.test(error.cdp?.message ?? '')) { failedReleases.push(failure); errors.push(failure); }
+          else if (delivered.has(event.networkId) || abandoned(event.networkId)) settleRelease(failure, abandoned(event.networkId));
+          else unsettledReleases.set(event.networkId, failure);
+        });
       }
     });
     await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
@@ -176,6 +206,7 @@ try {
     if (connected) {
       if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
       const connectedPage = { targetId, send, evaluate, close, box, point, key, calls, held, errors, events, network, responses,
+        excusedReleases, failedReleases, unsettledReleases,
         recordResponses: () => { recordResponses = true; },
         response: async event => {
           const result = await send('Fetch.getResponseBody', { requestId: event.requestId });
@@ -266,6 +297,15 @@ try {
     try {
       timing.actionStarted = Date.now();
       await action();
+      // A refused release settles on what the page reports of its request:
+      // given up (cancelled, or its document replaced) or delivered, which
+      // makes the refusal a failure. One still unsettled here is a request the
+      // instrument left paused.
+      for (const p of connectedPages.values()) {
+        await until(() => p.unsettledReleases.size === 0, 'every refused interception release settled');
+        assert.deepEqual(p.failedReleases, [], 'every interception release the page did not give up succeeded');
+        if (p.excusedReleases.length) observations.push({ name: 'releases refused because the page gave its request up', case: name, targetId: p.targetId, releases: p.excusedReleases });
+      }
       if (liveUpdatesFixture) {
         const health = await control({ method: 'admission_events' });
         observations.push({ name: 'fixture health', case: name, fatal: health.fatal, next: health.next });
@@ -520,6 +560,44 @@ try {
     } else if (mode === '--inline') {
       await inlineChecks({check,page,until,root,facts,view,control,replace,field,shot,observations});
     } else if (mode === '--navigation') {
+      // The release rule in page(), on real requests: one the page gives up
+      // by replacing its document, and one the instrument releases twice.
+      await check('navigation harness a refused release is no page error only when the page gave its request up', async () => {
+        const p = await page('harness-release', null, true);
+        let open; const gate = new Promise(resolve => { open = resolve; });
+        p.intercept(async (payload, event) => {
+          const pathname = new URL(event.request.url).pathname;
+          if (pathname === '/api/harness-abandoned') await gate;
+          // Released here and again by the harness once the page has its
+          // response, so the second release finds the interception gone.
+          if (pathname === '/api/harness-released-twice') {
+            await p.send('Fetch.continueResponse', { requestId: event.requestId });
+            await until(() => p.network.some(e => e.method === 'Network.responseReceived' && e.params.requestId === event.networkId), 'first release delivered');
+          }
+          return false;
+        });
+        const sent = name => until(() => p.network.find(e => e.method === 'Network.requestWillBeSent' && e.params.request.url === facts.origin + '/api/' + name)?.params.requestId, 'page sent ' + name);
+        await p.evaluate("(fetch('/api/harness-abandoned').catch(()=>{}),true)");
+        const abandoned = await sent('harness-abandoned');
+        await until(() => p.calls.some(c => c.url === facts.origin + '/api/harness-abandoned'), 'response to the abandoned request paused');
+        await p.send('Page.navigate', { url: facts.origin + '/?topic=t1' });
+        await until(async () => { try { return await p.evaluate('document.body?.dataset.ready === "true"'); } catch { return false; } }, 'replacement document ready');
+        open();
+        const settled = id => [...p.excusedReleases, ...p.failedReleases].find(f => f.networkId === id);
+        await until(() => settled(abandoned), 'refused release of the abandoned request settled');
+        assert.match(settled(abandoned).message, /Invalid InterceptionId/, 'the release really was refused');
+        assert.deepEqual(p.errors, [], 'a request the page gave up is no page error');
+        await p.evaluate("(fetch('/api/harness-released-twice').catch(()=>{}),true)");
+        const twice = await sent('harness-released-twice');
+        await until(() => settled(twice), 'refused second release settled');
+        assert.match(settled(twice).message, /Invalid InterceptionId/, 'the second release really was refused');
+        assert.deepEqual(p.errors.map(f => f.networkId), [twice], 'a refused release of a request the page still wanted is a page error');
+        assert.deepEqual(p.failedReleases, p.errors);
+        assert.deepEqual(p.excusedReleases.map(f => f.networkId), [abandoned], 'only the abandoned request is excused');
+        // The runner fails every case that leaves a failed release; this one
+        // was made on purpose, so it is taken back once it has been proved.
+        observations.push({ name: 'harness release rule', excused: [...p.excusedReleases], failed: p.failedReleases.splice(0) }); p.errors.splice(0);
+      });
       await navigationChecks({ check, page, until, root, evidencePath, facts, view, control, replace, field, shot, observations });
       await departureChecks({ check, page, until, facts, view, control, shot, observations });
     } else if (mode === '--live') {
