@@ -82,8 +82,9 @@ export class Reader {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
     this.$('reply-destination').onchange = event => this.callbacks.destination(event.target.value);
+    // Writing can take the author a reply is offered to, so Ask is redrawn with it.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
-      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();}});
+      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintAsk();}});
     this.field.addEventListener('paste', event => this.paste(event));
     // Clicking a passage lights it for Return, as moving over it does while
     // Return would quote. Shift-click extends the light, from a dragged
