@@ -5,7 +5,7 @@ import uuid
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .delivery import _now_ms
-from .work import work_by_topic
+from .work import OTHER_MESSAGE, work_by_topic
 
 
 CONVERSATION_SCHEMA = [
@@ -262,7 +262,7 @@ class Conversation:
             raise untitled
         db.execute("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES (?,?,?,?,0)", (topic_id, workspace_id, title, actor))
         db.executemany("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES (?,?,1,1)", [(topic_id, member) for member in participants])
-        db.execute("INSERT INTO topic_summaries VALUES (?,0,NULL)", (topic_id,))
+        db.execute("INSERT INTO topic_summaries(topic_id,message_count,latest_message_id) VALUES (?,0,NULL)", (topic_id,))
 
     def _intent(self, db, actor, snapshot):
         """Whether writing to someone asks or tells. The rule exists to make
@@ -336,7 +336,9 @@ class Conversation:
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
-        db.execute("UPDATE topic_summaries SET message_count=message_count+1,latest_message_id=? WHERE topic_id=?", (message_id, topic_id))
+        # Who wrote the latest message before this one decides whether it is now the latest by someone else (work.py).
+        db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
+                   (actor, message_id, topic_id))
         # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
         answered = [actor] if self._answered(db, topic_id, actor) else []
         asked = self._ask(db, topic, actor, message_id, sent_ms, snapshot["addressees"]) if intent == "ask" else []
@@ -379,10 +381,10 @@ class Conversation:
     def _view_topic(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
         participants = [dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"])) for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(p.responsibility,1,256) AS responsibility,a.enabled,a.kind FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?", (topic["id"], LIMITS["topic_participants"]))]
-        summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
+        summary = dict(db.execute("SELECT topic_id,message_count,latest_message_id FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
         waits = self._waits_by_topic(db, [topic["id"]])
         waiting_on, asks = waits[topic["id"]]
-        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits)[topic["id"]])
+        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits, actor)[topic["id"]])
         return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,
                 "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 

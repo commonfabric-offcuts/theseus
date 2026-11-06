@@ -15,7 +15,7 @@ from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE
                            MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA,
                            UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED, UNANSWERED_SCHEMA)
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
-from .work import WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
+from .work import OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED, OTHERS_SCHEMA, WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
 
 
@@ -40,6 +40,9 @@ STEPS = (
     ("15", "16", UNANSWERED_SCHEMA + UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED),
     # Version 17 keeps the color each person chose for an agent.
     ("16", "17", COLOR_SCHEMA, COLOR_DOWN, COLOR_OCCUPIED),
+    # Version 18 keeps, beside each topic's latest message and turn, the latest
+    # by someone else, so nobody's own activity is work they see.
+    ("17", "18", OTHERS_SCHEMA + OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED),
 )
 
 

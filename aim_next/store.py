@@ -23,12 +23,12 @@ from .media import Media, MEDIA_SCHEMA
 from .route_pins import RoutePins
 from .changes import Changes
 from .topic_state import ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITING_ORDER_SCHEMA
-from .work import WORK_SCHEMA, work_by_topic
+from .work import OTHERS_SCHEMA, WORK_SCHEMA, work_by_topic
 from .marks import Marks, MARK_SCHEMA
 from .colors import Colors, COLOR_SCHEMA
 
 
-SCHEMA_VERSION = "17"
+SCHEMA_VERSION = "18"
 
 
 def commit_identity_intact(metadata):
@@ -102,7 +102,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + UNANSWERED_SCHEMA + COLOR_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + UNANSWERED_SCHEMA + COLOR_SCHEMA + OTHERS_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -545,7 +545,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         items = [dict(row) for row in rows[:limit]]
         counts = self._unread(db, actor, topics=[item["id"] for item in items])
         waits = self._waits_by_topic(db, [item["id"] for item in items])
-        work = work_by_topic(db, waits)
+        work = work_by_topic(db, waits, actor)
         for item in items:
             item["unread"], item["addressed"] = counts.get(item["id"], (0, 0, None))[:2]
             item["archived"] = bool(item["archived"])
