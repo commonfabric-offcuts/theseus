@@ -196,6 +196,8 @@ export class EditorRegistry {
     if (token !== this.generation || this.disposed) return null;
     reply.unavailable = sourceUnavailable || !state.destination_available;
     note.unavailable = sourceUnavailable;
+    // What the person now reads; writing not yet begun is about it.
+    if (!sourceUnavailable) { reply.read(sourceRef); note.read(sourceRef); }
     this.pages.set(reply.key, copy(state.submissions));
     const source = sourceUnavailable ? { instance_id: this.bootstrap.instance_id, source_ref: copy(sourceRef),
       topic_id: topicId ?? null, title: 'Source unavailable', body: '', attachments: [] } : sourceAnswer;

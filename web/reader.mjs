@@ -3,7 +3,7 @@ import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { markReach, replaceChips } from './people.mjs';
 import { readableTime } from './topic-state.mjs';
-import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
+import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
@@ -439,9 +439,9 @@ export class Reader {
     const state = writingState(editor, { active: this.admits(editor), writable: this.writes(editor), note: this.mode === 'note', status: this.callbacks.status });
     this.$('save-state').textContent = state.message;
     this.$('send-reply').disabled = state.sendDisabled;
-    const pinned = editor.sourceRef?.kind === 'memory' && editor.sourceRef.revision !== this.source.source_ref.revision;
-    this.$('source-update').textContent = pinned ? `This writing refers to Notebook revision ${editor.sourceRef.revision}. You are reading revision ${this.source.source_ref.revision}.` : '';
-    this.$('source-update').hidden = !pinned;
+    const change = sourceChange(editor, this.source.source_ref);
+    this.$('source-update').textContent = change;
+    this.$('source-update').hidden = !change;
     const note = this.mode === 'note';
     this.$('add-image').hidden = note || Boolean(editor.imageReservation);
     this.$('add-image').disabled = state.addDisabled;

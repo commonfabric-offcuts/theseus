@@ -1,4 +1,5 @@
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
+import { holdsWriting } from './editor.mjs';
 
 // Shared descriptions and admission decisions only. Each surface keeps its
 // nodes, focus, events and captured presentation; sessions still own the work.
@@ -19,6 +20,16 @@ export function writingState(editor, { active = true, writable = active, note = 
     addDisabled: Boolean(!active || readOnly || editor.recoveryDiscovery || editor.unavailable || editor.authorityRecovery ||
       editor.uploadState?.entries.some(e => e.selected && e.owner.id === editor.clientCycleId && e.origin === 'retained-ref' && !e.ready_descriptor)),
   };
+}
+
+// The line above a Notebook page when the person's writing is about another
+// revision of it. Writing with nothing in it is about no revision.
+export function sourceChange(editor, shown) {
+  const pinned = editor?.sourceRef;
+  if (pinned?.kind !== 'memory' || shown?.kind !== 'memory' || pinned.revision === shown.revision || !holdsWriting(editor.draft)) return '';
+  const which = `Your writing refers to revision ${pinned.revision}; you are reading revision ${shown.revision}.`;
+  return shown.revision > pinned.revision ? `This page has changed since you started writing. ${which}`
+    : `You are reading an earlier revision than your writing. ${which}`;
 }
 
 export function pasteImageError(editor, mode, readOnly) {
