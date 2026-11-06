@@ -21,6 +21,7 @@ Seams until the rest of release 21 lands, each in one place:
 """
 
 import json
+import re
 import uuid
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _prefix
@@ -1154,6 +1155,10 @@ class Pipeline:
                 "last_now_work": ({"by": last["work"]["by"], "how": last["work"]["how"], "item": last["number"],
                                    "title": last["title"], "topic_title": last["topic_title"], "ms": last["work"]["seen_ms"]} if last else None)}
 
+def _words(text):
+    return set(re.findall(r"[a-z0-9']+", text.lower().replace("\u2019", "'")))
+
+
 def _clock(ms):
     import time
     return time.strftime("%-I:%M %p %a %b %-d", time.localtime(ms / 1000.0))
@@ -1215,7 +1220,8 @@ def import_seed(store, db, seed, actor, now_ms):
         for offset, source in enumerate(item.get("sources", []), 1):
             if "seq" in source:
                 row = db.execute("SELECT m.id,t.title FROM messages m JOIN topics t ON t.id=m.topic_id WHERE m.seq=?", (source["seq"],)).fetchone()
-                if row is None or not row[1].startswith(source["topic"]):
+                # The page names a topic in short ("Evaluation first baseline"): every word it uses is in the title.
+                if row is None or not _words(source["topic"]) <= _words(row[1]):
                     raise Refusal("SEED_SOURCE", "Item %d's source %s #%d is not a message in that topic" % (number, source["topic"], source["seq"]))
                 values = (row[0], None, None)
             else:
