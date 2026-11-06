@@ -126,9 +126,10 @@ card. Hovering an agent's card deepens its tint a little.
 
 `topic_messages` items carry `author_kind` (`human` or `agent`, from the
 actor record), and only an `agent` card is tinted. `web/author-colors.mjs`
-gives the team's agents fixed colors and any other agent one picked by
-FNV-1a over its id's UTF-8 bytes, so the same agent always gets the same
-color, on every page and every device. The colors themselves are classes in
+gives the team's agents fixed colors and any other agent one of the two
+colors no team agent has (indigo, olive), picked by FNV-1a over its id's
+UTF-8 bytes: the same agent always gets the same color, on every page and
+every device, and no other agent is taken for one of the team. The colors themselves are classes in
 `web/aim.css`, one per palette name, for light and dark.
 
 The hues stay clear of the accent green, the warning amber and the red New

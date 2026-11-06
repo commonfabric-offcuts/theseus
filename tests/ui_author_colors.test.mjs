@@ -8,11 +8,13 @@ import { AGENT_PALETTE, agentColor, cardClass } from '../web/author-colors.mjs';
 test('the team\'s agents have fixed colors, and any other agent always gets the same one', () => {
   assert.deepEqual(['aim-lead', 'aim-ux', 'fable', 'aim-core', 'aim-spec', 'warp'].map(agentColor),
     ['blue', 'violet', 'orchid', 'cyan', 'rose', 'peach']);
-  // FNV-1a over the UTF-8 bytes, worked out separately.
-  assert.deepEqual(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent'].map(agentColor), ['blue', 'rose', 'olive', 'rose']);
+  // FNV-1a over the UTF-8 bytes, worked out separately, picks between the
+  // colors no team agent has, so no other agent is mistaken for one of them.
+  assert.deepEqual(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent', 'weft', 'og', 'networking', 'aim-next-agent'].map(agentColor),
+    ['indigo', 'indigo', 'olive', 'indigo', 'olive', 'olive', 'olive', 'indigo']);
   assert.equal(agentColor('codex'), agentColor('codex'));
   const used = new Set(Array.from({ length: 200 }, (_, n) => agentColor('agent-' + n)));
-  assert.deepEqual([...used].sort(), [...AGENT_PALETTE].sort(), 'other agents spread over the whole palette');
+  assert.deepEqual([...used].sort(), ['indigo', 'olive'], 'other agents spread over both colors the team does not use');
   assert.equal(agentColor('constructor'), agentColor('constructor'));
   assert.ok(AGENT_PALETTE.includes(agentColor('toString')), 'a name on Object.prototype is just another id');
   for (const bad of ['', null, undefined, 3]) assert.throws(() => agentColor(bad), /agent id/);
