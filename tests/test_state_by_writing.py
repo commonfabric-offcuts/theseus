@@ -105,6 +105,25 @@ class WriterSaysCase(fixtures.ReaderCase):
         self.refused(self.say("agent-b"))
         self.assertEqual(self.topic()["state"], "active")
 
+    def test_the_outcome_owner_who_never_wrote_says_where_an_agent_opened_topic_stands(self):
+        # agent-a opens t3 with agent-b alone: the owner is neither its creator nor a participant, and never wrote there.
+        source = {"kind": "new_topic", "id": "opening-three", "workspace_id": "w1"}
+        def as_agent(kind, args, target, expected=None, op=None):
+            return self.committed(self.command(kind, args, target=target, expected=expected, actor="agent-a", op=op))
+        as_agent("draft.save", dict(source_ref=source, topic_id="t3", body="Agent opening", generation="g3", attachments=[], quotes=[],
+                                    addressees=[], opening={"workspace_id": "w1", "title": "Agent's", "participants": ["agent-b"]}),
+                 {"draft_id": "t3-draft"}, {"draft_revision": 0})
+        as_agent("submission.prepare", {"draft_id": "t3-draft", "submission_id": "t3-open", "send_operation_id": "t3-open"},
+                 {"topic_id": "t3"}, {"draft_revision": 1})
+        as_agent("topic.create_and_send", {"submission_id": "t3-open"}, {"topic_id": "t3"}, op="t3-open")
+        topic = self.store.view("owner", "topic", {"topic_id": "t3"})
+        self.assertEqual((topic["topic"]["creator_id"], "owner" in [row["actor_id"] for row in topic["participants"]]), ("agent-a", False))
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE topic_id='t3' AND author_id='owner'"), [(0,)])
+        self.assertIs(topic["topic"]["reader_may_say"], True)
+        self.committed(self.command("topic.update", {"state": "review", "note": "The owner's word"}, target={"topic_id": "t3"},
+                                    expected={"topic_revision": topic["topic"]["version"]}))
+        self.assertEqual(self.sql("SELECT state,state_by FROM topics WHERE id='t3'"), [("review", "owner")])
+
     def test_a_writer_who_lost_the_outcome_is_refused(self):
         self.committed(self.post("agent-b"))
         self.committed(self.say("agent-b", state="review"))
