@@ -15,7 +15,8 @@ export class PageReads {
   }
   // The revision the person had read before this one, when it is older than
   // the one shown, else null: a page never read, or read as it stands. A
-  // revision shown again here keeps what it was compared with the first time.
+  // revision shown again here keeps what it was compared with the first time,
+  // while it is still the latest the person has read.
   async opened(source) {
     const ref = source?.source_ref;
     if (ref?.kind !== 'memory' || typeof ref.id !== 'string' || !Number.isSafeInteger(ref.revision) || ref.revision < 1) {
@@ -34,6 +35,6 @@ export class PageReads {
       return before;
     }
     const kept = this.since.get(ref.id);
-    return kept?.revision === ref.revision ? kept.since : null;
+    return kept?.revision === ref.revision && before === ref.revision ? kept.since : null;
   }
 }

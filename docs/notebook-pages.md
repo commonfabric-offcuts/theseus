@@ -85,7 +85,9 @@ read in place; the whole page as it now stands is below, to read and quote.
 The panel is a disclosure, open at first, and scrolls on its own so a phone
 keeps room for the page. The page remembers what each revision it showed was
 compared with, so showing that revision again, once Core has it read, shows
-the same changes; a page shown next carries none of them.
+the same changes, as long as it is still the latest revision the person has
+read; once they have read a later one, here or elsewhere, it shows none. A
+page shown next carries none of them.
 
 `web/page-changes.mjs` compares lines, then the words of the lines that
 changed, each by a shortest edit script. Past what both sides share at the

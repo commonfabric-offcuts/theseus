@@ -58,3 +58,11 @@ test('a page shown again at the same revision shows the same changes, though Cor
   assert.equal(await f.reads.opened(page(3)), null, 'an older revision shown again has nothing to compare');
   assert.equal(f.sent.length, 6, 'each showing is still sent');
 });
+
+test('a revision shown again after the person read a later one elsewhere has nothing left to compare', async () => {
+  let previous = 1;
+  const f = fixture(() => committed(previous));
+  assert.equal(await f.reads.opened(page(3)), 1);
+  previous = 4;
+  assert.equal(await f.reads.opened(page(3)), null, 'revision 4 was read since, so revision 1 is no longer where the changes begin');
+});
