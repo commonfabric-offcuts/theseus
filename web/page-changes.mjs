@@ -4,12 +4,14 @@
 // a little context on each side, so the changes read in place.
 //
 // The comparison works on lines first and then on the words of the lines
-// that changed, each a shortest edit script (Myers). A script longer than
-// LIMIT edits is not worked out: a stretch of changed lines among lines that
-// stand shows as removed and added whole, and a page whose lines differ that
-// much, or that is all one such stretch, says only that it changed in too
-// many places to mark, which is true however much of it changed. The bound
-// keeps the work proportional to the page and the size of the change.
+// that changed, each a shortest edit script (Myers). Once the common start
+// and end are set aside, a change that only adds or only removes is written
+// out directly, in linear work, however long it is. Otherwise a script longer
+// than LIMIT edits is not worked out: a stretch of changed lines among lines
+// that stand shows as removed and added whole, and a page whose lines differ
+// that much, or that is all one such stretch, says only that it changed in
+// too many places to mark, which is true however much of it changed. The
+// bound keeps the work proportional to the page and the size of the change.
 
 export const LIMIT = 2000;
 export const CONTEXT = 120;
@@ -18,7 +20,8 @@ const words = text => text.match(/\s+|[\p{L}\p{N}_'’]+|[^\s\p{L}\p{N}_'’]/gu
 const lines = text => text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
 
 // The shortest edit script from a to b as [kind, item] pairs, kind 'same',
-// 'del' or 'ins'; null when it needs more than limit edits.
+// 'del' or 'ins'. Past the common start and end, one side empty is written
+// out whatever its length; otherwise null when it needs more than limit edits.
 export function script(a, b, limit = LIMIT) {
   let start = 0, endA = a.length, endB = b.length;
   while (start < endA && start < endB && a[start] === b[start]) start++;

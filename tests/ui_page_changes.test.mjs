@@ -33,6 +33,9 @@ test('an edit script is minimal and rebuilds both sides', () => {
     assert.equal(edits.filter(e => e[0] === 'same').length, lcs(a, b), `${a.join('')} → ${b.join('')}`);
   }
   assert.equal(script([...'abcdef'], [...'uvwxyz'], 5), null, 'more edits than the limit are not worked out');
+  assert.deepEqual(script([...'abcc'], [...'a'], 2), [['same', 'a'], ['del', 'b'], ['del', 'c'], ['del', 'c']],
+    'only removing, past the limit, is linear work and is written out');
+  assert.deepEqual(script([...'a'], [...'abcc'], 2), [['same', 'a'], ['ins', 'b'], ['ins', 'c'], ['ins', 'c']], 'and so is only adding');
 });
 
 test('the changes are words in place: a changed word is struck and its replacement marked, the rest left as it was', () => {

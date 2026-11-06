@@ -88,8 +88,10 @@ compared with, so showing that revision again, once Core has it read, shows
 the same changes; a page shown next carries none of them.
 
 `web/page-changes.mjs` compares lines, then the words of the lines that
-changed, each by a shortest edit script. A script longer than 2,000 edits is
-not worked out: a stretch of changed lines among lines that stand is shown
+changed, each by a shortest edit script. Past what both sides share at the
+start and the end, a change that only adds or only removes is written out
+whatever its length, since that is linear work. Otherwise a script longer
+than 2,000 edits is not worked out: a stretch of changed lines among lines that stand is shown
 removed and added whole, and a page whose lines differ that much, or whose
 every line is one such stretch, says only "This page changed in too many
 places since then to mark them here", which holds however much of it
