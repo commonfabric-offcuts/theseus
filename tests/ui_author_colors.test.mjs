@@ -10,13 +10,15 @@ test('the team\'s agents have fixed colors, and any other agent always gets the 
   // from Fable's green and 3.2 from aim-lead's blue in light (warp, item 91).
   assert.deepEqual(['aim-lead', 'aim-ux', 'fable', 'aim-core', 'aim-spec', 'warp'].map(agentColor),
     ['blue', 'violet', 'green', 'peach', 'rose', 'cyan']);
-  // FNV-1a over the UTF-8 bytes, worked out separately, picks between the
-  // colors no team agent has, so no other agent is mistaken for one of them.
-  assert.deepEqual(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent', 'weft', 'og', 'networking', 'aim-next-agent'].map(agentColor),
-    ['indigo', 'indigo', 'olive', 'indigo', 'olive', 'olive', 'olive', 'indigo']);
-  assert.equal(agentColor('codex'), agentColor('codex'));
-  const used = new Set(Array.from({ length: 200 }, (_, n) => agentColor('agent-' + n)));
-  assert.deepEqual([...used].sort(), ['indigo', 'olive'], 'other agents spread over both colors the team does not use');
+  // Every other agent is indigo, which no team agent has, so none is taken for
+  // one of the team. Olive is no one's default: its light card is 3.2
+  // (CIEDE2000) from Fable's green (warp, item 91).
+  const used = new Set(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent', 'weft', 'og', 'networking', 'aim-next-agent',
+    ...Array.from({ length: 200 }, (_, n) => 'agent-' + n)].map(agentColor));
+  assert.deepEqual([...used], ['indigo'], 'every agent outside the team is indigo');
+  // A person who chose olive for an agent keeps it: Core accepts only palette
+  // names, and the page paints every one (aim_next/colors.py).
+  assert.ok(AGENT_PALETTE.includes('olive'), 'olive stays a color a person can choose');
   assert.equal(agentColor('constructor'), agentColor('constructor'));
   assert.ok(AGENT_PALETTE.includes(agentColor('toString')), 'a name on Object.prototype is just another id');
   for (const bad of ['', null, undefined, 3]) assert.throws(() => agentColor(bad), /agent id/);

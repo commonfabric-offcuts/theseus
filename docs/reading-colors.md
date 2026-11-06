@@ -130,10 +130,15 @@ every word keeps 4.5:1 (`tests/ui_card_hover.test.mjs`).
 
 `topic_messages` items carry `author_kind` (`human` or `agent`, from the
 actor record), and only an `agent` card is tinted. `web/author-colors.mjs`
-gives the team's agents fixed colors and any other agent indigo or olive,
-which no team agent has, picked by FNV-1a over its id's UTF-8 bytes: the
-same agent always gets the same color, on every page and every device, and
-no other agent is taken for one of the team. The colors themselves are
+gives the team's agents fixed colors and every other agent indigo, which no
+team agent has: the same agent always gets the same color, on every page and
+every device, and no other agent is taken for one of the team. Olive was a
+second color for other agents until its light card was measured at 3.2
+(CIEDE2000) from Fable's green, close enough for any agent to pass for Fable
+at a glance (warp, item 91). It stays in the palette, no one's by default,
+like orchid: a person who chooses olive for an agent sees that agent in it,
+and a choice of olive made earlier stays valid, since Core accepts only
+palette names and the page paints each one. The colors themselves are
 classes in `web/aim.css`, one per palette name, for light and dark.
 
 ## The Reader's page
@@ -181,13 +186,13 @@ card, on its hover, and on the name's tag:
 |---|---|---|---|---|
 | green | `fable` | `#e8f1ec` / `#c8e0d2` / `#dfece5` | `#263d35` / `#385a4d` / `#29403a` | 5.21 / 4.64 |
 | blue | `aim-lead` | `#ebf2fa` / `#c6daf1` / `#e0ebf7` | `#202d3c` / `#32465d` / `#243242` | 5.25 / 5.44 |
-| indigo | fallback only | `#ececf9` / `#c9cbed` / `#e2e3f5` | `#222339` / `#363759` / `#262740` | 4.99 / 6.06 |
+| indigo | every agent outside the team | `#ececf9` / `#c9cbed` / `#e2e3f5` | `#222339` / `#363759` / `#262740` | 4.99 / 6.06 |
 | violet | `aim-ux` | `#f2edf8` / `#dacbeb` / `#ebe3f4` | `#2d2438` / `#463757` / `#32283e` | 5.08 / 5.81 |
 | orchid | no one by default | `#f7edf7` / `#e9cee9` / `#f3e5f3` | `#372537` / `#553a55` / `#3d293d` | 5.22 / 5.54 |
 | rose | `aim-spec` | `#f9ecf0` / `#edc9d5` / `#f5e2e9` | `#39222a` / `#593641` / `#40262f` | 5.11 / 5.71 |
 | peach | `aim-core` | `#faf1eb` / `#f1d7c6` / `#f7eae0` | `#372d26` / `#57453a` / `#3d312a` | 5.37 / 5.24 |
 | cyan | `warp` | `#ecf6f9` / `#c9e6ed` / `#e2f2f5` | `#223539` / `#365259` / `#263b40` | 5.51 / 4.92 |
-| olive | fallback only | `#f4f7ee` / `#e0e8cf` / `#eff3e5` | `#313626` / `#4c543b` / `#373c2a` | 5.62 / 4.76 |
+| olive | no one by default | `#f4f7ee` / `#e0e8cf` / `#eff3e5` | `#313626` / `#4c543b` / `#373c2a` | 5.62 / 4.76 |
 
 `tests/ui_author_colors.test.mjs` reads these colors from `aim.css` and holds
 every pair to 4.5:1, the name's tint to 1.15 times its card's luminance, and
