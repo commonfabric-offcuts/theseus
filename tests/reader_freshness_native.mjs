@@ -72,6 +72,9 @@ export async function uploadProof(...args){
 }
 
 export async function freshnessChecks({ check, page, until, root, facts, view, control, replace, field, shot, observations, baseline = false, legacyAdmission = false }) {
+  // An image says Ready as its publication is confirmed; its Check is offered
+  // once the upload that confirmed it has finished.
+  const settledImage = p => until(() => p.evaluate('[...document.querySelectorAll("#writing-attachments button")].some(e=>e.textContent==="Check confirmation")'), 'the ready image offers Check');
   let serial = 0;
   const operation = label => `freshness-${label}-${++serial}`;
   const message = body => control({ method: 'agent_message', operation_id: operation('message'), body, topic_id: 't1', addressees: [] });
@@ -410,6 +413,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       const chooser = await until(() => a.events.find(e => e.method === 'Page.fileChooserOpened'), 'producer image chosen natively');
       await a.send('DOM.setFileInputFiles', { backendNodeId: chooser.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
       await until(() => hasText(a, '#writing-attachments', 'Ready'), 'producer image ready');
+      await settledImage(a);
       await a.evaluate('(()=>{const b=[...document.querySelectorAll("#writing-attachments button")].find(e=>e.textContent==="Check confirmation");if(!b)throw Error("Missing visible image Check");b.id="freshness-image-check"})()');
       await a.point('#freshness-image-check');
       await until(() => hasText(a, '#writing-attachments', 'Ready'), 'explicit image Check completes');
@@ -485,7 +489,8 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await until(() => hasText(p, '#writing-attachments', 'Ready'), 'Notebook reply image ready');
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
-    await until(() => p.evaluate('matchMedia("(max-width:760px)").matches && document.getAnimations().every(a=>a.playState!=="running")'), 'mobile reader layout');
+    // The Reader takes its stacked layout when it hears the width change, after the media query matches.
+    await until(() => p.evaluate('matchMedia("(max-width:760px)").matches && document.querySelector("#reader").dataset.layout==="stacked" && document.getAnimations().every(a=>a.playState!=="running")'), 'mobile reader layout');
     const writingBox = await p.box('#writing-body');
     const before = await p.evaluate('freshSnapshot()'); assert.ok(before.quotes.length);
     const revised = await revise('A newer Notebook passage, offered explicitly');
