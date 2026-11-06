@@ -40,19 +40,23 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
   });
   await check('inline Select All takes the message alone: the field it is in, or the message the Reader shows', async () => {
     const p=await page('select-all',null,true);
-    const state=selector=>p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(selector)});return {start:f.selectionStart,end:f.selectionEnd,length:f.value.length,page:String(getSelection())}})()`);
+    // Chrome reports a text field's own selection as the page's selection, so
+    // the page holding exactly the field's words means nothing else was taken.
+    const state=selector=>p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(selector)});return {start:f.selectionStart,end:f.selectionEnd,length:f.value.length,page:String(getSelection()),value:f.value}})()`);
     // The topic's writing field: ⌘A selects its own words and nothing on the page.
     await p.evaluate("document.querySelector('#inline-writing-body').scrollIntoView({block:'center'})");
     await p.point('#inline-writing-body');await p.send('Input.insertText',{text:'Inline words to select'});
     await p.key('a',4);
-    assert.deepEqual(await state('#inline-writing-body'),{start:0,end:22,length:22,page:''},'the inline field selects its own words alone');
+    assert.deepEqual(await state('#inline-writing-body'),{start:0,end:22,length:22,page:'Inline words to select',value:'Inline words to select'},'the inline field selects its own words alone');
     await p.key('k',2);assert.equal(await p.evaluate("document.querySelector('#inline-writing-body').value"),'');
     // The Reader's writing field: the same.
     await p.open(1);await p.point('#writing-body');
     const kept=await field(p);
+    // The press lands near the field's top-left; the words go at the end.
+    await p.evaluate('(f=>f.setSelectionRange(f.value.length,f.value.length))(document.querySelector("#writing-body"))');
     await p.send('Input.insertText',{text:' and more'});await p.key('a',4);
     const writing=await state('#writing-body');
-    assert.deepEqual([writing.start,writing.end,writing.page],[0,writing.length,''],'the Reader field selects its own words alone');
+    assert.deepEqual([writing.start,writing.end,writing.page],[0,writing.length,writing.value],'the Reader field selects its own words alone');
     // The message, clicked to read it, and a control beside it: ⌘A selects the
     // message's words, none of the Reader's buttons or labels.
     const message=await p.evaluate("document.querySelector('#source-body').textContent");
