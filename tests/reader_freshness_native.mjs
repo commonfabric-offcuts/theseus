@@ -973,11 +973,14 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     // is held; this is a paint-race proof, not a claim of a native denial act.
     // Denial goes through stopDenied, as a refused Changes read does; since
     // 4b03bc5 its recheck also reads the inline composer's topic access, which
-    // a denied topic refuses. The Reader is closed, so it never reads a source.
+    // a denied topic refuses. The Reader is closed, so it never reads a source;
+    // the recheck settles every read before reporting the first refusal, which
+    // is the inline composer's, so a source read is marked on the page.
     await p.evaluate(transition==='denial'
-      ? '(async()=>{await observedFreshness.stopDenied({kind:"forbidden",code:"FORBIDDEN",message:"Fixture FORBIDDEN"},name=>{if(name==="source")throw Error("no source is open");return Promise.reject(Object.assign(Error("Fixture FORBIDDEN"),{code:"FORBIDDEN"}))},()=>true)})()'
+      ? '(async()=>{window.closedReaderReadSource=false;await observedFreshness.stopDenied({kind:"forbidden",code:"FORBIDDEN",message:"Fixture FORBIDDEN"},name=>{if(name==="source"){closedReaderReadSource=true;throw Error("no source is open")}return Promise.reject(Object.assign(Error("Fixture FORBIDDEN"),{code:"FORBIDDEN"}))},()=>true)})()'
       : '(async()=>{const b=observedFreshness.bootstrap;await observedFreshness.authorityLost({instance_id:b.instance_id,actor_id:b.actor,...b.authority},{code:"INVALID_BINDING"});observedFreshness.status({kind:"authority",code:"INVALID_BINDING"})})()');
     await until(()=>hasText(p,'#updates-message',transition==='denial'?'topic is unavailable':'runtime changed'),'access transition before late manual answer');
+    if(transition==='denial') assert.equal(await p.evaluate('closedReaderReadSource'),false,'the closed Reader reads no source during the denial recheck');
     p.intercept(null); await p.release(held);
     await until(()=>p.evaluate('appReadState().loads===0'),'late manual operation settled');
     assert.equal(await p.evaluate('document.querySelector("#messages").innerHTML'),oldCards,'late answer cannot paint through a newer access gate');
@@ -1042,9 +1045,10 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       assert.ok(p.responses.some(r=>r.payload?.name==='changes' && r.status===status && r.body.error?.code===code), 'the injected refusal was actually received');
       // Since 4b03bc5 the inline composer holds a session of its own beside
       // the Reader's reply and note; none of them reports a cleanup failure.
-      const cleanupErrors = await p.evaluate('[...observedRegistry.sessions.values()].map(s=>s.editor.cleanupError??null)');
-      assert.ok(cleanupErrors.length >= 2, 'the Reader and inline sessions are observed');
-      assert.deepEqual(cleanupErrors.filter(error => error !== null), [], 'a server delay never reports a cleanup failure');
+      const sessions = await p.evaluate('[...observedRegistry.sessions.values()].map(s=>({source:s.editor.context.sourceRef,kind:s.editor.context.kind,cleanupError:s.editor.cleanupError??null}))');
+      assert.ok(sessions.some(s => s.source.kind === 'topic' && s.source.id === 't1'), 'the inline composer\'s session is observed');
+      assert.ok(sessions.some(s => s.source.kind === 'message' && s.source.id === facts.sources[1].id), 'the Reader\'s session is observed');
+      assert.deepEqual(sessions.filter(s => s.cleanupError !== null), [], 'a server delay never reports a cleanup failure');
       const failedAt = p.responses.find(r=>r.payload?.name==='changes' && r.status===status && r.body.error?.code===code).at;
       await until(() => p.evaluate('document.querySelector("#updates-status").hidden'), `healthy read after ${code}`);
       const requests = p.calls.filter(c => c.payload?.name === 'changes' && c.at >= failedAt);
