@@ -157,20 +157,31 @@ test('an agent\'s card is colored across its whole face, never by an edge or bar
   for (const rule of rules) assert.doesNotMatch(rule, /border-left|border-inline-start|inset|::before|::after|border-color|border-width|outline/, rule);
 });
 
-// The picker's swatches are told apart from the picker by their outline, at
-// 3:1 or better (WCAG 1.4.11), and the chosen one by a ring of its own.
-test('each swatch in the picker is outlined at 3:1 or better against the picker, in light and in dark, and the chosen one is ringed', () => {
+// The picker (warp, item 91b): every swatch and Default wore the same heavy
+// grey frame, so the current choice showed only as a thicker one, and before
+// any choice the ringed Default read as a confirm button. Each choice that is
+// not current has a light frame (--line); the current one keeps the ink frame
+// and ring, at 3:1 or better against the picker (WCAG 1.4.11), and a check
+// before its name that is for the eye only (aria-pressed says it).
+test('the picker frames each choice lightly, and the current one alone in ink with a check before its name', () => {
   const rule = selector => { const at = css.indexOf(selector + '{'); assert.ok(at >= 0, 'aim.css sets ' + selector); return css.slice(at, css.indexOf('}', at)); };
   const themes = { light: tokens(css, ':root'), dark: tokens(css, '@media(prefers-color-scheme:dark){:root') };
   assert.match(rule('.color-picker'), /background:var\(--panel\)/);
-  for (const selector of ['.color-picker .swatch', '.color-picker .swatch-default']) {
-    const outline = rule(selector).match(/border:2px solid var\(--([\w-]+)\)/)?.[1];
-    assert.ok(outline, selector + ' has an outline');
-    for (const [theme, page] of Object.entries(themes))
-      assert.ok(contrast(page[outline], page.panel) >= 3, `${theme} ${selector}: --${outline} on the picker ${contrast(page[outline], page.panel).toFixed(2)}`);
-  }
+  for (const selector of ['.color-picker .swatch', '.color-picker .swatch-default'])
+    assert.match(rule(selector), /border:1px solid var\(--line\)/, selector + ' has a light frame');
+  assert.doesNotMatch(css, /\.color-picker[^{}]*\{[^}]*border:2px solid/, 'no choice wears the heavy frame');
   const chosen = rule('.color-picker .swatch[aria-pressed=true],.color-picker .swatch-default[aria-pressed=true]');
-  assert.match(chosen, /box-shadow:0 0 0 2px var\(--ink\)/, 'the chosen swatch wears a ring outside its outline');
+  assert.match(chosen, /border-color:var\(--ink\)/, 'the current choice is framed in ink');
+  assert.match(chosen, /box-shadow:0 0 0 2px var\(--ink\)/, 'and ringed outside its frame');
+  for (const [theme, page] of Object.entries(themes))
+    assert.ok(contrast(page.ink, page.panel) >= 3, `${theme}: the current choice's ink shows on the picker`);
+  const check = rule('.color-picker .swatch[aria-pressed=true] .swatch-name::before,.color-picker .swatch-default[aria-pressed=true]::before');
+  assert.match(check, /content:"\\2713\\00a0" \/ ""/, 'a check before the name, silent to a screen reader');
+  assert.doesNotMatch(css, /\.color-picker[^{}]*:not\(\[aria-pressed=true\]\)[^{}]*::before/, 'nothing else wears a check');
+  for (const selector of ['.color-picker .swatch:hover', '.color-picker .swatch-default:hover']) {
+    assert.match(rule(selector), /border-color:var\(--muted\)/, selector + ': the pointer deepens the frame, short of the ink that marks the current choice');
+    assert.ok(css.indexOf(selector + '{') < css.indexOf(chosen), selector + ': comes before the current choice\'s rule, so the pointer never takes its ink away');
+  }
 });
 
 // Each swatch shows its color as the agent's name tag wears it, the strongest

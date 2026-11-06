@@ -196,6 +196,15 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
       const opened = await picker(p);
       assert.deepEqual([opened.role, opened.label, opened.inView, opened.pressed], ['dialog', 'Color for aim-ux', true, ['Default (violet)']], width + ': a labelled popover in view, the agent\'s own pressed');
       assert.equal(opened.focused, 'Default (violet)', width + ': the current choice has the focus');
+      // Each choice in a light frame; the current one, here Default, in ink
+      // and ringed, with a check before its words, and only as wide as them.
+      const frames = await p.evaluate(`(()=>{const r=document.querySelector('.color-picker'),d=r.querySelector('.swatch-default'),s=r.querySelector('.swatch[aria-label="green"]');
+        const f=e=>{const c=getComputedStyle(e);return {width:c.borderTopWidth,color:c.borderTopColor,same:c.borderColor===c.borderTopColor,ring:c.boxShadow}};
+        return {line:getComputedStyle(document.documentElement).getPropertyValue('--line').trim(),ink:getComputedStyle(r).color,def:f(d),defCheck:getComputedStyle(d,'::before').content,
+          swatch:f(s),swatchCheck:getComputedStyle(s.querySelector('.swatch-name'),'::before').content,defWidth:d.getBoundingClientRect().width,pickerWidth:r.getBoundingClientRect().width}})()`);
+      assert.deepEqual([frames.swatch.width, frames.swatch.color, frames.swatch.same, frames.swatch.ring, frames.swatchCheck], ['1px', rgbOf(frames.line), true, 'none', 'none'], width + ': a choice that is not current has a light frame and no check');
+      assert.deepEqual([frames.def.color, frames.def.same, frames.def.ring.includes(frames.ink), frames.defCheck.includes('\u2713')], [frames.ink, true, true, true], width + ': the current choice is framed and ringed in ink, with a check: ' + JSON.stringify(frames));
+      assert.ok(frames.defWidth < frames.pickerWidth * 0.75, width + `: Default is as wide as its words (${frames.defWidth} of ${frames.pickerWidth}), not a bar across the picker`);
       assert.equal(await p.evaluate("document.querySelector('#reader').open"), false, width + ': the message did not open');
       // Each swatch: its name tag's color, on the picker's own background,
       // big enough to see, with its name in words inside the swatch.
@@ -265,6 +274,10 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
     await q.evaluate(`document.querySelector(${JSON.stringify(chip)}).focus()`);
     await q.key('Enter'); await until(() => picker(q), 'Return opens the picker from the participants');
     assert.deepEqual((await picker(q)).pressed, ['rose']);
+    const checked = await q.evaluate(`[...document.querySelectorAll('.color-picker .swatch-name')].filter(n=>getComputedStyle(n,'::before').content.includes('\u2713')).map(n=>n.textContent)
+      .concat(getComputedStyle(document.querySelector('.color-picker .swatch-default'),'::before').content.includes('\u2713')?['Default']:[])`);
+    assert.deepEqual(checked, ['rose'], 'after a choice the check is before that choice alone');
+    await shot(q, 'agent-color-picker-after-choice');
     await q.key('End'); await q.key('Enter');
     await until(async () => !(await picker(q)), 'closed once Default is chosen');
     const [violetDark] = await tokens(q, 'violet');

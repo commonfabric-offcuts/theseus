@@ -281,9 +281,16 @@ color, and "Default (its own color)", with the current choice pressed and
 focused. Each swatch shows its color as an agent's name tag wears it (its
 `--agent-tag`, the strongest the palette paints for that hue) on the picker's
 own background, with the color's name in words under it, in ink at 4.5:1 or
-better. Each swatch is outlined in the quiet text color, at 3:1 or better
-against the picker in both themes (WCAG 1.4.11), and the pressed one also
-wears an ink ring. A tap on a phone paints no highlight over the picker, an
+better. The swatches sit four to a row. Each choice that is not the current
+one, swatch or Default, has a light frame (`--line`), deepened to the quiet
+text color under the pointer; the current one alone is framed in ink and
+ringed in ink outside its frame, at 3:1 or better against the picker in both
+themes (WCAG 1.4.11), with a check before its name. The check is for the eye:
+the button's pressed state says it to a screen reader, and the check is
+silent (`content: "✓ " / ""`). Default is as wide as its words, one more
+choice rather than a bar across the picker, so before any choice it does not
+read as a confirm button (warp, item 91b: every choice had worn the same heavy
+grey frame, so the current one showed only as a thicker frame). A tap on a phone paints no highlight over the picker, an
 agent's card or a participant's name; the focus ring still shows. The arrow
 keys, Home and End move between them, and Tab goes round them while it is
 open; Escape closes it and gives the focus back; a press outside closes it;
