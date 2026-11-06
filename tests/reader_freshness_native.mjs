@@ -604,11 +604,35 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await until(() => hasText(p, '#messages', 'Incoming during captured old messages'), 'automatic incoming message after old body');
     await until(() => hasText(p, '#memory-items', 'Notebook revised during captured old list'), 'automatic Notebook summary after old body');
     assert.ok(messageHeld && memoryHeld);
-    assert.equal(p.calls.filter(c => c.url.endsWith('/api/command')).length, 0, 'reading changes never sends or acknowledges');
-    const countsAfter = await control({ method: 'counts' });
-    for (const key of ['http_commands', 'http_media_publications', 'http_delivery_acks', 'acknowledged_deliveries', 'media']) assert.equal(countsAfter[key], countsBefore[key], key);
+    // Since 4a372d2 the page reports the other actors' messages on screen as
+    // read (docs/agents.md, "The browser reports what a person has seen";
+    // docs/attention.md). Reading changes sends nothing else: every command is
+    // such a report over rendered cards that starts and ends on another
+    // actor's message, and Core records exactly those reports and the
+    // deliveries they settle. A report can still be in flight when the cards
+    // paint, so the counts are read once every request has its answer.
+    const commandRequests = () => p.network.filter(e => e.method === 'Network.requestWillBeSent' && e.params.request.url.endsWith('/api/command')).length;
+    const commands = () => p.calls.filter(c => c.url.endsWith('/api/command'));
+    const countsAfter = await until(async () => {
+      const sent = commandRequests(), counts = await control({ method: 'counts' });
+      return sent === commands().length && sent === commandRequests() && counts.http_commands - countsBefore.http_commands === sent ? counts : null;
+    }, 'every command the page sent was answered');
+    const reports = commands();
+    assert.deepEqual(reports.map(c => c.payload?.kind).filter(kind => kind !== 'topic.read_through'), [], 'reading changes sends nothing but what the person has seen');
+    const rendered = await p.evaluate('Object.fromEntries([...document.querySelectorAll("#messages [data-seq]")].map(e=>[e.dataset.seq,e.classList.contains("own-message")]))');
+    for (const { payload } of reports) {
+      const { from_seq: from, seq: through } = payload.args;
+      assert.equal(payload.target.topic_id, 't1');
+      for (let seq = from; seq <= through; seq++) assert.ok(String(seq) in rendered, `report ${from}..${through} holds only rendered messages`);
+      assert.ok(rendered[from] === false && rendered[through] === false, `report ${from}..${through} starts and ends on another actor's message`);
+    }
+    for (const key of ['http_media_publications', 'http_delivery_acks', 'media']) assert.equal(countsAfter[key], countsBefore[key], key);
+    const recorded = countsAfter.read_through_operations - countsBefore.read_through_operations;
+    assert.equal(recorded, reports.length, 'every command was a recorded read-through report');
+    assert.equal(countsAfter.acknowledged_deliveries - countsBefore.acknowledged_deliveries,
+      countsAfter.read_through_acknowledged - countsBefore.read_through_acknowledged, 'only the read-through reports settled deliveries');
     assert.equal(countsAfter.messages, countsBefore.messages + 1, 'only the explicitly attributed fixture message was published');
-    assert.equal(countsAfter.operations, countsBefore.operations + 4, 'only the three fixture send operations and one Notebook revision were recorded');
+    assert.equal(countsAfter.operations, countsBefore.operations + 4 + recorded, 'only the three fixture send operations, one Notebook revision and the read-through reports were recorded');
     const cards = await p.evaluate('[...document.querySelectorAll("#messages [data-id]")].map(e=>e.dataset.id)');
     assert.equal(new Set(cards).size, cards.length);
     observations.push({ name: 'initial race', schedule, countsBefore, countsAfter, changes: p.calls.filter(c => c.payload?.name === 'changes') });
