@@ -35,35 +35,10 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await until(()=>p.events.some(e=>e.method==='Runtime.consoleAPICalled'&&e.params.args[0]?.value==='ux-action-settled'&&e.params.args[1]?.value===token),'exact native '+kind+' handler settled');
   };
 
-  await check('navigation correction creation handover adopts the displayed title purpose team and current notices',async()=>{
-    const route=facts.origin+'/?new=outcome&intent=correction-handover';
-    const owner=await page('handover-owner',null,true,{url:route});
-    const click=async(p,s)=>{await p.evaluate(`document.querySelector(${JSON.stringify(s)}).scrollIntoView({block:'center'})`);await p.point(s);};
-    const type=async(p,s,text)=>{await click(p,s);await p.key('a',4);await p.send('Input.insertText',{text});};
-    await type(owner,'#outcome-title-input','Old title');await type(owner,'#outcome-purpose-input','Old purpose');
-    await until(()=>owner.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'original form saved');
-    const contender=await page('handover-contender',null,true,{url:route});assert.equal(await contender.evaluate('document.querySelector("#outcome-title-input").value'),'Old title');
-    await type(owner,'#outcome-title-input','New title');await type(owner,'#outcome-purpose-input','New purpose');
-    await type(owner,'[aria-label="Add outcome team member"]','fixture-notebook-agent');await owner.key('Enter');
-    await until(()=>owner.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'new form saved');await owner.close();
-    await click(contender,'#refresh');await until(()=>contender.evaluate('!document.querySelector("#create-outcome").disabled'),'handover completed');
-    assert.equal(await contender.evaluate('document.querySelector("#outcome-title-input").value'),'New title');
-    assert.equal(await contender.evaluate('document.querySelector("#outcome-purpose-input").value'),'New purpose');
-    assert.match(await contender.evaluate('document.querySelector("#outcome-page .chips").textContent'),/fixture-notebookbook-agent|fixture-notebook-agent/);
-    contender.intercept(payload=>payload?.kind==='workspace.create');await click(contender,'#create-outcome');
-    const held=await until(()=>contender.held.find(h=>h.payload?.kind==='workspace.create'),'handover creation response');
-    assert.equal(held.payload.args.title,'New title');assert.equal(held.payload.args.purpose,'New purpose');assert.deepEqual(held.payload.args.team,[facts.actor,'fixture-notebook-agent']);
-    contender.intercept(null);await contender.fail(held);
-    await until(()=>contender.evaluate('!document.querySelector("#outcome-page .notice").hidden'),'lost response reason rendered');
-    await control({method:'read_fault',name:'operation',status:503,body:{error:{code:'DATABASE_BUSY',message:'Current confirmation read failed',retryable:true}},count:1});
-    await click(contender,'#check-outcome');await until(()=>contender.evaluate('document.querySelector("#outcome-page .notice").textContent.includes("Current confirmation read failed")'),'new read reason overrides old transport error');
-    await click(contender,'#check-outcome');await until(()=>contender.evaluate('!document.querySelector("#start-first-topic").hidden'),'creation confirmation');
-    assert.equal(await contender.evaluate('document.querySelector("#outcome-page .notice").hidden'),true);
-    assert.equal(contender.calls.filter(c=>c.payload?.kind==='workspace.create').length,1);assert.deepEqual(contender.errors,[]);noPrompt(contender);
-    await shot(contender,'creation-handover-confirmed');
-  });
-
   await check('navigation outcomes root empty paging keyboard and protected departure', async () => {
+    // Outcomes list in workspace-ID order (docs/workspaces-query.md), and this
+    // case places its rows by position, so it needs the fixture's w1 alone.
+    assert.deepEqual((await view('workspaces',{limit:100})).items.map(x=>x.id),['w1'],'outcomes root starts from an outcome list holding only w1');
     const workspaces=Array.from({length:21},(_,n)=>({id:'outcome-'+String(n).padStart(2,'0'),title:n<2?'Same outcome':'Outcome '+n,purpose:'Purpose '+n}));
     const created=await control({method:'navigation_workspaces',workspaces});
     assert.ok(created.every(r=>r.status==='committed'));
@@ -136,6 +111,34 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await until(()=>p.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")==="outcome-00"'),'mobile outcome selection');
     await shot(p,'outcomes-mobile-empty');
     noActs(p);noPrompt(p);assert.deepEqual(p.errors,[]);
+  });
+
+  await check('navigation correction creation handover adopts the displayed title purpose team and current notices',async()=>{
+    const route=facts.origin+'/?new=outcome&intent=correction-handover';
+    const owner=await page('handover-owner',null,true,{url:route});
+    const click=async(p,s)=>{await p.evaluate(`document.querySelector(${JSON.stringify(s)}).scrollIntoView({block:'center'})`);await p.point(s);};
+    const type=async(p,s,text)=>{await click(p,s);await p.key('a',4);await p.send('Input.insertText',{text});};
+    await type(owner,'#outcome-title-input','Old title');await type(owner,'#outcome-purpose-input','Old purpose');
+    await until(()=>owner.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'original form saved');
+    const contender=await page('handover-contender',null,true,{url:route});assert.equal(await contender.evaluate('document.querySelector("#outcome-title-input").value'),'Old title');
+    await type(owner,'#outcome-title-input','New title');await type(owner,'#outcome-purpose-input','New purpose');
+    await type(owner,'[aria-label="Add outcome team member"]','fixture-notebook-agent');await owner.key('Enter');
+    await until(()=>owner.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'new form saved');await owner.close();
+    await click(contender,'#refresh');await until(()=>contender.evaluate('!document.querySelector("#create-outcome").disabled'),'handover completed');
+    assert.equal(await contender.evaluate('document.querySelector("#outcome-title-input").value'),'New title');
+    assert.equal(await contender.evaluate('document.querySelector("#outcome-purpose-input").value'),'New purpose');
+    assert.match(await contender.evaluate('document.querySelector("#outcome-page .chips").textContent'),/fixture-notebookbook-agent|fixture-notebook-agent/);
+    contender.intercept(payload=>payload?.kind==='workspace.create');await click(contender,'#create-outcome');
+    const held=await until(()=>contender.held.find(h=>h.payload?.kind==='workspace.create'),'handover creation response');
+    assert.equal(held.payload.args.title,'New title');assert.equal(held.payload.args.purpose,'New purpose');assert.deepEqual(held.payload.args.team,[facts.actor,'fixture-notebook-agent']);
+    contender.intercept(null);await contender.fail(held);
+    await until(()=>contender.evaluate('!document.querySelector("#outcome-page .notice").hidden'),'lost response reason rendered');
+    await control({method:'read_fault',name:'operation',status:503,body:{error:{code:'DATABASE_BUSY',message:'Current confirmation read failed',retryable:true}},count:1});
+    await click(contender,'#check-outcome');await until(()=>contender.evaluate('document.querySelector("#outcome-page .notice").textContent.includes("Current confirmation read failed")'),'new read reason overrides old transport error');
+    await click(contender,'#check-outcome');await until(()=>contender.evaluate('!document.querySelector("#start-first-topic").hidden'),'creation confirmation');
+    assert.equal(await contender.evaluate('document.querySelector("#outcome-page .notice").hidden'),true);
+    assert.equal(contender.calls.filter(c=>c.payload?.kind==='workspace.create').length,1);assert.deepEqual(contender.errors,[]);noPrompt(contender);
+    await shot(contender,'creation-handover-confirmed');
   });
 
   await check('navigation placeholder absent during pending startup and error recovery', async () => {
@@ -212,7 +215,9 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await click(p, 't1'); await ready(p, 't1');
     // The debounce timing below measures writing-to-activation, not the rail read.
     await rendered(p, 't2');
-    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})'); await p.point('#inline-writing-body');
+    // t1 may already hold a saved draft (the outcomes root case leaves one), and
+    // the composer shows it; this writing replaces it, as the newer writing does below.
+    await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})'); await p.point('#inline-writing-body'); await p.key('a', 4);
     const text = 'A precise inline draft kept across a topic switch';
     await p.send('Input.insertText', { text }); const writtenAt = Date.now(); await click(p, 't2');
     assert.ok(Date.now()-writtenAt < 450, 'link is activated inside the actual450ms autosave debounce');
