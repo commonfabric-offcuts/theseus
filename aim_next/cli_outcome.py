@@ -136,17 +136,25 @@ class PipelineVerbs:
         options = self.options
         sections = [options.section] if options.section else ["now", "next", "later", "candidates"]
         for section in sections:
+            if section == "shipped":
+                cursor = None
+                while True:
+                    page = self.view("pipeline", dict({"workspace_id": options.outcome, "section": section}, **({} if cursor is None else {"cursor": cursor})))
+                    if page.get("pipeline") is None:
+                        self.out.plain("%s has no pipeline" % options.outcome)
+                        return
+                    for group in page.get("groups") or []:
+                        self.out.plain("%s · %d items" % (group["label"], len(group["items"])))
+                        for item in group["items"]:
+                            self.out.plain("  %-4d %s" % (item["number"], item["title"]))
+                    cursor = page.get("next_cursor")
+                    if cursor is None:
+                        break
+                continue
             items = self.pages("pipeline", {"workspace_id": options.outcome, "section": section})
-            page = self.last_page
-            if page.get("pipeline") is None:
+            if self.last_page.get("pipeline") is None:
                 self.out.plain("%s has no pipeline" % options.outcome)
                 return
-            if section == "shipped":
-                for group in page.get("groups") or []:
-                    self.out.plain("%s · %d items" % (group["label"], len(group["items"])))
-                    for item in group["items"]:
-                        self.out.plain("  %-4d %s" % (item["number"], item["title"]))
-                continue
             self.out.plain(section.upper())
             for item in items:
                 self._item_lines(item)
