@@ -375,7 +375,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const receipt=await view('operation',{operation_id:command.operation_id});assert.equal(receipt.status,'committed');
     const workspace=await view('workspace',{workspace_id:command.args.id});assert.equal(workspace.workspace.title,'Keyboard outcome');assert.equal(workspace.workspace.owner_id,facts.actor);
     assert.equal(p.calls.some(c=>['submission.prepare','opening.publish','message.send'].includes(c.payload?.kind)),false);
-    await click('#creation-later');await until(()=>p.evaluate('document.querySelector("#topic-title").textContent==="Keyboard outcome"'),'real empty outcome after Later');
+    await click('#creation-later');await until(()=>p.evaluate('document.querySelector("#topic-title")?.textContent==="Keyboard outcome"'),'real empty outcome after Later');
     assert.equal((await view('workspace_topics',{workspace_id:command.args.id,limit:20})).items.length,0);
     await shot(p,'created-empty-outcome');assert.deepEqual(p.errors,[]);noPrompt(p);
   });
