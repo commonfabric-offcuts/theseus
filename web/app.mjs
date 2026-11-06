@@ -580,7 +580,7 @@ function paintAgentColors() {
 // The picker for one agent's color, under its name (anchor); closing it gives
 // the focus to back. The choices are read first if the page has not read them.
 async function pickColor(agent, anchor, back = anchor) {
-  if (!colors.loaded) await colors.load().catch(() => { throw Error('The agent colors could not be read. Try again.'); });
+  if (!colors.loaded) await colors.load('foreground').catch(() => { throw Error('The agent colors could not be read. Try again.'); });
   return openColorPicker({ anchor, back, agent, palette: colors.palette, chosen: colors.chosen(agent), own: agentColor(agent),
     choose: color => colors.choose(agent, color) });
 }
@@ -944,7 +944,7 @@ async function initialize() {
     colors = new AgentColors({ api, instanceId: bootstrap.instance_id, authority: () => registry?.runtime.current ?? bootstrap.authority });
     colors.listen(paintAgentColors);
   }
-  const colorsRead = colors.load().catch(() => {});
+  const colorsRead = colors.load('foreground').catch(() => {});
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
   views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version) });

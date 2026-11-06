@@ -210,7 +210,9 @@ Contract:
 
 The page reads `colors` when it opens and again when it is shown or focused,
 so a choice made on another device is there when the person comes back to
-this one. A read may land after a choice the page made while it was out, so
+this one. The read at opening, and one a picker or a refused choice waits on,
+goes in the foreground read lane, since the first cards wait on it; the read
+on focus goes in the background lane. A read may land after a choice the page made while it was out, so
 each agent keeps whichever choice has the higher revision, and an agent the
 read does not list keeps its choice (Core deletes none, so the read had not
 seen it). A card's color is the reader's choice for its agent when there is

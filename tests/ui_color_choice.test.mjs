@@ -18,7 +18,7 @@ test('a card wears the color the reader chose for its agent; the reader\'s own a
 function store(pages, receipts = []) {
   const calls = [], listeners = {};
   const api = {
-    view: async (name, args) => { calls.push({ name, args }); const next = pages.shift(); if (next instanceof Error) throw next; return next; },
+    view: async (name, args, options) => { calls.push({ name, args, readClass: options?.readClass }); const next = pages.shift(); if (next instanceof Error) throw next; return next; },
     command: async envelope => { calls.push(envelope); return receipts.shift(); },
   };
   const doc = { visibilityState: 'visible', addEventListener: (name, fn) => listeners[name] = fn };
@@ -42,6 +42,16 @@ test('the page reads every page of the reader\'s choices, and again when it is s
   listeners.focus(); await colors.loading;
   assert.equal(colors.color('fable'), 'peach', 'a choice made on another device is there when the page is focused');
   assert.equal(colors.color('aim-core'), 'cyan', 'a choice reset elsewhere is the agent\'s own again');
+});
+
+test('a read the person waits on is a foreground read; a read on focus is background, unless a foreground one is asked meanwhile', async () => {
+  const { colors, calls, listeners } = store([page([]), page([]), page([]), page([])]);
+  await colors.load('foreground');
+  listeners.focus(); await colors.loading;
+  assert.deepEqual(calls.map(c => c.readClass), ['foreground', 'background']);
+  listeners.focus(); const asked = colors.load('foreground'); await asked;
+  assert.deepEqual(calls.map(c => c.readClass).slice(2), ['background', 'foreground'], 'asked while a background read ran: it reads again, in the foreground');
+  assert.throws(() => colors.load('soon'), /foreground or background/);
 });
 
 test('a read that cannot be confirmed keeps what the page had, and a color the page cannot draw is refused', async () => {
@@ -69,6 +79,7 @@ test('choosing sends the palette name on the revision last read, and a stale one
   assert.deepEqual(calls[1].expected.color_revision, 5);
   assert.equal(calls[1].args.color, null, 'the agent\'s own is chosen with null');
   assert.equal(colors.color('fable'), 'cyan', 'refused as stale: the page shows what was chosen elsewhere');
+  assert.equal(calls.at(-1).readClass, 'foreground', 'read while the person waits on the picker');
 });
 
 test('a read answered before a choice, landing after it, does not undo the choice', async () => {

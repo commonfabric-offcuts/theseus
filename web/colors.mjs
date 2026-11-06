@@ -26,20 +26,24 @@ export class AgentColors {
   chosen(agentId) { return this.choices.get(agentId)?.color ?? null; }
 
   // Every page of the reader's choices; a load asked for while one runs runs
-  // once more after it. Rejects when the choices could not be read, and then
-  // keeps what it had.
-  load() {
-    if (this.loading) { this.again = true; return this.loading; }
+  // once more after it, in the foreground if any asker wanted that. A read the
+  // person waits on (the page opening, a picker) is foreground; a read on
+  // focus is background. Rejects when the choices could not be read, and
+  // then keeps what it had.
+  load(readClass = 'background') {
+    if (!['foreground', 'background'].includes(readClass)) throw Error('A read of the agent colors is foreground or background.');
+    if (this.loading) { this.again = this.again === 'foreground' ? this.again : readClass; return this.loading; }
+    this.again = readClass;
     this.loading = (async () => {
-      do { this.again = false; await this.readAll(); } while (this.again);
-    })().finally(() => { this.loading = null; });
+      while (this.again) { const now = this.again; this.again = false; await this.readAll(now); }
+    })().finally(() => { this.loading = null; this.again = false; });
     return this.loading;
   }
-  async readAll() {
+  async readAll(readClass) {
     const read = new Map();
     let cursor = null;
     do {
-      const page = await this.api.view('colors', { limit: PAGE, ...(cursor === null ? {} : { cursor }) }, { readClass: 'background' });
+      const page = await this.api.view('colors', { limit: PAGE, ...(cursor === null ? {} : { cursor }) }, { readClass });
       if (page?.instance_id !== this.instanceId || !Array.isArray(page.items) || !Array.isArray(page.palette) ||
           !(page.next_cursor === null || typeof page.next_cursor === 'string' && page.next_cursor > (cursor ?? ''))) throw Error('The agent colors could not be confirmed.');
       if (page.palette.some(name => !AGENT_PALETTE.includes(name))) throw Error('Core names a color this page cannot draw.');
@@ -62,7 +66,7 @@ export class AgentColors {
 
   // Chooses color (a palette name, or null for the agent's own) for one agent.
   // Answers the receipt. A refusal for a stale revision means the choice
-  // changed elsewhere: the page reads the choices again.
+  // changed elsewhere: the page reads the choices again, while the person waits.
   async choose(agentId, color) {
     const { authority_id, authority_epoch } = this.authority() ?? {};
     const receipt = await this.api.command({ v: 1, instance_id: this.instanceId, operation_id: this.id(), kind: 'color.set',
@@ -72,7 +76,7 @@ export class AgentColors {
       const result = receipt.result;
       this.choices.set(agentId, { color: result.color, revision: result.color_revision });
       this.emit();
-    } else if (receipt?.error?.code === 'REVISION_CONFLICT') await this.load().catch(() => {});
+    } else if (receipt?.error?.code === 'REVISION_CONFLICT') await this.load('foreground').catch(() => {});
     return receipt;
   }
 }

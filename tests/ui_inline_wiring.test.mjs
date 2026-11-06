@@ -1320,6 +1320,16 @@ test('clicking an agent\'s name on its card opens its color picker, not the mess
   assert.equal(opened.length, 1, 'only an agent\'s name opens a picker');
 });
 
+test('the reader\'s agent colors are read with the page, in the foreground, so the first cards wear them', async () => {
+  const f = fixture();
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  const classes = [], view = f.api.view;
+  f.api.view = async (name, args, options) => { if (name === 'colors') classes.push(options?.readClass); return view(name, args, options); };
+  await f.initialize(); await settle();
+  assert.deepEqual(classes, ['foreground'], 'not in the background lane, which turns a busy start away');
+});
+
 test('an agent in the participants is a button that opens its color picker, in its color; people are plain names', async () => {
   const opened = [];
   const f = fixture(undefined, { openColorPicker: options => { opened.push(options); return {}; } });
