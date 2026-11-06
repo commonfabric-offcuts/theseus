@@ -79,11 +79,13 @@ ASK_WAIT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM topic_waiting WHERE said=0 OR 
 # time and the state's time; a topic with neither has 0. Done topics are listed
 # apart, so the index keys on whether a topic is done. state_message_id names the
 # message that reopened a done topic, null for a state someone said.
+# Version 19's rule, from messages and state changes; version 26 steps back through it.
+ACTIVITY_RECOMPUTE = ("UPDATE topics SET activity_ms=max(coalesce(state_ms,0),coalesce((SELECT m.sent_ms FROM topic_summaries s "
+                      "JOIN messages m ON m.id=s.latest_message_id WHERE s.topic_id=topics.id),0))")
 ACTIVITY_SCHEMA = [
     "ALTER TABLE topics ADD COLUMN activity_ms INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE topics ADD COLUMN state_message_id TEXT REFERENCES messages(id)",
-    "UPDATE topics SET activity_ms=max(coalesce(state_ms,0),coalesce((SELECT m.sent_ms FROM topic_summaries s "
-    "JOIN messages m ON m.id=s.latest_message_id WHERE s.topic_id=topics.id),0))",
+    ACTIVITY_RECOMPUTE,
     "DROP INDEX workspace_listed_topics",
     "CREATE INDEX workspace_topic_order ON topics(workspace_id,archived,state='done',activity_ms DESC,id DESC)",
 ]
@@ -272,15 +274,20 @@ class TopicState:
         count = db.execute("SELECT count(*) FROM topic_waiting INDEXED BY reader_waiting WHERE actor_id=? AND archived=0",
                            (actor,)).fetchone()[0]
         rows = db.execute("SELECT t.id,substr(CAST(t.title AS BLOB),1,1025) AS title_prefix,t.state_note,t.state_by,t.state_ms,"
-                          "q.said,q.ask_message_id,m.author_id AS asked_by,m.sent_ms AS asked_ms "
+                          "q.said,q.ask_message_id,m.author_id AS asked_by,m.sent_ms AS asked_ms,"
+                          "w.id AS workspace_id,substr(CAST(w.title AS BLOB),1,1025) AS workspace_title_prefix "
                           "FROM topic_waiting q INDEXED BY reader_waiting CROSS JOIN topics t ON t.id=q.topic_id "
+                          "JOIN workspaces w ON w.id=t.workspace_id "
                           "LEFT JOIN messages m ON m.id=q.ask_message_id "
                           "WHERE q.actor_id=? AND q.archived=0 ORDER BY q.state_ms DESC,q.topic_id LIMIT ?", (actor, limit)).fetchall()
         items = []
         for row in rows:
             title, truncated = _prefix(row["title_prefix"])
             ask = None if row["ask_message_id"] is None else {"message_id": row["ask_message_id"], "by": row["asked_by"], "since_ms": row["asked_ms"]}
+            # Which outcome it is in, so the Waiting on you list names it (item 86).
+            outcome_title, outcome_truncated = _prefix(row["workspace_title_prefix"])
             items.append({"id": row["id"], "title": title, "title_truncated": truncated,
                           "note": row["state_note"], "state_by": row["state_by"], "state_ms": row["state_ms"],
-                          "said": bool(row["said"]), "ask": ask})
+                          "said": bool(row["said"]), "ask": ask,
+                          "workspace": {"id": row["workspace_id"], "title": outcome_title, "title_truncated": outcome_truncated}})
         return count, items

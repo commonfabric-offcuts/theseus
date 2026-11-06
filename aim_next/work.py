@@ -27,6 +27,7 @@ then the second is, as it is by someone else.
 import json
 
 from . import delivery
+from .topic_state import ACTIVITY_RECOMPUTE
 
 
 WORK_WINDOW_MS = 60 * 60 * 1000
@@ -60,6 +61,18 @@ OTHERS_DOWN = ("ALTER TABLE topic_turns DROP COLUMN other_by", "ALTER TABLE topi
                "ALTER TABLE topic_summaries DROP COLUMN other_message_id")
 # Both are worked out from what stays, so stepping back loses no record.
 OTHERS_OCCUPIED = "SELECT 0"
+# Schema 26 (item 86, D20): a hosted turn is activity in its topic, as a post
+# or a state change is, so the topic list, the work ring and the outcome light
+# read the same activity, and a scan by activity time misses no turn. The
+# upgrade raises each topic's activity time to its latest turn.
+TURN_ACTIVITY_BACKFILL = ["UPDATE topics SET activity_ms=max(activity_ms,(SELECT t.turn_ms FROM topic_turns t "
+                          "WHERE t.topic_id=topics.id)) WHERE id IN (SELECT topic_id FROM topic_turns)"]
+# Stepping back works activity out again by version 19's rule, from messages
+# and state changes only. Activity times are worked out, never records, so
+# nothing is lost either way.
+TURN_ACTIVITY_DOWN = (ACTIVITY_RECOMPUTE,)
+TURN_ACTIVITY_OCCUPIED = "SELECT 0"
+
 # Run with the summary's update for a new message by ?1: the latest message
 # before it becomes the latest by someone else unless ?1 wrote that one too.
 # SQLite reads the row's old values on the right of SET.
@@ -67,12 +80,12 @@ OTHER_MESSAGE = ("other_message_id=CASE WHEN (SELECT author_id FROM messages WHE
                  "THEN other_message_id ELSE latest_message_id END")
 
 
-def observed(seen_ms, waits, now_ms, in_now=False):
+def observed(seen_ms, waits, now_ms):
     """Whether work is observed on a topic: recent activity, or someone waited on.
 
-    in_now is the seam for the pipeline's NOW list (item 84): a topic that is
-    in NOW counts as observed. Until NOW is a record, every caller passes False."""
-    return bool(waits or in_now or (seen_ms is not None and now_ms - seen_ms <= WORK_WINDOW_MS))
+    Being in the pipeline's Now is not work by itself (item 86, D4): an item in
+    Now is worked on when its piece's topic is."""
+    return bool(waits or (seen_ms is not None and now_ms - seen_ms <= WORK_WINDOW_MS))
 
 
 def _latest_pair(facts):
@@ -95,6 +108,8 @@ def _turn_in(db, topic_ids, attempt_id, recipient_id, now):
         db.execute("INSERT INTO topic_turns VALUES (?,?,?,?,?) ON CONFLICT(topic_id) DO UPDATE SET "
                    "turn_ms=excluded.turn_ms,turn_by=excluded.turn_by,other_ms=excluded.other_ms,other_by=excluded.other_by",
                    (topic_id, latest[0], latest[1], *(other or (None, None))))
+        # D20: the turn is activity in the topic, so it orders the topic list.
+        db.execute("UPDATE topics SET activity_ms=max(activity_ms,?) WHERE id=?", (now, topic_id))
 
 
 def turn_handed(db, attempt_id, recipient_id, after_seq, through_seq, now):

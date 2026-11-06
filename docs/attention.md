@@ -192,8 +192,10 @@ becomes the latest by someone else unless the same author wrote it. The value is
 worked out when the page is read: a row read at 9:00 that saw activity at 8:30
 still shows it until the list is read again, and its title always gives the
 time. A turn's start or end does not itself make the list read again; the
-posts a turn makes do. The pipeline's NOW list will count as observed work
-once NOW is a record; `observed()` takes it as `in_now`.
+posts a turn makes do. A hosted turn raises its topic's `activity_ms`, as a
+post does (version 26), so the list's order, the ring and the outcome light
+(docs/outcome-light.md) read the same activity. Being in the pipeline's Now is
+not work by itself: an item in Now is worked on when its piece's topic is.
 
 In the web app a topic row with observed work carries a small hollow ring in
 the quiet text color (`--muted`) and nothing else. It was the filled accent

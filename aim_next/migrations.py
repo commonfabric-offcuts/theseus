@@ -19,7 +19,8 @@ from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE
 from .delivery import (DELIVERY_GROUP_TOPIC_DOWN, DELIVERY_GROUP_TOPIC_UP, DELIVERY_TOPIC_BACKFILL, DELIVERY_TOPIC_DOWN,
                        DELIVERY_TOPIC_SCHEMA)
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
-from .work import OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED, OTHERS_SCHEMA, WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
+from .work import (OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED, OTHERS_SCHEMA, TURN_ACTIVITY_BACKFILL, TURN_ACTIVITY_DOWN,
+                   TURN_ACTIVITY_OCCUPIED, WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA)
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
 from .memory import MEMORY_READ_DOWN, MEMORY_READ_OCCUPIED, MEMORY_READ_SCHEMA
 from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPONSIBILITY_SCHEMA
@@ -78,6 +79,11 @@ STEPS = (
     # others, which is never unread for them. Stepping back puts the version-24
     # index back; what was settled stays settled, and nothing is lost.
     ("24", "25", DELIVERY_GROUP_TOPIC_UP, DELIVERY_GROUP_TOPIC_DOWN, "SELECT 0"),
+    # Version 26 counts a hosted turn as activity in its topic, as a post is, so
+    # the topic list, the work ring and the outcome light read the same
+    # activity. Activity times are worked out from what is kept, so stepping
+    # back loses nothing.
+    ("25", "26", TURN_ACTIVITY_BACKFILL, TURN_ACTIVITY_DOWN, TURN_ACTIVITY_OCCUPIED),
 )
 
 
