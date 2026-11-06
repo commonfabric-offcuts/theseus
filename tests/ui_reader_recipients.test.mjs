@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Reader } from '../web/reader.mjs';
+import { clock } from '../web/times.mjs';
 
 class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, dataset: {}, className: '', textContent: '' }); }
@@ -8,8 +9,10 @@ class Element {
   get classList() { return { add: name => { this.className = this.className ? `${this.className} ${name}` : name; } }; }
   // A node is on the page while its parents reach a root, as in a browser.
   get isConnected() { return !!this.root || !!this.parent?.isConnected; }
-  append(...nodes) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
-  replaceChildren(...nodes) { for (const node of this.children) node.parent = null; this.children = []; this.append(...nodes); }
+  append(...nodes) { for (const node of nodes) if (typeof node === 'object') node.parent = this; this.children.push(...nodes); }
+  // What it says: its own text, then its children's, a string child as itself.
+  get text() { return this.textContent + this.children.map(node => typeof node === 'string' ? node : node.text).join(''); }
+  replaceChildren(...nodes) { for (const node of this.children) if (typeof node === 'object') node.parent = null; this.children = []; this.textContent = ''; this.append(...nodes); }
   setAttribute(key, value) { this.attributes[key] = value; }
   removeAttribute(key) { delete this.attributes[key]; }
 }
@@ -114,12 +117,20 @@ test('a chip rebuilt while its add is out shows it still out, sends nothing more
   assert.deepEqual([said().textContent, offer().attributes['aria-disabled']], ['', undefined], 'an add that ended with no chip on the page is forgotten');
 });
 
-test('the origin line names the author, the kind and when it was sent, and leaves out a time it does not have', () => {
+test('the origin line names the author, the kind and when it was sent, and leaves out a time it does not have', t => {
+  const previous = globalThis.document, now = clock.now;
+  globalThis.document = { createElement: tag => new Element(tag) };
+  t.after(() => { globalThis.document = previous; clock.now = now; });
   const origin = new Element('div');
   const reader = Object.assign(Object.create(Reader.prototype), { $: id => { assert.equal(id, 'reader-origin'); return origin; } });
   const sent_ms = new Date(2026, 10, 5, 5, 44).getTime();
+  clock.now = () => new Date(2026, 10, 6, 9, 0).getTime();
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm1' }, sent_ms });
-  assert.equal(origin.textContent, 'tony · Message · 5:44 AM Thu Nov 5');
+  assert.equal(origin.text, 'tony · Message · Yesterday 5:44 AM');
+  assert.equal(origin.children.find(node => node.tag === 'time')?.title, '5:44 AM Thu Nov 5', 'its title keeps the date');
+  clock.now = () => new Date(2026, 10, 9, 9, 0).getTime();
+  reader.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm1' }, sent_ms });
+  assert.equal(origin.text, 'tony · Message · 5:44 AM Thu Nov 5', 'from before yesterday: dated');
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'memory', id: 'n1', revision: 3 } });
-  assert.equal(origin.textContent, 'tony · Notebook · revision 3');
+  assert.equal(origin.text, 'tony · Notebook · revision 3');
 });

@@ -1,19 +1,12 @@
 // Where a topic stands, as its participants say: a row mark in topic lists, a
 // line under the topic's title with a form to change it, and the topics that
 // wait on the reader. Core keeps every value; nothing here decides one.
+import { datedTime, timeNode } from './times.mjs';
 
 export const STATES = ['active', 'waiting', 'review', 'done'];
 const LABELS = { active: 'Active', waiting: 'Waiting', review: 'Ready for review', done: 'Done' };
 
 const named = (id, reader) => id === reader ? 'you' : id;
-
-// "7:41 AM Thu Nov 5", in the reader's own time zone.
-export function readableTime(ms) {
-  const when = new Date(ms);
-  const time = when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const day = when.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '');
-  return `${time} ${day}`;
-}
 
 // The open asks a topic carries: each waits on the person asked until they write in it.
 const asksOf = item => Array.isArray(item?.asks) ? item.asks.filter(ask => typeof ask?.actor_id === 'string') : [];
@@ -34,10 +27,14 @@ export function stateLabel(item, reader) {
   return state === 'waiting' || state === 'active' ? `Waiting on ${names}` : `${LABELS[state]} · waiting on ${names}`;
 }
 
-// "fable asked you, since 7:41 AM Thu Nov 5": how long each open ask has waited.
+// Each open ask, as who asked whom ("fable asked you") and since when.
+const askParts = (item, reader) => asksOf(item).map(ask => ({ words: `${named(ask.by, reader)} asked ${ask.actor_id === reader ? 'you' : ask.actor_id}`,
+  since: Number.isSafeInteger(ask.since_ms) ? ask.since_ms : null }));
+
+// "fable asked you, since 7:41 AM Thu Nov 5": how long each open ask has
+// waited, dated, for a title.
 export function askLines(item, reader) {
-  return asksOf(item).map(ask => `${named(ask.by, reader)} asked ${ask.actor_id === reader ? 'you' : ask.actor_id}` +
-    (Number.isSafeInteger(ask.since_ms) ? `, since ${readableTime(ask.since_ms)}` : ''));
+  return askParts(item, reader).map(({ words, since }) => words + (since === null ? '' : `, since ${datedTime(since)}`));
 }
 
 // Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
@@ -46,7 +43,7 @@ export function askLines(item, reader) {
 // waiting; without them it waits on someone the page cannot name.
 export function workNote(work, reader, waiting = '') {
   if (!work || typeof work !== 'object') return '';
-  const when = Number.isSafeInteger(work.seen_ms) ? readableTime(work.seen_ms) : null;
+  const when = Number.isSafeInteger(work.seen_ms) ? datedTime(work.seen_ms) : null;
   const what = when && typeof work.by === 'string' ? ` (${named(work.by, reader)} ${work.how === 'turn' ? 'took a turn' : 'posted'})` : '';
   // The server counts every wait as observed work.
   if (work.waits) {
@@ -98,6 +95,10 @@ const element = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props);
   node.append(...children); return node;
 };
+// A shown time after its lead-in (", since 7:41 AM"), or nothing when there is no time.
+const at = (lead, ms) => Number.isSafeInteger(ms) ? [lead, timeNode(ms, document)] : [];
+// The non-empty groups of parts, with gap between each.
+const joined = (groups, gap) => groups.filter(parts => parts.length).flatMap((parts, index) => index ? [gap, ...parts] : parts);
 const names = value => [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))];
 const known = state => STATES.includes(state) ? state : 'active';
 const CHANGED = 'This topic changed while you were choosing. What you chose is kept here: check it against the line above and save again.';
@@ -139,9 +140,8 @@ export class TopicStatePanel {
     if (waitsOn(topic).includes(reader)) mark.classList.add('mine');
     const line = [mark];
     if (topic.state_note) line.push(' · ', element('span', { className: 'state-note', textContent: topic.state_note }));
-    if (topic.state_by) line.push(element('span', { className: 'muted', textContent:
-      ` — ${named(topic.state_by, reader)}${Number.isSafeInteger(topic.state_ms) ? ', ' + readableTime(topic.state_ms) : ''}` }));
-    for (const ask of askLines(topic, reader)) line.push(element('span', { className: 'muted ask-line', textContent: ` · ${ask}` }));
+    if (topic.state_by) line.push(element('span', { className: 'muted' }, ` — ${named(topic.state_by, reader)}`, ...at(', ', topic.state_ms)));
+    for (const { words, since } of askParts(topic, reader)) line.push(element('span', { className: 'muted ask-line' }, ` · ${words}`, ...at(', since ', since)));
     if (topic.archived) line.push(element('span', { className: 'muted', textContent: ' · Archived' }));
     this.line.replaceChildren(...line);
     if (!(manager || participant)) this.drop();
@@ -284,11 +284,10 @@ export function paintWaiting(host, answer, open) {
       if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); open(item.id, item.title);
     };
-    const ask = item.ask && typeof item.ask.by === 'string'
-      ? `${item.ask.by} asked you${Number.isSafeInteger(item.ask.since_ms) ? ', since ' + readableTime(item.ask.since_ms) : ''}` : '';
-    const said = item.said === false ? '' : [item.note, item.state_by ? `${item.state_by}${Number.isSafeInteger(item.state_ms) ? ', ' + readableTime(item.state_ms) : ''}` : ''].filter(Boolean).join(' — ');
-    const detail = [said, ask].filter(Boolean).join(' · ');
-    return element('li', {}, link, ...(detail ? [element('span', { className: 'muted', textContent: ' ' + detail })] : []));
+    const ask = item.ask && typeof item.ask.by === 'string' ? [`${item.ask.by} asked you`, ...at(', since ', item.ask.since_ms)] : [];
+    const said = item.said === false ? [] : joined([item.note ? [item.note] : [], item.state_by ? [item.state_by, ...at(', ', item.state_ms)] : []], ' — ');
+    const detail = joined([said, ask], ' · ');
+    return element('li', {}, link, ...(detail.length ? [element('span', { className: 'muted' }, ' ', ...detail)] : []));
   }));
   host.replaceChildren(element('h2', { textContent: count > items.length ? `Waiting on you (${count}, newest ${items.length} shown)` : `Waiting on you (${count})` }), list);
   host.hidden = false;

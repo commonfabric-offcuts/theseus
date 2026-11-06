@@ -1177,7 +1177,7 @@ class Schema17Case(MigrationCase):
 
     def test_upgrade_from_17_keeps_records_matches_a_fresh_instance_and_finds_the_oldest_unread(self):
         # agent-a has the opening pending (a delivery from before the upgrade, with no topic of its own yet).
-        opening = self.sql("SELECT id,seq FROM messages ORDER BY seq LIMIT 1")[0]
+        opening = self.sql("SELECT id,seq,sent_ms FROM messages ORDER BY seq LIMIT 1")[0]
         before = self.records()
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
@@ -1191,7 +1191,7 @@ class Schema17Case(MigrationCase):
                          "every delivery's topic is copied from its message")
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
         answer = self.store.view("agent-a", "topic_unread", {"topic_id": "t1"})
-        self.assertEqual(answer["oldest_unread"], {"seq": opening[1], "id": opening[0]})
+        self.assertEqual(answer["oldest_unread"], {"seq": opening[1], "id": opening[0], "sent_ms": opening[2]})
 
     def test_step_back_to_17_restores_its_frozen_layout_and_works_out_the_horizons_again(self):
         # Horizons as version 17 kept them, after replies and posts to the whole topic.

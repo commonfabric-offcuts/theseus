@@ -76,13 +76,16 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
   });
   await check('inline messages say when they were sent, in the log and in the reader', async () => {
     const p=await page('message-times',null,true);
-    const readable=/^\d{1,2}:\d{2} (AM|PM) (Sun|Mon|Tue|Wed|Thu|Fri|Sat) [A-Z][a-z]{2} \d{1,2}$/;
-    const times=await p.evaluate('[...document.querySelectorAll("#messages .message-card .message-time")].map(node=>node.textContent)');
+    // The fixture's messages were sent moments ago: the time alone (or, in a
+    // run that crosses midnight, yesterday's), with the date in its title.
+    const shown=/^(Yesterday )?\d{1,2}:\d{2} (AM|PM)$/, dated=/^\d{1,2}:\d{2} (AM|PM) (Sun|Mon|Tue|Wed|Thu|Fri|Sat) [A-Z][a-z]{2} \d{1,2}$/;
+    const times=await p.evaluate('[...document.querySelectorAll("#messages .message-card .message-time")].map(node=>({text:node.textContent,title:node.querySelector("time")?.title}))');
     assert.ok(times.length>0,'the log shows times');
-    for(const time of times)assert.match(time.replace(/^ · /,''),readable);
+    for(const time of times){assert.match(time.text.replace(/^ · /,''),shown);assert.match(time.title,dated,'its title keeps the date');}
     await p.open(1);
-    const origin=await p.evaluate('document.querySelector("#reader-origin").textContent');
-    assert.match(origin.split(' · ').at(-1),readable,'the reader says when the message was sent');
+    const origin=await p.evaluate('({text:document.querySelector("#reader-origin").textContent,title:document.querySelector("#reader-origin time")?.title})');
+    assert.match(origin.text.split(' · ').at(-1),shown,'the reader says when the message was sent');
+    assert.match(origin.title,dated);
     assert.deepEqual(p.errors,[]);
   });
   await check('inline nothing lights while writing; a clicked passage lights and Return quotes it', async () => {

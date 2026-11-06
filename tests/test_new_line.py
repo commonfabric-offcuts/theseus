@@ -36,7 +36,8 @@ class NewLineCase(ReaderCase):
         return answer["oldest_unread"]
 
     def at(self, message_id):
-        return {"seq": self.sql("SELECT seq FROM messages WHERE id=?", (message_id,))[0][0], "id": message_id}
+        seq, sent_ms = self.sql("SELECT seq,sent_ms FROM messages WHERE id=?", (message_id,))[0]
+        return {"seq": seq, "id": message_id, "sent_ms": sent_ms}
 
     def read(self, *message_ids, actor="owner"):
         for message_id in message_ids:
@@ -55,6 +56,23 @@ class NewLineCase(ReaderCase):
     def caught_up(self, actor="owner"):
         self.committed(self.command("topic.read_through", {"seq": 10 ** 6}, target={"topic_id": "t1"}, actor=actor))
         self.assertIsNone(self.line(actor))
+
+    def test_the_line_says_when_its_message_was_sent(self):
+        self.caught_up()
+        first = self.post("agent-a", "First")
+        self.post("agent-a", "Second")
+        line = self.line()
+        self.assertEqual(line["id"], first)
+        self.assertIsInstance(line.get("sent_ms"), int, "the line says when its message was sent")
+        page = self.store.view("owner", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 30})
+        self.assertEqual(line["sent_ms"], next(item["sent_ms"] for item in page["items"] if item["id"] == first),
+                         "the New line's time is the time its message's card shows")
+        # A message marked unread holds the line with its time too.
+        self.caught_up()
+        self.mark(first, True)
+        self.assertEqual(self.line(), self.at(first))
+        self.assertIsInstance(self.line()["sent_ms"], int)
+        # A message from before times were kept has none: test_migrations reads it as null.
 
     def test_the_line_sits_below_the_oldest_unread_message_as_reading_happens(self):
         self.caught_up()

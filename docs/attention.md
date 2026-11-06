@@ -283,7 +283,7 @@ line, the unread counts and the Unread pills never disagree:
   subscription that leaving the topic cancelled is not unread either.
 
 `topic_messages` returns it on every page, in either direction, as
-`oldest_unread`, `{seq, id}` or null, with `commit_seq`, the commit the answer
+`oldest_unread`, `{seq, id, sent_ms}` or null, with `commit_seq`, the commit the answer
 reflects (the view reads in one transaction). The `topic_unread` view takes
 `{topic_id}`, needs topic access, and returns `{topic_id, oldest_unread,
 commit_seq}`. Reading, marks and replies change no topic version, so a page
@@ -313,9 +313,15 @@ its rails and marks, in the same reload), so the line follows reading live as
 it happens, in this page or any other; a repaint keeps the card the reader is
 looking at where it was.
 
+The line says "New" and when that message was sent, from `oldest_unread`'s
+`sent_ms`, as every time on the page is shown (docs/times.md): "New · 4:40 AM",
+"New · Yesterday 9:12 PM". The label and the time are separate spans, and the
+time's title keeps the date. A message from before times were kept (`sent_ms`
+null) gets the label alone.
+
 When that message is further back than the page has loaded, which is when the
 reader is most behind, the line sits at the bottom of what is loaded and reads
-"New · older below". There it is a button: pressing it, by pointer or
+"New · older below" and the time. There it is a button: pressing it, by pointer or
 keyboard, reads older pages one after another, as More does, until that
 message's card is loaded or no older page is left, and then gives that
 message the focus, with the line in its true place just below it; once on

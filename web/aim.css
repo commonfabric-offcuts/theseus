@@ -115,6 +115,8 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 /* The New line: red (--alert), just below the oldest message the reader has not replied to. */
 .new-line{display:flex;align-items:center;gap:.6rem;margin:-.25rem 0 .85rem;color:var(--alert);font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1.2}
 .new-line::before{content:"";flex:1;height:2px;border-radius:1px;background:var(--alert)}
+/* Its words: the label, then when the message it sits under was sent ("New · 4:40 AM"), the time in its own case and kept on one line. */
+.new-line-time{text-transform:none;letter-spacing:normal;white-space:nowrap}
 /* Its oldest unanswered message further back than what is loaded: the line at the bottom, a button that loads down to it. */
 .new-line-older,.new-line-older:hover{width:100%;margin:.25rem 0 .85rem;padding:0;border:0;border-radius:0;background:none;min-height:2.75rem;cursor:pointer}.new-line-older:hover{text-decoration:underline}
 /* Agent colors (docs/reading-colors.md, "Agent colors"): an agent's cards in its own tint, its name in a deeper one, and no edge or bar. Text on them keeps 4.5:1. Green's card is the live --soft, Fable's color as it stood. */

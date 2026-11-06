@@ -11,6 +11,15 @@ import assert from 'node:assert/strict';
 
 const luminance = c => c.match(/[\d.]+/g).slice(0, 3).map(Number).map(v => v / 255)
   .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+// The line's time, for a message sent moments ago (or, in a run that crosses
+// midnight, yesterday), and the dated form its title keeps.
+const SHOWN = '(Yesterday )?\\d{1,2}:\\d{2} (AM|PM)';
+const DATED = /^\d{1,2}:\d{2} (AM|PM) (Sun|Mon|Tue|Wed|Thu|Fri|Sat) [A-Z][a-z]{2} \d{1,2}$/;
+// At a phone's width, the line keeps its words on one line, inside the page.
+const narrowLine = p => p.evaluate(`(()=>{const line=document.querySelector('#messages .new-line'),words=line.querySelector('.new-line-words');
+  const r=words.getBoundingClientRect(),l=line.getBoundingClientRect();
+  return {text:line.textContent,lines:Math.round(r.height/parseFloat(getComputedStyle(words).lineHeight)),right:l.right,width:innerWidth,scroll:document.documentElement.scrollWidth}})()`);
+const phone = { width: 390, height: 844, deviceScaleFactor: 3, mobile: true }, desk = { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false };
 const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
 export async function newLineCheck({ check, page, until, view, control, shot, observations, facts }) {
@@ -62,11 +71,18 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
         const lines=[...document.querySelectorAll('#messages .new-line')],line=lines[0];
         const card=document.querySelector('#messages [data-id="${ids[0]}"]');
         const c=getComputedStyle(line),rule=getComputedStyle(line,'::before');
-        return {count:lines.length,text:line.textContent,after:line.previousElementSibling===card,
+        const time=line.querySelector('.new-line-time time'),cardTime=card?.querySelector('.message-time time');
+        return {count:lines.length,text:line.textContent,label:line.querySelector('.new-line-label')?.textContent??null,
+          time:time?.textContent??null,title:time?.title??null,cardTime:cardTime?.textContent??null,cardTitle:cardTime?.title??null,
+          timeCase:time?getComputedStyle(time.parentElement).textTransform:null,after:line.previousElementSibling===card,
           seq:line.dataset.seq??null,id:line.dataset.id??null,color:c.color,rule:rule.backgroundColor,
           page:getComputedStyle(document.documentElement).backgroundColor}})()`);
       assert.equal(placed.count, 1, theme + ': one New line');
-      assert.equal(placed.text, 'New', theme + ': its words are "New"');
+      assert.match(placed.text, new RegExp('^New · ' + SHOWN + '$'), theme + ': its words are "New" and when that message was sent');
+      assert.equal(placed.label, 'New', theme + ': the label is a span of its own');
+      assert.deepEqual([placed.time, placed.title], [placed.cardTime, placed.cardTitle], theme + ': the time its card shows, with the same dated title');
+      assert.match(placed.title, DATED, theme + ': its title keeps the date');
+      assert.equal(placed.timeCase, 'none', theme + ': the time is not in capitals');
       assert.equal(placed.after, true, theme + ': just below the oldest unread card');
       assert.deepEqual([placed.seq, placed.id], [null, null], theme + ': the line is not a card');
       assert.equal(placed.rule, placed.color, theme + ': rule and words are one red');
@@ -142,10 +158,16 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const p = await open(topic, 'new-line-older-' + theme, theme);
       await until(() => p.evaluate("Boolean(document.querySelector('#messages .new-line'))"), theme + ': a line drawn');
       const marker = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),line=list.querySelector('.new-line');
-        const c=getComputedStyle(line);return {count:list.querySelectorAll('.new-line').length,last:list.lastElementChild===line,tag:line.tagName,kind:line.dataset.line,
+        const c=getComputedStyle(line);return {count:list.querySelectorAll('.new-line').length,last:list.lastElementChild===line,tag:line.tagName,kind:line.dataset.line,text:line.textContent,
           color:c.color,page:getComputedStyle(document.documentElement).backgroundColor,loaded:Boolean(list.querySelector('[data-id="${ids[0]}"]'))}})()`);
       assert.deepEqual([marker.count, marker.last, marker.tag, marker.kind, marker.loaded], [1, true, 'BUTTON', 'older', false], theme + ': at the bottom of what is loaded');
+      assert.match(marker.text, new RegExp('^New · older below · ' + SHOWN + '$'), theme + ': saying older below, and when that message was sent');
       assert.ok(contrast(marker.color, marker.page) >= 4.5, theme + ': readable');
+      await p.send('Emulation.setDeviceMetricsOverride', phone);
+      const narrowMarker = await narrowLine(p);
+      assert.equal(narrowMarker.lines, 1, theme + ': at 390 wide "older below" and its time fit on one line');
+      assert.ok(narrowMarker.right <= narrowMarker.width && narrowMarker.scroll <= narrowMarker.width, theme + ': and inside the page');
+      await p.send('Emulation.setDeviceMetricsOverride', desk);
       await p.evaluate("document.querySelector('#messages .new-line').scrollIntoView({block:'center'})");
       await shot(p, 'new-line-older-' + theme);
       // Reached by keyboard and pressed with Return, as a button is.
@@ -159,7 +181,16 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const placed = await p.evaluate(`(()=>{const card=document.querySelector('#messages [data-id="${ids[0]}"]'),r=card.getBoundingClientRect();
         return {inView:r.top<innerHeight&&r.bottom>0,lines:document.querySelectorAll('#messages .new-line').length}})()`);
       assert.equal(placed.inView, true, theme + ': the message is in view');
+      assert.match(await p.evaluate("document.querySelector('#messages .new-line').textContent"), new RegExp('^New · ' + SHOWN + '$'),
+        theme + ': the line in its place says when its message was sent');
       await shot(p, 'new-line-older-' + theme + '-reached');
+      // At a phone's width, both forms of the line keep their words on one line, inside the page.
+      await p.send('Emulation.setDeviceMetricsOverride', phone);
+      const narrow = await narrowLine(p);
+      assert.equal(narrow.lines, 1, theme + ': at 390 wide the words fit on one line');
+      assert.ok(narrow.right <= narrow.width && narrow.scroll <= narrow.width, theme + ': and inside the page');
+      await shot(p, 'new-line-older-' + theme + '-reached-390');
+      await p.send('Emulation.setDeviceMetricsOverride', desk);
       observations.push({ name: 'new line further back', theme, marker, placed, after: await drawn(p) });
       assert.deepEqual(p.errors, []);
       await p.close();

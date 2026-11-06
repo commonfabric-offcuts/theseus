@@ -191,7 +191,10 @@ class Delivery:
         return counts
 
     def _oldest_unread(self, db, actor, topic_id):
-        """The oldest message in one topic that is unread for this actor, as {seq, id}, or None.
+        """The oldest message in one topic that is unread for this actor, as {seq, id, sent_ms}, or None.
+
+        sent_ms is when it was sent, so the New line can say so before its card
+        is loaded; null for a message from before times were kept.
 
         Unread is what the counts hold (_unread): a delivery pending in an
         active group, or a mark. A delivery left pending by a subscription the
@@ -205,11 +208,11 @@ class Delivery:
         sequence order. Each read stops at its first row, past only the rows
         a cancelled subscription left pending or the actor's marks on their
         own messages; the topic's history and other topics are never read."""
-        rows = [db.execute("SELECT m.id,m.seq FROM deliveries d INDEXED BY pending_topic_deliveries "
+        rows = [db.execute("SELECT m.id,m.seq,m.sent_ms FROM deliveries d INDEXED BY pending_topic_deliveries "
                            "CROSS JOIN delivery_groups g ON g.id=d.group_id CROSS JOIN messages m ON m.id=d.message_id "
                            "WHERE d.recipient_id=? AND d.topic_id=? AND d.state='pending' AND g.active=1 ORDER BY d.seq LIMIT 1",
                            (actor, topic_id)).fetchone(),
-                db.execute("SELECT k.seq,k.message_id AS id FROM message_marks k INDEXED BY reader_marks "
+                db.execute("SELECT k.seq,k.message_id AS id,m.sent_ms FROM message_marks k INDEXED BY reader_marks "
                            "CROSS JOIN messages m ON m.id=k.message_id "
                            "WHERE k.actor_id=? AND k.topic_id=? AND k.revision%2=1 AND m.author_id<>? ORDER BY k.seq LIMIT 1",
                            (actor, topic_id, actor)).fetchone()]
@@ -217,7 +220,7 @@ class Delivery:
         if not found:
             return None
         row = min(found, key=lambda row: row["seq"])
-        return {"seq": row["seq"], "id": row["id"]}
+        return {"seq": row["seq"], "id": row["id"], "sent_ms": row["sent_ms"]}
 
     def _new_line(self, db, actor, topic_id):
         """Where the New line sits: the oldest unread message, and the commit it is as of.
