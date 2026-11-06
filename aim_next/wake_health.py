@@ -4,9 +4,11 @@ from __future__ import annotations
 
 A wake that reached an agent (an accepted notice, or a hosted turn started
 with its work) and was followed by nothing from that agent is unanswered.
-After PARKED_AFTER of them in a row the agent is parked: no further wake is
-claimed for it, so a silent agent is not woken over and over, and nothing it
-was sent is dropped. Anything the agent then does through its profile (any
+After PARKED_AFTER of them in a row the agent is parked: it is not woken again
+for work it was already told of, so a silent agent is not woken over and over,
+and nothing it was sent is dropped. A delivery newer than its last wake still
+wakes it once, naming everything pending, since a hosted agent can act only in
+a turn a wake starts. Anything the agent then does through its profile (any
 recorded command: a post, an acknowledgment, a read-through) is a sign of
 life: the count clears and, if it was parked with work waiting, it is due at
 once and its next notice names everything still pending. Its work reaching
@@ -21,8 +23,10 @@ from .route_pins import _key as _pin_key
 
 
 PARKED_AFTER = 3
-# What claims and due reads take into account: a parked recipient is never due.
-ANSWERING = "unanswered_wakes<%d" % PARKED_AFTER
+# What claims and due reads take into account: a parked recipient is due only
+# for work newer than its last wake named (captured_seq), so the repeats stop
+# and new work still reaches it.
+ANSWERING = "(unanswered_wakes<%d OR last_seq>captured_seq)" % PARKED_AFTER
 QUIET_LIMIT = 100
 
 WAKE_HEALTH_SCHEMA = [

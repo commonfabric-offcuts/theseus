@@ -92,8 +92,12 @@ nothing from it: an `accepted` notice, or a hosted turn `start` handed its
 work (a steer into a running turn is not counted, and a turn that fails or is
 lost takes its count back). `busy`, `error` and `unavailable` never reached
 the agent and are not counted. After three in a row the recipient is parked:
-`claim_wakes`, the due reads and `due_count` skip it, so it is not woken again,
-and nothing it was sent is dropped or settled. Any recorded command by the
+`claim_wakes`, the due reads and `due_count` skip it while nothing pending is
+newer than its last wake named (`last_seq` not above `captured_seq`), so it is
+not woken again for work it was told of, and nothing it was sent is dropped or
+settled. A new delivery still wakes it once, and that notice names everything
+pending; a hosted agent can act only in a turn a wake starts, so this is how a
+parked hosted agent comes back. Any recorded command by the
 recipient (a post, an acknowledgment, a read-through) is a sign of life: the
 count clears, and a parked recipient with work waiting is due at once, unless
 a hosted turn that holds its work is the one acting. Reaching nothing pending

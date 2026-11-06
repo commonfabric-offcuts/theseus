@@ -74,11 +74,25 @@ class ParkingCase(Fixture):
         self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE recipient_id='agent-a' AND state='pending'"), [(1,)])
         self.assertEqual(self.wakes()["quiet"], [{"actor_id": "agent-a", "waiting": 1, "since_ms": first, "why": "not_answering"}])
 
-    def test_new_work_for_a_parked_agent_waits_with_the_rest(self):
-        self.park()
+    def test_new_work_for_a_parked_agent_wakes_it_once_and_the_repeats_stay_stopped(self):
+        first = self.park()
         self.send_next("More while it is silent")
+        # Work newer than anything it was told of is a reason to wake it, parked or not.
+        self.assertEqual(len(self.claims()), 1)
+        self.store.finish_wake(self.runner_guard, self.runner, self.sql(
+            "SELECT claim_token FROM recipient_schedule WHERE recipient_id='agent-a'")[0][0], "accepted")
+        self.assertEqual(self.unanswered(), (PARKED_AFTER + 1, first))
+        self.now += 3600000
         self.assertEqual(self.claims(), [])
-        self.assertEqual(self.wakes()["quiet"][0]["waiting"], 2)
+        self.assertEqual(self.wakes()["quiet"], [{"actor_id": "agent-a", "waiting": 2, "since_ms": first, "why": "not_answering"}])
+
+    def test_new_work_makes_a_parked_agent_due_in_every_read_of_the_schedule(self):
+        self.park()
+        self.assertEqual(self.store.runner_schedule(["agent-a"])["next_due_ms"], None)
+        self.send_next("More while it is silent")
+        due = self.store.runner_schedule(["agent-a"])["next_due_ms"]
+        self.assertIsNotNone(due)
+        self.assertLessEqual(due, self.now)
 
     def test_anything_the_agent_does_wakes_it_again_at_once(self):
         self.park()
@@ -105,7 +119,11 @@ class ParkingCase(Fixture):
         self.park()
         self.command("message.post", {"body": "Anyone?"}, target={"topic_id": "t1"})
         self.assertEqual(self.unanswered()[0], PARKED_AFTER + 0)
+        # The post is new work for agent-a, so it is woken once for it, and only once.
+        self.settle()
+        self.now += 3600000
         self.assertEqual(self.claims(), [])
+        self.assertEqual(self.unanswered()[0], PARKED_AFTER + 1)
 
     def test_wakes_that_did_not_reach_the_agent_are_not_counted(self):
         for outcome in ("busy", "error", "unavailable", "busy", "error"):
@@ -145,16 +163,28 @@ class HostedParkingCase(HostedFixture):
         self.assertEqual(self.sql("SELECT unanswered_wakes,unanswered_since_ms FROM recipient_schedule WHERE recipient_id='agent-a'"), [(0, None)])
         self.assertIsNotNone(self.claim_now())
 
-    def test_a_parked_hosted_agent_that_acts_is_told_everything_again(self):
+    def park_hosted(self):
+        """Three turns that each end with the work unread."""
         for index in range(PARKED_AFTER):
             claim = self.claim_now()
             self.hand(claim, turn_id="turn-%d" % index)
             self.end("completed", turn_id="turn-%d" % index)
             self.now = self.schedule()["next_due_ms"]
         self.nothing_due()
+
+    def test_a_parked_hosted_agent_is_woken_by_new_work_and_told_everything_waiting(self):
+        self.park_hosted()
+        self.send_next("Are you there?")
+        claim = self.claim_now()
+        # Nothing is held by a turn, so its notice names everything pending.
+        self.assertEqual(claim["handed_seq"], None)
+        self.hand(claim, turn_id="turn-new")
+        # A hosted agent acts only inside a turn: here, the one new work started.
         self.command("message.post", {"body": "Back"}, target={"topic_id": "t1"}, actor="agent-a")
-        self.assertEqual(self.schedule()["handed_seq"], None)
-        self.assertEqual(self.schedule()["next_due_ms"], self.now)
+        self.assertEqual(self.sql("SELECT unanswered_wakes FROM recipient_schedule WHERE recipient_id='agent-a'"), [(0,)])
+        self.end("completed", turn_id="turn-new")
+        # It left the work unread, so it is named again a minute later, all of it.
+        self.assertEqual((self.schedule()["handed_seq"], self.schedule()["next_due_ms"]), (None, self.now + 60000))
 
     def test_an_agent_acting_in_the_turn_that_holds_its_work_gets_no_extra_wake(self):
         for index in range(PARKED_AFTER):
