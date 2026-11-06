@@ -1262,6 +1262,45 @@ class Schema18Case(MigrationCase):
             self.headless()
         self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE topic_id IS NULL"), [(0,)])
 
+    def test_upgrade_settles_what_version_18_left_pending_for_a_person_between_others(self):
+        # As version 18 queued them: every delivery pending, counted in its group and schedule.
+        with sqlite3.connect(str(self.path)) as db:
+            group = lambda actor, kind: db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? "
+                                                   "AND active=1", (actor, kind, "" if kind == "direct" else "t1")).fetchone()[0]
+            db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES ('owner','direct','',0),('agent-b','direct','',0) ON CONFLICT DO NOTHING")
+            db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) SELECT actor_id,'subscription',topic_id,epoch "
+                       "FROM topic_participants WHERE topic_id='t1' AND actor_id IN ('owner','agent-b') AND active=1 ON CONFLICT DO NOTHING")
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('owner',1),('agent-b',1) ON CONFLICT DO NOTHING")
+            def message(key, addressees, reply_to=None):
+                seq = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,operation_id) "
+                                 "VALUES (?,'t1','agent-a',?,'[]','[]',?,?,?)", (key, key, json.dumps(addressees), reply_to, "op-" + key)).lastrowid
+                db.executemany("INSERT INTO message_addressees VALUES ('t1',?,?)", [(actor, seq) for actor in addressees])
+                for actor, reason in (("owner", "addressed" if "owner" in addressees else "subscription"),
+                                      ("agent-b", "addressed" if "agent-b" in addressees else "subscription")):
+                    kind = "direct" if reason == "addressed" else "subscription"
+                    delivery = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id) VALUES (?,?,?,?,'t1')",
+                                          ("d-%s-%s" % (key, actor), key, actor, group(actor, kind))).lastrowid
+                    db.execute("INSERT INTO delivery_reasons VALUES (?,?,'t1',?)", ("d-%s-%s" % (key, actor), reason, None if kind == "direct" else 1))
+                    db.execute("UPDATE delivery_groups SET pending_count=pending_count+1,first_pending_seq=coalesce(first_pending_seq,?) WHERE id=?",
+                               (delivery, group(actor, kind)))
+                    db.execute("UPDATE recipient_schedule SET pending_count=pending_count+1,next_due_ms=1 WHERE recipient_id=?", (actor,))
+            opening = db.execute("SELECT id FROM messages WHERE author_id='owner' ORDER BY seq LIMIT 1").fetchone()[0]
+            message("between", ["agent-b"])
+            message("named", ["owner"])
+            message("answer", ["agent-b"], reply_to=opening)
+            message("everyone", [])
+        state = lambda key, actor="owner": self.sql("SELECT state FROM deliveries WHERE id=?", ("d-%s-%s" % (key, actor),))[0][0]
+        self.upgrade()
+        self.assertEqual([state(key) for key in ("between", "named", "answer", "everyone")], ["acknowledged", "pending", "pending", "pending"])
+        self.assertEqual([state(key, "agent-b") for key in ("between", "named", "answer", "everyone")], ["pending"] * 4, "an agent's work is left as it was")
+        # Every live group and schedule of a person counts exactly its pending rows.
+        self.assertEqual(self.sql("SELECT g.id FROM delivery_groups g WHERE g.active=1 AND (g.pending_count<>(SELECT count(*) FROM deliveries d "
+                                  "WHERE d.group_id=g.id AND d.state='pending') OR coalesce(g.first_pending_seq,0)<>coalesce((SELECT min(seq) "
+                                  "FROM deliveries d WHERE d.group_id=g.id AND d.state='pending'),0))"), [])
+        self.assertEqual(self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'"), [(3,)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.store.view("owner", "attention", {})["unread"], 3, "named, the answer to the owner, and the message to everyone")
+
     def test_step_back_to_18_restores_its_frozen_layout(self):
         self.upgrade()
         records = self.records()

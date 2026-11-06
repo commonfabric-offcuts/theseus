@@ -40,6 +40,27 @@ DELIVERY_GROUP_TOPIC_SCHEMA = [
 ]
 DELIVERY_GROUP_TOPIC_UP = ("DROP INDEX pending_topic_deliveries",) + tuple(DELIVERY_GROUP_TOPIC_SCHEMA)
 DELIVERY_GROUP_TOPIC_DOWN = ("DROP TRIGGER delivery_topic_required", "DROP INDEX pending_group_topic_deliveries", DELIVERY_TOPIC_SCHEMA[1])
+# Version 19 also settles what earlier versions left pending for a person in a
+# message between others: sent by name to others, not to them, and not answering
+# a message of theirs. Such a message is never unread for a person
+# (Conversation._publish records it settled), so the counters of each person's
+# live groups and schedule are worked out again from their pending rows. An
+# agent's deliveries are its work and are left as they are.
+HUMANS = "(SELECT id FROM actors WHERE kind='human')"
+BETWEEN_OTHERS_SETTLE = (
+    "UPDATE deliveries SET state='acknowledged' WHERE seq IN (SELECT d.seq FROM deliveries d "
+    "CROSS JOIN delivery_groups g ON g.id=d.group_id CROSS JOIN messages m ON m.id=d.message_id "
+    "WHERE d.state='pending' AND g.active=1 AND d.recipient_id IN " + HUMANS + " AND m.addressees<>'[]' "
+    "AND NOT EXISTS (SELECT 1 FROM delivery_reasons r WHERE r.delivery_id=d.id AND r.reason='addressed') "
+    "AND NOT EXISTS (SELECT 1 FROM messages p WHERE p.id=m.reply_to AND p.author_id=d.recipient_id))",
+    "UPDATE delivery_groups SET pending_count=(SELECT count(*) FROM deliveries d WHERE d.group_id=delivery_groups.id AND d.state='pending'),"
+    "first_pending_seq=(SELECT min(d.seq) FROM deliveries d WHERE d.group_id=delivery_groups.id AND d.state='pending') "
+    "WHERE active=1 AND recipient_id IN " + HUMANS,
+    "UPDATE recipient_schedule SET pending_count=(SELECT coalesce(sum(g.pending_count),0) FROM delivery_groups g "
+    "WHERE g.recipient_id=recipient_schedule.recipient_id AND g.active=1) WHERE recipient_id IN " + HUMANS,
+    "UPDATE recipient_schedule SET next_due_ms=NULL,retry_count=0,handed_seq=NULL WHERE pending_count=0 AND recipient_id IN " + HUMANS,
+)
+DELIVERY_GROUP_TOPIC_UP += BETWEEN_OTHERS_SETTLE
 # A fresh instance has the column and the version-19 index and trigger.
 DELIVERY_TOPIC_FRESH = DELIVERY_TOPIC_SCHEMA[:1] + DELIVERY_GROUP_TOPIC_SCHEMA
 
@@ -97,15 +118,18 @@ class Delivery:
         db.execute("UPDATE recipient_schedule SET pending_count=?,wake_generation=wake_generation+1,last_seq=?,next_due_ms=?,retry_count=?,handed_seq=? WHERE recipient_id=?",
                    (pending, last_seq if last_seq is not None else old["last_seq"], due, retry, handed, actor))
 
-    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons):
+    def _queue_delivery(self, db, message_id, recipient, topic_id, reasons, settled=False):
+        """Queue one delivery of a message; settled, it is recorded already acknowledged and waits on nobody."""
         direct = any(reason != "subscription" for reason in reasons)
         key = (recipient, "direct" if direct else "subscription", "" if direct else topic_id, 0 if direct else reasons["subscription"])
         db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,?,?,?) ON CONFLICT DO NOTHING", key)
         group = db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind=? AND topic_id=? AND participant_epoch=?", key).fetchone()[0]
         delivery_id = "d-" + uuid.uuid4().hex
-        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id) VALUES (?,?,?,?,?)",
-                         (delivery_id, message_id, recipient, group, topic_id)).lastrowid
+        seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id,state) VALUES (?,?,?,?,?,?)",
+                         (delivery_id, message_id, recipient, group, topic_id, "acknowledged" if settled else "pending")).lastrowid
         db.executemany("INSERT INTO delivery_reasons VALUES (?,?,?,?)", [(delivery_id, reason, topic_id, epoch) for reason, epoch in reasons.items()])
+        if settled:
+            return delivery_id
         db.execute("UPDATE delivery_groups SET pending_count=pending_count+1,first_pending_seq=COALESCE(first_pending_seq,?) WHERE id=?", (seq, group))
         db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) SELECT id,enabled FROM actors WHERE id=? ON CONFLICT DO NOTHING", (recipient,))
         self._eligibility_changed(db, recipient, 1, seq)

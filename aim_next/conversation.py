@@ -333,8 +333,16 @@ class Conversation:
                                   (snapshot["reply_to"], actor)).fetchone()
             if answered is not None:
                 self._acknowledge(db, actor, answered)
+        # A message sent by name to others is not for a person who is neither
+        # named nor the author of the message it answers: their delivery is
+        # recorded settled, so it counts nowhere and holds no New line. An
+        # agent's deliveries are its work, queued as ever.
+        parent = snapshot.get("reply_to") and db.execute("SELECT author_id FROM messages WHERE id=?", (snapshot["reply_to"],)).fetchone()
+        answers = parent["author_id"] if parent else None
         for recipient, reasons in audience.items():
-            delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
+            between = bool(snapshot["addressees"]) and "addressed" not in reasons and recipient != answers
+            settled = between and self._actor(db, recipient)["kind"] == "human"
+            delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons, settled=settled)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
         db.execute("UPDATE topic_summaries SET message_count=message_count+1,latest_message_id=? WHERE topic_id=?", (message_id, topic_id))
         # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.

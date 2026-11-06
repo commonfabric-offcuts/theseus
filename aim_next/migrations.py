@@ -51,7 +51,9 @@ STEPS = (
      DELIVERY_TOPIC_DOWN + tuple(UNANSWERED_SCHEMA + UNANSWERED_BACKFILL), "SELECT 0"),
     # Version 19 indexes the pending deliveries by group and topic, so the New
     # line reads only the reader's live groups, and refuses a delivery with no
-    # topic. Stepping back puts the version-18 index back; nothing is lost.
+    # topic. It settles each person's pending delivery of a message between
+    # others, which is never unread for them. Stepping back puts the version-18
+    # index back; what was settled stays settled, and nothing is lost.
     ("18", "19", DELIVERY_GROUP_TOPIC_UP, DELIVERY_GROUP_TOPIC_DOWN, "SELECT 0"),
 )
 

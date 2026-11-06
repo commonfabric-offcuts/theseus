@@ -10,7 +10,35 @@ Reader about it) settles their own delivery of that message, in the same act,
 when it is pending in an active group; it settles nothing else and clears no
 mark. An agent's deliveries are the work it is woken for, which it acknowledges
 itself with `delivery.ack` ([agent-cli.md](agent-cli.md)), so an agent's reply
-settles nothing.
+settles nothing. A message between others is never unread for a person
+(below).
+
+## Messages between others
+
+A person sees every message in a topic, sorted by whom it is for:
+
+- **For them**: a message sent to them by name, a message to everyone in the
+  topic (it names nobody), a reply to a message of theirs, and their own
+  messages. These are shown and counted as before.
+- **Between others**: a message sent by name to others, which neither names
+  the person nor answers a message of theirs. It is shown, folded (below), and
+  it is never unread for them. Core records the person's delivery of it
+  already settled, in the act that sends it, so it adds to no count
+  (`workspace_topics`, `workspaces`, `attention`), raises no notification, and
+  never holds the New line; the counts and the line agree because both read
+  the same deliveries. Schema version 19 settles, once, what earlier versions
+  left pending for a person in such messages, and works each person's group
+  and schedule counters out again from their pending rows.
+
+The rule uses the message's own addressees and the author of the message it
+answers; nothing new is stored. It applies to people only: an agent's
+deliveries are the work it is woken for, so an agent in the topic still gets a
+message between others queued as before, and its wakes are unchanged.
+
+A person who marks a message between others unread has it counted, like any
+mark: one more unread, holding the New line, until they open it to read it or
+clear the mark. Reading through the topic leaves the mark, as it does
+anywhere.
 
 - `workspace_topics` items carry `unread` and `addressed`: the reader's
   pending deliveries and marked messages in that topic, and how many of the

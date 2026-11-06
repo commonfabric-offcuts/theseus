@@ -41,10 +41,11 @@ class AttentionCase(AgentLoopCase):
         self.committed(self.post(body="For agent-b by name", addressees=["agent-b"]))
         self.committed(self.post(topic="t2", body="Elsewhere", addressees=["owner"]))
         topics, outcomes, total, latest = self.counts()
-        self.assertEqual(topics["t1"], (t1[0] + 4, t1[1] + 1))
+        # The message to agent-b by name is between others: never unread for the owner.
+        self.assertEqual(topics["t1"], (t1[0] + 3, t1[1] + 1))
         self.assertEqual(topics["t2"], (t2[0] + 1, t2[1] + 1))
         self.assertEqual(outcomes["w1"], (topics["t1"][0] + topics["t2"][0], 2))
-        self.assertEqual(total, (start[0] + 5, start[1] + 2))
+        self.assertEqual(total, (start[0] + 4, start[1] + 2))
         # Newest first, each naming its place, author and words.
         self.assertEqual([(item["message"]["body"], item["topic"]["id"], item["message"]["author_id"]) for item in latest],
                          [("Elsewhere", "t2", "agent-a"), ("For you by name", "t1", "agent-a")])
