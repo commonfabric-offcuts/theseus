@@ -10,7 +10,7 @@ import time
 import unittest
 from unittest import mock
 
-from aim_next import admin, migrations, recovery_io
+from aim_next import admin, conversation, migrations, recovery_io
 from aim_next import store as store_module
 from aim_next.authority import Authority, AuthorityError
 from aim_next.contract import StoreError
@@ -1664,12 +1664,196 @@ class Schema23Case(MigrationCase):
                          {k: v for k, v in records.items() if k != "metadata"})
 
 
+def everything(path):
+    """Every row of every table, in a stable order: what a step back must give back."""
+    with sqlite3.connect(str(path)) as db:
+        tables = [row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
+        return {table: sorted(db.execute("SELECT * FROM " + table).fetchall(), key=repr) for table in tables if table != "metadata"}
+
+
+def fresh_schema(directory):
+    fresh = Path(directory) / "fresh"
+    fresh.mkdir(exist_ok=True)
+    fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+    return schema(fresh / "fresh.sqlite3")
+
+
+# Release 19 stores schema 17; release 20 takes it to SCHEMA_VERSION through
+# every step in between, each with its own frozen layout.
+RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("20", SCHEMA_20),
+                     ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23))
+
+
+class Release19ChainCase(MigrationCase):
+    """A release-19 instance (schema 17): release 20's whole chain, one step at a time and at once, up and down."""
+
+    VERSION, FIXTURE = "17", SCHEMA_17
+
+    def test_the_whole_chain_runs_up_and_down_from_release_19(self):
+        self.assertEqual([version for version, _ in RELEASE_20_LADDER] + [SCHEMA_VERSION],
+                         [str(n) for n in range(17, int(SCHEMA_VERSION) + 1)], "one chain, 17 to the head, nothing skipped")
+        stored, records, fresh = everything(self.path), self.records(), fresh_schema(self.temp.name)
+        layouts = [frozen(layout) for _, layout in RELEASE_20_LADDER] + [fresh]
+        versions = [version for version, _ in RELEASE_20_LADDER] + [SCHEMA_VERSION]
+        for here, there, layout in zip(versions, versions[1:], layouts[1:]):
+            with self.subTest(up=there):
+                moved = migrate(self.path, "test-instance", self.binding, there)
+                self.assertEqual((moved["from_version"], moved["schema_version"], moved["migrated"]), (here, there, True))
+                self.assertEqual(schema(self.path), layout)
+                self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                                 {k: v for k, v in records.items() if k != "metadata"})
+        at_head = everything(self.path)
+        for here, there, layout in zip(versions[::-1], versions[-2::-1], layouts[-2::-1]):
+            with self.subTest(down=there):
+                moved = migrate(self.path, "test-instance", self.binding, there)
+                self.assertEqual((moved["from_version"], moved["schema_version"], moved["migrated"]), (here, there, True))
+                self.assertEqual(schema(self.path), layout)
+        self.assertEqual(everything(self.path), stored, "stepping all the way back gives release 19 every row it had")
+        # And in one move each way.
+        self.assertEqual(self.upgrade()["from_version"], "17")
+        self.assertEqual(schema(self.path), fresh)
+        self.assertEqual(everything(self.path), at_head, "one move up gives what the steps gave")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, "17")["schema_version"], "17")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual(everything(self.path), stored)
+        # Head code will not open what it stepped back; release 19's code would.
+        with self.assertRaises(StoreOpenError) as refused:
+            Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(refused.exception.code, "SCHEMA_MISMATCH")
+
+
+class LiveShapedChainCase(MigrationCase):
+    """A copy of a release-19 instance shaped like the live one: about 530 messages and their deliveries
+    across two outcomes, most acknowledged, read-throughs, marks, waits, asks, a done, a review and an
+    archived topic, a chosen colour and Notebook pages. Release 20 takes the copy up, back and up again."""
+
+    VERSION, FIXTURE = "17", SCHEMA_17
+    TOPICS, POSTS = 20, 26
+
+    def setUp(self):
+        fixtures.StoreCase.setUp(self)
+        self.write_like_the_live_instance()
+        # The layout release 19 wrote, with its reply horizons worked out the way release 19 works them.
+        step_back_by_hand(self.path, "17")
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("DELETE FROM reply_horizons")
+            for statement in conversation.UNANSWERED_BACKFILL:
+                db.execute(statement)
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        # The fixture is kept aside as it is; the check migrates a copy of it, put into the
+        # instance's own bound file, since the binding names that file.
+        self.fixture = self.path.with_name("live-shaped-17.sqlite3")
+        with sqlite3.connect(str(self.path)) as instance, sqlite3.connect(str(self.fixture)) as kept:
+            instance.backup(kept)
+        with sqlite3.connect(str(self.fixture)) as kept, sqlite3.connect(str(self.path)) as instance:
+            kept.backup(instance)
+        self.fixture_bytes = self.fixture.read_bytes()
+
+    def committed(self, receipt):
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt.get("result")
+
+    def open_topic(self, topic, workspace, title):
+        source = {"kind": "new_topic", "id": "opening-" + topic, "workspace_id": workspace}
+        self.committed(self.save_draft("draft-" + topic, source, topic, "Opening " + title,
+                                       opening={"workspace_id": workspace, "title": title, "participants": ["agent-a", "agent-b"]}))
+        self.committed(self.prepare("draft-" + topic, topic, submission="submission-" + topic, send_op="open-" + topic))
+        self.committed(self.command("topic.create_and_send", {"submission_id": "submission-" + topic}, target={"topic_id": topic}, op="open-" + topic))
+
+    def write_like_the_live_instance(self):
+        self.workspace()
+        self.committed(self.command("workspace.create", {"id": "w2", "title": "Second outcome", "purpose": "Another line of work",
+                                                         "team": ["agent-a", "agent-b"], "coordinator": "agent-b"}))
+        authors = ("owner", "agent-a", "agent-b")
+        for n in range(1, self.TOPICS + 1):
+            topic = "t%d" % n
+            self.open_topic(topic, "w1" if n % 2 else "w2", "Topic %d" % n)
+            previous = None
+            for k in range(self.POSTS - 1):
+                author = authors[k % 3]
+                others = [who for who in authors if who != author]
+                args = {"body": "Post %d in %s by %s. " % (k, topic, author) + "Words " * (k % 7)}
+                if k % 4 == 3 and previous:
+                    args["reply_to"] = previous
+                if k % 5 == 4:
+                    args.update(addressees=[others[k % 2]], intent="ask" if k % 10 == 4 else "tell")
+                previous = self.committed(self.command("message.post", args, target={"topic_id": topic}, actor=author,
+                                                       op="post-%s-%d" % (topic, k)))["message_id"]
+        # Agents acknowledge what they were handed in all but the last four topics.
+        for agent in ("agent-a", "agent-b"):
+            pending = self.sql("SELECT d.id FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.recipient_id=? "
+                               "AND d.state='pending' AND m.topic_id NOT IN ('t17','t18','t19','t20') ORDER BY d.seq", (agent,))
+            for (delivery_id,) in pending:
+                self.committed(self.command("delivery.ack", {}, target={"delivery_id": delivery_id}, actor=agent))
+        # The person reads most topics through, some only part way.
+        for n in range(1, 16):
+            seqs = [seq for (seq,) in self.sql("SELECT seq FROM messages WHERE topic_id=? ORDER BY seq", ("t%d" % n,))]
+            through = seqs[-1] if n % 3 else seqs[len(seqs) // 2]
+            self.committed(self.command("topic.read_through", {"seq": through}, target={"topic_id": "t%d" % n}, op="through-%d" % n))
+        for message_id, in self.sql("SELECT id FROM messages WHERE topic_id IN ('t2','t4') AND author_id='agent-a' ORDER BY seq LIMIT 2"):
+            self.committed(self.command("message.mark", {"marked": True}, target={"message_id": message_id}, expected={"mark_revision": 0}))
+        def update(topic, args, actor="owner"):
+            version = self.store.view(actor, "topic", {"topic_id": topic})["topic"]["version"]
+            self.committed(self.command("topic.update", args, target={"topic_id": topic}, expected={"topic_revision": version}, actor=actor))
+        update("t3", {"state": "waiting", "waiting_on": ["owner"]}, actor="agent-a")
+        update("t5", {"state": "done"})
+        update("t7", {"state": "review"}, actor="agent-b")
+        update("t9", {"archived": True})
+        self.committed(self.command("color.set", {"color": "green"}, target={"actor_id": "agent-a"}, expected={"color_revision": 0}))
+        for n in range(3):
+            self.committed(self.command("memory.create", {"title": "Page %d" % n, "body": "Words " * 40, "attachments": [], "references": []},
+                                        target={"item_id": "page-%d" % n, "owner_scope": {"kind": "workspace", "id": "w1"}},
+                                        expected={"item_revision": 0}, actor="agent-a"))
+
+    def test_a_copy_of_a_live_shaped_release_19_instance_goes_up_back_and_up_again(self):
+        counts = dict((table, self.sql("SELECT count(*) FROM " + table)[0][0]) for table in ("messages", "deliveries", "topics", "reply_horizons"))
+        self.assertGreaterEqual(counts["messages"], 520)
+        self.assertGreaterEqual(counts["deliveries"], 1000)
+        self.assertGreater(self.sql("SELECT count(*) FROM deliveries WHERE state='pending'")[0][0], 100)
+        stored, records = everything(self.path), self.records()
+        started = time.monotonic()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
+        upgraded_in = time.monotonic() - started
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+        # What the steps work out from the messages, checked against the messages themselves.
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.topic_id IS NOT m.topic_id"), [(0,)])
+        written = dict(((topic, author), seq + 1) for topic, author, seq in
+                       self.sql("SELECT topic_id,author_id,max(seq) FROM messages GROUP BY topic_id,author_id"))
+        horizons = dict(((topic, actor), seq) for topic, actor, seq in self.sql("SELECT topic_id,actor_id,seq FROM reply_horizons"))
+        self.assertEqual({key: horizons.get(key) for key in written}, written, "everyone who wrote in a topic has written there")
+        for topic, other in self.sql("SELECT topic_id,other_message_id FROM topic_summaries"):
+            rows = self.sql("SELECT id,author_id FROM messages WHERE topic_id=? ORDER BY seq DESC", (topic,))
+            expected = next((key for key, author in rows if author != rows[0][1]), None)
+            self.assertEqual(other, expected, topic)
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE activity_ms IS NULL"), [(0,)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        listed = self.store.view("owner", "workspace_topics", {"workspace_id": "w1"})
+        self.assertNotIn("error", listed, listed)
+        self.assertTrue(all(not item["work"]["by"] or item["work"]["by"] != "owner" for item in listed["items"]), "the person's own posts are not work they see")
+        after_up = everything(self.path)
+        # Back to release 19: the layout it knows, and every row it had.
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, "17")["schema_version"], "17")
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual(everything(self.path), stored)
+        # And up again, to exactly what the first upgrade gave.
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(everything(self.path), after_up)
+        self.assertEqual(self.fixture.read_bytes(), self.fixture_bytes, "the fixture itself was never touched")
+        self.assertLess(upgraded_in, 60, "the upgrade of %d messages took %.1f s" % (counts["messages"], upgraded_in))
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
         setattr(MigrationCase, _name, None)
 # The schema-8 cases already run once, from MigrationCase.
 for _name in list(MigrationCase.__dict__):
+    if _name.startswith("test_") and _name not in Release19ChainCase.__dict__:
+        setattr(Release19ChainCase, _name, None)
+    if _name.startswith("test_") and _name not in LiveShapedChainCase.__dict__:
+        setattr(LiveShapedChainCase, _name, None)
     if _name.startswith("test_") and _name not in Schema9Case.__dict__:
         setattr(Schema9Case, _name, None)
     if _name.startswith("test_") and _name not in Schema10Case.__dict__:

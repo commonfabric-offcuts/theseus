@@ -114,7 +114,7 @@ to its row. The list is read again with the topics after every commit.
 
 ## Checks
 
-Core: `tests/test_memory_reads.py` and the 17→18 step in
+Core: `tests/test_memory_reads.py` and the 19→20 step in
 `tests/test_migrations.py`. Page: `tests/ui_outcome_references.test.mjs`,
 `ui_page_reads`, `ui_page_changes`, `ui_page_here`, `ui_reader_changes`,
 `ui_topic_notebook_light` and the wiring cases in `ui_inline_wiring`. In the browser: the `notebook` mode of
