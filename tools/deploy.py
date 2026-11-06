@@ -190,6 +190,7 @@ def live_records(config):
                 "--json", "releases"])
     unreadable = "the live release records could not be read (exit %s): %s%s" % (
         read.returncode, read.stdout[:300], read.stderr[:300])
+    require(read.returncode == 0, unreadable)
     records = []
     try:
         # One page per line; a refused read prints an error, not a page of items.
@@ -220,8 +221,11 @@ def repo_records(config, sha):
 
 
 def follows(config, commit, head):
-    """Whether commit is head or one of its ancestors in the live checkout."""
-    return run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", commit, head]).returncode == 0
+    """Whether commit is head or one of its ancestors in the live checkout; a commit git cannot read stops the deploy."""
+    asked = run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", commit, head])
+    require(asked.returncode in (0, 1), "whether %s comes before %s could not be read (exit %s): %s"
+            % (commit[:12], head[:12], asked.returncode, asked.stderr.strip()[:300]))
+    return asked.returncode == 0
 
 
 def kept_lacked(config, sha, known, head):

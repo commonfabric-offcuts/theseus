@@ -525,10 +525,25 @@ class ReleasePlan(DeployCase):
         self.planned(host)
         self.assertEqual((self.plan()["before"], self.plan()["record"]["release"]), ([], 2))
 
+    def test_a_commit_git_cannot_read_or_a_run_record_that_cannot_be_read_stops_the_deploy(self):
+        # Kept records whose commits the live checkout lacks are not therefore another instance's.
+        kept = [release(18, "1" * 40, [1, 4]), release(19, "2" * 40, [87, 2])]
+        self.assertIn("whether 222222222222 comes before %s could not be read" % HEAD[:12],
+                      self.refused(FakeHost(self.config, keeps=False, kept=kept)))
+        X = "a" * 40
+        host = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[X, HEAD])
+        launch = self.instance / "run-server-03" / "launch.json"
+        for text, reason in (("not json", "could not be read"), ('{"at": "2026-11-07T05:00:00-08:00"}', "does not say which commit"),
+                             ('["%s"]' % HEAD, "does not say which commit")):
+            with self.subTest(text):
+                launch.write_text(text)
+                self.assertIn("the run record %s %s" % (launch, reason), self.refused(host))
+        self.assertEqual(self.kills, [])
+
     def test_live_records_that_cannot_be_read_stop_the_deploy_rather_than_count_as_none(self):
         for answer in (("", 1), ('{"instance_id":"i-1","error":{"code":"DATABASE_BUSY"}}\n', 75), ("not json\n", 0),
                        (page(19) + '{"instance_id":"i-1","error":{"code":"DATABASE_BUSY"}}\n', 75),
-                       ('{"instance_id":"i-1","items":[{"release":19}],"next_cursor":null}\n', 0)):
+                       ('{"instance_id":"i-1","items":[{"release":19}],"next_cursor":null}\n', 0), (page(19), 1)):
             with self.subTest(answer):
                 host = FakeHost(self.config, releases=answer)
                 self.assertIn("could not be read", self.refused(host, number=20))
