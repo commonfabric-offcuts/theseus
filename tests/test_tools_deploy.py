@@ -55,16 +55,19 @@ class FakeHost:
 
     def __init__(self, config, servers=(111,), runners=(222,), dirty="", ff=True, backup=0, merge=0, migrate=0,
                  log=SHIPPED, keeps=True, releases=(page(19), 0), cli=0, recorded=0, on_cli=None, logs=None,
-                 kept=(), line=(HEAD,), others=()):
+                 kept=(), listed=0, at=SHA, line=(HEAD,), others=()):
         self.config, self.calls = config, []
         self.servers, self.runners = list(servers), list(runners)
         self.dirty, self.ff, self.backup, self.merge, self.migrate = dirty, ff, backup, merge, migrate
         self.log, self.keeps, self.releases, self.cli, self.recorded = log, keeps, releases, cli, recorded
         self.written, self.on_cli = [], on_cli
-        # git log answers per range (default: self.log); kept: the records tools/pipeline/releases holds at SHA;
-        # line: the live checkout's history, oldest first; others: commits git knows on another line. Any other
-        # commit is one git cannot read (exit 128).
-        self.logs, self.kept, self.line, self.others = logs or {}, list(kept), list(line), set(others)
+        # keeps: whether the live code keeps release records, None when git cannot say. git log answers per range
+        # (default: self.log), an (output, exit) pair for a range git cannot read. kept: the records
+        # tools/pipeline/releases holds at `at`, the commit deployed, listed with exit `listed`. line: the live
+        # checkout's history, oldest first; others: commits git knows on another line. Any other commit is one git
+        # cannot read (exit 128).
+        self.logs, self.kept, self.listed, self.at = logs or {}, list(kept), listed, at
+        self.line, self.others = list(line), set(others)
 
     def __call__(self, argv, **kw):
         self.calls.append(argv)
@@ -94,13 +97,16 @@ class FakeHost:
             code = self.merge
         elif argv[0] == "git" and "log" in argv:
             out = self.logs.get(argv[-1], self.log)
+            if isinstance(out, tuple):
+                out, code = out
+        elif argv[0] == "git" and "ls-tree" in argv and argv[-1] == "aim_next/releases.py":
+            out, code = ("aim_next/releases.py\n" if self.keeps else "", 0) if self.keeps is not None else ("", 128)
         elif argv[0] == "git" and "ls-tree" in argv:
             out = "".join("tools/pipeline/releases/release-%s.json\n" % record["release"] for record in self.kept)
+            code = self.listed
         elif argv[0] == "git" and "show" in argv:
             out = json.dumps([record for record in self.kept
-                              if argv[-1] == "%s:tools/pipeline/releases/release-%s.json" % (SHA, record["release"])][0])
-        elif argv[0] == "git" and "cat-file" in argv:
-            code = 0 if self.keeps else 128
+                              if argv[-1] == "%s:tools/pipeline/releases/release-%s.json" % (self.at, record["release"])][0])
         elif "releases" in argv:
             out, code = self.releases
         elif "record-release" in argv:
@@ -549,6 +555,89 @@ class ReleasePlan(DeployCase):
                 self.assertIn("could not be read", self.refused(host, number=20))
                 self.assertEqual(self.kills, [])
 
+    def test_whether_the_live_code_keeps_records_that_git_cannot_say_stops_the_deploy(self):
+        self.assertIn("whether the live code keeps release records could not be read",
+                      self.refused(FakeHost(self.config, keeps=None), number=20))
+        # Code that does not keep them is read as keeping none, and never asked for them.
+        host = FakeHost(self.config, keeps=False)
+        self.planned(host, number=20)
+        self.assertEqual(host.ran("releases"), [])
+        self.assertEqual(self.kills, [])
+
+    def test_kept_records_or_commits_that_git_cannot_list_stop_the_deploy(self):
+        self.assertIn("the release records kept at %s could not be listed" % SHA[:12],
+                      self.refused(FakeHost(self.config, listed=128)))
+        unread = {"%s..%s" % (HEAD, SHA): ("", 128)}
+        for no_items in (False, True):
+            with self.subTest(no_items=no_items):
+                self.assertIn("the commits from %s to %s could not be read" % (HEAD, SHA),
+                              self.refused(FakeHost(self.config, logs=unread), no_items=no_items))
+        # A release recovered from its run record names its items from git, too.
+        X = "a" * 40
+        self.launched(HEAD)
+        host = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[X, HEAD],
+                        logs={"%s..%s" % (X, HEAD): ("", 128)})
+        self.assertIn("the commits from %s to %s could not be read" % (X, HEAD), self.refused(host))
+        self.assertEqual(self.kills, [])
+
+    def test_live_since_without_a_record_that_places_the_live_commit_is_refused(self):
+        self.assertIn("no record places %s" % HEAD[:12],
+                      self.refused(FakeHost(self.config, keeps=False), number=20, live_since="2026-11-07T04:00:00-08:00"))
+        self.assertEqual(self.kills, [])
+
+    def restarting(self):
+        """The release check's summary for the live HEAD, the commit a restart deploys."""
+        self.summary.write_text(json.dumps(summary(commit=HEAD)))
+        return {"%s..%s" % (HEAD, HEAD): log()}
+
+    def test_a_deploy_of_the_live_commit_is_a_restart_that_writes_no_record_of_its_own(self):
+        logs = self.restarting()
+        for given in ({}, {"no_items": True}):
+            with self.subTest(given):
+                self.planned(FakeHost(self.config, logs=logs), sha=HEAD, **given)
+                plan = self.plan()
+                self.assertEqual((plan["record"], plan["before"], plan["restart_of"], plan["latest_recorded"]),
+                                 (None, [], 19, 19))
+        # The records the instance lacks are still written; the restart adds none.
+        kept = [release(18, "1" * 40, [1, 4]), release(19, HEAD, [87, 2])]
+        self.planned(FakeHost(self.config, keeps=False, kept=kept, at=HEAD, line=["1" * 40, HEAD], logs=logs), sha=HEAD)
+        self.assertEqual((self.plan()["record"], self.plan()["before"], self.plan()["restart_of"]), (None, kept, 19))
+        # Nothing records the live commit: still a restart, and it needs no number.
+        self.planned(FakeHost(self.config, keeps=False, logs=logs), sha=HEAD)
+        self.assertEqual((self.plan()["record"], self.plan()["restart_of"]), (None, None))
+        self.assertIn("a deploy of the live commit restarts release 19 and writes no record of its own",
+                      self.refused(FakeHost(self.config, logs=logs), sha=HEAD, number=20))
+        self.assertEqual(self.kills, [])
+
+    def test_a_deploy_run_again_after_its_release_went_live_unverified_records_that_release_once(self):
+        # Release 20 went live at HEAD and did not verify; the deploy is run again at the same commit.
+        X = "a" * 40
+        logs = dict(self.restarting(), **{"%s..%s" % (X, HEAD): log(("Twenty", ["89"]))})
+        self.launched(HEAD)
+        self.planned(FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[X, HEAD], logs=logs), sha=HEAD)
+        plan = self.plan()
+        self.assertEqual(self.summarised(), [(20, HEAD, X, [89], "2026-11-07T05:00:00-08:00")])
+        self.assertEqual((plan["record"], plan["restart_of"], plan["latest_recorded"]), (None, 20, 20))
+        self.assertEqual(self.kills, [])
+
+    def test_a_commit_already_recorded_as_another_release_stops_the_deploy_before_anything_stops(self):
+        X, Y = "a" * 40, "e" * 40
+        # The instance records the commit being deployed under an earlier number.
+        host = FakeHost(self.config, releases=(page(release(20, HEAD, [87]), release(19, SHA, [1])), 0))
+        self.assertIn("%s is release 19 and release 21; a commit is one release" % SHA[:12], self.refused(host))
+        # The repository keeps two numbers at one commit.
+        self.launched(HEAD)
+        kept = [release(18, X, [1]), release(19, X, [4])]
+        host = FakeHost(self.config, kept=kept, releases=(page(kept[0]), 0), line=[X, HEAD],
+                        logs={"%s..%s" % (X, HEAD): log(("Twenty", ["89"]))})
+        self.assertIn("%s is release 18 and release 19" % X[:12], self.refused(host))
+        # It keeps a number at a commit the instance records under another.
+        kept = [release(18, X, [1]), release(19, Y, [4])]
+        host = FakeHost(self.config, kept=kept, releases=(page(release(20, Y, [87]), kept[0]), 0), line=[X, Y, HEAD],
+                        logs={"%s..%s" % (Y, HEAD): log(("Twenty-one", ["89"]))})
+        self.assertIn("%s is release 19 and release 20" % Y[:12], self.refused(host))
+        self.assertEqual(self.kills, [])
+
 
 # Stand-ins for bin/aim-next-server and bin/aim-next-runner: each prints its first line as the real one does
 # (the server only after binding --port) and then stays up until it is signalled.
@@ -602,7 +691,7 @@ class FullDeploy(DeployCase):
             proc.wait()
         super().tearDown()
 
-    def run_deploy(self, host):
+    def run_deploy(self, host, sha=SHA):
         real_start, real_urlopen, opened = deploy.start, deploy.urllib.request.urlopen, []
 
         def start(*args):
@@ -622,8 +711,15 @@ class FullDeploy(DeployCase):
                 mock.patch.object(deploy, "start", start), \
                 mock.patch.object(deploy.urllib.request, "urlopen", urlopen), \
                 redirect_stdout(io.StringIO()):
-            deploy.deploy(self.config, SHA, self.evidence, self.summary, False)
+            deploy.deploy(self.config, sha, self.evidence, self.summary, False)
         return opened
+
+    def completed(self, host, sha=SHA):
+        """A deploy that must complete; a refusal fails the test rather than erroring it."""
+        try:
+            return self.run_deploy(host, sha=sha)
+        except deploy.Refused as refusal:
+            self.fail("the deploy refused: %s" % refusal)
 
     def first_line(self, run):
         return json.loads((self.instance / run / "stdout.log").read_text().splitlines()[0])
@@ -745,6 +841,37 @@ class FullDeploy(DeployCase):
         self.assertIn("release 20 is live but the record of release 18 was not written", str(caught.exception))
         self.assertIn(commands[0] + " && ", str(caught.exception))
         self.assertIn(str((self.evidence / "release-20.json").resolve()), str(caught.exception))
+
+    def test_a_restart_of_the_live_release_writes_no_record(self):
+        self.summary.write_text(json.dumps(summary(commit=HEAD)))
+        logs = {"%s..%s" % (HEAD, HEAD): log()}
+        host = FakeHost(self.config, logs=logs)
+        self.completed(host, sha=HEAD)
+        self.assertEqual((host.written, host.ran("record-release")), ([], []))
+        self.assertEqual(json.loads((self.evidence / "11-release.json").read_text()), {"records": [], "writes": []})
+        self.assertNotIn("release-20", self.records())
+
+    def test_a_deploy_run_again_after_its_release_went_live_unverified_writes_that_record_once(self):
+        # Release 20 went live at HEAD without its record; the deploy run again records it, and only it.
+        self.summary.write_text(json.dumps(summary(commit=HEAD)))
+        logs = {"%s..%s" % (HEAD, HEAD): log()}
+        X = "a" * 40
+        (self.instance / "run-server-03" / "launch.json").write_text(json.dumps({"at": "2026-11-07T05:00:00-08:00",
+                                                                                "revision": HEAD}))
+        host = FakeHost(self.config, releases=(page(release(19, X, [87])), 0), line=[X, HEAD],
+                        logs=dict(logs, **{"%s..%s" % (X, HEAD): log(("Twenty", ["89"]))}))
+        self.completed(host, sha=HEAD)
+        self.assertEqual([(written["release"], written["commit"], written["items"], written["source"])
+                          for written in host.written], [(20, HEAD, [89], "backfill")])
+
+    def test_a_restart_that_does_not_verify_says_so_and_gives_no_record_command(self):
+        self.summary.write_text(json.dumps(summary(commit=HEAD)))
+        host = FakeHost(self.config, cli=2, logs={"%s..%s" % (HEAD, HEAD): log()})
+        with self.assertRaises(deploy.Refused) as caught:
+            self.run_deploy(host, sha=HEAD)
+        self.assertIn("the restart of release 19 did not verify, so no release record was written: ", str(caught.exception))
+        self.assertNotIn("record-release", str(caught.exception))
+        self.assertEqual(host.ran("record-release"), [])
 
     def test_a_record_the_instance_refuses_says_the_release_is_live_and_how_to_record_it(self):
         host = FakeHost(self.config, recorded=2)

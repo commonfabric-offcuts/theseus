@@ -96,6 +96,10 @@ records them from what it keeps:
   each is a release, numbered on from the latest, with the items named since
   the commit before it and the time a server first started it. Two deploys in
   a row that put their release live without its record are two releases.
+- A deploy of the live commit is a restart and writes no record of its own.
+  So running a deploy again at a commit that went live without its record
+  records that release once, from its server's run record, with no
+  measurements.
 
 The same records can also be written by hand on an instance at schema 18,
 without a deploy, once per file:
