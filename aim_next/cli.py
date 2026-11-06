@@ -170,7 +170,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes | new-outcome --title TITLE [--purpose TEXT] [--team A,B] "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] TEXT|- "
-         "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | rename TOPIC TITLE "
+         "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
@@ -228,6 +228,9 @@ def _parser():
     state.add_argument("state", choices=STATES)
     state.add_argument("--note")
     state.add_argument("--waiting-on")
+    responsible = verb("responsible")
+    responsible.add_argument("topic")
+    responsible.add_argument("text")
     rename = verb("rename")
     rename.add_argument("topic")
     rename.add_argument("title")
@@ -514,6 +517,17 @@ class Agent:
             line += ": " + _one_line(result["note"], 80)
         self.out.plain(line)
 
+    def do_responsible(self):
+        """Says what the actor is responsible for in a topic; empty text clears it."""
+        note = self.text()
+        # Fenced on the note as read; Core refuses someone not taking part.
+        mine = [item["responsibility_revision"] for item in self.view("topic", {"topic_id": self.options.topic})["participants"]
+                if item["actor_id"] == self.actor]
+        result = self.command("responsibility.set", {"topic_id": self.options.topic}, {"note": note},
+                              {"responsibility_revision": mine[0] if mine else 0})
+        self.out.plain("%s in %s: %s" % (self.actor, result["topic_id"], _one_line(result["note"], 200)) if result["note"]
+                       else "%s in %s: no note" % (self.actor, result["topic_id"]))
+
     def do_rename(self):
         result = self.update_topic({"title": self.options.title})
         self.out.plain('renamed %s "%s"' % (result["topic_id"], _one_line(result["title"], 60)))
@@ -526,9 +540,14 @@ class Agent:
 
     def do_read(self):
         options = self.options
-        topic = self.view("topic", {"topic_id": options.topic})["topic"]
+        answer = self.view("topic", {"topic_id": options.topic})
+        topic = answer["topic"]
         page = self.view("topic_messages", {"topic_id": options.topic, "cursor": options.after, "limit": options.limit})
         self.out.plain("%s  %s" % (topic["id"], _one_line(topic["title"])))
+        # What each participant said they are responsible for, under the title.
+        for item in answer["participants"]:
+            if item.get("responsibility"):
+                self.out.plain("  %s: %s" % (item["actor_id"], _one_line(item["responsibility"], 200)))
         for item in page["items"]:
             body = item["body"]
             if item["preview"]:

@@ -64,6 +64,31 @@ class TopicStateVerbCase(AgentVerbCase):
         self.assertIn(outcome, self.run_cli("outcomes", actor="agent-b")[1])
         self.assertNotIn(outcome, self.run_cli("outcomes", actor="outsider")[1])
 
+    def test_responsible_says_what_the_agent_does_in_a_topic_and_read_shows_it(self):
+        code, out, err = self.run_cli("responsible", "t1", "Drafts the release notes")
+        self.assertEqual((code, out, err), (0, "agent-a in t1: Drafts the release notes\n", ""))
+        self.assertEqual(self.sql("SELECT responsibility,responsibility_revision FROM topic_participants WHERE topic_id='t1' AND actor_id='agent-a'"),
+                         [("Drafts the release notes", 1)])
+        # Every reader of the topic sees it under the title; a participant with no note shows nothing.
+        code, out, _ = self.run_cli("read", "t1", "--limit", "1", actor="agent-b")
+        self.assertEqual(code, 0)
+        self.assertTrue(out.startswith("t1  Topic\n  agent-a: Drafts the release notes\n\n#"), out)
+        # The second note is fenced on the first's revision, read afresh: it lands.
+        code, out, _ = self.run_cli("responsible", "t1", "-", stdin="Reviews the copy\n".encode("utf-8"))
+        self.assertEqual((code, out), (0, "agent-a in t1: Reviews the copy\n"))
+        self.assertEqual(self.run_cli("responsible", "t1", ""), (0, "agent-a in t1: no note\n", ""))
+        self.assertEqual(self.sql("SELECT responsibility,responsibility_revision FROM topic_participants WHERE topic_id='t1' AND actor_id='agent-a'"),
+                         [("", 3)])
+        self.assertTrue(self.run_cli("read", "t1", "--limit", "1")[1].startswith("t1  Topic\n\n#"))
+
+    def test_responsible_is_refused_to_someone_not_taking_part(self):
+        for actor in ("agent-b", "outsider"):
+            with self.subTest(actor=actor):
+                code, out, err = self.run_cli("responsible", "t1", "Mine now", actor=actor)
+                self.assertEqual((code, out), (2, ""))
+                self.assertIn("FORBIDDEN", err)
+        self.assertEqual(self.sql("SELECT count(*) FROM topic_participants WHERE responsibility!=''"), [(0,)])
+
     def test_json_output_carries_the_receipt(self):
         code, out, err = self.run_cli("--json", "state", "t1", "review")
         self.assertEqual((code, err), (0, ""))

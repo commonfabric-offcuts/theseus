@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import uuid
 
-from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
+from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _prefix, _revision
 from .delivery import _now_ms
+from .responsibility import responsibility_note
 from .work import work_by_topic
 
 
@@ -129,16 +130,20 @@ class Conversation:
             epoch += 1
             if old is not None and old["active"]:
                 self._cancel_subscription(db, member, topic["id"], old["epoch"])
-        responsibility = _body(args.get("responsibility", old["responsibility"] if old else ""))
-        db.execute("INSERT INTO topic_participants VALUES (?,?,?,?,?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET active=excluded.active,epoch=excluded.epoch,responsibility=excluded.responsibility",
-                   (topic["id"], member, int(present), epoch, responsibility))
+        responsibility = responsibility_note(args.get("responsibility", old["responsibility"] if old else ""))
+        # A changed note takes a new revision, so a request built on the old one is refused.
+        revision = (old["responsibility_revision"] if old else 0) + (responsibility != (old["responsibility"] if old else ""))
+        db.execute("INSERT INTO topic_participants(topic_id,actor_id,active,epoch,responsibility,responsibility_revision) VALUES (?,?,?,?,?,?) "
+                   "ON CONFLICT(topic_id,actor_id) DO UPDATE SET active=excluded.active,epoch=excluded.epoch,"
+                   "responsibility=excluded.responsibility,responsibility_revision=excluded.responsibility_revision",
+                   (topic["id"], member, int(present), epoch, responsibility, revision))
         unwaited = not present and self._unwait(db, member, "id", topic["id"])
         version = self._touch_topic(db, topic)
         self._change(db, "actor", member, "participation", topic["id"], version)
         if unwaited:
             self._change(db, "actor", member, "waiting", topic["id"], version)
         return {"topic_id": topic["id"], "actor_id": member, "present": present, "epoch": epoch,
-                "responsibility": responsibility, "version": version}, [{"kind": "topic", "id": topic["id"], "version": version}]
+                "responsibility": responsibility, "responsibility_revision": revision, "version": version}, [{"kind": "topic", "id": topic["id"], "version": version}]
 
     def _command_topic_create_and_send(self, db, actor, envelope):
         return self._send(db, actor, envelope, opening=True)
@@ -378,7 +383,14 @@ class Conversation:
 
     def _view_topic(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))
-        participants = [dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"])) for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(p.responsibility,1,256) AS responsibility,a.enabled,a.kind FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?", (topic["id"], LIMITS["topic_participants"]))]
+        # Each participant's note on what they are responsible for, whole up to its bound.
+        participants = []
+        for row in db.execute("SELECT p.actor_id,p.active,p.epoch,substr(CAST(p.responsibility AS BLOB),1,1025) AS note_prefix,p.responsibility_revision,a.enabled,a.kind "
+                              "FROM topic_participants p JOIN actors a ON a.id=p.actor_id WHERE p.topic_id=? AND p.active=1 ORDER BY p.actor_id LIMIT ?",
+                              (topic["id"], LIMITS["topic_participants"])):
+            item = dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"]))
+            item["responsibility"], item["responsibility_truncated"] = _prefix(item.pop("note_prefix") or b"")
+            participants.append(item)
         summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
         waits = self._waits_by_topic(db, [topic["id"]])
         waiting_on, asks = waits[topic["id"]]
