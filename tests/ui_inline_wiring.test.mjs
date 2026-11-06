@@ -19,6 +19,7 @@ import { cardClass, agentColor, AGENT_PALETTE } from '../web/author-colors.mjs';
 import { AgentColors } from '../web/colors.mjs';
 import { openColorPicker } from '../web/color-picker.mjs';
 import { PageReads } from '../web/page-reads.mjs';
+import { PageHere } from '../web/page-here.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -78,7 +79,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -1525,4 +1526,18 @@ test('a Notebook page read at an older revision shows what changed since then; o
   await open(2);
   assert.equal(f.calls.filter(c => c.name === 'source').length, 2, 'the earlier revision was asked for');
   assert.equal(shown.length, 1, 'a Reader showing something else is left alone');
+});
+
+test('on an outcome page its Notebook pages are listed after its topics and read again with them on each commit', async () => {
+  const f = fixture('https://fixture/?workspace=w1'), live = stream(), o = outcomesPage(f);
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  o.answers.push(o.page(['w1']), o.page(['w1']));
+  await f.initialize(); await drain();
+  const page = f.get('outcome-page').children.map(child => child.id);
+  assert.ok(page.indexOf('outcome-references') === page.indexOf('topic-navigation') + 1, 'right after the topics: ' + page);
+  assert.ok(page.indexOf('page-here') === page.indexOf('outcome-references') + 1, 'and the page that opens in place after them');
+  const pages = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.name === 'memory_items').map(call => call.args.owner_scope)));
+  assert.deepEqual(pages(), [{ kind: 'workspace', id: 'w1' }]);
+  live.emit({ kind: 'commit', seq: 9 }); await drain();
+  assert.equal(pages().length, 2, 'a commit reads the pages again, so a light goes out or comes on');
 });

@@ -71,3 +71,14 @@ not worked out: a stretch of lines is shown removed and added whole, and a
 page whose lines differ that much says it was mostly rewritten. A revision
 that changed only the title or attachments says so. A Reader that has moved
 to another source by the time the earlier revision arrives is left alone.
+
+## On the outcome's own page
+
+An outcome's page lists its topics in the page itself rather than the
+sidebar, so its Notebook pages are listed right after them, as cards like
+the topics', with the same light. There is no Reader on this page: a page
+opens in place below the list (`web/page-here.mjs`), with its title, its
+revision, what changed since the person last read it, and its words, and
+opening it reads it as the Reader does. One page shows at a time; one opened
+while another is still opening replaces it, and Close gives the focus back
+to its row. The list is read again with the topics after every commit.

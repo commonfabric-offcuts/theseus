@@ -28,6 +28,7 @@ import { cardClass, agentColor, paneClass } from './author-colors.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
+import { PageHere } from './page-here.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -1277,7 +1278,8 @@ async function initializeOutcomePage(route) {
     $('refresh').onclick=()=>run(reload);
     await reload();
   } else {
-    $('outcome-page').append($('topic-navigation'));
+    // The outcome's Notebook pages are listed after its topics, and one opens in place below them.
+    $('outcome-page').append($('topic-navigation'),$('outcome-references'),$('page-here'));
     initializeOutcomeNavigation(route.id);
     let refreshSerial=0;
     const refresh=async()=>{
@@ -1305,7 +1307,8 @@ async function initializeOutcomePage(route) {
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
         open:id=>openDestination({kind:'topic',id},topicRail.pages.items.find(item=>item.id===id)?.title??id),
         updated:()=>{$('outcome-empty').hidden=!topicRail.pages.started||topicRail.pages.items.length>0||!$('topics-status').hidden;}});
-      return topicRail.load();
+      if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
+      return (await Promise.all([topicRail.load(),outcomeReferences.load()])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
     // topics, and the outcome rail beside them carries counts too.
@@ -1313,6 +1316,19 @@ async function initializeOutcomePage(route) {
     $('refresh').onclick=()=>run(reload);await reload();
   }
   document.body.dataset.ready='true';
+}
+// An outcome's Notebook pages on its own page, each opening in place.
+function outcomePages(workspace,recorded) {
+  const view=async(name,args)=>checkedView(await api.view(name,args,{readClass:'foreground'}),bootstrap.instance_id);
+  const reads=new PageReads({recorded,send:(id,revision)=>{
+    const {authority_id,authority_epoch}=bootstrap.authority;
+    return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
+      target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
+  }});
+  const here=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref)});
+  return new OutcomeReferences({scope:workspace,host:$('outcome-references'),list:$('outcome-references-list'),more:$('more-references'),
+    message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
+    read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>here.open(ref,row))});
 }
 // An outcome's team, which its owner may change.
 let teamPanel=null;
