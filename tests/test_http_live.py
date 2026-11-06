@@ -218,10 +218,13 @@ class LiveStreamTests(unittest.TestCase):
         return child
 
     def telling(self):
-        """Serve again, keeping what the server says when a runner process ends."""
-        told = []
+        """Serve again, keeping what the server says when a runner process ends; self.told_one is set at each."""
+        told, self.told_one = [], threading.Event()
+        def tell(event):
+            told.append(event)
+            self.told_one.set()
         self.stop()
-        with mock.patch.object(server_module, "_stderr", told.append):
+        with mock.patch.object(server_module, "_stderr", tell):
             self.start()
         return told
 
@@ -243,15 +246,19 @@ class LiveStreamTests(unittest.TestCase):
                 if line["seq"] >= seq:
                     break
 
+    def announced(self, client):
+        """The stream's next line; the socket's timeout, which guards a hang, fails the test."""
+        try:
+            return self.line(client)
+        except socket.timeout:
+            self.fail("nothing more was announced; the runner is recorded as %r" % (self.runner_state(),))
+
     def until_runner(self, client, state, lines=4):
-        """Read the stream's commits until the runner's recorded state is this one (the socket's timeout guards a hang)."""
+        """Read the stream's commits until the runner's recorded state is this one."""
         for _ in range(lines):
             if self.runner_state()[0] == state:
                 return self.runner_state()
-            try:
-                self.line(client)
-            except socket.timeout:
-                self.fail("nothing more was announced; the runner is recorded as %r" % (self.runner_state(),))
+            self.assertIn("seq", self.announced(client), "the feed ended")
         return self.runner_state()
 
     def test_a_runner_process_that_ends_without_a_word_is_recorded_and_announced_at_once(self):
@@ -264,7 +271,10 @@ class LiveStreamTests(unittest.TestCase):
         # The server learned of the runner from a commit; it learns of its end from the kernel, with no clock.
         child.kill()
         child.wait()
-        self.assertEqual(self.until_runner(client, "exited"), ("exited", "ended", child.pid))
+        # The next line every open page gets is the commit that records the end, and the feed goes on.
+        line = self.announced(client)
+        self.assertEqual((line, self.runner_state()), ({"seq": self.seq()}, ("exited", "ended", child.pid)))
+        self.settled(client)
         view = self.store.view("test-human", "wakes", {})
         self.assertEqual((view["runner"]["state"], view["runner"]["reason"]), ("exited", "ended"))
         self.assertEqual([(event["event"], event["pid"], event["record"]["status"]) for event in told],
