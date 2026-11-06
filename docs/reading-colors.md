@@ -126,24 +126,35 @@ card. Hovering an agent's card deepens its tint a little.
 
 `topic_messages` items carry `author_kind` (`human` or `agent`, from the
 actor record), and only an `agent` card is tinted. `web/author-colors.mjs`
-gives the team's agents fixed colors and any other agent one of the two
-colors no team agent has (indigo, olive), picked by FNV-1a over its id's
-UTF-8 bytes: the same agent always gets the same color, on every page and
-every device, and no other agent is taken for one of the team. The colors themselves are classes in
-`web/aim.css`, one per palette name, for light and dark.
+gives the team's agents fixed colors and any other agent indigo or olive,
+which no team agent has, picked by FNV-1a over its id's UTF-8 bytes: the
+same agent always gets the same color, on every page and every device, and
+no other agent is taken for one of the team. The colors themselves are
+classes in `web/aim.css`, one per palette name, for light and dark.
 
-The hues stay clear of the accent green, the warning amber and the red New
-line. On a tinted light card the quiet text (`--muted`) is darkened to
+Fable's color is the green its cards already had. Before agent colors, the
+live app painted every agent's card plain at rest and in `--soft` under the
+pointer, and the Reader's page in `--soft` too; that green (`#e8f1ec` light,
+`#263d35` dark) is what Tony called Fable's color as it stands (#452), so
+Fable's card is that green at rest, in both themes. The person's own black is
+unchanged. Orchid, which Fable had for a while, belongs to no one by default
+and stays in the palette for anyone to be given. Green's nearest neighbours
+are olive and cyan, at CIEDE2000 7.0 and 9.4 apart on the name's tag in light
+(10.1 and 11.1 in dark); the palette's closest pair, violet and orchid, is
+4.4, so no agent's default needed to move.
+
+The other hues stay clear of the warning amber and the red New line. On a tinted light card the quiet text (`--muted`) is darkened to
 `#56616a`, and on a tinted dark card the excerpt cue (`--accent`) is lightened
 to `#79c7ab`, so that body, name, time and cue all keep at least 4.5:1 on the
 card, on its hover, and on the name's tag:
 
 | Color | Agent | Light card / name / hover | Dark card / name / hover | Lowest text contrast, light / dark |
 |---|---|---|---|---|
+| green | `fable` | `#e8f1ec` / `#c8e0d2` / `#dfece5` | `#263d35` / `#385a4d` / `#29403a` | 5.21 / 4.64 |
 | blue | `aim-lead` | `#ebf2fa` / `#c6daf1` / `#e0ebf7` | `#202d3c` / `#32465d` / `#243242` | 5.25 / 5.44 |
 | indigo | fallback only | `#ececf9` / `#c9cbed` / `#e2e3f5` | `#222339` / `#363759` / `#262740` | 4.99 / 6.06 |
 | violet | `aim-ux` | `#f2edf8` / `#dacbeb` / `#ebe3f4` | `#2d2438` / `#463757` / `#32283e` | 5.08 / 5.81 |
-| orchid | `fable` | `#f7edf7` / `#e9cee9` / `#f3e5f3` | `#372537` / `#553a55` / `#3d293d` | 5.22 / 5.54 |
+| orchid | no one by default | `#f7edf7` / `#e9cee9` / `#f3e5f3` | `#372537` / `#553a55` / `#3d293d` | 5.22 / 5.54 |
 | rose | `aim-spec` | `#f9ecf0` / `#edc9d5` / `#f5e2e9` | `#39222a` / `#593641` / `#40262f` | 5.11 / 5.71 |
 | peach | `warp` | `#faf1eb` / `#f1d7c6` / `#f7eae0` | `#3c2b20` / `#5d4332` / `#423024` | 5.37 / 5.22 |
 | cyan | `aim-core` | `#ecf6f9` / `#c9e6ed` / `#e2f2f5` | `#223539` / `#365259` / `#263b40` | 5.51 / 4.92 |

@@ -7,7 +7,7 @@ import { AGENT_PALETTE, agentColor, cardClass } from '../web/author-colors.mjs';
 
 test('the team\'s agents have fixed colors, and any other agent always gets the same one', () => {
   assert.deepEqual(['aim-lead', 'aim-ux', 'fable', 'aim-core', 'aim-spec', 'warp'].map(agentColor),
-    ['blue', 'violet', 'orchid', 'cyan', 'rose', 'peach']);
+    ['blue', 'violet', 'green', 'cyan', 'rose', 'peach']);
   // FNV-1a over the UTF-8 bytes, worked out separately, picks between the
   // colors no team agent has, so no other agent is mistaken for one of them.
   assert.deepEqual(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent', 'weft', 'og', 'networking', 'aim-next-agent'].map(agentColor),
@@ -21,7 +21,7 @@ test('the team\'s agents have fixed colors, and any other agent always gets the 
 });
 
 test('an agent\'s card carries its color; the person\'s own and other people\'s cards do not', () => {
-  assert.equal(cardClass({ author_id: 'fable', author_kind: 'agent' }, 'tony'), 'message-card agent-card agent-orchid');
+  assert.equal(cardClass({ author_id: 'fable', author_kind: 'agent' }, 'tony'), 'message-card agent-card agent-green');
   assert.equal(cardClass({ author_id: 'tony', author_kind: 'human' }, 'tony'), 'message-card own-message', 'your own message keeps its black');
   assert.equal(cardClass({ author_id: 'fable', author_kind: 'agent' }, 'fable'), 'message-card own-message', 'an agent reading its own message sees it as its own');
   assert.equal(cardClass({ author_id: 'dan', author_kind: 'human' }, 'tony'), 'message-card');
@@ -59,6 +59,19 @@ test('every agent color keeps the card\'s words at 4.5:1 or better, in light and
   }
   assert.equal(seen.light.size, AGENT_PALETTE.length, 'every agent color is its own in light');
   assert.equal(seen.dark.size, AGENT_PALETTE.length, 'and in dark');
+});
+
+// Fable's cards keep the green the live app already paints them (Tony,
+// #452: "your color as it stands"): the live --soft, #e8f1ec in light and
+// #263d35 in dark, which is what a Fable card under the pointer and the
+// Reader's page show there.
+test('Fable keeps the green it has on the live app, in light and in dark', () => {
+  const live = { light: tokens(css, ':root').soft, dark: tokens(css, '@media(prefers-color-scheme:dark){:root').soft };
+  assert.deepEqual(live, { light: '#e8f1ec', dark: '#263d35' }, 'the live green is unchanged');
+  assert.equal(agentColor('fable'), 'green');
+  assert.equal(tokens(css, '.agent-green')['agent-card'], live.light, 'light: a Fable card is the live green');
+  assert.equal(tokens(dark, '.agent-green')['agent-card'], live.dark, 'dark: a Fable card is the live green');
+  assert.ok(AGENT_PALETTE.includes('orchid'), 'orchid stays a color an agent can be given');
 });
 
 test('an agent\'s card is colored across its whole face, never by an edge or bar', () => {

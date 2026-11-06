@@ -1333,7 +1333,7 @@ test('an agent\'s card in the topic log carries its color, and the person\'s own
   add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'dan', 'human'); add(4, 'warp', 'agent');
   f.paintViews('messages');
   const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
-  assert.deepEqual(classes, { m4: 'message-card agent-card agent-peach', m3: 'message-card', m2: 'message-card own-message', m1: 'message-card agent-card agent-orchid' });
+  assert.deepEqual(classes, { m4: 'message-card agent-card agent-peach', m3: 'message-card', m2: 'message-card own-message', m1: 'message-card agent-card agent-green' });
 });
 
 test('your own message keeps its own style when it arrives live and when More loads it, among agents\' colors', async () => {
@@ -1346,6 +1346,6 @@ test('your own message keeps its own style when it arrives live and when More lo
   views.messagesPage(page([item(32, 'fixture-person'), item(33, 'warp')], null, 2), { live: true, cursor: views.newest }); await settle();
   views.messagesPage(page([item(27, 'aim-lead'), item(28, 'fixture-person')], null, 2), { cursor: views.olderCursor }); await settle();
   const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
-  assert.deepEqual(classes, { m33: 'message-card agent-card agent-peach', m32: 'message-card own-message', m31: 'message-card agent-card agent-orchid',
-    m30: 'message-card agent-card agent-orchid', m29: 'message-card agent-card agent-orchid', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
+  assert.deepEqual(classes, { m33: 'message-card agent-card agent-peach', m32: 'message-card own-message', m31: 'message-card agent-card agent-green',
+    m30: 'message-card agent-card agent-green', m29: 'message-card agent-card agent-green', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
 });
