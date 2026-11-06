@@ -98,6 +98,8 @@ recipient (a post, an acknowledgment, a read-through) is a sign of life: the
 count clears, and a parked recipient with work waiting is due at once, unless
 a hosted turn that holds its work is the one acting. Reaching nothing pending
 clears the count too. Reads stay write-free, so a read is not a sign of life.
+The counts are derived from wakes, not anyone's records, so stepping back to
+version 17 drops them and is never refused for them.
 
 The `wakes` view lists the agents whose wakes are not getting through: while a
 runner holds a live lease, each parked agent with work, as `{actor_id,

@@ -38,7 +38,9 @@ WAKE_HEALTH_DOWN = (
     "ALTER TABLE recipient_schedule DROP COLUMN unanswered_since_ms",
     "ALTER TABLE recipient_schedule DROP COLUMN unanswered_wakes",
 )
-WAKE_HEALTH_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM recipient_schedule WHERE unanswered_wakes>0)"
+# The counts and the runner's end are derived from wakes and exits, nobody's
+# records: a step back drops them rather than being refused for them.
+WAKE_HEALTH_OCCUPIED = "SELECT 0"
 
 
 class WakeHealth:

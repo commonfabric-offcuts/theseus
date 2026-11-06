@@ -1202,16 +1202,20 @@ class Schema17Case(MigrationCase):
         self.assertEqual(schema(self.path), frozen(SCHEMA_17))
         self.assertEqual(self.sql("SELECT state,reason_code FROM runner_state"), [("idle", None)])
 
-    def test_step_back_refuses_while_a_wake_is_unanswered(self):
+    def test_step_back_to_17_drops_the_unanswered_counts_which_are_nobodys_records(self):
         self.upgrade()
+        records = self.records()
         with sqlite3.connect(str(self.path)) as db:
             db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=5 WHERE recipient_id='agent-a'")
-        before = self.unchanged()
-        with self.assertRaises(MigrationError) as raised:
-            self.step_back()
-        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
-        self.assertEqual(self.unchanged(), before)
-        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+        # The count is derived from wakes, not anyone's record: stepping back must not be refused for it.
+        try:
+            stepped = self.step_back()
+        except MigrationError as refused:
+            self.fail("step back refused: " + refused.code)
+        self.assertTrue(stepped["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
 
 
 # Do not rerun the inherited StoreCase tests during module discovery.
