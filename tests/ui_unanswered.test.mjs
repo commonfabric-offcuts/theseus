@@ -123,3 +123,23 @@ test('the latest commit an answer was read at decides where the line is, from a 
   await assert.rejects(views.readUnread(answer(21, null, 't2')), /another topic or says nothing/);
   await assert.rejects(views.readUnread(async () => ({ instance_id: 'i', topic_id: 't1' })), /another topic or says nothing/, 'an answer that does not say is refused');
 });
+
+test('a page for a frontier that moved on is not kept, yet what it says of the line is, and the line is placed', () => {
+  const paints = [];
+  const views = new TopicViews({ instanceId: 'i', topicId: 't1', paint: kind => paints.push(kind) });
+  const item = seq => ({ id: 'm' + seq, seq, topic_id: 't1', body: 'b', author_id: 'a' });
+  const page = (at, oldest, items, next = null) => ({ instance_id: 'i', items, next_cursor: next, relevant_versions: { topic: 5 }, oldest_unread: oldest, commit_seq: at });
+  views.messagesPage(page(10, { seq: 6, id: 'm6' }, [item(6), item(7)], 6), { initial: true });
+  assert.equal(views.olderCursor, 6);
+  // An older page asked for from a cursor the page has since passed: its
+  // messages are not kept, but it was read at a later commit, when a message
+  // further back was marked unread.
+  paints.length = 0;
+  assert.equal(views.messagesPage(page(12, { seq: 2, id: 'm2' }, [item(2)]), { cursor: 4 }), false, 'the stale page is not kept');
+  assert.equal(views.messages.has('m2'), false);
+  assert.deepEqual(views.oldestUnread, { seq: 2, id: 'm2' });
+  assert.deepEqual(paints, ['line'], 'the line is placed where that page says');
+  paints.length = 0;
+  assert.equal(views.messagesPage(page(13, { seq: 2, id: 'm2' }, []), { cursor: 4 }), false);
+  assert.deepEqual(paints, [], 'a stale page that moves nothing paints nothing');
+});

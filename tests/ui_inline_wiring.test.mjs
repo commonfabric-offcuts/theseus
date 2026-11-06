@@ -1250,6 +1250,33 @@ for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspa
   });
 }
 
+test('a New line read that failed after a commit is read again when the stream returns, and only then', async () => {
+  const f = fixture('https://fixture/?topic=t1'), live = stream();
+  f.useLive(live);
+  let failing = false, reads = 0;
+  // The page's own read, as TopicViews.readUnread makes it: a failure rejects.
+  f.views.readUnread = async read => { await read('topic_unread', { topic_id: 't1' }); return true; };
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => {
+    if (name !== 'topic_unread') return view(name, args, options);
+    reads++;
+    if (failing) throw Object.assign(Error('This read could not enter its bounded lane.'), { status: 503 });
+    return { instance_id: 'fixture', topic_id: 't1', oldest_unread: null, commit_seq: 1 };
+  };
+  await f.initialize(); await drain();
+  const reconnect = async () => { live.emit({ kind: 'state', state: 'down' }); live.emit({ kind: 'state', state: 'live' }); await drain(); };
+  live.emit({ kind: 'commit', seq: 20 }); await drain();
+  let before = reads;
+  assert.ok(before > 0, 'a commit reads where the line is');
+  await reconnect();
+  assert.equal(reads, before, 'nothing was owed, so the return reads nothing');
+  failing = true; live.emit({ kind: 'commit', seq: 21 }); await drain(); failing = false;
+  before = reads; await reconnect();
+  assert.equal(reads, before + 1, 'the failed read is owed, and the return reads it again');
+  before = reads; await reconnect();
+  assert.equal(reads, before, 'once read, the next return reads nothing');
+});
+
 // The new-topic and new-outcome pages show the outcome list beside the writing.
 for (const route of ['?workspace=w1&opening=o1&opening_topic=t9', '?new=outcome&intent=i1']) {
   test(`the outcome list beside ${route} is read again after each commit`, async () => {
