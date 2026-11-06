@@ -7,7 +7,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
-import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref } from './topic-navigation.mjs';
+import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
@@ -573,9 +573,12 @@ function paintViews(kind) {
       card = button('', () => openSource(item.source_ref, card)); card.className = 'memory-card';
       card.dataset.id = item.id; card.append(node('strong'), node('span')); $('memory-items').append(card);
     }
-    const identity = sourceIdentity(item.source_ref);
-    if (card.dataset.source !== identity) {
-      card.dataset.source = identity; card.querySelector('strong').textContent = item.title || 'Notebook item'; card.querySelector('span').textContent = item.body;
+    // A page read before and revised since wears its light, as in the sidebar.
+    const identity = sourceIdentity(item.source_ref), changed = String(changedSince(item));
+    if (card.dataset.source !== identity || card.dataset.changed !== changed) {
+      const [title, body] = card.children;
+      card.dataset.source = identity; card.dataset.changed = changed;
+      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item); body.textContent = item.body;
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
@@ -1100,8 +1103,11 @@ async function initialize() {
   outcomeReferences.load();
   // The open topic's marks are the person's own, read by the person's scope
   // and paged; the open Reader's button follows them.
+  // The topic's own Notebook pages' read state is read again too, so a page
+  // read since, here or elsewhere, loses its light.
   commitReload = followCommits(async () => {
     const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks();
+    await views.readState((name, args) => registry.cleanup.list(options => api.view(name, args, options)), pageMax());
     return outcomes !== false && topics !== false && references !== false && marked !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));

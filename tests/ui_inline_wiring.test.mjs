@@ -73,7 +73,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     runtime: { current: bootstrap.authority },
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
-  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
+  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readState: async () => true, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
@@ -1564,4 +1564,36 @@ test('an outcome that becomes unavailable stops showing its Notebook pages and t
   assert.equal(f.get('page-here').hidden, true, 'and shows none open');
   failure = null; await f.get('refresh').onclick();
   assert.equal(f.get('outcome-references').hidden, false, 'recovery lists them again');
+});
+
+test('a page in the topic\'s own Notebook carries the changed light, and a commit, such as the person\'s own read, puts it out', async () => {
+  const f = fixture(), live = stream(); Object.assign(f.bootstrap.authority, { authority_id: 'a1', authority_epoch: 'e1' });
+  f.useLive(live);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  const scope = { kind: 'topic', id: 't1' };
+  const page = (revision, read_revision) => ({ id: 'n1', seq: 1, owner_scope: scope, revision, read_revision, title: 'Plan', body: 'Words',
+    source_ref: { kind: 'memory', id: 'n1', revision } });
+  let shown = page(3, 1);
+  const view = f.api.view;
+  f.api.view = async (name, args) => name === 'memory_items' && args.owner_scope?.kind === 'topic'
+    ? (f.calls.push({ name, args }), { instance_id: 'fixture', items: [shown], next_cursor: null, relevant_versions: { notebook: 3 } }) : view(name, args);
+  await f.initialize(); await drain();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  views.memoryPage({ instance_id: 'fixture', items: [shown], next_cursor: null, relevant_versions: { notebook: 3 } }, { initial: true });
+  const light = () => {
+    const card = f.get('memory-items').children.find(child => child.dataset.id === 'n1');
+    const badge = card.children[0].children.find(child => typeof child === 'object' && /\bchanged\b/.test(child.className ?? ''));
+    return badge ? [badge.textContent, card.children[0].children.find(child => child.className === 'sr-only').textContent] : null;
+  };
+  assert.deepEqual(light(), ['2', ', changed since you read it, 2 new revisions']);
+  const asked = () => f.calls.filter(call => call.name === 'memory_items' && call.args.owner_scope?.kind === 'topic').length;
+  const before = asked();
+  shown = page(3, 3);
+  live.emit({ kind: 'commit', seq: 9 }); await drain();
+  assert.equal(asked(), before + 1, 'a commit reads the topic Notebook\'s read state again');
+  assert.equal(light(), null, 'read, the light goes out');
+  shown = page(4, 3);
+  live.emit({ kind: 'commit', seq: 10 }); await drain();
+  assert.deepEqual(light(), ['1', ', changed since you read it, 1 new revision'], 'revised again, it comes back on');
 });

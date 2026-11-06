@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 // pages sit in the sidebar after its topics; a page the reader has read and
 // an agent revised since wears its new revisions as a count, live, with no
 // reload; opening it shows what changed since, as marked words, and puts the
-// light out; at 390 wide, in light and in dark, nothing leaves the screen and
+// light out; a page in the topic's own Notebook wears the same light; at 390 wide, in light and in dark, nothing leaves the screen and
 // the changed words stay readable; and on the outcome's own page the pages
 // follow the topics and open in place.
 export async function notebookChecks({ check, page, until, control, view, facts, shot }) {
@@ -62,6 +62,40 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(changes, { title: 'What changed since you read revision 1', open: true, added: ['Monday'], removed: ['Friday'], struck: 'line-through', above: true });
     await shot(p, 'notebook-reader-changes');
     await until(async () => (await light(p)) === null, 'the light goes out once the page is read');
+    await closeReader(p);
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('notebook a page in the topic\'s own Notebook wears the same light, live, and opening it puts the light out', async () => {
+    const seeded = await control({ method: 'seed', memory_items: 1 }), topicPage = seeded.item_ids[0];
+    const card = `#memory-items .memory-card[data-id="${topicPage}"]`;
+    const cardLight = p => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(card + ' .unread-count')});return b?{text:b.textContent,className:b.className,said:document.querySelector(${JSON.stringify(card + ' .sr-only')})?.textContent}:null})()`);
+    const read = async () => (await view('memory_items', { owner_scope: { kind: 'topic', id: 't1' } })).items.find(item => item.id === topicPage)?.read_revision;
+    const p = await page('notebook-topic-light', null, true);
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), 'the topic\'s Notebook lists the page');
+    assert.equal(await cardLight(p), null, 'a page never read wears no light');
+    const openCard = async () => {
+      await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+      await p.point(card);
+      await until(() => p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.length > 0"), 'the Reader shows the page');
+    };
+    await openCard();
+    await until(async () => (await read()) === 1, 'Core records the read');
+    await closeReader(p);
+    const answer = await control({ method: 'memory_revise', operation_id: `${topicPage}-revise`, item_id: topicPage, expected_revision: 1, title: 'Fixture item 0', body: 'Fixture Notebook body, revised.' });
+    assert.equal(answer.status, 'committed', JSON.stringify(answer));
+    assert.deepEqual(await until(() => cardLight(p), 'the light comes on live, with no reload'),
+      { text: '1', className: 'unread-count changed', said: ', changed since you read it, 1 new revision' });
+    await shot(p, 'notebook-topic-light');
+    await openCard();
+    await until(() => p.evaluate("!document.querySelector('#source-changes').hidden"), 'what changed shows above the page');
+    await until(async () => (await cardLight(p)) === null, 'the light goes out once the page is read');
+    // A page with nothing to compare, opened next, carries none of the changes just shown.
+    await closeReader(p);
+    await openRow(p);
+    await until(() => p.evaluate("document.querySelector('#reader-title').textContent === 'Release plan'"), 'the outcome\'s page opens');
+    await until(async () => (await listed())?.read_revision === (await listed())?.revision, 'it is read as it stands');
+    assert.equal(await p.evaluate("document.querySelector('#source-changes').hidden"), true, 'the next page shows none of the first page\'s changes');
     await closeReader(p);
     assert.deepEqual(p.errors, []);
   });

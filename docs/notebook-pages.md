@@ -52,6 +52,18 @@ row without its light; a page without the feed reloads after the read is
 recorded. A read Core did not record is said in the Reader, and the page
 keeps its light until it is opened again.
 
+## A topic's own Notebook
+
+A topic's own Notebook, in the topic beside its messages, wears the same
+light on each page's card, with the same words for screen readers. A
+revision reaches the card through the topic's own changes. A read is the
+reader's own change, not the topic's, so after every commit the live feed
+names the page reads the reader's read state of the loaded pages again
+(`memory_items` from the start of the Notebook through the last page
+loaded, never past it); a page read here or on another device loses its
+light. An answer older than the one shown, at the same revision, never
+relights a page read since.
+
 ## What changed, in the Reader
 
 When the read answers a `previous_revision` older than the revision shown,
@@ -92,9 +104,10 @@ to its row. The list is read again with the topics after every commit.
 
 Core: `tests/test_memory_reads.py` and the 17→18 step in
 `tests/test_migrations.py`. Page: `tests/ui_outcome_references.test.mjs`,
-`ui_page_reads`, `ui_page_changes`, `ui_page_here` and the wiring cases in
-`ui_inline_wiring`. In the browser: the `notebook` mode of
+`ui_page_reads`, `ui_page_changes`, `ui_page_here`, `ui_reader_changes`,
+`ui_topic_notebook_light` and the wiring cases in `ui_inline_wiring`. In the browser: the `notebook` mode of
 `tests/reader_persistence_native.mjs` (`tests/notebook_pages_native.mjs`):
-the light coming on live and going out on opening, the changes in the
-Reader, 390 wide in light and dark with contrast measured, and the outcome
+the light coming on live and going out on opening, in the sidebar and in
+the topic's own Notebook, the changes in the Reader and none of them on the
+page opened next, 390 wide in light and dark with contrast measured, and the outcome
 page.
