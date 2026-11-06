@@ -18,7 +18,7 @@ from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE
                            WRITTEN_DOWN, WRITTEN_UPGRADE)
 from .delivery import DELIVERY_TOPIC_BACKFILL, DELIVERY_TOPIC_DOWN, DELIVERY_TOPIC_SCHEMA
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
-from .work import WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
+from .work import OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED, OTHERS_SCHEMA, WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
 from .memory import MEMORY_READ_DOWN, MEMORY_READ_OCCUPIED, MEMORY_READ_SCHEMA
 from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPONSIBILITY_SCHEMA
@@ -68,6 +68,9 @@ STEPS = (
     ("21", "22", WAKE_HEALTH_SCHEMA, WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED),
     # Version 23 keeps a record of each release: its commit, time, pipeline items and measurements.
     ("22", "23", RELEASE_SCHEMA, RELEASE_DOWN, RELEASE_OCCUPIED),
+    # Version 24 keeps, beside each topic's latest message and turn, the latest
+    # by someone else, so nobody's own activity is work they see.
+    ("23", "24", OTHERS_SCHEMA + OTHERS_BACKFILL, OTHERS_DOWN, OTHERS_OCCUPIED),
 )
 
 

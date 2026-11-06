@@ -39,6 +39,8 @@ export function askLines(item, reader) {
 
 // Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
 // in words. It never says nobody is working: only when activity was last seen.
+// The server reads the rule for this reader, so what it names is never the
+// reader's own: a topic only they wrote in reads "No activity seen".
 // A waiting topic's words are its pill's ("Waiting on you"), passed as
 // waiting; without them it waits on someone the page cannot name.
 export function workNote(work, reader, waiting = '') {

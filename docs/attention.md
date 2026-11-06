@@ -121,20 +121,30 @@ refused while any message asks or tells or any row holds an ask.
 ## Work observed
 
 One server rule says whether anyone is seen working on a topic
-(`aim_next/work.py`): work is observed when someone posted in the topic or took
-a hosted turn in it within the last hour, or when the topic waits on someone
-(said or asked). A hosted turn is in a topic when it was handed deliveries from
+(`aim_next/work.py`), and it is read for each reader: work is observed when
+someone other than the reader posted in the topic or took a hosted turn in it
+within the last hour, or when the topic waits on someone (said or asked). The
+reader's own posts and turns are never work they observe, since what they did
+themselves is no news to them: a topic where only the reader has written shows
+no dot. A hosted turn is in a topic when it was handed deliveries from
 that topic; its activity is when it was handed and when it completed. A turn
 that failed, was interrupted or was lost adds nothing when it ends. Theseus
 sees only work that leaves a trace in it, so nothing says that nobody is
-working: a topic without observed work reads "no activity seen since" its last
-activity, or "no activity seen" when it has none.
+working: a topic without observed work reads "no activity seen since" the last
+activity by others, or "no activity seen" when nobody else has done anything.
 
 Topic reads and `workspace_topics` items carry `work`: `{observed, seen_ms, by,
-how, waits}`, where `how` is `posted` or `turn`, whichever was later. Each fact
-is one keyed row per topic (the latest message through `topic_summaries`, the
-latest turn in `topic_turns`, the waits in `topic_waiting`), so a page of
-topics costs one lookup per topic on it, whatever their history. The value is
+how, waits}`, where `seen_ms`, `by` and `how` are the latest activity by anyone
+but the reader, and `how` is `posted` or `turn`, whichever was later. Each fact
+is one keyed row per topic: the latest message, and the latest one by someone
+other than its author, through `topic_summaries`; the latest turn, and the
+latest by someone other than whoever took it, in `topic_turns`; the waits in
+`topic_waiting`. Of each pair the reader takes the first unless it is theirs,
+and then the second, which is someone else's. So however many times in a row
+the reader has posted, their read never walks back past those posts: a page of
+topics costs one lookup per topic on it, whatever their history. Each post
+keeps the pair in the same update as the summary: the previous latest message
+becomes the latest by someone else unless the same author wrote it. The value is
 worked out when the page is read: a row read at 9:00 that saw activity at 8:30
 still shows it until the list is read again, and its title always gives the
 time. A turn's start or end does not itself make the list read again; the
@@ -156,6 +166,12 @@ when the server counts a wait the row does not name.
 Schema version 15 adds `topic_turns` (the latest turn per topic) and
 `hosted_turn_topics` (the topics each handed turn holds). Stepping back to 14
 is refused once either holds a row.
+
+Schema version 24 adds `topic_summaries.other_message_id` and
+`topic_turns.other_ms` and `other_by`, the latest message and turn by someone
+other than whoever did the latest. The upgrade works them out from the
+messages and from each handed turn's topics, with when it was handed and, if it
+completed, when it ended; stepping back to 23 drops them and loses no record.
 
 ## Marked unread
 

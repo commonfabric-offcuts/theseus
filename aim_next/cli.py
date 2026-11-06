@@ -13,7 +13,7 @@ import time
 import uuid
 
 from .authority import AuthorityError
-from .contract import LIMITS, StoreError
+from .contract import LIMITS, Refusal, StoreError
 from .effects_watch import NativeWatch, WatchError, WatchStopped
 from .topic_state import STATES
 from .profile import ProfileError, load_profile
@@ -172,7 +172,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N]}")
+         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] "
+         "| attachment ATTACHMENT --message MESSAGE --out FILE}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
@@ -249,6 +250,10 @@ def _parser():
     verb("watch")
     verb("retry").add_argument("operation")
     verb("releases").add_argument("--limit", type=int)
+    attachment = verb("attachment")
+    attachment.add_argument("attachment")
+    attachment.add_argument("--message", required=True)
+    attachment.add_argument("--out", required=True)
     return parser
 
 
@@ -259,6 +264,22 @@ def _names(value):
 def _since(ms):
     """When something began, in local time: "since 2026-11-05 22:10"."""
     return "since " + time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000.0)) if isinstance(ms, int) else "(time unknown)"
+
+
+def _size(size_bytes):
+    """A size as a person says it: "622 bytes", "137 KB", "1.5 MB"."""
+    if size_bytes < 1024:
+        return "%d bytes" % size_bytes
+    if round(size_bytes / 1024.0) < 1024:
+        return "%d KB" % round(size_bytes / 1024.0)
+    return "%.1f MB" % (size_bytes / (1024.0 * 1024.0))
+
+
+def _attachment_line(attachment):
+    """One line per attachment under a message, with the whole id to save it by."""
+    kind = "image" if attachment["content_type"].startswith("image/") else "file"
+    return "  [%s: %s, %s, %s, id %s]" % (kind, attachment["name"], attachment["content_type"],
+                                         _size(attachment["size_bytes"]), attachment["id"])
 
 
 def _one_line(text, size=120):
@@ -603,13 +624,50 @@ class Agent:
                 heading += " replying to " + item["reply_to"]
             self.out.plain("")
             self.out.plain(heading)
-            for line in body.split("\n"):
+            # A message of attachments alone, such as a screenshot, has no words to print.
+            for line in body.split("\n") if body else ():
                 self.out.plain("  " + line)
+            for attachment in item["attachments"]:
+                self.out.plain(_attachment_line(attachment))
         if page["next_cursor"] is not None:
             self.out.plain("")
             self.out.plain("more after #%s: read %s --after %s" % (page["next_cursor"], options.topic, page["next_cursor"]))
         elif not page["items"]:
             self.out.plain("no messages after #%s" % options.after)
+
+    def do_attachment(self):
+        """Save one attachment's bytes to a new file, read through the message that carries it.
+
+        The same read as the web page's (open_media with the message as its
+        source): only someone who can read the message gets the bytes, which
+        Core has checked against the attachment's size and sha256."""
+        options = self.options
+        try:
+            with self.store.open_media(self.actor, {"media_id": options.attachment,
+                                                    "source_ref": {"kind": "message", "id": options.message}}) as resource:
+                descriptor = dict(resource.descriptor)
+                data = b"".join(iter(lambda: resource.read(65536), b""))
+        except Refusal as refusal:
+            self.refuse(refusal.code, refusal.message)
+        try:
+            # A new file only: an agent's earlier file is never replaced.
+            fd = os.open(options.out, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        except FileExistsError:
+            self.refuse("OUT_EXISTS", "%s already exists; name a new file" % options.out)
+        except OSError as error:
+            self.refuse("OUT_UNAVAILABLE", "%s cannot be created (%s)" % (options.out, error.strerror))
+        try:
+            with os.fdopen(fd, "wb") as target:
+                target.write(data)
+                target.flush()
+                os.fsync(target.fileno())
+        except OSError as error:
+            os.unlink(options.out)
+            self.refuse("OUT_UNAVAILABLE", "%s could not be written (%s); nothing was kept" % (options.out, error.strerror))
+        attachment = {key: descriptor[key] for key in ("name", "content_type", "size_bytes", "sha256", "inline")}
+        self.out.raw({"attachment": dict(attachment, id=descriptor["media_id"]), "message_id": options.message, "path": options.out})
+        self.out.plain("saved %s (%s, %s bytes, sha256 %s) to %s" % (descriptor["name"], descriptor["content_type"],
+                                                                    descriptor["size_bytes"], descriptor["sha256"], options.out))
 
     @staticmethod
     def delivery_line(item):
@@ -882,7 +940,7 @@ class Agent:
                     "acknowledged %s" % identity if kind == "delivery" and version == 2 else "change %s %s v%s" % (kind, identity, version))
 
 
-PATH_OPTIONS = {"profile", "outbox", "outbox_after"}
+PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out"}
 
 
 def _utf8_arguments(options):

@@ -20,7 +20,8 @@ profile discovery, implicit defaults, new operation identities, pagination or
 retries; the everyday verbs below build envelopes for you.
 Input must be one finite UTF-8 JSON object with unique keys, bounded by the
 backend HTTP envelope limit plus 8192 wrapper bytes. Named input is a regular
-file; `-` reads binary stdin. Binary media transfer is outside this CLI.
+file; `-` reads binary stdin. These two verbs carry no media bytes; the
+everyday `attachment` verb below saves an attachment's bytes to a file.
 
 One UTF-8 JSON result is written and flushed to stdout. Exit 0 means the requested
 call succeeded; an unknown operation or recorded refusal lookup is a successful
@@ -139,7 +140,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `outcomes` | Lists the actor's outcomes. |
 | `new-outcome --title TITLE [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. |
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
-| `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees and full body. Acknowledges nothing. |
+| `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
 | `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
 | `start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT\|-` | Saves and publishes an opening. With `--from`, the topic answers that message: the topics already started from it are listed first, and the start is refused (`ALREADY_STARTED`, nothing saved) until `--seen` names each one you have read; see [sources.md](sources.md). If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
@@ -153,6 +154,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM (exit 0, even while blocked writing to a reader that is not draining); ends with a refusal when the authority changes, reported with its exit code even if a stop came too. |
 | `retry OPERATION` | Re-sends a saved request unchanged. |
 | `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
+| `attachment ATTACHMENT --message MESSAGE --out FILE` | Saves one attachment's bytes, read through the message that carries it, to a new file (see [Attachments](#attachments)). |
 
 Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
 DIR`, default `ACTOR.outbox/` beside the profile) before it is sent, and its
@@ -222,6 +224,32 @@ when it is sent. A person's writing that says neither is frozen and sent as a
 tell, so a page left open from an earlier release, and a preparation it froze,
 still go. Tony's page says it for him anyway: a reply is a tell unless he
 ticks Ask.
+
+## Attachments
+
+A message can carry attachments, such as a screenshot sent with no words.
+`topic_messages` items carry `attachments`, the list as stored on the message
+(`[]` when there are none): each `{id, name, content_type, size_bytes,
+sha256, inline}`. `read --json` prints them so; plain `read` prints one line
+per attachment under the message's words, with the whole id:
+
+```text
+#52 m-41c… owner
+  [image: image.png, image/png, 137 KB, id 30e8…]
+```
+
+`attachment ID --message MESSAGE --out FILE` saves that attachment's bytes to
+FILE, which must not exist yet (`OUT_EXISTS` otherwise, and the file is left
+as it was). It reads through the same Core read as the web page's
+(`open_media` with the message as its source, which `/api/media/read` serves),
+so it follows the same rule: only someone who can read the message gets its
+attachments. Anyone else, or an attachment the named message does not carry,
+is refused with `FORBIDDEN` and no file is written. Core checks the bytes
+against the attachment's size and sha256 before handing them over. A write
+that fails part way (a full disk, say) is refused with `OUT_UNAVAILABLE` and
+the part written is removed, so FILE never holds a partial copy. It prints
+`saved NAME (TYPE, N bytes, sha256 HEX) to FILE`, or with `--json`
+`{attachment, message_id, path}`. It sends no command and acknowledges nothing.
 
 ## Openings and membership
 

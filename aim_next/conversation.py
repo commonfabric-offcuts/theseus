@@ -6,7 +6,7 @@ import uuid
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _prefix, _revision
 from .delivery import _now_ms
 from .responsibility import responsibility_note
-from .work import work_by_topic
+from .work import OTHER_MESSAGE, work_by_topic
 
 
 CONVERSATION_SCHEMA = [
@@ -275,7 +275,7 @@ class Conversation:
             raise untitled
         db.execute("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES (?,?,?,?,0)", (topic_id, workspace_id, title, actor))
         db.executemany("INSERT INTO topic_participants(topic_id,actor_id,active,epoch) VALUES (?,?,1,1)", [(topic_id, member) for member in participants])
-        db.execute("INSERT INTO topic_summaries VALUES (?,0,NULL)", (topic_id,))
+        db.execute("INSERT INTO topic_summaries(topic_id,message_count,latest_message_id) VALUES (?,0,NULL)", (topic_id,))
 
     def _intent(self, db, actor, snapshot):
         """Whether writing to someone asks or tells. The rule exists to make
@@ -356,7 +356,9 @@ class Conversation:
         for recipient, reasons in audience.items():
             delivery_id = self._queue_delivery(db, message_id, recipient, topic_id, reasons)
             self._change(db, "actor", recipient, "delivery", delivery_id, 1)
-        db.execute("UPDATE topic_summaries SET message_count=message_count+1,latest_message_id=? WHERE topic_id=?", (message_id, topic_id))
+        # Who wrote the latest message before this one decides whether it is now the latest by someone else (work.py).
+        db.execute("UPDATE topic_summaries SET message_count=message_count+1," + OTHER_MESSAGE + ",latest_message_id=?2 WHERE topic_id=?3",
+                   (actor, message_id, topic_id))
         self._message_activity(db, topic, actor, message_id, sent_ms)
         # Writing in the topic answers what was asked of the author there; an ask waits on whoever it asks.
         answered = [actor] if self._answered(db, topic_id, actor) else []
@@ -407,11 +409,11 @@ class Conversation:
             item = dict(row, enabled=bool(row["enabled"]), receiving=bool(row["enabled"]))
             item["responsibility"], item["responsibility_truncated"] = _prefix(item.pop("note_prefix") or b"")
             participants.append(item)
-        summary = dict(db.execute("SELECT * FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
+        summary = dict(db.execute("SELECT topic_id,message_count,latest_message_id FROM topic_summaries WHERE topic_id=?", (topic["id"],)).fetchone())
         waits = self._waits_by_topic(db, [topic["id"]])
         waiting_on, asks = waits[topic["id"]]
         # reader_may_say: whether the reader may say where it stands, so a page offers its form.
-        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits)[topic["id"]],
+        topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits, actor)[topic["id"]],
                      reader_may_say=self._may_say(db, topic, actor))
         return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,
                 "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
@@ -423,8 +425,8 @@ class Conversation:
         relation, order = ("<", "DESC") if backwards else (">", "ASC")
         cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
         # A reply says whose message it answers, and how that message begins;
-        # every message says whether a person or an agent wrote it.
-        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms,m.intent,"
+        # every message says whether a person or an agent wrote it, and what it carries.
+        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.attachments,m.sent_ms,m.intent,"
                    "p.author_id AS reply_to_author,substr(p.body,1,120) AS reply_to_excerpt")
         parent = " JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
         if args.get("audience", "all") == "reader":
@@ -437,6 +439,7 @@ class Conversation:
         for row in rows[:limit]:
             item = dict(row)
             item["addressees"] = json.loads(item["addressees"])
+            item["attachments"] = json.loads(item["attachments"])
             item["body"] = _preview(item["body"])
             item["preview"] = len(item["body"].encode("utf-8")) < item.pop("body_bytes")
             encoded = len(_json(item).encode("utf-8")) + 1
