@@ -336,6 +336,7 @@ class Agent:
         cursor, items = None, []
         while True:
             page = self.view(name, dict(args, **({} if cursor is None else {"cursor": cursor})))
+            self.last_page = page
             items.extend(page["items"])
             cursor = page.get("next_cursor")
             if cursor is None:
@@ -480,8 +481,28 @@ class Agent:
         self.out.plain('created outcome %s "%s"' % (outcome, _one_line(options.title, 60)))
 
     def do_topics(self):
-        items = self.pages("workspace_topics", {"workspace_id": self.options.outcome, "archived": self.options.archived})
-        items.sort(key=lambda item: (-(item.get("latest_seq") or 0), item["id"]))
+        # The server lists them latest activity first; done topics follow the rest, and
+        # archived ones are listed only when asked for (docs/topic-list.md).
+        args = {"workspace_id": self.options.outcome}
+        if self.options.archived:
+            items = self.pages("workspace_topics", dict(args, archived=True))
+            self.topic_lines(items)
+            if not items:
+                self.out.plain("no archived topics")
+            return
+        items = self.pages("workspace_topics", args)
+        done = self.pages("workspace_topics", dict(args, done=True))
+        self.topic_lines(items)
+        if done:
+            self.out.plain("done (%d):" % len(done))
+            self.topic_lines(done)
+        if not items and not done:
+            self.out.plain("no topics")
+        archived = self.last_page["groups"]["archived"]
+        if archived:
+            self.out.plain("archived (%d): topics %s --archived" % (archived, self.options.outcome))
+
+    def topic_lines(self, items):
         for item in items:
             stands = item.get("state", "active")
             if item.get("waiting_on"):
@@ -492,8 +513,6 @@ class Agent:
                 stands += ": " + _one_line(item["state_note"], 80)
             self.out.plain("%s  %s  [%s]  (%s messages, latest #%s)" % (
                 item["id"], _one_line(item["title"]), stands, item.get("message_count") or 0, item.get("latest_seq") or "-"))
-        if not items:
-            self.out.plain("no archived topics" if self.options.archived else "no topics")
 
     def update_topic(self, args):
         topic = self.view("topic", {"topic_id": self.options.topic})["topic"]

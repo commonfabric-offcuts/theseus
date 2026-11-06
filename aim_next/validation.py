@@ -43,7 +43,7 @@ VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
     "workspaces": {"cursor", "limit"},
-    "workspace_topics": {"workspace_id", "cursor", "limit", "archived"}, "topic": {"topic_id"},
+    "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction"}, "source": {"source_ref", "kind", "id", "revision"},
     "memory_items": {"owner_scope", "cursor", "limit"},
     "media": {"media_id", "source_ref"},
@@ -132,7 +132,12 @@ def _view_arguments(name, args):
             if cursor is None:
                 raise Refusal("INVALID_ARGUMENT", "Invalid delivery page cursor")
             _position(cursor)
-        elif name in ("workspaces", "workspace_topics", "openings", "workspace_members", "actors", "colors"):
+        elif name == "workspace_topics":
+            # An empty cursor is the start, as for the lists below.
+            if cursor != "":
+                from .topic_state import order_position
+                order_position(cursor)
+        elif name in ("workspaces", "openings", "workspace_members", "actors", "colors"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):

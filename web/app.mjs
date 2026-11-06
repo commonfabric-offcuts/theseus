@@ -1070,7 +1070,7 @@ async function initialize() {
   await initializeInlineComposer();
   initializeOutcomeNavigation(topic.workspace_id); outcomeRail.load();
   topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
-    host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'),
+    host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'), ...topicFolds(),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
       if (authorityReviewPending()) throw Error('The runtime changed. Review saved writing before reloading.');
@@ -1078,7 +1078,7 @@ async function initialize() {
       if (registry.disposed || authorityReviewPending()) throw Error('The runtime changed. Reload after reviewing saved writing.');
       return answer;
     },
-    open: id => openDestination({kind:'topic',id},topicRail.pages.items.find(item => item.id === id)?.title ?? id),
+    open: (id, title) => openDestination({kind:'topic',id},title),
   });
   topicRail.load();
   outcomeReferences = new OutcomeReferences({ scope: topic.workspace_id, host: $('outcome-references'), count: $('outcome-references-count'),
@@ -1221,6 +1221,14 @@ function followCommits(load) {
   }
   return reload;
 }
+// The Done and Archived lines under the topic list, where the person's choice
+// to keep each open is remembered, and the area the lists keep still under.
+function topicFolds() {
+  let storage = null;
+  try { storage = window.localStorage; } catch { /* each line starts closed */ }
+  const fold = name => ({ details: $(`${name}-topics`), label: $(`${name}-topics-label`), host: $(`${name}-topic-list`), more: $(`more-${name}-topics`) });
+  return { done: fold('done'), archived: fold('archived'), storage, area: $('topic-navigation') };
+}
 // Rows a reload may ask for at once, from the server's own limits.
 const pageMax = () => Number.isSafeInteger(bootstrap.limits?.page_max) ? bootstrap.limits.page_max : undefined;
 async function openDestination(target, title) {
@@ -1299,10 +1307,10 @@ async function initializeOutcomePage(route) {
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);
       await paintTeam(workspace,()=>reload());
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
-        retry:$('retry-topics'),message:$('topics-status'),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
+        retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
         read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
-        open:id=>openDestination({kind:'topic',id},topicRail.pages.items.find(item=>item.id===id)?.title??id),
-        updated:()=>{$('outcome-empty').hidden=!topicRail.pages.started||topicRail.pages.items.length>0||!$('topics-status').hidden;}});
+        open:(id,title)=>openDestination({kind:'topic',id},title),
+        updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       return topicRail.load();
     };
     // A commit may change the team or the outcome's revision as well as its

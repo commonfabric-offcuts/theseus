@@ -102,7 +102,9 @@ class TopicStateCase(fixtures.ReaderCase):
         # Still readable by those who could read it.
         self.assertEqual((self.topic("agent-b")["archived"], self.topic("agent-b")["state"]), (True, "done"))
         self.committed(self.update({"archived": False}))
-        self.assertIn("t1", self.listed())
+        # Back in the outcome's list, among the done topics (docs/topic-list.md).
+        done = self.store.view("owner", "workspace_topics", {"workspace_id": "w1", "done": True})["items"]
+        self.assertEqual([(item["id"], item["state"]) for item in done], [("t1", "done")])
         self.assertNotIn("t1", self.listed(archived=True))
 
     def test_waiting_names_only_people_and_agents_who_can_read_the_topic(self):

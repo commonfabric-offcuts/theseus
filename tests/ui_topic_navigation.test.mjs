@@ -1,28 +1,45 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicPages, TopicNavigation } from '../web/topic-navigation.mjs';
+import { TopicPages, TopicNavigation, topicPosition } from '../web/topic-navigation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
-const topic = (id, title = id) => ({ id, title, workspace_id: 'w1' });
-const answer = (items, next_cursor = null) => ({ instance_id: 'i1', items, next_cursor });
+// Earlier letters were active later, so a list in letter order is latest first.
+const topic = (id, title = id) => ({ id, title, workspace_id: 'w1', activity_ms: 1000 - id.charCodeAt(0) });
+const answer = (items, next = null) => ({ instance_id: 'i1', items, next_cursor: next === null || next.includes(':') ? next : topicPosition(topic(next)) });
 
 test('topic pages preserve current identity and allow repeated titles without duplicate links', () => {
   const pages = new TopicPages('i1', 'w1', topic('z', 'Same title'));
   pages.accept(answer([topic('a', 'Same title'), topic('b')], 'b'), null);
-  assert.deepEqual(pages.items.map(x => x.id), ['z', 'a', 'b']);
-  pages.accept(answer([topic('z', 'Same title')]), 'b');
+  assert.deepEqual(pages.items.map(x => x.id), ['a', 'b', 'z'], 'the open topic is listed in its place by activity');
+  pages.accept(answer([topic('z', 'Same title')]), pages.next);
   assert.deepEqual(pages.items.map(x => x.id), ['a', 'b', 'z']); assert.equal(pages.next, null);
   pages.current = topic('z', 'Renamed'); assert.equal(pages.items.at(-1).title, 'Renamed');
 });
 test('topic pages reject foreign identity, repeated cursor and malformed rows without changing links', () => {
   const pages = new TopicPages('i1', 'w1', topic('z'));
-  pages.accept(answer([topic('a')], 'a'), null); const before = structuredClone(pages.items);
+  pages.accept(answer([topic('a')], 'a'), null); const before = structuredClone(pages.items), at = pages.next;
   for (const invalid of [ { ...answer([topic('b')]), instance_id: 'other' }, answer([{ ...topic('b'), workspace_id: 'other' }]),
-    answer([topic('b'), topic('b')]), answer([topic('b')], 'a'), answer([topic('b')], 'unrelated'), answer([{ ...topic('b'), title: null }]) ]) {
-    assert.throws(() => pages.accept(invalid, 'a')); assert.deepEqual(pages.items, before);
+    answer([topic('b'), topic('b')]), answer([topic('b')], 'a'), answer([topic('b')], 'unrelated'), answer([{ ...topic('b'), title: null }]),
+    // Out of order, before the cursor, without an activity time, or belonging to another list.
+    answer([topic('c'), topic('b')]), answer([topic('a')]), answer([{ ...topic('b'), activity_ms: undefined }]), answer([{ ...topic('b'), activity_ms: -1 }]),
+    answer([{ ...topic('b'), state: 'done' }]), answer([{ ...topic('b'), archived: true }]),
+    { ...answer([topic('b')]), groups: { done: -1, archived: 0 } }, { ...answer([topic('b')]), groups: {} } ]) {
+    assert.throws(() => pages.accept(invalid, at), JSON.stringify(invalid)); assert.deepEqual(pages.items, before);
   }
   assert.equal(pages.accept(answer([topic('c')]), 'stale'), false);
+  // The same time orders by id, larger first, as the server does.
+  const tied = new TopicPages('i1', 'w1', null);
+  tied.accept(answer([{ ...topic('b'), activity_ms: 5 }, { ...topic('a'), activity_ms: 5 }]));
+  assert.throws(() => tied.accept(answer([{ ...topic('a'), activity_ms: 5 }, { ...topic('b'), activity_ms: 5 }])));
+  // Each list takes only its own topics, and the archived one the done ones after the rest.
+  const archived = new TopicPages('i1', 'w1', null, 'archived');
+  archived.accept(answer([{ ...topic('b'), archived: true }, { ...topic('a'), archived: true, state: 'done' }]));
+  assert.deepEqual(archived.items.map(x => x.id), ['b', 'a']);
+  assert.throws(() => archived.accept(answer([{ ...topic('a'), archived: true, state: 'done' }, { ...topic('b'), archived: true }])));
+  const done = new TopicPages('i1', 'w1', { ...topic('z'), state: 'done' }, 'done');
+  assert.deepEqual(done.items.map(x => x.id), ['z'], 'a done open topic is listed among the done ones');
+  assert.deepEqual(new TopicPages('i1', 'w1', { ...topic('z'), state: 'done' }).items, [], 'and not among the rest');
 });
 function fixture() {
   const editors = ['inline', 'reply', 'note'].map((key, i) => ({ key, localVersion: i + 1, ackVersion: 0,

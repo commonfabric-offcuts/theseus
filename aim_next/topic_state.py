@@ -16,7 +16,7 @@ lives while either reason holds; its order time is the state's time while
 it is said, else the ask's.
 """
 
-from .contract import LIMITS, READABLE, Refusal, _body, _prefix, _revision
+from .contract import LIMITS, READABLE, Refusal, _body, _identifier, _prefix, _revision
 from .delivery import _now_ms
 
 
@@ -70,6 +70,44 @@ ASK_WAIT_SCHEMA = [
 ASK_WAIT_DOWN = ("ALTER TABLE topic_waiting DROP COLUMN ask_message_id", "ALTER TABLE topic_waiting DROP COLUMN said")
 ASK_WAIT_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM topic_waiting WHERE said=0 OR ask_message_id IS NOT NULL)"
 
+# Version 19 orders each outcome's topics by activity. A topic's activity time is
+# the later of its newest message and the last time someone said where it stands
+# (any topic.update of its state, note or waiting list); a rename or an archive is
+# not activity. It is kept on the topic in the same act that sends the message or
+# changes the state, so an outcome's topics are listed newest first from one index,
+# whatever their history. The upgrade works it out from the newest message's send
+# time and the state's time; a topic with neither has 0. Done topics are listed
+# apart, so the index keys on whether a topic is done. state_message_id names the
+# message that reopened a done topic, null for a state someone said.
+ACTIVITY_SCHEMA = [
+    "ALTER TABLE topics ADD COLUMN activity_ms INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE topics ADD COLUMN state_message_id TEXT REFERENCES messages(id)",
+    "UPDATE topics SET activity_ms=max(coalesce(state_ms,0),coalesce((SELECT m.sent_ms FROM topic_summaries s "
+    "JOIN messages m ON m.id=s.latest_message_id WHERE s.topic_id=topics.id),0))",
+    "DROP INDEX workspace_listed_topics",
+    "CREATE INDEX workspace_topic_order ON topics(workspace_id,archived,state='done',activity_ms DESC,id DESC)",
+]
+ACTIVITY_DOWN = ("DROP INDEX workspace_topic_order", "CREATE INDEX workspace_listed_topics ON topics(workspace_id,archived,id)",
+                 "ALTER TABLE topics DROP COLUMN state_message_id", "ALTER TABLE topics DROP COLUMN activity_ms")
+# Activity times are worked out again on the next upgrade; who reopened a topic is not.
+ACTIVITY_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM topics WHERE state_message_id IS NOT NULL)"
+# A message in a done topic makes it active again; the state's note says so.
+REOPENED_NOTE = "Reopened by a new message"
+
+
+def order_cursor(done, activity_ms, topic_id):
+    """The position of a topic in its outcome's list: "DONE:ACTIVITY_MS:ID"."""
+    return "%d:%d:%s" % (int(bool(done)), activity_ms, topic_id)
+
+
+def order_position(cursor):
+    """(done, activity_ms, topic_id) from a cursor order_cursor wrote; anything else is refused."""
+    parts = cursor.split(":", 2) if isinstance(cursor, str) else ()
+    if (len(parts) != 3 or parts[0] not in ("0", "1") or not parts[1].isascii() or not parts[1].isdigit()
+            or len(parts[1]) > 18 or (len(parts[1]) > 1 and parts[1][0] == "0")):
+        raise Refusal("INVALID_ARGUMENT", "Invalid topic list cursor")
+    return int(parts[0]), int(parts[1]), _identifier(parts[2], "cursor")
+
 
 class TopicState:
     def _command_topic_update(self, db, actor, envelope):
@@ -104,8 +142,10 @@ class TopicState:
             state = args.get("state", topic["state"])
             if state not in STATES:
                 raise Refusal("INVALID_ARGUMENT", "A topic's state is one of: " + ", ".join(STATES))
-            # A new state starts with its own note unless one is given.
-            note = args.get("note", topic["state_note"] if state == topic["state"] else "")
+            # A new state starts with its own note unless one is given; so does
+            # any word after a reopen, whose note was the message's, not said.
+            said = state == topic["state"] and topic["state_message_id"] is None
+            note = args.get("note", topic["state_note"] if said else "")
             note = _body(note)
             if len(note.encode("utf-8")) > NOTE_UTF8_BYTES:
                 raise Refusal("BODY_TOO_LARGE", "A state note is at most %d bytes" % NOTE_UTF8_BYTES)
@@ -113,8 +153,9 @@ class TopicState:
             if state != "waiting" and waiting:
                 raise Refusal("INVALID_ARGUMENT", "Only a waiting topic waits on someone")
             waiting = self._waiting_on(db, topic, waiting)
-            db.execute("UPDATE topics SET state=?,state_note=?,state_by=?,state_ms=? WHERE id=?",
-                       (state, note, actor, _now_ms(), topic["id"]))
+            now = _now_ms()
+            db.execute("UPDATE topics SET state=?,state_note=?,state_by=?,state_ms=?,state_message_id=NULL,activity_ms=max(activity_ms,?) WHERE id=?",
+                       (state, note, actor, now, now, topic["id"]))
             # Only what was said changes here: a row an open ask still holds stays, ordered by its ask.
             db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND ask_message_id IS NULL", (topic["id"],))
             db.execute("UPDATE topic_waiting SET said=0,state_ms=(SELECT m.sent_ms FROM messages m WHERE m.id=ask_message_id) WHERE topic_id=?",
@@ -143,6 +184,15 @@ class TopicState:
         return actor in (topic["owner_id"], topic["creator_id"]) or bool(db.execute(
             "SELECT 1 FROM topic_participants WHERE topic_id=?1 AND actor_id=?2 AND active=1 "
             "UNION ALL SELECT 1 FROM reply_horizons WHERE topic_id=?1 AND actor_id=?2", (topic["id"], actor)).fetchone())
+
+    def _message_activity(self, db, topic, author, message_id, sent_ms):
+        """A message was sent in the topic: it is the topic's latest activity, and a done
+        topic is active again, said by the message's author when it was sent, with the
+        message as why. The caller's transaction is the send's own."""
+        if topic["state"] == "done":
+            db.execute("UPDATE topics SET state='active',state_note=?,state_by=?,state_ms=?,state_message_id=? WHERE id=?",
+                       (REOPENED_NOTE, author, sent_ms, message_id, topic["id"]))
+        db.execute("UPDATE topics SET activity_ms=max(activity_ms,?) WHERE id=?", (sent_ms, topic["id"]))
 
     def _waiting_on(self, db, topic, members):
         # The limit bounds the list as sent, before any name is looked up, as for addressees.

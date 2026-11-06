@@ -9,7 +9,8 @@ from .authority import Authority, AuthorityError, GuardBusy
 from .contract import StoreError, _identifier
 from .openings import OPENING_SCHEMA
 from .runner import HOSTED_DOWN, HOSTED_OCCUPIED, HOSTED_SCHEMA
-from .topic_state import (ASK_WAIT_DOWN, ASK_WAIT_OCCUPIED, ASK_WAIT_SCHEMA, TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA,
+from .topic_state import (ACTIVITY_DOWN, ACTIVITY_OCCUPIED, ACTIVITY_SCHEMA, ASK_WAIT_DOWN, ASK_WAIT_OCCUPIED, ASK_WAIT_SCHEMA,
+                          TOPIC_STATE_DOWN, TOPIC_STATE_OCCUPIED, TOPIC_STATE_SCHEMA,
                           WAITING_ORDER_DOWN, WAITING_ORDER_SCHEMA)
 from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE_INTENT_SCHEMA,
                            MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA,
@@ -50,6 +51,9 @@ STEPS = (
     # horizons out again.
     ("17", "18", WRITTEN_UPGRADE + tuple(DELIVERY_TOPIC_SCHEMA + DELIVERY_TOPIC_BACKFILL),
      DELIVERY_TOPIC_DOWN + WRITTEN_DOWN, "SELECT 0"),
+    # Version 19 keeps each topic's activity time, so an outcome lists its topics
+    # latest first, and the message that reopened a done topic.
+    ("18", "19", ACTIVITY_SCHEMA, ACTIVITY_DOWN, ACTIVITY_OCCUPIED),
 )
 
 
