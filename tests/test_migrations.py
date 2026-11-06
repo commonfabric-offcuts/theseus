@@ -1263,6 +1263,12 @@ class Schema18Case(MigrationCase):
             self.headless()
         self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE topic_id IS NULL"), [(0,)])
 
+    def test_upgrade_gives_a_delivery_version_18_kept_with_no_topic_its_message_topic(self):
+        self.headless()
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT d.topic_id=m.topic_id FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.id='d-headless'"), [(1,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE topic_id IS NULL"), [(0,)])
+
     def test_upgrade_settles_what_version_18_left_pending_for_a_person_between_others(self):
         # As version 18 queued them: every delivery pending, counted in its group and schedule.
         with sqlite3.connect(str(self.path)) as db:

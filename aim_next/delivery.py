@@ -32,13 +32,14 @@ DELIVERY_TOPIC_DOWN = ("DROP INDEX pending_topic_deliveries", "ALTER TABLE deliv
 # so the line is found in the reader's live groups alone: the current
 # subscription group of the topic and the one direct group, one row each. Rows
 # that a subscription cancelled by leaving left pending are never walked. A new
-# delivery must name its topic.
+# delivery must name its topic, and one kept with none (the column alone
+# allowed it) is given its message's topic first.
 DELIVERY_GROUP_TOPIC_SCHEMA = [
     "CREATE INDEX pending_group_topic_deliveries ON deliveries(group_id,topic_id,seq) WHERE state='pending'",
     "CREATE TRIGGER delivery_topic_required BEFORE INSERT ON deliveries WHEN NEW.topic_id IS NULL "
     "BEGIN SELECT RAISE(ABORT, 'a delivery names its topic'); END",
 ]
-DELIVERY_GROUP_TOPIC_UP = ("DROP INDEX pending_topic_deliveries",) + tuple(DELIVERY_GROUP_TOPIC_SCHEMA)
+DELIVERY_GROUP_TOPIC_UP = (DELIVERY_TOPIC_BACKFILL[0] + " WHERE topic_id IS NULL", "DROP INDEX pending_topic_deliveries") + tuple(DELIVERY_GROUP_TOPIC_SCHEMA)
 DELIVERY_GROUP_TOPIC_DOWN = ("DROP TRIGGER delivery_topic_required", "DROP INDEX pending_group_topic_deliveries", DELIVERY_TOPIC_SCHEMA[1])
 # Version 19 also settles what earlier versions left pending for a person in a
 # message between others: sent by name to others, not to them, and not answering
