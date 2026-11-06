@@ -136,6 +136,21 @@ class MemoryCase(ReaderCase):
                                    target={"note_id": "empty-note"}, expected={"note_revision": 2}), "REVISION_CONFLICT")
         self.assertEqual(self.store.view("owner", "editor_state", {"source_ref": second, "topic_id": "t1"}), view)
 
+    def test_a_slot_holding_only_recipients_quotes_or_a_reply_target_keeps_its_revision(self):
+        self.committed(self.memory())
+        first, second = self.memory_ref(), self.memory_ref(revision=2)
+        self.committed(self.memory(revision=1, body="New words"))
+        # One slot, each time holding a single thing the person chose and no words.
+        held = {"addressees": ["agent-a"], "quotes": [{"source_ref": first, "text": "the original"}], "reply_to": "m-earlier"}
+        for revision, (name, value) in enumerate(held.items()):
+            args = dict(source_ref=first, topic_id="t1", body="", generation="gA", attachments=[], quotes=[], addressees=[])
+            args[name] = value
+            self.committed(self.command("draft.save", args, target={"draft_id": "held"}, expected={"draft_revision": revision}))
+            self.rejected(self.save_draft("held", second, "t1", "", revision=revision + 1), "REVISION_CONFLICT")
+        # Emptied, the same slot moves.
+        self.committed(self.save_draft("held", first, "t1", "", revision=len(held)))
+        self.committed(self.save_draft("held", second, "t1", "", revision=len(held) + 1))
+
     def test_quote_is_checked_against_exact_old_revision_and_does_not_address_names(self):
         self.committed(self.memory(body="agent-b said the original words"))
         self.committed(self.memory(revision=1, body="Replacement words"))
