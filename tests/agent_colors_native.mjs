@@ -1,8 +1,9 @@
 // Each agent's own color, as painted: a tint across the whole card and a
 // deeper one behind the name, the same agent the same color on every card, in
 // light and dark, at laptop and phone width. Your own messages keep their
-// black. Run by reader_persistence_native.mjs with --colors; screenshots are
-// kept as agent-colors-<theme>-<width>[-n].png for review.
+// black, whether drawn first, arriving live or loaded with More. Run by
+// reader_persistence_native.mjs with --colors; screenshots are kept as
+// agent-colors-<theme>-<width>[-n].png and own-style-*.png for review.
 import assert from 'node:assert/strict';
 import { pngPixels, paintedBand } from './png-bands.mjs';
 
@@ -115,5 +116,45 @@ export async function agentColorsCheck({ check, page, until, facts, control, sho
       await p.close();
     }
     assert.deepEqual(failures, [], 'agent colors');
+  });
+
+  await check('colors your own message keeps its own style when it arrives live and when More loads it', async () => {
+    const style = (p, id) => p.evaluate(`(()=>{const card=document.querySelector('#messages [data-id="${id}"]');if(!card)return null;const c=getComputedStyle(card),n=getComputedStyle(card.querySelector('.author-name'));return {className:card.className,background:c.backgroundColor,color:c.color,name:n.backgroundColor}})()`);
+    const ownStyle = (painted, why) => {
+      assert.ok(painted, why + ': card drawn');
+      assert.equal(painted.className, 'message-card own-message', why + ': own class, no agent color');
+      assert.equal(painted.background, 'rgb(0, 0, 0)', why + ': black');
+      assert.equal(painted.name, 'rgba(0, 0, 0, 0)', why + ': no name tag');
+    };
+    // An own message written while a page is open arrives over the live stream.
+    const p = await page('own-style-live', null, true, { beforeNavigate: p => p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] }) });
+    const live = (await control({ method: 'agent_message', operation_id: 'own-style-live', sender: 'person', body: 'My own message, arriving live.' })).result.message_id;
+    await until(() => style(p, live), 'own live arrival drawn');
+    ownStyle(await style(p, live), 'live');
+    await p.evaluate(`document.querySelector('#messages [data-id="${live}"]').scrollIntoView({block:'center'})`);
+    await shot(p, 'own-style-live');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // One more page of agent messages after it puts an own message behind More.
+    const older = (await control({ method: 'agent_message', operation_id: 'own-style-older', sender: 'person', body: 'My own message, older than a page.' })).result.message_id;
+    for (let n = 0; n < 31; n++) await control({ method: 'agent_message', operation_id: 'own-style-after-' + n, body: `Agent message ${n} after mine.` });
+    for (const theme of ['light', 'dark']) {
+      const q = await page('own-style-more-' + theme, null, true, { beforeNavigate: q => q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] }) });
+      assert.equal(await style(q, older), null, theme + ': the older own message is not on the first page');
+      for (let n = 0; n < 5 && !await style(q, older); n++) {
+        await q.evaluate("document.querySelector('#more-messages').scrollIntoView({block:'center'})");
+        const cards = await q.evaluate("document.querySelectorAll('#messages .message-card').length");
+        await q.point('#more-messages');
+        await until(() => q.evaluate(`document.querySelectorAll('#messages .message-card').length > ${cards}`), theme + ': More loaded older messages');
+      }
+      ownStyle(await style(q, older), theme + ' More');
+      ownStyle(await style(q, live), theme + ' first page');
+      await q.evaluate(`document.querySelector('#messages [data-id="${older}"]').scrollIntoView({block:'center'})`);
+      await q.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+      await shot(q, 'own-style-more-' + theme);
+      observations.push({ name: 'own style live and More', theme, live: await style(q, live), older: await style(q, older) });
+      assert.deepEqual(q.errors, []);
+      await q.close();
+    }
   });
 }

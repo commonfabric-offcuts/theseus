@@ -1319,3 +1319,17 @@ test('an agent\'s card in the topic log carries its color, and the person\'s own
   const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
   assert.deepEqual(classes, { m4: 'message-card agent-card agent-peach', m3: 'message-card', m2: 'message-card own-message', m1: 'message-card agent-card agent-orchid' });
 });
+
+test('your own message keeps its own style when it arrives live and when More loads it, among agents\' colors', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const item = (seq, author_id) => ({ id: 'm' + seq, seq, author_id, author_kind: author_id === 'fixture-person' ? 'human' : 'agent', body: 'Body ' + seq, topic_id: 't1' });
+  const page = (items, next, version) => ({ instance_id: 'fixture', items, next_cursor: next, relevant_versions: { topic: version } });
+  views.messagesPage(page([29, 30, 31].map(seq => item(seq, 'fable')), 29, 1), { initial: true }); await settle();
+  views.messagesPage(page([item(32, 'fixture-person'), item(33, 'warp')], null, 2), { live: true, cursor: views.newest }); await settle();
+  views.messagesPage(page([item(27, 'aim-lead'), item(28, 'fixture-person')], null, 2), { cursor: views.olderCursor }); await settle();
+  const classes = Object.fromEntries(f.get('messages').children.map(card => [card.dataset.id, card.className]));
+  assert.deepEqual(classes, { m33: 'message-card agent-card agent-peach', m32: 'message-card own-message', m31: 'message-card agent-card agent-orchid',
+    m30: 'message-card agent-card agent-orchid', m29: 'message-card agent-card agent-orchid', m28: 'message-card own-message', m27: 'message-card agent-card agent-blue' });
+});
