@@ -82,6 +82,9 @@ export class Editor {
     if (this.dirty || this.conflict || holdsWriting(this.draft) || this.imageReservation || this.imageBusy || this.uploadOpaque ||
         this.uploadState?.entries?.some(entry => entry.selected) ||
         this.submissions.some(item => item.status === 'preparing' && !item.detached || refusedAtDraft(item, this.draft))) return;
+    this.pin(ref);
+  }
+  pin(ref) {
     this.sourceRef = copy(ref);
     if (Object.hasOwn(this.draft, 'source_ref')) this.draft.source_ref = copy(ref);
   }
