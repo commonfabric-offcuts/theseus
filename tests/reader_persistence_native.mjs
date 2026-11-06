@@ -1368,6 +1368,9 @@ try {
       assert.equal(await p.evaluate('document.activeElement.id'), focused);
       assert.ok((await p.evaluate('document.querySelector("#source-body").textContent')).startsWith('Source 0 '));
       await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close Y');
+      // A arrives as a card above the sources and moves them down; the source
+      // is pressed once it has, so the press cannot land on A as it arrives.
+      await until(() => p.evaluate(`[...document.querySelectorAll('#messages .message-preview')].some(e => e.textContent === 'Native delayed A')`), 'A is drawn');
       await p.open(1); assert.equal(await field(p), 'Native delayed B');
       await shot(p, 'after-delayed-send'); assert.deepEqual(p.errors, []);
     });
