@@ -25,6 +25,8 @@ class ColorCase(fixtures.StoreCase):
     def refused(self, receipt, code):
         self.assertEqual(receipt.get("error", {}).get("code"), code, receipt)
         self.assertNotEqual(receipt.get("status"), "committed", receipt)
+        # The person reads a refusal beside "Color for"; it spells the word as the page does.
+        self.assertNotIn("colour", receipt["error"]["message"].lower(), receipt)
         return receipt["error"]
 
     def choices(self, actor="owner", **args):

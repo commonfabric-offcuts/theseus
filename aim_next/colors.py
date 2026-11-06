@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-"""The colour a person has chosen for an agent, for themselves alone.
+"""The color a person has chosen for an agent, for themselves alone.
 
-An agent's messages wear a colour on its name and across its cards
+An agent's messages wear a color on its name and across its cards
 (docs/reading-colors.md). Each agent has one by default; a person may choose
 another from the palette for themselves, and the choice follows them to every
 page and device, since it is kept here rather than in a browser. A choice names
-a palette colour, or none, which is the agent's default again. Nobody else sees
+a palette color, or none, which is the agent's default again. Nobody else sees
 it, and it changes no message, delivery or wake.
 
 A choice belongs to one person and one agent. Its revision only grows and rows
@@ -41,21 +41,21 @@ class Colors:
     def _command_color_set(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"actor_id"} or set(args) != {"color"}:
-            raise Refusal("INVALID_ARGUMENT", "Name one agent and a palette colour, or null for its own")
+            raise Refusal("INVALID_ARGUMENT", "Name one agent and a palette color, or null for its own")
         color = args["color"]
         if color is not None and color not in AGENT_COLORS:
-            raise Refusal("INVALID_ARGUMENT", "A colour is one of the palette's: " + ", ".join(AGENT_COLORS))
+            raise Refusal("INVALID_ARGUMENT", "A color is one of the palette's: " + ", ".join(AGENT_COLORS))
         subject_id = _identifier(target["actor_id"], "actor_id")
         if subject_id == actor:
-            raise Refusal("INVALID_ARGUMENT", "Your own messages keep their own look; choose a colour for an agent")
+            raise Refusal("INVALID_ARGUMENT", "Your own messages keep their own look; choose a color for an agent")
         subject = db.execute("SELECT kind FROM actors WHERE id=?", (subject_id,)).fetchone()
         if subject is None or subject["kind"] != "agent":
-            raise Refusal("INVALID_ARGUMENT", "A colour is chosen for an agent")
+            raise Refusal("INVALID_ARGUMENT", "A color is chosen for an agent")
         current, revision = self._color_choice(db, actor, subject_id)
         # Fenced on the revision its sender saw, so a late request never undoes
         # a newer choice made on another page or device.
         if envelope["expected"]["color_revision"] != revision:
-            raise Refusal("REVISION_CONFLICT", "This colour changed since it was read; nothing was changed",
+            raise Refusal("REVISION_CONFLICT", "This color changed since it was read; nothing was changed",
                           {"color_revision": revision})
         result = {"actor_id": subject_id, "color": color}
         if color == current:
@@ -69,7 +69,7 @@ class Colors:
             {"kind": "color", "id": subject_id, "version": revision}]
 
     def _view_colors(self, db, actor, args):
-        """The reader's colour choices, reset ones included, in agent id order, and the palette."""
+        """The reader's color choices, reset ones included, in agent id order, and the palette."""
         limit = _page_size(args)
         rows = db.execute("SELECT subject_id,color,revision FROM color_choices WHERE actor_id=? AND subject_id>? "
                           "ORDER BY subject_id LIMIT ?", (actor, args.get("cursor", ""), limit + 1)).fetchall()
