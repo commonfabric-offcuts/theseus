@@ -103,20 +103,18 @@ def identity(pid):
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def processes(argv_tail):
-    """(pid, parent pid) of each process whose command line ends with exactly this argv (after the interpreter)."""
-    r = run(["ps", "-axo", "pid=,ppid=,command="])
-    hits = []
-    for line in r.stdout.splitlines():
+def processes():
+    """(pid, parent pid, command line) of every process, from one listing."""
+    rows = []
+    for line in run(["ps", "-axo", "pid=,ppid=,command="]).stdout.splitlines():
         pid, parent, command = line.split(None, 2)
-        if command.endswith(" ".join(argv_tail)) and "deploy.py" not in command:
-            hits.append((int(pid), int(parent)))
-    return hits
+        rows.append((int(pid), int(parent), command))
+    return rows
 
 
-def find(argv_tail):
+def find(rows, argv_tail):
     """PIDs whose command line ends with exactly this argv (after the interpreter)."""
-    return [pid for pid, _ in processes(argv_tail)]
+    return [pid for pid, _, command in rows if command.endswith(" ".join(argv_tail)) and "deploy.py" not in command]
 
 
 def wait_exit(pid):
@@ -198,18 +196,21 @@ def deploy(config, sha, evidence, summary, dry):
 
     # 1. The live processes, by exact command line, and nothing else matching. The runner runs
     # under its supervisor, or bare as one started before supervision did.
-    server_pids, supervisors = find(server_args[1:]), find(supervisor_args[1:])
-    runners = processes(runner_args[1:])
-    runner_pids = [pid for pid, _ in runners]
+    rows = processes()
+    server_pids, supervisors = find(rows, server_args[1:]), find(rows, supervisor_args[1:])
+    # A supervised runner is its supervisor's child, found by parent rather than by command line: the
+    # supervisor starts it by its own interpreter and resolved checkout path, not the deploy's spelling.
+    children = [pid for pid, parent, _ in rows if parent in supervisors]
+    bare = [pid for pid in find(rows, runner_args[1:]) if pid not in children]
+    runner_pids = children if supervisors else bare
     live = {"server": [(p, identity(p)) for p in server_pids], "supervisor": [(p, identity(p)) for p in supervisors],
             "runner": [(p, identity(p)) for p in runner_pids]}
     record(evidence, "01-live", live)
-    require(len(server_pids) == 1 and len(supervisors) + (0 if supervisors else len(runners)) <= 1,
+    require(len(server_pids) == 1 and len(supervisors) <= 1 and len(runner_pids) <= 1,
             "expected one server and at most one runner: %s" % live)
-    # A supervised runner is its supervisor's one child; the supervisor is what the run record started.
-    require(not supervisors or (len(runners) <= 1 and all(parent == supervisors[0] for _, parent in runners)),
-            "a runner is not its supervisor's own child: %s %s" % (supervisors, runners))
-    stop = supervisors or runner_pids
+    # A supervisor starts one process, the runner; a runner beside it is not its own.
+    require(not (supervisors and bare), "a runner is not its supervisor's own child: %s %s %s" % (supervisors, children, bare))
+    stop = supervisors or bare
     # Each must be the PID its own run record captured at start.
     require(server_pids == [recorded(config, "server")] and stop in ([], [recorded(config, "runner")]),
             "live processes are not the ones their run records started: %s %s" % (server_pids, stop))

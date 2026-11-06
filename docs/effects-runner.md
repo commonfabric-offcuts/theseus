@@ -159,7 +159,9 @@ The runner's own output passes through, so its last stdout line is still its
 result; the supervisor's events (`runner_started`, `runner_exited`,
 `restarting`, `not_restarting` with why, `stopped`) go to stderr. It keeps no
 timer and never polls. `tools/deploy.py` starts the runner this way and stops
-it by stopping the supervisor. Proof: `tests/test_supervisor.py`.
+it by stopping the supervisor; it finds the supervised runner as the
+supervisor's child, by parent rather than by command line, since the
+supervisor starts it by its own interpreter and resolved checkout path. Proof: `tests/test_supervisor.py`.
 
 Focused proof lives in `tests/test_effects_runner.py`,
 `tests/test_effects_watch.py` and, for hosted routes, `tests/test_codex_host.py`. It uses isolated real Stores, owned fixture

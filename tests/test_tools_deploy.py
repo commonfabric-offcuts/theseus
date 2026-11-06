@@ -11,6 +11,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
+from aim_next import supervisor as runner_supervisor
 from tools import deploy, release_check
 
 SHA = "c" * 40
@@ -27,8 +28,11 @@ class FakeHost:
     """Answers the deploy's ps and git calls from a table and records every call; nothing real runs."""
 
     def __init__(self, config, servers=(111,), runners=(222,), supervisors=(), children=(), dirty="", ff=True, backup=0,
-                 merge=0, migrate=0):
-        """runners are bare runners (as started before supervision); children are (pid, parent) runner processes."""
+                 merge=0, migrate=0, spelled_as_deployed=False):
+        """runners are bare runners (as started before supervision); children are (pid, parent) runner processes,
+        spelled the way the real supervisor starts them (its own interpreter and its checkout's resolved path), or
+        exactly as the deploy spells a runner when those are the same."""
+        self.spelled_as_deployed = spelled_as_deployed
         self.config, self.calls = config, []
         self.servers, self.runners = list(servers), list(runners)
         self.supervisors, self.children = list(supervisors), list(children)
@@ -44,7 +48,8 @@ class FakeHost:
             out = "".join("%d 1 %s\n" % (pid, server) for pid in self.servers)
             out += "".join("%d 1 %s\n" % (pid, runner) for pid in self.runners)
             out += "".join("%d 1 %s\n" % (pid, supervisor) for pid in self.supervisors)
-            out += "".join("%d %d %s\n" % (pid, parent, runner) for pid, parent in self.children)
+            child = runner if self.spelled_as_deployed else " ".join(runner_supervisor.child_argv(deploy.runner_argv(self.config)[3:]))
+            out += "".join("%d %d %s\n" % (pid, parent, child) for pid, parent in self.children)
             out += "333 1 /usr/bin/python3 -I unrelated\n"
         elif argv[:2] == ["ps", "-o"]:
             out = "Thu Nov  5 15:02:31 2026     process %s" % argv[-1]
@@ -174,13 +179,23 @@ class Refusals(DeployCase):
                 self.assertEqual(self.kills, [])
 
     def test_a_supervised_runner_is_stopped_through_its_supervisor(self):
+        for spelled in (False, True):
+            with self.subTest(spelled_as_deployed=spelled):
+                self.kills = []
+                kw = dict(runners=(), supervisors=(222,), children=((224, 222),), spelled_as_deployed=spelled)
+                self.assertIn("migration failed", self.refused(FakeHost(self.config, migrate=1, **kw)))
+                self.assertEqual(self.kills, [(222, 15), (111, 15)])
+                self.kills = []
+                self.deploy(FakeHost(self.config, **kw), dry=True)
+                live = json.loads((self.evidence / "01-live.json").read_text())
+                self.assertEqual(([pid for pid, _ in live["supervisor"]], [pid for pid, _ in live["runner"]]), ([222], [224]))
+
+    def test_a_supervised_runner_that_did_not_stop_cleanly_is_caught_however_its_path_is_spelled(self):
+        # The supervisor starts its child by its own interpreter and resolved checkout path, not the deploy's spelling.
+        (self.instance / "run-runner-02" / "stdout.log").write_text('{"status": "paused", "reason": "storage_failure"}\n')
         host = FakeHost(self.config, runners=(), supervisors=(222,), children=((224, 222),))
-        self.refused(FakeHost(self.config, runners=(), supervisors=(222,), children=((224, 222),), migrate=1))
+        self.assertIn("did not stop cleanly", self.refused(host))
         self.assertEqual(self.kills, [(222, 15), (111, 15)])
-        self.kills = []
-        self.deploy(host, dry=True)
-        live = json.loads((self.evidence / "01-live.json").read_text())
-        self.assertEqual(([pid for pid, _ in live["supervisor"]], [pid for pid, _ in live["runner"]]), ([222], [224]))
 
     def test_a_supervisor_between_runs_is_stopped_without_a_runner_line(self):
         (self.instance / "run-runner-02" / "stdout.log").write_text('{"status": "idle_lease_lost"}\n')
@@ -189,9 +204,9 @@ class Refusals(DeployCase):
         self.assertEqual(self.kills, [(222, 15), (111, 15)])
 
     def test_runners_that_are_not_the_supervisors_own_are_refused_before_anything_stops(self):
-        for kw, reason in ((dict(runners=(), supervisors=(222,), children=((224, 9),)), "not its supervisor's"),
+        for kw, reason in ((dict(runners=(224,), supervisors=(222,), children=((225, 222),)), "not its supervisor's"),
                            (dict(runners=(224,), supervisors=(222,)), "not its supervisor's"),
-                           (dict(runners=(), supervisors=(222,), children=((224, 222), (225, 222))), "not its supervisor's"),
+                           (dict(runners=(), supervisors=(222,), children=((224, 222), (225, 222))), "at most one runner"),
                            (dict(runners=(), supervisors=(222, 223)), "at most one runner"),
                            (dict(runners=(), supervisors=(221,), children=((224, 221),)), "not the ones their run records started")):
             with self.subTest(**{k: str(v) for k, v in kw.items()}):
