@@ -395,8 +395,8 @@ class Conversation:
         relation, order = ("<", "DESC") if backwards else (">", "ASC")
         cursor = args.get("cursor", 9223372036854775807 if backwards else 0)
         # A reply says whose message it answers, and how that message begins;
-        # every message says whether a person or an agent wrote it.
-        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.sent_ms,m.intent,"
+        # every message says whether a person or an agent wrote it, and what it carries.
+        columns = ("m.seq,m.id,m.topic_id,m.author_id,w.kind AS author_kind,substr(m.body,1,1024) AS body,length(CAST(m.body AS BLOB)) AS body_bytes,m.reply_to,m.exchange_id,m.addressees,m.attachments,m.sent_ms,m.intent,"
                    "p.author_id AS reply_to_author,substr(p.body,1,120) AS reply_to_excerpt")
         parent = " JOIN actors w ON w.id=m.author_id LEFT JOIN messages p ON p.id=m.reply_to"
         if args.get("audience", "all") == "reader":
@@ -409,6 +409,7 @@ class Conversation:
         for row in rows[:limit]:
             item = dict(row)
             item["addressees"] = json.loads(item["addressees"])
+            item["attachments"] = json.loads(item["attachments"])
             item["body"] = _preview(item["body"])
             item["preview"] = len(item["body"].encode("utf-8")) < item.pop("body_bytes")
             encoded = len(_json(item).encode("utf-8")) + 1
