@@ -1749,6 +1749,20 @@ class LiveShapedChainCase(MigrationCase):
             db.execute("DELETE FROM reply_horizons")
             for statement in conversation.UNANSWERED_BACKFILL:
                 db.execute(statement)
+            # Release 19 queued a message between others to the person pending like any other, so
+            # what they have not read through of those is pending still, and counted.
+            between = [row for row in db.execute(
+                "SELECT d.id,m.topic_id,m.seq,m.sent_ms FROM deliveries d CROSS JOIN messages m ON m.id=d.message_id "
+                "WHERE d.recipient_id='owner' AND m.addressees<>'[]' "
+                "AND NOT EXISTS (SELECT 1 FROM delivery_reasons r WHERE r.delivery_id=d.id AND r.reason='addressed') "
+                "AND NOT EXISTS (SELECT 1 FROM messages p WHERE p.id=m.reply_to AND p.author_id='owner')")]
+            self.between = {key for key, topic, seq, _ in between if seq > self.through.get(topic, 0)}
+            db.executemany("UPDATE deliveries SET state='pending' WHERE id=?", [(key,) for key in self.between])
+            db.execute("UPDATE delivery_groups SET pending_count=(SELECT count(*) FROM deliveries d WHERE d.group_id=delivery_groups.id AND d.state='pending'),"
+                       "first_pending_seq=(SELECT min(d.seq) FROM deliveries d WHERE d.group_id=delivery_groups.id AND d.state='pending') "
+                       "WHERE recipient_id='owner' AND active=1")
+            db.execute("UPDATE recipient_schedule SET pending_count=(SELECT sum(pending_count) FROM delivery_groups WHERE recipient_id='owner' AND active=1),"
+                       "next_due_ms=coalesce(next_due_ms,?) WHERE recipient_id='owner'", (min(sent for *_, sent in between),))
         self.assertEqual(schema(self.path), frozen(SCHEMA_17))
         # The fixture is kept aside as it is; the check migrates a copy of it, put into the
         # instance's own bound file, since the binding names that file.
@@ -1762,6 +1776,25 @@ class LiveShapedChainCase(MigrationCase):
     def committed(self, receipt):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt.get("result")
+
+    def settled(self, rows):
+        """rows (from records or everything) as version 25 leaves them: the person's deliveries between others
+        settled, and the person's counters, which are worked out again, left to counted() to check."""
+        def row(table, values):
+            if table == "deliveries" and values[1] in self.between:
+                return tuple("acknowledged" if value == "pending" else value for value in values)
+            return values
+        mine = {"delivery_groups": 1, "recipient_schedule": 0}
+        return {table: [row(table, values) for values in kept if table not in mine or values[mine[table]] != "owner"]
+                for table, kept in rows.items()}
+
+    def counted(self):
+        """Every live group and schedule counts exactly its pending rows."""
+        self.assertEqual(self.sql("SELECT g.id FROM delivery_groups g WHERE g.active=1 AND (g.pending_count<>(SELECT count(*) FROM deliveries d "
+                                  "WHERE d.group_id=g.id AND d.state='pending') OR g.first_pending_seq IS NOT (SELECT min(seq) "
+                                  "FROM deliveries d WHERE d.group_id=g.id AND d.state='pending'))"), [])
+        self.assertEqual(self.sql("SELECT s.recipient_id FROM recipient_schedule s WHERE s.pending_count<>(SELECT coalesce(sum(g.pending_count),0) "
+                                  "FROM delivery_groups g WHERE g.recipient_id=s.recipient_id AND g.active=1)"), [])
 
     def open_topic(self, topic, workspace, title):
         source = {"kind": "new_topic", "id": "opening-" + topic, "workspace_id": workspace}
@@ -1789,6 +1822,10 @@ class LiveShapedChainCase(MigrationCase):
                     args.update(addressees=[others[k % 2]], intent="ask" if k % 10 == 4 else "tell")
                 previous = self.committed(self.command("message.post", args, target={"topic_id": topic}, actor=author,
                                                        op="post-%s-%d" % (topic, k)))["message_id"]
+            # Two agents write to each other by name, as on live, which is between others for the person.
+            for k, (author, to) in enumerate((("agent-a", "agent-b"), ("agent-b", "agent-a"))):
+                self.committed(self.command("message.post", {"body": "Between agents %d in %s." % (k, topic), "addressees": [to], "intent": "tell"},
+                                            target={"topic_id": topic}, actor=author, op="between-%s-%d" % (topic, k)))
         # Agents acknowledge what they were handed in all but the last four topics.
         for agent in ("agent-a", "agent-b"):
             pending = self.sql("SELECT d.id FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.recipient_id=? "
@@ -1796,9 +1833,10 @@ class LiveShapedChainCase(MigrationCase):
             for (delivery_id,) in pending:
                 self.committed(self.command("delivery.ack", {}, target={"delivery_id": delivery_id}, actor=agent))
         # The person reads most topics through, some only part way.
+        self.through = {}
         for n in range(1, 16):
             seqs = [seq for (seq,) in self.sql("SELECT seq FROM messages WHERE topic_id=? ORDER BY seq", ("t%d" % n,))]
-            through = seqs[-1] if n % 3 else seqs[len(seqs) // 2]
+            through = self.through["t%d" % n] = seqs[-1] if n % 3 else seqs[len(seqs) // 2]
             self.committed(self.command("topic.read_through", {"seq": through}, target={"topic_id": "t%d" % n}, op="through-%d" % n))
         for message_id, in self.sql("SELECT id FROM messages WHERE topic_id IN ('t2','t4') AND author_id='agent-a' ORDER BY seq LIMIT 2"):
             self.committed(self.command("message.mark", {"marked": True}, target={"message_id": message_id}, expected={"mark_revision": 0}))
@@ -1820,13 +1858,21 @@ class LiveShapedChainCase(MigrationCase):
         self.assertGreaterEqual(counts["messages"], 520)
         self.assertGreaterEqual(counts["deliveries"], 1000)
         self.assertGreater(self.sql("SELECT count(*) FROM deliveries WHERE state='pending'")[0][0], 100)
+        self.assertGreaterEqual(len(self.between), 20, "the person has messages between others still unread")
+        unread = self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'")[0][0]
+        self.counted()
         stored, records = everything(self.path), self.records()
         started = time.monotonic()
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
         upgraded_in = time.monotonic() - started
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
-        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
-                         {k: v for k, v in records.items() if k != "metadata"})
+        self.assertEqual({k: v for k, v in self.settled(self.records()).items() if k != "metadata"},
+                         {k: v for k, v in self.settled(records).items() if k != "metadata"})
+        # The person's messages between others are settled, and their counts lose exactly those.
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE state='pending' AND id IN (SELECT value FROM json_each(?))",
+                                  (json.dumps(sorted(self.between)),)), [(0,)])
+        self.counted()
+        self.assertEqual(self.sql("SELECT pending_count FROM recipient_schedule WHERE recipient_id='owner'"), [(unread - len(self.between),)])
         # What the steps work out from the messages, checked against the messages themselves.
         self.assertEqual(self.sql("SELECT count(*) FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.topic_id IS NOT m.topic_id"), [(0,)])
         written = dict(((topic, author), seq + 1) for topic, author, seq in
@@ -1843,10 +1889,12 @@ class LiveShapedChainCase(MigrationCase):
         self.assertNotIn("error", listed, listed)
         self.assertTrue(all(not item["work"]["by"] or item["work"]["by"] != "owner" for item in listed["items"]), "the person's own posts are not work they see")
         after_up = everything(self.path)
-        # Back to release 19: the layout it knows, and every row it had.
+        # Back to release 19: the layout it knows, and every row it had, but for what was settled,
+        # which stays settled.
         self.assertEqual(migrate(self.path, "test-instance", self.binding, "17")["schema_version"], "17")
         self.assertEqual(schema(self.path), frozen(SCHEMA_17))
-        self.assertEqual(everything(self.path), stored)
+        self.assertEqual(self.settled(everything(self.path)), self.settled(stored))
+        self.counted()
         # And up again, to exactly what the first upgrade gave.
         self.assertTrue(self.upgrade()["migrated"])
         self.assertEqual(everything(self.path), after_up)
