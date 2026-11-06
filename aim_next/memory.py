@@ -118,6 +118,10 @@ class Memory:
             db.execute("UPDATE memory_items SET current_revision=? WHERE id=?", (revision + 1, item_id))
         db.execute("INSERT INTO memory_revisions VALUES (?,?,?,?,?,?,?,?)", (item_id, revision + 1, actor,
                    envelope["operation_id"], title, body, _json(attachments), _json(refs)))
+        # Whoever writes a revision has read it, so their own edit never marks
+        # the page changed for them. The write is already its own change.
+        db.execute("INSERT INTO memory_reads(actor_id,item_id,revision) VALUES (?,?,?) "
+                   "ON CONFLICT(actor_id,item_id) DO UPDATE SET revision=excluded.revision", (actor, item_id, revision + 1))
         db.execute("INSERT INTO memory_notebooks VALUES (?,?,1) ON CONFLICT(scope_kind,scope_id) DO UPDATE SET version=version+1", (scope["kind"], scope["id"]))
         notebook_version = db.execute("SELECT version FROM memory_notebooks WHERE scope_kind=? AND scope_id=?", (scope["kind"], scope["id"])).fetchone()[0]
         self._change(db, scope["kind"], scope["id"], "memory", item_id, revision + 1)

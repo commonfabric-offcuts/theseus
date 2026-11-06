@@ -20,6 +20,9 @@ page look changed again.
   read_revision, current_revision, changed}`. A read that moves the
   revision forward adds the change `memory_read` to the reader's own
   (`actor`) changes; one that moves nothing tells nobody.
+- Writing a revision (`memory.create`, `memory.revise`) reads it for its
+  writer, so a person's own edit never marks a page changed for them. The
+  write is its own change; it adds no `memory_read` change.
 - View `memory_items`: each item carries `read_revision`, the viewer's own,
   `0` when they have not read it. A page is changed for the viewer when
   `0 < read_revision < revision`. A page never read is not marked: the light

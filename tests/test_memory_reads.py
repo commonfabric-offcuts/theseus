@@ -27,8 +27,8 @@ class MemoryReadCase(ReaderCase):
         self.assertNotIn("error", answer, answer)
         return {item["id"]: (item["revision"], item["read_revision"]) for item in answer["items"]}
 
-    def reads(self):
-        return self.sql("SELECT actor_id,item_id,revision FROM memory_reads ORDER BY actor_id,item_id")
+    def reads(self, actor="owner"):
+        return self.sql("SELECT actor_id,item_id,revision FROM memory_reads WHERE actor_id=? ORDER BY item_id", (actor,))
 
     def outcome_page(self, body="Revision one", revision=0, actor="agent-a"):
         return self.committed(self.memory(scope=OUTCOME, body=body, revision=revision, actor=actor))
@@ -94,6 +94,16 @@ class MemoryReadCase(ReaderCase):
         self.rejected(self.read(1, also="this"), "INVALID_ARGUMENT")
         self.rejected(self.command("memory.read", {"revision": 1}, target={"item_id": "memory-one", "extra": 1}), "INVALID_ARGUMENT")
         self.assertEqual(self.reads(), [])
+
+    def test_whoever_writes_a_revision_has_read_it(self):
+        self.outcome_page()
+        self.assertEqual(self.listed("agent-a"), {"memory-one": (1, 1)}, "the creator read what they wrote")
+        self.outcome_page(body="Revision two", revision=1, actor="agent-b")
+        self.assertEqual(self.listed("agent-b"), {"memory-one": (2, 2)}, "the reviser read what they wrote")
+        self.assertEqual(self.listed("agent-a"), {"memory-one": (2, 1)}, "for the creator it changed")
+        self.assertEqual(self.listed(), {"memory-one": (2, 0)}, "someone who never read it is not told it changed")
+        # Writing is its own change; the writer's feed is not told twice.
+        self.assertEqual(self.sql("SELECT count(*) FROM changes WHERE resource_kind='memory_read'"), [(0,)])
 
     def test_a_topic_page_keeps_its_reads_the_same_way(self):
         self.committed(self.memory())

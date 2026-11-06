@@ -1195,8 +1195,6 @@ class Schema17Case(MigrationCase):
 
     def test_step_back_to_17_restores_its_frozen_layout_while_nobody_has_read_a_page(self):
         self.upgrade()
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.assertEqual(self.page()["status"], "committed", "a page nobody has read holds no step back")
         records = self.records()
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_17))
@@ -1206,6 +1204,7 @@ class Schema17Case(MigrationCase):
     def test_step_back_refuses_while_anyone_has_read_a_page(self):
         self.upgrade()
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        # Writing a page reads it for its writer; the owner then reads it too.
         self.assertEqual(self.page()["status"], "committed")
         self.assertEqual(self.read()["status"], "committed")
         before = self.unchanged()
