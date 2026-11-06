@@ -327,6 +327,16 @@ class Conversation:
                    (message_id, topic_id, actor, snapshot["body"], _json(snapshot["attachments"]), _json(snapshot["quotes"]),
                     _json(snapshot["addressees"]), snapshot.get("reply_to"), snapshot.get("exchange_id"), operation_id, sent_ms, intent)).lastrowid
         db.executemany("INSERT INTO message_addressees VALUES (?,?,?)", [(topic_id, recipient, sequence) for recipient in snapshot["addressees"]])
+        # A person replying to a message has read it: their delivery of it, if
+        # still pending where it counts, is settled as reading it on screen
+        # would. An agent's deliveries are its work, which it acknowledges
+        # itself (delivery.ack), so its replies settle nothing.
+        if snapshot.get("reply_to") and self._actor(db, actor)["kind"] == "human":
+            answered = db.execute("SELECT d.* FROM deliveries d CROSS JOIN delivery_groups g ON g.id=d.group_id "
+                                  "WHERE d.message_id=? AND d.recipient_id=? AND d.state='pending' AND g.active=1",
+                                  (snapshot["reply_to"], actor)).fetchone()
+            if answered is not None:
+                self._acknowledge(db, actor, answered)
         # A post to the whole topic answers everything before it; a reply may
         # answer the oldest message its author had left, so the horizon moves on
         # to the next one, or past this message when none is left.

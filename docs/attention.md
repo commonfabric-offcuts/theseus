@@ -3,8 +3,14 @@
 Unread counts come from the deliveries Core already keeps, plus the messages
 a person has marked unread to come back to (below). A message is unread for a
 reader while its delivery to them is pending, or while they have it marked.
-Reading through it on screen, or acknowledging it, settles the delivery; only
-opening the message to read it clears a mark.
+Reading through it on screen, replying to it, or acknowledging it settles the
+delivery; only opening the message to read it clears a mark. A person's reply
+(a post whose `reply_to` names the message, including one written in the
+Reader about it) settles their own delivery of that message, in the same act,
+when it is pending in an active group; it settles nothing else and clears no
+mark. An agent's deliveries are the work it is woken for, which it acknowledges
+itself with `delivery.ack` ([agent-cli.md](agent-cli.md)), so an agent's reply
+settles nothing.
 
 - `workspace_topics` items carry `unread` and `addressed`: the reader's
   pending deliveries and marked messages in that topic, and how many of the
