@@ -177,6 +177,18 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       const narrowMarker = await narrowLine(p);
       assert.equal(narrowMarker.lines, 1, theme + ': at 390 wide "More new below" and its time fit on one line');
       assert.ok(narrowMarker.right <= narrowMarker.width && narrowMarker.scroll <= narrowMarker.width, theme + ': and inside the page');
+      // The longest words the line can say: its longer label with the longest
+      // time forms (docs/times.md), a date on another day and yesterday's, in
+      // the page's own time element, at 390 wide.
+      for (const [when, form] of [['12:59 PM Wed Nov 25', 'dated'], ['Yesterday 12:59 PM', 'yesterday']]) {
+        const kept = await p.evaluate(`(()=>{const t=document.querySelector('#messages .new-line .new-line-time time'),was=t.textContent;t.textContent=${JSON.stringify(when)};return was})()`);
+        const longest = await narrowLine(p);
+        assert.equal(longest.text, 'More new below · ' + when, theme + ': the longest ' + form + ' words are the ones measured');
+        assert.equal(longest.lines, 1, theme + `: at 390 wide "More new below · ${when}" fits on one line`);
+        assert.ok(longest.right <= longest.width && longest.scroll <= longest.width, theme + ': and inside the page: ' + JSON.stringify(longest));
+        if (form === 'dated') await shot(p, 'new-line-older-' + theme + '-longest-390');
+        await p.evaluate(`document.querySelector('#messages .new-line .new-line-time time').textContent=${JSON.stringify(kept)}`);
+      }
       await p.send('Emulation.setDeviceMetricsOverride', desk);
       await p.evaluate("document.querySelector('#messages .new-line').scrollIntoView({block:'center'})");
       await shot(p, 'new-line-older-' + theme);
