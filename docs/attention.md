@@ -200,6 +200,11 @@ moved. It draws the line under that message's card when the card is loaded;
 until More loads it, no line shows. The line is text ("New"), with no message
 identity, in the alert colour, so nothing that looks for cards finds it.
 
+When the reader is at the top of a topic, with the newest card showing from
+its top edge, a message that arrives comes into view above it; the page does
+not scroll to keep the old card in place. Further down the topic, the card the
+reader is looking at stays where it was.
+
 ## In the browser
 
 The page reads `attention` at start, after each announced commit, when the

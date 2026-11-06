@@ -1283,3 +1283,28 @@ test('the New line is drawn under the oldest unanswered card, moves with each an
   f.views.unanswered = null; f.paintViews('messages');
   assert.equal(order(), '26 25 24 23 22 21 20 19', 'nothing left unanswered: no line');
 });
+
+test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {
+  const scrolls = [];
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y) }, innerHeight: 800 });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await settle();
+  // Cards are laid out 100px apart from where the list starts, measured when
+  // asked: a new card above pushes the rest down.
+  let listTop = 0;
+  const cards = () => f.get('messages').children.filter(child => child.dataset.seq);
+  for (const kind of ['querySelectorAll', 'querySelector']) assert.equal(typeof f.document[kind], 'function');
+  f.document.querySelectorAll = () => cards();
+  f.document.querySelector = selector => selector === '#messages .message-card' ? cards()[0] ?? null : selector.startsWith('meta') ? { content: 'fixture-session' } : f.get(selector.slice(1));
+  const add = seq => f.views.messages.set('m' + seq, { id: 'm' + seq, seq, author_id: 'agent-a', body: 'Body', topic_id: 't1' });
+  const paint = () => { f.paintViews('messages'); for (const card of cards()) card.getBoundingClientRect ??= () => { const top = listTop + cards().indexOf(card) * 100; return { top, bottom: top + 90 }; }; };
+  for (let seq = 20; seq <= 25; seq++) add(seq);
+  paint();
+  listTop = 120; add(26); paint();
+  assert.deepEqual(scrolls, [], 'the newest card showed from its top edge: the new one comes into view above it');
+  listTop = -450; add(27); paint();
+  assert.deepEqual(scrolls, [100], 'read further down, the card in view is held where it was');
+  listTop = -100; add(28); paint();
+  assert.deepEqual(scrolls, [100, 100], 'the newest card just out of sight above: the card that heads the view is held too');
+});

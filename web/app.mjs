@@ -488,15 +488,19 @@ async function openSource(ref, opener, act = null) {
 // A repaint leaves in place what the person is at: the inline writing, a
 // field on the page they are typing in, or else the first card in view. A
 // button keeps no place: More would hold itself still and scroll past what
-// it loaded.
+// it loaded. At the top of the topic, where its newest card shows from its
+// top edge, nothing is held: what arrives comes into view above that card,
+// with the New line under it, instead of landing out of sight.
 function keepListAnchor(paint) {
   const at = document.activeElement;
   const writing = inline?.root.contains(at) && registry.isCurrent(registry.inline);
-  const anchor = writing ? inline.field : $('main').contains(at) && at.matches('input, textarea, select') && inView(at) ? at
+  const field = !writing && $('main').contains(at) && at.matches('input, textarea, select') && inView(at);
+  const anchor = writing ? inline.field : field ? at
     : [...document.querySelectorAll('#messages .message-card, #memory-items .memory-card')].find(inView);
   const top = anchor?.getBoundingClientRect().top;
+  const atTop = !writing && !field && anchor && anchor === document.querySelector('#messages .message-card') && top >= 0;
   paint();
-  if (anchor?.isConnected) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
+  if (anchor?.isConnected && !atTop) window.scrollBy(0, anchor.getBoundingClientRect().top - top);
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 function paintViews(kind) {
