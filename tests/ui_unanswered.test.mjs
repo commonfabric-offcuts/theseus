@@ -39,8 +39,37 @@ test('the line sits just below the card of the oldest unanswered message, and mo
   assert.deepEqual(order(host), [50, 40, 30, 20, 'new'], 'under the last loaded card');
   placeNewLine(host, null, doc);
   assert.deepEqual(order(host), [50, 40, 30, 20], 'replied to everything, it goes');
-  placeNewLine(host, 10, doc);
-  assert.deepEqual(order(host), [50, 40, 30, 20], 'not drawn under a card not loaded yet');
+  placeNewLine(host, 35, doc);
+  assert.deepEqual(order(host), [50, 40, 30, 20], 'a message among the loaded ones without a card here has no line');
+});
+
+// When the oldest unanswered message is further back than what is loaded, the
+// line sits at the bottom of what is loaded, says so, and loads the older
+// messages when activated; once its card is loaded, the line takes its place.
+test('a line for a message not loaded yet sits at the bottom, says older below, and loads it when pressed', () => {
+  const host = list(50, 40, 30, 20), loads = [];
+  const load = () => loads.push('older');
+  const marker = placeNewLine(host, 10, doc, load);
+  assert.deepEqual(order(host), [50, 40, 30, 20, 'older'], 'at the bottom of what is loaded');
+  assert.equal(marker.tag, 'button', 'a control the person can press, by pointer or keyboard');
+  assert.equal(marker.type, 'button');
+  assert.equal(marker.textContent, 'New · older below');
+  assert.equal(marker.className, 'new-line new-line-older');
+  assert.equal(marker.dataset.seq, undefined, 'never taken for a card');
+  marker.onclick();
+  assert.deepEqual(loads, ['older'], 'pressing it loads the older messages');
+  assert.equal(placeNewLine(host, 10, doc, load), marker, 'placed again, it stays');
+  const older = list(15); host.insertBefore(older.children[0], null);
+  placeNewLine(host, 10, doc, load);
+  assert.deepEqual(order(host), [50, 40, 30, 20, 15, 'older'], 'more loaded, still not reached: still at the bottom');
+  const reached = list(10); host.insertBefore(reached.children[0], null);
+  const line = placeNewLine(host, 10, doc, load);
+  assert.deepEqual(order(host), [50, 40, 30, 20, 15, 10, 'new'], 'loaded: the line takes its true place, and the marker goes');
+  assert.equal(line.textContent, 'New');
+  assert.notEqual(line.tag, 'button', 'in its place the line is not a control');
+  placeNewLine(host, 40, doc, load);
+  assert.deepEqual(order(host), [50, 40, 'new', 30, 20, 15, 10]);
+  assert.throws(() => placeNewLine(list(50, 40), 10, doc), /loads the older messages/, 'a line for a message further back needs a way to load it');
 });
 
 test('the boundary a page carries is read strictly', () => {

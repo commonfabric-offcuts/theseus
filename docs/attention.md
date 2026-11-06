@@ -203,9 +203,19 @@ since the horizons come from the messages.
 
 The page keeps the boundary from the newest topic version any page said it
 at, so an older page loaded with More never brings back a line a later reply
-moved. It draws the line under that message's card when the card is loaded;
-until More loads it, no line shows. The line is text ("New"), with no message
-identity, in the alert colour, so nothing that looks for cards finds it.
+moved. It draws the line under that message's card when the card is loaded.
+The line is text ("New"), with no message identity, in the alert colour, so
+nothing that looks for cards finds it.
+
+When that message is further back than the page has loaded, which is when the
+reader is most behind, the line sits at the bottom of what is loaded and reads
+"New · older below". There it is a button: pressing it, by pointer or
+keyboard, reads older pages one after another, as More does, until that
+message's card is loaded or no older page is left, and then gives that
+message the focus, with the line in its true place just below it. A read that
+cannot go on (a review pending, or a refusal, which the page reports) ends it
+with the line still at the bottom. A message among the loaded ones that has no
+card on the page has no line.
 
 When the reader is at the top of a topic, with the newest card showing from
 its top edge, a message that arrives comes into view above it; the page does

@@ -552,7 +552,7 @@ function paintViews(kind) {
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
-  if (kind === 'messages') placeNewLine($('messages'), views.unanswered?.seq ?? null, document);
+  if (kind === 'messages') placeNewLine($('messages'), views.unanswered?.seq ?? null, document, () => run(loadToUnanswered));
   });
   $('more-messages').hidden = views.olderCursor === null;
   $('more-memory').hidden = views.memoryCursor === null;
@@ -630,6 +630,19 @@ function listPage(kind, more = false) {
     else views.memoryPage(page, { initial: !more, cursor });
   }).finally(() => { foreground.release(); listLoads.delete(kind); });
   listLoads.set(kind, run); return run;
+}
+// The New line's "older below": older pages, one after another, until the
+// oldest unanswered message's card is loaded or no older page is left; then
+// that message takes the focus, with the line in its place below it. A read
+// that moves nothing on (a refusal, or a review pending) ends it.
+async function loadToUnanswered() {
+  const loaded = () => [...$('messages').children].find(child => Number(child.dataset.seq) === views.unanswered?.seq);
+  while (views.unanswered && !loaded() && views.olderCursor !== null) {
+    const before = views.olderCursor, shared = listLoads.has('messages');
+    await listPage('messages', true);
+    if (!shared && views.olderCursor === before) break;
+  }
+  loaded()?.focus();
 }
 async function refreshLists() {
   if (authorityReviewPending()) {

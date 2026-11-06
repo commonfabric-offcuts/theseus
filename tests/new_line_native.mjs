@@ -67,4 +67,39 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       await p.close();
     }
   });
+
+  await check('colors the New line for a message further back waits at the bottom, and pressing it brings that message', async () => {
+    // A page and a few more of agent messages put the oldest unanswered one
+    // beyond the first page the topic loads.
+    for (let n = 0; n < 40; n++) await control({ method: 'agent_message', operation_id: 'new-line-older-' + n, body: `Agent message ${n} after the unanswered one.` });
+    const answer = await view('topic_messages', { topic_id: 't1', audience: 'all', direction: 'before', limit: 30 });
+    const boundary = answer.unanswered;
+    assert.ok(boundary && !answer.items.some(item => item.id === boundary.id), 'the oldest unanswered message is not on the first page');
+    for (const theme of ['light', 'dark']) {
+      const p = await page('new-line-older-' + theme, null, true, { beforeNavigate: async p => {
+        await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
+        await p.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+      } });
+      await until(() => p.evaluate("Boolean(document.querySelector('#messages .new-line'))"), theme + ': a line drawn');
+      const marker = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),line=list.querySelector('.new-line');
+        const c=getComputedStyle(line);return {count:list.querySelectorAll('.new-line').length,last:list.lastElementChild===line,tag:line.tagName,text:line.textContent,
+          color:c.color,page:getComputedStyle(document.documentElement).backgroundColor,loaded:Boolean(list.querySelector('[data-id="${boundary.id}"]'))}})()`);
+      assert.deepEqual([marker.count, marker.last, marker.tag, marker.text, marker.loaded], [1, true, 'BUTTON', 'New · older below', false], theme + ': at the bottom of what is loaded, saying older below');
+      assert.ok(contrast(marker.color, marker.page) >= 4.5, theme + ': readable');
+      await p.evaluate("document.querySelector('#messages .new-line').scrollIntoView({block:'center'})");
+      await shot(p, 'new-line-older-' + theme);
+      // Reached by keyboard and pressed with Return, as a button is.
+      await p.evaluate("document.querySelector('#messages .new-line').focus()");
+      await p.key('Enter');
+      await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${boundary.id}"]'))`), theme + ': the message further back is loaded');
+      await until(() => p.evaluate(`document.activeElement?.dataset?.id === ${JSON.stringify(boundary.id)}`), theme + ': and has the focus');
+      const placed = await p.evaluate(`(()=>{const list=document.querySelector('#messages'),lines=list.querySelectorAll('.new-line'),card=list.querySelector('[data-id="${boundary.id}"]');
+        const r=card.getBoundingClientRect();return {count:lines.length,after:lines[0]?.previousElementSibling===card,tag:lines[0]?.tagName,text:lines[0]?.textContent,inView:r.top<innerHeight&&r.bottom>0}})()`);
+      assert.deepEqual(placed, { count: 1, after: true, tag: 'DIV', text: 'New', inView: true }, theme + ': the line in its true place, the message in view');
+      await shot(p, 'new-line-older-' + theme + '-reached');
+      observations.push({ name: 'new line further back', theme, boundary, marker, placed });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    }
+  });
 }

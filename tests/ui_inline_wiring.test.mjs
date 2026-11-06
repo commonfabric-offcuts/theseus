@@ -1300,6 +1300,43 @@ test('the New line is drawn under the oldest unanswered card, moves with each an
   assert.equal(order(), '26 25 24 23 22 21 20 19', 'nothing left unanswered: no line');
 });
 
+test('the New line for a message further back sits at the bottom, and pressing it loads down to that message', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  const at = (from, through, next) => ({ ...page(from, through, next), unanswered: { seq: 5, id: 'm5' } });
+  views.messagesPage(at(20, 29, 20), { initial: true }); await settle();
+  const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
+  assert.equal(order(), '29 28 27 26 25 24 23 22 21 20 older', 'the line waits at the bottom of what is loaded');
+  const marker = f.get('messages').children.at(-1);
+  assert.equal(marker.textContent, 'New · older below');
+  const pages = [at(10, 19, 10), at(1, 9, null)], reads = [];
+  const view = f.api.view;
+  f.api.view = async (name, args) => {
+    if (name === 'topic_messages') { reads.push(args.cursor); return pages.shift(); }
+    return view(name, args);
+  };
+  await marker.onclick(); await settle();
+  assert.deepEqual(reads, [20, 10], 'it read older pages until the message was loaded, and no further');
+  assert.equal(order().split(' ').slice(-7).join(' '), '6 5 new 4 3 2 1', 'loaded: the line is in its true place');
+  assert.equal(f.get('messages').children.filter(child => child.dataset.line).length, 1, 'one line');
+  assert.equal(f.document.activeElement?.dataset.seq, 5, 'the message it was for has the focus');
+});
+
+test('pressing the older-below line while the page may not read stops at once and reads nothing', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  views.messagesPage({ ...page(20, 29, 20), unanswered: { seq: 5, id: 'm5' } }, { initial: true }); await settle();
+  const reads = [], view = f.api.view;
+  f.api.view = async (name, args) => { if (name === 'topic_messages') reads.push(args.cursor); return view(name, args); };
+  // The runtime changed: the page asks for a review before it reads again.
+  f.registry.runtime.current = { authority_id: 'other', authority_epoch: 'e2' };
+  await f.get('messages').children.at(-1).onclick(); await settle();
+  assert.deepEqual(reads, [], 'nothing was read');
+  assert.equal(f.get('messages').children.at(-1).dataset.line, 'older', 'the line still waits at the bottom');
+});
+
 test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {
   const scrolls = [];
   const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y) }, innerHeight: 800 });
