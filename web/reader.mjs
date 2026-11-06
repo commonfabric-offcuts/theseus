@@ -52,7 +52,7 @@ export class Reader {
     this.$('toggle-note').onclick = () => this.switchMode();
     this.$('quote-selection').onpointerdown = event => event.preventDefault();
     this.$('quote-selection').onclick = () => this.quote();
-    this.$('send-reply').onclick = () => this.mode === 'note' ? this.callbacks.saveNote(this.editor) : this.send(false);
+    this.$('send-reply').onclick = () => this.mode === 'note' ? this.saveNote() : this.send(false);
     this.$('add-image').onclick = () => {
       if (!this.admits()) return;
       try {
@@ -516,6 +516,12 @@ export class Reader {
 
   notice(text) { this.$('reader-notice').textContent = text; this.$('reader-notice').hidden = !text; }
 
+  // Save note, by its button or ⌘ Return, waits for a step as sending does.
+  saveNote() {
+    if (!this.admits()) { if (this.writes()) this.notice(STEP_WAITS); return; }
+    this.callbacks.saveNote(this.editor);
+  }
+
   async send(stay) {
     if (!this.admits(this.sessions?.reply)) { if (this.writes(this.sessions?.reply)) this.notice(STEP_WAITS); return; }
     this.disarm();
@@ -598,7 +604,7 @@ export class Reader {
       quoteArmed: !!this.selectedPassage(), writingEmpty: !reply.body.trim() && !reply.attachments.length });
     if (action === 'quote') { event.preventDefault(); this.quote(); }
     else if (action === 'send-return' || action === 'send-stay') { event.preventDefault(); this.send(action === 'send-stay'); }
-    else if (action === 'save-note') { event.preventDefault(); this.callbacks.saveNote(this.editor); }
+    else if (action === 'save-note') { event.preventDefault(); this.saveNote(); }
     else if (action === 'return-gallery') { event.preventDefault(); this.close('gallery'); }
   }
 }

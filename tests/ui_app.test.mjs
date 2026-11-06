@@ -9,6 +9,7 @@ import { Api } from '../web/api.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { Editor, restoreEditor } from '../web/editor.mjs';
+import { TopicNavigation } from '../web/topic-navigation.mjs';
 
 const copy = value => structuredClone(value);
 const deferred = () => {
@@ -284,6 +285,32 @@ test('the Reader stops taking typing while a step keeps its writing on this devi
   release.resolve(); const y = (await held.opening).value;
   assert.equal(f.registry.current, y); assert.equal(f.registry.isWritable(y, y.editors.reply), true);
   assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Typed while the step waits');
+});
+
+// A topic chosen on the rail while a step waits leaves with the writing typed
+// during the wait saved to Theseus and kept on this device. If the step
+// replaces the Reader while that save is out, the rail stays.
+test('a topic chosen on the rail while a step waits leaves with the writing typed during the wait', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply, body = 'Typed while the step waits, then a topic';
+  const held = await holdSource(f); t.after(() => held.release.resolve());
+  reply.edit({ body }); await f.registry.edited(reply);
+  const visits = [], navigation = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: id => visits.push(id) });
+  assert.equal(await navigation.open('t-elsewhere'), true); assert.deepEqual(visits, ['t-elsewhere']);
+  assert.equal((await f.state(0)).draft.body, body, 'saved to Theseus before leaving');
+  assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, body, 'kept on this device before leaving');
+});
+
+test('a topic chosen on the rail stays when the step replaces the Reader during its save', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const held = await holdSource(f), saving = deferred(), release = deferred(), command = f.transport.command;
+  t.after(() => { held.release.resolve(); release.resolve(); f.transport.command = command; });
+  reply.edit({ body: 'Typed while the step waits, then a topic' }); await f.registry.edited(reply);
+  f.transport.command = async envelope => { if (envelope.kind === 'draft.save') { saving.resolve(); await release.promise; } return command(envelope); };
+  const visits = [], navigation = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: id => visits.push(id) });
+  const leaving = navigation.open('t-elsewhere').then(value => ({ value }), error => ({ error }));
+  await saving.promise; held.release.resolve(); const y = (await held.opening).value;
+  assert.equal(f.registry.current, y); release.resolve();
+  assert.match((await leaving).error?.message ?? 'the rail left', /Writing changed while saving/); assert.deepEqual(visits, []);
 });
 
 test('newer open wins over explicit close awaiting local preservation', async t => {
