@@ -282,6 +282,7 @@ test('a closed line whose last topic left it is not shown, with nothing behind i
   g.rail.updateCurrent({ ...g.item('z'), activity_ms: 4e8, state: 'done' });
   assert.deepEqual(shown(g.done.host), ['z']);
   assert.equal(g.done.details.hidden, false, 'the open topic, now done, is in the Done line');
+  assert.equal(g.done.label.textContent, 'Done (1)', 'and counted, though the counts read before said none: never "Done (0)" with a topic behind it');
 });
 
 test('the outcome is empty only when no list holds a topic', async t => {

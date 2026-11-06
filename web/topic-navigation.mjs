@@ -337,10 +337,11 @@ export class TopicRail {
     for (const list of this.lists.slice(1)) {
       // A closed line keeps the rows it read before, some since moved on; once
       // the counts are known only the open topic, put here by what the page
-      // knows of it, adds to them.
-      const items = list.pages.items, count = groups ? groups[list.name] : items.length;
-      const held = groups && !list.details.open ? items.filter(item => item.id === this.pages.current?.id).length : items.length;
-      list.details.hidden = this.denied || count === 0 && held === 0;
+      // knows of it, adds to them. The line never counts fewer than it holds,
+      // so counts read before the open topic moved here never say "(0)".
+      const items = list.pages.items, held = groups && !list.details.open ? items.filter(item => item.id === this.pages.current?.id).length : items.length;
+      const count = Math.max(groups ? groups[list.name] : 0, held);
+      list.details.hidden = this.denied || count === 0;
       list.label.textContent = `${list.name === 'done' ? 'Done' : 'Archived'} (${count})`;
     }
     this.host.hidden = this.denied;
