@@ -82,3 +82,14 @@ revision, what changed since the person last read it, and its words, and
 opening it reads it as the Reader does. One page shows at a time; one opened
 while another is still opening replaces it, and Close gives the focus back
 to its row. The list is read again with the topics after every commit.
+
+## Checks
+
+Core: `tests/test_memory_reads.py` and the 17→18 step in
+`tests/test_migrations.py`. Page: `tests/ui_outcome_references.test.mjs`,
+`ui_page_reads`, `ui_page_changes`, `ui_page_here` and the wiring cases in
+`ui_inline_wiring`. In the browser: the `notebook` mode of
+`tests/reader_persistence_native.mjs` (`tests/notebook_pages_native.mjs`):
+the light coming on live and going out on opening, the changes in the
+Reader, 390 wide in light and dark with contrast measured, and the outcome
+page.
