@@ -28,14 +28,21 @@ export class AgentColors {
   // Every page of the reader's choices; a load asked for while one runs runs
   // once more after it, in the foreground if any asker wanted that. A read the
   // person waits on (the page opening, a picker) is foreground; a read on
-  // focus is background. Rejects when the choices could not be read, and
+  // focus is background. Rejects when the last read failed, and
   // then keeps what it had.
   load(readClass = 'background') {
     if (!['foreground', 'background'].includes(readClass)) throw Error('A read of the agent colors is foreground or background.');
     if (this.loading) { this.again = this.again === 'foreground' ? this.again : readClass; return this.loading; }
     this.again = readClass;
     this.loading = (async () => {
-      while (this.again) { const now = this.again; this.again = false; await this.readAll(now); }
+      // A read asked for while one fails still runs; the load answers how
+      // the last read went.
+      let failed = null;
+      while (this.again) {
+        const now = this.again; this.again = false;
+        try { await this.readAll(now); failed = null; } catch (error) { failed = error; }
+      }
+      if (failed) throw failed;
     })().finally(() => { this.loading = null; this.again = false; });
     return this.loading;
   }

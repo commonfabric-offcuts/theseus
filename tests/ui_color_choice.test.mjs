@@ -54,6 +54,21 @@ test('a read the person waits on is a foreground read; a read on focus is backgr
   assert.throws(() => colors.load('soon'), /foreground or background/);
 });
 
+test('a foreground read asked while a background read fails still runs, and the person waiting on it gets its answer', async () => {
+  const { colors, calls, listeners } = store([page([]), new Error('offline'), page([{ actor_id: 'fable', color: 'rose', color_revision: 1 }])]);
+  await colors.load('foreground');
+  listeners.focus();
+  const asked = colors.load('foreground');
+  await asked;
+  assert.deepEqual(calls.map(c => c.readClass).slice(1), ['background', 'foreground'], 'the foreground read ran after the background one failed');
+  assert.equal(colors.color('fable'), 'rose');
+  // When the last read fails, the load still says so.
+  const failing = store([new Error('offline'), new Error('offline again')]);
+  failing.listeners.focus();
+  await assert.rejects(failing.colors.load('foreground'), /offline again/);
+  assert.equal(failing.colors.loading, null);
+});
+
 test('a read that cannot be confirmed keeps what the page had, and a color the page cannot draw is refused', async () => {
   for (const bad of [new Error('offline'), { instance_id: 'other', palette: AGENT_PALETTE, items: [], next_cursor: null },
     page([], null, [...AGENT_PALETTE, 'chartreuse']), page([{ actor_id: 'fable', color: 'red', color_revision: 1 }]),

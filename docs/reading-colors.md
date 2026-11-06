@@ -212,7 +212,8 @@ The page reads `colors` when it opens and again when it is shown or focused,
 so a choice made on another device is there when the person comes back to
 this one. The read at opening, and one a picker or a refused choice waits on,
 goes in the foreground read lane, since the first cards wait on it; the read
-on focus goes in the background lane. A read may land after a choice the page made while it was out, so
+on focus goes in the background lane; one asked for while another runs runs
+after it even if that one fails. A read may land after a choice the page made while it was out, so
 each agent keeps whichever choice has the higher revision, and an agent the
 read does not list keeps its choice (Core deletes none, so the read had not
 seen it). A card's color is the reader's choice for its agent when there is
