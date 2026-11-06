@@ -654,8 +654,9 @@ async function toggleMark() {
     if (registry.isSourceCurrent(p)) reader.notice('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.');
     return;
   }
-  // An explicit Mark read places the New line afresh, wherever the oldest unread message now is.
-  if (receipt?.status === 'committed' && state.marked) run(() => loadUnread(true));
+  // An explicit Mark read places the New line afresh, wherever the oldest
+  // unread message now is; a read that fails is owed, as after any commit.
+  if (receipt?.status === 'committed' && state.marked) { views.placeAfresh(); if (commitReload) run(commitReload); }
   if (!registry.isSourceCurrent(p)) return;
   if (receipt?.error?.code === 'REVISION_CONFLICT') {
     reader.notice(`This message's mark changed in another tab or device: it is ${marks.state(ref.id)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
@@ -704,21 +705,21 @@ async function loadToUnread() {
 }
 // Where the oldest unread message is, read again after each commit and on
 // Refresh: reading, marks and replies move it without changing the topic.
-// During a visit the line follows it only to show more unread; afresh (Refresh,
-// the person's explicit Mark read) the line goes wherever it is. Settles true
-// when it was read, false when it was not, as the marks do.
-function loadUnread(afresh = false) {
+// During a visit the line follows it only to show more unread; placed afresh
+// (Refresh, the person's explicit Mark read) it goes wherever it is. Settles
+// true when it was read, false when it was not, as the marks do.
+function loadUnread() {
   if (!views || topicUnavailable) return Promise.resolve(true);
   if (authorityReviewPending()) return Promise.resolve(false);
   const accessEpoch = listAccessEpoch;
   return views.readUnread(async (name, args) => checkedView(await registry.cleanup.list(options => api.view(name, args, options)), bootstrap.instance_id),
-    () => accessEpoch === listAccessEpoch && !topicUnavailable && !authorityReviewPending(), { afresh }).catch(() => false);
+    () => accessEpoch === listAccessEpoch && !topicUnavailable && !authorityReviewPending()).catch(() => false);
 }
 async function refreshLists() {
   if (authorityReviewPending()) {
     status('The runtime changed. Review your saved writing before reloading this page.'); return;
   }
-  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks(); await loadUnread(true);
+  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks(); views?.placeAfresh(); await loadUnread();
   if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
   if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
   await listPage('messages'); await listPage('memory');

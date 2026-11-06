@@ -157,7 +157,7 @@ test('the line is placed when the topic opens, holds while the person reads, and
     oldest_unread: { seq: 3, id: 'm3' }, commit_seq: 10 }, { initial: true });
   assert.deepEqual(views.line, { seq: 3, id: 'm3' }, 'placed from the server when the topic opens');
   const answer = (at, oldest) => async () => ({ instance_id: 'i', topic_id: 't1', oldest_unread: oldest, commit_seq: at });
-  const step = async (at, oldest, options) => { paints.length = 0; await views.readUnread(answer(at, oldest), undefined, options); return [views.line, [...paints]]; };
+  const step = async (at, oldest, { afresh = false } = {}) => { paints.length = 0; if (afresh) views.placeAfresh(); await views.readUnread(answer(at, oldest)); return [views.line, [...paints]]; };
   assert.deepEqual(await step(12, { seq: 4, id: 'm4' }), [{ seq: 3, id: 'm3' }, []], 'reading the oldest leaves the line where it is');
   assert.deepEqual(await step(13, null), [{ seq: 3, id: 'm3' }, []], 'reading everything leaves it too: it does not vanish');
   assert.deepEqual(await step(14, { seq: 6, id: 'm6' }), [{ seq: 3, id: 'm3' }, []], 'an arrival above the line is already shown as new');
@@ -165,6 +165,40 @@ test('the line is placed when the topic opens, holds while the person reads, and
   assert.deepEqual(await step(16, { seq: 6, id: 'm6' }, { afresh: true }), [{ seq: 6, id: 'm6' }, ['line']], 'Refresh or an explicit Mark read places it afresh');
   assert.deepEqual(await step(17, null, { afresh: true }), [null, ['line']], 'afresh with nothing unread: no line');
   assert.deepEqual(await step(18, { seq: 7, id: 'm7' }), [{ seq: 7, id: 'm7' }, ['line']], 'caught up, an arrival brings the line');
-  assert.deepEqual(await step(17, null, { afresh: true }), [{ seq: 7, id: 'm7' }, []], 'an afresh answer read at an earlier commit changes nothing');
+  assert.deepEqual(await step(17, null, { afresh: true }), [{ seq: 7, id: 'm7' }, []], 'an afresh answer read at an earlier commit places the line where the later answer says');
   assert.deepEqual(views.oldestUnread, { seq: 7, id: 'm7' });
+});
+
+// Refresh and an explicit Mark read place the line afresh from the newest
+// answer known: one read meanwhile at a later commit (a read-through landing
+// between the two reads) wins over the afresh read's own; and when the afresh
+// read fails, the next read asked after it places the line instead.
+test('placed afresh, the line goes where the newest answer says, even when the afresh read is older or fails', async () => {
+  const views = new TopicViews({ instanceId: 'i', topicId: 't1' });
+  const item = seq => ({ id: 'm' + seq, seq, topic_id: 't1', body: 'b', author_id: 'a' });
+  views.messagesPage({ instance_id: 'i', items: [item(3), item(4), item(5)], next_cursor: null, relevant_versions: { topic: 5 },
+    oldest_unread: { seq: 3, id: 'm3' }, commit_seq: 10 }, { initial: true });
+  const answer = (at, oldest) => async () => ({ instance_id: 'i', topic_id: 't1', oldest_unread: oldest, commit_seq: at });
+  await views.readUnread(answer(13, null));
+  assert.deepEqual(views.line, { seq: 3, id: 'm3' }, 'everything read: the line holds');
+  views.placeAfresh(); await views.readUnread(answer(12, { seq: 4, id: 'm4' }));
+  assert.equal(views.line, null, 'an afresh read answered at an earlier commit places the line from the later answer: nothing is unread');
+  await views.readUnread(answer(14, { seq: 6, id: 'm6' }));
+  await views.readUnread(answer(15, null));
+  assert.deepEqual(views.line, { seq: 6, id: 'm6' });
+  views.placeAfresh(); await assert.rejects(views.readUnread(async () => { throw Error('offline'); }), /offline/);
+  assert.deepEqual(views.line, { seq: 6, id: 'm6' }, 'the afresh read failed: the line is where it was');
+  await views.readUnread(answer(16, null));
+  assert.equal(views.line, null, 'the next read places it afresh in its place');
+  await views.readUnread(answer(17, { seq: 7, id: 'm7' }));
+  await views.readUnread(answer(18, null));
+  assert.deepEqual(views.line, { seq: 7, id: 'm7' }, 'and only that one: the line holds again');
+  // A read asked before the line was to be placed afresh, and answered after, is an ordinary read.
+  let release;
+  const early = views.readUnread(() => new Promise(resolve => { release = resolve; }));
+  views.placeAfresh();
+  release({ instance_id: 'i', topic_id: 't1', oldest_unread: null, commit_seq: 19 }); await early;
+  assert.deepEqual(views.line, { seq: 7, id: 'm7' }, 'a read asked before Refresh does not place the line afresh');
+  await views.readUnread(answer(20, null));
+  assert.equal(views.line, null, 'the read asked after it does');
 });

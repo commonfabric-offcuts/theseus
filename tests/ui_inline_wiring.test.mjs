@@ -71,7 +71,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     runtime: { current: bootstrap.authority },
   };
   const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
-  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
+  const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, placeAfresh() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
@@ -1547,14 +1547,34 @@ test('during a visit the New line holds as the person reads, moves to show more,
   answer = { oldest_unread: null, commit_seq: 10 };
   live.emit({ kind: 'commit', seq: 10 }); for (let n = 0; n < 5; n++) await settle();
   assert.equal(order(), '26 25 24 new 23 22 21 20', 'everything read: the line still holds');
-  const source = { source_ref: { kind: 'message', id: 'm24' }, topic_id: 't1', seq: 24 };
-  f.registry.current = { source, mark: { marked: true, mark_revision: 1 } };
-  f.owners().marks.learn('m24', 1, { topicId: 't1', seq: 24 });
-  f.api.command = async envelope => ({ recorded: true, status: 'committed', operation_id: envelope.operation_id,
-    result: { message_id: 'm24', topic_id: 't1', seq: 24, marked: false, mark_revision: 2, changed: true } });
-  answer = { oldest_unread: null, commit_seq: 11 };
-  await f.toggleMark(); for (let n = 0; n < 5; n++) await settle();
+  // Pressed in the Reader on message seq: the mark it had, and the one Core records.
+  const press = async (seq, from, to) => {
+    const id = 'm' + seq;
+    f.registry.current = { source: { source_ref: { kind: 'message', id }, topic_id: 't1', seq }, mark: { marked: from % 2 === 1, mark_revision: from } };
+    f.owners().marks.learn(id, from, { topicId: 't1', seq });
+    f.api.command = async envelope => ({ recorded: true, status: 'committed', operation_id: envelope.operation_id,
+      result: { message_id: id, topic_id: 't1', seq, marked: to % 2 === 1, mark_revision: to, changed: true } });
+    await f.toggleMark(); for (let n = 0; n < 5; n++) await settle();
+  };
+  // Mark unread on a message newer than the line: it is already shown as new, so the line holds.
+  answer = { oldest_unread: { seq: 26, id: 'm26' }, commit_seq: 11 };
+  await press(26, 0, 1);
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'Mark unread on a message above the line leaves the line where it is');
+  answer = { oldest_unread: null, commit_seq: 12 };
+  await press(24, 1, 2);
   assert.equal(order(), '26 25 24 23 22 21 20', 'an explicit Mark read places the line afresh: nothing is unread');
+  // Mark read whose read of the line fails: the stream's return reads it and places the line afresh.
+  answer = { oldest_unread: { seq: 20, id: 'm20' }, commit_seq: 13 };
+  live.emit({ kind: 'commit', seq: 13 }); for (let n = 0; n < 5; n++) await settle();
+  answer = { oldest_unread: null, commit_seq: 14 };
+  live.emit({ kind: 'commit', seq: 14 }); for (let n = 0; n < 5; n++) await settle();
+  assert.equal(order(), '26 25 24 23 22 21 20 new', 'marked further back, then read: the line holds');
+  f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
+  await press(20, 1, 2);
+  assert.equal(order(), '26 25 24 23 22 21 20 new', 'the read failed: the line is where it was');
+  f.api.view = async (name, args) => { if (name === 'topic_unread') return { instance_id: 'fixture', topic_id: 't1', oldest_unread: null, commit_seq: 15 }; return view(name, args); };
+  live.emit({ kind: 'state', state: 'down' }); live.emit({ kind: 'state', state: 'live' }); for (let n = 0; n < 5; n++) await settle();
+  assert.equal(order(), '26 25 24 23 22 21 20', 'the stream returns: the read is made again and the line placed afresh');
   // A read that fails leaves the line where it was, and the reload is owed.
   f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
   await f.refreshLists(); await settle();

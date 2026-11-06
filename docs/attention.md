@@ -331,8 +331,9 @@ not a count:
   already shown as new.
 - The reader's own Mark read in this page (pressing Marked unread in the
   Reader) places the line afresh at once, wherever the oldest unread message
-  now is. A mark cleared in another tab, or by opening the message to read
-  it, leaves the line where it is until Refresh.
+  now is. Their own Mark unread is a mark like any other: it moves the line
+  only when the message is further back. A mark cleared in another tab, or by
+  opening the message to read it, leaves the line where it is until Refresh.
 - An ask to the reader that they have read is past the line once it is placed
   again. The topic still waits on them ("Waiting on you") until they answer;
   the line is only about reading.
@@ -367,14 +368,19 @@ horizon and the index of each message's replies. Nothing else read them.
 Stepping back to 17 drops the column and the index and works the horizons out
 again from the messages, so no record is lost and version 17 code finds its
 line as before. Version 19 replaces that index with the one on (group, topic,
-delivery), and the store refuses a new delivery without a topic, whatever
-writes it. Stepping back to 18 puts the version-18 index back.
+delivery), gives any delivery version 18 kept without a topic its message's
+topic, and the store refuses a new delivery without a topic, whatever writes
+it. Stepping back to 18 puts the version-18 index back.
 
 The page keeps the newest answer as said above, and reads `topic_unread` again
 after each announced commit (beside its rails and marks, in the same reload),
-on Refresh, and after the reader's own Mark read. Its first answer, an answer
-to Refresh and an answer after Mark read place the line; any other answer
-moves it only to show more, as above. The page draws the line under its
+on Refresh, and after the reader's own Mark read. Its first answer places the
+line, and so does the first answer to a read asked after Refresh or Mark read;
+any other answer moves it only to show more, as above. When that read fails,
+it is owed like any read after a commit, and the next read asked after it
+places the line instead. When an answer read at a later commit has already
+come in (the reader read on screen meanwhile), the line is placed where that
+later answer says. The page draws the line under its
 message's card when the card is loaded. The line is text ("New"), with no
 message identity, in the alert colour, so nothing that looks for cards finds
 it. Wherever the line moves, a repaint keeps the card the reader is looking at
