@@ -3,14 +3,16 @@ from __future__ import annotations
 
 """Deploy a reviewed Theseus commit to a live instance: stop, back up, fast-forward, migrate, restart.
 
-Usage: tools/deploy.py --config CONFIG.json --release-check SUMMARY.json SHA EVIDENCE_DIR [--dry-run]
+Usage: tools/deploy.py --config CONFIG.json --release-check SUMMARY.json SHA EVIDENCE_DIR
+                       [--release N] [--no-items] [--dry-run]
 
 SHA is the full commit, and SUMMARY.json is tools/release_check.py's summary
 for exactly that commit; unless it passed, nothing is stopped or changed.
 Every step writes its result to EVIDENCE_DIR; the first failure stops the run
-(exit 1). --dry-run reads the live processes and checkout, stops before
-changing anything, and still exits 1 when the release check has not passed.
-docs/tools.md describes the config.
+(exit 1). --dry-run reads the live processes, checkout and release records,
+stops before changing anything, and still exits 1 when the release check has
+not passed. Once the new release is verified, the deploy writes its release
+record into the instance (docs/releases.md). docs/tools.md describes the config.
 """
 
 import collections
@@ -28,7 +30,9 @@ import urllib.request
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools import release_check
+from aim_next.contract import Refusal
+from aim_next.releases import release_row
+from tools import release_check, releases
 
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
@@ -172,7 +176,54 @@ def recorded(config, kind):
             return json.loads((latest / name).read_text())["pid"]
 
 
-def deploy(config, sha, evidence, summary, dry):
+def latest_release(config):
+    """The newest release number the live instance records, or None when it records none.
+
+    Code without release records (aim_next/releases.py) keeps none, so its
+    instance gets an empty table from the migration. A read that fails stops
+    the deploy: it is not the same as no records."""
+    keeps = run(["git", "-C", str(config.live), "cat-file", "-e", "HEAD:aim_next/releases.py"]).returncode == 0
+    if not keeps:
+        return None
+    read = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.server_profile),
+                "--json", "releases", "--limit", "1"])
+    try:
+        # A refused read prints an error, not a page of items.
+        items = json.loads(read.stdout.splitlines()[0])["items"]
+    except (ValueError, IndexError, KeyError, TypeError):
+        raise Refused("the live release records could not be read (exit %s): %s%s"
+                      % (read.returncode, read.stdout[:300], read.stderr[:300]))
+    return items[0]["release"] if items else None
+
+
+def release_plan(config, head, sha, summary, number, no_items):
+    """The release record this deploy will write once the release is verified, less its time and evidence.
+
+    Everything it needs is read now, before anything stops, and the record is
+    checked with this commit's own rules, so the record step cannot refuse it."""
+    log = run(releases.log_argv(config.live, head, sha))
+    require(log.returncode == 0, "the commits from %s to %s could not be read: %s" % (head, sha, log.stderr))
+    try:
+        items, commits = releases.shipped(log.stdout)
+    except releases.Malformed as error:
+        raise Refused(str(error))
+    require(items or no_items, "no commit from %s to %s names a pipeline item in a 'Pipeline: N, M' line; "
+            "name the items the changes deliver, or pass --no-items for a release that ships none" % (head[:12], sha[:12]))
+    latest = latest_release(config)
+    if number is None:
+        require(latest is not None, "the live instance records no release yet; name this one's number with --release")
+        number = latest + 1
+    require(latest is None or number == latest + 1, "release %d would not follow the latest recorded, %s" % (number, latest))
+    record = {"release": number, "commit": sha, "previous": head, "items": items,
+              "measurements": releases.measurements(json.loads(Path(summary).read_text())), "source": "deploy"}
+    try:
+        release_row(dict(record, deployed_at=now(), evidence="/checked"))
+    except Refusal as refusal:
+        raise Refused("the release record would be refused: %s" % refusal.message)
+    return record, commits, latest
+
+
+def deploy(config, sha, evidence, summary, dry, number=None, no_items=False):
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
     evidence.mkdir(parents=True, exist_ok=True)
     # 0. The release check passed for exactly this commit, or nothing is touched.
@@ -198,8 +249,11 @@ def deploy(config, sha, evidence, summary, dry):
     ff = run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", head, sha]).returncode == 0
     record(evidence, "02-checkout", {"head": head, "target": sha, "tracked_changes": dirty, "fast_forward": ff})
     require(not dirty and ff, "the live checkout has tracked changes or %s is not a fast-forward of %s" % (sha, head))
+    # A release check that did not pass has no counts to record; a dry run stops here and says why.
+    require(not reasons, unchecked)
+    planned, commits, latest = release_plan(config, head, sha, summary, number, no_items)
+    record(evidence, "02-release", {"record": planned, "latest_recorded": latest, "commits": commits})
     if dry:
-        require(not reasons, unchecked)
         return
 
     # 2. Stop the runner, then the server, by captured PID; wait on each exit event.
@@ -262,11 +316,28 @@ def deploy(config, sha, evidence, summary, dry):
         boot = urllib.request.urlopen(base + "/api/bootstrap").read().decode()
     except urllib.error.HTTPError as error:
         boot = "%s %s" % (error.code, error.read().decode()[:300])
-    root = urllib.request.urlopen(base + "/").status
+    try:
+        root = urllib.request.urlopen(base + "/").status
+    except urllib.error.HTTPError as error:
+        root = error.code
     cli = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.server_profile), "binding"])
-    record(evidence, "10-verify", {"root_status": root, "bootstrap_head": boot[:600], "cli_exit": cli.returncode,
-                                   "cli": cli.stdout[:600], "cli_err": cli.stderr[:600],
-                                   "server_alive": server.poll() is None, "runner_alive": runner.poll() is None})
+    verified = {"root_status": root, "bootstrap_head": boot[:600], "cli_exit": cli.returncode,
+                "cli": cli.stdout[:600], "cli_err": cli.stderr[:600],
+                "server_alive": server.poll() is None, "runner_alive": runner.poll() is None}
+    record(evidence, "10-verify", verified)
+    require(root == 200 and cli.returncode == 0 and verified["server_alive"] and verified["runner_alive"],
+            "the new release did not verify, so no release record was written: %s" % verified)
+
+    # 8. Record the release in the instance, now that it is verified live; the evidence keeps the same record.
+    final = dict(planned, deployed_at=now(), evidence=str(evidence.resolve()))
+    path = evidence / "release-record.json"
+    path.write_text(json.dumps(final, indent=1) + "\n")
+    argv = [config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "record-release",
+            "--profile", str(config.server_profile), "--record", str(path.resolve())]
+    wrote = run(argv)
+    record(evidence, "11-release", {"record": final, "exit": wrote.returncode, "stdout": wrote.stdout, "stderr": wrote.stderr})
+    require(wrote.returncode == 0, "release %d is live but its record was not written (%s); write it with: %s"
+            % (final["release"], (wrote.stdout or wrote.stderr).strip()[:300], " ".join(argv)))
 
 
 def main(argv=None):
@@ -276,10 +347,12 @@ def main(argv=None):
     parser.add_argument("--release-check", required=True, type=Path, help="the release check's summary.json")
     parser.add_argument("sha")
     parser.add_argument("evidence", type=Path)
+    parser.add_argument("--release", type=int, help="this release's number; needed only while the instance records none")
+    parser.add_argument("--no-items", action="store_true", help="the release ships no pipeline item, and says so")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:
-        deploy(load_config(args.config), args.sha, args.evidence, args.release_check, args.dry_run)
+        deploy(load_config(args.config), args.sha, args.evidence, args.release_check, args.dry_run, args.release, args.no_items)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         return 1

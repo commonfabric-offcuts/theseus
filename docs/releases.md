@@ -5,6 +5,26 @@ which pipeline items it shipped, and the release check's measurements. The
 record is the instance's own fact about itself. The pipeline page reads it to
 mark items shipped, and the Measurements page (item 12) can be filled from it.
 
+## Naming the items a change ships
+
+The person or agent merging a change is the only one who knows which pipeline
+items it delivers, so the change says so when it is committed, in a trailer in
+the last paragraph of its commit message:
+
+```
+The pipeline marks what a release shipped from its record
+
+Pipeline: 88
+Co-Authored-By: ...
+```
+
+`Pipeline: 87, 2` names two items. Name an item only on the change that
+completes it; a change that does part of an item, or none, carries no trailer.
+A trailer may sit on a branch commit or on the merge commit that brings the
+branch in: the deploy reads every commit it ships, merges included. A
+`Pipeline:` line whose value is not a list of item numbers stops the deploy
+before anything is stopped.
+
 ## The record
 
 | field | meaning |
@@ -50,3 +70,4 @@ record without a number on an instance with none is refused with
 - `bin/aim-next --profile P releases [--limit N]` prints one line per release,
   newest first; with `--json` it prints each page the view returned.
 
+`tools/deploy.py` writes the record (docs/tools.md).

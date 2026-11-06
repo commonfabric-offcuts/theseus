@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import io
 import json
 import os
@@ -17,6 +18,18 @@ SHA = "c" * 40
 HEAD = "b" * 40
 
 
+def log(*messages):
+    """`git log` output as the deploy asks for it: one entry per (subject, message), oldest first."""
+    return "".join("%s\x1f%s\x1f%s\n\x1e\n" % (("%040x" % (n + 1)), subject, body) for n, (subject, body) in enumerate(messages))
+
+
+SHIPPED = log(("One change", "One change\n\nPipeline: 88\n"))
+
+
+def page(*numbers):
+    return json.dumps({"instance_id": "i-1", "items": [{"release": n} for n in numbers], "next_cursor": None}) + "\n"
+
+
 def summary(commit=SHA, failed=()):
     steps = [{"name": name, "exit": int(name in failed), "passed": name not in failed} for name in release_check.REQUIRED]
     return {"tool": release_check.TOOL, "commit": commit, "tree_unchanged": True, "passed": not failed,
@@ -26,10 +39,13 @@ def summary(commit=SHA, failed=()):
 class FakeHost:
     """Answers the deploy's ps and git calls from a table and records every call; nothing real runs."""
 
-    def __init__(self, config, servers=(111,), runners=(222,), dirty="", ff=True, backup=0, merge=0, migrate=0):
+    def __init__(self, config, servers=(111,), runners=(222,), dirty="", ff=True, backup=0, merge=0, migrate=0,
+                 log=SHIPPED, keeps=True, releases=(page(19), 0), cli=0, recorded=0):
         self.config, self.calls = config, []
         self.servers, self.runners = list(servers), list(runners)
         self.dirty, self.ff, self.backup, self.merge, self.migrate = dirty, ff, backup, merge, migrate
+        self.log, self.keeps, self.releases, self.cli, self.recorded = log, keeps, releases, cli, recorded
+        self.written = []
 
     def __call__(self, argv, **kw):
         self.calls.append(argv)
@@ -50,12 +66,22 @@ class FakeHost:
             code = 0 if self.ff else 1
         elif argv[0] == "git" and "merge" in argv:
             code = self.merge
+        elif argv[0] == "git" and "log" in argv:
+            out = self.log
+        elif argv[0] == "git" and "cat-file" in argv:
+            code = 0 if self.keeps else 128
+        elif "releases" in argv:
+            out, code = self.releases
+        elif "record-release" in argv:
+            # What the admin verb was handed, read while the file is there.
+            self.written.append(json.loads(Path(argv[argv.index("--record") + 1]).read_text()))
+            out, code = ('{"ok":true}\n', 0) if self.recorded == 0 else ('{"ok":false,"error":{"code":"RELEASE_EXISTS"}}\n', 2)
         elif "-c" in argv:
             code = self.backup
         elif "migrate" in argv:
             code = self.migrate
         elif argv[-1] == "binding":
-            out = "i-1\n"
+            out, code = "i-1\n", self.cli
         else:
             raise AssertionError("unexpected command %r" % argv)
         return subprocess.CompletedProcess(argv, code, out, "")
@@ -89,17 +115,17 @@ class DeployCase(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def deploy(self, host, dry=False, sha=SHA):
+    def deploy(self, host, dry=False, sha=SHA, **release):
         with mock.patch.object(deploy, "run", host), \
                 mock.patch.object(deploy.os, "kill", lambda pid, sig: self.kills.append((pid, sig))), \
                 mock.patch.object(deploy, "wait_exit", return_value="exited"), \
                 mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")), \
                 redirect_stdout(io.StringIO()):
-            deploy.deploy(self.config, sha, self.evidence, self.summary, dry)
+            deploy.deploy(self.config, sha, self.evidence, self.summary, dry, **release)
 
-    def refused(self, host, dry=False, sha=SHA):
+    def refused(self, host, dry=False, sha=SHA, **release):
         with self.assertRaises(deploy.Refused) as caught:
-            self.deploy(host, dry, sha)
+            self.deploy(host, dry, sha, **release)
         return str(caught.exception)
 
     def records(self):
@@ -147,7 +173,7 @@ class Refusals(DeployCase):
     def test_a_dry_run_reads_and_records_the_plan_and_changes_nothing(self):
         host = FakeHost(self.config)
         self.deploy(host, dry=True)
-        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout"])
+        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "02-release"])
         self.assertEqual(self.kills, [])
         self.assertEqual(host.ran("merge") + host.ran("migrate") + host.ran("-c"), [])
         live = json.loads((self.evidence / "01-live.json").read_text())
@@ -199,6 +225,79 @@ class Refusals(DeployCase):
                                 str(self.evidence), "--dry-run"])
         self.assertEqual(code, 1)
         self.assertIn("refused:", err.getvalue())
+
+
+class ReleasePlan(DeployCase):
+    """Before anything stops, the deploy works out the release record it will write and checks it can be written."""
+
+    def plan(self):
+        return json.loads((self.evidence / "02-release.json").read_text())
+
+    def test_the_items_come_from_every_commit_shipped_in_order_and_the_number_follows_the_latest(self):
+        shipped = log(("Close keeps the writing", "Close keeps the writing\n\nPipeline: 87, 2\nCo-Authored-By: x"),
+                      ("A check for the saving sign", "A check for the saving sign\n"),
+                      ("Merge branch 'next-90'", "Merge branch 'next-90'\n\nPipeline: 2, 90\n"))
+        host = FakeHost(self.config, log=shipped, releases=(page(19, 18), 0))
+        self.deploy(host, dry=True)
+        plan = self.plan()
+        self.assertEqual({key: plan["record"][key] for key in ("release", "commit", "previous", "items", "source")},
+                         {"release": 20, "commit": SHA, "previous": HEAD, "items": [87, 2, 90], "source": "deploy"})
+        self.assertEqual([commit["items"] for commit in plan["commits"]], [[87, 2], [], [2, 90]])
+        self.assertEqual(plan["latest_recorded"], 19)
+        log_call = host.ran("log")[0]
+        self.assertEqual(log_call[-1], "%s..%s" % (HEAD, SHA))
+        self.assertIn("--reverse", log_call)
+        self.assertEqual(self.kills, [])
+
+    def test_the_record_carries_the_release_checks_counts(self):
+        written = summary()
+        for step in written["steps"]:
+            step["counts"] = ({"tests": 1106, "status": "OK"} if step["name"] == "python-units" else
+                              {"tests": 740, "pass": 740} if step["name"] == "node-units" else {"tests": 3, "pass": 2})
+        self.summary.write_text(json.dumps(written))
+        self.deploy(FakeHost(self.config), dry=True)
+        measured = self.plan()["record"]["measurements"]
+        natives = len(release_check.NATIVE_STEPS)
+        self.assertEqual((measured["python_units"], measured["node_units"]), ({"tests": 1106}, {"tests": 740, "pass": 740}))
+        self.assertEqual((measured["native"]["pass"], measured["native"]["total"]), (2 * natives, 3 * natives))
+        self.assertEqual(measured["native"]["steps"]["journal"], {"pass": 2, "total": 3})
+        self.assertEqual(set(measured["native"]["steps"]), {step.name for step in release_check.NATIVE_STEPS})
+
+    def test_a_pipeline_line_that_names_no_item_numbers_stops_the_deploy_before_anything_stops(self):
+        for value in ("next", "87 and 2", "", "087", "2,"):
+            with self.subTest(value):
+                host = FakeHost(self.config, log=log(("Something", "Something\n\nPipeline: %s\n" % value)))
+                self.assertIn("does not name pipeline item numbers", self.refused(host))
+                self.assertEqual((self.kills, host.ran("-c")), ([], []))
+
+    def test_a_release_that_names_no_item_says_so_or_stops_before_anything_stops(self):
+        quiet = log(("A check", "A check\n\nCo-Authored-By: x\n"), ("Pipeline mentioned in passing", "It says Pipeline: 3 mid-line\n"))
+        host = FakeHost(self.config, log=quiet)
+        self.assertIn("--no-items", self.refused(host))
+        self.assertEqual((self.kills, host.ran("-c")), ([], []))
+        self.deploy(FakeHost(self.config, log=quiet), dry=True, no_items=True)
+        self.assertEqual(self.plan()["record"]["items"], [])
+
+    def test_the_first_record_needs_its_number_and_a_named_number_must_follow_the_latest(self):
+        # Live code from before release records: the migration starts an empty table.
+        host = FakeHost(self.config, keeps=False)
+        self.assertIn("--release", self.refused(host))
+        self.assertEqual((self.kills, host.ran("releases")), ([], []))
+        self.deploy(FakeHost(self.config, keeps=False), dry=True, number=20)
+        self.assertEqual(self.plan()["record"]["release"], 20)
+        # Live code that keeps records, none written yet.
+        self.assertIn("--release", self.refused(FakeHost(self.config, releases=(page(), 0))))
+        self.assertIn("would not follow the latest recorded, 19", self.refused(FakeHost(self.config), number=21))
+        self.deploy(FakeHost(self.config), dry=True, number=20)
+        self.assertEqual(self.plan()["record"]["release"], 20)
+        self.assertEqual(self.kills, [])
+
+    def test_live_records_that_cannot_be_read_stop_the_deploy_rather_than_count_as_none(self):
+        for answer in (("", 1), ('{"instance_id":"i-1","error":{"code":"DATABASE_BUSY"}}\n', 75), ("not json\n", 0)):
+            with self.subTest(answer):
+                host = FakeHost(self.config, releases=answer)
+                self.assertIn("could not be read", self.refused(host, number=20))
+                self.assertEqual(self.kills, [])
 
 
 # Stand-ins for bin/aim-next-server and bin/aim-next-runner: each prints its first line as the real one does
@@ -284,9 +383,9 @@ class FullDeploy(DeployCase):
             opened = self.run_deploy(host)
         except Exception as error:  # a refusal here is the failure under test, not an error
             self.fail("the deploy did not complete: %r" % error)
-        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "03-stopped",
+        self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout", "02-release", "03-stopped",
                                           "04-backup", "05-fast-forward", "06-migrate", "07-server", "09-runner",
-                                          "10-verify"])
+                                          "10-verify", "11-release", "release-record"])
         self.assertEqual(self.kills, [(222, 15), (111, 15)])
         # The backup reads the server's profile, the one bound to the database.
         backup = host.ran("-c")[0][-1]
@@ -322,6 +421,39 @@ class FullDeploy(DeployCase):
         self.assertIn("did not acquire its guard", str(caught.exception))
         self.assertEqual(len(self.started), 2)
         self.assertEqual(self.records()[-1], "09-runner")
+
+    def test_a_verified_release_is_recorded_in_the_instance_and_the_evidence(self):
+        host = FakeHost(self.config)
+        before = datetime.datetime.now().astimezone()
+        self.run_deploy(host)
+        [written] = host.written
+        self.assertEqual({key: written[key] for key in ("release", "commit", "previous", "items", "source", "evidence")},
+                         {"release": 20, "commit": SHA, "previous": HEAD, "items": [88], "source": "deploy",
+                          "evidence": str(self.evidence.resolve())})
+        self.assertEqual(json.loads((self.evidence / "11-release.json").read_text())["record"], written)
+        # Written by the new code's admin verb, with the server's profile, after the verify read the new server.
+        argv = host.ran("record-release")[0]
+        self.assertEqual(argv[3:5], [str(self.config.live / "bin/aim-next-admin"), "record-release"])
+        self.assertEqual(argv[argv.index("--profile") + 1], str(self.config.server_profile))
+        order = [index for index, call in enumerate(host.calls) if call[-1] == "binding" or "record-release" in call]
+        self.assertEqual([("record-release" in host.calls[index]) for index in order], [False, True])
+        self.assertGreaterEqual(datetime.datetime.fromisoformat(written["deployed_at"]), before)
+
+    def test_a_release_that_does_not_verify_is_not_recorded(self):
+        host = FakeHost(self.config, cli=2)
+        with self.assertRaises(deploy.Refused) as caught:
+            self.run_deploy(host)
+        self.assertIn("did not verify, so no release record was written", str(caught.exception))
+        self.assertEqual((host.ran("record-release"), self.records()[-1]), ([], "10-verify"))
+
+    def test_a_record_the_instance_refuses_says_the_release_is_live_and_how_to_record_it(self):
+        host = FakeHost(self.config, recorded=2)
+        with self.assertRaises(deploy.Refused) as caught:
+            self.run_deploy(host)
+        message = str(caught.exception)
+        self.assertIn("release 20 is live but its record was not written", message)
+        self.assertIn(" ".join(host.ran("record-release")[0]), message)
+        self.assertEqual(json.loads((self.evidence / "11-release.json").read_text())["exit"], 2)
 
 
 class ReleaseCheckGate(DeployCase):
