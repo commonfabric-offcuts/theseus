@@ -234,7 +234,8 @@ lost on the way, the picker says it is unknown whether the color was saved and
 that a press again sends the same request: the page keeps one request per
 agent, color and revision, under the authority it was made with, and sends it
 again as it is until Core records an answer, so Core answers a press again
-with what it recorded rather than calling it a change made elsewhere. A card is itself a
+with what it recorded rather than calling it a change made elsewhere. That answer can be older than a
+choice the page has read since; the newer one stays, as with any read. A card is itself a
 button that opens the message, and a control inside a button is not reachable
 or announced as one, so on a card the name is a pointer shortcut: a click on
 it opens the picker instead of the message, and the focus returns to the

@@ -95,8 +95,10 @@ export class AgentColors {
     if (receipt?.recorded === true && receipt.operation_id === envelope.operation_id &&
         this.envelopes.get(name)?.operation_id === envelope.operation_id) this.envelopes.delete(name);
     if (receipt?.status === 'committed') {
+      // A request sent again is answered with what Core recorded then, which
+      // a read since may have overtaken: as in readAll, the newer revision stays.
       const result = receipt.result;
-      this.choices.set(agentId, { color: result.color, revision: result.color_revision });
+      if (!(this.choices.get(agentId)?.revision >= result.color_revision)) this.choices.set(agentId, { color: result.color, revision: result.color_revision });
       this.emit();
     } else if (receipt?.error?.code === 'REVISION_CONFLICT') await this.load('foreground').catch(() => {});
     return receipt;

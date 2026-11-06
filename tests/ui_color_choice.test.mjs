@@ -149,6 +149,71 @@ test('after a lost answer, another color is its own request, and a recorded refu
   assert.equal(last.expected.authority.authority_epoch, 'e2');
 });
 
+// Core as it keeps one agent's choice: a revision that only grows, a stale
+// request refused, and every recorded answer given again for its operation.
+function core() {
+  const state = { color: null, revision: 0 }, recorded = new Map(), sent = [], holds = [];
+  const command = async envelope => {
+    sent.push({ id: envelope.operation_id, at: envelope.expected.color_revision, color: envelope.args.color });
+    let receipt = recorded.get(envelope.operation_id);
+    if (!receipt) {
+      receipt = envelope.expected.color_revision !== state.revision
+        ? { status: 'rejected', recorded: true, operation_id: envelope.operation_id, error: { code: 'REVISION_CONFLICT', message: 'This color changed since it was read; nothing was changed' } }
+        : (state.color = envelope.args.color, state.revision++, { status: 'committed', recorded: true, operation_id: envelope.operation_id, result: { actor_id: 'fable', color: state.color, color_revision: state.revision } });
+      recorded.set(envelope.operation_id, receipt);
+    }
+    const hold = holds.shift();
+    if (hold) await hold;
+    if (hold === undefined && core.lose?.()) throw Error('connection lost');
+    return receipt;
+  };
+  return { state, sent, holds, command,
+    elsewhere(color) { state.color = color; state.revision++; },
+    view: async () => page(state.revision ? [{ actor_id: 'fable', color: state.color, color_revision: state.revision }] : []) };
+}
+
+test('a press again whose recorded answer lands after a newer read keeps the newer choice', async () => {
+  // Olive at revision 0; Core records olive 1 and the answer is lost. Another
+  // device chooses rose (2). The press again replays olive's request, and a
+  // read of rose 2 lands while it is out; then olive's recorded answer lands.
+  const c = core(); let lose = true, serial = 0;
+  core.lose = () => { const now = lose; lose = false; return now; };
+  const colors = new AgentColors({ api: { view: c.view, command: c.command }, instanceId: 'i', authority: () => ({ authority_id: 'a', authority_epoch: 'e' }), id: () => 'op-' + ++serial, doc: null, win: null });
+  await colors.load();
+  await assert.rejects(colors.choose('fable', 'olive'), /connection lost/);
+  c.elsewhere('rose');
+  let release; c.holds.push(new Promise(resolve => release = resolve));
+  const again = colors.choose('fable', 'olive');
+  await colors.load();
+  assert.equal(colors.color('fable'), 'rose', 'the read brought rose');
+  release(); await again;
+  assert.deepEqual(c.sent.map(s => s.id), ['op-1', 'op-1'], 'the press again was the same request');
+  assert.deepEqual([colors.color('fable'), c.state.color], ['rose', 'rose'], 'the older recorded answer does not replace the newer choice the page read');
+  core.lose = null;
+});
+
+test('after a lost answer and a newer read, a press is a new request on the revision read, and the choice is applied', async () => {
+  // Olive at revision 4 is recorded (5) and its answer lost; another device
+  // chooses rose (6), and the page reads it. Pressing olive now is a request
+  // about rose 6: sent again as the old request about 4, Core would answer
+  // with olive 5 and keep rose.
+  const c = core(); let lose = false, serial = 0;
+  for (const color of ['blue', 'cyan', 'peach', 'violet']) c.elsewhere(color);
+  core.lose = () => { const now = lose; lose = false; return now; };
+  const colors = new AgentColors({ api: { view: c.view, command: c.command }, instanceId: 'i', authority: () => ({ authority_id: 'a', authority_epoch: 'e' }), id: () => 'op-' + ++serial, doc: null, win: null });
+  await colors.load();
+  lose = true;
+  await assert.rejects(colors.choose('fable', 'olive'), /connection lost/);
+  c.elsewhere('rose');
+  await colors.load();
+  assert.equal(colors.color('fable'), 'rose');
+  const receipt = await colors.choose('fable', 'olive');
+  assert.deepEqual(c.sent.map(s => [s.id, s.at]), [['op-1', 4], ['op-2', 6]], 'a new request, about the revision read');
+  assert.equal(receipt.status, 'committed');
+  assert.deepEqual([colors.color('fable'), c.state.color, c.state.revision], ['olive', 'olive', 7], 'the person\'s choice is applied');
+  core.lose = null;
+});
+
 test('a read answered before a choice, landing after it, does not undo the choice', async () => {
   let answer; const late = new Promise(resolve => answer = resolve);
   const { colors, listeners } = store([page([{ actor_id: 'fable', color: 'rose', color_revision: 1 }]), late],
