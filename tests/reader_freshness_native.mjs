@@ -971,8 +971,11 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     // The foreground manual read intentionally defers background dispatch.
     // Inject the app's real access transition callbacks while that response
     // is held; this is a paint-race proof, not a claim of a native denial act.
+    // Denial goes through stopDenied, as a refused Changes read does; since
+    // 4b03bc5 its recheck also reads the inline composer's topic access, which
+    // a denied topic refuses. The Reader is closed, so it never reads a source.
     await p.evaluate(transition==='denial'
-      ? '(async()=>{await observedFreshness.denied(()=>{throw Error("no source is open")},()=>true);observedFreshness.status({kind:"forbidden",code:"FORBIDDEN"})})()'
+      ? '(async()=>{await observedFreshness.stopDenied({kind:"forbidden",code:"FORBIDDEN",message:"Fixture FORBIDDEN"},name=>{if(name==="source")throw Error("no source is open");return Promise.reject(Object.assign(Error("Fixture FORBIDDEN"),{code:"FORBIDDEN"}))},()=>true)})()'
       : '(async()=>{const b=observedFreshness.bootstrap;await observedFreshness.authorityLost({instance_id:b.instance_id,actor_id:b.actor,...b.authority},{code:"INVALID_BINDING"});observedFreshness.status({kind:"authority",code:"INVALID_BINDING"})})()');
     await until(()=>hasText(p,'#updates-message',transition==='denial'?'topic is unavailable':'runtime changed'),'access transition before late manual answer');
     p.intercept(null); await p.release(held);
