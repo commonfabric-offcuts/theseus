@@ -14,7 +14,8 @@ from .topic_state import (ASK_WAIT_DOWN, ASK_WAIT_OCCUPIED, ASK_WAIT_SCHEMA, TOP
 from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE_INTENT_SCHEMA,
                            MESSAGE_TIME_DOWN, MESSAGE_TIME_OCCUPIED, MESSAGE_TIME_SCHEMA,
                            UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED, UNANSWERED_SCHEMA)
-from .delivery import DELIVERY_TOPIC_BACKFILL, DELIVERY_TOPIC_DOWN, DELIVERY_TOPIC_SCHEMA
+from .delivery import (DELIVERY_GROUP_TOPIC_DOWN, DELIVERY_GROUP_TOPIC_UP, DELIVERY_TOPIC_BACKFILL, DELIVERY_TOPIC_DOWN,
+                       DELIVERY_TOPIC_SCHEMA)
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 from .work import WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
@@ -48,6 +49,10 @@ STEPS = (
     # works the horizons out again.
     ("17", "18", UNANSWERED_DOWN + tuple(DELIVERY_TOPIC_SCHEMA + DELIVERY_TOPIC_BACKFILL),
      DELIVERY_TOPIC_DOWN + tuple(UNANSWERED_SCHEMA + UNANSWERED_BACKFILL), "SELECT 0"),
+    # Version 19 indexes the pending deliveries by group and topic, so the New
+    # line reads only the reader's live groups, and refuses a delivery with no
+    # topic. Stepping back puts the version-18 index back; nothing is lost.
+    ("18", "19", DELIVERY_GROUP_TOPIC_UP, DELIVERY_GROUP_TOPIC_DOWN, "SELECT 0"),
 )
 
 

@@ -28,6 +28,21 @@ DELIVERY_TOPIC_SCHEMA = [
 DELIVERY_TOPIC_BACKFILL = ["UPDATE deliveries SET topic_id=(SELECT m.topic_id FROM messages m WHERE m.id=deliveries.message_id)"]
 DELIVERY_TOPIC_DOWN = ("DROP INDEX pending_topic_deliveries", "ALTER TABLE deliveries DROP COLUMN topic_id")
 
+# Version 19 indexes the pending deliveries by group, topic and delivery instead,
+# so the line is found in the reader's live groups alone: the current
+# subscription group of the topic and the one direct group, one row each. Rows
+# that a subscription cancelled by leaving left pending are never walked. A new
+# delivery must name its topic.
+DELIVERY_GROUP_TOPIC_SCHEMA = [
+    "CREATE INDEX pending_group_topic_deliveries ON deliveries(group_id,topic_id,seq) WHERE state='pending'",
+    "CREATE TRIGGER delivery_topic_required BEFORE INSERT ON deliveries WHEN NEW.topic_id IS NULL "
+    "BEGIN SELECT RAISE(ABORT, 'a delivery names its topic'); END",
+]
+DELIVERY_GROUP_TOPIC_UP = ("DROP INDEX pending_topic_deliveries",) + tuple(DELIVERY_GROUP_TOPIC_SCHEMA)
+DELIVERY_GROUP_TOPIC_DOWN = ("DROP TRIGGER delivery_topic_required", "DROP INDEX pending_group_topic_deliveries", DELIVERY_TOPIC_SCHEMA[1])
+# A fresh instance has the column and the version-19 index and trigger.
+DELIVERY_TOPIC_FRESH = DELIVERY_TOPIC_SCHEMA[:1] + DELIVERY_GROUP_TOPIC_SCHEMA
+
 # A message sent by name in an archived topic still waits in the attention view for
 # a recipient who has no list of the outcome's topics (neither its owner nor a
 # member: a participant from outside it, or someone who lost the topic), so there
@@ -199,20 +214,29 @@ class Delivery:
         which are never delivered to them, do not count even when marked.
 
         Deliveries are queued in the transaction that writes their message, so
-        delivery order is message order: the first pending delivery to the
-        actor in the topic, in the (recipient, topic, delivery) index, is the
-        oldest. The marks are read through the actor's marked index in
-        sequence order. Each read stops at its first row, past only the rows
-        a cancelled subscription left pending or the actor's marks on their
-        own messages; the topic's history and other topics are never read."""
-        rows = [db.execute("SELECT m.id,m.seq FROM deliveries d INDEXED BY pending_topic_deliveries "
-                           "CROSS JOIN delivery_groups g ON g.id=d.group_id CROSS JOIN messages m ON m.id=d.message_id "
-                           "WHERE d.recipient_id=? AND d.topic_id=? AND d.state='pending' AND g.active=1 ORDER BY d.seq LIMIT 1",
-                           (actor, topic_id)).fetchone(),
-                db.execute("SELECT k.seq,k.message_id AS id FROM message_marks k INDEXED BY reader_marks "
+        delivery order is message order. The actor's pending deliveries that
+        count are in two groups at most: the topic's subscription group of the
+        actor's current participation, and the actor's one direct group. Each
+        is found by its key, and its first pending row in the topic, in the
+        (group, topic, delivery) index, is its oldest; rows a cancelled
+        subscription left pending are in other groups and never read. The
+        marks are read through the actor's marked index in sequence order,
+        stopping at the first row, past only the actor's marks on their own
+        messages; the topic's history and other topics are never read."""
+        groups = [row[0] for row in db.execute(
+            "SELECT g.id FROM topic_participants p CROSS JOIN delivery_groups g INDEXED BY sqlite_autoindex_delivery_groups_1 "
+            "ON g.recipient_id=p.actor_id AND g.kind='subscription' AND g.topic_id=p.topic_id AND g.participant_epoch=p.epoch "
+            "WHERE p.topic_id=? AND p.actor_id=? AND p.active=1 AND g.active=1", (topic_id, actor))]
+        direct = self._addressed_group(db, actor)
+        groups += [direct["id"]] if direct is not None else []
+        rows = [db.execute("SELECT m.id,m.seq FROM deliveries d INDEXED BY pending_group_topic_deliveries "
+                           "CROSS JOIN messages m ON m.id=d.message_id "
+                           "WHERE d.group_id=? AND d.topic_id=? AND d.state='pending' ORDER BY d.seq LIMIT 1",
+                           (group, topic_id)).fetchone() for group in groups]
+        rows.append(db.execute("SELECT k.seq,k.message_id AS id FROM message_marks k INDEXED BY reader_marks "
                            "CROSS JOIN messages m ON m.id=k.message_id "
                            "WHERE k.actor_id=? AND k.topic_id=? AND k.revision%2=1 AND m.author_id<>? ORDER BY k.seq LIMIT 1",
-                           (actor, topic_id, actor)).fetchone()]
+                           (actor, topic_id, actor)).fetchone())
         found = [row for row in rows if row is not None]
         if not found:
             return None

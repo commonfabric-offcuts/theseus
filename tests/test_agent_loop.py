@@ -209,8 +209,8 @@ class ReadThroughCase(AgentLoopCase):
                 seq = db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id) VALUES (?,?,'owner','Seeded','[]','[]',?,?)",
                                  (message, topic, json.dumps([recipient]), "seed-op-" + label)).lastrowid
                 db.execute("INSERT INTO message_addressees VALUES (?,?,?)", (topic, recipient, seq))
-                row = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,state) VALUES (?,?,?,?,?)",
-                                 (delivery, message, recipient, group, state)).lastrowid
+                row = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,state,topic_id) VALUES (?,?,?,?,?,?)",
+                                 (delivery, message, recipient, group, state, topic)).lastrowid
                 first = first if first is not None else row
                 db.execute("INSERT INTO delivery_reasons VALUES (?,'addressed',?,NULL)", (delivery, topic))
             if state == "pending" and count:

@@ -340,7 +340,7 @@ class ScheduleCase(runner_tests.RunnerCase):
                 db.execute("INSERT INTO actors(id,kind,name) VALUES (?,'agent',?)", (actor, actor))
                 group = db.execute("INSERT INTO delivery_groups(recipient_id,kind,topic_id,participant_epoch) VALUES (?,'direct','',0)", (actor,)).lastrowid
                 did = "bulk-wake-%s" % index
-                seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id) VALUES (?,?,?,?)", (did, message, actor, group)).lastrowid
+                seq = db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id,topic_id) VALUES (?,?,?,?,'t1')", (did, message, actor, group)).lastrowid
                 db.execute("INSERT INTO delivery_reasons VALUES (?,'addressed','t1',NULL)", (did,))
                 db.execute("UPDATE delivery_groups SET pending_count=1,first_pending_seq=? WHERE id=?", (seq, group))
                 db.execute("INSERT INTO recipient_schedule(recipient_id,enabled,pending_count,wake_generation,last_seq,next_due_ms) VALUES (?,1,1,1,?,?)", (actor, seq, self.now + index + 1))

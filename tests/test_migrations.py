@@ -32,6 +32,7 @@ SCHEMA_14 = (Path(__file__).parent / "fixtures" / "schema_14.sql").read_text().s
 SCHEMA_15 = (Path(__file__).parent / "fixtures" / "schema_15.sql").read_text().splitlines()
 SCHEMA_16 = (Path(__file__).parent / "fixtures" / "schema_16.sql").read_text().splitlines()
 SCHEMA_17 = (Path(__file__).parent / "fixtures" / "schema_17.sql").read_text().splitlines()
+SCHEMA_18 = (Path(__file__).parent / "fixtures" / "schema_18.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -51,6 +52,14 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 19 indexes the pending deliveries by group and topic instead of
+        # by reader and topic, and refuses a delivery with no topic.
+        db.execute("DROP TRIGGER delivery_topic_required")
+        db.execute("DROP INDEX pending_group_topic_deliveries")
+        db.execute("CREATE INDEX pending_topic_deliveries ON deliveries(recipient_id,topic_id,seq) WHERE state='pending'")
+        if version == "18":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 18 keeps each delivery's topic and indexes the pending ones by
         # reader and topic, and drops what version 16 added: each reader's reply
         # horizon and the index of each message's replies.
@@ -1223,6 +1232,47 @@ class Schema17Case(MigrationCase):
         self.assertEqual(self.sql("SELECT name FROM sqlite_master WHERE name IN ('reply_horizons','message_replies')"), [])
 
 
+class Schema18Case(MigrationCase):
+    """A schema-18 instance: version 19 finds the New line in the reader's live groups alone."""
+
+    VERSION, FIXTURE = "18", SCHEMA_18
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "18")
+
+    def headless(self):
+        """Queues a delivery to agent-b with no topic, as the table alone allows."""
+        with sqlite3.connect(str(self.path)) as db:
+            message, group = db.execute("SELECT m.id,d.group_id FROM messages m JOIN deliveries d ON d.message_id=m.id LIMIT 1").fetchone()
+            db.execute("INSERT INTO deliveries(id,message_id,recipient_id,group_id) VALUES ('d-headless',?,'owner',?)", (message, group))
+
+    def test_upgrade_from_18_keeps_records_matches_a_fresh_instance_and_needs_a_topic(self):
+        opening = self.sql("SELECT id,seq FROM messages ORDER BY seq LIMIT 1")[0]
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "18", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.store.view("agent-a", "topic_unread", {"topic_id": "t1"})["oldest_unread"], {"seq": opening[1], "id": opening[0]})
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "a delivery names its topic"):
+            self.headless()
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE topic_id IS NULL"), [(0,)])
+
+    def test_step_back_to_18_restores_its_frozen_layout(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_18))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+        self.headless()
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1247,6 +1297,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema16Case, _name, None)
     if _name.startswith("test_") and _name not in Schema17Case.__dict__:
         setattr(Schema17Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema18Case.__dict__:
+        setattr(Schema18Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

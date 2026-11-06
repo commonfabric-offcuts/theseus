@@ -290,20 +290,27 @@ commit_seq}`. Reading, marks and replies change no topic version, so a page
 keeps the answer with the highest `commit_seq` it has seen, from either view.
 
 Finding it does not read the topic. Each delivery keeps its topic, copied from
-its message, and an index on (recipient, topic, delivery) over the pending ones
-gives the reader's first pending delivery in the topic; deliveries are queued
-in the transaction that writes their message, so that is the oldest message
-delivered and unread. The reader's marked index gives their oldest mark in the
-topic. Each read stops at its first row, passing over only rows a cancelled
-subscription left pending or marks on the reader's own messages, so the cost
-does not grow with the topic, other topics, or what the reader has read.
+its message, and an index on (group, topic, delivery) over the pending ones
+gives a group's first pending delivery in the topic; deliveries are queued in
+the transaction that writes their message, so that is the oldest message the
+group holds unread. What counts is in two groups at most, each found by its
+key: the topic's subscription group of the reader's current participation,
+and the reader's one direct group. Rows that a subscription cancelled by
+leaving left pending are in other groups, so they are never read, however many
+there are. The reader's marked index gives their oldest mark in the topic,
+passing over only marks on their own messages. Each read stops at its first
+row, so the cost does not grow with the topic, other topics, what the reader
+has read, or what they left pending by leaving.
 
 Schema version 18 adds each delivery's topic (copied on upgrade from its
-message) and that index, and drops what version 16 kept for the line's first
-form, which followed replies: each reader's reply horizon and the index of
-each message's replies. Nothing else read them. Stepping back to 17 drops the
-column and the index and works the horizons out again from the messages, so
-no record is lost and version 17 code finds its line as before.
+message) and an index on (recipient, topic, delivery), and drops what version
+16 kept for the line's first form, which followed replies: each reader's reply
+horizon and the index of each message's replies. Nothing else read them.
+Stepping back to 17 drops the column and the index and works the horizons out
+again from the messages, so no record is lost and version 17 code finds its
+line as before. Version 19 replaces that index with the one on (group, topic,
+delivery), and the store refuses a new delivery without a topic, whatever
+writes it. Stepping back to 18 puts the version-18 index back.
 
 The page keeps the newest answer as said above. It draws the line under that
 message's card when the card is loaded. The line is text ("New"), with no
