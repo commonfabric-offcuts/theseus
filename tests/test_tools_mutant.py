@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import functools
 import io
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -11,9 +13,9 @@ from unittest import mock
 
 from tools import mutant
 
-# A stand-in test: it fails, printing unittest's FAILED line, when the target says "gamma".
+# A stand-in test: it fails, printing unittest's FAIL and FAILED lines, when the target says "gamma".
 CHECK = ("import os, sys; text = open(sys.argv[1]).read(); print('cache=' + os.environ.get('PYTHONPYCACHEPREFIX', ''));"
-         "bad = 'gamma' in text; print('FAILED (failures=1)' if bad else 'OK'); sys.exit(int(bad))")
+         "bad = 'gamma' in text; print('FAIL: test_alpha (t.T)\\nFAILED (failures=1)' if bad else 'OK'); sys.exit(int(bad))")
 
 
 class Mutant(unittest.TestCase):
@@ -36,7 +38,7 @@ class Mutant(unittest.TestCase):
 
     def test_a_test_that_fails_with_a_failed_line_kills_the_mutant_and_the_file_is_restored(self):
         verdict = self.mutate()
-        self.assertEqual((verdict["killed"], verdict["ok"], verdict["failed_line"]), (True, True, "FAILED (failures=1)"))
+        self.assertEqual((verdict["killed"], verdict["ok"], verdict["failed_line"]), (True, True, "FAIL: test_alpha (t.T)"))
         self.assertEqual(verdict["mutant_exit"], 1)
         self.assertTrue(verdict["control_passed"])
         self.assertEqual(self.target.read_bytes(), self.original)
@@ -59,11 +61,40 @@ class Mutant(unittest.TestCase):
         self.assertFalse(self.mutate(script=crash)["killed"])
         printed = "import sys; text = open(sys.argv[1]).read(); print('FAILED' if 'gamma' in text else 'OK')"
         self.assertFalse(self.mutate(script=printed)["killed"])
-        node = "import sys; text = open(sys.argv[1]).read(); print('not ok 1 - case' if 'gamma' in text else 'ok'); sys.exit('gamma' in text)"
+        node = ("import sys; text = open(sys.argv[1]).read(); print(\"not ok 1 - case\\n  code: 'ERR_ASSERTION'\" if 'gamma' in text"
+                " else 'ok'); sys.exit('gamma' in text)")
         self.assertTrue(self.mutate(script=node)["killed"])
 
+    def test_only_a_failed_assertion_kills_a_mutant_not_a_test_run_that_cannot_load(self):
+        # A mutant that breaks the syntax of the code under test makes unittest discover and node --test
+        # report every test module as an error and print FAILED / not ok, yet no assertion ran.
+        package = self.base / "suite"
+        (package / "tests").mkdir(parents=True)
+        code = package / "subject.py"
+        code.write_text("def one():\n    return 1\n")
+        (package / "tests" / "__init__.py").write_text("")
+        (package / "tests" / "test_code.py").write_text(
+            "import unittest\nfrom subject import one\n\n\nclass One(unittest.TestCase):\n"
+            "    def test_one(self):\n        self.assertEqual(one(), 1)\n")
+        discover = [sys.executable, "-B", "-m", "unittest", "discover", "-s", "tests", "-t", "."]
+        with mock.patch.object(mutant.subprocess, "run", functools.partial(subprocess.run, cwd=str(package))):
+            crash = mutant.mutate([(str(code), "return 1", "return (")], discover, self.base / "e-syntax")
+            self.assertTrue(crash["control_passed"])
+            self.assertNotEqual(crash["mutant_exit"], 0)
+            self.assertEqual((crash["killed"], crash["ok"], crash["failed_line"]), (False, False, None))
+            caught = mutant.mutate([(str(code), "return 1", "return 2")], discover, self.base / "e-assert")
+            self.assertEqual((caught["killed"], caught["ok"]), (True, True))
+            self.assertTrue(caught["failed_line"].startswith("FAIL: test_one"), caught["failed_line"])
+        self.assertEqual(code.read_text(), "def one():\n    return 1\n")
+        tap_load_failure = ("print('# SyntaxError: Unexpected token'); print('not ok 1 - a.test.mjs');"
+                            "print(\"  code: 'ERR_TEST_FAILURE'\"); raise SystemExit('gamma' in open(__import__('sys').argv[1]).read())")
+        self.assertFalse(self.mutate(script=tap_load_failure)["killed"])
+        tap_assertion = ("print('not ok 1 - f is one'); print(\"  code: 'ERR_ASSERTION'\");"
+                         "raise SystemExit('gamma' in open(__import__('sys').argv[1]).read())")
+        self.assertTrue(self.mutate(script=tap_assertion)["killed"])
+
     def test_a_control_that_fails_after_restoring_is_not_ok(self):
-        always = "print('FAILED (errors=1)'); raise SystemExit(1)"
+        always = "print('FAIL: test_alpha (t.T)'); raise SystemExit(1)"
         verdict = self.mutate(script=always)
         self.assertTrue(verdict["killed"])
         self.assertFalse(verdict["control_passed"])

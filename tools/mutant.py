@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -I
 from __future__ import annotations
 
-"""Apply a mutant, run the named tests, require a FAILED line, restore, and rerun the tests as a control.
+"""Apply a mutant, run the named tests, require a failed assertion, restore, and rerun the tests as a control.
 
 Usage: tools/mutant.py [--name NAME] [--killed-by REGEX] [--evidence DIR]
                        --replace FILE OLD NEW [--replace FILE OLD NEW ...] -- COMMAND [ARG ...]
@@ -9,7 +9,7 @@ Usage: tools/mutant.py [--name NAME] [--killed-by REGEX] [--evidence DIR]
 Each OLD must occur exactly once in its FILE, or nothing is changed. The
 command runs with the mutant applied and its own PYTHONPYCACHEPREFIX; it kills
 the mutant only by exiting non-zero AND printing a line that matches
---killed-by. The files are then restored byte for byte, and the command runs
+--killed-by, by default a failed assertion. The files are then restored byte for byte, and the command runs
 again with a fresh PYTHONPYCACHEPREFIX and must pass. Exit 0 means killed,
 restored and the control passed; 1 means the mutant survived or the control
 failed; 2 means refused before anything changed. Run it in a worktree no one
@@ -27,8 +27,10 @@ import subprocess
 import sys
 import tempfile
 
-# unittest's "FAILED (failures=1)", node's TAP "not ok", and node's spec reporter's cross.
-KILLED_BY = r"^\s*(FAILED\b|not ok\b|✖ )"
+# A failed assertion: unittest's "FAIL: test_name (...)" or node:assert's ERR_ASSERTION, which both
+# node reporters print. Not a summary such as "FAILED (errors=1)", "not ok" or "✖": those also
+# follow a test module that could not load, where no assertion ran.
+KILLED_BY = r"^FAIL: |\bERR_ASSERTION\b"
 
 
 class Refused(Exception):
@@ -107,7 +109,7 @@ def main(argv=None):
     if "--" not in argv:
         argv = argv + ["--"]
     split = argv.index("--")
-    parser = argparse.ArgumentParser(description="Apply a mutant, require a FAILED line, restore, rerun.")
+    parser = argparse.ArgumentParser(description="Apply a mutant, require a failed assertion, restore, rerun.")
     parser.add_argument("--replace", nargs=3, action="append", required=True, metavar=("FILE", "OLD", "NEW"))
     parser.add_argument("--name", default="mutant")
     parser.add_argument("--killed-by", default=KILLED_BY)
