@@ -71,3 +71,17 @@ test('a page opened while another still opens replaces it; the first draws nothi
   assert.equal(f.host.children.find(child => child.className === 'page-here-body').textContent, 'Ship on Monday.');
   assert.deepEqual(f.recorded, [3], 'only the page shown is read');
 });
+
+test('a page opened while the one before still reads what changed in it shows only its own changes', async () => {
+  const f = fixture({ since: 1 });
+  let release; f.gates.push(null, new Promise(resolve => { release = resolve; }));
+  const first = f.here.open(ref, f.row);
+  await new Promise(setImmediate);
+  assert.deepEqual(f.reads, [3, 1], 'the first page waits on its earlier revision');
+  await f.here.open({ kind: 'memory', id: 'p2', revision: 2 }, f.row);
+  release(); await first;
+  const panels = f.host.children.filter(child => child.className === 'source-changes');
+  assert.equal(panels.length, 1, 'one panel: the page shown');
+  assert.doesNotMatch(panels[0].textContent, /Monday/, 'and none of the first page\'s changes');
+  assert.equal(f.host.children.find(child => child.className === 'page-here-body').textContent, 'Ship on Friday.');
+});
