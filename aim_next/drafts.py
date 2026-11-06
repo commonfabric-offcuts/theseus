@@ -6,6 +6,7 @@ from .authority import AuthorityError
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .conversation import INTENT_REQUIRED
+from . import whispers
 
 
 DRAFT_SCHEMA = [
@@ -94,9 +95,10 @@ class Drafts:
         for recipient in result["addressees"]:
             _identifier(recipient, "addressee")
         result["addressees"] = list(dict.fromkeys(result["addressees"]))
-        for name in ("reply_to", "exchange_id", "caret", "opening", "intent"):
+        for name in ("reply_to", "exchange_id", "caret", "opening", "intent", "whisper"):
             if name in args:
                 result[name] = args[name]
+        whispers.whispering(result)
         # Whether a message to someone asks or tells; none means the sender has not said.
         if result.get("intent") not in (None, "ask", "tell"):
             raise Refusal("INVALID_ARGUMENT", "A message asks or tells")
@@ -127,6 +129,9 @@ class Drafts:
         payload = self._writing(args)
         if topic_composition and (any(name in payload for name in ("opening", "reply_to", "exchange_id")) or payload["quotes"]):
             raise Refusal("INVALID_ARGUMENT", "A topic composer starts a source-free message")
+        # Writing that opens a topic is never a whisper, whatever its source.
+        if ref["kind"] == "new_topic" or payload.get("opening") is not None:
+            whispers.refuse_opening(payload)
         payload["attachments"] = self._attachment_refs(db, actor, payload["attachments"])
         payload["source_ref"] = ref
         if row:
@@ -176,7 +181,7 @@ class Drafts:
         snapshot = json.loads(row["payload"])
         # The durable saved revision, never a late HTTP payload, is the source
         # of the frozen act. Callers may echo fields, but cannot override them.
-        for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent"):
+        for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent", "whisper"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
         # A message to someone says whether it asks or tells; a person's that
@@ -184,7 +189,7 @@ class Drafts:
         # the writing stays in its draft to be corrected; frozen without it, it
         # could only be refused at its send.
         intent = self._intent(db, actor, snapshot)
-        if snapshot.get("addressees") and intent is None:
+        if snapshot.get("addressees") and intent is None and not whispers.whispering(snapshot):
             raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED)
         if intent is not None:
             snapshot["intent"] = intent

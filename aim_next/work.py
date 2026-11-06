@@ -114,10 +114,11 @@ def _turn_in(db, topic_ids, attempt_id, recipient_id, now):
 
 def turn_handed(db, attempt_id, recipient_id, after_seq, through_seq, now):
     """A hosted turn was handed the recipient's pending deliveries in (after_seq, through_seq]:
-    it is in each of their topics from now."""
+    it is in each of their topics from now. A whisper is no work anyone else sees, so a
+    turn handed only whispers in a topic is not in it."""
     topics = [row[0] for row in db.execute(
         "SELECT DISTINCT m.topic_id FROM deliveries d INDEXED BY recipient_deliveries JOIN messages m ON m.id=d.message_id "
-        "WHERE d.recipient_id=? AND d.state='pending' AND d.seq>? AND d.seq<=? ORDER BY m.topic_id",
+        "WHERE d.recipient_id=? AND d.state='pending' AND d.seq>? AND d.seq<=? AND m.private_to IS NULL ORDER BY m.topic_id",
         (recipient_id, after_seq or 0, through_seq))]
     _turn_in(db, topics, attempt_id, recipient_id, now)
 

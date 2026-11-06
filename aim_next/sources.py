@@ -16,6 +16,7 @@ open is not one they could continue in.
 """
 
 from .contract import LIMITS, READABLE, Refusal, _bounded_page, _identifier, _page_size, _prefix
+from .whispers import private_source_refused
 
 
 # Version 21 keeps the message each topic was started from.
@@ -47,7 +48,10 @@ def seen_topics(args):
 class Sources:
     def _source_message(self, db, actor, message_id):
         """A source the actor can read, by its id."""
-        return self._message_access(db, actor, _identifier(message_id, "source_message_id"))["id"]
+        found = self._message_access(db, actor, _identifier(message_id, "source_message_id"))["id"]
+        # A whisper is never a topic's source: the topic would carry it onto the record.
+        private_source_refused(db, found)
+        return found
 
     def _unseen_from_source(self, db, actor, message_id, seen):
         """(count, first few ids) of readable topics started from message_id that seen does not name."""

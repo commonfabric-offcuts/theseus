@@ -4,6 +4,7 @@ import json
 
 from .contract import LIMITS, Refusal, _body, _bounded_page, _identifier, _page_size, _prefix, _json, _revision
 from .sources import NAMED, seen_topics
+from . import whispers
 
 
 OPENING_SCHEMA = [
@@ -52,6 +53,9 @@ class Openings:
 
     def _command_opening_save(self, db, actor, envelope):
         opening_id, args = _opening_id(envelope), envelope["args"]
+        # A topic's first message is never a whisper: nobody else would see the topic begin.
+        if "whisper" in args:
+            whispers.refuse_opening(args)
         if set(args) - {SOURCE_FIELD} != SAVED_FIELDS:
             raise Refusal("INVALID_ARGUMENT", "A save carries the whole writing, and optionally the message it answers, and nothing else")
         workspace_id = _identifier(args["workspace_id"], "workspace_id")

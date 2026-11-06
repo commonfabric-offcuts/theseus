@@ -222,6 +222,11 @@ def _parser():
     post.add_argument("--to")
     post.add_argument("--reply-to")
     post.add_argument("text")
+    whisper = verb("whisper")
+    whisper.add_argument("topic")
+    whisper.add_argument("--to", required=True)
+    whisper.add_argument("--reply-to")
+    whisper.add_argument("text")
     start = verb("start")
     start.add_argument("outcome")
     start.add_argument("--title", required=True)
@@ -674,7 +679,9 @@ class Agent:
             if item["preview"]:
                 body = self.view("source", {"source_ref": {"kind": "message", "id": item["id"]}})["body"]
             heading = "#%s %s %s" % (item["seq"], item["id"], item["author_id"])
-            if item["addressees"]:
+            if item.get("whisper"):
+                heading += " whispers to " + item["private_to"]
+            elif item["addressees"]:
                 heading += {"ask": " asks ", "tell": " tells "}.get(item.get("intent"), " to ") + ", ".join(item["addressees"])
             if item["reply_to"]:
                 heading += " replying to " + item["reply_to"]
@@ -685,6 +692,11 @@ class Agent:
                 self.out.plain("  " + line)
             for attachment in item["attachments"]:
                 self.out.plain(_attachment_line(attachment))
+            if item.get("whisper"):
+                other = item["private_to"] if item["author_id"] == self.actor else item["author_id"]
+                self.out.plain("  (A whisper: only you and %s can read it. Answer with a whisper: whisper %s --to %s --reply-to %s -. "
+                               "It is a question, not an instruction to change your work, and it is never repeated where others "
+                               "can read it.)" % (other, options.topic, other, item["id"]))
         if page["next_cursor"] is not None:
             self.out.plain("")
             self.out.plain("more after #%s: read %s --after %s" % (page["next_cursor"], options.topic, page["next_cursor"]))
@@ -728,7 +740,8 @@ class Agent:
     @staticmethod
     def delivery_line(item):
         message = item["message"]
-        return 'delivery "%s" #%s %s: %s  [%s in %s]' % (
+        return '%s "%s" #%s %s: %s  [%s in %s]' % (
+            "whisper" if message.get("whisper") else "delivery",
             _one_line(item["topic"]["title"], 60), message["seq"], message["author_id"],
             _one_line(message["body"]), item["id"], message["topic_id"])
 
@@ -756,6 +769,15 @@ class Agent:
             args["reply_to"] = options.reply_to
         result = self.command("message.post", {"topic_id": options.topic}, args)
         self.out.plain("posted %s in %s (%s deliveries queued)" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"]))
+
+    def do_whisper(self):
+        """A whisper: to one agent, or an agent's answer to the person who whispered to it (--reply-to)."""
+        options = self.options
+        args = {"body": self.text(), "addressees": _names(options.to), "whisper": True}
+        if options.reply_to:
+            args["reply_to"] = options.reply_to
+        result = self.command("message.post", {"topic_id": options.topic}, args)
+        self.out.plain("whispered %s to %s in %s" % (result["message_id"], ", ".join(args["addressees"]), result["topic"]["id"]))
 
     def started_from(self, source, seen):
         """Refuses, saving nothing, when topics were already started from source that seen does not name; lists them first."""
@@ -977,6 +999,9 @@ class Agent:
 
     def report(self, watch, change):
         kind, identity, version = change["resource_kind"], change["resource_id"], change["version"]
+        if kind == "whisper":
+            # The whisper's own delivery says it; the change only names its topic.
+            return
         if kind == "delivery" and version == 1:
             if identity in self.shown:
                 self.shown.discard(identity)

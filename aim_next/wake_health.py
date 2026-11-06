@@ -23,6 +23,7 @@ out at all.
 
 import json
 
+from .whispers import on_record_wake_health
 from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 
 
@@ -135,11 +136,13 @@ class WakeHealth:
                     quiet.append({"actor_id": row["recipient_id"], "waiting": row["pending_count"], "why": "wakes_paused"})
                     if len(quiet) == QUIET_LIMIT:
                         break
+        # Others see only what waits on the record: a whisper's wake is never shown outside it.
+        quiet = on_record_wake_health(db, actor, quiet)
         result = {"instance_id": self.instance_id, "runner": runner, "quiet": quiet}
         if not live and quiet:
             # The reader is told of the agents whose work waits in an outcome the reader owns.
             owned = db.execute("SELECT count(DISTINCT g.recipient_id) FROM delivery_groups g "
-                               "JOIN deliveries d ON d.group_id=g.id AND d.state='pending' JOIN messages m ON m.id=d.message_id "
+                               "JOIN deliveries d ON d.group_id=g.id AND d.state='pending' JOIN messages m ON m.id=d.message_id AND m.private_to IS NULL "
                                "JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
                                "WHERE g.recipient_id IN (SELECT value FROM json_each(?)) AND g.active=1 AND g.pending_count>0 AND w.owner_id=?",
                                (json.dumps([item["actor_id"] for item in quiet]), actor)).fetchone()[0]

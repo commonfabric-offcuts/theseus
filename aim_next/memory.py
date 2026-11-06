@@ -4,6 +4,7 @@ import json
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
 from .conversation import _preview
+from .whispers import private_source_refused
 
 
 MEMORY_SCHEMA = [
@@ -78,6 +79,8 @@ class Memory:
                 self._memory_ref(db, actor, ref)
             elif isinstance(ref, dict) and set(ref) == {"kind", "id"} and ref["kind"] == "message":
                 self._message_access(db, actor, ref["id"])
+                # A whisper is never Notebook evidence: it stays between its two people.
+                private_source_refused(db, ref["id"])
             else:
                 raise Refusal("INVALID_ARGUMENT", "Evidence must name an exact message or Notebook revision")
         attachments = self._attachment_refs(db, actor, attachments, ready=True, retained=retained)
