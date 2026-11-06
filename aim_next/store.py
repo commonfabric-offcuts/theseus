@@ -26,9 +26,11 @@ from .topic_state import ASK_WAIT_SCHEMA, TopicState, TOPIC_STATE_SCHEMA, WAITIN
 from .work import WORK_SCHEMA, work_by_topic
 from .marks import Marks, MARK_SCHEMA
 from .colors import Colors, COLOR_SCHEMA
+from .wake_health import WakeHealth, WAKE_HEALTH_SCHEMA
+from . import delivery as _delivery
 
 
-SCHEMA_VERSION = "17"
+SCHEMA_VERSION = "18"
 
 
 def commit_identity_intact(metadata):
@@ -102,7 +104,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + UNANSWERED_SCHEMA + COLOR_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + UNANSWERED_SCHEMA + COLOR_SCHEMA + WAKE_HEALTH_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -135,7 +137,7 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors):
+class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, WakeHealth):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -320,6 +322,8 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                     raise
                 receipt = self._refusal(envelope, exc, recorded=True)
             db.execute("RELEASE effect")
+            # Any recorded act is a sign of life: the actor's wakes are answered.
+            self._sign_of_life(db, actor, _delivery._now_ms())
             db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op_id, fingerprint, kind, _json(receipt)))
             self._advance_commit_seq(db)
             db.commit()

@@ -76,6 +76,8 @@ class Delivery:
         arrived_after_handing = handed is not None and last_seq is not None and last_seq > handed
         if pending == 0:
             due, retry, handed = None, 0, None
+            # Nothing waits, so nothing is left unanswered.
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=0,unanswered_since_ms=NULL WHERE recipient_id=? AND unanswered_wakes>0", (actor,))
         elif old["pending_count"] == 0 or captured_done or arrived_after_handing:
             due, retry = _now_ms(), 0
         elif delta < 0 and handed is not None and not self._pending_above(db, actor, handed):

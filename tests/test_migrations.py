@@ -31,6 +31,7 @@ SCHEMA_13 = (Path(__file__).parent / "fixtures" / "schema_13.sql").read_text().s
 SCHEMA_14 = (Path(__file__).parent / "fixtures" / "schema_14.sql").read_text().splitlines()
 SCHEMA_15 = (Path(__file__).parent / "fixtures" / "schema_15.sql").read_text().splitlines()
 SCHEMA_16 = (Path(__file__).parent / "fixtures" / "schema_16.sql").read_text().splitlines()
+SCHEMA_17 = (Path(__file__).parent / "fixtures" / "schema_17.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -50,6 +51,12 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 18 counts the wakes each recipient left unanswered.
+        db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_since_ms")
+        db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_wakes")
+        if version == "17":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 17 keeps the color each person chose for an agent.
         db.execute("DROP TABLE color_choices")
         if version == "16":
@@ -1156,6 +1163,47 @@ class Schema16Case(MigrationCase):
                 self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
 
 
+class Schema17Case(MigrationCase):
+    """A schema-17 instance: version 18 counts the wakes each recipient left unanswered."""
+
+    VERSION, FIXTURE = "17", SCHEMA_17
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "17")
+
+    def test_upgrade_from_17_keeps_records_matches_a_fresh_instance_and_counts_from_zero(self):
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "17", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.assertEqual(self.sql("SELECT DISTINCT unanswered_wakes,unanswered_since_ms FROM recipient_schedule"), [(0, None)])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertEqual(self.store.view("owner", "wakes", {})["quiet"], [])
+
+    def test_step_back_to_17_restores_its_frozen_layout_while_every_wake_is_answered(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_refuses_while_a_wake_is_unanswered(self):
+        self.upgrade()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=5 WHERE recipient_id='agent-a'")
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1178,6 +1226,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema15Case, _name, None)
     if _name.startswith("test_") and _name not in Schema16Case.__dict__:
         setattr(Schema16Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema17Case.__dict__:
+        setattr(Schema17Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

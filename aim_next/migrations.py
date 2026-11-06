@@ -17,6 +17,7 @@ from .conversation import (MESSAGE_INTENT_DOWN, MESSAGE_INTENT_OCCUPIED, MESSAGE
 from .marks import MARK_DOWN, MARK_OCCUPIED, MARK_SCHEMA
 from .work import WORK_DOWN, WORK_OCCUPIED, WORK_SCHEMA
 from .colors import COLOR_DOWN, COLOR_OCCUPIED, COLOR_SCHEMA
+from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -40,6 +41,8 @@ STEPS = (
     ("15", "16", UNANSWERED_SCHEMA + UNANSWERED_BACKFILL, UNANSWERED_DOWN, UNANSWERED_OCCUPIED),
     # Version 17 keeps the color each person chose for an agent.
     ("16", "17", COLOR_SCHEMA, COLOR_DOWN, COLOR_OCCUPIED),
+    # Version 18 counts the wakes each recipient left unanswered, so a silent agent stops being woken.
+    ("17", "18", WAKE_HEALTH_SCHEMA, WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED),
 )
 
 

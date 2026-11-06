@@ -9,6 +9,7 @@ from . import delivery
 from .authority import RunnerGuard
 from .contract import StoreError
 from . import work
+from .wake_health import ANSWERING
 
 
 RUNNER_SCHEMA = [
@@ -246,9 +247,9 @@ class Runner:
 
     def _next_due(self, db, routed=None):
         if routed is None:
-            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
+            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY due_recipients WHERE enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT 1").fetchone()
         else:
-            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL ORDER BY next_due_ms,recipient_id LIMIT 1", (routed,)).fetchone()
+            row = db.execute("SELECT next_due_ms FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms IS NOT NULL AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT 1", (routed,)).fetchone()
         return row[0] if row else None
 
     def claim_wakes(self, guard, runner_token, recipients, limit=1, lease_ms=20000):
@@ -266,7 +267,7 @@ class Runner:
                 raise RunnerError("LEASE_TOO_SHORT", "Renew the singleton before claiming this full lease", retryable=True)
             # Each routed recipient is one primary-key probe; people and agents
             # without a route are never read, claimed or attempted here.
-            rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
+            rows = db.execute("SELECT * FROM recipient_schedule INDEXED BY sqlite_autoindex_recipient_schedule_1 WHERE recipient_id IN (SELECT value FROM json_each(?)) AND enabled=1 AND pending_count>0 AND next_due_ms<=? AND " + ANSWERING + " ORDER BY next_due_ms,recipient_id LIMIT ?", (routed, now, limit)).fetchall()
             claims = []
             for row in rows:
                 if row["claim_token"] is not None and row["claim_until_ms"] > now:
@@ -317,6 +318,9 @@ class Runner:
                 due = now + delay
             db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], outcome, now))
             db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,retry_count=? WHERE recipient_id=?", (due, retry, row["recipient_id"]))
+            if outcome == "accepted" and row["pending_count"]:
+                # The notice reached the agent's chat; it stays unanswered until the agent acts.
+                self._wake_unanswered(db, row["recipient_id"], now)
             db.execute("UPDATE runner_state SET child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1 AND child_claim_token=?", (claim_token,))
             return {"status": "settled", "wake_status": outcome, "next_due_ms": due, "pending_count": row["pending_count"]}, True
         return self._effect(guard, action)
@@ -371,6 +375,9 @@ class Runner:
         # retry_count is otherwise kept: a turn that fails again backs off further, and only a clean turn end resets it.
         db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,handed_seq=?,retry_count=? WHERE recipient_id=?",
                    (due, handed, retry, attempt["recipient_id"]))
+        if handed is not None and turn["mode"] == "start":
+            # A turn started with this work; a steer joins a turn already counted.
+            self._wake_unanswered(db, attempt["recipient_id"], now)
         db.execute("UPDATE runner_state SET child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1 AND child_claim_token=?", (attempt["claim_token"],))
         return {"status": "settled", "wake_status": "handed", "next_due_ms": due, "pending_count": pending, "handed_seq": handed}
 
@@ -421,6 +428,11 @@ class Runner:
             if status == "completed":
                 for row in rows:
                     work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
+            else:
+                # A turn that did not complete never gave the agent its wake to answer.
+                for row in rows:
+                    if row["mode"] == "start":
+                        self._wake_withdrawn(db, row["recipient_id"])
             rearmed = False
             for recipient in sorted({row["recipient_id"] for row in rows}):
                 schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
@@ -597,7 +609,7 @@ class Runner:
                 self._check_instance(db)
                 result = self._runner_facts(db)
                 result.update(instance_id=self.instance_id, next_due_ms=self._next_due(db))
-                result["due_count"] = db.execute("SELECT count(*) FROM recipient_schedule WHERE enabled=1 AND pending_count>0 AND next_due_ms<=?", (delivery._now_ms(),)).fetchone()[0]
+                result["due_count"] = db.execute("SELECT count(*) FROM recipient_schedule WHERE enabled=1 AND pending_count>0 AND next_due_ms<=? AND " + ANSWERING, (delivery._now_ms(),)).fetchone()[0]
                 row = db.execute("SELECT a.id AS attempt_id,a.recipient_id,a.lease_until_ms FROM recipient_schedule s INDEXED BY active_claim_end JOIN wake_attempts a ON a.claim_token=s.claim_token WHERE s.claim_token IS NOT NULL AND s.claim_until_ms>? ORDER BY s.claim_until_ms LIMIT 1", (delivery._now_ms(),)).fetchone()
                 result["claim"] = dict(row) if row else None
                 return result

@@ -81,6 +81,27 @@ survives restart. Explicit `--resume-version INTEGER` uses the observed pause
 version with a fresh guard; there is no automatic resume. Service installation
 and its restart policy require the separate activation review.
 
+## Unanswered wakes
+
+Core counts, per recipient, the wakes that reached it and were followed by
+nothing from it: an `accepted` notice, or a hosted turn `start` handed its
+work (a steer into a running turn is not counted, and a turn that fails or is
+lost takes its count back). `busy`, `error` and `unavailable` never reached
+the agent and are not counted. After three in a row the recipient is parked:
+`claim_wakes`, the due reads and `due_count` skip it, so it is not woken again,
+and nothing it was sent is dropped or settled. Any recorded command by the
+recipient (a post, an acknowledgment, a read-through) is a sign of life: the
+count clears, and a parked recipient with work waiting is due at once, unless
+a hosted turn that holds its work is the one acting. Reaching nothing pending
+clears the count too. Reads stay write-free, so a read is not a sign of life.
+
+The `wakes` view lists the agents whose wakes are not getting through: while a
+runner holds a live lease, each parked agent with work, as `{actor_id,
+waiting, since_ms, why: "not_answering"}` (`since_ms` is the first unanswered
+wake); while none does, each agent with a route pin here and work waiting, as
+`why: "wakes_paused"`, so no agent is blamed for wakes that are not being sent.
+Proof: `tests/test_wake_health.py`.
+
 Focused proof lives in `tests/test_effects_runner.py`,
 `tests/test_effects_watch.py` and, for hosted routes, `tests/test_codex_host.py`. It uses isolated real Stores, owned fixture
 brokers, native signals, actual SQLite statements/locks and a controlled clock

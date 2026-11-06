@@ -42,7 +42,7 @@ import test_runner as runner_tests
 def own_cases(cls):
     """Run only the cases this file defines, not the fixture classes' own again."""
     for name in dir(cls):
-        if name.startswith("test") and not any(name in vars(klass) for klass in cls.__mro__ if klass.__module__ == __name__):
+        if name.startswith("test") and not any(name in vars(klass) for klass in cls.__mro__ if klass.__module__ == cls.__module__):
             setattr(cls, name, None)
     return cls
 
