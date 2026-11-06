@@ -38,6 +38,7 @@ import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith } from './links.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
+import { PipelinePage, PipelineRow, paintPipelineLine } from './pipeline.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -1193,7 +1194,7 @@ async function initialize() {
   });
   // The rail shows only this topic's outcome.
   outcomeScope = new OutcomeScope({ workspaceId: topic.workspace_id, kind: 'topic', rail: document.querySelector('.rail'), home: $('outcomes-home'),
-    attention, open: openDestination, sections: [{ name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
+    attention, open: openDestination, sections: [pipelineSection(topic.workspace_id, false), { name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
       { name: 'notebook', node: $('outcome-references'), load: () => outcomeReferences.load() }] });
   placeBrand(document.querySelector('.rail'));
   outcomeScope.load();
@@ -1374,6 +1375,7 @@ async function initializeOutcomePage(route) {
   // There is no topic, implicit composer or source in a selection-only view.
   if(route.kind==='create')return initializeCreationPage(route);
   if(route.kind==='opening')return initializeOpeningPage(route);
+  if(route.kind==='pipeline'||route.kind==='item')return initializePipelinePage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   status('');
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
@@ -1399,7 +1401,7 @@ async function initializeOutcomePage(route) {
     // Other outcomes' questions in one quiet line, or why the list they are read
     // from could not be read and Retry, then where this outcome stands, then its
     // topics; its Notebook pages are listed after them, and one opens in place below them.
-    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('topic-navigation'),$('outcome-references'),$('page-here'));
+    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('pipeline-line'),$('topic-navigation'),$('outcome-references'),$('page-here'));
     // The page lists the outcome's topics and pages itself, so it has no rail:
     // the logo block, then "← Outcomes", head the main column.
     const rail=document.querySelector('.rail');rail.hidden=true;
@@ -1450,13 +1452,50 @@ async function initializeOutcomePage(route) {
         open:(id,title)=>openDestination({kind:'topic',id},title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      return (await Promise.all([stands(workspace),topicRail.load(),outcomeReferences.load()])).every(read=>read!==false);
+      return (await Promise.all([stands(workspace),topicRail.load(),outcomeReferences.load(),
+        paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
     // topics, and other outcomes' questions in the line above them.
     const reload=followCommits(async()=>(await Promise.all([outcomeRail.load(),refresh()])).every(read=>read!==false));
     await reload();
   }
+  document.body.dataset.ready='true';
+}
+// The pipeline's views and commands (item 84; docs/pipeline.md).
+const pipelineView=async(name,args)=>checkedView(await api.view(name,args,{readClass:'foreground'}),bootstrap.instance_id);
+function pipelineSend(kind,target,args,expected={}) {
+  const {authority_id,authority_epoch}=bootstrap.authority;
+  return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind,target,
+    expected:{...expected,authority:{authority_id,authority_epoch}},args});
+}
+// The rail's Pipeline row (D19), placed by the outcome's rail between the
+// conversation and the topics, and read with the rail on every commit.
+function pipelineSection(workspace,current) {
+  const row=new PipelineRow({section:$('pipeline-navigation'),host:$('pipeline-links'),workspace,current,read:pipelineView,reader:bootstrap.actor});
+  return {name:'pipeline',node:$('pipeline-navigation'),load:()=>row.load()};
+}
+// An outcome's pipeline, or one item's record in it: the rail shows this
+// outcome (its Pipeline row, topics and Notebook pages); the page and the
+// rail read again on every commit.
+async function initializePipelinePage(route) {
+  status('');
+  for(const id of ['notebook','participants','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  $('pipeline-page').hidden=false;
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
+  const page=new PipelinePage({host:$('pipeline-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},
+    reader:bootstrap.actor,instanceId:bootstrap.instance_id,workspace:route.id,item:route.kind==='item'?Number(route.item):null,read:pipelineView,send:pipelineSend});
+  enableNewTopic(route.id);
+  topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
+    retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
+    read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
+    open:(id,title)=>openDestination({kind:'topic',id},title)});
+  outcomeReferences=outcomePages(route.id,()=>{});
+  outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'pipeline',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
+    sections:[pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},
+      {name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
+  placeBrand(document.querySelector('.rail'));
+  await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
 }
 // An outcome's Notebook pages on its own page, each opening in place.
