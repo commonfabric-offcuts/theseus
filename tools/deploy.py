@@ -201,7 +201,9 @@ def deploy(config, sha, evidence, summary, dry):
     # A supervised runner is its supervisor's child, found by parent rather than by command line: the
     # supervisor starts it by its own interpreter and resolved checkout path, not the deploy's spelling.
     children = [pid for pid, parent, _ in rows if parent in supervisors]
-    bare = [pid for pid in find(rows, runner_args[1:]) if pid not in children]
+    # Any other runner of this profile is found by its own arguments, however its interpreter and path are
+    # spelled: one a killed supervisor left behind keeps the spelling that supervisor gave it.
+    bare = [pid for pid in find(rows, ["/bin/aim-next-runner"] + runner_args[3:]) if pid not in children]
     runner_pids = children if supervisors else bare
     live = {"server": [(p, identity(p)) for p in server_pids], "supervisor": [(p, identity(p)) for p in supervisors],
             "runner": [(p, identity(p)) for p in runner_pids]}

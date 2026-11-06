@@ -213,6 +213,16 @@ class Refusals(DeployCase):
                 self.assertIn(reason, self.refused(FakeHost(self.config, **kw)))
                 self.assertEqual(self.kills, [])
 
+    def test_a_runner_left_behind_by_a_supervisor_that_died_is_refused_however_its_path_is_spelled(self):
+        # A killed supervisor leaves its runner to pid 1, spelled the way the supervisor started it, not the deploy's way.
+        for kw, reason in ((dict(runners=(), supervisors=(), children=((224, 1),)), "not the ones their run records started"),
+                           (dict(runners=(), supervisors=(222,), children=((224, 1), (225, 222))), "not its supervisor's")):
+            for spelled in (False, True):
+                with self.subTest(spelled_as_deployed=spelled, **{k: str(v) for k, v in kw.items()}):
+                    self.kills = []
+                    self.assertIn(reason, self.refused(FakeHost(self.config, spelled_as_deployed=spelled, **kw)))
+                    self.assertEqual(self.kills, [])
+
     def test_a_dirty_or_diverged_live_checkout_is_refused_before_anything_stops(self):
         for host in (FakeHost(self.config, dirty=" M aim_next/store.py\n"), FakeHost(self.config, ff=False)):
             self.assertIn("fast-forward", self.refused(host))
