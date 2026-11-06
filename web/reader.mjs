@@ -369,17 +369,21 @@ export class Reader {
 
   paintRecipients() {
     const editor = this.sessions.reply, presentation = this.presentation;
-    // The author a reply answers is offered first; removing them declines the
-    // offer and writes nothing.
-    const offered = editor.offeredAddressees ?? [];
-    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices([...offered, ...editor.draft.addressees]).map(({ name, removeLabel }) => {
+    // The author a reply answers is offered first. Removing someone declines
+    // any offer of them, and writes only when the writing already names them:
+    // typing takes the offer without redrawing these chips, so the press, not
+    // the drawing, decides which.
+    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices([...(editor.offeredAddressees ?? []), ...editor.draft.addressees]).map(({ name, removeLabel }) => {
       const chip = node('span', name, 'chip'); chip.dataset.name = name;
       const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
       remove.onclick = () => {
         if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
-        if (offered.includes(name)) { editor.declineAddressee(name); this.paintRecipients(); return; }
-        editor.edit({ addressees: editor.draft.addressees.filter(item => item !== name) });
-        this.callbacks.edit(editor); this.paintRecipients();
+        editor.declineAddressee(name);
+        if (editor.draft.addressees.includes(name)) {
+          editor.edit({ addressees: editor.draft.addressees.filter(item => item !== name) });
+          this.callbacks.edit(editor);
+        }
+        this.paintRecipients();
       };
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));

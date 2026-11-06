@@ -94,7 +94,7 @@ export class Editor {
   // its recipients with the first thing written, and are dropped when the
   // person removes them. Writing kept from before keeps its own recipients.
   offerAddressees(names) { this.offered = [...names]; }
-  declineAddressee(name) { this.offered = (this.offered ?? []).filter(item => item !== name); }
+  declineAddressee(name) { if (this.offered) this.offered = this.offered.filter(item => item !== name); }
   get offeredAddressees() {
     return holdsWriting(this.draft) ? [] : (this.offered ?? []).filter(name => !this.draft.addressees.includes(name));
   }

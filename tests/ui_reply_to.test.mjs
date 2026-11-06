@@ -80,6 +80,33 @@ test('the Reader shows the offered author as a recipient, and its remove decline
   assert.deepEqual(reply.draft.addressees, []);
 });
 
+test('after typing, one press on the offered author\'s remove takes them off, and they stay off', t => {
+  const previous = globalThis.document;
+  globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
+  t.after(() => { globalThis.document = previous; });
+  const chips = Object.assign(new Element('div'), { root: true }), input = new Element('input'), edits = [];
+  const reply = editor();
+  reply.offerAddressees(['fable']);
+  const reader = Object.assign(Object.create(Reader.prototype), {
+    sessions: { reply }, presentation: {}, admits: () => true,
+    $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id],
+    callbacks: { edit: e => edits.push(e), reach: () => ({ reachable: true }) },
+  });
+  reader.paintRecipients();
+  // Typing edits the writing and leaves the recipient chips as they were drawn.
+  reply.edit({ body: 'Hello' });
+  assert.deepEqual(reply.draft.addressees, ['fable'], 'the first letter took the offered author');
+  chips.children[0].children.find(node => node.tag === 'button').onclick();
+  assert.deepEqual({ addressees: reply.draft.addressees, chips: chips.children.map(chip => chip.dataset.name) },
+    { addressees: [], chips: [] }, 'one press removes them');
+  assert.equal(edits.length, 1, 'the removal is saved like any other edit');
+  reply.edit({ body: '' });
+  reader.paintRecipients();
+  reply.edit({ body: 'Starting again' });
+  assert.deepEqual({ addressees: reply.draft.addressees, chips: chips.children.map(chip => chip.dataset.name) },
+    { addressees: [], chips: [] }, 'emptying the reply does not offer them again');
+});
+
 test('a reply card names the author of the message it answers and how it begins', () => {
   assert.equal(replyLine({ reply_to: null }), '');
   assert.equal(replyLine({ reply_to: 'm-1', reply_to_author: 'fable', reply_to_excerpt: 'Ship it' }), 'Replying to fable: Ship it');
