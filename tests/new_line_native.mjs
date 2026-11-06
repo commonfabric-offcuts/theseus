@@ -39,9 +39,9 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       body: `Agent message ${n} in ${id}.` })).result.message_id);
     return ids;
   };
-  const open = (topic, suffix, theme) => page(suffix, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async p => {
+  const open = (topic, suffix, theme, height = 900) => page(suffix, null, true, { url: facts.origin + '/?topic=' + topic, beforeNavigate: async p => {
     await p.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
-    await p.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 1280, height, deviceScaleFactor: 1, mobile: false });
   } });
   const unread = async topic => (await view('topic_unread', { topic_id: topic })).oldest_unread;
   // Where the page drew the line: {count, after (the card just above it), kind}.
@@ -81,8 +81,10 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
   await check('colors the New line sits under the oldest unread message, holds while it is read, and moves on Refresh and on opening the topic again', async () => {
     for (const theme of ['light', 'dark']) {
       // A page of agent messages: the oldest ones are below the first screen.
+      // A screen lower than what follows the line, so the line can reach the
+      // top with the oldest card wholly above it.
       const topic = 'new-line-read-' + theme, ids = await topicWith(topic, 24);
-      const p = await open(topic, 'new-line-' + theme, theme);
+      const p = await open(topic, 'new-line-' + theme, theme, 520);
       // What shows on the first screen is read; the oldest message is not on it.
       await settle(p, topic, theme + ': the line drawn where the server says');
       const oldest = await unread(topic);
@@ -111,7 +113,9 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       assert.ok(r > g + 60 && r > b + 60, theme + ': red');
       assert.ok(contrast(placed.color, placed.page) >= 4.5, theme + `: readable (${contrast(placed.color, placed.page).toFixed(2)})`);
       // The line at the top of the view, the unread card wholly above it: nothing new is read.
-      await p.evaluate("document.querySelector('#messages .new-line').scrollIntoView({block:'start'})");
+      const above = await p.evaluate(`(()=>{document.querySelector('#messages .new-line').scrollIntoView({block:'start'});
+        return document.querySelector('#messages [data-id="${ids[0]}"]').getBoundingClientRect().bottom})()`);
+      assert.ok(above <= 0, theme + ': the oldest unread card is wholly above the view: ' + above);
       await shot(p, 'new-line-' + theme);
       assert.equal((await unread(topic))?.id, ids[0], theme + ': a card out of view is not read');
       // Reading the oldest on screen: the server moves on, and the line holds
