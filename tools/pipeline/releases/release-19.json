@@ -1,0 +1,115 @@
+{
+ "release": 19,
+ "commit": "485759bc81874b210ec58ab8a949464508f7d11f",
+ "previous": "71e504df1a1bd2042a9886bfee23273f5691d4d1",
+ "deployed_at": "2026-11-06T05:28:35-08:00",
+ "items": [
+  87,
+  90,
+  2,
+  3,
+  83,
+  10,
+  30,
+  51,
+  29,
+  59,
+  58,
+  71,
+  73
+ ],
+ "measurements": {
+  "release_check": {
+   "commit": "485759bc81874b210ec58ab8a949464508f7d11f",
+   "started_at": "2026-11-06T04:57:15.476376-08:00",
+   "finished_at": "2026-11-06T05:14:21.896357-08:00"
+  },
+  "python_units": {
+   "tests": 1106
+  },
+  "node_units": {
+   "tests": 740,
+   "pass": 740
+  },
+  "native": {
+   "pass": 188,
+   "total": 188,
+   "steps": {
+    "journal": {
+     "pass": 10,
+     "total": 10
+    },
+    "connected": {
+     "pass": 5,
+     "total": 5
+    },
+    "correction": {
+     "pass": 14,
+     "total": 14
+    },
+    "cleanup": {
+     "pass": 7,
+     "total": 7
+    },
+    "images": {
+     "pass": 20,
+     "total": 20
+    },
+    "freshness": {
+     "pass": 30,
+     "total": 30
+    },
+    "inline": {
+     "pass": 11,
+     "total": 11
+    },
+    "navigation": {
+     "pass": 15,
+     "total": 15
+    },
+    "live": {
+     "pass": 31,
+     "total": 31
+    },
+    "colors": {
+     "pass": 6,
+     "total": 6
+    },
+    "asks": {
+     "pass": 3,
+     "total": 3
+    },
+    "work": {
+     "pass": 1,
+     "total": 1
+    },
+    "openings": {
+     "pass": 2,
+     "total": 2
+    },
+    "reader": {
+     "pass": 5,
+     "total": 5
+    },
+    "reader-keyboard": {
+     "pass": 1,
+     "total": 1
+    },
+    "reader-review-gaps": {
+     "pass": 12,
+     "total": 12
+    },
+    "reader-anchor-control": {
+     "pass": 3,
+     "total": 3
+    },
+    "reader-mutations": {
+     "pass": 12,
+     "total": 12
+    }
+   }
+  }
+ },
+ "source": "backfill",
+ "evidence": null
+}

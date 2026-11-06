@@ -3,14 +3,18 @@ from __future__ import annotations
 
 """Deploy a reviewed Theseus commit to a live instance: stop, back up, fast-forward, migrate, restart.
 
-Usage: tools/deploy.py --config CONFIG.json --release-check SUMMARY.json SHA EVIDENCE_DIR [--dry-run]
+Usage: tools/deploy.py --config CONFIG.json --release-check SUMMARY.json SHA EVIDENCE_DIR
+                       [--release N] [--live-since TIME] [--no-items] [--dry-run]
 
 SHA is the full commit, and SUMMARY.json is tools/release_check.py's summary
 for exactly that commit; unless it passed, nothing is stopped or changed.
 Every step writes its result to EVIDENCE_DIR; the first failure stops the run
-(exit 1). --dry-run reads the live processes and checkout, stops before
-changing anything, and still exits 1 when the release check has not passed.
-docs/tools.md describes the config.
+(exit 1). --dry-run reads the live processes, checkout and release records,
+stops before changing anything, and still exits 1 when the release check has
+not passed. Once the new release is verified, the deploy writes its release
+record into the instance (docs/releases.md), after any record the instance
+lacks that the system can know; a deploy of the live commit is a restart and
+writes no record of its own. docs/tools.md describes the config.
 """
 
 import collections
@@ -28,7 +32,9 @@ import urllib.request
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools import release_check
+from aim_next.contract import Refusal
+from aim_next.releases import release_row
+from tools import release_check, releases
 
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
@@ -181,7 +187,231 @@ def recorded(config, kind):
             return json.loads((latest / name).read_text())["pid"]
 
 
-def deploy(config, sha, evidence, summary, dry):
+def live_records(config):
+    """Every release record the live instance keeps, newest first; [] when its code keeps none.
+
+    Code without release records (aim_next/releases.py) keeps none, so its
+    instance gets an empty table from the migration. A read that fails stops
+    the deploy: it is not the same as no records."""
+    # ls-tree lists a path HEAD has and nothing for one it lacks; only a failed read exits non-zero.
+    keeps = run(["git", "-C", str(config.live), "ls-tree", "--name-only", "HEAD", "aim_next/releases.py"])
+    require(keeps.returncode == 0, "whether the live code keeps release records could not be read (exit %s): %s"
+            % (keeps.returncode, keeps.stderr.strip()[:300]))
+    if not keeps.stdout.strip():
+        return []
+    read = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.server_profile),
+                "--json", "releases"])
+    unreadable = "the live release records could not be read (exit %s): %s%s" % (
+        read.returncode, read.stdout[:300], read.stderr[:300])
+    require(read.returncode == 0, unreadable)
+    records = []
+    try:
+        # One page per line; a refused read prints an error, not a page of items.
+        for line in read.stdout.splitlines() or [""]:
+            records.extend(json.loads(line)["items"])
+    except (ValueError, KeyError, TypeError):
+        raise Refused(unreadable)
+    require(all(isinstance(record, dict) and type(record.get("release")) is int and isinstance(record.get("commit"), str)
+                and isinstance(record.get("items"), list) for record in records), unreadable)
+    return sorted(records, key=lambda record: -record["release"])
+
+
+def repo_records(config, sha):
+    """The release records the repository keeps at SHA (tools/pipeline/releases), oldest first."""
+    listed = run(["git", "-C", str(config.live), "ls-tree", "--name-only", sha, releases.KEPT + "/"])
+    require(listed.returncode == 0, "the release records kept at %s could not be listed: %s" % (sha[:12], listed.stderr))
+    kept = []
+    for path in listed.stdout.split():
+        shown = run(["git", "-C", str(config.live), "show", "%s:%s" % (sha, path)])
+        try:
+            record = json.loads(shown.stdout)
+            release_row(record)
+        except (ValueError, Refusal) as error:
+            raise Refused("the kept release record %s is not one: %s" % (path, getattr(error, "message", error)))
+        require(record.get("release"), "the kept release record %s names no release number" % path)
+        kept.append(record)
+    return sorted(kept, key=lambda record: record["release"])
+
+
+def follows(config, commit, head):
+    """Whether commit is head or one of its ancestors in the live checkout; a commit git cannot read stops the deploy."""
+    asked = run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", commit, head])
+    require(asked.returncode in (0, 1), "whether %s comes before %s could not be read (exit %s): %s"
+            % (commit[:12], head[:12], asked.returncode, asked.stderr.strip()[:300]))
+    return asked.returncode == 0
+
+
+def kept_lacked(config, sha, known, head):
+    """The records the repository keeps for this instance that it lacks, oldest first.
+
+    They are this instance's when it records one of them, or, while it records
+    none, when the newest is the live HEAD or one of its ancestors; otherwise
+    they are another instance's. Together with its own they must be one line:
+    consecutive numbers, each commit after the one before, one commit per number."""
+    kept = repo_records(config, sha)
+    recorded = {record["release"]: record for record in known}
+    if known:
+        if not any(recorded.get(record["release"], {}).get("commit") == record["commit"] for record in kept):
+            return []
+    elif not kept or not follows(config, kept[-1]["commit"], head):
+        return []
+    line, lacked = dict(recorded), []
+    for record in kept:
+        held = line.setdefault(record["release"], record)
+        require(held["commit"] == record["commit"], "the repository keeps release %d at %s, but the instance records it "
+                "at %s" % (record["release"], record["commit"][:12], held["commit"][:12]))
+        if record["release"] not in recorded:
+            lacked.append(record)
+    numbers = sorted(line)
+    require(numbers == list(range(numbers[0], numbers[-1] + 1)), "the releases the instance and the repository record are "
+            "numbered %s, not one after another" % ", ".join(str(number) for number in numbers))
+    for record in lacked:
+        for older, newer in ((line.get(record["release"] - 1), record), (record, line.get(record["release"] + 1))):
+            if older is not None and newer is not None:
+                require(follows(config, older["commit"], newer["commit"]),
+                        "release %d at %s does not come after release %d at %s" % (
+                            newer["release"], newer["commit"][:12], older["release"], older["commit"][:12]))
+    return lacked
+
+
+def server_starts(config):
+    """[(commit, time)]: each commit a server run record started, at the first time one did, in the order they started.
+
+    The deploy writes launch.json when it starts a server; a run record without one predates that."""
+    first = collections.OrderedDict()
+    for run_dir in run_dirs(config, "server"):
+        launch = run_dir / "launch.json"
+        if not launch.exists():
+            continue
+        try:
+            started = json.loads(launch.read_text())
+        except (OSError, ValueError) as error:
+            raise Refused("the run record %s could not be read: %s" % (launch, error))
+        require(isinstance(started, dict) and isinstance(started.get("revision"), str) and isinstance(started.get("at"), str),
+                "the run record %s does not say which commit it started and when" % launch)
+        first.setdefault(started["revision"], started["at"])
+    return list(first.items())
+
+
+def went_live(config, latest, head, live_since):
+    """[(commit, time)]: the releases that went live after the latest record without one, oldest first.
+
+    Each commit a server run record started after the latest record's commit is
+    one (a restart at the same commit is not another), at the first time one
+    started it; the live HEAD is the last, at live_since when no run record
+    started it."""
+    if latest["commit"] == head:
+        require(live_since is None, "--live-since names when an unrecorded live commit went live; %s is release %d"
+                % (head[:12], latest["release"]))
+        return []
+    require(follows(config, latest["commit"], head), "the live commit %s does not follow %s, the commit of release %d, "
+            "the latest recorded" % (head[:12], latest["commit"][:12], latest["release"]))
+    found = []
+    for commit, at in server_starts(config):
+        if follows(config, commit, latest["commit"]):
+            continue
+        require(follows(config, latest["commit"], commit) and follows(config, commit, head),
+                "a server run record started %s, which is neither before release %d at %s nor on the way to the live "
+                "commit %s; record the releases since %d by hand (docs/releases.md)"
+                % (commit[:12], latest["release"], latest["commit"][:12], head[:12], latest["release"]))
+        require(not found or follows(config, found[-1][0], commit), "the server run records start %s after %s, which it "
+                "comes before; record the releases since %d by hand (docs/releases.md)"
+                % (commit[:12], found[-1][0][:12] if found else "", latest["release"]))
+        found.append((commit, at))
+    if found and found[-1][0] == head:
+        require(live_since is None, "--live-since is not needed: the live server's run record says %s went live at %s"
+                % (head[:12], found[-1][1]))
+        return found
+    require(live_since, "the live commit %s has no release record (release %d at %s is the latest) and no server run "
+            "record says when it went live; name that time with --live-since, and the deploy records it as release %d "
+            "before this one" % (head[:12], latest["release"], latest["commit"][:12], latest["release"] + len(found) + 1))
+    return found + [(head, live_since)]
+
+
+def shipped_between(config, older, newer):
+    """(items, commits) the Pipeline trailers name from older to newer."""
+    log = run(releases.log_argv(config.live, older, newer))
+    require(log.returncode == 0, "the commits from %s to %s could not be read: %s" % (older, newer, log.stderr))
+    try:
+        return releases.shipped(log.stdout)
+    except releases.Malformed as error:
+        raise Refused(str(error))
+
+
+def release_plan(config, head, sha, summary, number, no_items, live_since=None):
+    """The records this deploy writes once the release is verified: (this release's, those before it, its commits, latest).
+
+    Everything is read now, before anything stops, and each record is checked
+    with this commit's own rules, so the record step cannot refuse it. Those
+    before it are what the system knows and the instance lacks: the records the
+    repository keeps for it (kept_lacked), then one for each commit a server run
+    record started after the latest record (went_live). A deploy of the live
+    commit is a restart: it ships nothing, and has no record of its own (None)."""
+    restart = sha == head
+    items, commits = shipped_between(config, head, sha) if not restart else ([], [])
+    require(items or no_items or restart, "no commit from %s to %s names a pipeline item in a 'Pipeline: N, M' "
+            "trailer; name the items the changes deliver, or pass --no-items for a release that ships none"
+            % (head[:12], sha[:12]))
+    known = live_records(config)
+    before = kept_lacked(config, sha, known, head)
+    line = sorted(known + before, key=lambda each: each["release"])
+    latest = line[-1] if line else None
+    if latest is None:
+        require(live_since is None, "--live-since names when an unrecorded live commit went live; no record places %s"
+                % head[:12])
+    else:
+        for commit, at in went_live(config, latest, head, live_since):
+            missed, _ = shipped_between(config, latest["commit"], commit)
+            latest = {"release": latest["release"] + 1, "commit": commit, "previous": latest["commit"], "items": missed,
+                      "deployed_at": at, "measurements": None, "source": "backfill", "evidence": None}
+            before.append(latest)
+            line.append(latest)
+    if restart:
+        require(number is None, "a deploy of the live commit restarts %s and writes no record of its own; --release "
+                "is not for a restart" % ("release %d" % latest["release"] if latest else "it"))
+        record = None
+    else:
+        if number is None:
+            require(latest is not None, "neither the live instance nor the repository records a release %s follows; "
+                    "name this one's number with --release" % head[:12])
+            number = latest["release"] + 1
+        require(latest is None or number == latest["release"] + 1,
+                "release %d would not follow the latest, %s" % (number, latest and latest["release"]))
+        record = {"release": number, "commit": sha, "previous": head, "items": items,
+                  "measurements": releases.measurements(json.loads(Path(summary).read_text())), "source": "deploy"}
+    planned = line + ([record] if record else [])
+    # A commit is one release, and an item ships in one (the store refuses either again); say so now, before anything stops.
+    release_of = {}
+    for named in planned:
+        require(release_of.setdefault(named["commit"], named["release"]) == named["release"],
+                "%s is release %d and release %d; a commit is one release"
+                % (named["commit"][:12], release_of[named["commit"]], named["release"]))
+    shipped_in = {}
+    for named in planned:
+        for item in named["items"]:
+            require(shipped_in.setdefault(item, named["release"]) == named["release"],
+                    "pipeline item %d shipped in release %d; release %d names it again"
+                    % (item, shipped_in[item], named["release"]))
+    for checked in before + ([dict(record, deployed_at=now(), evidence="/checked")] if record else []):
+        try:
+            release_row(checked)
+        except Refusal as refusal:
+            raise Refused("the release record would be refused: %s" % refusal.message)
+    return record, before, commits, latest
+
+
+def record_commands(config, evidence, records):
+    """Each record written to EVIDENCE as release-N.json, and the admin command that records it."""
+    commands = []
+    for written in records:
+        path = (evidence / ("release-%d.json" % written["release"])).resolve()
+        path.write_text(json.dumps(written, indent=1) + "\n")
+        commands.append([config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "record-release",
+                         "--profile", str(config.server_profile), "--record", str(path)])
+    return commands
+
+
+def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None):
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
     evidence.mkdir(parents=True, exist_ok=True)
     # 0. The release check passed for exactly this commit, or nothing is touched.
@@ -221,8 +451,16 @@ def deploy(config, sha, evidence, summary, dry):
     ff = run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", head, sha]).returncode == 0
     record(evidence, "02-checkout", {"head": head, "target": sha, "tracked_changes": dirty, "fast_forward": ff})
     require(not dirty and ff, "the live checkout has tracked changes or %s is not a fast-forward of %s" % (sha, head))
+    # A release check that did not pass has no counts to record; a dry run stops here and says why.
+    require(not reasons, unchecked)
+    planned, before, commits, latest = release_plan(config, head, sha, summary, number, no_items, live_since)
+    # A restart (planned is None) is of the latest release, when one places the live commit.
+    restart_of = latest["release"] if planned is None and latest else None
+    record(evidence, "02-release", {"record": planned, "before": before, "commits": commits,
+                                    "latest_recorded": latest and latest["release"], "restart_of": restart_of})
+    this = "release %d" % planned["release"] if planned else "the restart of %s" % (
+        "release %d" % restart_of if restart_of else sha[:12])
     if dry:
-        require(not reasons, unchecked)
         return
 
     # 2. Stop the runner, then the server, by captured PID; wait on each exit event. A supervisor
@@ -286,11 +524,36 @@ def deploy(config, sha, evidence, summary, dry):
         boot = urllib.request.urlopen(base + "/api/bootstrap").read().decode()
     except urllib.error.HTTPError as error:
         boot = "%s %s" % (error.code, error.read().decode()[:300])
-    root = urllib.request.urlopen(base + "/").status
+    try:
+        root = urllib.request.urlopen(base + "/").status
+    except urllib.error.HTTPError as error:
+        root = error.code
     cli = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.server_profile), "binding"])
-    record(evidence, "10-verify", {"root_status": root, "bootstrap_head": boot[:600], "cli_exit": cli.returncode,
-                                   "cli": cli.stdout[:600], "cli_err": cli.stderr[:600],
-                                   "server_alive": server.poll() is None, "runner_alive": runner.poll() is None})
+    verified = {"root_status": root, "bootstrap_head": boot[:600], "cli_exit": cli.returncode,
+                "cli": cli.stdout[:600], "cli_err": cli.stderr[:600],
+                "server_alive": server.poll() is None, "runner_alive": runner.poll() is None}
+    record(evidence, "10-verify", verified)
+    # The records, in the order they are written: those before this release, then its own, stamped now.
+    records = before + ([dict(planned, deployed_at=now(), evidence=str(evidence.resolve()))] if planned else [])
+    commands = record_commands(config, evidence, records)
+    later = "; once it works, record it with: %s" % " && ".join(" ".join(argv) for argv in commands) if commands else ""
+    require(root == 200 and cli.returncode == 0 and verified["server_alive"] and verified["runner_alive"],
+            "%s did not verify, so no release record was written: %s. %s is live%s" % (this, verified, sha[:12], later))
+
+    # 8. Record the release in the instance, now that it is verified live; the evidence keeps the same records.
+    writes = []
+    for index, argv in enumerate(commands):
+        wrote = run(argv)
+        writes.append({"release": records[index]["release"], "exit": wrote.returncode, "stdout": wrote.stdout,
+                       "stderr": wrote.stderr})
+        if wrote.returncode != 0:
+            break
+    record(evidence, "11-release", {"records": records, "writes": writes})
+    if writes and writes[-1]["exit"] != 0:
+        failed = writes[-1]
+        raise Refused("%s is live but the record of release %d was not written (%s); write it, and those after it, "
+                      "with: %s" % (this, failed["release"], (failed["stdout"] or failed["stderr"]).strip()[:300],
+                                    " && ".join(" ".join(argv) for argv in commands[len(writes) - 1:])))
 
 
 def main(argv=None):
@@ -300,10 +563,16 @@ def main(argv=None):
     parser.add_argument("--release-check", required=True, type=Path, help="the release check's summary.json")
     parser.add_argument("sha")
     parser.add_argument("evidence", type=Path)
+    parser.add_argument("--release", type=int, help="this release's number; needed only when neither the instance nor "
+                        "the repository records a release the live commit follows")
+    parser.add_argument("--live-since", help="when the unrecorded live commit went live (ISO 8601 with its offset); "
+                        "needed only when its server's run record does not say")
+    parser.add_argument("--no-items", action="store_true", help="the release ships no pipeline item, and says so")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:
-        deploy(load_config(args.config), args.sha, args.evidence, args.release_check, args.dry_run)
+        deploy(load_config(args.config), args.sha, args.evidence, args.release_check, args.dry_run, args.release,
+               args.no_items, args.live_since)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         return 1

@@ -61,6 +61,7 @@ VIEWS = {
     "colors": {"cursor", "limit"},
     "source_topics": {"message_id", "cursor", "limit"},
     "wakes": set(),
+    "releases": {"cursor", "limit"},
 }
 
 

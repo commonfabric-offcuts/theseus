@@ -36,6 +36,7 @@ SCHEMA_18 = (Path(__file__).parent / "fixtures" / "schema_18.sql").read_text().s
 SCHEMA_19 = (Path(__file__).parent / "fixtures" / "schema_19.sql").read_text().splitlines()
 SCHEMA_20 = (Path(__file__).parent / "fixtures" / "schema_20.sql").read_text().splitlines()
 SCHEMA_21 = (Path(__file__).parent / "fixtures" / "schema_21.sql").read_text().splitlines()
+SCHEMA_22 = (Path(__file__).parent / "fixtures" / "schema_22.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -55,6 +56,11 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 23 keeps a record of each release.
+        db.execute("DROP TABLE releases")
+        if version == "22":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 22 counts the wakes each recipient left unanswered, and keeps when the runner stopped.
         db.execute("ALTER TABLE runner_state DROP COLUMN ended_ms")
         db.execute("ALTER TABLE recipient_schedule DROP COLUMN named_seq")
@@ -1548,6 +1554,48 @@ class Schema21Case(MigrationCase):
                          {k: v for k, v in records.items() if k != "metadata"})
 
 
+class Schema22Case(MigrationCase):
+    """A schema-22 instance: version 23 keeps a record of each release."""
+
+    VERSION, FIXTURE = "22", SCHEMA_22
+    RECORD = {"release": 19, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [87],
+              "source": "backfill"}
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "22")
+
+    def test_upgrade_from_22_keeps_records_matches_a_fresh_instance_and_records_releases(self):
+        before = self.records()
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "22", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        fresh = Path(self.temp.name) / "fresh"
+        fresh.mkdir()
+        fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
+        self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertTrue(self.store.record_release(self.RECORD)["recorded"])
+        self.assertEqual([item["release"] for item in self.store.view("owner", "releases", {})["items"]], [19])
+
+    def test_step_back_to_22_restores_its_frozen_layout_while_no_release_is_recorded(self):
+        self.upgrade()
+        records = self.records()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_22))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_refuses_once_a_release_is_recorded(self):
+        self.upgrade()
+        Store(self.path, "test-instance", expected_binding=self.binding).record_release(self.RECORD)
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+        self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -1580,6 +1628,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:
         setattr(Schema21Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema22Case.__dict__:
+        setattr(Schema22Case, _name, None)
 for _name in list(Schema11Case.__dict__):
     if _name.startswith("test_") and _name not in EarlySchema12Case.__dict__:
         setattr(EarlySchema12Case, _name, None)

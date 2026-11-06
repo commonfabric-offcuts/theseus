@@ -152,6 +152,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `read-through TOPIC SEQ` | Sends `topic.read_through`. |
 | `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM (exit 0, even while blocked writing to a reader that is not draining); ends with a refusal when the authority changes, reported with its exit code even if a stop came too. |
 | `retry OPERATION` | Re-sends a saved request unchanged. |
+| `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
 
 Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
 DIR`, default `ACTOR.outbox/` beside the profile) before it is sent, and its

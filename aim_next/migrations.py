@@ -24,6 +24,7 @@ from .memory import MEMORY_READ_DOWN, MEMORY_READ_OCCUPIED, MEMORY_READ_SCHEMA
 from .responsibility import RESPONSIBILITY_DOWN, RESPONSIBILITY_OCCUPIED, RESPONSIBILITY_SCHEMA
 from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
+from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -65,6 +66,8 @@ STEPS = (
      "SELECT (%s) OR (%s)" % (RESPONSIBILITY_OCCUPIED, SOURCE_OCCUPIED)),
     # Version 22 counts the wakes each recipient left unanswered, so a silent agent stops being woken.
     ("21", "22", WAKE_HEALTH_SCHEMA, WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED),
+    # Version 23 keeps a record of each release: its commit, time, pipeline items and measurements.
+    ("22", "23", RELEASE_SCHEMA, RELEASE_DOWN, RELEASE_OCCUPIED),
 )
 
 
