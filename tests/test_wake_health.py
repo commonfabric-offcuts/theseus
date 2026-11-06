@@ -8,7 +8,11 @@ not answering, how much waits for them and since when; or, while no runner is
 sending wakes, that wakes are paused rather than that every agent is silent.
 """
 
+import os
 import unittest
+from unittest import mock
+
+from aim_next import wake_health
 
 from aim_next.wake_health import PARKED_AFTER
 import test_hosted_schedule as hosted_tests
@@ -238,6 +242,33 @@ class PausedWakesCase(hosted_tests.HostedCase):
         # A live runner: nobody is blamed while they are being woken.
         self.runner = self.token(self.hosting)
         self.assertEqual(self.store.view("owner", "wakes", {})["quiet"], [])
+
+
+@own_cases
+class RoutedFirstCase(runner_tests.RunnerCase):
+    """agent-b has a queue route pin here; agent-a, whose id sorts first, has none."""
+
+    def test_agents_without_a_route_here_never_crowd_out_one_that_has(self):
+        home = os.path.realpath(self.temp.name) + "/codex-home"
+        os.mkdir(home)
+        guard = self.guard()
+        pinned = self.store.provision_route_pin(guard, "agent-b", {"kind": "codex-queue-stdio", "protocol_version": 1,
+                                                                   "codex_home": home, "thread_id": hosted_tests.THREAD})
+        self.assertEqual(pinned["status"], "provisioned", pinned)
+        self.command("participation.set", {"actor_id": "agent-b", "present": True}, target={"topic_id": "t1"})
+        self.send_next("For both")
+        # One place on the list: the routed agent takes it, however many unrouted ones sort before it.
+        with mock.patch.object(wake_health, "QUIET_LIMIT", 1):
+            view = self.store.view("owner", "wakes", {})
+        self.assertEqual(view["quiet"], [{"actor_id": "agent-b", "waiting": 1, "why": "wakes_paused"}])
+        self.assertEqual(view["notice"], {"waiting_agents": 1})
+        # With both routed, the one place goes to the first of them.
+        pinned = self.store.provision_route_pin(guard, "agent-a", {"kind": "codex-queue-stdio", "protocol_version": 1,
+                                                                   "codex_home": home, "thread_id": hosted_tests.THREAD[:-1] + "d"})
+        self.assertEqual(pinned["status"], "provisioned", pinned)
+        with mock.patch.object(wake_health, "QUIET_LIMIT", 1):
+            view = self.store.view("owner", "wakes", {})
+        self.assertEqual([item["actor_id"] for item in view["quiet"]], ["agent-a"])
 
 
 if __name__ == "__main__":

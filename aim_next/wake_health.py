@@ -19,7 +19,9 @@ parked, how much waits for them and since when, and whether wakes are going
 out at all.
 """
 
-from .route_pins import _key as _pin_key
+import json
+
+from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 
 
 PARKED_AFTER = 3
@@ -89,18 +91,20 @@ class WakeHealth:
             return {"live": False, "state": "unrenewed", "since_ms": state["lease_until_ms"]}
         return {"live": False, "state": "never_run"}
 
-    def _routed_here(self, db, actor):
-        """Whether this agent has a route pin in this instance: the agents the runner wakes."""
-        binding = {"instance_id": self.instance_id, "actor_id": actor, "db_path": str(self.path),
-                   "authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"]}
-        return db.execute("SELECT 1 FROM metadata WHERE key=?", (_pin_key(binding),)).fetchone() is not None
+    def _routed(self, db):
+        """Whether an agent has a route pin in this instance (the agents the runner wakes), from one read of the pins."""
+        pins = {row[0] for row in db.execute("SELECT key FROM metadata WHERE key>? AND key<?", (_PIN_PREFIX, _PIN_PREFIX[:-1] + ";"))}
+        def routed(actor):
+            return _pin_key({"instance_id": self.instance_id, "actor_id": actor, "db_path": str(self.path),
+                             "authority_id": self.binding["authority_id"], "authority_epoch": self.binding["authority_epoch"]}) in pins
+        return routed
 
     def _view_wakes(self, db, actor, args):
         """Agents whose wakes are not getting through: parked ones, or every woken agent with work while wakes are not going out.
 
-        While wakes are not going out and work waits for a routed agent, a
-        reader who owns an outcome gets a notice: someone has to start the
-        runner again, or see why it stopped."""
+        While wakes are not going out and work waits for a routed agent in an
+        outcome the reader owns, the reader gets a notice: someone has to start
+        the runner again, or see why it stopped."""
         from .delivery import _now_ms
         now = _now_ms()
         runner = self._runner_light(db, now)
@@ -113,12 +117,23 @@ class WakeHealth:
             quiet = [{"actor_id": row["recipient_id"], "waiting": row["pending_count"], "since_ms": row["unanswered_since_ms"],
                       "why": "not_answering"} for row in rows]
         else:
+            # Only routed agents are listed, so the limit counts them alone: unrouted ones never crowd them out.
+            routed = self._routed(db)
             rows = db.execute("SELECT s.recipient_id,s.pending_count FROM recipient_schedule s JOIN actors a ON a.id=s.recipient_id "
-                              "WHERE s.pending_count>0 AND a.kind='agent' AND a.enabled=1 ORDER BY s.recipient_id LIMIT ?",
-                              (QUIET_LIMIT,)).fetchall()
-            quiet = [{"actor_id": row["recipient_id"], "waiting": row["pending_count"], "why": "wakes_paused"}
-                     for row in rows if self._routed_here(db, row["recipient_id"])]
+                              "WHERE s.pending_count>0 AND a.kind='agent' AND a.enabled=1 ORDER BY s.recipient_id")
+            for row in rows:
+                if routed(row["recipient_id"]):
+                    quiet.append({"actor_id": row["recipient_id"], "waiting": row["pending_count"], "why": "wakes_paused"})
+                    if len(quiet) == QUIET_LIMIT:
+                        break
         result = {"instance_id": self.instance_id, "runner": runner, "quiet": quiet}
-        if not live and quiet and db.execute("SELECT 1 FROM workspaces WHERE owner_id=? LIMIT 1", (actor,)).fetchone():
-            result["notice"] = {"waiting_agents": len(quiet)}
+        if not live and quiet:
+            # The reader is told of the agents whose work waits in an outcome the reader owns.
+            owned = db.execute("SELECT count(DISTINCT g.recipient_id) FROM delivery_groups g "
+                               "JOIN deliveries d ON d.group_id=g.id AND d.state='pending' JOIN messages m ON m.id=d.message_id "
+                               "JOIN topics t ON t.id=m.topic_id JOIN workspaces w ON w.id=t.workspace_id "
+                               "WHERE g.recipient_id IN (SELECT value FROM json_each(?)) AND g.active=1 AND g.pending_count>0 AND w.owner_id=?",
+                               (json.dumps([item["actor_id"] for item in quiet]), actor)).fetchone()[0]
+            if owned:
+                result["notice"] = {"waiting_agents": owned}
         return result

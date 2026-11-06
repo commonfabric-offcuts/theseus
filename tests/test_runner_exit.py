@@ -83,6 +83,17 @@ class RunnerExitCase(hosted_tests.HostedCase):
         # Someone who owns no outcome is not told.
         self.assertNotIn("notice", self.wakes("agent-b"))
 
+    def test_only_the_owner_of_an_outcome_where_the_work_waits_is_told(self):
+        # agent-b owns an outcome of its own, where nothing waits for agent-a.
+        created = self.command("workspace.create", {"id": "w-b", "title": "Its own", "purpose": "Elsewhere",
+                                                    "team": ["agent-a"]}, actor="agent-b")
+        self.assertEqual(created["status"], "committed", created)
+        self.send_next("A second for agent-a")
+        self.store.record_runner_exit(os.getpid(), -9)
+        # One agent, however many deliveries wait for it.
+        self.assertEqual(self.wakes()["notice"], {"waiting_agents": 1})
+        self.assertNotIn("notice", self.wakes("agent-b"))
+
     def test_a_runner_that_stopped_renewing_is_said_to_have_stopped_when_its_lease_ended(self):
         lease = self.state()["lease_until_ms"]
         self.now = lease

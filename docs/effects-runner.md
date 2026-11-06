@@ -135,8 +135,10 @@ The `wakes` view carries `runner`: `{live: true}`, or `{live: false, state}`
 with `paused` and its reason, `stopped` or `exited` with `since_ms` (and the
 exit's reason), `unrenewed` with `since_ms` the lease's end, or `never_run`.
 While it is not live and work waits for an agent routed here, a reader who
-owns an outcome also gets `notice: {waiting_agents}`: someone has to start
-the runner again, or see why it stopped. The page says it under its header
+owns an outcome where that work waits also gets `notice: {waiting_agents}`,
+counting the agents with work waiting in the reader's outcomes: someone has to
+start the runner again, or see why it stopped. The list holds routed agents
+only, so agents without a route here never crowd one out of its 100 places. The page says it under its header
 ("Wakes are not going out: the agent runner was killed at 8:23 PM. 2 agents
 have work waiting."), on topic pages and the outcomes page, and drops it on
 the commit that shows a runner holding the role again. Stepping back to version 17 turns a
