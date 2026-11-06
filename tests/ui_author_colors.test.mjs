@@ -34,7 +34,9 @@ const dark = css.slice(css.indexOf('@media(prefers-color-scheme:dark){.agent-'))
 const tokens = (text, selector) => {
   const at = text.indexOf(selector + '{');
   assert.ok(at >= 0, 'aim.css sets ' + selector);
-  return Object.fromEntries([...text.slice(at, text.indexOf('}', at)).matchAll(/--([\w-]+):(#[0-9a-f]{6})/g)].map(m => [m[1], m[2]]));
+  // #fff is #ffffff.
+  const full = hex => hex.length === 4 ? '#' + [...hex.slice(1)].map(c => c + c).join('') : hex;
+  return Object.fromEntries([...text.slice(at, text.indexOf('}', at)).matchAll(/--([\w-]+):(#[0-9a-f]{6}|#[0-9a-f]{3})(?![0-9a-f])/g)].map(m => [m[1], full(m[2])]));
 };
 const luminance = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
   .map(c => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4).reduce((sum, c, i) => sum + c * [0.2126, 0.7152, 0.0722][i], 0);
@@ -78,4 +80,20 @@ test('an agent\'s card is colored across its whole face, never by an edge or bar
   const rules = [...css.matchAll(/[^{}]*agent[^{}]*\{[^{}]*\}/g)].map(m => m[0]);
   assert.ok(rules.length > AGENT_PALETTE.length * 2);
   for (const rule of rules) assert.doesNotMatch(rule, /border-left|border-inline-start|inset|::before|::after|border-color|border-width|outline/, rule);
+});
+
+// The picker's swatches are told apart from the picker by their outline, at
+// 3:1 or better (WCAG 1.4.11), and the chosen one by a ring of its own.
+test('each swatch in the picker is outlined at 3:1 or better against the picker, in light and in dark, and the chosen one is ringed', () => {
+  const rule = selector => { const at = css.indexOf(selector + '{'); assert.ok(at >= 0, 'aim.css sets ' + selector); return css.slice(at, css.indexOf('}', at)); };
+  const themes = { light: tokens(css, ':root'), dark: tokens(css, '@media(prefers-color-scheme:dark){:root') };
+  assert.match(rule('.color-picker'), /background:var\(--panel\)/);
+  for (const selector of ['.color-picker .swatch', '.color-picker .swatch-default']) {
+    const outline = rule(selector).match(/border:2px solid var\(--([\w-]+)\)/)?.[1];
+    assert.ok(outline, selector + ' has an outline');
+    for (const [theme, page] of Object.entries(themes))
+      assert.ok(contrast(page[outline], page.panel) >= 3, `${theme} ${selector}: --${outline} on the picker ${contrast(page[outline], page.panel).toFixed(2)}`);
+  }
+  const chosen = rule('.color-picker .swatch[aria-pressed=true],.color-picker .swatch-default[aria-pressed=true]');
+  assert.match(chosen, /box-shadow:0 0 0 2px var\(--ink\)/, 'the chosen swatch wears a ring outside its outline');
 });
