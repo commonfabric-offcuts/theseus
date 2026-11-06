@@ -979,16 +979,19 @@ try {
         const before = await visible();
         for (const entry of pair) await p.release(entry);
         await settled(p, neighbors);
+        // The verified bytes reached the application's own consumer (the call
+        // settled fulfilled). Since 3270cbe a stale answer is refused before
+        // it becomes an object URL; whatever URL a stale answer made must
+        // never stay readable.
         await p.release(mediaResponse); await settled(p, media);
-        assert.equal(await p.evaluate('fixtureURLs.length'), 1, 'media verification reached the real consumer');
-        const rejectedURL = await p.evaluate('fixtureURLs[0].url');
+        const rejectedURLs = await p.evaluate('fixtureURLs.map(entry=>entry.url)');
         const consumers = { arrows: await arrowState(p),
           images: await p.evaluate('document.querySelectorAll("#source-attachments img").length'),
           downloads: await p.evaluate('document.querySelectorAll("#source-attachments a").length'),
-          urlReadable: await readable(p, rejectedURL) };
-        observations.push({ heldYConsumers: consumers, heldOpen: await callState(p, openingY.id) });
+          readableURLs: (await Promise.all(rejectedURLs.map(url => readable(p, url)))).filter(Boolean).length };
+        observations.push({ heldYConsumers: consumers, rejectedURLs: rejectedURLs.length, heldOpen: await callState(p, openingY.id) });
         assert.equal((await callState(p, openingY.id)).settled, false, 'Y remains held during both X consumer assertions');
-        assert.deepEqual(consumers, { arrows: { previous: true, next: true }, images: 0, downloads: 0, urlReadable: false }, 'held Y rejects both X consumers');
+        assert.deepEqual(consumers, { arrows: { previous: true, next: true }, images: 0, downloads: 0, readableURLs: 0 }, 'held Y rejects both X consumers');
         assert.deepEqual(await visible(), before, 'discarded X results leave writing/source/focus/notice intact');
         await p.point('#toggle-note');
         observations.push({ postCancellationArrows: await arrowState(p) });
@@ -998,7 +1001,7 @@ try {
         await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth>0'), 'fresh X PNG accepted after cancellation');
         const acceptedURL = await p.evaluate(`document.querySelector(${JSON.stringify(imageLink)}).href`);
         assert.equal(await readable(p, acceptedURL), true, 'positive live URL after X restoration');
-        assert.equal(await readable(p, rejectedURL), false, 'earlier rejected URL stays revoked');
+        for (const url of rejectedURLs) assert.equal(await readable(p, url), false, 'earlier rejected URL stays revoked');
         assert.equal((await callState(p, openingY.id)).settled, false, 'old Y stays held while restored X media is accepted');
         await p.release(heldY); await settled(p, openingY);
         assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled Y cannot replace restored X');
@@ -1007,15 +1010,19 @@ try {
       });
 
       await check('correction stale media is discarded and displayed object URLs are revoked', async () => {
-        const p = await page('media-lifetime', null, true); await p.open(0); await observeURLs(p); await arrowReady(p);
+        const p = await page('media-lifetime', null, true); await observeCalls(p); await p.open(0); await observeURLs(p); await arrowReady(p);
         p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
         await openAttachment(p, 'passive.png'); const held = await until(() => p.held[0], 'held media bytes');
+        const media = await started(p, 'media', facts.sources[0]);
         await p.point('#next-message'); await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'new source before old media');
         const before = await p.evaluate("({body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})");
-        await p.release(held); await until(() => p.evaluate('fixtureURLs.length===1'), 'stale verified Blob observed');
-        const discarded = await p.evaluate('fixtureURLs[0].url');
-        assert.equal(await readable(p, discarded), false, 'discarded source URL is revoked');
+        // The stale verified answer reaches the application's consumer; since
+        // 3270cbe it is refused before it becomes an object URL, and any URL a
+        // stale answer made must not stay readable.
+        await p.release(held); await settled(p, media);
+        for (const url of await p.evaluate('fixtureURLs.map(entry=>entry.url)')) assert.equal(await readable(p, url), false, 'discarded source URL is revoked');
         assert.equal(await p.evaluate('document.querySelectorAll("#source-attachments img").length'), 0);
+        assert.equal(await p.evaluate('document.querySelectorAll("#source-attachments a").length'), 0, 'no download is offered for the stale answer');
         assert.deepEqual(await p.evaluate("({body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})"), before);
         await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close Y');
         p.intercept(null); await p.open(0); await openAttachment(p, 'passive.png');
