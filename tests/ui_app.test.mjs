@@ -250,7 +250,8 @@ test('failed explicit close still cancels navigation and permits a fresh step', 
   const put = f.backend.put; t.after(() => { held.release.resolve(); f.backend.put = put; });
   f.backend.put = async () => { throw Error('Injected recovery quota failure'); };
   x.editors.reply.edit({ body: 'Unjournaled X' });
-  await assert.rejects(f.registry.close(x, { explicit: true }), /Injected recovery quota failure/, 'the refusal reaches the person who pressed close');
+  t.mock.method(console, 'warn', () => {});
+  await assert.rejects(f.registry.close(x, { explicit: true }), /^Error: Not closed: this device could not keep your writing\./, 'the refusal reaches the person who pressed close');
   assert.equal(f.registry.current, x); assert.equal(f.registry.pendingOpen, null); assert.deepEqual(f.closed, []);
   assert.match(f.registry.status(x.editors.reply), /Recovery copy unavailable/);
   x.editors.reply.edit({ body: 'Still editable X' });
@@ -404,6 +405,7 @@ test('of two explicit closes refused while preservation fails, only the newer on
   t.after(() => { release.resolve(); f.backend.put = put; });
   f.backend.put = async () => { entered.resolve(); await release.promise; throw Error('Injected recovery quota failure'); };
   x.editors.reply.edit({ body: 'X close local preservation' });
+  t.mock.method(console, 'warn', () => {});
   const first = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
   await entered.promise;
   const second = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
@@ -411,7 +413,7 @@ test('of two explicit closes refused while preservation fails, only the newer on
   assert.equal(f.registry.isWritable(x, x.editors.reply), false, 'typing waits for the newer close');
   release.resolve();
   assert.deepEqual(await first, { value: false }, 'the superseded close stays quiet');
-  assert.match((await second).error?.message ?? '', /Injected recovery quota failure/, 'the newer close says why');
+  assert.match((await second).error?.message ?? '', /^Not closed: this device could not keep your writing\./, 'the newer close says why');
   assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
   assert.equal(f.registry.isWritable(x, x.editors.reply), true, 'the Reader takes typing again');
 });
@@ -478,8 +480,12 @@ test('a Close whose device save fails says so plainly, and the Reader takes typi
   await entered.promise;
   assert.equal(f.registry.isWritable(x, reply), false, 'typing waits for the close');
   release.resolve();
+  const warned = t.mock.method(console, 'warn', () => {});
   const { error } = await closing;
-  assert.equal(error?.message, 'Not closed: this device could not keep your writing (Injected recovery quota failure). It stays here; keep this page open.');
+  assert.equal(error?.message, 'Not closed: this device could not keep your writing. It stays here; keep this page open.',
+    'plain words on screen, without the device\'s own error');
+  assert.ok(warned.mock.calls.some(call => call.arguments.some(value => value?.message === 'Injected recovery quota failure')),
+    'the device\'s own error goes to the console');
   assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
   assert.equal(f.registry.isWritable(x, reply), true, 'the Reader takes typing again');
   assert.equal(f.registry.isCurrent(x, reply), true, 'and its acts');

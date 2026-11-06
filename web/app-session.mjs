@@ -321,11 +321,12 @@ export class EditorRegistry {
     } finally { if (this.closing === stop) this.closing = null; this.activity(); }
   }
 
-  // A device save that failed is said in plain words; the image refusal
-  // already is.
+  // A device save that failed is said in plain words, and the device's own
+  // error goes to the console; the image refusal already is plain.
   closeRefusal(error) {
     if (error instanceof ImageHeld) return error;
-    return Error(`Not closed: this device could not keep your writing (${error.message}). It stays here; keep this page open.`);
+    console.warn('Close: this device could not keep the writing', error);
+    return Error('Not closed: this device could not keep your writing. It stays here; keep this page open.');
   }
 
   setMode(mode) {

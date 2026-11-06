@@ -1157,7 +1157,7 @@ try {
         await p.evaluate(`(()=>{window.fixtureTransaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Fixture quota failure','QuotaExceededError');return fixtureTransaction.apply(this,args)}})()`);
         await replace(p, 'Failed close remains editable'); await p.point('#reader-close');
         await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Recovery copy unavailable")'), 'visible local preservation failure');
-        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Not closed: this device could not keep your writing (Fixture quota failure). It stays here; keep this page open."'), 'the refused close says why');
+        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Not closed: this device could not keep your writing. It stays here; keep this page open."'), 'the refused close says why');
         assert.equal(await p.evaluate('document.querySelector("#reader").open'), true);
         assert.equal(await field(p), 'Failed close remains editable');
         await p.release(held);
