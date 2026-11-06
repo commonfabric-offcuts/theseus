@@ -36,12 +36,12 @@ test('the page reads every page of the reader\'s choices, and again when it is s
   let painted = 0; colors.listen(() => painted++);
   await colors.load();
   assert.deepEqual(calls.map(c => c.args), [{ limit: 100 }, { limit: 100, cursor: 'aim-core' }]);
-  assert.deepEqual([colors.color('aim-core'), colors.color('fable'), colors.color('warp')], ['orchid', 'green', 'peach'], 'a reset choice is the agent\'s own');
+  assert.deepEqual([colors.color('aim-core'), colors.color('fable'), colors.color('warp')], ['orchid', 'green', 'cyan'], 'a reset choice is the agent\'s own');
   assert.deepEqual([colors.chosen('aim-core'), colors.chosen('fable')], ['orchid', null]);
   assert.equal(painted, 1);
   listeners.focus(); await colors.loading;
   assert.equal(colors.color('fable'), 'peach', 'a choice made on another device is there when the page is focused');
-  assert.equal(colors.color('aim-core'), 'cyan', 'a choice reset elsewhere is the agent\'s own again');
+  assert.equal(colors.color('aim-core'), 'peach', 'a choice reset elsewhere is the agent\'s own again');
 });
 
 test('a read the person waits on is a foreground read; a read on focus is background, unless a foreground one is asked meanwhile', async () => {
@@ -292,7 +292,7 @@ test('the picker is a labelled popover of the palette and the agent\'s own color
   assert.deepEqual(p.root.style, { position: 'fixed', top: '104px', left: '40px' }, 'just below its name');
   // A name near the bottom of the window: the picker opens above it.
   const low = new El(doc, 'button'); low.getBoundingClientRect = () => ({ left: 900, top: 700, bottom: 720 }); doc.body.append(low);
-  const lifted = openColorPicker({ anchor: low, agent: 'warp', palette: AGENT_PALETTE, chosen: null, own: 'peach', choose: async () => ({}), doc, win: { innerWidth: 1000, innerHeight: 760 } });
+  const lifted = openColorPicker({ anchor: low, agent: 'warp', palette: AGENT_PALETTE, chosen: null, own: 'cyan', choose: async () => ({}), doc, win: { innerWidth: 1000, innerHeight: 760 } });
   assert.deepEqual(lifted.root.style, { position: 'fixed', top: '546px', left: '792px' }, 'above its name, and inside the window');
   assert.notEqual(anchor, doc.activeElement);
 });
@@ -364,7 +364,7 @@ test('closing gives the focus to what the opener named, such as the card a name 
     addEventListener(name, fn) { this.handlers[name] = fn; }, removeEventListener() {} };
   doc.body = new El(doc, 'body');
   const card = new El(doc, 'button'), name = new El(doc, 'span'); doc.body.append(card); card.append(name);
-  const p = openColorPicker({ anchor: name, back: card, agent: 'warp', palette: AGENT_PALETTE, chosen: null, own: 'peach', choose: async () => ({}), doc, win: {} });
+  const p = openColorPicker({ anchor: name, back: card, agent: 'warp', palette: AGENT_PALETTE, chosen: null, own: 'cyan', choose: async () => ({}), doc, win: {} });
   p.root.handlers.keydown({ key: 'Escape', preventDefault() {} });
   assert.equal(doc.activeElement, card);
 });

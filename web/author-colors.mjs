@@ -4,7 +4,7 @@
 // Fable's green is the color its cards already had (the live --soft); orchid
 // is no one's by default, and anyone can be given it.
 export const AGENT_PALETTE = ['green', 'blue', 'indigo', 'violet', 'orchid', 'rose', 'peach', 'cyan', 'olive'];
-const KNOWN = { 'aim-lead': 'blue', 'aim-ux': 'violet', fable: 'green', 'aim-core': 'cyan', 'aim-spec': 'rose', warp: 'peach' };
+const KNOWN = { 'aim-lead': 'blue', 'aim-ux': 'violet', fable: 'green', 'aim-core': 'peach', 'aim-spec': 'rose', warp: 'cyan' };
 const OTHERS = ['indigo', 'olive'];
 
 // Any other agent: FNV-1a over its id's UTF-8 bytes picks indigo or olive,

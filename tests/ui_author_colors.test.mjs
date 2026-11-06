@@ -6,8 +6,10 @@ import { readFileSync } from 'node:fs';
 import { AGENT_PALETTE, agentColor, cardClass, paneClass } from '../web/author-colors.mjs';
 
 test('the team\'s agents have fixed colors, and any other agent always gets the same one', () => {
+  // aim-core is peach and warp cyan: aim-core's cyan card sat 4.1 (CIEDE2000)
+  // from Fable's green and 3.2 from aim-lead's blue in light (warp, item 91).
   assert.deepEqual(['aim-lead', 'aim-ux', 'fable', 'aim-core', 'aim-spec', 'warp'].map(agentColor),
-    ['blue', 'violet', 'green', 'cyan', 'rose', 'peach']);
+    ['blue', 'violet', 'green', 'peach', 'rose', 'cyan']);
   // FNV-1a over the UTF-8 bytes, worked out separately, picks between the
   // colors no team agent has, so no other agent is mistaken for one of them.
   assert.deepEqual(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent', 'weft', 'og', 'networking', 'aim-next-agent'].map(agentColor),
