@@ -106,7 +106,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
   vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, openSource, retrySource, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
-    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; },
+    inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
     get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail}; } };`, context);
@@ -986,6 +986,20 @@ test('a reply to someone else\'s message in this topic is offered to its author,
   assert.deepEqual(offered(message('fable'), reply(), { sourceUnavailable: true }), [], 'not for a source that could not be read');
   const kept = reply(); kept.offered = [];
   assert.deepEqual(offered(message('fable'), kept), [], 'an offer the person declined is not made again');
+});
+
+test('a reply is offered only to an author a message would reach', () => {
+  const f = fixture();
+  const offers = [];
+  const reply = () => ({ context: { topicId: 't1' }, offerAddressees(names) { this.offered = names; offers.push(names.join(',')); } });
+  const offered = author => { offers.length = 0; f.offerAuthor({ source: { source_ref: { kind: 'message', id: 'm1' }, topic_id: 't1', author }, editors: { reply: reply() } }); return [...offers]; };
+  f.views.participants = [{ actor_id: 'fixture-person', enabled: true }, { actor_id: 'fable', enabled: true }, { actor_id: 'idle', enabled: false }];
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.inline, topic: f.topic, views: f.views, freshness: f.fresh,
+    outcomeMembers: [{ actor_id: 'fixture-person' }, { actor_id: 'teammate' }] });
+  assert.deepEqual(offered('fable'), ['fable'], 'a participant');
+  assert.deepEqual(offered('teammate'), ['teammate'], 'a member of the outcome\'s team, who can see the topic');
+  assert.deepEqual(offered('idle'), [], 'a switched-off author would make the reply refused');
+  assert.deepEqual(offered('gone'), [], 'nor one who left the topic and is not on the team');
 });
 
 // Every element under a node; text children are skipped.

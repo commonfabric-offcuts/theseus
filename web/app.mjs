@@ -389,11 +389,14 @@ async function present(presentation) {
   sourceAttachments(presentation);
 }
 // A reply to someone else's message in this topic goes to its author unless
-// the person removes them; the offer is made once for each reply editor.
+// the person removes them; the offer is made once for each reply editor, and
+// not to an author the reply would not reach (switched off, or gone from the
+// topic and its outcome's team), whose name would make the send refused.
 function offerAuthor(presentation) {
   const source = presentation.source, reply = presentation.editors.reply;
   if (presentation.sourceUnavailable || reply.offered !== undefined || source.source_ref.kind !== 'message' ||
-      source.topic_id !== reply.context.topicId || !source.author || source.author === bootstrap.actor) return;
+      source.topic_id !== reply.context.topicId || !source.author || source.author === bootstrap.actor ||
+      recipientReach(source.author)?.reachable === false) return;
   reply.offerAddressees([source.author]);
 }
 // A checked page of saved copies: the first page replaces what was listed,
