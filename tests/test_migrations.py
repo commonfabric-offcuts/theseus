@@ -1625,8 +1625,12 @@ class Schema23Case(MigrationCase):
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, "23")
 
-    def written_at_23(self):
-        """agent-b posts, then agent-a, then the owner twice; agent-b takes a turn that completes and one that fails, then agent-a one."""
+    TURNS = (("a1", "agent-b", 100, "completed", 200), ("a2", "agent-b", 250, "failed", 260), ("a3", "agent-a", 280, "completed", 300))
+
+    def written_at_23(self, turns=TURNS):
+        """agent-b posts, then agent-a, then the owner twice; then the hosted turns, by default agent-b's
+        that completes and one that fails, then agent-a's. Each turn is (attempt, recipient, handed, status,
+        finished), its times after the last message."""
         with sqlite3.connect(str(self.path)) as db:
             base = db.execute("SELECT max(sent_ms) FROM messages").fetchone()[0]
             for key, author, ms in (("m-agent-b", "agent-b", base + 5), ("m-agent", "agent-a", base + 10),
@@ -1634,11 +1638,9 @@ class Schema23Case(MigrationCase):
                 db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,sent_ms) "
                            "VALUES (?,'t1',?,'Body','[]','[]','[]',?,?)", (key, author, "op-" + key, ms))
             db.execute("UPDATE topic_summaries SET message_count=message_count+4,latest_message_id='m-own-2' WHERE topic_id='t1'")
-            for attempt, recipient, handed, status, finished in (("a1", "agent-b", base + 100, "completed", base + 200),
-                                                                ("a2", "agent-b", base + 250, "failed", base + 260),
-                                                                ("a3", "agent-a", base + 280, "completed", base + 300)):
+            for attempt, recipient, handed, status, finished in turns:
                 db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,finished_ms) "
-                           "VALUES (?,?,'thread','turn-'||?,'start','theseus:'||?,1,?,?,?)", (attempt, recipient, attempt, attempt, handed, status, finished))
+                           "VALUES (?,?,'thread','turn-'||?,'start','theseus:'||?,1,?,?,?)", (attempt, recipient, attempt, attempt, base + handed, status, base + finished))
                 db.execute("INSERT INTO hosted_turn_topics VALUES (?,'t1')", (attempt,))
             db.execute("INSERT INTO topic_turns VALUES ('t1',?,'agent-a')", (base + 300,))
         return base
@@ -1663,6 +1665,12 @@ class Schema23Case(MigrationCase):
             return work["seen_ms"], work["by"], work["how"]
         self.assertEqual(seen("owner"), (base + 300, "agent-a", "turn"))
         self.assertEqual(seen("agent-a"), (base + 250, "agent-b", "turn"))
+
+    def test_upgrade_counts_a_completed_turn_by_someone_else_from_when_it_ended(self):
+        # agent-b's only turn was handed at 100 and completed at 200, behind agent-a's.
+        base = self.written_at_23(turns=(("a1", "agent-b", 100, "completed", 200), ("a3", "agent-a", 280, "completed", 300)))
+        self.upgrade()
+        self.assertEqual(self.sql("SELECT other_ms,other_by FROM topic_turns WHERE topic_id='t1'"), [(base + 200, "agent-b")])
 
     def test_step_back_to_23_restores_its_frozen_layout_with_activity_recorded(self):
         self.written_at_23()
