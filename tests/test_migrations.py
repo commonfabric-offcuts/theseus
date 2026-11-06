@@ -921,10 +921,10 @@ class Schema12Case(MigrationCase):
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, "12")
 
-    def mark(self, marked, revision):
+    def mark(self, marked, revision, actor="owner"):
         message = self.sql("SELECT id FROM messages ORDER BY seq LIMIT 1")[0][0]
         return self.command("message.mark", {"marked": marked}, target={"message_id": message},
-                            expected={"mark_revision": revision})
+                            expected={"mark_revision": revision}, actor=actor)
 
     def test_upgrade_from_12_keeps_records_matches_a_fresh_instance_and_marks(self):
         before = self.records()
@@ -936,8 +936,9 @@ class Schema12Case(MigrationCase):
         fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
         self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        self.assertEqual(self.mark(True, 0)["result"]["mark_revision"], 1)
-        self.assertEqual(self.store.view("owner", "attention", {})["unread"], 1)
+        # The one message is the owner's, and a mark on your own counts nowhere: agent-b marks it.
+        self.assertEqual(self.mark(True, 0, actor="agent-b")["result"]["mark_revision"], 1)
+        self.assertEqual(self.store.view("agent-b", "attention", {})["unread"], 1)
 
     def test_step_back_to_12_restores_its_frozen_layout_while_no_mark_exists(self):
         self.upgrade()
