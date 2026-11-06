@@ -189,6 +189,22 @@ test('the picker frames each choice lightly, and the current one alone in ink wi
   }
 });
 
+// Default is one more choice, as wide as its words: a bar across the picker
+// read as a confirm button before any choice (warp, item 91b). It sits in the
+// picker's own flow, after the swatches, so only a width rule could stretch it.
+test('Default is only as wide as its words, never a bar across the picker', () => {
+  const rules = [...css.matchAll(/([^{}]*)\{([^{}]*)\}/g)]
+    .filter(([, selector]) => /\.color-picker\s+(button|\.swatch-default|>\s*\*)|\.color-picker\s*>\s*button/.test(selector) && !/:hover|\[aria-pressed|::before/.test(selector));
+  assert.ok(rules.some(([selector]) => selector.includes('.swatch-default')), 'aim.css styles Default');
+  for (const [, selector, body] of rules) {
+    for (const [, property, value] of body.matchAll(/([\w-]+)\s*:\s*([^;]+)/g)) {
+      if (/^(width|inline-size)$/.test(property))
+        assert.match(value.trim(), /^(auto|max-content|fit-content|min-content)$/, `${selector.trim()} ${property}:${value}: as wide as its words`);
+      assert.doesNotMatch(property, /^(min-width|min-inline-size|flex|flex-grow|grid-column|justify-self|align-self)$/, `${selector.trim()} ${property}:${value} could stretch Default`);
+    }
+  }
+});
+
 // Each swatch shows its color as the agent's name tag wears it, the strongest
 // the palette paints for that hue, on the picker's own background, with the
 // color's name under it in words that keep 4.5:1 (WCAG AA), in light and dark.
