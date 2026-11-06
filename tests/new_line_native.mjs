@@ -56,7 +56,7 @@ export async function newLineCheck({ check, page, until, view, control, shot, ob
       assert.ok(shown.top >= 0 && shown.bottom <= shown.height, theme + ': and it is in view');
       await shot(p, 'new-line-' + theme + '-top-arrival');
       // Further down: the card in view holds still while another arrives.
-      await p.evaluate(`document.querySelector('#messages [data-id="${newest}"]').nextElementSibling.scrollIntoView({block:'start'}); scrollBy(0,-20)`);
+      await p.evaluate(`(()=>{document.querySelector('#messages [data-id="${newest}"]').nextElementSibling.scrollIntoView({block:'start'});scrollBy(0,-20)})()`);
       const held = await p.evaluate(`(()=>{const c=[...document.querySelectorAll('#messages .message-card')].find(e=>{const r=e.getBoundingClientRect();return r.bottom>0&&r.top<innerHeight});return {id:c.dataset.id,top:c.getBoundingClientRect().top}})()`);
       const later = (await control({ method: 'agent_message', operation_id: 'new-line-down-' + theme, body: 'Arriving while the person reads further down.' })).result.message_id;
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${later}"]'))`), theme + ': later arrival drawn');
