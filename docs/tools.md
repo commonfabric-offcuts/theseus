@@ -47,3 +47,25 @@ Chrome for Testing comes from `--chrome`, else `AIM_CHROME_FOR_TESTING`, else th
 `--out/summary.json` records the commit, every step's command, exit, counts and log, and whether the checkout was still at that commit and unchanged afterwards. `passed` is true only when every step passed and the checkout did not change. A refused run writes a summary with `refused` and `passed: false`.
 
 For development, `tools/native.py --out DIR STEP [CASE_FILTER]` runs one native step (`journal`, `live`, `colors`, `openings`, `reader-keyboard`, ...) and lists each failed case with its most common failure kinds.
+
+## Deploy: `tools/deploy.py`
+
+```sh
+tools/deploy.py --config INSTANCE/deploy.json SHA EVIDENCE_DIR [--dry-run]
+```
+
+The deploy stops the instance's runner and then its server, by the PIDs their own run records captured, waiting on each exit. It backs up the database with the code that wrote it, fast-forwards the live checkout to `SHA`, runs `bin/aim-next-admin migrate`, restarts the server and waits for its ready line, restarts the runner and waits for it to acquire its guard, and then checks the reader, `/api/bootstrap` and the CLI. Each step writes `NN-step.json` into `EVIDENCE_DIR`, and the first failure stops the run (exit 1, `refused: <why>`). It refuses before stopping anything when the live processes are not exactly one server and at most one runner, matching their run records, or when the live checkout has tracked changes or `SHA` is not a fast-forward of its HEAD. It also stops after the stop step if the runner did not end with `"status": "stopped"`: a paused runner needs a deliberate resume. `--dry-run` writes `00-plan`, `01-live` and `02-checkout` and changes nothing.
+
+The config is a JSON object. Paths for profiles and routes are relative to `instance` unless absolute:
+
+| key | meaning |
+| --- | --- |
+| `live` | absolute path of the live checkout the server and runner run from |
+| `instance` | absolute instance directory, holding `data.sqlite3`, `run-server-NN/`, `run-runner-NN/` and `backups/` |
+| `server_profile` | the server's profile; the backup, migration and CLI check use it too |
+| `port` | the server's loopback port |
+| `tailnet_origin` | optional; passed to the server as `--tailnet-origin` |
+| `runner_profile`, `runner_id`, `routes` | the runner's profile, `--runner-id` and routes file |
+| `python` | optional; absolute interpreter, default `/usr/bin/python3` |
+
+An unknown or missing key is refused. Keep the live config beside the instance it describes, not in the repository.

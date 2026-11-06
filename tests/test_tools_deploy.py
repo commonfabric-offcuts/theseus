@@ -1,0 +1,192 @@
+from __future__ import annotations
+
+import io
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from unittest import mock
+
+from tools import deploy
+
+SHA = "c" * 40
+HEAD = "b" * 40
+
+
+class FakeHost:
+    """Answers the deploy's ps and git calls from a table and records every call; nothing real runs."""
+
+    def __init__(self, config, servers=(111,), runners=(222,), dirty="", ff=True, backup=0, merge=0, migrate=0):
+        self.config, self.calls = config, []
+        self.servers, self.runners = list(servers), list(runners)
+        self.dirty, self.ff, self.backup, self.merge, self.migrate = dirty, ff, backup, merge, migrate
+
+    def __call__(self, argv, **kw):
+        self.calls.append(argv)
+        out, code = "", 0
+        if argv[:2] == ["ps", "-axo"]:
+            server = " ".join(deploy.server_argv(self.config))
+            runner = " ".join(deploy.runner_argv(self.config))
+            out = "".join("%d %s\n" % (pid, server) for pid in self.servers)
+            out += "".join("%d %s\n" % (pid, runner) for pid in self.runners)
+            out += "333 /usr/bin/python3 -I unrelated\n"
+        elif argv[:2] == ["ps", "-o"]:
+            out = "Thu Nov  5 15:02:31 2026     process %s" % argv[-1]
+        elif argv[0] == "git" and "rev-parse" in argv:
+            out = HEAD + "\n"
+        elif argv[0] == "git" and "status" in argv:
+            out = self.dirty
+        elif argv[0] == "git" and "merge-base" in argv:
+            code = 0 if self.ff else 1
+        elif argv[0] == "git" and "merge" in argv:
+            code = self.merge
+        elif "-c" in argv:
+            code = self.backup
+        elif "migrate" in argv:
+            code = self.migrate
+        else:
+            raise AssertionError("unexpected command %r" % argv)
+        return subprocess.CompletedProcess(argv, code, out, "")
+
+    def ran(self, word):
+        return [argv for argv in self.calls if word in argv]
+
+
+class DeployCase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.instance = base / "instance"
+        for name, pid, last in (("run-server-03", 111, None), ("run-runner-01", 9, None), ("run-runner-02", 222, '{"status": "stopped"}')):
+            (self.instance / name).mkdir(parents=True)
+            (self.instance / name / "pid.json").write_text(json.dumps({"pid": pid}))
+            if last:
+                (self.instance / name / "stdout.log").write_text('{"event": "acquired"}\n' + last + "\n")
+        (self.instance / "tony.profile.json").write_text(json.dumps({"instance_id": "i-1"}))
+        self.raw = {"live": str(base / "live"), "instance": str(self.instance), "server_profile": "tony.profile.json",
+                    "port": 5192, "tailnet_origin": "https://host.example:5192", "runner_profile": "agent.profile.json",
+                    "runner_id": "runner-01", "routes": "routes.json"}
+        self.config_path = base / "deploy.json"
+        self.config_path.write_text(json.dumps(self.raw))
+        self.config = deploy.load_config(self.config_path)
+        self.evidence = base / "evidence"
+        self.kills = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def deploy(self, host, dry=False, sha=SHA):
+        with mock.patch.object(deploy, "run", host), \
+                mock.patch.object(deploy.os, "kill", lambda pid, sig: self.kills.append((pid, sig))), \
+                mock.patch.object(deploy, "wait_exit", return_value="exited"), \
+                mock.patch.object(deploy, "start", side_effect=AssertionError("must not start a process")), \
+                redirect_stdout(io.StringIO()):
+            deploy.deploy(self.config, sha, self.evidence, dry)
+
+    def refused(self, host, dry=False, sha=SHA):
+        with self.assertRaises(deploy.Refused) as caught:
+            self.deploy(host, dry, sha)
+        return str(caught.exception)
+
+    def records(self):
+        return sorted(path.stem for path in self.evidence.glob("*.json"))
+
+
+class Config(DeployCase):
+    def test_the_config_names_every_machine_path_and_the_argv_is_built_from_it(self):
+        base = Path(self.raw["live"])
+        self.assertEqual(deploy.server_argv(self.config), [
+            "/usr/bin/python3", "-I", str(base / "bin/aim-next-server"), "--profile", str(self.instance / "tony.profile.json"),
+            "--port", "5192", "--tailnet-origin", "https://host.example:5192"])
+        self.assertEqual(deploy.runner_argv(self.config), [
+            "/usr/bin/python3", "-I", str(base / "bin/aim-next-runner"), "--profile", str(self.instance / "agent.profile.json"),
+            "--runner-id", "runner-01", "--routes", str(self.instance / "routes.json")])
+        del self.raw["tailnet_origin"]
+        self.raw.update(python="/opt/python3", routes="/elsewhere/routes.json")
+        self.config_path.write_text(json.dumps(self.raw))
+        config = deploy.load_config(self.config_path)
+        self.assertEqual(deploy.server_argv(config)[-2:], ["--port", "5192"])
+        self.assertEqual(deploy.runner_argv(config)[0], "/opt/python3")
+        self.assertEqual(deploy.runner_argv(config)[-1], "/elsewhere/routes.json")
+
+    def test_a_malformed_config_is_refused(self):
+        for change in ({"port": "5192"}, {"port": 0}, {"live": "relative/live"}, {"python": "python3"},
+                       {"runner_id": ""}, {"extra": 1}):
+            with self.subTest(change):
+                raw = dict(self.raw, **change)
+                self.config_path.write_text(json.dumps(raw))
+                with self.assertRaises(deploy.Refused):
+                    deploy.load_config(self.config_path)
+        for key in deploy.REQUIRED_KEYS:
+            with self.subTest(missing=key):
+                self.config_path.write_text(json.dumps({k: v for k, v in self.raw.items() if k != key}))
+                with self.assertRaises(deploy.Refused):
+                    deploy.load_config(self.config_path)
+        self.config_path.write_text("[]")
+        with self.assertRaises(deploy.Refused):
+            deploy.load_config(self.config_path)
+        with self.assertRaises(deploy.Refused):
+            deploy.load_config(self.config_path.with_name("absent.json"))
+
+
+class Refusals(DeployCase):
+    def test_a_dry_run_reads_and_records_the_plan_and_changes_nothing(self):
+        host = FakeHost(self.config)
+        self.deploy(host, dry=True)
+        self.assertEqual(self.records(), ["00-plan", "01-live", "02-checkout"])
+        self.assertEqual(self.kills, [])
+        self.assertEqual(host.ran("merge") + host.ran("migrate") + host.ran("-c"), [])
+        live = json.loads((self.evidence / "01-live.json").read_text())
+        self.assertEqual([pid for pid, _ in live["server"]], [111])
+        self.assertEqual([pid for pid, _ in live["runner"]], [222])
+
+    def test_unexpected_live_processes_are_refused_before_anything_stops(self):
+        for host, reason in ((FakeHost(self.config, servers=()), "expected one server"),
+                             (FakeHost(self.config, servers=(111, 112)), "expected one server"),
+                             (FakeHost(self.config, runners=(222, 223)), "expected one server"),
+                             (FakeHost(self.config, servers=(110,)), "not the ones their run records started"),
+                             (FakeHost(self.config, runners=(221,)), "not the ones their run records started")):
+            with self.subTest(reason=reason, servers=host.servers, runners=host.runners):
+                self.assertIn(reason, self.refused(host))
+                self.assertEqual(self.kills, [])
+
+    def test_a_dirty_or_diverged_live_checkout_is_refused_before_anything_stops(self):
+        for host in (FakeHost(self.config, dirty=" M aim_next/store.py\n"), FakeHost(self.config, ff=False)):
+            self.assertIn("fast-forward", self.refused(host))
+            self.assertEqual(self.kills, [])
+            self.assertEqual(json.loads((self.evidence / "02-checkout.json").read_text())["target"], SHA)
+
+    def test_a_runner_that_did_not_stop_cleanly_stops_the_deploy_before_the_backup(self):
+        (self.instance / "run-runner-02" / "stdout.log").write_text('{"status": "paused"}\n')
+        host = FakeHost(self.config)
+        self.assertIn("did not stop cleanly", self.refused(host))
+        self.assertEqual(self.kills, [(222, 15), (111, 15)])
+        self.assertEqual(host.ran("-c"), [])
+
+    def test_a_failed_backup_stops_before_the_fast_forward(self):
+        host = FakeHost(self.config, backup=1)
+        self.assertIn("backup failed", self.refused(host))
+        self.assertEqual([argv for argv in host.ran("merge") if "--ff-only" in argv], [])
+
+    def test_a_failed_fast_forward_or_migration_stops_before_any_restart(self):
+        host = FakeHost(self.config, merge=1)
+        self.assertIn("fast-forward failed", self.refused(host))
+        self.assertEqual(host.ran("migrate"), [])
+        host = FakeHost(self.config, migrate=1)
+        self.assertIn("migration failed", self.refused(host))
+        migrate = host.ran("migrate")[0]
+        self.assertEqual(migrate[migrate.index("--db") + 1], str(self.instance / "data.sqlite3"))
+        self.assertEqual(migrate[migrate.index("--instance") + 1], "i-1")
+
+    def test_main_exits_one_on_a_refusal(self):
+        host = FakeHost(self.config, ff=False)
+        with mock.patch.object(deploy, "run", host), redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+            code = deploy.main(["--config", str(self.config_path), SHA, str(self.evidence), "--dry-run"])
+        self.assertEqual(code, 1)
+        self.assertIn("refused:", err.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()
