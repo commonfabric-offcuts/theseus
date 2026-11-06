@@ -13,6 +13,11 @@ const same = (a, b) => {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every(key => Object.hasOwn(b, key) && same(a[key], b[key]));
 };
+// The refusal while an image is being chosen or kept: it is already in plain
+// words, unlike a device save that failed.
+class ImageHeld extends Error {
+  constructor() { super('Keep this page open until the selected image is saved or removed.'); }
+}
 const realTimers = { setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout: id => clearTimeout(id), now: () => Date.now() };
 const pairedReads = async reads => {
   const settled = await Promise.allSettled(reads);
@@ -169,7 +174,7 @@ export class EditorRegistry {
     await Promise.all(editors.filter(editor => uploadWork(editor) || editor.localVersion > 0 ||
       editor.submissions.length || this.sessionFor(editor).attempts.length).map(editor => this.persistLocal(editor)));
     if (editors.some(editor => editor.imageBusy || editor.imageReservation ||
-        editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw Error('Keep this page open until the selected image is saved or removed.');
+        editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)))) throw new ImageHeld();
   }
 
   async open(sourceRef, { topicId, opener } = {}) {
@@ -287,6 +292,12 @@ export class EditorRegistry {
     }
     const requestGeneration = this.generation;
     if (!this.isCurrent(presentation)) return false;
+    // An image the person is choosing is theirs to finish: Close is refused at
+    // once, so the choice is not stopped and dropped by the close.
+    if (Object.values(presentation.editors).some(editor => editor.imageReservation)) {
+      if (explicit) throw new ImageHeld();
+      return false;
+    }
     // Everything that can take this presentation out of front moves the
     // generation (an open, a mode change, another close, disposal), so while
     // it is unchanged the presentation is still current.

@@ -5,6 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { readFile } from 'node:fs/promises';
 import { Api } from '../web/api.mjs';
 import { RecoveryJournal } from '../web/journal.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
@@ -205,6 +206,28 @@ test('an explicit close refused while an image is being kept says why, and an au
   uploads.cancel(token);
   assert.equal(await f.registry.close(x, { explicit: true }), true);
   assert.deepEqual(f.closed, [x]);
+});
+
+// An image the person is choosing when they press × is theirs: Close is
+// refused at once, as it is when the image is still being kept, and the file
+// they pick joins the reply instead of expiring under a Reader that closes.
+test('Close pressed while an image is being chosen is refused, and the chosen image joins the reply', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply, uploads = f.registry.sessionFor(reply).uploads;
+  const put = f.backend.put, release = deferred(), image = await fixtureImage();
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  reply.edit({ body: 'Writing beside the image' });
+  const token = uploads.reserve(x);
+  let first = true;
+  f.backend.put = async row => { if (first) { first = false; await release.promise; } return put(row); };
+  const closing = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error: error.message }));
+  const chosen = uploads.choose(token, image).then(value => ({ value }), error => ({ error: error.message }));
+  release.resolve();
+  assert.deepEqual(await closing, { error: 'Keep this page open until the selected image is saved or removed.' });
+  const picked = await chosen;
+  assert.equal(picked.error, undefined, 'the chosen image is not refused');
+  assert.deepEqual(uploads.current().map(entry => entry.selection_id), [picked.value]);
+  assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+  assert.equal(f.registry.isWritable(x, reply), true, 'the Reader takes typing');
 });
 
 test('failed explicit close still cancels navigation and permits a fresh step', async t => {
@@ -622,6 +645,8 @@ async function fixture(t, options = {}) {
   const state = index => api.view('editor_state', { source_ref: facts.sources[index], topic_id: facts.topic_id });
   return { registry, api, transport, bootstrap, journal, backend, rows, calls, shown, closed, changes, facts, open, state, control };
 }
+
+const fixtureImage = async () => new File([await readFile(new URL('./fixtures/media/screen.png', import.meta.url))], 'image.png', { type: 'image/png' });
 
 async function cleanupSettled(f, editor) { await f.registry.cleanup?.idle(editor.key); }
 
