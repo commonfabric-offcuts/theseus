@@ -192,13 +192,27 @@ for (const lateFailure of [false, true]) {
   });
 }
 
+// A person who presses × is told why the Reader stayed open; only an automatic
+// close (a prepared send, a saved note) is refused quietly.
+test('an explicit close refused while an image is being kept says why, and an automatic close stays quiet', async t => {
+  const f = await fixture(t), x = await f.open(0), uploads = f.registry.sessionFor(x.editors.reply).uploads;
+  const token = uploads.reserve(x);
+  await assert.rejects(f.registry.close(x, { explicit: true }), /Keep this page open until the selected image is saved or removed/);
+  assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+  assert.equal(await f.registry.close(x), false, 'an automatic close is refused without an error');
+  assert.equal(f.registry.current, x);
+  uploads.cancel(token);
+  assert.equal(await f.registry.close(x, { explicit: true }), true);
+  assert.deepEqual(f.closed, [x]);
+});
+
 test('failed explicit close still cancels navigation and permits a fresh step', async t => {
   const f = await fixture(t), x = await f.open(0), held = await holdSource(f);
   const put = f.backend.put; t.after(() => { held.release.resolve(); f.backend.put = put; });
   f.backend.put = async () => { throw Error('Injected recovery quota failure'); };
   x.editors.reply.edit({ body: 'Unjournaled X' });
-  assert.equal(await f.registry.close(x, { explicit: true }), false);
-  assert.equal(f.registry.current, x); assert.equal(f.registry.pendingOpen, null);
+  await assert.rejects(f.registry.close(x, { explicit: true }), /Injected recovery quota failure/, 'the refusal reaches the person who pressed close');
+  assert.equal(f.registry.current, x); assert.equal(f.registry.pendingOpen, null); assert.deepEqual(f.closed, []);
   assert.match(f.registry.status(x.editors.reply), /Recovery copy unavailable/);
   x.editors.reply.edit({ body: 'Still editable X' });
   held.release.resolve(); assert.equal((await held.opening).value, null);
@@ -217,6 +231,23 @@ test('newer open wins over explicit close awaiting local preservation', async t 
   const opening = f.open(1); release.resolve();
   assert.equal(await closing, false); const y = await opening;
   assert.equal(f.registry.current, y); assert.deepEqual(f.closed, []);
+});
+
+test('an explicit close a newer open superseded stays quiet when its preservation fails', async t => {
+  const f = await fixture(t), x = await f.open(0), entered = deferred(), release = deferred(), put = f.backend.put;
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  let failing = true;
+  f.backend.put = async row => {
+    if (!failing) return put(row);
+    entered.resolve(); await release.promise; throw Error('Injected late recovery failure');
+  };
+  x.editors.reply.edit({ body: 'X close local preservation' });
+  const closing = f.registry.close(x, { explicit: true }); await entered.promise;
+  failing = false; const opening = f.open(1);
+  assert.equal(f.registry.isCurrent(x), false, 'the newer open has taken over');
+  release.resolve();
+  assert.equal(await closing, false, 'the superseded close reports nothing over the newer open');
+  const y = await opening; assert.equal(f.registry.current, y); assert.deepEqual(f.closed, []);
 });
 
 for (const action of ['note', 'send']) {

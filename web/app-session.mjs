@@ -249,8 +249,14 @@ export class EditorRegistry {
     }
     const requestGeneration = this.generation;
     if (!this.isCurrent(presentation)) return false;
+    // A refused explicit close says why to the person who asked for it, while
+    // this is still the writing they asked to close; an automatic close (a
+    // prepared send, a saved note) stays quietly open.
     try { await this.keepLocal(presentation); }
-    catch { return false; }
+    catch (error) {
+      if (explicit && this.isCurrent(presentation) && requestGeneration === this.generation) throw error;
+      return false;
+    }
     if (!this.isCurrent(presentation) || requestGeneration !== this.generation) return false;
     this.current = null; ++this.generation; this.closed(presentation); this.activity(); return true;
   }

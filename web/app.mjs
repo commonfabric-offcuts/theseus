@@ -117,7 +117,9 @@ async function showVersions(editor, opener = $('review-versions'), presentation 
       $('review-content').append(section);
     }
   }
-  let remote = recovery?.remote ?? editor.conflict?.remote;
+  // undefined: not read (say so and offer Retry); null: read, and nothing is
+  // saved there. A runtime review has read the saved version only once ready.
+  let remote = recovery ? (recovery.phase === 'ready' ? recovery.remote : undefined) : editor.conflict?.remote;
   if (!recovery && editor.conflict && remote === undefined) {
     try {
       const state = validate(await api.view('editor_state', { source_ref: editor.sourceRef, topic_id: editor.context.topicId }));
@@ -912,7 +914,7 @@ async function initialize() {
     },
     saveNote: editor => run(() => registry.saveNote(editor)),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
-    close: () => registry.close(reader.presentation, { explicit: true }),
+    close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error.message); return false; }),
     step: async direction => {
       const presentation = registry.current, neighbors = presentation.neighbors ?? await registry.neighbors(presentation);
       if (!registry.isCurrent(presentation)) return;

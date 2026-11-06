@@ -548,7 +548,10 @@ def main():
                         anchor = Path(binding["authority_path"])
                         fd = os.open(str(anchor) + ".lock", os.O_RDWR)
                         try:
-                            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            # Wait for requests that hold the authority shared;
+                            # a non-blocking lock failed with EAGAIN whenever
+                            # an autosave or cleanup read was in flight.
+                            fcntl.flock(fd, fcntl.LOCK_EX)
                             record = json.loads(anchor.read_text())
                             record["epoch"] = request["epoch"]
                             record["recovery"] = {"history_complete": request.get("complete", False)}

@@ -69,6 +69,8 @@ const downloadPath = await mkdtemp(path.join(os.tmpdir(), 'aim-reader-download-'
 let chrome, chromeExit, socket, cdp, facts, finalHealth, fixtureExitCode;
 const pages = new Set();
 const freshnessPages = new Map();
+// Every connected page of the running case, in every mode, for failed-case diagnostics.
+const connectedPages = new Map();
 try {
   facts = await control({ method: 'ready' });
   phases.fixtureReady = Date.now();
@@ -170,7 +172,7 @@ try {
         ...(name === 'Enter' && !modifiers ? { text: '\r', unmodifiedText: '\r' } : {}) });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
     };
-    const close = async () => { if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); };
+    const close = async () => { connectedPages.delete(targetId); if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); };
     if (connected) {
       if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
       const connectedPage = { targetId, send, evaluate, close, box, point, key, calls, held, errors, events, network, responses,
@@ -202,6 +204,7 @@ try {
           await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
         },
       };
+      connectedPages.set(targetId, connectedPage);
       if (liveUpdatesFixture) {
         freshnessPages.set(targetId, connectedPage);
         await send('Fetch.enable', { patterns: [{ urlPattern: facts.origin + '/api/*', requestStage: 'Response' }, ...(['--freshness', '--live'].includes(mode) ? [{ urlPattern: facts.origin + '/app.mjs', requestStage: 'Response' }, { urlPattern: facts.origin + '/upload-cleanup.mjs', requestStage: 'Response' }] : [])] });
@@ -256,10 +259,10 @@ try {
     if (mode === '--navigation' && !name.startsWith('navigation ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
     const timing = { name, started: Date.now() };
-    // Image cases leave copies, layout preferences and abandoned recovery rows
-    // behind, some deliberately. Each gets a fresh owned storage context,
-    // shared only by that case's tabs.
-    if (/^images /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
+    // Image and epoch recovery cases leave copies, layout preferences and
+    // abandoned recovery rows behind, some deliberately. Each gets a fresh
+    // owned storage context, shared only by that case's tabs.
+    if (/^images /.test(name) || /^epoch recovery /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
     try {
       timing.actionStarted = Date.now();
       await action();
@@ -273,9 +276,9 @@ try {
     }
     catch (error) {
       results.push({ name, passed: false, error: error.stack });
-      for (const [targetId, p] of freshnessPages) {
+      for (const [targetId, p] of connectedPages) {
         let state;
-        try { state = await p.evaluate('({departure:window.departureState?.(),departureTrace:window.departureDiagnostics,snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
+        try { state = await p.evaluate('({departure:window.departureState?.(),departureTrace:window.departureDiagnostics,snapshot:window.freshSnapshot?.(),evidence:window.freshEvidence,opening:{status:document.querySelector("#inline-save-state")?.textContent,app:document.querySelector("#app-status")?.textContent,review:document.querySelector("#review-content")?.textContent,reviewStatus:document.querySelector("#review-status")?.textContent,reviewOpen:document.querySelector("#version-review")?.open},reader:{open:document.querySelector("#reader")?.open,notice:document.querySelector("#reader-notice")?.textContent,saveState:document.querySelector("#save-state")?.textContent,writingReadOnly:document.querySelector("#writing-body")?.readOnly,focus:document.activeElement?.id},access:{unavailable:window.observedRegistry?.current?.sourceUnavailable,unconfirmed:window.observedRegistry?.current?.availabilityUnconfirmed},updates:document.querySelector("#updates-message")?.textContent,navigation:document.querySelector("#topic-navigation-status")?.textContent,url:location.href,mediaURLs:window.observedMediaURLs?.size})'); }
         catch (error) { state = { diagnosticError: error.message }; }
         observations.push({ name: 'failed case diagnostics', case: name, targetId, state, errors: p.errors, calls: p.calls });
       }
@@ -300,7 +303,7 @@ try {
         if(p.errors.length)observations.push({name:'interception failure lifecycle',case:name,targetId,errors:p.errors,network:p.network.filter(e=>['Network.loadingFailed','Network.requestWillBeSent'].includes(e.method))});
       }
       for (const targetId of pages) await cdp('Target.closeTarget', { targetId }); pages.clear(); listeners.clear();
-      freshnessPages.clear();
+      freshnessPages.clear(); connectedPages.clear();
       if (recoveryContext) { await cdp('Target.disposeBrowserContext', { browserContextId: recoveryContext }); recoveryContext = null; }
       timing.cleanupEnded = Date.now(); phases.cases.push(timing);
     }
@@ -891,12 +894,26 @@ try {
         } finally { await cdp('Target.closeTarget', { targetId }); pages.delete(targetId); }
       };
       const arrowReady = p => until(() => p.evaluate('!document.querySelector("#next-message").disabled'), 'neighbor arrow ready');
-      const newHeldStep = async p => {
+      // also: other answers the case holds while the step waits.
+      const newHeldStep = async (p, also = () => false) => {
         await arrowReady(p);
-        const before = p.held.length;
-        p.intercept(payload => payload?.name === 'source' && payload.args.id === facts.sources[1].id);
+        const before = p.held.length, step = payload => payload?.name === 'source' && payload.args.id === facts.sources[1].id;
+        p.intercept(payload => also(payload) || step(payload));
         await p.point('#next-message');
-        return until(() => p.held[before], 'held neighboring source');
+        return until(() => p.held.slice(before).find(entry => step(entry.payload)), 'held neighboring source');
+      };
+      // A held private save keeps the device copy unacknowledged, so cleanup
+      // (30186fc) cannot retire it before the case reads it.
+      const privateSave = payload => payload?.kind === 'draft.save';
+      // Since 4b03bc5 no writing surface admits input while an open is under
+      // way (registry.isCurrent includes !pendingOpen, and activity() repaints
+      // the Reader). Whether typing during a waiting step should instead be
+      // admitted, or cancel the step, is not decided; these cases write before
+      // the step and claim only what Close, Escape, Topic and a refused close do.
+      const stepFreezesWriting = async p => {
+        const state = await p.evaluate("({readOnly:document.querySelector('#writing-body').readOnly,body:document.querySelector('#writing-body').value})");
+        observations.push({ writingWhileStepWaits: state });
+        return state;
       };
 
       await check('correction source controls survive mode and quote without redrawing the source', async () => {
@@ -980,16 +997,19 @@ try {
         const before = await visible();
         for (const entry of pair) await p.release(entry);
         await settled(p, neighbors);
+        // The verified bytes reached the application's own consumer (the call
+        // settled fulfilled). Since 3270cbe a stale answer is refused before
+        // it becomes an object URL; whatever URL a stale answer made must
+        // never stay readable.
         await p.release(mediaResponse); await settled(p, media);
-        assert.equal(await p.evaluate('fixtureURLs.length'), 1, 'media verification reached the real consumer');
-        const rejectedURL = await p.evaluate('fixtureURLs[0].url');
+        const rejectedURLs = await p.evaluate('fixtureURLs.map(entry=>entry.url)');
         const consumers = { arrows: await arrowState(p),
           images: await p.evaluate('document.querySelectorAll("#source-attachments img").length'),
           downloads: await p.evaluate('document.querySelectorAll("#source-attachments a").length'),
-          urlReadable: await readable(p, rejectedURL) };
-        observations.push({ heldYConsumers: consumers, heldOpen: await callState(p, openingY.id) });
+          readableURLs: (await Promise.all(rejectedURLs.map(url => readable(p, url)))).filter(Boolean).length };
+        observations.push({ heldYConsumers: consumers, rejectedURLs: rejectedURLs.length, heldOpen: await callState(p, openingY.id) });
         assert.equal((await callState(p, openingY.id)).settled, false, 'Y remains held during both X consumer assertions');
-        assert.deepEqual(consumers, { arrows: { previous: true, next: true }, images: 0, downloads: 0, urlReadable: false }, 'held Y rejects both X consumers');
+        assert.deepEqual(consumers, { arrows: { previous: true, next: true }, images: 0, downloads: 0, readableURLs: 0 }, 'held Y rejects both X consumers');
         assert.deepEqual(await visible(), before, 'discarded X results leave writing/source/focus/notice intact');
         await p.point('#toggle-note');
         observations.push({ postCancellationArrows: await arrowState(p) });
@@ -999,7 +1019,7 @@ try {
         await until(() => p.evaluate('document.querySelector("#source-attachments img")?.naturalWidth>0'), 'fresh X PNG accepted after cancellation');
         const acceptedURL = await p.evaluate(`document.querySelector(${JSON.stringify(imageLink)}).href`);
         assert.equal(await readable(p, acceptedURL), true, 'positive live URL after X restoration');
-        assert.equal(await readable(p, rejectedURL), false, 'earlier rejected URL stays revoked');
+        for (const url of rejectedURLs) assert.equal(await readable(p, url), false, 'earlier rejected URL stays revoked');
         assert.equal((await callState(p, openingY.id)).settled, false, 'old Y stays held while restored X media is accepted');
         await p.release(heldY); await settled(p, openingY);
         assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled Y cannot replace restored X');
@@ -1008,15 +1028,19 @@ try {
       });
 
       await check('correction stale media is discarded and displayed object URLs are revoked', async () => {
-        const p = await page('media-lifetime', null, true); await p.open(0); await observeURLs(p); await arrowReady(p);
+        const p = await page('media-lifetime', null, true); await observeCalls(p); await p.open(0); await observeURLs(p); await arrowReady(p);
         p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
         await openAttachment(p, 'passive.png'); const held = await until(() => p.held[0], 'held media bytes');
+        const media = await started(p, 'media', facts.sources[0]);
         await p.point('#next-message'); await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'new source before old media');
         const before = await p.evaluate("({body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})");
-        await p.release(held); await until(() => p.evaluate('fixtureURLs.length===1'), 'stale verified Blob observed');
-        const discarded = await p.evaluate('fixtureURLs[0].url');
-        assert.equal(await readable(p, discarded), false, 'discarded source URL is revoked');
+        // The stale verified answer reaches the application's consumer; since
+        // 3270cbe it is refused before it becomes an object URL, and any URL a
+        // stale answer made must not stay readable.
+        await p.release(held); await settled(p, media);
+        for (const url of await p.evaluate('fixtureURLs.map(entry=>entry.url)')) assert.equal(await readable(p, url), false, 'discarded source URL is revoked');
         assert.equal(await p.evaluate('document.querySelectorAll("#source-attachments img").length'), 0);
+        assert.equal(await p.evaluate('document.querySelectorAll("#source-attachments a").length'), 0, 'no download is offered for the stale answer');
         assert.deepEqual(await p.evaluate("({body:document.querySelector('#writing-body').value,focus:document.activeElement.id,notice:document.querySelector('#reader-notice').textContent})"), before);
         await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close Y');
         p.intercept(null); await p.open(0); await openAttachment(p, 'passive.png');
@@ -1030,8 +1054,10 @@ try {
       await check('correction explicit Close Escape and Topic cancel pending navigation with preserved writing', async () => {
         for (const action of ['Close', 'Escape', 'Topic']) {
           const p = await page('close-' + action, null, true); await p.open(0);
-          const held = await newHeldStep(p), body = 'Writing while navigation waits: ' + action;
-          await replace(p, body);
+          const body = 'Writing kept through a cancelled step: ' + action;
+          p.intercept(privateSave); await replace(p, body);
+          const held = await newHeldStep(p, privateSave);
+          assert.equal((await stepFreezesWriting(p)).body, body, 'the waiting step leaves the writing in place');
           if (action === 'Escape') await p.key('Escape'); else await p.point(action === 'Topic' ? '#reader-parent' : '#reader-close');
           await until(() => p.evaluate('!document.querySelector("#reader").open'), 'explicit close completes before network');
           assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[0].id, 'connected opener restored');
@@ -1046,11 +1072,15 @@ try {
 
       await check('correction refused local close cancels old navigation and allows a fresh step', async () => {
         const p = await page('failed-close', null, true); await p.open(0);
-        const held = await newHeldStep(p);
+        p.intercept(privateSave); await replace(p, 'Failed close remains editable');
+        const held = await newHeldStep(p, privateSave);
+        await stepFreezesWriting(p);
         await p.evaluate(`(()=>{window.fixtureTransaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Fixture quota failure','QuotaExceededError');return fixtureTransaction.apply(this,args)}})()`);
-        await replace(p, 'Failed close remains editable'); await p.point('#reader-close');
+        await p.point('#reader-close');
         await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Recovery copy unavailable")'), 'visible local preservation failure');
+        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Fixture quota failure"'), 'the refused close says why');
         assert.equal(await p.evaluate('document.querySelector("#reader").open'), true);
+        assert.equal(await field(p), 'Failed close remains editable');
         await p.release(held);
         assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled navigation stays cancelled after failed close');
         assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), false);
@@ -1207,13 +1237,27 @@ try {
       const p = await page('epoch', null, true); await p.open(1); await replace(p, 'Before fixture epoch');
       await until(async () => (await privateState()).draft?.body === 'Before fixture epoch', 'E1 private acknowledgement');
       await p.evaluate(`(()=>{window.readOwnRecovery=()=>new Promise((resolve,reject)=>{const request=indexedDB.open('aim-next-pending');request.onerror=()=>reject(request.error);request.onsuccess=()=>{const db=request.result,tx=db.transaction('editors'),key=JSON.stringify([${JSON.stringify(facts.instance_id)},${JSON.stringify(facts.actor)},'reply','message',${JSON.stringify(facts.sources[1].id)},'t1']),writer=sessionStorage.getItem('aim-next-recovery-hint:'+JSON.stringify([${JSON.stringify(facts.instance_id)},${JSON.stringify(facts.actor)}]));tx.objectStore('editors').get(JSON.stringify([key,writer])).onsuccess=e=>resolve(e.target.result?.snapshot);tx.oncomplete=()=>db.close();}})})()`);
-      const originalEnvelopes = (await p.evaluate('readOwnRecovery()')).attempts.map(attempt => attempt.envelope);
       await control({ method: 'epoch', epoch: 'native-epoch-2', complete: false, drop_private: true });
       await replace(p, 'Keep this after epoch');
       await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Runtime changed")'), 'explicit authority recovery status');
+      // Read the device copy once the writing is parked: since 30186fc an
+      // acknowledged copy is retired, but parked writing is unacknowledged and
+      // keeps the operations it attempted under the old authority.
+      const parked = await p.evaluate('readOwnRecovery()');
+      assert.ok(parked, 'parked writing keeps its device copy');
+      const originalEnvelopes = parked.attempts.map(attempt => attempt.envelope);
+      observations.push({ epochParkedAttempts: originalEnvelopes.map(envelope => ({ kind: envelope.kind, epoch: envelope.expected?.authority?.authority_epoch })) });
+      assert.ok(originalEnvelopes.some(envelope => envelope.expected?.authority?.authority_epoch !== 'native-epoch-2'), 'the parked copy holds an operation pinned to the old authority');
       const geometry = await p.box('#writing-body');
+      // The page parks the writing when it learns of the change, or reads the
+      // new runtime at once when its save is refused first. Until that read is
+      // done the saved version is unknown, and the comparison must not claim
+      // there is none (6e29a82).
+      const phase = await until(async () => { const value = (await p.evaluate('readOwnRecovery()'))?.authorityRecovery?.phase; return value && value !== 'loading' ? value : null; }, 'settled runtime review phase');
+      observations.push({ epochFirstReviewPhase: phase });
       await p.point('#review-versions');
-      await until(() => p.evaluate('document.querySelector("#review-content").textContent.includes("No saved version here")'), 'missing current private version');
+      const saved = phase === 'ready' ? 'No saved version here' : 'Saved version unavailable. Retry to read it; your writing is kept.';
+      await until(() => p.evaluate(`document.querySelector("#review-content").textContent.includes(${JSON.stringify(saved)})`), 'saved private version as far as it is known');
       assert.equal(await p.evaluate('document.activeElement.id'), 'review-title', 'comparison never focuses its write action');
       await p.point('#review-keep'); await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'Keep both closes comparison');
       assert.equal(await field(p), 'Keep this after epoch');
@@ -1236,6 +1280,7 @@ try {
       await until(() => p.evaluate('(await readOwnRecovery()).authorityRecovery?.phase === "ready"'), 'current review durably settled after held read');
       await p.point('#review-versions');
       await until(() => p.evaluate('document.querySelector("#review-content").textContent.includes("Typed while recovery read was held")'), 'current writing comparison refreshed');
+      assert.ok(await p.evaluate('document.querySelector("#review-content").textContent.includes("No saved version here")'), 'missing current private version');
       await until(() => p.evaluate('!document.querySelector("#review-save").disabled'), 'explicit private choice ready');
       await p.point('#review-save');
       await until(async () => (await privateState()).draft?.body === 'Typed while recovery read was held', 'private resume with new authority');
@@ -1245,7 +1290,7 @@ try {
       const pinned = p.calls.filter(call => call.payload?.kind === 'draft.save').map(call => call.payload.expected.authority.authority_epoch);
       assert.ok(pinned.includes('native-epoch-2')); assert.ok(pinned.some(epoch => epoch !== 'native-epoch-2'));
       const retained = await p.evaluate('readOwnRecovery()');
-      for (const envelope of originalEnvelopes) assert.deepEqual(retained.attempts.find(attempt=>attempt.envelope.operation_id===envelope.operation_id).envelope,envelope,'original operation and authority pin survive the private choice');
+      for (const envelope of originalEnvelopes) assert.deepEqual(retained.attempts.find(attempt=>attempt.envelope.operation_id===envelope.operation_id)?.envelope,envelope,'original operation and authority pin survive the private choice');
       await shot(p, 'epoch-recovered'); assert.deepEqual(p.errors, []);
     });
 
