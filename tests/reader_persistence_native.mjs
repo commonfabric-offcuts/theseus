@@ -11,6 +11,7 @@ import { inlineChecks } from './reader_inline_native.mjs';
 import { readingColorsCheck } from './reader_colors_native.mjs';
 import { navigationChecks } from './reader_navigation_native.mjs';
 import { departureChecks, assertDepartureTrace } from './reader_departure_native.mjs';
+import { ReleaseRule } from './release-rule.mjs';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
@@ -53,7 +54,7 @@ const control = data => new Promise((resolve, reject) => {
   fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
 });
 const results = [], hashes = {}, observations = [];
-for (const filename of [...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs', ...(mode === '--live' ? ['web/live.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
+for (const filename of [...(mode==='--colors'?['tests/reader_colors_native.mjs','tests/png-bands.mjs','web/live.mjs','aim_next/live.py']:[]), ...(['--journal','--navigation'].includes(mode) ? ['web/creation.mjs','web/intent-journal.mjs','web/creation-view.mjs',...(mode==='--navigation'?['web/opening-view.mjs','web/opening.mjs','web/opening-store.mjs']:[])] : []), ...(mode === '--navigation' ? ['web/topic-navigation.mjs','web/outcomes.mjs','tests/reader_navigation_native.mjs','tests/reader_departure_native.mjs'] : []), 'web/api.mjs', 'web/journal.mjs', 'web/app-session.mjs', 'web/app.mjs', 'web/session.mjs', 'web/editor.mjs', ...(mode === '--cleanup' ? ['web/cleanup.mjs'] : []), 'web/reader.mjs', 'web/inline-composer.mjs', 'web/writing-input.mjs', 'web/writing-helpers.mjs', 'web/index.html', 'web/aim.css', 'tests/fixtures/ui_http.py', 'tests/reader_persistence_native.mjs', 'tests/release-rule.mjs', ...(mode === '--images' ? ['tests/reader_images_native.mjs','web/uploads.mjs','web/upload-state.mjs','web/upload-cleanup.mjs','web/cleanup.mjs'] : []), ...(liveUpdatesFixture ? ['aim_next/server.py', 'web/freshness.mjs', 'web/topic-views.mjs', 'web/cleanup.mjs', 'web/uploads.mjs', 'web/upload-state.mjs', 'web/upload-cleanup.mjs', mode === '--inline' ? 'tests/reader_inline_native.mjs' : 'tests/reader_freshness_native.mjs', ...(mode === '--live' ? ['web/live.mjs', 'aim_next/live.py', 'web/attention.mjs', 'web/outcomes.mjs', 'web/topic-navigation.mjs', 'aim_next/delivery.py', 'tests/reader_live_native.mjs', 'tests/render_native.mjs', 'tests/png-bands.mjs', 'web/marks.mjs', 'tests/ui_marks.test.mjs'] : [])] : [])]) {
   let source;
   try { source = await readFile(path.join(root, filename)); }
   catch (error) {
@@ -71,6 +72,17 @@ const pages = new Set();
 const freshnessPages = new Map();
 // Every connected page of the running case, in every mode, for failed-case diagnostics.
 const connectedPages = new Map();
+let runningCase = null;
+// A refused release settles on what the page reports of its request: given
+// up (cancelled, or its document replaced) or delivered, which makes the
+// refusal a failure. One still unsettled when the page goes is a request the
+// instrument left paused. Every connected page is held to this as it goes:
+// when its case closes it, or after the case for the pages still open.
+const releasesSettled = async p => {
+  await until(() => p.unsettledReleases.size === 0, 'every refused interception release settled');
+  assert.deepEqual(p.failedReleases, [], 'every interception release the page did not give up succeeded');
+  if (p.excusedReleases.length) observations.push({ name: 'releases refused because the page gave its request up', case: runningCase, targetId: p.targetId, releases: [...p.excusedReleases] });
+};
 try {
   facts = await control({ method: 'ready' });
   phases.fixtureReady = Date.now();
@@ -114,20 +126,9 @@ try {
       return answer.result.value;
     };
     const errors = [], calls = [], held = [], events = [], network = [], responses = [], finished = new Set();
-    // A paused request the page itself gives up takes its interception with
-    // it, and releasing it is refused with "Invalid InterceptionId". That
-    // refusal is the page's own act, not a page error, but only once the page
-    // shows it gave that very request up: it reports the request cancelled, or
-    // the document that sent it has been replaced by a navigation (Chrome then
-    // reports nothing more for it), before any response reached the page. Every
-    // other failed release counts in errors and fails its case.
-    const cancelled = new Set(), delivered = new Set(), loaders = new Map(), excusedReleases = [], failedReleases = [], unsettledReleases = new Map();
-    let documentLoader = null;
-    const abandoned = id => delivered.has(id) ? null : cancelled.has(id) ? 'cancelled' : loaders.has(id) && documentLoader !== null && loaders.get(id) !== documentLoader ? 'document replaced' : null;
-    const settleRelease = (failure, reason) => {
-      if (reason) excusedReleases.push({ ...failure, reason });
-      else { failedReleases.push(failure); errors.push(failure); }
-    };
+    // A refused release counts in errors and fails its case unless the page
+    // gave that request up (release-rule.mjs).
+    const releases = new ReleaseRule({ failed: failure => errors.push(failure) });
     let intercept = null, recordResponses = false;
     listeners.set(sessionId, packet => {
       if (['Page.fileChooserOpened', 'Runtime.bindingCalled'].includes(packet.method)) events.push(packet);
@@ -135,18 +136,8 @@ try {
       if (mode === '--navigation' && packet.method === 'Page.javascriptDialogOpening') { events.push(packet); send('Page.handleJavaScriptDialog', { accept: false }).catch(error => errors.push({ message: error.message })); }
       if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
       if (packet.method.startsWith('Network.')) network.push({ method: packet.method, params: packet.params, observedAt: Date.now() });
-      if (packet.method === 'Network.requestWillBeSent' && packet.params.loaderId) loaders.set(packet.params.requestId, packet.params.loaderId);
-      if (packet.method === 'Page.frameNavigated' && !packet.params.frame.parentId) {
-        documentLoader = packet.params.frame.loaderId;
-        for (const [id, failure] of unsettledReleases) if (abandoned(id)) { unsettledReleases.delete(id); settleRelease(failure, abandoned(id)); }
-      }
+      releases.observe(packet);
       if (['Network.loadingFinished', 'Network.loadingFailed'].includes(packet.method)) finished.add(packet.params.requestId);
-      if (['Network.responseReceived', 'Network.loadingFinished', 'Network.loadingFailed'].includes(packet.method)) {
-        const id = packet.params.requestId;
-        if (packet.method === 'Network.loadingFailed' && packet.params.canceled === true) cancelled.add(id); else delivered.add(id);
-        const failure = unsettledReleases.get(id);
-        if (failure) { unsettledReleases.delete(id); settleRelease(failure, abandoned(id)); }
-      }
       if (packet.method === 'Fetch.requestPaused') {
         const event = packet.params;
         const handle = async () => {
@@ -168,10 +159,7 @@ try {
           if (await intercept?.(payload, event)) { held.push({ event, payload }); return; }
           await send(event.responseStatusCode===undefined?'Fetch.continueRequest':'Fetch.continueResponse', { requestId: event.requestId });
         }; handle().catch(error => {
-          const failure = { message: error.message,requestId:event.requestId,networkId:event.networkId,url:event.request.url,responseStatusCode:event.responseStatusCode };
-          if (!event.networkId || !/Invalid InterceptionId/.test(error.cdp?.message ?? '')) { failedReleases.push(failure); errors.push(failure); }
-          else if (delivered.has(event.networkId) || abandoned(event.networkId)) settleRelease(failure, abandoned(event.networkId));
-          else unsettledReleases.set(event.networkId, failure);
+          releases.refused({ message: error.message,requestId:event.requestId,networkId:event.networkId,url:event.request.url,responseStatusCode:event.responseStatusCode }, error.cdp?.message);
         });
       }
     });
@@ -202,11 +190,14 @@ try {
         ...(name === 'Enter' && !modifiers ? { text: '\r', unmodifiedText: '\r' } : {}) });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
     };
-    const close = async () => { connectedPages.delete(targetId); if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); };
+    const close = async () => {
+      try { if (connectedPages.has(targetId)) await releasesSettled(connectedPages.get(targetId)); }
+      finally { connectedPages.delete(targetId); if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }); listeners.delete(sessionId); }
+    };
     if (connected) {
       if (mode === '--images') await send('Page.addScriptToEvaluateOnNewDocument', { source: imageInstrumentation });
       const connectedPage = { targetId, send, evaluate, close, box, point, key, calls, held, errors, events, network, responses,
-        excusedReleases, failedReleases, unsettledReleases,
+        excusedReleases: releases.excused, failedReleases: releases.failed, unsettledReleases: releases.unsettled,
         recordResponses: () => { recordResponses = true; },
         response: async event => {
           const result = await send('Fetch.getResponseBody', { requestId: event.requestId });
@@ -290,6 +281,7 @@ try {
     if (mode === '--navigation' && !name.startsWith('navigation ')) return;
     if (caseFilter && !new RegExp(caseFilter).test(name)) return;
     const timing = { name, started: Date.now() };
+    runningCase = name;
     // Image and epoch recovery cases leave copies, layout preferences and
     // abandoned recovery rows behind, some deliberately. Each gets a fresh
     // owned storage context, shared only by that case's tabs.
@@ -297,15 +289,7 @@ try {
     try {
       timing.actionStarted = Date.now();
       await action();
-      // A refused release settles on what the page reports of its request:
-      // given up (cancelled, or its document replaced) or delivered, which
-      // makes the refusal a failure. One still unsettled here is a request the
-      // instrument left paused.
-      for (const p of connectedPages.values()) {
-        await until(() => p.unsettledReleases.size === 0, 'every refused interception release settled');
-        assert.deepEqual(p.failedReleases, [], 'every interception release the page did not give up succeeded');
-        if (p.excusedReleases.length) observations.push({ name: 'releases refused because the page gave its request up', case: name, targetId: p.targetId, releases: p.excusedReleases });
-      }
+      for (const p of connectedPages.values()) await releasesSettled(p);
       if (liveUpdatesFixture) {
         const health = await control({ method: 'admission_events' });
         observations.push({ name: 'fixture health', case: name, fatal: health.fatal, next: health.next });
@@ -594,9 +578,12 @@ try {
         assert.deepEqual(p.errors.map(f => f.networkId), [twice], 'a refused release of a request the page still wanted is a page error');
         assert.deepEqual(p.failedReleases, p.errors);
         assert.deepEqual(p.excusedReleases.map(f => f.networkId), [abandoned], 'only the abandoned request is excused');
-        // The runner fails every case that leaves a failed release; this one
-        // was made on purpose, so it is taken back once it has been proved.
-        observations.push({ name: 'harness release rule', excused: [...p.excusedReleases], failed: p.failedReleases.splice(0) }); p.errors.splice(0);
+        // A page its case closes is held to the rule as it goes. This failed
+        // release was made on purpose, so the close is refused, and the page
+        // goes all the same. Every outcome of the rule: release_rule.test.mjs.
+        observations.push({ name: 'harness release rule', excused: [...p.excusedReleases], failed: [...p.failedReleases] });
+        await assert.rejects(p.close(), /every interception release the page did not give up succeeded/, 'closing the page applies the rule');
+        assert.equal(connectedPages.has(p.targetId), false, 'the refused page is closed all the same');
       });
       await navigationChecks({ check, page, until, root, evidencePath, facts, view, control, replace, field, shot, observations });
       await departureChecks({ check, page, until, facts, view, control, shot, observations });

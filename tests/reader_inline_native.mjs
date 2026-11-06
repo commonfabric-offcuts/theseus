@@ -342,6 +342,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.equal(await p.evaluate('Boolean(document.querySelector("[data-inline-remove]")?.isConnected)'), true, 'Remove is still writing behind the held store');
     await center('#inline-writing-body'); await p.point('#inline-writing-body'); await p.key('a', 4);
     await p.send('Input.insertText', { text: 'Typed while Remove waits' });
+    assert.equal(await removed(), false, 'Remove is still held when the person has moved focus and typed');
     await holder.evaluate('window.release=true');
     await until(() => holder.evaluate('window.released===true'), 'held store released');
     await until(removed, 'Remove finished');
