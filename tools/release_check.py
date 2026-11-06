@@ -101,6 +101,23 @@ def chrome_path(explicit=None, environ=None, home=None):
     return chosen
 
 
+def out_problem(root, out):
+    """Why the run cannot write its evidence to out without changing the checkout, or None."""
+    if not out.is_absolute():
+        return "--out must be absolute: %s" % out
+    if out.exists() and not out.is_dir():
+        return "--out is not a directory: %s" % out
+    if out.exists() and any(out.iterdir()):
+        return "--out already holds files; each run gets a fresh directory: %s" % out
+    try:
+        inside = out.resolve().relative_to(Path(root).resolve())
+    except ValueError:
+        return None
+    if git(root, "check-ignore", "-q", str(inside)).returncode != 0:
+        return "--out is inside the checkout and not ignored, so the run would change it: %s" % out
+    return None
+
+
 def preflight(root, out, chrome, python, node):
     """The commit this run speaks for, or Refused before anything runs."""
     commit, changes = tree(root)
@@ -110,16 +127,9 @@ def preflight(root, out, chrome, python, node):
     if writable is not None:
         raise Refused("%s is writable by anyone; test_codex_broker refuses such parents. "
                       "Check out the commit somewhere else." % writable)
-    if not out.is_absolute():
-        raise Refused("--out must be absolute: %s" % out)
-    if out.exists() and any(out.iterdir()):
-        raise Refused("--out already holds files; each run gets a fresh directory: %s" % out)
-    try:
-        inside = out.resolve().relative_to(Path(root).resolve())
-    except ValueError:
-        inside = None
-    if inside is not None and git(root, "check-ignore", "-q", str(inside)).returncode != 0:
-        raise Refused("--out is inside the checkout and not ignored, so the run would change it: %s" % out)
+    problem = out_problem(root, out)
+    if problem:
+        raise Refused(problem)
     for tool in (python, node):
         if not tool or not os.access(tool, os.X_OK):
             raise Refused("not an executable: %r" % tool)
@@ -257,7 +267,8 @@ def main(argv=None):
         summary = check(REPO, args.out, chrome, args.python, args.node)
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
-        if args.out.is_absolute() and not (args.out.exists() and any(args.out.iterdir())):
+        # Recorded only where the run itself could have written, so a refusal never changes the checkout.
+        if out_problem(REPO, args.out) is None:
             write_summary(args.out, {"tool": TOOL, "refused": str(refusal), "passed": False, "at": now()})
         return 2
     failed = [step["name"] for step in summary["steps"] if not step["passed"]]

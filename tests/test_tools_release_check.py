@@ -196,6 +196,27 @@ class ReleaseCheckRefuses(FakeCheckout):
         self.assertEqual(code, 2)
         self.assertIn("has changes", json.loads((self.out / "summary.json").read_text())["refused"])
 
+    def main(self, out):
+        with mock.patch.object(release_check, "REPO", self.root), redirect_stderr(io.StringIO()) as err, \
+                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX):
+            try:
+                code = release_check.main(["--out", str(out), "--python", self.python, "--node", self.node])
+            except Exception as error:  # a refusal is an answer, not a traceback
+                self.fail("main raised instead of refusing: %r" % error)
+        return code, err.getvalue()
+
+    def test_a_refusal_never_writes_its_summary_where_the_run_could_not_write(self):
+        code, err = self.main(self.root / "evidence" / "run")
+        self.assertEqual(code, 2)
+        self.assertIn("not ignored", err)
+        # The refusal itself must not dirty the checkout, or the next run refuses for that.
+        self.assertEqual(release_check.tree(self.root), (self.commit, ""))
+        self.out.write_text("a file, not a directory\n")
+        code, err = self.main(self.out)
+        self.assertEqual(code, 2)
+        self.assertIn("not a directory", err)
+        self.assertEqual(self.out.read_text(), "a file, not a directory\n")
+
     def test_main_exits_one_on_a_failed_step_and_zero_when_all_pass(self):
         for fail, expected in (("reader--mutations", 1), ("", 0)):
             out = Path(self.tmp.name) / ("main-" + (fail or "pass"))

@@ -32,7 +32,7 @@ It refuses (exit 2) before running anything when:
 
 - the checkout has tracked or untracked changes, so a result would not speak for its commit;
 - any directory above the checkout is writable by anyone, such as `/private/tmp`, where `tests/test_codex_broker.py` refuses its parents;
-- `--out` is relative, already holds files, or is inside the checkout without being ignored (`work/` is ignored), a native harness is missing, or `node` or Python cannot be run.
+- `--out` is relative, is not a directory, already holds files, or is inside the checkout without being ignored (`work/` is ignored), a native harness is missing, or `node` or Python cannot be run.
 
 Then it runs, one at a time:
 
@@ -44,7 +44,7 @@ Every step runs with its own `PYTHONPYCACHEPREFIX` and log. A step passes only w
 
 Chrome for Testing comes from `--chrome`, else `AIM_CHROME_FOR_TESTING`, else the one version under `~/Library/Caches/aim-chrome-for-testing/chrome/`. It refuses when there are none or several.
 
-`--out/summary.json` records the commit, every step's command, exit, counts and log, and whether the checkout was still at that commit and unchanged afterwards. `passed` is true only when every step passed and the checkout did not change. A refused run writes a summary with `refused` and `passed: false`.
+`--out/summary.json` records the commit, every step's command, exit, counts and log, and whether the checkout was still at that commit and unchanged afterwards. `passed` is true only when every step passed and the checkout did not change. A refused run writes a summary with `refused` and `passed: false`, unless `--out` is the reason, so a refusal never changes the checkout.
 
 For development, `tools/native.py --out DIR STEP [CASE_FILTER]` runs one native step (`journal`, `live`, `colors`, `openings`, `reader-keyboard`, ...) and lists each failed case with its most common failure kinds.
 
