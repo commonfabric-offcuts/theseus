@@ -57,6 +57,16 @@ class PipelineBuilder(unittest.TestCase):
         self.assertGreaterEqual(max(numbers), len(items))
         self.assertTrue(page_text.startswith("Release pipeline\n"))
 
+    def test_item_70_says_the_rule_that_shipped_writing_lets_you_say_where_a_topic_stands(self):
+        # Round 4 of item 70: having written lets you say where a topic stands, and makes you no participant.
+        page_text, err = self.build(page(R19, R18))
+        self.assertIsNotNone(page_text, err)
+        entry = re.search(r"^\S+ 70\. (.*)$", page_text, re.M)
+        self.assertIsNotNone(entry, "item 70 is listed")
+        self.assertTrue(entry.group(1).startswith("Anyone who has written in a topic can say where it stands"), entry.group(1))
+        self.assertNotIn("makes you one of its participants", page_text)
+        self.assertNotIn("becomes a participant", page_text)
+
     def test_an_item_a_release_record_names_is_shipped_under_that_release(self):
         page_text, err = self.build(page(R19) + "\n" + page(R18) + "\n")
         self.assertIsNotNone(page_text, err)
