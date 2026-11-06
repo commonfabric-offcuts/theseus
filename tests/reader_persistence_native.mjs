@@ -1132,10 +1132,18 @@ try {
           const keptX = rows => rows.some(row => row.snapshot.draft.body === body && row.snapshot.context.sourceRef.id === facts.sources[0].id);
           await until(async () => keptX(await localRows(p)), 'typing while the step waits is kept on this device as it lands');
           assert.deepEqual(await p.evaluate('({send:document.querySelector("#send-reply").disabled,image:document.querySelector("#add-image").disabled})'), { send: true, image: true }, 'sending and images wait for the step');
+          // A caret moved without typing is no edit, so nothing keeps it until
+          // the close does: what the device holds afterwards is the close's own.
+          for (let n = 0; n < 3; n++) await p.key('ArrowLeft');
+          const moved = { start: body.length - 3, end: body.length - 3 };
+          assert.deepEqual(await p.evaluate("(f=>({start:f.selectionStart,end:f.selectionEnd}))(document.querySelector('#writing-body'))"), moved, 'native caret move instrument');
+          const keptCaret = rows => rows.find(row => row.snapshot.draft.body === body && row.snapshot.context.sourceRef.id === facts.sources[0].id)?.snapshot.draft.caret;
+          assert.notDeepEqual(keptCaret(await localRows(p)), moved, 'the moved caret is not on the device before the close');
           if (action === 'Escape') await p.key('Escape'); else await p.point(action === 'Topic' ? '#reader-parent' : '#reader-close');
           await until(() => p.evaluate('!document.querySelector("#reader").open'), 'explicit close completes before network');
           assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[0].id, 'connected opener restored');
           assert.ok(keptX(await localRows(p)), 'newest exact X writing is durable locally');
+          assert.deepEqual(keptCaret(await localRows(p)), moved, 'the close itself kept the writing as it stands');
           await p.release(held);
           assert.equal(await p.evaluate('document.querySelector("#reader").open'), false, 'cancelled Y cannot reappear');
           assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[0].id);
@@ -1347,10 +1355,15 @@ try {
       // done the saved version is unknown, and the comparison must not claim
       // there is none (6e29a82).
       const review = await until(async () => { const value = (await p.evaluate('readOwnRecovery()'))?.authorityRecovery; return value?.phase && value.phase !== 'loading' ? value : null; }, 'settled runtime review phase');
+      // What each settled phase means, as the case reads it: ready and blocked
+      // come only after both the runtime and the saved version were read;
+      // parked and error come before. The comparison is judged against this,
+      // not against the field it draws from.
+      const readSaved = { ready: true, blocked: true, parked: false, error: false }[review.phase];
       observations.push({ epochFirstReviewPhase: review.phase, epochFirstReviewRead: Boolean(review.authority) });
+      assert.equal(typeof readSaved, 'boolean', 'a settled runtime review phase');
       await p.point('#review-versions');
-      // A review that read the new runtime (ready or blocked) records its authority.
-      const saved = review.authority ? 'No saved version here' : 'Saved version unavailable. Retry to read it; your writing is kept.';
+      const saved = readSaved ? 'No saved version here' : 'Saved version unavailable. Retry to read it; your writing is kept.';
       await until(() => p.evaluate(`document.querySelector("#review-content").textContent.includes(${JSON.stringify(saved)})`), 'saved private version as far as it is known');
       assert.equal(await p.evaluate('document.activeElement.id'), 'review-title', 'comparison never focuses its write action');
       await p.point('#review-keep'); await until(() => p.evaluate('!document.querySelector("#version-review").open'), 'Keep both closes comparison');
