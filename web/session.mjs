@@ -1,5 +1,6 @@
 // Private saves are serialized. Public send confirmation never holds that queue.
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
+import { holdsWriting } from './editor.mjs';
 const copy = value => structuredClone(value);
 const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'caret', 'reply_to', 'exchange_id'];
 const authorityPair = value => value && typeof value.authority_id === 'string' && value.authority_id &&
@@ -147,8 +148,12 @@ export class EditorSession {
         state.source_available !== true) return false;
     if (context.kind !== 'note' && (state.destination?.topic_id !== context.topicId || state.destination_available !== true)) return false;
     const remote = context.kind === 'note' ? state.note : state.draft;
+    // A saved version with nothing in it holds no revision (Core's rule), so
+    // it fits writing that has since begun on a later one.
+    const pinned = this.editor.sourceRef, fits = same(remote?.source_ref, pinned) || remote?.source_ref?.kind === 'memory' &&
+      pinned.kind === 'memory' && remote.source_ref.id === pinned.id && !holdsWriting(remote);
     return remote == null || (typeof remote.id === 'string' && Number.isInteger(remote.revision) && remote.revision > 0 &&
-      same(remote.source_ref, this.editor.sourceRef) && (context.kind === 'note' || typeof remote.generation === 'string'));
+      fits && (context.kind === 'note' || typeof remote.generation === 'string'));
   }
 
   async refreshRecovery(failedPair, retry = false) {

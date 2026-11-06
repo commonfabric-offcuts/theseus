@@ -4,6 +4,11 @@ import { imageBarrier, freezeImages, readableUploads, refusedAtDraft } from './u
 const copy = value => structuredClone(value);
 const emptyWriting = () => ({ body: '', attachments: [], quotes: [], addressees: [], caret: { start: 0, end: 0 } });
 
+// Whether a reply or note holds anything the person wrote or chose. Core keeps
+// the same rule: only writing holds on to the Notebook revision it is about.
+export const holdsWriting = draft => Boolean(draft && (draft.body || draft.attachments?.length || draft.quotes?.length ||
+  draft.addressees?.length || ['reply_to', 'exchange_id', 'opening'].some(name => draft[name] != null)));
+
 function topicCompositionError(context, sourceRef, draft) {
   if (context.sourceRef?.kind !== 'topic') return null;
   const canonical = ref => ref?.kind === 'topic' && ref.id === context.topicId &&
@@ -63,6 +68,21 @@ export class Editor {
     return Boolean(latest && !latest.detached && latest.preparationConfirmed === true);
   }
 
+  // The Notebook revision the person is reading. Writing keeps the revision it
+  // was started on. A reply or note with nothing in it, saved as it stands
+  // (on opening, once an emptied one is saved, once a sent one's place is
+  // empty), is about the revision in front of the person.
+  read(ref) { this.reading = copy(ref); this.follow(); }
+  follow() {
+    const ref = this.reading, pinned = this.sourceRef;
+    if (ref?.kind !== 'memory' || pinned?.kind !== 'memory' || ref.id !== pinned.id || ref.revision === pinned.revision) return;
+    if (this.dirty || this.conflict || holdsWriting(this.draft) || this.imageReservation || this.imageBusy || this.uploadOpaque ||
+        this.uploadState?.entries?.some(entry => entry.selected) ||
+        this.submissions.some(item => item.status === 'preparing' && !item.detached)) return;
+    this.sourceRef = copy(ref);
+    if (Object.hasOwn(this.draft, 'source_ref')) this.draft.source_ref = copy(ref);
+  }
+
   edit(patch) {
     // Only writing fields may be changed by user input, never its identity.
     for (const field of ['body', 'attachments', 'quotes', 'addressees', 'caret']) {
@@ -107,7 +127,7 @@ export class Editor {
     if (kind === 'note.save' && result.note_id !== target.id) return false;
     target.revision = revision;
     if (pending) pending.savedVersion = Math.max(pending.savedVersion ?? -1, ticket.localVersion);
-    else if (bindDraft) this.ackVersion = Math.max(this.ackVersion, ticket.localVersion);
+    else if (bindDraft) { this.ackVersion = Math.max(this.ackVersion, ticket.localVersion); this.follow(); }
     return true;
   }
 
@@ -163,6 +183,7 @@ export class Editor {
       this.draft.id = next.id;
       this.draft.revision = next.revision;
       this.draft.generation = next.generation;
+      this.follow();
     }
     return true;
   }

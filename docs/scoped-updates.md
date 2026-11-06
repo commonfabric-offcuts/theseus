@@ -16,6 +16,13 @@ An open source stays on the revision you chose. A newer Notebook revision offers
 writing, quotes, image selection, focus and selection. Incoming changes do not
 send, acknowledge a delivery, or silently choose a replacement source for you.
 
+Opening a Notebook page from its list shows its current revision. Writing keeps
+the revision it was started on; when that differs from the one shown, the Reader
+says the page has changed since you started writing. A reply or note with nothing
+in it (as a sent reply leaves its place, or once you empty it) holds no revision:
+it is about the revision you are reading, and Core moves an empty private slot to
+the revision its next save names, while one that holds writing keeps its own.
+
 While automatic updates are running, **Refresh** joins the same coalesced work.
 If updates are disabled or stopped by a diagnostic, it rereads the lists without
 restarting automatic checks. A refused topic stays hidden until **Retry updates**

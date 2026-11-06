@@ -26,6 +26,11 @@ def _source_key(ref):
     return _json([_identifier(ref.get("kind")), _identifier(ref.get("id"))])
 
 
+def _holds_writing(payload):
+    return bool(payload.get("body") or payload.get("attachments") or payload.get("quotes") or payload.get("addressees") or
+                any(payload.get(name) is not None for name in ("reply_to", "exchange_id", "opening")))
+
+
 def _topic_composition(ref, topic_id):
     # This is a private editor identity, not a quotable content source.
     if ref["kind"] != "topic":
@@ -62,6 +67,17 @@ class Drafts:
         else:
             self._source(db, actor, ref)
         return key
+
+    def _keeps_source(self, db, actor, stored, ref):
+        # Writing keeps the exact Notebook revision it was written against. A
+        # slot with nothing in it, as a sent reply leaves its place, holds no
+        # such claim: its next writing is about the revision the person reads.
+        if stored["source_ref"] == ref:
+            return True
+        if stored["source_ref"].get("kind") != "memory" or ref.get("kind") != "memory" or _holds_writing(stored):
+            return False
+        self._validate_source_ref(db, actor, ref)
+        return True
 
     def _writing(self, args):
         result = {"body": _body(args.get("body", ""))}
@@ -101,8 +117,8 @@ class Drafts:
             occupied = db.execute("SELECT revision FROM drafts WHERE actor_id=? AND source_key=? AND topic_id=?", (actor, source_key, topic_id)).fetchone()
             if occupied:
                 raise Refusal("REVISION_CONFLICT", "This editor already has a draft; reopen its existing identity", {"draft_revision": occupied["revision"]})
-        if row and (row["source_key"] != source_key or row["topic_id"] != topic_id or
-                    json.loads(row["payload"])["source_ref"] != ref or row["generation"] != generation):
+        if row and (row["source_key"] != source_key or row["topic_id"] != topic_id or row["generation"] != generation or
+                    not self._keeps_source(db, actor, json.loads(row["payload"]), ref)):
             raise Refusal("REVISION_CONFLICT", "The draft source or generation has changed")
         payload = self._writing(args)
         if topic_composition and (any(name in payload for name in ("opening", "reply_to", "exchange_id")) or payload["quotes"]):
@@ -134,7 +150,7 @@ class Drafts:
             occupied = db.execute("SELECT revision FROM notes WHERE actor_id=? AND source_key=?", (actor, key)).fetchone()
             if occupied:
                 raise Refusal("REVISION_CONFLICT", "This source already has a private note", {"note_revision": occupied["revision"]})
-        if row and (row["source_key"] != key or json.loads(row["payload"])["source_ref"] != ref):
+        if row and (row["source_key"] != key or not self._keeps_source(db, actor, json.loads(row["payload"]), ref)):
             raise Refusal("REVISION_CONFLICT", "An existing note retains its source revision")
         payload = {"source_ref": ref, "body": _body(args.get("body", "")), "caret": args.get("caret")}
         if row:

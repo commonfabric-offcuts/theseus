@@ -108,6 +108,34 @@ class MemoryCase(ReaderCase):
         self.assertEqual(view["note"]["body"], "My original note")
         self.assertEqual(self.records(), before)
 
+    def test_an_empty_private_slot_moves_to_the_revision_written_against_and_writing_keeps_its_own(self):
+        self.committed(self.memory())
+        first, second = self.memory_ref(), self.memory_ref(revision=2)
+        # Empty, as a sent reply leaves its place, and an emptied note.
+        self.committed(self.save_draft("empty-draft", first, "t1", ""))
+        self.committed(self.command("note.save", {"source_ref": first, "body": ""},
+                                    target={"note_id": "empty-note"}, expected={"note_revision": 0}))
+        self.committed(self.memory(revision=1, body="New words"))
+        # Writing begun while the page reads revision two is about revision two.
+        self.committed(self.save_draft("empty-draft", second, "t1", "About the new words", revision=1))
+        # Not to a revision that does not exist, even from an empty slot.
+        self.rejected(self.command("note.save", {"source_ref": self.memory_ref(revision=3), "body": "Ahead"},
+                                   target={"note_id": "empty-note"}, expected={"note_revision": 1}), "FORBIDDEN")
+        note = self.store.view("owner", "editor_state", {"source_ref": first})["note"]
+        self.assertEqual((note["source_ref"], note["body"], note["revision"]), (first, "", 1))
+        self.committed(self.command("note.save", {"source_ref": second, "body": "Noted on the new words"},
+                                    target={"note_id": "empty-note"}, expected={"note_revision": 1}))
+        view = self.store.view("owner", "editor_state", {"source_ref": second, "topic_id": "t1"})
+        self.assertEqual((view["draft"]["source_ref"], view["draft"]["body"]), (second, "About the new words"))
+        self.assertEqual((view["note"]["source_ref"], view["note"]["body"]), (second, "Noted on the new words"))
+        # Writing keeps the revision it was written against: neither a draft
+        # nor a note that holds words moves to another revision.
+        self.rejected(self.save_draft("empty-draft", first, "t1", "Moved back", revision=2), "REVISION_CONFLICT")
+        self.rejected(self.save_draft("empty-draft", first, "t1", "", revision=2), "REVISION_CONFLICT")
+        self.rejected(self.command("note.save", {"source_ref": first, "body": "Moved back"},
+                                   target={"note_id": "empty-note"}, expected={"note_revision": 2}), "REVISION_CONFLICT")
+        self.assertEqual(self.store.view("owner", "editor_state", {"source_ref": second, "topic_id": "t1"}), view)
+
     def test_quote_is_checked_against_exact_old_revision_and_does_not_address_names(self):
         self.committed(self.memory(body="agent-b said the original words"))
         self.committed(self.memory(revision=1, body="Replacement words"))

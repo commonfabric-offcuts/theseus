@@ -867,4 +867,60 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  // Also adds to the outcome's Notebook, so it runs after the case above.
+  await check('live an outcome Notebook page revised after a reply opens at its revision, before and after a reload, and only writing keeps an older one', async () => {
+    const p = await page('live-notebook-revision', null, true);
+    await settled(p);
+    const url = await p.evaluate('location.href');
+    const id = 'live-release-pipeline', row = `#outcome-references-list .reference[data-id="${id}"]`;
+    const ref = revision => ({ kind: 'memory', id, revision });
+    const saved = async revision => (await view('editor_state', { source_ref: ref(revision), topic_id: facts.topic_id })).draft;
+    const revise = (expected, title, body) => control({ method: 'memory_revise', operation_id: `live-notebook-revision-${expected}`, item_id: id,
+      expected_revision: expected, title, body });
+    const has = (selector, text) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent.includes(${JSON.stringify(text)})`);
+    const open = async title => {
+      await until(() => p.evaluate(`document.querySelector(${JSON.stringify(row)})?.textContent === ${JSON.stringify(title)}`), `the outcome Notebook lists ${title}`);
+      if (!await p.evaluate("document.querySelector('#outcome-references details').open")) await p.point('#outcome-references summary');
+      await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
+      await p.point(row);
+      await until(() => p.evaluate("document.querySelector('#reader').open"), 'the Reader opens the page');
+    };
+    const close = async () => { await p.point('#reader-close'); await until(() => p.evaluate("!document.querySelector('#reader').open"), 'the Reader closes'); };
+    await control({ method: 'outcome_reference', operation_id: id, item_id: id, title: 'Release pipeline', body: 'Pipeline revision one.' });
+    await open('Release pipeline');
+    await until(() => has('#source-body', 'Pipeline revision one.'), 'revision one is shown');
+    await p.point('#writing-body'); await p.send('Input.insertText', { text: 'A reply about revision one' });
+    await p.key('Enter', 12);
+    // As on the live instance: the send leaves an empty reply in its place, saved at revision one.
+    await until(async () => { const draft = await saved(1); return draft?.body === '' && draft.source_ref.revision === 1 && draft.revision > 1; }, 'the sent reply leaves an empty one at revision one');
+    await close();
+    await revise(1, 'Release pipeline, revised', 'Pipeline revision two.');
+    for (const reload of [false, true]) {
+      if (reload) {
+        await p.send('Page.navigate', { url });
+        await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'the page is read again');
+        await settled(p);
+      }
+      await open('Release pipeline, revised');
+      await until(() => has('#source-body', 'Pipeline revision two.'), `reload ${reload}: the page opens at revision two`);
+      assert.equal(await has('#reader-origin', 'Notebook · revision 2'), true);
+      assert.equal(await p.evaluate("document.querySelector('#source-update').hidden"), true, `reload ${reload}: an empty reply names no older revision`);
+      if (!reload) await close();
+    }
+    await p.point('#writing-body'); await p.send('Input.insertText', { text: 'Unsent words about revision two' });
+    await until(async () => { const draft = await saved(2); return draft?.body === 'Unsent words about revision two' && draft.source_ref.revision === 2; }, 'the writing is saved about revision two');
+    await close();
+    // Writing keeps its revision, and the Reader says the page has changed since.
+    await revise(2, 'Release pipeline, third', 'Pipeline revision three.');
+    await open('Release pipeline, third');
+    await until(() => has('#source-body', 'Pipeline revision three.'), 'the page opens at revision three');
+    assert.equal(await p.evaluate("document.querySelector('#writing-body').value"), 'Unsent words about revision two');
+    assert.equal(await p.evaluate("document.querySelector('#source-update').hidden"), false);
+    assert.equal(await p.evaluate("document.querySelector('#source-update').textContent"),
+      'This page has changed since you started writing. Your writing refers to revision 2; you are reading revision 3.');
+    assert.equal((await saved(3)).source_ref.revision, 2, 'the saved writing keeps revision two');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }
