@@ -51,7 +51,9 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
-        # Version 18 gives each participant's responsibility note a revision.
+        # Version 18 gives each participant's responsibility note a revision, and keeps the message each topic was started from.
+        db.execute("DROP INDEX topic_sources")
+        db.execute("ALTER TABLE topics DROP COLUMN source_message_id")
         db.execute("ALTER TABLE topic_participants DROP COLUMN responsibility_revision")
         if version == "17":
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
@@ -1164,7 +1166,8 @@ class Schema16Case(MigrationCase):
 
 
 class Schema17Case(MigrationCase):
-    """A schema-17 instance: version 18 gives each participant's responsibility note a revision."""
+    """A schema-17 instance: version 18 gives each participant's responsibility note a revision,
+    and keeps the message each topic was started from."""
 
     VERSION, FIXTURE = "17", SCHEMA_17
 
@@ -1199,6 +1202,31 @@ class Schema17Case(MigrationCase):
         self.assertEqual(schema(self.path), frozen(SCHEMA_17))
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
                          {k: v for k, v in records.items() if k != "metadata"})
+
+    def start_from(self, opening, topic, publish):
+        source = self.sql("SELECT id FROM messages WHERE topic_id='t1' ORDER BY seq LIMIT 1")[0][0]
+        self.assertEqual(self.command("opening.save", {"workspace_id": "w1", "topic_id": topic, "title": "From a message", "participants": [],
+                                                       "body": "Answering", "attachments": [], "source_message_id": source},
+                                      target={"opening_id": opening}, expected={"opening_revision": 0})["status"], "committed")
+        if publish:
+            self.assertEqual(self.command("opening.publish", {}, target={"opening_id": opening},
+                                          expected={"opening_revision": 1})["status"], "committed")
+
+    def test_step_back_refuses_once_a_topic_or_an_open_opening_names_its_message(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        for opening, topic, publish in (("o-open", "t-open", False), ("o-done", "t-done", True)):
+            with self.subTest(publish=publish):
+                if publish:
+                    # Only the published topic still names it once the open opening is discarded.
+                    self.assertEqual(self.command("opening.discard", {}, target={"opening_id": "o-open"},
+                                                  expected={"opening_revision": 1})["status"], "committed")
+                self.start_from(opening, topic, publish)
+                before = self.unchanged()
+                with self.assertRaises(MigrationError) as raised:
+                    self.step_back()
+                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(self.unchanged(), before)
 
     def test_step_back_refuses_once_a_note_has_a_revision(self):
         self.upgrade()

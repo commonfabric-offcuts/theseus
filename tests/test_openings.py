@@ -81,7 +81,7 @@ class OpeningsCase(fixtures.StoreCase):
         self.assertEqual(self.opening(), {"instance_id": "test-instance", "publish_receipt": None, "opening": {
             "id": "o1", "workspace_id": "w1", "topic_id": "t-new", "revision": 1, "state": "open",
             "title": "A new topic", "participants": ["agent-a"], "body": "The opening words", "attachments": [],
-            "publish_operation_id": None, "message_id": None}})
+            "publish_operation_id": None, "message_id": None, "source_message_id": None}})
         pending = self.media("pending-media", ready=False)
         second = self.save(revision=1, title="", body="", participants=[], attachments=[pending])
         self.assertEqual(self.committed(second)["opening_revision"], 2)

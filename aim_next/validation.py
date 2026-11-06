@@ -58,6 +58,7 @@ VIEWS = {
     "attention": set(), "actors": {"cursor", "limit", "kind"},
     "marks": {"topic_id", "cursor", "limit"},
     "colors": {"cursor", "limit"},
+    "source_topics": {"message_id", "cursor", "limit"},
 }
 
 
@@ -135,7 +136,7 @@ def _view_arguments(name, args):
             if cursor is None:
                 raise Refusal("INVALID_ARGUMENT", "Invalid delivery page cursor")
             _position(cursor)
-        elif name in ("workspaces", "workspace_topics", "openings", "workspace_members", "actors", "colors"):
+        elif name in ("workspaces", "workspace_topics", "openings", "workspace_members", "actors", "colors", "source_topics"):
             if cursor != "":
                 _identifier(cursor, "cursor")
             elif not isinstance(cursor, str):
