@@ -51,7 +51,8 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
-        # Version 18 counts the wakes each recipient left unanswered.
+        # Version 18 counts the wakes each recipient left unanswered, and keeps when the runner stopped.
+        db.execute("ALTER TABLE runner_state DROP COLUMN ended_ms")
         db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_since_ms")
         db.execute("ALTER TABLE recipient_schedule DROP COLUMN unanswered_wakes")
         if version == "17":
@@ -1191,6 +1192,15 @@ class Schema17Case(MigrationCase):
         self.assertEqual(schema(self.path), frozen(SCHEMA_17))
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
                          {k: v for k, v in records.items() if k != "metadata"})
+
+    def test_step_back_to_17_says_a_stopped_runner_is_idle(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        with self.store.runner_guard("stepping-back") as guard:
+            self.store.stop_runner(guard, self.store.acquire_runner(guard)["runner_token"])
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_17))
+        self.assertEqual(self.sql("SELECT state,reason_code FROM runner_state"), [("idle", None)])
 
     def test_step_back_refuses_while_a_wake_is_unanswered(self):
         self.upgrade()

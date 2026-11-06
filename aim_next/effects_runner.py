@@ -222,7 +222,7 @@ class EffectsLoop:
     def _read(self, hint):
         value = self._preclaim('schedule',lambda:self.store.runner_schedule(self.routed))
         if value is None: return
-        if (value.get('state') not in ('idle','running','paused')
+        if (value.get('state') not in ('idle','running','paused','stopped','exited')
                 or not _integer(value.get('version'))
                 or 'next_due_ms' not in value or not _integer(value['next_due_ms'],True)
                 or 'lease_until_ms' not in value or not _integer(value['lease_until_ms'],True)):
@@ -412,6 +412,17 @@ class EffectsLoop:
         self._event('paused',reason=reason)
         return self._result('paused',reason=reason,pause_saved=True)
 
+    def _stopped(self):
+        """A graceful stop says so in Core, so a page can tell it from a runner that died, and frees the lease."""
+        if self.token is None:
+            return self._result('stopped',stop_recorded=False)
+        try:
+            recorded = self._response(self._storage(lambda:self.store.stop_runner(self.guard,self.token))).get('status')=='stopped'
+        except (RunnerError, StoreError, StoreOpenError, AuthorityError, LoopFault):
+            # Unrecorded: the supervisor records the clean exit it sees, or else the lease ends.
+            recorded = False
+        return self._result('stopped',stop_recorded=recorded)
+
     def _read_at(self):
         wanted = min(self.reconcile_at,self.dirty_at if self.dirty_at is not None else float('inf'),
                      0 if self.read_needed else float('inf'))
@@ -458,7 +469,7 @@ class EffectsLoop:
                 # A host stops its children first: interrupt live turns, close
                 # input, and wait for each exit (design §6.3).
                 if self.watch.stopped and (self.host is None or self.host.stop_step(self.watch.stop_count)):
-                    return self._result('stopped')
+                    return self._stopped()
                 now,wall = self.clock.monotonic(),self.clock.wall_ms()
                 if self.token is not None and wall >= self.lease:
                     self._event('idle_lease_lost')

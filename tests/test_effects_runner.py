@@ -203,7 +203,8 @@ class EffectsRunnerCase(unittest.TestCase):
             return db,facts
         with mock.patch.object(storage,'_connect',connect): self.loop()
         writers=[(t,s) for t,s in statements if s=='BEGIN IMMEDIATE']
-        self.assertEqual([t for t,s in writers],[0,9,18,27])
+        # Acquire, three renewals, and the stop that frees the lease when it ends.
+        self.assertEqual([t for t,s in writers],[0,9,18,27,28])
         self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(0,)])
         self.assertTrue(any('sqlite_autoindex_recipient_schedule_1' in s for _,s in statements))
         self.assertFalse(any('count(*)' in s.lower() for _,s in statements))
@@ -234,7 +235,7 @@ class EffectsRunnerCase(unittest.TestCase):
         with mock.patch.object(self.store,'claim_wakes',claim): self.loop()
         self.assertEqual(calls,[0,1,3,7])
         self.assertEqual(self.sql('SELECT outcome FROM wake_results'),[('accepted',)])
-        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('running',)])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
 
     def test_parent_pin_busy_after_claim_pauses_without_settlement_or_spawn(self):
         api=self.api();self.create_topic()
@@ -272,7 +273,7 @@ class EffectsRunnerCase(unittest.TestCase):
         with mock.patch.object(self.store,'claim_wakes',claim): self.loop()
         self.assertEqual(self.sql('SELECT outcome FROM wake_results ORDER BY outcome'),
                          [('accepted',),('unavailable',)])
-        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('running',)])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
 
     def test_cleanup_uncertain_even_after_expiry_attempts_pause_not_settlement(self):
         api=self.api();self.create_topic()
@@ -324,7 +325,7 @@ class EffectsRunnerCase(unittest.TestCase):
         version=before[0][1]
         result=self.loop(resume_version=version)
         self.assertEqual(result['status'],'stopped')
-        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('running',)])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
 
     def test_missed_hint_reconciles_at_sixty_seconds_with_independent_renewal(self):
         self.api();self.wait.stop_at=61
@@ -349,7 +350,7 @@ class EffectsRunnerCase(unittest.TestCase):
         with mock.patch.object(self.store,'claim_wakes',claim): self.loop()
         self.assertEqual(calls,[0,0,1,2,3])
         self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(0,)])
-        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('running',)])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
 
     def foreground(self, **kwargs):
         api=self.api()
@@ -506,6 +507,37 @@ class EffectsRunnerCase(unittest.TestCase):
         self.assertEqual(self.sql('SELECT count(*) FROM wake_results'),[(0,)])
         self.assertFalse(list(self.root.glob('*.observation.json')))
 
+    def test_a_graceful_stop_records_it_and_frees_the_lease(self):
+        self.api(); self.wait.stop_at=28
+        result=self.loop()
+        self.assertEqual((result['status'],result.get('stop_recorded')),('stopped',True))
+        stopped_at=self.clock.wall_ms()
+        self.assertEqual(self.sql('SELECT state,reason_code,lease_until_ms,ended_ms FROM runner_state'),
+                         [('stopped',None,stopped_at,stopped_at)])
+
+    def test_a_stop_core_cannot_record_still_stops_and_says_so(self):
+        self.api(); self.wait.stop_at=28
+        with mock.patch.object(self.store,'stop_runner',side_effect=RunnerError('DATABASE_BUSY','fixture',retryable=True)):
+            result=self.loop()
+        self.assertEqual((result['status'],result.get('stop_recorded')),('stopped',False))
+        self.assertEqual(self.sql('SELECT state,ended_ms FROM runner_state'),[('running',None)])
+
+    def test_a_read_that_finds_another_runners_stop_recorded_is_not_a_fault(self):
+        # This runner's lease ran out; a successor ran, and its stop or exit is what Core now records.
+        self.api(); self.wait.stop_at=12
+        def successor_ended():
+            db=sqlite3.connect(str(self.path))
+            try:
+                with db: db.execute("UPDATE runner_state SET state='exited',reason_code='killed',runner_token='r-successor',version=version+1")
+            finally:
+                db.close()
+            return True
+        self.wait.events=[(0.5,successor_ended)]
+        result=self.loop()
+        self.assertNotEqual(result['status'],'fatal_unsaved',result)
+        self.assertNotIn('storage_failure',json.dumps(self.trace))
+        self.assertEqual(result['status'],'ownership_lost',result)
+
     def test_native_twenty_eight_second_idle_counts_actual_sql_writes(self):
         api=self.api();self.clock_patch.stop()
         started=time.monotonic();statements=[];watches=[]
@@ -531,8 +563,8 @@ class EffectsRunnerCase(unittest.TestCase):
             if timer.ident is not None:timer.join()
         self.assertEqual(result['status'],'stopped')
         writes=[t for t,s in statements if s=='BEGIN IMMEDIATE']
-        self.assertEqual(len(writes),4,'idle must acquire and renew, never claim or poll by writing')
-        for actual,expected in zip(writes,(0,9,18,27)):
+        self.assertEqual(len(writes),5,'idle must acquire, renew and record its stop, never claim or poll by writing')
+        for actual,expected in zip(writes,(0,9,18,27,28.15)):
             self.assertLess(abs(actual-writes[0]-expected),0.75)
         due_reads=[t for t,s in statements if 'SELECT next_due_ms' in s]
         self.assertGreaterEqual(len(due_reads),1)
@@ -608,7 +640,7 @@ db.rollback();db.close()
         with mock.patch.object(self.store,'acquire_runner',acquire):result=self.loop()
         self.assertEqual(calls,[0,1])
         self.assertEqual(result['status'],'stopped')
-        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('running',)])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
 
     def test_real_busy_claim_commit_rolls_back_before_retry(self):
         self.api();self.create_topic()
@@ -640,7 +672,7 @@ db.rollback();db.close()
         self.assertEqual([t for t,_ in calls],[9,10])
         self.assertEqual(len({token for _,token in calls}),1)
         self.assertEqual(result['status'],'stopped')
-        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('running',)])
+        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
 
     def test_native_lock_contender_refuses_held_lock_and_accepts_after_release(self):
         self.api()

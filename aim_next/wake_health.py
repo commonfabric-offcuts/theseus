@@ -28,8 +28,13 @@ QUIET_LIMIT = 100
 WAKE_HEALTH_SCHEMA = [
     "ALTER TABLE recipient_schedule ADD COLUMN unanswered_wakes INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE recipient_schedule ADD COLUMN unanswered_since_ms INTEGER",
+    # When the runner stopped or exited; its state says which ('stopped', 'exited').
+    "ALTER TABLE runner_state ADD COLUMN ended_ms INTEGER",
 ]
 WAKE_HEALTH_DOWN = (
+    # Version 17 knows a runner that is not running only as idle, with no lease.
+    "UPDATE runner_state SET state='idle',reason_code=NULL WHERE state IN ('stopped','exited')",
+    "ALTER TABLE runner_state DROP COLUMN ended_ms",
     "ALTER TABLE recipient_schedule DROP COLUMN unanswered_since_ms",
     "ALTER TABLE recipient_schedule DROP COLUMN unanswered_wakes",
 )
@@ -62,9 +67,21 @@ class WakeHealth:
         else:
             db.execute("UPDATE recipient_schedule SET unanswered_wakes=0,unanswered_since_ms=NULL WHERE recipient_id=?", (actor,))
 
-    def _wakes_live(self, db, now):
+    def _runner_light(self, db, now):
+        """Whether wakes are going out, and if not, what Core knows of why and since when."""
         state = self._runner_state(db)
-        return state["state"] == "running" and state["lease_until_ms"] is not None and state["lease_until_ms"] > now
+        if state["state"] == "running" and state["lease_until_ms"] > now:
+            return {"live": True}
+        if state["state"] == "paused":
+            return {"live": False, "state": "paused", "reason": state["reason_code"]}
+        if state["state"] == "stopped":
+            return {"live": False, "state": "stopped", "since_ms": state["ended_ms"]}
+        if state["state"] == "exited":
+            return {"live": False, "state": "exited", "reason": state["reason_code"], "since_ms": state["ended_ms"]}
+        if state["state"] == "running":
+            # It stopped renewing without saying so: it is known gone once its lease ends.
+            return {"live": False, "state": "unrenewed", "since_ms": state["lease_until_ms"]}
+        return {"live": False, "state": "never_run"}
 
     def _routed_here(self, db, actor):
         """Whether this agent has a route pin in this instance: the agents the runner wakes."""
@@ -73,10 +90,15 @@ class WakeHealth:
         return db.execute("SELECT 1 FROM metadata WHERE key=?", (_pin_key(binding),)).fetchone() is not None
 
     def _view_wakes(self, db, actor, args):
-        """Agents whose wakes are not getting through: parked ones, or every woken agent with work while wakes are not going out."""
+        """Agents whose wakes are not getting through: parked ones, or every woken agent with work while wakes are not going out.
+
+        While wakes are not going out and work waits for a routed agent, a
+        reader who owns an outcome gets a notice: someone has to start the
+        runner again, or see why it stopped."""
         from .delivery import _now_ms
         now = _now_ms()
-        live = self._wakes_live(db, now)
+        runner = self._runner_light(db, now)
+        live = runner["live"]
         quiet = []
         if live:
             rows = db.execute("SELECT s.recipient_id,s.pending_count,s.unanswered_since_ms FROM recipient_schedule s JOIN actors a ON a.id=s.recipient_id "
@@ -90,4 +112,7 @@ class WakeHealth:
                               (QUIET_LIMIT,)).fetchall()
             quiet = [{"actor_id": row["recipient_id"], "waiting": row["pending_count"], "why": "wakes_paused"}
                      for row in rows if self._routed_here(db, row["recipient_id"])]
-        return {"instance_id": self.instance_id, "wakes_live": live, "quiet": quiet}
+        result = {"instance_id": self.instance_id, "runner": runner, "quiet": quiet}
+        if not live and quiet and db.execute("SELECT 1 FROM workspaces WHERE owner_id=? LIMIT 1", (actor,)).fetchone():
+            result["notice"] = {"waiting_agents": len(quiet)}
+        return result

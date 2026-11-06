@@ -102,6 +102,33 @@ wake); while none does, each agent with a route pin here and work waiting, as
 `why: "wakes_paused"`, so no agent is blamed for wakes that are not being sent.
 Proof: `tests/test_wake_health.py`.
 
+## When the runner stops
+
+Core records how the runner ended, so a page can say so from facts rather than
+from silence. A graceful stop (TERM or INT, after the host has stopped its
+children) calls `stop_runner`: the state becomes `stopped`, `ended_ms` is set
+and the lease ends at once, so the next runner does not wait one out; the
+result carries `stop_recorded`. A runner that ends any other way cannot say
+so itself, so whatever started it reports the exit it reaped with
+`record_runner_exit(pid, status)`. That write needs no guard (the process is
+gone, and a broker child it left may still hold the guard) and lands only
+while Core records that pid as running, so a later runner's record is never
+touched and a paused runner stays paused. The state becomes `exited`, with
+`reason_code` `lease_lost` (75), `stopped_unrecorded` (0: a clean stop Core
+could not record), `killed` (a signal) or `failed`, and the lease ends no
+later than now. Acquiring clears `ended_ms`. A runner that stops renewing
+without either record is known gone when its lease ends.
+
+The `wakes` view carries `runner`: `{live: true}`, or `{live: false, state}`
+with `paused` and its reason, `stopped` or `exited` with `since_ms` (and the
+exit's reason), `unrenewed` with `since_ms` the lease's end, or `never_run`.
+While it is not live and work waits for an agent routed here, a reader who
+owns an outcome also gets `notice: {waiting_agents}`: someone has to start
+the runner again, or see why it stopped. Stepping back to version 17 turns a
+`stopped` or `exited` row into `idle`, the only not-running state 17 knows.
+Proof: `tests/test_runner_exit.py`, and for the loop's own stop
+`tests/test_effects_runner.py`.
+
 Focused proof lives in `tests/test_effects_runner.py`,
 `tests/test_effects_watch.py` and, for hosted routes, `tests/test_codex_host.py`. It uses isolated real Stores, owned fixture
 brokers, native signals, actual SQLite statements/locks and a controlled clock

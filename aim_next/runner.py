@@ -26,6 +26,10 @@ RUNNER_SCHEMA = [
 ]
 
 
+# How a runner process that did not stop itself ended, from its exit status.
+EXIT_REASONS = {75: "lease_lost", 0: "stopped_unrecorded"}
+
+
 def _write_once(table, columns):
     """A column of this table moves only from NULL to a value, once; rows are never deleted."""
     changed = " OR ".join("(OLD.%s IS NOT NULL AND NEW.%s IS NOT OLD.%s)" % (column, column, column) for column in columns)
@@ -215,7 +219,7 @@ class Runner:
     def _acquire(self, db, guard, now, lease_ms):
         token = "r-" + uuid.uuid4().hex
         until = now + lease_ms
-        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=NULL,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1",
+        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=NULL,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
                    (token, guard.runner_id, guard.generation, until, os.getpid(), now))
         return {"status": "acquired", "runner_token": token, "lease_until_ms": until}, True
 
@@ -526,6 +530,56 @@ class Runner:
             db.execute("UPDATE hosted_children SET exited_ms=?,exit_status=?,cleanup=? WHERE id=?", (now, exit_status, cleanup, child_id))
             return {"status": "recorded"}, True
         return self._effect(guard, action)
+
+    def stop_runner(self, guard, runner_token):
+        """A graceful stop says so, and frees the lease at once for the next runner."""
+        def action(db, now):
+            state = self._runner_state(db)
+            ownership = self._ownership(state, guard, runner_token, now, allow_expired=True)
+            if ownership != "running":
+                return {"status": ownership}, False
+            db.execute("UPDATE runner_state SET state='stopped',version=version+1,reason_code=NULL,lease_until_ms=?,ended_ms=? WHERE id=1", (now, now))
+            return {"status": "stopped", "ended_ms": now}, True
+        return self._effect(guard, action)
+
+    def record_runner_exit(self, pid, exit_status):
+        """What a supervisor saw: the runner process pid exited with exit_status (negative: the signal that ended it).
+
+        Written only while that process is the one Core records as running,
+        so a later runner's record is never touched. It needs no guard: the
+        process is gone, and a child it left may still hold the guard. Its
+        lease ends now, so a restarted runner does not wait one out."""
+        _bounded(pid, 1, 2147483647, "pid")
+        if type(exit_status) is not int or not -255 <= exit_status <= 255:
+            raise RunnerError("INVALID_ARGUMENT", "exit_status is the reaped process's return code")
+        reason = EXIT_REASONS.get(exit_status, "killed" if exit_status < 0 else "failed")
+        from .store import _connect
+        try:
+            with self._authority.shared() as fence:
+                db, _ = _connect(self.path)
+                try:
+                    db.execute("BEGIN IMMEDIATE")
+                    fence.verify()
+                    self._check_instance(db)
+                    state, now = self._runner_state(db), delivery._now_ms()
+                    if state["state"] != "running" or state["runner_pid"] != pid:
+                        return {"status": "not_holder", "instance_id": self.instance_id}
+                    db.execute("UPDATE runner_state SET state='exited',version=version+1,reason_code=?,lease_until_ms=MIN(lease_until_ms,?),ended_ms=? WHERE id=1",
+                               (reason, now, now))
+                    self._advance_commit_seq(db)
+                    db.commit()
+                    return {"status": "recorded", "reason": reason, "ended_ms": now, "instance_id": self.instance_id}
+                finally:
+                    try:
+                        if db.in_transaction:
+                            db.rollback()
+                    finally:
+                        db.close()
+        except (sqlite3.Error, OSError) as error:
+            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
+                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+                raise RunnerError("DATABASE_BUSY", "Runner state is busy; the exit was not recorded", retryable=True) from error
+            raise RunnerError("RUNNER_STORAGE_ERROR", "The runner's exit could not be confirmed") from error
 
     def pause_runner(self, guard, runner_token, reason_code):
         if reason_code not in ("cleanup_failed", "route_binding_changed", "storage_failure", "operator_pause"):

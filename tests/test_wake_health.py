@@ -123,7 +123,7 @@ class ParkingCase(Fixture):
 
     def test_an_agent_answering_is_never_listed(self):
         self.settle()
-        self.assertEqual(self.wakes(), {"instance_id": "test-instance", "wakes_live": True, "quiet": []})
+        self.assertEqual(self.wakes(), {"instance_id": "test-instance", "runner": {"live": True}, "quiet": []})
 
 
 @own_cases
@@ -178,7 +178,7 @@ class PausedWakesCase(hosted_tests.HostedCase):
         self.send_next("For both")
         self.now += 31000
         view = self.store.view("owner", "wakes", {})
-        self.assertFalse(view["wakes_live"])
+        self.assertFalse(view["runner"]["live"])
         self.assertEqual(view["quiet"], [{"actor_id": "agent-a", "waiting": 2, "why": "wakes_paused"}])
         # A live runner: nobody is blamed while they are being woken.
         self.runner = self.token(self.hosting)
