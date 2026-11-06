@@ -18,7 +18,8 @@ from tools import release_check
 ROOT = Path(__file__).resolve().parents[1]
 
 # A stand-in for node: `--test` prints a TAP summary; a harness writes its
-# results file into the evidence directory. STUB_FAIL names a step to fail.
+# results file into the evidence directory. STUB_FAIL names a step to fail;
+# "exit-only-<name>" writes passing results and still exits non-zero.
 STUB_NODE = r'''#!%s
 import json, os, sys
 args = sys.argv[1:]
@@ -39,17 +40,21 @@ else:
     path = "native.json"
 if fail != "no-results-" + name:
     open(os.path.join(evidence, path), "w").write(json.dumps(report))
-sys.exit(int(bad))
+sys.exit(int(bad or fail == "exit-only-" + name))
 '''
 
 STUB_PYTHON = r'''#!%s
-import os, sys
+import os, subprocess, sys
 if os.environ.get("STUB_FAIL") == "python-units":
     print("Ran 3 tests in 0.1s\n\nFAILED (failures=1)")
     sys.exit(1)
 if os.environ.get("STUB_FAIL") == "dirty":
     open("stray.txt", "w").write("left behind")
+if os.environ.get("STUB_FAIL") == "commit":
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty",
+                    "-m", "moved"], check=True)
 print("Ran 3 tests in 0.1s\n\nOK (skipped=1)")
+sys.exit(int(os.environ.get("STUB_FAIL") == "exit-only-python-units"))
 '''
 
 
@@ -126,6 +131,19 @@ class ReleaseCheckRuns(FakeCheckout):
         self.assertFalse(step["passed"])
         self.assertFalse(summary["passed"])
 
+    def test_a_step_that_exits_non_zero_fails_even_when_its_report_passed(self):
+        for fail, name, report in (("exit-only-reader_openings", "native-openings", ("pass", 1)),
+                                   ("exit-only-python-units", "python-units", ("status", "OK"))):
+            with self.subTest(fail):
+                self.out = Path(self.tmp.name) / ("out-" + fail)
+                summary = self.check(fail=fail)
+                step = [s for s in summary["steps"] if s["name"] == name][0]
+                # The step's own report passed; only its exit disagrees.
+                self.assertEqual((step["exit"], step["counts"][report[0]]), (1, report[1]))
+                self.assertFalse(step["passed"])
+                self.assertEqual([s["name"] for s in summary["steps"] if not s["passed"]], [name])
+                self.assertFalse(summary["passed"])
+
     def test_failing_units_fail_the_run(self):
         for fail, name in (("python-units", "python-units"), ("node-units", "node-units")):
             with self.subTest(fail):
@@ -133,6 +151,16 @@ class ReleaseCheckRuns(FakeCheckout):
                 summary = self.check(fail=fail)
                 self.assertFalse(summary["passed"])
                 self.assertEqual([s["name"] for s in summary["steps"] if not s["passed"]], [name])
+
+    def test_a_checkout_whose_head_moved_during_the_run_does_not_pass_even_when_clean(self):
+        summary = self.check(fail="commit")
+        self.assertTrue(all(step["passed"] for step in summary["steps"]))
+        self.assertEqual(summary["tree_after"]["changes"], "")
+        self.assertNotEqual(summary["tree_after"]["head"], self.commit)
+        self.assertFalse(summary["tree_unchanged"])
+        self.assertFalse(summary["passed"])
+        self.assertIn("the checkout changed while the release check ran",
+                      release_check.verify_summary(self.out / "summary.json", self.commit))
 
     def test_a_checkout_changed_during_the_run_does_not_pass(self):
         summary = self.check(fail="dirty")
