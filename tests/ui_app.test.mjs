@@ -276,6 +276,23 @@ test('an explicit close a newer open superseded stays quiet when its preservatio
   const y = await opening; assert.equal(f.registry.current, y); assert.deepEqual(f.closed, []);
 });
 
+// A second press of Close supersedes the first while the Reader stays in
+// front: only the newer close reports the refusal, once.
+test('of two explicit closes refused while preservation fails, only the newer one says why', async t => {
+  const f = await fixture(t), x = await f.open(0), entered = deferred(), release = deferred(), put = f.backend.put;
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  f.backend.put = async () => { entered.resolve(); await release.promise; throw Error('Injected recovery quota failure'); };
+  x.editors.reply.edit({ body: 'X close local preservation' });
+  const first = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
+  await entered.promise;
+  const second = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
+  assert.equal(f.registry.isCurrent(x), true, 'the Reader is still in front');
+  release.resolve();
+  assert.deepEqual(await first, { value: false }, 'the superseded close stays quiet');
+  assert.match((await second).error?.message ?? '', /Injected recovery quota failure/, 'the newer close says why');
+  assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+});
+
 for (const action of ['note', 'send']) {
   test(`automatic ${action} completion never cancels a pending user open`, async t => {
     const f = await fixture(t), x = await f.open(0);

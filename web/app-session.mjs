@@ -259,15 +259,18 @@ export class EditorRegistry {
     }
     const requestGeneration = this.generation;
     if (!this.isCurrent(presentation)) return false;
+    // Everything that can take this presentation out of front moves the
+    // generation (an open, a mode change, another close, disposal), so while
+    // it is unchanged the presentation is still current.
     // A refused explicit close says why to the person who asked for it, while
     // this is still the writing they asked to close; an automatic close (a
     // prepared send, a saved note) stays quietly open.
     try { await this.keepLocal(presentation); }
     catch (error) {
-      if (explicit && this.isCurrent(presentation) && requestGeneration === this.generation) throw error;
+      if (explicit && requestGeneration === this.generation) throw error;
       return false;
     }
-    if (!this.isCurrent(presentation) || requestGeneration !== this.generation) return false;
+    if (requestGeneration !== this.generation) return false;
     this.current = null; ++this.generation; this.closed(presentation); this.activity(); return true;
   }
 
