@@ -10,15 +10,17 @@ test('the team\'s agents have fixed colors, and any other agent always gets the 
   // from Fable's green and 3.2 from aim-lead's blue in light (warp, item 91).
   assert.deepEqual(['aim-lead', 'aim-ux', 'fable', 'aim-core', 'aim-spec', 'warp'].map(agentColor),
     ['blue', 'violet', 'green', 'peach', 'rose', 'cyan']);
-  // Every other agent is indigo, which no team agent has, so none is taken for
-  // one of the team. Olive is no one's default: its light card is 3.2
-  // (CIEDE2000) from Fable's green (warp, item 91).
+  // Every other agent is olive, which no team agent has. Indigo's light card
+  // is 2.3 (CIEDE2000) from aim-ux's violet, so an agent outside the team in
+  // indigo looked like aim-ux; olive is the free color farthest from the team
+  // (warp, item 91b).
   const used = new Set(['aim-next-bot', 'codex', 'x', 'fixture-notebook-agent', 'weft', 'og', 'networking', 'aim-next-agent',
     ...Array.from({ length: 200 }, (_, n) => 'agent-' + n)].map(agentColor));
-  assert.deepEqual([...used], ['indigo'], 'every agent outside the team is indigo');
-  // A person who chose olive for an agent keeps it: Core accepts only palette
-  // names, and the page paints every one (aim_next/colors.py).
-  assert.ok(AGENT_PALETTE.includes('olive'), 'olive stays a color a person can choose');
+  assert.deepEqual([...used], ['olive'], 'every agent outside the team is olive');
+  // Indigo stays a color a person can choose for an agent.
+  assert.ok(AGENT_PALETTE.includes('indigo'), 'indigo stays a color a person can choose');
+  // Two purples, not three: orchid sat 2.4 (CIEDE2000) from violet.
+  assert.deepEqual(AGENT_PALETTE, ['green', 'blue', 'indigo', 'violet', 'rose', 'peach', 'cyan', 'olive']);
   assert.equal(agentColor('constructor'), agentColor('constructor'));
   assert.ok(AGENT_PALETTE.includes(agentColor('toString')), 'a name on Object.prototype is just another id');
   for (const bad of ['', null, undefined, 3]) assert.throws(() => agentColor(bad), /agent id/);
@@ -96,7 +98,6 @@ test('Fable keeps the green it has on the live app, in light and in dark', () =>
   assert.equal(agentColor('fable'), 'green');
   assert.equal(tokens(css, '.agent-green')['agent-card'], live.light, 'light: a Fable card is the live green');
   assert.equal(tokens(dark, '.agent-green')['agent-card'], live.dark, 'dark: a Fable card is the live green');
-  assert.ok(AGENT_PALETTE.includes('orchid'), 'orchid stays a color an agent can be given');
 });
 
 test('an agent\'s card is colored across its whole face, never by an edge or bar', () => {
@@ -157,7 +158,7 @@ test('the picker and the names that open it paint no tap highlight, and keep the
 // page, never the green that is Fable's card. Every word on it keeps 4.5:1.
 test('the Reader shows an agent\'s message on its color, and anything else on the neutral page', () => {
   const message = (author, author_kind) => ({ source_ref: { kind: 'message', id: 'm' }, author, author_kind });
-  assert.equal(paneClass(message('fixture-notebook-agent', 'agent'), 'tony'), 'reading-pane agent-pane agent-indigo');
+  assert.equal(paneClass(message('fixture-notebook-agent', 'agent'), 'tony'), 'reading-pane agent-pane agent-olive');
   assert.equal(paneClass(message('fable', 'agent'), 'tony', () => 'rose'), 'reading-pane agent-pane agent-rose', 'the reader\'s choice for the agent');
   assert.equal(paneClass(message('tony', 'human'), 'tony'), 'reading-pane', 'your own message');
   assert.equal(paneClass(message('fable', 'agent'), 'fable'), 'reading-pane', 'an agent reading its own message');

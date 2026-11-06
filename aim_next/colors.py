@@ -19,8 +19,16 @@ from .contract import Refusal, _bounded_page, _identifier, _page_size
 
 
 # The palette a choice names, in the order a picker offers it. The browser
-# draws each as a class in web/aim.css.
-AGENT_COLORS = ("green", "blue", "indigo", "violet", "orchid", "rose", "peach", "cyan", "olive")
+# draws each as a class in web/aim.css. Orchid was one until it was measured
+# too close to violet and rose to tell apart (item 91b).
+AGENT_COLORS = ("green", "blue", "indigo", "violet", "rose", "peach", "cyan", "olive")
+
+
+def _offered(color):
+    """A kept choice as it reads now: a color the palette no longer offers,
+    such as orchid, is the agent's own again. Its row and revision stay, so the
+    revision still only grows."""
+    return color if color in AGENT_COLORS else None
 
 COLOR_SCHEMA = [
     "CREATE TABLE color_choices (actor_id TEXT NOT NULL REFERENCES actors(id), subject_id TEXT NOT NULL REFERENCES actors(id), "
@@ -36,7 +44,7 @@ class Colors:
     def _color_choice(self, db, actor, subject_id):
         row = db.execute("SELECT color,revision FROM color_choices WHERE actor_id=? AND subject_id=?",
                          (actor, subject_id)).fetchone()
-        return (row["color"], row["revision"]) if row else (None, 0)
+        return (_offered(row["color"]), row["revision"]) if row else (None, 0)
 
     def _command_color_set(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
@@ -74,5 +82,5 @@ class Colors:
         rows = db.execute("SELECT subject_id,color,revision FROM color_choices WHERE actor_id=? AND subject_id>? "
                           "ORDER BY subject_id LIMIT ?", (actor, args.get("cursor", ""), limit + 1)).fetchall()
         return _bounded_page({"instance_id": self.instance_id, "palette": list(AGENT_COLORS)}, rows, limit,
-                             lambda row: {"actor_id": row["subject_id"], "color": row["color"],
+                             lambda row: {"actor_id": row["subject_id"], "color": _offered(row["color"]),
                                           "color_revision": row["revision"]}, "actor_id")

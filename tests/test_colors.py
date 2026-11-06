@@ -10,7 +10,7 @@ import test_store as fixtures
 
 
 ROOT = Path(__file__).resolve().parent.parent
-PALETTE = ["green", "blue", "indigo", "violet", "orchid", "rose", "peach", "cyan", "olive"]
+PALETTE = ["green", "blue", "indigo", "violet", "rose", "peach", "cyan", "olive"]
 
 
 class ColorCase(fixtures.StoreCase):
@@ -39,9 +39,9 @@ class ColorCase(fixtures.StoreCase):
 
     def test_a_choice_is_the_choosers_own_and_the_view_reads_it(self):
         self.assertEqual(self.choices(), {"instance_id": "test-instance", "palette": PALETTE, "items": [], "next_cursor": None})
-        result = self.committed(self.choose("agent-a", "orchid", 0))
-        self.assertEqual(result, {"actor_id": "agent-a", "color": "orchid", "color_revision": 1, "changed": True})
-        self.assertEqual(self.choices()["items"], [{"actor_id": "agent-a", "color": "orchid", "color_revision": 1}])
+        result = self.committed(self.choose("agent-a", "indigo", 0))
+        self.assertEqual(result, {"actor_id": "agent-a", "color": "indigo", "color_revision": 1, "changed": True})
+        self.assertEqual(self.choices()["items"], [{"actor_id": "agent-a", "color": "indigo", "color_revision": 1}])
         # Another reader, an agent here, sees none of it.
         self.assertEqual(self.choices("agent-b")["items"], [])
         # The choice tells only the chooser's own changes.
@@ -60,7 +60,7 @@ class ColorCase(fixtures.StoreCase):
         self.assertEqual(self.rows(), [("owner", "agent-a", "rose", 3)])
 
     def test_a_late_request_never_undoes_a_newer_choice(self):
-        self.committed(self.choose("agent-a", "orchid", 0))
+        self.committed(self.choose("agent-a", "indigo", 0))
         self.committed(self.choose("agent-a", "peach", 1, op="other-device"))
         error = self.refused(self.choose("agent-a", "cyan", 1, op="late"), "REVISION_CONFLICT")
         self.assertEqual(error["current_versions"], {"color_revision": 2})
@@ -91,6 +91,23 @@ class ColorCase(fixtures.StoreCase):
         self.committed(self.choose("agent-a", "blue", 0, actor="agent-b"))
         self.assertEqual(self.rows(), [("agent-b", "agent-a", "blue", 1), ("owner", "agent-a", "green", 1)])
 
+    def test_a_kept_choice_of_a_color_no_longer_offered_reads_as_the_agents_own(self):
+        # Orchid left the palette (item 91b); a choice of it made before then
+        # is still a row. It reads as the agent's own, at its revision, and the
+        # revision keeps growing from there.
+        self.refused(self.choose("agent-a", "orchid", 0), "INVALID_ARGUMENT")
+        self.committed(self.choose("agent-a", "rose", 0))
+        self.committed(self.choose("agent-b", "violet", 0))
+        self.sql("UPDATE color_choices SET color='orchid' WHERE subject_id='agent-a'")
+        self.assertEqual(self.choices()["items"], [{"actor_id": "agent-a", "color": None, "color_revision": 1},
+                                                   {"actor_id": "agent-b", "color": "violet", "color_revision": 1}])
+        self.assertEqual(self.committed(self.choose("agent-a", None, 1)),
+                         {"actor_id": "agent-a", "color": None, "color_revision": 1, "changed": False},
+                         "the agent's own is what it already reads as")
+        self.refused(self.choose("agent-a", "orchid", 1), "INVALID_ARGUMENT")
+        self.assertEqual(self.committed(self.choose("agent-a", "cyan", 1))["color_revision"], 2)
+        self.assertEqual(self.rows(), [("owner", "agent-a", "cyan", 2), ("owner", "agent-b", "violet", 1)])
+
     def test_the_view_pages_by_agent(self):
         self.committed(self.choose("agent-b", "olive", 0))
         self.committed(self.choose("agent-a", "indigo", 0))
@@ -109,6 +126,8 @@ class ColorCase(fixtures.StoreCase):
         for name in PALETTE:
             self.assertIn(".agent-%s{--agent-card:" % name, css[:css.index("@media(prefers-color-scheme:dark){.agent-")], name)
             self.assertIn(".agent-%s{--agent-card:" % name, dark, name)
+        drawn = re.findall(r"\.agent-([a-z]+)\{--agent-card:", css)
+        self.assertEqual(sorted(set(drawn)), sorted(PALETTE), "a color the palette does not offer is not drawn")
 
 
 # Do not rerun the inherited StoreCase tests.

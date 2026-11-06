@@ -1,16 +1,17 @@
 // Each agent's own color: a tint behind its cards and a deeper one behind its
 // name, the same agent always the same color (docs/reading-colors.md, "Agent
 // colors"). The colors themselves live in aim.css, one class per name here.
-// Fable's green is the color its cards already had (the live --soft); orchid
-// and olive are no one's by default, and anyone can be given them.
-export const AGENT_PALETTE = ['green', 'blue', 'indigo', 'violet', 'orchid', 'rose', 'peach', 'cyan', 'olive'];
+// Fable's green is the color its cards already had (the live --soft); indigo
+// is no one's by default, and anyone can be given it.
+export const AGENT_PALETTE = ['green', 'blue', 'indigo', 'violet', 'rose', 'peach', 'cyan', 'olive'];
 const KNOWN = { 'aim-lead': 'blue', 'aim-ux': 'violet', fable: 'green', 'aim-core': 'peach', 'aim-spec': 'rose', warp: 'cyan' };
 
-// Any other agent is indigo, which no team agent has, so no other agent is
-// taken for one of the team.
+// Any other agent is olive, which no team agent has and which is the farthest
+// of the free colors from the team's, so no other agent is taken for one of
+// the team.
 export function agentColor(id) {
   if (typeof id !== 'string' || !id) throw Error('An agent color needs the agent id.');
-  return Object.hasOwn(KNOWN, id) ? KNOWN[id] : 'indigo';
+  return Object.hasOwn(KNOWN, id) ? KNOWN[id] : 'olive';
 }
 
 // The person's own messages keep their black; a person's other messages keep

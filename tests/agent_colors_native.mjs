@@ -203,7 +203,7 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
         return {name:s.getAttribute('aria-label'),tag:t&&getComputedStyle(t).backgroundColor,fill:getComputedStyle(s).backgroundColor,words:n?.textContent,
           shown:Boolean(w&&w.width>0&&w.height>0&&w.left>=r.left&&w.right<=r.right&&w.bottom<=r.bottom),tall:t?Math.round(t.getBoundingClientRect().height):0}})`);
       const panel = await p.evaluate("getComputedStyle(document.querySelector('.color-picker')).backgroundColor");
-      assert.equal(swatches.length, 9, width + ': a swatch per palette color');
+      assert.equal(swatches.length, 8, width + ': a swatch per palette color');
       for (const swatch of swatches) {
         const [, tag] = await tokens(p, swatch.name);
         assert.deepEqual([swatch.tag, swatch.fill, swatch.words, swatch.shown], [rgbOf(tag), panel, swatch.name, true], `${width}: ${swatch.name} shows its name tag color on the picker, named`);

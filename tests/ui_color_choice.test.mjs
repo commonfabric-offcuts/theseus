@@ -29,15 +29,15 @@ const page = (items, next = null, palette = AGENT_PALETTE) => ({ instance_id: 'i
 
 test('the page reads every page of the reader\'s choices, and again when it is shown or focused', async () => {
   const { colors, calls, listeners } = store([
-    page([{ actor_id: 'aim-core', color: 'orchid', color_revision: 1 }], 'aim-core'),
+    page([{ actor_id: 'aim-core', color: 'indigo', color_revision: 1 }], 'aim-core'),
     page([{ actor_id: 'fable', color: null, color_revision: 2 }]),
     page([{ actor_id: 'aim-core', color: null, color_revision: 4 }, { actor_id: 'fable', color: 'peach', color_revision: 3 }]),
   ]);
   let painted = 0; colors.listen(() => painted++);
   await colors.load();
   assert.deepEqual(calls.map(c => c.args), [{ limit: 100 }, { limit: 100, cursor: 'aim-core' }]);
-  assert.deepEqual([colors.color('aim-core'), colors.color('fable'), colors.color('warp')], ['orchid', 'green', 'cyan'], 'a reset choice is the agent\'s own');
-  assert.deepEqual([colors.chosen('aim-core'), colors.chosen('fable')], ['orchid', null]);
+  assert.deepEqual([colors.color('aim-core'), colors.color('fable'), colors.color('warp')], ['indigo', 'green', 'cyan'], 'a reset choice is the agent\'s own');
+  assert.deepEqual([colors.chosen('aim-core'), colors.chosen('fable')], ['indigo', null]);
   assert.equal(painted, 1);
   listeners.focus(); await colors.loading;
   assert.equal(colors.color('fable'), 'peach', 'a choice made on another device is there when the page is focused');
@@ -75,7 +75,8 @@ test('a foreground read asked while a background read fails still runs, and the 
 
 test('a read that cannot be confirmed keeps what the page had, and a color the page cannot draw is refused', async () => {
   for (const bad of [new Error('offline'), { instance_id: 'other', palette: AGENT_PALETTE, items: [], next_cursor: null },
-    page([], null, [...AGENT_PALETTE, 'chartreuse']), page([{ actor_id: 'fable', color: 'red', color_revision: 1 }]),
+    page([], null, [...AGENT_PALETTE, 'chartreuse']), page([], null, [...AGENT_PALETTE, 'orchid']), page([{ actor_id: 'fable', color: 'red', color_revision: 1 }]),
+    page([{ actor_id: 'fable', color: 'orchid', color_revision: 2 }]),
     page([{ actor_id: 'fable', color: 'rose' }])]) {
     const { colors } = store([page([{ actor_id: 'fable', color: 'rose', color_revision: 1 }]), bad]);
     await colors.load();
