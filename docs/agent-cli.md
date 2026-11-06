@@ -208,9 +208,11 @@ Any message you write in a topic answers what was asked of you there.
 
 Writing saved with `draft.save` carries `intent` the same way, and the
 prepared send (`submission.prepare`, then `message.send`) holds the same rule:
-a prepared message that names someone without an intent is refused, unrecorded,
-with `INTENT_REQUIRED`, and nothing is sent; save the writing again with
-`intent` and prepare it again. Tony's page says it for him: a reply is a tell
+preparing writing that names someone without an intent is refused with
+`INTENT_REQUIRED`, and nothing is frozen or sent; the writing stays in its
+draft, so save it again with `intent` and prepare it again. A submission
+frozen without one by an earlier release is refused, unrecorded, when it is
+sent. Tony's page says it for him: a reply is a tell
 unless he ticks Ask.
 
 ## Openings and membership

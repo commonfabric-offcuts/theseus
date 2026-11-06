@@ -5,6 +5,7 @@ import uuid
 from .authority import AuthorityError
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _revision
+from .conversation import INTENT_REQUIRED
 
 
 DRAFT_SCHEMA = [
@@ -178,6 +179,11 @@ class Drafts:
         for name in ("body", "attachments", "quotes", "addressees", "reply_to", "exchange_id", "opening", "intent"):
             if name in args and args[name] != snapshot.get(name):
                 raise Refusal("REVISION_CONFLICT", "Save this exact writing before preparing it")
+        # A message to someone says whether it asks or tells. Refused here, the
+        # writing stays in its draft to be corrected; frozen without it, it
+        # could only be refused at its send.
+        if snapshot.get("addressees") and snapshot.get("intent") is None:
+            raise Refusal("INTENT_REQUIRED", INTENT_REQUIRED)
         snapshot["attachments"] = self._attachment_refs(db, actor, snapshot["attachments"], ready=True)
         submission_id = _identifier(args.get("submission_id"), "submission_id")
         send_op = _identifier(args.get("send_operation_id"), "send_operation_id")

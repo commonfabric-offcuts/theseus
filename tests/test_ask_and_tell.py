@@ -3,6 +3,7 @@ from __future__ import annotations
 """Asking is part of sending: a message to someone says whether it asks or tells."""
 
 import json
+import sqlite3
 import unittest
 
 import reader_fixture as fixtures
@@ -75,14 +76,47 @@ class AskOrTellCase(fixtures.ReaderCase):
         self.rejected(self.command("draft.save", {"source_ref": {"kind": "message", "id": sent["message_id"]}, "topic_id": "t1", "generation": "gA", "body": "x",
                                                   "attachments": [], "quotes": [], "addressees": [], "intent": "maybe"},
                                    target={"draft_id": "unsure"}, expected={"draft_revision": 0}), "INVALID_ARGUMENT")
-        # Saved and prepared naming someone but saying neither: the send is refused.
+        # Saved naming someone but saying neither: preparing it is refused, and
+        # the writing stays in its draft, where the page corrects a refused
+        # preparation. Nothing is frozen and nothing is sent.
         source = {"kind": "message", "id": sent["message_id"]}
         self.committed(self.command("draft.save", {"source_ref": source, "topic_id": "t1", "generation": "gA",
                                                     "body": "Saying neither", "attachments": [], "quotes": [], "addressees": ["agent-a"]},
                                     target={"draft_id": "neither"}, expected={"draft_revision": 0}))
-        self.committed(self.prepare("neither", "t1", submission="neither", send_op="neither-send"))
+        before, drafts = self.public_state(), self.sql("SELECT * FROM drafts ORDER BY rowid")
+        receipt = self.prepare("neither", "t1", submission="neither", send_op="neither-send")
+        self.rejected(receipt, "INTENT_REQUIRED")
+        self.assertEqual(self.sql("SELECT count(*) FROM submissions WHERE id='neither'"), [(0,)], "nothing is frozen")
+        self.assertEqual(self.sql("SELECT * FROM drafts ORDER BY rowid"), drafts, "the writing stays in its draft")
+        self.assertEqual(self.public_state(), before, "nothing was sent")
+        # Saying tell, the same draft prepares and sends.
+        self.committed(self.command("draft.save", {"source_ref": source, "topic_id": "t1", "generation": "gA",
+                                                    "body": "Saying neither", "attachments": [], "quotes": [], "addressees": ["agent-a"], "intent": "tell"},
+                                    target={"draft_id": "neither"}, expected={"draft_revision": 1}))
+        self.committed(self.prepare("neither", "t1", revision=2, submission="neither-told", send_op="neither-told-send"))
+        told = self.committed(self.command("message.send", {"submission_id": "neither-told"}, target={"topic_id": "t1"}, op="neither-told-send"))
+        self.assertEqual(self.latest(), (told["message_id"], "owner", '["agent-a"]', "tell"))
+
+    def test_a_submission_prepared_before_the_rule_without_ask_or_tell_is_refused_at_send(self):
+        # A submission frozen by an earlier release, naming someone and saying
+        # neither, is refused unrecorded when it is sent, and sends nothing.
+        source = {"kind": "message", "id": self.sql("SELECT id FROM messages WHERE topic_id='t1' ORDER BY seq DESC LIMIT 1")[0][0]}
+        self.committed(self.command("draft.save", {"source_ref": source, "topic_id": "t1", "generation": "gA",
+                                                    "body": "Frozen before the rule", "attachments": [], "quotes": [], "addressees": ["agent-a"], "intent": "tell"},
+                                    target={"draft_id": "earlier"}, expected={"draft_revision": 0}))
+        self.committed(self.prepare("earlier", "t1", submission="earlier", send_op="earlier-send"))
+        # The earlier release froze it as it was saved, without the intent.
+        row = self.sql("SELECT actor_id,source_key,topic_id,prepare_operation_id,send_kind,authority_id,authority_epoch,metadata,snapshot "
+                       "FROM submissions WHERE id='earlier'")[0]
+        snapshot, metadata = json.loads(row[8]), json.loads(row[7])
+        del snapshot["intent"]
+        snapshot.update(id="earlier-frozen", send_operation_id="earlier-frozen-send")
+        metadata.update(id="earlier-frozen", send_operation_id="earlier-frozen-send")
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO submissions(id,actor_id,source_key,topic_id,prepare_operation_id,send_operation_id,send_kind,authority_id,authority_epoch,metadata,snapshot) "
+                       "VALUES ('earlier-frozen',?,?,?,?,'earlier-frozen-send',?,?,?,?,?)", row[:7] + (json.dumps(metadata), json.dumps(snapshot)))
         before = self.public_state()
-        receipt = self.command("message.send", {"submission_id": "neither"}, target={"topic_id": "t1"}, op="neither-send")
+        receipt = self.command("message.send", {"submission_id": "earlier-frozen"}, target={"topic_id": "t1"}, op="earlier-frozen-send")
         self.rejected(receipt, "INTENT_REQUIRED")
         self.assertIs(receipt["recorded"], False)
         self.assertEqual(self.public_state(), before, "nothing was sent")

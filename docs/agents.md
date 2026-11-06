@@ -29,7 +29,7 @@ One act that carries its content, for a topic that already exists.
 
 Prepared sends (`draft.save`, `submission.prepare`, `message.send`) remain
 for clients that keep private drafts. A prepared message to someone carries
-`intent` in its saved writing the same way, or its send is refused with
+`intent` in its saved writing the same way, or preparing it is refused with
 `INTENT_REQUIRED`.
 
 ### Which message a reply answers
