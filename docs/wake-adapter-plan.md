@@ -378,11 +378,14 @@ agent exchange completion or a shipped application.
 
 `run_route` now implements this boundary in the assigned lead worktree. The
 caller still owns durable registration, pause and settlement. If identity or
-cleanup cannot be confirmed, the adapter retains its Popen object and refuses
-another invocation in that process. The runner must persist the pause and exit.
-The process-list helper is a separate direct child with 1 MiB output and a 250ms
-observation bound inside the remaining budget; it is never mistaken for the
-broker. No real broker, queue RPC, service or instance is enabled by this slice.
+cleanup cannot be confirmed, the adapter retains its Popen object, and another
+invocation in that process first observes that child again: it goes ahead only
+once a fresh observation confirms the cleanup, and is refused otherwise. The
+runner must persist the pause and exit. The process-list helper is a separate
+direct child with 1 MiB output, bounded only by the caller's remaining budget
+(which keeps the invocation inside the runner's lease), so a ps slowed by load
+is not a failed observation; once its output ends, or it is killed, it is
+waited on itself. It is never mistaken for the broker. No real broker, queue RPC, service or instance is enabled by this slice.
 
 The instrument first failed a fixture shutdown-readiness race. The preserved
 original report is in lead evidence wake-invocation-01/fixture-01; both the
