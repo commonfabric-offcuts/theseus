@@ -261,7 +261,7 @@ try {
     const timing = { name, started: Date.now() };
     // These recovery cases deliberately leave abandoned copies behind. Each
     // gets a fresh owned storage context, shared only by that case's tabs.
-    if (/^images X[1234] /.test(name) || /^epoch recovery /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
+    if (/^images (X[1234]|close pressed) /.test(name) || /^epoch recovery /.test(name) || liveUpdatesFixture) recoveryContext = (await cdp('Target.createBrowserContext')).browserContextId;
     try {
       timing.actionStarted = Date.now();
       await action();

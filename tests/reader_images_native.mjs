@@ -313,8 +313,10 @@ export async function imageChecks({ check, page, until, root, facts, view, repla
     assert.deepEqual(p.errors, []);
   });
   await check('images close pressed while an image is being chosen keeps the Reader open and says why', async () => {
+    // Its own browser context, and no writing saved to the shared fixture, so
+    // later cases on the same source see nothing of it.
     const p = await page('images-close-refused', null, true); await p.open(1);
-    await replace(p, 'Writing kept while the image is chosen');
+    const writing = await field(p);
     await p.send('Page.setInterceptFileChooserDialog', { enabled: true });
     await p.point('#add-image'); await until(() => p.evaluate('!document.querySelector("#cancel-image").hidden'), 'image selection reserved');
     await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'native file chooser activation');
@@ -322,7 +324,7 @@ export async function imageChecks({ check, page, until, root, facts, view, repla
     await p.point('#reader-close');
     await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Keep this page open until the selected image is saved or removed."'), 'the refused close says why');
     assert.equal(await p.evaluate('document.querySelector("#reader").open'), true, 'the Reader stays open');
-    assert.equal(await field(p), 'Writing kept while the image is chosen');
+    assert.equal(await field(p), writing);
     await p.point('#cancel-image');
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'close once the selection is released');
     assert.deepEqual(p.errors, []);
