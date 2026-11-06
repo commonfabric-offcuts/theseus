@@ -158,6 +158,13 @@ class WorkObservedCase(hosted.HostedCase):
         self.assertEqual(self.seen(actor="owner"), (True, tie, "agent-b", "turn", False))
         self.assertEqual(self.seen(actor="agent-a"), (True, self.now, "owner", "turn", False))
 
+    def test_a_post_and_a_turn_in_the_same_millisecond_show_as_the_post(self):
+        self.now += 10
+        with sqlite3.connect(str(self.path)) as db:
+            work._turn_in(db, ["t1"], None, "agent-a", self.now)
+        tie = self.post("owner", "Same moment")
+        self.assertEqual(self.seen(), (True, tie, "owner", "posted", False))
+
     def test_a_post_is_observed_work_for_an_hour_then_no_activity_is_seen_since_it(self):
         self.now = 5000
         self.send_next("A post")
