@@ -188,7 +188,7 @@ class El {
   addEventListener(name, fn) { this.handlers[name] = fn; }
   contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
   closest() { return null; }
-  focus() { this.doc.activeElement = this; }
+  focus(options) { this.doc.activeElement = this; this.doc.focusOptions = options; }
   getBoundingClientRect() { return { left: 40, bottom: 100 }; }
   get isConnected() { let at = this; while (at.parent) at = at.parent; return at === this.doc.body; }
   get offsetWidth() { return 200; }
@@ -254,6 +254,24 @@ test('a press outside closes the picker; a press inside does not; the name again
   assert.equal(again.root.parent, doc.body, 'pressing the name is not outside');
   assert.equal(open(), null, 'the name again closes it');
   assert.equal(again.root.parent, null);
+});
+
+test('the picker closes when the page under it scrolls, so it never floats away from its name', () => {
+  const { doc, p, buttons, anchor } = picker();
+  assert.equal(typeof doc.handlers.scroll, 'function', 'it listens for scrolling');
+  assert.equal(doc.focusOptions?.preventScroll, true, 'taking the focus as it opens scrolls nothing, so it does not close itself');
+  doc.handlers.scroll({ target: p.root });
+  assert.equal(p.root.parent, doc.body, 'a scroll inside the picker keeps it open');
+  buttons()[1].focus();
+  doc.handlers.scroll({ target: doc });
+  assert.equal(p.root.parent, null, 'the page scrolled: closed');
+  assert.equal(doc.handlers.scroll, undefined, 'and it stops listening');
+  assert.equal(doc.activeElement, anchor, 'the focus was in the picker: it goes back to the name, not to nowhere');
+  // With the focus elsewhere, closing leaves it there.
+  const again = picker(), elsewhere = new El(again.doc, 'input'); again.doc.body.append(elsewhere); elsewhere.focus();
+  again.doc.handlers.scroll({ target: again.doc });
+  assert.equal(again.p.root.parent, null);
+  assert.equal(again.doc.activeElement, elsewhere);
 });
 
 test('closing gives the focus to what the opener named, such as the card a name sits in', () => {

@@ -3,7 +3,7 @@
 // agent's name (docs/reading-colors.md, "Choosing an agent's color"). It is a
 // non-modal popover: every swatch is a button reached by Tab or the arrow
 // keys, Escape closes it and gives the focus back to the name, and a press
-// outside it closes it. One is open at a time.
+// outside it or a scroll of the page under it closes it. One is open at a time.
 let open = null;
 
 const element = (doc, tag, props = {}) => Object.assign(doc.createElement(tag), props);
@@ -57,13 +57,18 @@ export function openColorPicker({ anchor, back = anchor, agent, palette, chosen,
     event.preventDefault();
     const move = step ?? tab, next = move === -Infinity ? 0 : move === Infinity ? buttons.length - 1
       : ((at < 0 ? 0 : at) + move + buttons.length) % buttons.length;
-    buttons[next].focus();
+    buttons[next].focus({ preventScroll: true });
   };
   const outside = event => { if (!root.contains(event.target) && !anchor.contains(event.target)) picker.close(false); };
+  // It is placed once, fixed to the window: when anything but the picker
+  // scrolls, its name moves away, so it closes, giving the focus back if it held it.
+  const scrolled = event => { if (!root.contains(event.target)) picker.close(root.contains(doc.activeElement)); };
   root.addEventListener('keydown', keys);
   doc.addEventListener('pointerdown', outside, true);
+  doc.addEventListener('scroll', scrolled, true);
   const picker = { anchor, root, busy: false, close(restore) {
     doc.removeEventListener('pointerdown', outside, true);
+    doc.removeEventListener('scroll', scrolled, true);
     root.remove();
     if (open === picker) open = null;
     if (restore && back.isConnected !== false) back.focus();
@@ -77,6 +82,7 @@ export function openColorPicker({ anchor, back = anchor, agent, palette, chosen,
   const top = below + height + 8 <= (win.innerHeight ?? Infinity) || above < 8 ? below : above;
   Object.assign(root.style, { position: 'fixed', top: `${Math.round(top)}px`,
     left: `${Math.max(8, Math.min(Math.round(box.left), (win.innerWidth ?? 0) - width - 8))}px` });
-  (buttons.find(button => button.getAttribute('aria-pressed') === 'true') ?? buttons[0]).focus();
+  // Focusing it must not scroll the page, or it would close itself.
+  (buttons.find(button => button.getAttribute('aria-pressed') === 'true') ?? buttons[0]).focus({ preventScroll: true });
   return picker;
 }

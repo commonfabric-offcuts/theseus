@@ -226,7 +226,9 @@ focused. Each swatch is outlined in the quiet text color, at 3:1 or better
 against the picker in both themes (WCAG 1.4.11), and the pressed one also
 wears an ink ring. The arrow keys, Home and End move between them, and Tab goes round
 them while it is open; Escape closes it and gives the focus back; a press
-outside closes it; pressing the name again closes it. A choice closes it once
+outside closes it; pressing the name again closes it. It is placed once, fixed
+to the window, so when the page under it scrolls it closes rather than float
+away from its name, giving the focus back to the name if it held it. A choice closes it once
 Core has committed it, and a refusal is said inside it. When the answer is
 lost on the way, the picker says it is unknown whether the color was saved and
 that a press again sends the same request: the page keeps one request per
