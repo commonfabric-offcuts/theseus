@@ -105,8 +105,7 @@ def main(argv=None):
     import argparse
     argv = sys.argv[1:] if argv is None else argv
     if "--" not in argv:
-        print("refused: give the test command after --", file=sys.stderr)
-        return 2
+        argv = argv + ["--"]
     split = argv.index("--")
     parser = argparse.ArgumentParser(description="Apply a mutant, require a FAILED line, restore, rerun.")
     parser.add_argument("--replace", nargs=3, action="append", required=True, metavar=("FILE", "OLD", "NEW"))
