@@ -1144,7 +1144,7 @@ try {
         await p.evaluate(`(()=>{window.fixtureTransaction=IDBDatabase.prototype.transaction;IDBDatabase.prototype.transaction=function(...args){if(args[1]==='readwrite')throw new DOMException('Fixture quota failure','QuotaExceededError');return fixtureTransaction.apply(this,args)}})()`);
         await replace(p, 'Failed close remains editable'); await p.point('#reader-close');
         await until(() => p.evaluate('document.querySelector("#save-state").textContent.includes("Recovery copy unavailable")'), 'visible local preservation failure');
-        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Fixture quota failure"'), 'the refused close says why');
+        await until(() => p.evaluate('document.querySelector("#reader-notice").textContent === "Not closed: this device could not keep your writing (Fixture quota failure). It stays here; keep this page open."'), 'the refused close says why');
         assert.equal(await p.evaluate('document.querySelector("#reader").open'), true);
         assert.equal(await field(p), 'Failed close remains editable');
         await p.release(held);
@@ -1153,6 +1153,41 @@ try {
         await p.evaluate('IDBDatabase.prototype.transaction=fixtureTransaction'); p.intercept(null);
         await replace(p, 'Recovered local persistence'); await p.point('#next-message');
         await until(async () => (await sourceText(p)).startsWith('Source 1 '), 'fresh step after restored persistence'); assert.deepEqual(p.errors, []);
+      });
+
+      // Close keeps the writing on this device before the Reader goes. While
+      // that save is held the field takes no typing, so when later device
+      // saves fail the Reader still closes only over writing the device holds.
+      await check('correction typing waits while Close keeps the writing, and the closed Reader leaves nothing unkept', async () => {
+        const p = await page('close-held-keep', null, true); await p.open(0);
+        p.intercept(privateSave);
+        await replace(p, 'Kept before Close');
+        await until(() => p.evaluate('document.querySelector("#save-state").textContent.startsWith("Saved on this device")'), 'the device holds the writing');
+        // The next device save, Close's own, waits for the case; every save
+        // after it fails, as a device that has just run out of room would.
+        await p.evaluate(`import(new URL('./app-session.mjs',location.href).href).then(({EditorRegistry})=>{
+          let release;window.closeHold={puts:0,entered:false,released:new Promise(r=>release=r)};window.closeHold.release=release;
+          const close=EditorRegistry.prototype.close;
+          EditorRegistry.prototype.close=function(...args){
+            const hold=window.closeHold;
+            if(!hold.armed){hold.armed=true;const backend=this.journal.backend,put=backend.put;hold.restore=()=>{backend.put=put;};
+              backend.put=async(row,guard)=>{if(++hold.puts===1){hold.entered=true;await hold.released;return put(row,guard);}throw new DOMException('Fixture quota failure','QuotaExceededError');};}
+            return close.apply(this,args);
+          };
+        })`);
+        await p.point('#reader-close');
+        await until(() => p.evaluate('window.closeHold.entered'), 'Close keeps the writing on this device');
+        assert.equal(await p.evaluate('document.querySelector("#writing-body").readOnly'), true, 'the field takes no typing while Close keeps the writing');
+        await p.point('#writing-body'); await p.send('Input.insertText', { text: ' typed during Close' });
+        const shown = await field(p);
+        await p.evaluate('window.closeHold.release()');
+        await until(() => p.evaluate('!document.querySelector("#reader").open'), 'Close completes once the device keeps the writing');
+        await p.evaluate('window.closeHold.restore()');
+        const kept = (await localRows(p)).find(row => row.snapshot.context.sourceRef.id === facts.sources[0].id && row.snapshot.context.kind === 'reply');
+        assert.equal(kept?.snapshot.draft.body, shown, 'the device holds what the Reader held when it closed');
+        assert.equal(shown, 'Kept before Close');
+        p.intercept(null); for (const held of p.held) await p.release(held);
+        assert.deepEqual(p.errors, []);
       });
 
       // The held private save keeps the writing off Theseus, so the device is

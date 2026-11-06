@@ -369,11 +369,83 @@ test('of two explicit closes refused while preservation fails, only the newer on
   const first = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
   await entered.promise;
   const second = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
-  assert.equal(f.registry.isCurrent(x), true, 'the Reader is still in front');
+  assert.equal(f.registry.current, x, 'the Reader is still in front');
+  assert.equal(f.registry.isWritable(x, x.editors.reply), false, 'typing waits for the newer close');
   release.resolve();
   assert.deepEqual(await first, { value: false }, 'the superseded close stays quiet');
   assert.match((await second).error?.message ?? '', /Injected recovery quota failure/, 'the newer close says why');
   assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+  assert.equal(f.registry.isWritable(x, x.editors.reply), true, 'the Reader takes typing again');
+});
+
+// Close keeps the writing on this device before the Reader goes. Typing and
+// every act on the writing wait while that save runs, so a Reader that closes
+// leaves nothing the device did not keep, even when a later save would fail.
+for (const explicit of [true, false]) {
+  test(`typing waits while ${explicit ? 'Close' : 'an automatic close'} keeps the writing, so the closed Reader leaves nothing unkept`, async t => {
+    const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+    const put = f.backend.put, entered = deferred(), release = deferred();
+    t.after(() => { release.resolve(); f.backend.put = put; });
+    reply.edit({ body: 'before close' }); await f.registry.edited(reply);
+    reply.edit({ body: 'before close, changed' });
+    let puts = 0;
+    f.backend.put = async row => {
+      if (++puts === 1) { entered.resolve(); await release.promise; return put(row); }
+      throw Error('Injected recovery failure');
+    };
+    const closing = f.registry.close(x, { explicit });
+    await entered.promise;
+    // The Reader's field and its acts ask these before they take anything.
+    const writable = f.registry.isWritable(x, reply), current = f.registry.isCurrent(x, reply);
+    if (writable) { reply.edit({ body: 'typed during close' }); f.registry.edited(reply).catch(() => {}); }
+    release.resolve();
+    assert.equal(await closing, true);
+    assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, reply.draft.body, 'the device holds what the closed Reader held');
+    assert.equal(writable, false, 'typing waits for the close');
+    assert.equal(current, false, 'sending and images wait for the close');
+    assert.deepEqual(f.closed, [x]);
+  });
+}
+
+// Close pressed again (or Escape) while the first is keeping the writing: the
+// first ending does not reopen typing while the newer one still keeps it.
+test('typing waits until the newer of two closes has kept the writing', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const put = f.backend.put, releases = [deferred(), deferred()], entered = [deferred(), deferred()];
+  t.after(() => { for (const r of releases) r.resolve(); f.backend.put = put; });
+  let puts = 0;
+  f.backend.put = async row => { const n = puts++; entered[n].resolve(); await releases[n].promise; return put(row); };
+  reply.edit({ body: 'Kept by the newer close' });
+  const first = f.registry.close(x, { explicit: true });
+  await entered[0].promise;
+  const second = f.registry.close(x, { explicit: true });
+  releases[0].resolve();
+  assert.equal(await first, false, 'the newer close took over');
+  assert.equal(await Promise.race([entered[1].promise.then(() => 'keeping'), second]), 'keeping', 'the newer close keeps the writing');
+  assert.equal(f.registry.isWritable(x, reply), false, 'typing still waits for the newer close');
+  releases[1].resolve();
+  assert.equal(await second, true);
+  assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, 'Kept by the newer close');
+});
+
+// A Close whose device save fails is refused in plain words, and the Reader it
+// left in front takes typing again.
+test('a Close whose device save fails says so plainly, and the Reader takes typing again', async t => {
+  const f = await fixture(t), x = await f.open(0), reply = x.editors.reply;
+  const put = f.backend.put, entered = deferred(), release = deferred();
+  t.after(() => { release.resolve(); f.backend.put = put; });
+  f.backend.put = async () => { entered.resolve(); await release.promise; throw Error('Injected recovery quota failure'); };
+  reply.edit({ body: 'Unkept writing' });
+  const closing = f.registry.close(x, { explicit: true }).then(value => ({ value }), error => ({ error }));
+  await entered.promise;
+  assert.equal(f.registry.isWritable(x, reply), false, 'typing waits for the close');
+  release.resolve();
+  const { error } = await closing;
+  assert.equal(error?.message, 'Not closed: this device could not keep your writing (Injected recovery quota failure). It stays here; keep this page open.');
+  assert.equal(f.registry.current, x); assert.deepEqual(f.closed, []);
+  assert.equal(f.registry.isWritable(x, reply), true, 'the Reader takes typing again');
+  assert.equal(f.registry.isCurrent(x, reply), true, 'and its acts');
+  assert.equal(reply.draft.body, 'Unkept writing');
 });
 
 for (const action of ['note', 'send']) {

@@ -32,7 +32,7 @@ export class EditorRegistry {
     this.runtime = new RuntimeAuthority({ api, instanceId: bootstrap.instance_id, authority: bootstrap.authority });
     this.sessions = new Map(); this.pages = new Map(); this.scheduled = new Map(); this.localWrites = new Map();
     this.pendingDetails = new Map(); this.pendingReceipts = new Map(); this.registering = new Map();
-    this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null;
+    this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null; this.closing = null;
     this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
       changed: editor => this.changed(editor), stopped: () => this.disposed });
@@ -53,16 +53,19 @@ export class EditorRegistry {
       (!editor || Object.values(presentation.editors).includes(editor) && this.sessions.get(editor.key)?.editor === editor));
   }
   // Every act on the writing in front: sending, images, versions, quiet closes.
-  // An open under way stops them before it keeps the writing it is leaving.
-  isCurrent(presentation, editor) { return this.holds(presentation, editor) && !this.pendingOpen; }
+  // An open under way stops them before it keeps the writing it is leaving,
+  // and a close stops them while it keeps the writing it is closing.
+  isCurrent(presentation, editor) { return this.holds(presentation, editor) && !this.pendingOpen && !this.closing; }
   // Typing in the Reader goes on while a step to another source waits: each
   // change is kept on this device as it lands, and Close, Escape or Topic
   // cancel the step and keep it. Once the step has read its source it stops
   // the Reader's typing and keeps the writing one last time before replacing
   // it. The inline composer waits from the start, since the open replaces it
-  // in front with the Reader.
+  // in front with the Reader. A close stops typing while it keeps the writing,
+  // so what it keeps is all there is when the Reader goes.
   isWritable(presentation, editor) {
-    return this.holds(presentation, editor) && (!this.pendingOpen || presentation.surface !== 'inline' && this.leaving !== this.pendingOpen);
+    return this.holds(presentation, editor) && !this.closing &&
+      (!this.pendingOpen || presentation.surface !== 'inline' && this.leaving !== this.pendingOpen);
   }
   isSourceCurrent(presentation) { return Boolean(presentation?.source && this.current?.source === presentation.source && !this.pendingOpen && !this.disposed); }
 
@@ -266,23 +269,37 @@ export class EditorRegistry {
     if (explicit) {
       if (!presentation || this.current !== presentation || this.disposed) return false;
       ++this.generation;
-      this.pendingOpen = null;
+      // Close, Escape or × again: this close takes over from any under way.
+      this.pendingOpen = null; this.closing = null;
     }
     const requestGeneration = this.generation;
     if (!this.isCurrent(presentation)) return false;
     // Everything that can take this presentation out of front moves the
     // generation (an open, a mode change, another close, disposal), so while
     // it is unchanged the presentation is still current.
-    // A refused explicit close says why to the person who asked for it, while
-    // this is still the writing they asked to close; an automatic close (a
-    // prepared send, a saved note) stays quietly open.
-    try { await this.keepLocal(presentation); }
-    catch (error) {
-      if (explicit && requestGeneration === this.generation) throw error;
-      return false;
-    }
-    if (requestGeneration !== this.generation) return false;
-    this.current = null; ++this.generation; this.closed(presentation); this.activity(); return true;
+    // Typing and every act on the writing wait while it is kept on this
+    // device, so the Reader never closes over writing the device did not keep.
+    const stop = this.closing = {};
+    this.activity();
+    try {
+      // A refused explicit close says why to the person who asked for it,
+      // while this is still the writing they asked to close; an automatic
+      // close (a prepared send, a saved note) stays quietly open.
+      try { await this.keepLocal(presentation); }
+      catch (error) {
+        if (explicit && requestGeneration === this.generation) throw this.closeRefusal(presentation, error);
+        return false;
+      }
+      if (requestGeneration !== this.generation) return false;
+      this.current = null; ++this.generation; this.closed(presentation); return true;
+    } finally { if (this.closing === stop) this.closing = null; this.activity(); }
+  }
+
+  // A device save that failed is said in plain words; any other refusal (an
+  // image still being kept) already is.
+  closeRefusal(presentation, error) {
+    if (!Object.values(presentation.editors).some(editor => editor.journalError)) return error;
+    return Error(`Not closed: this device could not keep your writing (${error.message}). It stays here; keep this page open.`);
   }
 
   setMode(mode) {
