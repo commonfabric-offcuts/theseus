@@ -1403,6 +1403,11 @@ test('the New line is drawn under the oldest unanswered card, moves with each an
   assert.equal(order(), '26 25 24 new 23 22 21 20 19', 'an older card loaded by More goes below it');
   f.views.unanswered = null; f.paintViews('messages');
   assert.equal(order(), '26 25 24 23 22 21 20 19', 'nothing left unanswered: no line');
+  // The line says when its message was sent, from the boundary the server gave.
+  f.views.unanswered = { seq: 22, id: 'm22', sent_ms: new Date(2026, 10, 5, 4, 40).getTime() }; f.paintViews('messages');
+  const line = f.get('messages').children.find(child => child.dataset.line === 'new');
+  const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
+  assert.equal(text(line), 'New · 4:40 AM');
 });
 
 test('the New line for a message further back sits at the bottom, and pressing it loads down to that message', async () => {
@@ -1414,7 +1419,8 @@ test('the New line for a message further back sits at the bottom, and pressing i
   const order = () => f.get('messages').children.map(child => child.dataset.line ?? Number(child.dataset.seq)).join(' ');
   assert.equal(order(), '29 28 27 26 25 24 23 22 21 20 older', 'the line waits at the bottom of what is loaded');
   const marker = f.get('messages').children.at(-1);
-  assert.equal(marker.textContent, 'New · older below');
+  const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
+  assert.equal(text(marker), 'New · older below', 'a boundary without a time says none');
   const pages = [at(10, 19, 10), at(1, 9, null)], reads = [];
   const view = f.api.view;
   f.api.view = async (name, args) => {

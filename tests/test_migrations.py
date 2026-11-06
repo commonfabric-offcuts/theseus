@@ -1070,9 +1070,9 @@ class Schema15Case(MigrationCase):
         fixtures.initialize(fresh / "fresh.sqlite3", "fresh", [{"id": "owner"}], authority_path=fresh.resolve() / "control" / "a.json")
         self.assertEqual(schema(self.path), schema(fresh / "fresh.sqlite3"))
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
-        opening = self.sql("SELECT id,seq FROM messages ORDER BY seq LIMIT 1")[0]
+        opening = self.sql("SELECT id,seq,sent_ms FROM messages ORDER BY seq LIMIT 1")[0]
         page = self.store.view("agent-a", "topic_messages", {"topic_id": "t1"})
-        self.assertEqual(page["unanswered"], {"seq": opening[1], "id": opening[0]})
+        self.assertEqual(page["unanswered"], {"seq": opening[1], "id": opening[0], "sent_ms": opening[2]})
 
     def test_upgrade_from_15_works_out_where_each_readers_unanswered_messages_begin(self):
         # Written at version 15, before any horizon was kept: agent-a asks, the
@@ -1082,7 +1082,7 @@ class Schema15Case(MigrationCase):
             def post(key, author, reply_to=None):
                 db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,reply_to,operation_id) "
                            "VALUES (?,'t1',?,'Body','[]','[]','[]',?,?)", (key, author, reply_to, "op-" + key))
-                return {"seq": db.execute("SELECT seq FROM messages WHERE id=?", (key,)).fetchone()[0], "id": key}
+                return {"seq": db.execute("SELECT seq FROM messages WHERE id=?", (key,)).fetchone()[0], "id": key, "sent_ms": None}
             post("m-before", "agent-a")
             post("m-everyone", "owner")
             answered = post("m-answered", "agent-a")

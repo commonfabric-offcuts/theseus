@@ -9,6 +9,9 @@ their own time zone:
 | yesterday | `Yesterday 9:12 PM` |
 | any other day, a later one included | `7:41 AM Thu Nov 5` |
 
+The red New line in a topic says the time of the oldest message the reader
+has not replied to in the same form: "New · 4:40 AM" (docs/attention.md).
+
 Today and yesterday are calendar days, not spans of 24 hours: on a day the
 clocks change, yesterday is 23 or 25 hours long and still ends at midnight.
 

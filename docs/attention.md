@@ -264,7 +264,7 @@ reader has not answered; when none is left, the line goes. Only the reader's
 own posts move it: reading through, `delivery.ack`, a mark, and other people's
 replies do not.
 
-`topic_messages` returns it as `unanswered`, `{seq, id}` or null, on every
+`topic_messages` returns it as `unanswered`, `{seq, id, sent_ms}` or null, on every
 page in either direction, worked out in the same read as the page. It does not
 depend on deliveries, so the value a page gets is the same before and after
 that page's read-through. One indexed query finds it, starting from the
@@ -287,12 +287,16 @@ since the horizons come from the messages.
 The page keeps the boundary from the newest topic version any page said it
 at, so an older page loaded with More never brings back a line a later reply
 moved. It draws the line under that message's card when the card is loaded.
-The line is text ("New"), with no message identity, in the alert colour, so
-nothing that looks for cards finds it.
+The line is text, with no message identity, in the alert colour, so
+nothing that looks for cards finds it. It says "New" and when that message was
+sent, from the boundary's `sent_ms`, as every time on the page is shown
+(docs/times.md): "New · 4:40 AM", "New · Yesterday 9:12 PM". The label and the
+time are separate spans, and the time's title keeps the date. A message from
+before times were kept (`sent_ms` null) gets the label alone.
 
 When that message is further back than the page has loaded, which is when the
 reader is most behind, the line sits at the bottom of what is loaded and reads
-"New · older below". There it is a button: pressing it, by pointer or
+"New · older below" and the time. There it is a button: pressing it, by pointer or
 keyboard, reads older pages one after another, as More does, until that
 message's card is loaded or no older page is left, and then gives that
 message the focus, with the line in its true place just below it. A read that

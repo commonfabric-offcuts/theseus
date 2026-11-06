@@ -67,7 +67,7 @@ UNANSWERED_DOWN = ("DROP INDEX message_replies", "DROP TABLE reply_horizons")
 UNANSWERED_OCCUPIED = "SELECT 0"
 # The oldest message at or after the reader's horizon that someone else wrote
 # and no reply of the reader's names. Bound: topic, reader, reader, reader, reader.
-FIRST_UNANSWERED = ("SELECT m.id,m.seq FROM messages m INDEXED BY topic_messages WHERE m.topic_id=?1 "
+FIRST_UNANSWERED = ("SELECT m.id,m.seq,m.sent_ms FROM messages m INDEXED BY topic_messages WHERE m.topic_id=?1 "
                     "AND m.seq>=coalesce((SELECT h.seq FROM reply_horizons h WHERE h.topic_id=?1 AND h.actor_id=?2),0) "
                     "AND m.author_id<>?2 AND NOT EXISTS (SELECT 1 FROM messages r INDEXED BY message_replies "
                     "WHERE r.reply_to=m.id AND r.author_id=?2) ORDER BY m.seq LIMIT 1")
@@ -421,7 +421,7 @@ class Conversation:
                 "relevant_versions": {"topic": topic["version"]}, "unanswered": self._oldest_unanswered(db, actor, topic["id"])}
 
     def _oldest_unanswered(self, db, actor, topic_id):
-        """The oldest message in the topic the reader has not replied to, as {seq, id}, or None.
+        """The oldest message in the topic the reader has not replied to, as {seq, id, sent_ms}, or None.
 
         A message is unanswered when someone else wrote it after the reader's
         last post to the whole topic (one that replies to no particular
@@ -432,7 +432,7 @@ class Conversation:
         whatever the topic's length. Reading and marks change nothing here;
         only the reader's own posts move it."""
         row = db.execute(FIRST_UNANSWERED, (topic_id, actor)).fetchone()
-        return {"seq": row["seq"], "id": row["id"]} if row else None
+        return {"seq": row["seq"], "id": row["id"], "sent_ms": row["sent_ms"]} if row else None
 
     def _effective_reasons(self, db, delivery):
         rows = db.execute("SELECT r.reason,r.participant_epoch,p.active,p.epoch FROM delivery_reasons r LEFT JOIN topic_participants p ON p.topic_id=r.topic_id AND p.actor_id=? WHERE r.delivery_id=? ORDER BY r.reason", (delivery["recipient_id"], delivery["id"])).fetchall()

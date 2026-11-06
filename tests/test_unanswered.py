@@ -22,7 +22,19 @@ class UnansweredCase(ReaderCase):
         return page["unanswered"]
 
     def at(self, message_id):
-        return {"seq": self.sql("SELECT seq FROM messages WHERE id=?", (message_id,))[0][0], "id": message_id}
+        seq, sent_ms = self.sql("SELECT seq,sent_ms FROM messages WHERE id=?", (message_id,))[0]
+        return {"seq": seq, "id": message_id, "sent_ms": sent_ms}
+
+    def test_the_boundary_says_when_that_message_was_sent(self):
+        first = self.post("agent-a", "First")
+        self.post("agent-a", "Second")
+        boundary = self.boundary()
+        self.assertEqual(boundary["id"], first)
+        self.assertIsInstance(boundary.get("sent_ms"), int, "the boundary says when its message was sent")
+        page = self.store.view("owner", "topic_messages", {"topic_id": "t1", "direction": "before", "limit": 30})
+        self.assertEqual(boundary["sent_ms"], next(item["sent_ms"] for item in page["items"] if item["id"] == first),
+                         "the New line's time is the time its message's card shows")
+        # A message from before times were kept has none: test_migrations reads it as null.
 
     def test_the_line_follows_the_oldest_message_the_reader_has_not_replied_to(self):
         self.assertIsNone(self.boundary(), "the opening is the reader's own")
