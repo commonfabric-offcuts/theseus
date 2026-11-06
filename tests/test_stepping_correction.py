@@ -103,6 +103,10 @@ class SteppingCorrectionCase(ReaderCase):
                     ('eligible-%s' % index, addressees, 'fixture-%s' % index)).lastrowid
                 if addressed:
                     db.execute("INSERT INTO message_addressees VALUES ('t1','owner',?)", (seq,))
+            # Each of these is the reader's post to the whole topic, so, as a
+            # sent post does, it leaves the reader's horizon past itself.
+            db.execute("INSERT INTO reply_horizons VALUES ('t1','owner',?) ON CONFLICT(topic_id,actor_id) DO UPDATE SET seq=excluded.seq",
+                       (seq + 1,))
         setup_seconds = time.perf_counter() - started
         page, grown = self.measured(first['seq'] - 1)
         self.assertEqual(page, baseline)
