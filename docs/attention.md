@@ -61,7 +61,9 @@ work it is woken for. So what it folds is exactly what is never unread.
   pending deliveries name the reader.
 - `workspaces` items carry the same two counts summed over the outcome's
   topics.
-- The `attention` view takes no arguments and returns the reader's totals,
+- The `attention` view takes one optional argument, `workspace_id` (the
+  outcome the page is inside; no membership is needed, since the answer is
+  about the reader's own waits), and returns the reader's totals,
   `unread` and `addressed`, and `latest_addressed`: up to five pending
   deliveries that name the reader, newest first, each with its message, its
   topic, and `topic_readable`. A topic the reader can reach only as a
@@ -75,6 +77,14 @@ work it is woken for. So what it folds is exactly what is never unread.
   since_ms}` for the oldest unanswered ask, or `null`). A topic waits only on
   someone who can read it; whoever loses the topic is taken off its waiting
   list.
+- `attention` also returns `waiting_outcomes`, `{count, here}`: how many
+  distinct outcomes hold an unarchived topic that waits on the reader, however
+  old the wait, and whether `workspace_id` is one of them (`false` when none is
+  given). Inside an outcome the page's "← Outcomes" link carries a lit light,
+  with "1 other outcome is waiting on you" (`count` less one when `here`), so
+  a rail that shows only one outcome never hides an ask elsewhere. On the
+  outcome's own page the light shows without the words, which screen readers
+  still hear.
 
 An archived topic is out of the outcome's list, and the browser lists archived
 topics only behind the list's closed "Archived (N)" line, so it counts nowhere

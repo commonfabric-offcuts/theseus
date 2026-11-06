@@ -264,6 +264,15 @@ class TopicState:
                                  "by": row["author_id"], "since_ms": row["sent_ms"]})
         return waits
 
+    def _waiting_outcomes(self, db, actor, workspace_id=None):
+        """How many distinct outcomes hold an unarchived topic waiting on this reader,
+        and whether workspace_id is one of them. It walks the same rows the waiting
+        count walks, so an outcome counts however old its wait is."""
+        rows = db.execute("SELECT DISTINCT t.workspace_id FROM topic_waiting q INDEXED BY reader_waiting "
+                          "CROSS JOIN topics t ON t.id=q.topic_id WHERE q.actor_id=? AND q.archived=0", (actor,)).fetchall()
+        outcomes = {row[0] for row in rows}
+        return {"count": len(outcomes), "here": workspace_id is not None and workspace_id in outcomes}
+
     def _waiting_on_reader(self, db, actor, limit=5):
         """(count, newest first) of the topics that wait on this reader, archived ones left out.
 

@@ -136,8 +136,11 @@ export class TopicStatePanel {
   // refresh asks the page for fresh topic data; it is called after every answer
   // to a change, so a refusal for a stale version is followed by the news.
   // sendNote(topic, note, revision) says what the reader is responsible for.
-  constructor({ host, reader, send, sendNote = null, refresh = () => {} }) {
-    Object.assign(this, { host, reader, send, sendNote, refresh });
+  // read, when given, answers the topic as the topic view gives it ({topic,
+  // participants}); it is read once after a change that was not confirmed, so
+  // the notice says where the topic stands now.
+  constructor({ host, reader, send, sendNote = null, refresh = () => {}, read = null }) {
+    Object.assign(this, { host, reader, send, sendNote, refresh, read });
     this.topic = null; this.out = null; this.controls = null; this.touched = new Set();
     this.line = element('p', { className: 'state-line' });
     this.duties = element('ul', { className: 'responsibilities', hidden: true });
@@ -251,7 +254,7 @@ export class TopicStatePanel {
     if (new TextEncoder().encode(value).length > NOTE_BYTES) { this.show(`A note is at most ${NOTE_BYTES} bytes; shorten it and save again.`); return; }
     const topic = this.topic;
     this.out = args; this.show(null); this.mark();
-    let message = null;
+    let message = null, unconfirmed = false;
     try {
       const receipt = await this.sendNote(topic, value, Number.isSafeInteger(mine.responsibility_revision) ? mine.responsibility_revision : 0);
       const result = receipt?.result;
@@ -262,13 +265,20 @@ export class TopicStatePanel {
         if (Number.isSafeInteger(result.version) && result.version > this.topic.version) this.paint({ ...this.topic, version: result.version }, participants);
         else this.paint(this.topic, participants);
       } else if (receipt?.error?.code === 'REVISION_CONFLICT') message = NOTE_CHANGED;
-      else message = receipt?.error?.message ?? 'Your note was not confirmed. Refresh to see it as it stands.';
+      else if (receipt?.error?.message) message = receipt.error.message;
+      else unconfirmed = true;
     } catch (error) {
       message = error.message;
     } finally {
       this.out = null; this.mark();
     }
     if (this.topic?.id !== topic.id) return;
+    if (unconfirmed) {
+      const answer = await this.readAgain(topic);
+      const note = answer ? answer.participants?.find(person => person.actor_id === this.reader)?.responsibility : undefined;
+      message = !answer ? 'Your note was not confirmed, and reading it again failed too.'
+        : note ? `Your note was not confirmed. You are responsible for: ${note}.` : 'Your note was not confirmed. You have no note in this topic.';
+    }
     if (message) this.show(message);
     this.refresh();
   }
@@ -289,8 +299,28 @@ export class TopicStatePanel {
     }
   }
 
+  // message: words, or a list of parts holding times.
   show(message) {
-    this.notice.textContent = message ?? ''; this.notice.hidden = !message;
+    if (Array.isArray(message)) this.notice.replaceChildren(...message); else this.notice.textContent = message ?? '';
+    this.notice.hidden = !message;
+  }
+
+  // One read of the topic as it stands, never a second send. The panel keeps
+  // what it last showed when the read fails; the next commit repaints it.
+  async readAgain(topic) {
+    if (!this.read) return null;
+    try {
+      const answer = await this.read();
+      if (answer?.topic?.id !== topic.id || this.topic?.id !== topic.id) return null;
+      this.paint(answer.topic, Array.isArray(answer.participants) ? answer.participants : this.participants);
+      return answer;
+    } catch { return null; }
+  }
+
+  // "Waiting on tony · Needs a call on the deck — fable, 5:33 PM Thu Nov 5"
+  standing(topic) {
+    return [stateLabel(topic, this.reader), ...(topic.state_note ? [' · ', topic.state_note] : []),
+      ...(topic.state_by ? [` — ${named(topic.state_by, this.reader)}`, ...at(', ', topic.state_ms)] : [])];
   }
 
   // While a change is out, the buttons say they are unavailable. They are not
@@ -313,7 +343,7 @@ export class TopicStatePanel {
     const topic = this.topic, field = name => name === 'title' ? this.controls?.managed?.title : this.controls?.[name];
     const sent = fields.map(name => [name, field(name)?.value]);
     this.out = JSON.stringify(args); this.show(null); this.mark();
-    let message = null;
+    let message = null, unconfirmed = false;
     try {
       const receipt = await this.send(topic, args);
       if (receipt?.status === 'committed') {
@@ -323,13 +353,19 @@ export class TopicStatePanel {
         // fields this change saved follow it.
         if (this.controls) this.follow();
       } else if (receipt?.error?.code === 'REVISION_CONFLICT') message = CHANGED;
-      else message = receipt?.error?.message ?? 'The change was not confirmed. Refresh to see where the topic stands.';
+      else if (receipt?.error?.message) message = receipt.error.message;
+      else unconfirmed = true;
     } catch (error) {
       message = error.message;
     } finally {
       this.out = null; this.mark();
     }
     if (this.topic?.id !== topic.id) return;
+    if (unconfirmed) {
+      const answer = await this.readAgain(topic);
+      message = answer ? ['The change was not confirmed. It stands as: ', ...this.standing(answer.topic), '.']
+        : 'The change was not confirmed, and reading where the topic stands again failed too.';
+    }
     if (message) this.show(message);
     this.refresh();
   }

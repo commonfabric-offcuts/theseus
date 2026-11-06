@@ -32,6 +32,7 @@ import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
 import { WakeLights } from './wake-lights.mjs';
+import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -46,7 +47,7 @@ let localEffectVersion = 0;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
-let topicRail, topicNavigation, outcomeRail, outcomeReferences, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
+let topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
@@ -753,10 +754,10 @@ async function loadToUnread() {
   const entry = loaded();
   if (entry) opened(entry).focus();
 }
-// Where the oldest unread message is, read again after each commit and on
-// Refresh: reading, marks and replies move it without changing the topic.
-// During a visit the line follows it only to show more unread; placed afresh
-// (Refresh, the person's explicit Mark read) it goes wherever it is. Settles
+// Where the oldest unread message is, read again after each commit: reading,
+// marks and replies move it without changing the topic. During a visit the
+// line follows it only to show more unread; placed afresh (the person's
+// explicit Mark read) it goes wherever it is. Settles
 // true when it was read, false when it was not, as the marks do.
 function loadUnread() {
   if (!views || topicUnavailable) return Promise.resolve(true);
@@ -764,15 +765,6 @@ function loadUnread() {
   const accessEpoch = listAccessEpoch;
   return views.readUnread(async (name, args) => checkedView(await registry.cleanup.list(options => api.view(name, args, options)), bootstrap.instance_id),
     () => accessEpoch === listAccessEpoch && !topicUnavailable && !authorityReviewPending()).catch(() => false);
-}
-async function refreshLists() {
-  if (authorityReviewPending()) {
-    status('The runtime changed. Review your saved writing before reloading this page.'); return;
-  }
-  await outcomeRail?.load(); await topicRail?.load(); await outcomeReferences?.load(); await loadMarks(); views?.placeAfresh(); await loadUnread();
-  if (freshness?.enabled && !freshness.stopped) return freshness.request({ refresh: true });
-  if (topicUnavailable) status('Topic unavailable. Use Retry updates.');
-  await listPage('messages'); await listPage('memory');
 }
 function retainRevisionTargets(presentation = registry?.current) {
   const source = presentation?.source;
@@ -949,7 +941,7 @@ async function retrySource() {
   }
 }
 function enableFreshness(checkpoint) {
-  if (!checkpoint) { updateStatus({ kind: 'manual', message: 'Automatic updates need the updated server. Use Refresh.' }); return; }
+  if (!checkpoint) { updateStatus({ kind: 'manual', message: 'Automatic updates need the updated server. Reload this page to see newer messages.' }); return; }
   freshness = new Freshness({ api, bootstrap, topicId: topic.id, checkpoint,
     read: operation => registry.cleanup.read(operation), binding: () => ({ ...bootstrap, authority: registry.runtime.current }),
     keys: item => views.keys(item), refreshKeys: () => views.refreshKeys(), status: updateStatus, live,
@@ -1036,13 +1028,16 @@ async function initialize() {
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add a participant to this topic', names: 'directory-names',
-    add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight });
+    add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight,
+    read: async () => (await readTopic()).participants });
   await wakeLights.load();
   // Who can be sent a message here: the topic's participants and the outcome's
   // members. A reader outside the outcome cannot list its members.
   outcomeMembers = await readMembers(api, bootstrap.instance_id, topic.workspace_id).catch(() => null);
   paintParticipants(topic, result.participants);
-  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(),
+  // The topic as the topic view gives it, read once after a change that was not confirmed.
+  const readTopic = async () => validate(await registry.cleanup.list(options => api.view('topic', { topic_id: topicId }, options)));
+  topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), read: readTopic,
     send: (current, args) => {
       const { authority_id, authority_epoch } = bootstrap.authority;
       return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.update',
@@ -1143,7 +1138,6 @@ async function initialize() {
   topicNavigation = new TopicNavigation({ registry, current:route,
     navigateTarget: target => { marks.leave(); location.assign(routeHref(target)); } });
   await initializeInlineComposer();
-  initializeOutcomeNavigation(topic.workspace_id); outcomeRail.load();
   topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
     host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'), ...topicFolds(),
     denied: error => readFailure(error).kind === 'forbidden',
@@ -1168,19 +1162,23 @@ async function initialize() {
     open: (ref, row) => run(() => openSource(ref, row)),
     seen: items => { for (const item of items) views.revisions.observe(item.id, item.revision); reader.paintOffer(); },
   });
-  outcomeReferences.load();
+  // The rail shows only this topic's outcome.
+  outcomeScope = new OutcomeScope({ workspaceId: topic.workspace_id, kind: 'topic', rail: document.querySelector('.rail'), home: $('outcomes-home'),
+    attention, open: openDestination, sections: [{ name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
+      { name: 'notebook', node: $('outcome-references'), load: () => outcomeReferences.load() }] });
+  placeBrand(document.querySelector('.rail'));
+  outcomeScope.load();
   // The open topic's marks are the person's own, read by the person's scope
   // and paged; the open Reader's button follows them. The New line follows
   // what the person has read, here or anywhere else. The topic's own Notebook
   // pages' read state is read again too, so a page read since, here or
   // elsewhere, loses its light.
   commitReload = followCommits(async () => {
-    const outcomes = await outcomeRail?.load(), topics = await topicRail?.load(), references = await outcomeReferences?.load(), marked = await loadMarks(), unread = await loadUnread(), read = await loadReadState();
+    const sections = await outcomeScope.load(), marked = await loadMarks(), unread = await loadUnread(), read = await loadReadState();
     await wakeLights.load(); participantsPanel?.paint();
-    return outcomes !== false && topics !== false && references !== false && marked !== false && unread !== false && read !== false;
+    return sections !== false && marked !== false && unread !== false && read !== false;
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
-  $('refresh').onclick = () => run(refreshLists);
   $('updates-retry').onclick = () => run(async () => {
     if (updateState?.kind === 'reconnect') { location.reload(); return; }
     if (updateState?.kind === 'authority') { const p = registry.interactive; if (p) await showVersions(p.editors[p.mode], $('updates-retry'), p); return; }
@@ -1287,9 +1285,9 @@ function refreshDirectory() {
 // list could not be read, and only then does the stream's return read again:
 // anything saved while the stream was down changes its first number, which
 // arrives as a commit, so a feed that keeps reconnecting rereads nothing.
-// Returns the page's one reload, which its first read and Refresh go through
-// as well; the page calls this before its first read, so a commit while that
-// read is out is read after it.
+// Returns the page's one reload, which its first read goes through as well;
+// the page calls this before its first read, so a commit while that read is
+// out is read after it.
 function followCommits(load) {
   let owed = false;
   const reload = reloader(async () => { owed = true; owed = await load() === false; });
@@ -1358,13 +1356,18 @@ async function initializeOutcomePage(route) {
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
     initializeOutcomeNavigation();
     // The page an owner lands on says when wakes are not going out.
+    // With no rail, the logo block heads the main column.
+    placeBrand($('main'));
     const reload=followCommits(async()=>{const loaded=await outcomeRail.load();await wakeLights.load();return loaded;});
-    $('refresh').onclick=()=>run(reload);
     await reload();
   } else {
     // The outcome's Notebook pages are listed after its topics, and one opens in place below them.
     $('outcome-page').append($('topic-navigation'),$('outcome-references'),$('page-here'));
-    initializeOutcomeNavigation(route.id);
+    // The page lists the outcome's topics and pages itself, so it has no rail:
+    // the logo block, then "← Outcomes", head the main column.
+    const rail=document.querySelector('.rail');rail.hidden=true;
+    $('main').prepend($('outcomes-home'));placeBrand($('main'));
+    outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'workspace',rail,home:$('outcomes-home'),attention,open:openDestination});
     let refreshSerial=0;
     const refresh=async()=>{
       const serial=++refreshSerial;
@@ -1396,10 +1399,9 @@ async function initializeOutcomePage(route) {
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
       return (await Promise.all([topicRail.load(),outcomeReferences.load()])).every(read=>read!==false);
     };
-    // A commit may change the team or the outcome's revision as well as its
-    // topics, and the outcome rail beside them carries counts too.
-    const reload=followCommits(async()=>(await Promise.all([outcomeRail.load(),refresh()])).every(read=>read!==false));
-    $('refresh').onclick=()=>run(reload);await reload();
+    // A commit may change the team or the outcome's revision as well as its topics.
+    const reload=followCommits(async()=>await refresh()!==false);
+    await reload();
   }
   document.body.dataset.ready='true';
 }
@@ -1423,7 +1425,8 @@ async function paintTeam(workspace,refresh) {
     .then(receipt=>{run(refresh);return receipt;});
   if(!teamPanel){
     const section=$('outcome-team');$('outcome-page').append(section);
-    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',names:'directory-names',fixed:()=>[teamPanel.owner],light:wakeLight});
+    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',names:'directory-names',fixed:()=>[teamPanel.owner],light:wakeLight,
+      read:()=>readMembers(api,bootstrap.instance_id,workspace.id)});
   }
   Object.assign(teamPanel,{owner:workspace.owner_id,add:id=>send(id,true),remove:id=>send(id,false)});
   let members;
@@ -1438,7 +1441,7 @@ function enableNewTopic(workspace) {
   $('new-topic').onclick=()=>openDestination({kind:'opening',workspace,opening:crypto.randomUUID(),topic:crypto.randomUUID()},'New topic');
 }
 async function initializeOpeningPage(route) {
-  for(const id of ['notebook','participants','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
+  for(const id of ['notebook','participants','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('outcome-page').hidden=false;$('topic-title').textContent='New topic';$('topic-description').textContent='Write privately, then Send to create the topic.';
   const answer=checkedView(await api.view('workspace',{workspace_id:route.workspace},{readClass:'foreground'}),bootstrap.instance_id);
   if(answer.workspace?.id!==route.workspace)throw Error('The chosen outcome could not be confirmed.');
@@ -1449,14 +1452,25 @@ async function initializeOpeningPage(route) {
     published:receipt=>location.assign(routeHref({kind:'topic',id:receipt.result.topic.id}))});
   topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>draft.leave(target,title),navigateTarget:target=>location.assign(routeHref(target))});
   const view=new OpeningView({host:$('outcome-page'),draft,workspace:answer.workspace,open:openDestination});
-  $('refresh').onclick=()=>view.run(()=>draft.refresh());
   window.addEventListener('beforeunload',event=>{if(draft.unprotected){event.preventDefault();event.returnValue='';}});
   window.addEventListener('pagehide',()=>{draft.cancelSave();store.close();});
   await view.run(()=>draft.load());
   if(draft.editable)view.title.focus();
   view.run(()=>view.loadMembers());view.run(()=>draft.loadSource());
-  // The outcome list stays beside the writing, and follows commits as on every page.
-  initializeOutcomeNavigation(route.workspace);await followCommits(()=>outcomeRail.load())();document.body.dataset.ready='true';
+  // The rail beside the writing shows this outcome. Each commit reloads it and
+  // reads the opening once; the draft takes a change from another device or
+  // tab only while it holds no unsaved writing.
+  enableNewTopic(route.workspace);
+  topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.workspace,null),host:$('topics'),more:$('more-topics'),
+    retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
+    read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
+    open:(id,title)=>openDestination({kind:'topic',id},title)});
+  outcomeReferences=outcomePages(route.workspace,()=>{});
+  outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
+    sections:[{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},{name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
+  placeBrand(document.querySelector('.rail'));
+  await followCommits(async()=>(await Promise.all([outcomeScope.load(),draft.follow().catch(()=>false)])).every(read=>read!==false))();
+  document.body.dataset.ready='true';
 }
 async function ensureIntentJournal() {
   if(intentJournal)return intentJournal;
@@ -1479,22 +1493,34 @@ async function initializeCreationPage(route) {
   for(const id of ['notebook','participants','messages','topic-pending','inline-composer','topic-navigation'])$(id).hidden=true;
   $('outcome-page').hidden=false;$('topic-title').textContent='New outcome';$('topic-description').textContent='Create a place for related topics.';
   const intents=await ensureIntentJournal();
-  outcomeCreation=new OutcomeCreation({api,bootstrap,journal:intents,intentId:route.intent});await outcomeCreation.load();
+  outcomeCreation=new OutcomeCreation({api,bootstrap,journal:intents,intentId:route.intent});
+  initializeOutcomeNavigation();const reload=followCommits(()=>outcomeRail.load());
+  try { await outcomeCreation.load(); }
+  catch(error) {
+    // Another tab is starting this form: say so, and open it here once that tab lets go.
+    if(!outcomeCreation.waiting)throw error;
+    status(error.message);run(reload);document.body.dataset.ready='true';
+    if(!await outcomeCreation.waiting)return;
+    status('');
+  }
   topicNavigation=new TopicNavigation({current:route,beforeLeave:(target,title)=>outcomeCreation.leave(target,title),navigateTarget:target=>location.assign(routeHref(target))});
   const confirmed=async row=>{
     const answer=checkedView(await api.view('workspace',{workspace_id:row.workspace},{readClass:'foreground'}),bootstrap.instance_id);
     if(answer.workspace?.id!==row.workspace||answer.workspace.owner_id!==bootstrap.actor)throw Error('The created outcome detail could not be confirmed. Keep its original receipt.');
     $('workspace-name').textContent=answer.workspace.title;
   };
-  const form=new CreateOutcomeView({host:$('outcome-page'),creation:outcomeCreation,open:openDestination,confirmed,refresh:$('refresh')});
+  const form=new CreateOutcomeView({host:$('outcome-page'),creation:outcomeCreation,open:openDestination,confirmed});
   if(outcomeCreation.row.phase==='confirmed')await form.run(()=>confirmed(outcomeCreation.row));
-  $('refresh').onclick=()=>form.run(()=>outcomeCreation.refresh());
   window.addEventListener('beforeunload',event=>{if(outcomeCreation.writable&&(outcomeCreation.pending||outcomeCreation.dirty||outcomeCreation.storageError)){event.preventDefault();event.returnValue='';}});
-  initializeOutcomeNavigation();await followCommits(()=>outcomeRail.load())();document.body.dataset.ready='true';
+  await reload();document.body.dataset.ready='true';
 }
 window.addEventListener('pageshow', event => { if (event.persisted) location.reload(); });
 // Every shown time follows the viewer's day: at midnight today's "4:40 AM"
 // becomes "Yesterday 4:40 AM", with a topic's list held where the reader was.
 watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
-$('refresh').onclick = () => run(start);
-run(start);
+// A start that fails says why, with a way to start again from nothing.
+start().catch(error => {
+  status(error.message);
+  const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => location.reload();
+  $('app-status').append(' ', again);
+});

@@ -128,15 +128,35 @@ export class OpeningDraft {
       else{this.conflict={remote:server?{...writingOf(server),revision:server.revision}:null};this.base=row.base;}
     } else if(row&&(kept||row.base!==this.base))await this.persist().catch(()=>{});
   }
-  async refresh() {
-    if(['loading','sending'].includes(this.phase)||this.discarding)return this.phase;
-    if([...this.media.values()].some(m=>m.state==='uploading'))throw Error('Wait for the image upload to finish before refreshing.');
-    const unsafe=()=>(this.dirty||this.conflict)&&this.storageError;
-    if(unsafe())throw Error('Keep this page open: your writing is not saved to Theseus or kept on this device.');
-    const phase=this.phase;this.cancelSave();this.phase='loading';this.changed();
-    await this.saveQueue;await this.persisting.catch(()=>{});
-    if(unsafe()){this.phase=phase;this.changed();throw Error('Keep this page open: your writing is not saved to Theseus or kept on this device.');}
-    return this.load();
+  // Whether nothing here is waiting to reach Core or this device, so a newer
+  // opening from another device or tab can be taken without losing writing.
+  get settled(){
+    return ['editing','published','discarded','taken'].includes(this.phase)&&!this.discarding&&!this.dirty&&!this.conflict&&!this.pendingSave&&
+      !this.timer&&!this.saving&&this.persistCount===0&&![...this.media.values()].some(m=>m.state==='uploading')&&!this.storageError&&!this.leftover;
+  }
+  // Whether Core's opening is the one this draft already holds.
+  holds(server){
+    if(!server)return this.base===0&&['editing','taken'].includes(this.phase);
+    if(server.revision!==this.base)return false;
+    return server.state==='open'?this.phase==='editing':server.state===this.phase;
+  }
+  // Called on each commit: reads the opening once, and takes Core's newer
+  // state only while the draft is settled. Unsaved writing is never replaced;
+  // its next save is refused into the conflict panel or closedElsewhere().
+  // A failed read changes nothing; the next commit reads again.
+  async follow() {
+    if(!this.settled)return false;
+    let server,row;
+    try{[server,row]=await Promise.all([this.read(),this.store.get(this.opening)]);}catch{return false;}
+    if(!this.settled||this.holds(server))return true;
+    await this.adopt(server,row);this.checkMedia();this.changed();
+    return true;
+  }
+  // The opening's state in the words its page uses, read again once.
+  async standing() {
+    const server=await this.read();
+    if(!server)return 'Not saved yet';
+    return {open:'Saved',published:'Topic created',discarded:'This opening was discarded'}[server.state];
   }
 
   edit(patch) {
@@ -334,7 +354,9 @@ export class OpeningDraft {
       if(this.base>0){
         const envelope=this.envelope('opening.discard',{opening_revision:this.base},{}),receipt=await this.api.command(envelope);
         if(!this.exact(receipt,envelope)||receipt.status!=='committed'||receipt.result?.opening_id!==this.opening||receipt.result.state!=='discarded'){
-          throw Error((receipt?.error?.message??'Discarding is not confirmed.')+' The opening is kept; Refresh shows its current state.');
+          const words=(receipt?.error?.message??'Discarding is not confirmed.')+' The opening is kept.';
+          const now=await this.standing().catch(()=>null);
+          throw Error(now?`${words} It now reads: ${now}.`:words);
         }
       }
       this.phase='discarded';this.savedVersion=this.localVersion;this.leftover=null;this.publish=null;

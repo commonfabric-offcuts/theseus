@@ -219,7 +219,7 @@ export class Freshness {
           if (!sameBinding(bindingOf(b), bindingOf(this.bootstrap))) {
             await this.stopAuthority({ ...failure, kind: 'authority' }); return;
           }
-          if (!supportsAdmission(b)) { this.stopped = true; this.status({ kind: 'diagnostic', message: 'Automatic updates need the updated server. Use Refresh.' }); return; }
+          if (!supportsAdmission(b)) { this.stopped = true; this.status({ kind: 'diagnostic', message: 'Automatic updates need the updated server. Reload this page to see newer messages.' }); return; }
           const baseline = changesPage(await read('changes', { scope: { kind: 'topic', id: this.topicId }, limit: 50 }), this.bootstrap, this.topicId);
           await this.rebuild(read, current);
           if (!current()) return;

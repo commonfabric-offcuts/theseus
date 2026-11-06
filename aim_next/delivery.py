@@ -312,6 +312,9 @@ class Delivery:
         message by name keeps reading it after they lose the topic, archived or
         not, and then acknowledges it directly rather than by reading through the topic.
         """
+        here_id = args.get("workspace_id")
+        if here_id is not None:
+            _identifier(here_id, "workspace_id")
         counts = self._unread(db, actor)
         waiting, waiting_topics = self._waiting_on_reader(db, actor)
         group = self._addressed_group(db, actor)
@@ -334,7 +337,8 @@ class Delivery:
                 "unread": sum(entry[0] for entry in counts.values()),
                 "addressed": sum(entry[1] for entry in counts.values()),
                 "latest_addressed": items,
-                "waiting_on_me": waiting, "latest_waiting": waiting_topics}
+                "waiting_on_me": waiting, "latest_waiting": waiting_topics,
+                "waiting_outcomes": self._waiting_outcomes(db, actor, here_id)}
 
     def _addressed_group(self, db, actor):
         return db.execute("SELECT id FROM delivery_groups WHERE recipient_id=? AND kind='direct' AND topic_id='' AND participant_epoch=0 AND active=1",

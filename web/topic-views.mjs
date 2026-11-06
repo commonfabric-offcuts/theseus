@@ -23,7 +23,7 @@ export class TopicViews {
     this.oldestUnread = null; this.unreadAt = -1;
     // The message the New line is drawn under. The first answer places it;
     // during the visit it moves only to show more unread, never up as the
-    // person reads. placeAfresh (Refresh, an explicit Mark read) has the next
+    // person reads. placeAfresh (an explicit Mark read) has the next
     // topic_unread read asked after it place the line wherever the oldest
     // unread message is: asked is how many reads were asked, and afreshFrom
     // the count when the line was last asked to be placed afresh.
@@ -69,8 +69,8 @@ export class TopicViews {
     }
     // A page is contiguous in the topic. It extends the run it continues (the
     // newest message for a live page, the oldest for an older page) and joins
-    // every run it overlaps; a page that does neither, such as a Refresh's
-    // newest page, starts a run of its own.
+    // every run it overlaps; a page that does neither, such as the newest page
+    // a commit reload reads after a gap, starts a run of its own.
     const joined = new Set(answer.items.map(item => this.runs.get(item.id)));
     if (!initial) for (const item of this.messages.values()) if (item.seq === cursor) joined.add(this.runs.get(item.id));
     joined.delete(undefined);

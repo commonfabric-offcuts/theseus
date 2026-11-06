@@ -25,9 +25,11 @@ export class OutcomeCreation {
       try {
         await this.queue;
         const writable=await this.journal.claim(this.intentId);
+        // Another tab holds the form: wait for its lock to end, then load again here.
+        if(!writable)this.awaitClaim();
         let row=await this.journal.get(this.intentId);
         if(!row){
-          if(!writable)throw Error('This outcome form is being initialized in another tab.');
+          if(!writable)throw Error('This outcome form is being started in another tab. It opens here when that tab closes.');
           row={...base(this.intentId,'create',this.bootstrap),workspace:null,phase:'draft',form:{title:'',purpose:'',team:[]},envelope:null,receipt:null,history:[]};
           await this.journal.put(row);
         }
@@ -41,7 +43,7 @@ export class OutcomeCreation {
   }
   get readOnly(){return !this.writable||this.parked||Boolean(this.pending)||Boolean(this.row?.envelope&&this.row.phase!=='rejected');}
   get dirty(){return this.savedVersion<this.version;}
-  owns(){if(this.acquiring)throw Error('The form is busy loading its current saved version.');if(!this.writable)throw Error('Open in another tab — this form is read-only.');if(this.parked)throw Error('The runtime authority changed. This act is kept without rebinding.');}
+  owns(){if(this.acquiring)throw Error('The form is busy loading its current saved version.');if(!this.writable)throw Error('Open in another tab — read-only until that tab closes.');if(this.parked)throw Error('The runtime authority changed. This act is kept without rebinding.');}
   persist() {
     if(this.acquiring)return Promise.reject(Error('The form is busy loading its current saved version.'));
     const row=copy(this.row),version=this.version;
@@ -124,7 +126,20 @@ export class OutcomeCreation {
       await this.checkAuthority();this.retryAllowed=false;return this.dispatch();
     });
   }
-  refresh() {return this.pending??(!this.writable||this.parked?this.load():this.row.envelope?this.check():this.perform(()=>this.persist()));}
+  // The browser grants the form's lock when the tab holding it closes or
+  // leaves it; this is that event, not a poll. Settles true once the form has
+  // loaded here, false when the journal closed first or loading failed.
+  awaitClaim() {
+    this.waiting??=this.journal.claimWhenFree(this.intentId).then(async granted=>{
+      this.waiting=null;
+      if(!granted)return false;
+      await this.load();return true;
+    }).catch(error=>{this.waiting=null;this.notice=error.message;this.changed();return false;});
+    return this.waiting;
+  }
+  // After saving on this browser failed, the person can try once more.
+  get canSaveAgain(){return Boolean(this.storageError)&&this.writable&&!this.parked&&!this.row?.envelope;}
+  saveAgain() {return this.perform(()=>this.persist());}
   async leave(destination,title) {
     const previous=this.departureChoice;this.departureChoice=null;
     if(this.pending)throw Error('Wait for creation or its confirmation check to finish before leaving.');
