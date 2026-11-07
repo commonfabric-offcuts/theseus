@@ -147,6 +147,14 @@ class ImportCase(ReaderCase):
                                         target={"item_id": "page"}, expected={"item_revision": revision - 1}, actor="agent-a"))
         self.refused(self.seed(), "SEED_STALE")
 
+    def test_a_whisper_is_never_where_an_imported_item_came_from(self):
+        # The whole outcome reads the pipeline, so the import refuses a whisper by its number as item_add does.
+        whisper = self.committed(self.command("message.post", {"body": "Between us", "addressees": ["agent-a"], "whisper": True},
+                                              {"topic_id": "t1"}))["message_id"]
+        seed = self.seed()
+        seed["items"][0]["sources"] = [{"topic": "Topic", "seq": self.sql("SELECT seq FROM messages WHERE id=?", (whisper,))[0][0]}]
+        self.refused(seed, "WHISPER_STAYS_PRIVATE")
+
     def test_the_operator_imports_through_the_admin_command(self):
         seed_path = Path(self.temp.name).resolve() / "seed.json"
         seed_path.write_text(json.dumps(self.seed()))

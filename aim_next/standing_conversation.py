@@ -298,6 +298,20 @@ class StandingConversation:
                                       "JOIN workspaces w ON w.id=t.workspace_id WHERE m.id=?", (source_message_id,)).fetchone()
             self._touch_topic(db, conversation)
 
+    def _take_into_pipeline(self, db, actor, workspace_id, message_ids, number, part, added):
+        """A pipeline item added from messages (added false), or given them as sources (added true): under
+        each one that is an item of this outcome's conversation, say so. Another outcome's item is
+        left alone, since its tag would name a number in a pipeline its page does not show."""
+        conversation = self._conversation_of(db, workspace_id)
+        if conversation is None or not message_ids:
+            return
+        marks = ",".join("?" * len(message_ids))
+        here = [row[0] for row in db.execute("SELECT id FROM messages WHERE topic_id=? AND id IN (%s) ORDER BY seq" % marks,
+                                             [conversation["id"]] + list(message_ids))]
+        taken = [message_id for message_id in here if self._record_take(db, message_id, "pipeline", [number], actor, part=part, added=added)]
+        if taken:
+            self._touch_topic(db, conversation)
+
     def _conversation_record(self, db, actor, topic, message_id, snapshot, intent):
         """After a message on the record lands in a conversation: its item, its answer take, and its waits."""
         parent_id = snapshot.get("reply_to")
