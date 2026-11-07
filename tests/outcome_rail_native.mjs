@@ -8,7 +8,9 @@ import assert from 'node:assert/strict';
 // bar or Refresh button. On a topic page the rail lists no outcomes: "←
 // Outcomes" comes first, then the outcome's own topics. The outcome's own page
 // has no rail. An ask to the reader in another outcome lights "← Outcomes"
-// live, with its words on a topic page and without them on the outcome page.
+// live, with its words on a topic page; on the outcome page too when that
+// outcome is one the reader is not on the team of, so its "Also waiting on
+// you" line cannot name it.
 // At 390 the open topic shows whole in the strip, with a lit neighbour not
 // cut. What Refresh did is done without it: writes elsewhere show with no
 // reload, an unconfirmed state change says where the topic stands, the
@@ -102,7 +104,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []);
   });
 
-  await check('rail an ask in another outcome lights ← Outcomes live, with words on a topic page and none on the outcome page; answering it clears the light', async () => {
+  await check('rail an ask in another outcome lights ← Outcomes live, with words on a topic page, and on the outcome page when its Also-waiting line cannot name it; answering it clears the light', async () => {
     const p = await open('rail-light', '/?topic=t1');
     await until(async () => (await home(p)).lit === false, 'nothing waits elsewhere at first');
     const before = await loaded(p);
@@ -112,9 +114,15 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(lit, { lit: true, words: '1 other outcome is waiting on you', said: '1 other outcome is waiting on you', label: 'Outcomes. 1 other outcome is waiting on you.' });
     assert.equal(await loaded(p), before, 'with no reload');
     await shot(p, 'rail-light-topic');
+    // The ask's outcome has an empty team: the reader cannot list it, so the
+    // page's Also-waiting line cannot name it, and the light says it in words.
     const o = await open('rail-light-outcome', '/?workspace=w1');
-    const there = await until(async () => { const h = await home(o); return h.lit && h; }, 'the outcome page lights it too');
-    assert.deepEqual(there, { lit: true, words: null, said: '1 other outcome is waiting on you', label: 'Outcomes. 1 other outcome is waiting on you.' }, 'the light without its words, which screen readers still hear');
+    const there = await until(async () => { const h = await home(o); return h.lit && h.words && h; }, 'the outcome page lights it too, with its words');
+    assert.deepEqual(there, { lit: true, words: '1 other outcome is waiting on you', said: '1 other outcome is waiting on you', label: 'Outcomes. 1 other outcome is waiting on you.' });
+    const page = await o.evaluate(`(()=>{const a=document.getElementById('also-waiting');return {also:a.getClientRects().length>0?a.textContent:null,
+      said:document.querySelector('main').innerText.includes('1 other outcome is waiting on you'),listed:document.querySelectorAll('#workspaces a').length}})()`);
+    assert.deepEqual([page.also, page.said], [null, true], 'no Also-waiting line can name it, and the page says it in words');
+    assert.ok(page.listed > 0, 'the outcome list was read, without the ask\'s outcome in it');
     await shot(o, 'rail-light-outcome');
     // The reader answers in that topic: the light goes on both pages, live.
     const answeredFrom = await loaded(o);

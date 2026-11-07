@@ -160,6 +160,10 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
         alsoFirst:Boolean(document.querySelector('#also-waiting').compareDocumentPosition(s)&Node.DOCUMENT_POSITION_FOLLOWING),
         box:!w.hidden&&w.textContent.includes('Waiting on you ('),source:s.textContent.includes('This comes from posts, agent work and questions in Theseus.')}})()`);
     assert.deepEqual(top, { also: 'Also waiting on you: 1 in Pitch deck ›', heading: 'Where this outcome stands', before: true, alsoFirst: true, box: false, source: true });
+    // The line names the one other outcome the "← Outcomes" light counts, so the light shows without its words.
+    const home = await until(() => p.evaluate(`(()=>{const h=document.getElementById('outcomes-home'),l=h.querySelector('.outcome-light'),w=h.querySelector('.elsewhere-words');
+      return l&&l.getClientRects().length>0&&{words:w.getClientRects().length>0?w.textContent:null,label:h.getAttribute('aria-label')}})()`), 'the light is lit');
+    assert.deepEqual(home, { words: null, label: 'Outcomes. 1 other outcome is waiting on you.' }, 'the line already names it; screen readers still hear the words');
     await shot(p, 'light-outcome-page');
     await p.point('#also-waiting a');
     await until(() => p.evaluate(`document.body?.dataset.ready==='true' && new URL(location.href).searchParams.get('workspace')==='light-pitch' && !document.querySelector('#outcome-standing').hidden`), 'the link opens Pitch deck\'s page');

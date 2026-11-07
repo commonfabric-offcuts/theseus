@@ -27,10 +27,15 @@ export function elsewhereWords(count) {
   return count === 1 ? '1 other outcome is waiting on you' : `${count} other outcomes are waiting on you`;
 }
 
-// The outcome's own page already lists what waits, so there the light stays
-// and the words go; screen readers still hear them.
-export function wordsShown(kind) {
-  return kind !== 'workspace';
+// The outcome's own page names other outcomes' questions in its "Also
+// waiting on you" line, so there the words go while that line names as many
+// outcomes as the light counts (count). The light counts every wait on the
+// reader; the line names only outcomes the reader can list, the first page of
+// those whose team they are on, so a wait it cannot name keeps the words.
+// named: how many outcomes the line names, null until its read has settled.
+// Screen readers hear the words either way.
+export function wordsShown(kind, count = 0, named = null) {
+  return kind !== 'workspace' || (named !== null && named < count);
 }
 
 // Moves the one logo block, then the page's status notices, to the top of
@@ -102,7 +107,7 @@ export function followStrip(strip, win = strip.ownerDocument.defaultView) {
 // only answers read about this outcome are painted.
 export class OutcomeScope {
   constructor({ workspaceId, kind, rail, home, attention = null, sections = [], open, homeReadable = true, doc = rail.ownerDocument }) {
-    Object.assign(this, { workspaceId, kind, rail, home, attention, sections, open, doc });
+    Object.assign(this, { workspaceId, kind, rail, home, attention, sections, open, doc, count: 0, named: null });
     this.shown = railShown(kind, homeReadable);
     const navigation = doc.getElementById('outcome-navigation');
     if (navigation) navigation.hidden = true;
@@ -136,6 +141,7 @@ export class OutcomeScope {
   // waits on the reader.
   paintHome(count) {
     const doc = this.doc, home = this.home;
+    this.count = count;
     let arrow = home.querySelector('.home-words'), light = home.querySelector('.outcome-light'), words = home.querySelector('.elsewhere-words');
     if (!arrow) {
       arrow = doc.createElement('span'); arrow.className = 'home-words'; arrow.textContent = '← Outcomes';
@@ -145,8 +151,15 @@ export class OutcomeScope {
     }
     const said = count > 0 ? elsewhereWords(count) : '';
     light.hidden = !said;
-    words.textContent = said; words.hidden = !said || !wordsShown(this.kind);
+    words.textContent = said; words.hidden = !said || !wordsShown(this.kind, count, this.named);
     if (said) home.setAttribute('aria-label', `Outcomes. ${said}.`); else home.removeAttribute('aria-label');
+  }
+
+  // How many other outcomes the page's "Also waiting on you" line names, each
+  // time it is painted; 0 when the list it is read from could not be read.
+  alsoNamed(named) {
+    this.named = named;
+    this.paintHome(this.count);
   }
 
   // Reads every section; settles false when any could not be read.

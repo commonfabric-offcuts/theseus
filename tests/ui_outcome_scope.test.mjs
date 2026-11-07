@@ -96,8 +96,54 @@ test('the rail shows on every page inside an outcome but the outcome\'s own, and
   assert.equal(railShown('workspace'), false);
   assert.equal(railShown('skill', false), false, 'a non-member\'s tool page');
   assert.equal(railShown('skill', true), true, 'a member\'s tool page');
-  assert.equal(wordsShown('workspace'), false);
+  assert.equal(wordsShown('workspace'), false, 'the outcome page before its Also-waiting line has been read');
   for (const kind of ['topic', 'opening', 'pipeline', 'skill']) assert.equal(wordsShown(kind), true, kind);
+  // On the outcome page: the words show while the line names fewer outcomes than the light counts.
+  assert.equal(wordsShown('workspace', 1, 0), true);
+  assert.equal(wordsShown('workspace', 2, 1), true);
+  assert.equal(wordsShown('workspace', 2, 2), false);
+  assert.equal(wordsShown('workspace', 1, null), false);
+  for (const kind of ['topic', 'opening', 'pipeline', 'skill']) assert.equal(wordsShown(kind, 1, 1), true, kind + ' whatever a line names');
+});
+
+// The light counts every wait on the reader; the outcome page's "Also waiting
+// on you" line names only outcomes the reader can list (those whose team they
+// are on, the first page of them). A wait the line cannot name is said by the
+// light's own words, there as everywhere else.
+test('on its own page "← Outcomes" says its words whenever the Also-waiting line names fewer outcomes than the light counts', () => {
+  const p = page(), a = attention();
+  const scope = new OutcomeScope({ workspaceId: 'w5', kind: 'workspace', rail: p.rail, home: p.home, attention: a, open() {} });
+  const light = p.home.querySelector('.outcome-light'), words = p.home.querySelector('.elsewhere-words');
+  // A wait in w6, whose team the reader is not on: the light counts it.
+  a.answer({ waiting_outcomes: { count: 1, here: false } });
+  assert.equal(light.hidden, false, 'the light');
+  assert.equal(words.hidden, true, 'until the line has been read the page does not guess, so nothing jumps');
+  scope.alsoNamed(0);
+  assert.equal(words.hidden, false, 'the line names none of them: the words say it');
+  assert.equal(words.textContent, '1 other outcome is waiting on you');
+  // Two others, one past the outcomes the page reads.
+  a.answer({ waiting_outcomes: { count: 3, here: true } });
+  scope.alsoNamed(1);
+  assert.equal(words.hidden, false, 'the line names one of two');
+  assert.equal(words.textContent, '2 other outcomes are waiting on you');
+  scope.alsoNamed(2);
+  assert.equal(words.hidden, true, 'the line names them all: the light without its words');
+  assert.equal(light.hidden, false);
+  assert.equal(p.home.getAttribute('aria-label'), 'Outcomes. 2 other outcomes are waiting on you.', 'screen readers hear them either way');
+  // A new wait the line has not named yet, from the light's side.
+  a.answer({ waiting_outcomes: { count: 3, here: false } });
+  assert.equal(words.hidden, false, 'a third wait brings the words back');
+  assert.equal(words.textContent, '3 other outcomes are waiting on you');
+  // The line could not be read (it names none).
+  scope.alsoNamed(3); assert.equal(words.hidden, true);
+  scope.alsoNamed(0); assert.equal(words.hidden, false, 'a line that could not be read names nothing');
+  a.answer({ waiting_outcomes: { count: 0, here: false } });
+  assert.equal(light.hidden, true, 'nothing waits: no light'); assert.equal(words.hidden, true, 'and no words');
+  // Inside an outcome's topic the words always show.
+  const q = page(), b = attention();
+  const topic = new OutcomeScope({ workspaceId: 'w5', kind: 'topic', rail: q.rail, home: q.home, attention: b, open() {} });
+  b.answer({ waiting_outcomes: { count: 1, here: false } }); topic.alsoNamed(1);
+  assert.equal(q.home.querySelector('.elsewhere-words').hidden, false);
 });
 
 test('"← Outcomes" lights up when another outcome waits on the reader: with words inside an outcome, without them on its own page', () => {

@@ -1389,9 +1389,10 @@ async function initializeOutcomePage(route) {
     // the logo block, then "← Outcomes", head the main column.
     const rail=document.querySelector('.rail');rail.hidden=true;
     $('main').prepend($('outcomes-home'));placeBrand($('main'));
-    // The list of outcomes is read, not shown, for the line naming other outcomes' questions.
-    initializeOutcomeNavigation(route.id,items=>paintAlsoWaiting($('also-waiting'),items,route.id,(id,title)=>openDestination({kind:'workspace',id},title)));
-    outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'workspace',rail,home:$('outcomes-home'),attention,open:openDestination});
+    const scope=outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'workspace',rail,home:$('outcomes-home'),attention,open:openDestination});
+    // The list of outcomes is read, not shown, for the line naming other outcomes' questions;
+    // "← Outcomes" says its words when that line names fewer outcomes than its light counts.
+    initializeOutcomeNavigation(route.id,items=>scope.alsoNamed(paintAlsoWaiting($('also-waiting'),items,route.id,(id,title)=>openDestination({kind:'workspace',id},title))));
     // Where this outcome stands, read with the page and again on every commit.
     let standingSerial=0;
     const stands=async workspace=>{

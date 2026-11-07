@@ -82,9 +82,11 @@ export function paintStandingFailed(host, retry) {
 // On an outcome's page, other outcomes' questions in one quiet line:
 // "Also waiting on you: 2 in Building Theseus ›, 1 in Pitch deck ›", in the
 // sidebar's order, each counted as that outcome's own row counts them.
+// items null: the list could not be read, so there is no line. Returns how
+// many outcomes the line names.
 export function paintAlsoWaiting(host, items, current, open) {
   const others = (Array.isArray(items) ? items : []).filter(item => item.id !== current && item.light?.light === 'waiting' && item.light.short?.kind === 'asks');
-  if (!others.length) { host.hidden = true; host.replaceChildren(); return; }
+  if (!others.length) { host.hidden = true; host.replaceChildren(); return 0; }
   const parts = ['Also waiting on you: '];
   others.forEach((item, index) => {
     if (index) parts.push(', ');
@@ -97,6 +99,7 @@ export function paintAlsoWaiting(host, items, current, open) {
   });
   host.replaceChildren(...parts);
   host.hidden = false;
+  return others.length;
 }
 
 // The peek: on a laptop, hovering an outcome row or focusing it by keyboard

@@ -1224,6 +1224,55 @@ test('on an outcome page a commit reads the outcome, its topics and, for the lin
   assert.deepEqual([count('workspaces'), count('workspace_topics')], [before.workspaces + 1, before.topics + 1], 'a hidden page waits');
 });
 
+// The outcome page with the light and the Also-waiting line together. The
+// light counts every wait on the reader; the line names only outcomes the
+// reader can list. waits: outcome ids with a wait on the reader; listed: the
+// outcome rows the reader can list, each { id, asks }.
+const lightAndLine = async (waits, listed) => {
+  const f = fixture('https://fixture/?workspace=w5'), live = stream();
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  const state = { waits, listed, failing: null };
+  const lit = asks => asks ? { light: 'waiting', label: 'Waiting on you', short: { kind: 'asks', count: asks }, unreadable: false }
+    : { light: 'quiet', label: 'Quiet', short: { kind: 'since', ms: 1 }, unreadable: false };
+  f.api.view = async (name, args) => {
+    f.calls.push({ name, args });
+    if (name === 'attention') return { instance_id: 'fixture', unread: 0, addressed: 0, latest_addressed: [], waiting_on_me: 0, latest_waiting: [],
+      waiting_outcomes: { count: state.waits.length, here: state.waits.includes(args?.workspace_id) } };
+    if (name === 'workspaces') {
+      if (state.failing) throw state.failing;
+      return { instance_id: 'fixture', next_cursor: null, items: state.listed.map(({ id, asks }) => ({ id, owner_id: 'o', title: 'Outcome ' + id, title_truncated: false, version: 1, light: lit(asks) })) };
+    }
+    if (name === 'workspace') return { instance_id: 'fixture', workspace: { id: 'w5', title: 'Five', owner_id: 'fixture-person', version: 1 } };
+    return { instance_id: 'fixture', items: [], next_cursor: null };
+  };
+  await f.initialize(); await drain(); await drain();
+  const words = f.get('elsewhere-words'), also = f.get('also-waiting');
+  // Seen: on the page, with nothing between it and the outcome page hidden.
+  const seen = node => { for (let at = node; at; at = at.parent) { if (at.hidden) return false; if (at === f.get('outcome-page')) return true; } return false; };
+  const textOf = node => typeof node === 'string' ? node : (node.textContent || '') + (node.children ?? []).map(textOf).join('');
+  return { f, live, state, words, also, seen, textOf };
+};
+
+test('on an outcome page a wait in an outcome the reader is not on the team of is said in words beside "← Outcomes"', async () => {
+  // agent-b reads w5; the wait is in w6, whose team they are not on, so their outcomes are w1 and w5.
+  const { words, also, f } = await lightAndLine(['w6'], [{ id: 'w1' }, { id: 'w5' }]);
+  assert.equal(f.get('outcome-light').hidden, false, 'the light is lit');
+  assert.equal(also.hidden, true, 'the Also-waiting line cannot name w6');
+  assert.equal(words.hidden, false, 'so the light says it in words');
+  assert.equal(words.textContent, '1 other outcome is waiting on you');
+});
+
+test('on an outcome page the light keeps its words unseen only while the Also-waiting line names every outcome it counts', async () => {
+  const { words, also, live, state, textOf } = await lightAndLine(['w2'], [{ id: 'w2', asks: 1 }, { id: 'w5' }]);
+  assert.equal(also.hidden, false); assert.equal(textOf(also), 'Also waiting on you: 1 in Outcome w2 ›');
+  assert.equal(words.hidden, true, 'the line names it: the light without its words');
+  // A second wait, in an outcome the reader cannot list.
+  state.waits = ['w2', 'w9'];
+  live.emit({ kind: 'commit', seq: 5 }); await drain(); await drain();
+  assert.equal(words.hidden, false, 'the line names one of two: the words say both');
+  assert.equal(words.textContent, '2 other outcomes are waiting on you');
+});
+
 test('the page starts its attention from the bootstrap\'s number', async () => {
   const f = fixture('https://fixture/?'), o = outcomesPage(f);
   o.answers.push(o.page([]));
