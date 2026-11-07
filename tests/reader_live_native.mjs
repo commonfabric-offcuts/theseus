@@ -221,6 +221,10 @@ export async function liveChecks({ check, page, until, control, observations, or
     // The page's own field is the people's add field, below the messages: with
     // the caret in it, it is scrolled away below the screen, and a card is in view.
     const add = "document.querySelector('#participants .people-add input')";
+    // It waits behind "+ Add", which opens it with the caret in it.
+    await p.evaluate("document.querySelector('#participants .add-chip').scrollIntoView({block:'center'})");
+    await p.point('#participants .add-chip');
+    await until(() => p.evaluate(`document.activeElement === ${add}`), 'the add field opens with the caret in it');
     await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - innerHeight - 100); })(${add})`);
     assert.equal(await p.evaluate(`${add}.getBoundingClientRect().top >= innerHeight && document.activeElement === ${add}`), true,
       'the field with the caret is below the screen');

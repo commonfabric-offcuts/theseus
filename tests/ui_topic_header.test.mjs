@@ -198,7 +198,7 @@ test('each person is one pill in their colour, the reader\'s own black and not a
   const host = new Element('div');
   const named = person => person.kind === 'agent' && person.actor_id !== 'tony' ? new Element('button', { textContent: person.actor_id, className: 'pill-name' }) : null;
   const pill = person => person.actor_id === 'tony' ? 'own-pill' : person.kind === 'agent' ? 'agent-green' : '';
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', fixed: () => ['dan'], named, pill, remove: async () => ({}) });
+  const panel = new PeoplePanel({ host, label: 'Add', fixed: () => ['dan'], named, pill, remove: async () => ({}) });
   const list = people([['dan'], ['fable', 'agent'], ['tony']]);
   panel.paint(list, true);
   const shown = pills(host);

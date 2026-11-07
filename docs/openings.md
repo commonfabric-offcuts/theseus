@@ -74,13 +74,22 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
 - In one transaction Core checks that the opening is open and at the
   expected revision, that the actor can still access its workspace, that
   `topic_id` is unused, that the title is not blank, that every participant
-  is enabled, that every attachment is ready, and that the body or an
-  attachment is non-empty. It then creates the topic, its participants (the
-  author plus the saved participants), the summary, the opening message and
-  the deliveries, exactly as an ordinary publication does, and marks the
-  opening `published` with `publish_operation_id` and `message_id`.
+  is enabled, and that every attachment is ready. It then creates the topic,
+  its participants (the author plus the saved participants) and the summary,
+  and marks the opening `published` with `publish_operation_id` and
+  `message_id`.
+- The opening message is the saved body and attachments, published with its
+  deliveries exactly as an ordinary publication is. With no body and no
+  attachment, an opening that answers a message opens with that message's
+  words quoted (each line after `> `, with a quote reference to it; cut at
+  its end if the whole would pass the body limit). With no body, no
+  attachment and no message answered, or a source with no words, a title
+  alone starts the topic with no message: it becomes the outcome's latest
+  activity, its version advances once, and each participant other than the
+  author gets `("actor", member, "participation", T, version)`.
 - Result: `{opening_id, opening_revision, topic: {id, version}, message_id,
-  delivery: {queued, unavailable_subscribers}}`.
+  delivery: {queued, unavailable_subscribers}}`; `message_id` is `null` when
+  the topic started with no message.
 - A retry with the same operation ID and envelope returns the recorded
   receipt. A different operation ID on a published opening refuses with
   `OPENING_CLOSED`, recorded, and the `opening` view links the result.
@@ -91,8 +100,8 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
 - Refusal codes, all recorded: an unknown or another actor's opening is
   `FORBIDDEN`; lost workspace access `FORBIDDEN`; a used topic ID
   `REVISION_CONFLICT`; a disabled participant `INVALID_RECIPIENT`; a blank
-  title `EMPTY_TITLE`; an unready attachment `ATTACHMENT_NOT_READY`; no body
-  and no attachment `EMPTY_MESSAGE`. Participants are checked before the
+  title `EMPTY_TITLE`; an unready attachment `ATTACHMENT_NOT_READY`.
+  Participants are checked before the
   title, because the creation step is shared with the earlier prepared
   openings.
 - Publication and discard each advance the opening revision by one, so the
@@ -126,6 +135,20 @@ so a page decides as Core does. The web offers the same
 controls to both (the team panel's member controls, a topic's participant,
 rename and archive controls); the team panel's fixed chip, the one person it
 offers no remove for, is the owner.
+
+### `workspace.update`
+
+- `target`: `{workspace_id}`. `expected`: `{workspace_revision}` (required).
+- `args`: `title`, `purpose` or both, and nothing else. An outcome is
+  created with its title alone; whoever organises it says what it is for
+  afterwards, in place on its page.
+- Only its owner or coordinator may change them (`FORBIDDEN` otherwise). A
+  blank title is `EMPTY_TITLE`; either text past the body limit is
+  `BODY_TOO_LARGE`.
+- A change bumps the workspace version and records
+  `("workspace", W, "workspace", W, version)`. Nothing changed advances
+  nothing and returns the current state.
+- Result: `{workspace_id, title, purpose, version}`.
 
 ### `workspace.member_set`
 
@@ -268,7 +291,17 @@ an upgrade is activated by the code of its own version and then migrated.
 
 - Outcome pages list the person's unfinished openings in that outcome from
   the `openings` view. Any device can resume one.
-- New topic preallocates opening and topic IDs and saves revision 1 on the
+- New topic and New outcome are one title line under their heading in the
+  rail, and "Start a topic from this" is one title line in the Reader,
+  filled from the message's first sentence: Return creates. A topic is one
+  `opening.save` (title, and for a message its source, with its author as a
+  participant) and one `opening.publish`; an outcome is one
+  `workspace.create` with its title. An answer that never came keeps the
+  exact request, and the next Return sends it again; a refusal is shown in
+  plain words and the typed title stays. A one-line create keeps no draft
+  on the device (`web/quick-create.mjs`).
+- A resumed opening (from an outcome's unfinished list) keeps the full page
+  below. It preallocates opening and topic IDs and saves revision 1 on the
   first change, then saves on edits with the expected revision. The status
   shows Saving, Saved, or Not saved yet. A `REVISION_CONFLICT` keeps the
   person's writing visible and offers the server's current revision; it

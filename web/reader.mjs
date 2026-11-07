@@ -1,7 +1,7 @@
 import { keyAction } from './editor.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
-import { markReach, replaceChips } from './people.mjs';
+import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
@@ -81,12 +81,10 @@ export class Reader {
     };
     this.$('previous-message').onclick = () => this.step(-1);
     this.$('next-message').onclick = () => this.step(1);
-    this.$('add-recipient').onclick = () => this.addRecipient();
     this.$('ask-toggle').onchange = event => this.setAsk(event.target.checked);
     this.$('recipient-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
-    this.$('reply-destination').onchange = event => this.callbacks.destination(event.target.value);
     // Writing can take the author a reply is offered to, so Ask is redrawn with it.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
       beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintAsk();}});
@@ -155,11 +153,14 @@ export class Reader {
     this.disarm();
     this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
     this.paintOrigin(source);
+    // Where a reply goes: the topic it was opened from, lit; a few topics are chips tapped once.
     const destination = this.$('reply-destination');
-    destination.replaceChildren();
-    const choose = node('option', 'Choose a topic'); choose.value = ''; destination.append(choose);
-    for (const topic of topics) { const option = node('option', topic.title); option.value = topic.id; destination.append(option); }
-    destination.value = sessions.reply.context.topicId ?? '';
+    destination.replaceChildren(...topics.map(topic => {
+      const chip = node('button', topic.title || 'Untitled topic', 'choice-chip'); chip.type = 'button';
+      chip.setAttribute('aria-pressed', topic.id === sessions.reply.context.topicId ? 'true' : 'false');
+      chip.onclick = () => this.callbacks.destination(topic.id);
+      return chip;
+    }));
     this.$('reader-parent').disabled = !source.topic_id;
     this.$('reader-stepping').hidden = source.source_ref.kind !== 'message';
     this.$('previous-message').disabled = !canPrevious;
@@ -390,8 +391,10 @@ export class Reader {
     this.$('destination-label').hidden = note || this.source.source_ref.kind === 'message';
     this.$('reply-audience').hidden = note;
     this.$('pending-submissions').hidden = note;
-    this.$('writing-hint').textContent = note ? 'Only you · ⌘ Return to save and close' : 'Return for a new line · ⌘ Return to send';
-    this.$('send-reply').textContent = note ? 'Save note' : 'Send ⌘↵';
+    this.$('writing-hint').textContent = note ? 'Only you · saved as you write · ⌘ Return when done' : 'Return for a new line · ⌘ Return to send';
+    // The note saves as it is written; Done only finishes, so it is not a second save.
+    this.$('send-reply').textContent = note ? 'Done' : 'Send ⌘↵';
+    this.$('send-reply').classList.toggle('primary', !note);
     this.field.placeholder = note ? 'Your private note…' : 'Write a reply…';
     this.field.value = this.editor.draft.body;
     this.paintImages();
@@ -402,40 +405,45 @@ export class Reader {
 
   paintRecipients() {
     const editor = this.sessions.reply, presentation = this.presentation;
-    // The author a reply answers is offered first. Removing someone declines
-    // any offer of them, and writes only when the writing already names them:
-    // typing takes the offer without redrawing these chips, so the press, not
-    // the drawing, decides which.
-    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices([...(editor.offeredAddressees ?? []), ...editor.draft.addressees]).map(({ name, removeLabel }) => {
-      const chip = node('span', name, 'chip'); chip.dataset.name = name;
-      const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
-      remove.onclick = () => {
-        if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
-        editor.declineAddressee(name);
-        if (editor.draft.addressees.includes(name)) {
-          const rest = editor.draft.addressees.filter(item => item !== name);
-          // A message to nobody neither asks nor tells.
-          editor.edit({ addressees: rest, ...(rest.length ? {} : { intent: null }) });
-          this.callbacks.edit(editor);
-        }
-        this.paintRecipients(); this.paintAsk();
-      };
-      chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
-    }));
+    // The author a reply answers is offered first, lit with whoever the
+    // writing names. Taking someone off declines any offer of them, and writes
+    // only when the writing already names them: typing takes the offer without
+    // redrawing these chips, so the press, not the drawing, decides which.
+    const named = recipientChoices([...(editor.offeredAddressees ?? []), ...editor.draft.addressees]).map(({ name }) => name);
+    const off = name => {
+      if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
+      editor.declineAddressee(name);
+      if (editor.draft.addressees.includes(name)) {
+        const rest = editor.draft.addressees.filter(item => item !== name);
+        // A message to nobody neither asks nor tells.
+        editor.edit({ addressees: rest, ...(rest.length ? {} : { intent: null }) });
+        this.callbacks.edit(editor);
+      }
+      this.paintRecipients(); this.paintAsk();
+    };
+    paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.people?.() ?? [], named: [...new Set(named)],
+      reach: this.callbacks.reach, remove: off, toggle: (name, on) => on ? this.address(name) : off(name) });
   }
 
+  // The small field beside the topic's people names anyone else; Return adds them.
   addRecipient() {
     const input = this.$('recipient-input');
     const name = input.value.trim().replace(/^@/, '');
-    if (!name || !this.sessions) return;
+    if (!name || !this.address(name)) return;
+    input.value = '';
+    input.focus();
+  }
+
+  // Name someone in the reply; false when the writing cannot change now.
+  address(name) {
+    if (!this.sessions) return false;
     const editor = this.sessions.reply;
-    if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return;
+    if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return false;
     if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name] });
       this.callbacks.edit(editor); this.paintRecipients(); this.paintAsk();
     }
-    input.value = '';
-    input.focus();
+    return true;
   }
 
   // Your reply to someone tells them unless you say it asks: Ask makes the topic
@@ -507,7 +515,6 @@ export class Reader {
     this.$('cancel-image').hidden = note || !editor.imageReservation;
     this.field.readOnly = state.readOnly;
     this.$('recipient-input').disabled = this.field.readOnly;
-    this.$('add-recipient').disabled = this.field.readOnly;
     this.$('ask-toggle').disabled = this.field.readOnly;
     this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
     this.paintImages();

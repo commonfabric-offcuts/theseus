@@ -46,6 +46,8 @@ export class CreateOutcomeView {
     this.title=field('Outcome title','input','outcome-title-input');this.title.value=creation.row.form.title;
     this.purpose=field('Purpose (optional)','textarea','outcome-purpose-input');this.purpose.rows=3;this.purpose.value=creation.row.form.purpose;
     this.title.oninput=()=>this.run(()=>creation.edit({title:this.title.value}));this.purpose.oninput=()=>this.run(()=>creation.edit({purpose:this.purpose.value}));
+    // Return in the title creates the outcome, as Create outcome does.
+    this.title.onkeydown=event=>{if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();if(!event.repeat&&!this.create.hidden&&!this.create.disabled)this.run(()=>creation.create());}};
     host.append(el('p','Owner: '+creation.row.actor));
     const team=el('div');team.className='actor-choices';host.append(el('h2','Team'),team);
     this.team=new ActorChoices({host:team,label:'Add outcome team member',owner:creation.row.actor,get:()=>creation.row.form.team,

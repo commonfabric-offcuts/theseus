@@ -265,7 +265,7 @@ export class OpeningDraft {
   sendProblem() {
     const w=this.writing;
     if(!hasTitle(w.title))return 'Give this topic a title before sending.';
-    if(!w.body.trim()&&!w.attachments.length)return 'Write the opening message or attach an image before sending.';
+    // A title alone starts the topic (with this message quoted, when it answers one); words can follow in the topic.
     if(w.participants.length>this.bootstrap.limits.topic_participants-1)return 'The participant limit includes you. Remove someone before sending.';
     const waiting=w.attachments.map(ref=>this.media.get(ref.id)??{name:'attachment'}).find(m=>m.state!=='ready');
     if(waiting)return `Finish or remove the image ${waiting.name} before sending.`;
@@ -304,7 +304,7 @@ export class OpeningDraft {
     const envelope=this.publish.envelope;
     if(this.exact(receipt,envelope)&&receipt.status==='committed'){
       const r=receipt.result;
-      if(r?.opening_id!==this.opening||r.topic?.id!==this.topic||!validActorId(r.message_id)||!Number.isInteger(r.opening_revision)||r.opening_revision<envelope.expected.opening_revision){
+      if(r?.opening_id!==this.opening||r.topic?.id!==this.topic||!(r.message_id===null||validActorId(r.message_id))||!Number.isInteger(r.opening_revision)||r.opening_revision<envelope.expected.opening_revision){
         this.phase='unknown';this.notice='The confirmation does not match this opening. Its request is kept; Check again.';this.changed();return 'unknown';
       }
       this.receipt=copy(receipt);this.phase='published';this.publish=null;

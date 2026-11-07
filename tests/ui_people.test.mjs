@@ -1,16 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PeoplePanel, fillNames, markReach, readDirectory, readMembers, listWords } from '../web/people.mjs';
+import { PeoplePanel, fillNames, markReach, readDirectory, readMembers, listWords, paintAddress } from '../web/people.mjs';
 
 class Element {
-  constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, hidden: true }); }
-  append(...nodes) { this.children.push(...nodes); }
+  constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, dataset: {}, hidden: true, parentNode: null }, tag === 'input' ? { value: '' } : {}); }
+  // A node has one parent, as in a browser: putting it somewhere takes it from where it was.
+  append(...nodes) { for (const node of nodes) { if (node instanceof Element) { node.detach(); node.parentNode = this; } this.children.push(node); } }
+  detach() { if (this.parentNode) { const list = this.parentNode.children; list.splice(list.indexOf(this), 1); this.parentNode = null; } }
   // As in a browser, a focused element taken out of the page loses the focus,
   // even when it is put back.
   replaceChildren(...nodes) {
     if (this.all().includes(globalThis.document.activeElement)) globalThis.document.activeElement = null;
+    for (const node of this.children) if (node instanceof Element) node.parentNode = null;
     this.children = []; this.append(...nodes);
   }
+  remove() { if (this.contains(globalThis.document.activeElement)) globalThis.document.activeElement = null; this.detach(); }
+  insertBefore(node, before) {
+    if (before === null) return this.append(node);
+    node.detach(); node.parentNode = this; this.children.splice(this.children.indexOf(before), 0, node);
+  }
+  contains(node) { return node === this || this.all().includes(node); }
   setAttribute(key, value) { this.attributes[key] = value; }
   removeAttribute(key) { delete this.attributes[key]; }
   getAttribute(key) { return this.attributes[key] ?? null; }
@@ -73,47 +82,123 @@ const people = list => list.map(actor_id => ({ actor_id }));
 const chips = host => host.filter(node => node.className === 'chip').map(chip => chip.textContent);
 const removable = host => host.filter(node => node.tag === 'button' && node.textContent === '×').map(node => node.attributes['aria-label']);
 const field = host => host.find(node => node.tag === 'input');
+const opener = host => host.find(node => node.tag === 'button' && node.textContent === '+ Add');
+const row = host => host.find(node => node.className === 'people-add');
+// The names offered to add, as tapped: each a chip button in the open row.
+const offered = host => row(host).filter(node => node.tag === 'button').map(node => node.textContent);
+const offer = (host, id) => row(host).find(node => node.tag === 'button' && node.textContent === id);
+const enter = (host, more = {}) => field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {}, stopPropagation() {}, ...more });
+const sameNodes = (a, b) => a.length === b.length && a.every((node, index) => node === b[index]);
 
 const notice = host => { const node = host.find(node => node.className === 'notice'); return node.hidden ? null : node.textContent; };
 
-test('only a reader who may change the people gets remove buttons and the field, and fixed people keep no button', t => {
+test('only a reader who may change the people gets remove buttons and "+ Add", and fixed people keep no button', t => {
   dom(t);
   const host = new Element('div');
-  const panel = new PeoplePanel({ host, label: 'Add to team', names: 'directory-names', fixed: () => ['tony'] });
+  const panel = new PeoplePanel({ host, label: 'Add to team', fixed: () => ['tony'] });
   panel.paint(people(['fable', 'tony']), false);
   assert.equal(host.hidden, false);
-  assert.deepEqual([chips(host), removable(host), host.find(node => node.className === 'people-add').hidden], [['fable', 'tony'], [], true]);
+  assert.deepEqual([chips(host), removable(host), opener(host), row(host).hidden], [['fable', 'tony'], [], undefined, true]);
   panel.paint(people(['fable', 'tony']), true);
   assert.deepEqual(removable(host), ['Remove fable']);
-  assert.equal(host.find(node => node.className === 'people-add').hidden, false);
-  assert.deepEqual([field(host).attributes.list, field(host).attributes['aria-label']], ['directory-names', 'Add to team']);
+  assert.deepEqual([opener(host).title, opener(host).attributes['aria-expanded'], row(host).hidden], ['Add to team', 'false', true],
+    'the people who can be added wait behind "+ Add"');
+  assert.equal(host.find(node => node.tag === 'button' && node.textContent === 'Add'), undefined, 'there is no Add button');
+  opener(host).onclick();
+  assert.deepEqual([row(host).hidden, opener(host).attributes['aria-expanded'], document.activeElement], [false, 'true', field(host)]);
+  panel.paint(people(['fable', 'tony']), false);
+  assert.deepEqual([opener(host), row(host).hidden], [undefined, true], 'a reader who may no longer manage loses the open row too');
+});
+
+test('"+ Add" offers the people not yet in as names tapped once, narrowed by the filter, and Escape closes it', async t => {
+  dom(t);
+  const host = new Element('div'), sent = [], opened = [];
+  let candidates = [{ id: 'fable', name: 'Fable' }, { id: 'tony', name: 'tony' }, { id: 'aim-core', name: 'AIM Core' }, null, { name: 'no id' }];
+  const panel = new PeoplePanel({ host, label: 'Add', candidates: () => candidates, opened: () => opened.push(1),
+    add: async id => { sent.push(id); return { status: 'committed' }; } });
+  panel.paint(people(['tony']), true);
+  assert.equal(opened.length, 0, 'nothing is read before the row opens');
+  opener(host).onclick();
+  assert.equal(opened.length, 1, 'opening reads who can be added');
+  assert.deepEqual(offered(host), ['fable', 'aim-core'], 'everyone not here, each once');
+  assert.deepEqual([offer(host, 'fable').attributes['aria-pressed'], offer(host, 'fable').title], ['false', 'Fable']);
+  field(host).value = 'core'; field(host).oninput();
+  assert.deepEqual(offered(host), ['aim-core'], 'the filter matches a name as well as an id');
+  enter(host);
+  await new Promise(setImmediate);
+  assert.deepEqual(sent, ['aim-core'], 'Return with one name left adds that person, not the words typed');
+  assert.equal(field(host).value, '');
+  panel.paint(people(['tony', 'aim-core']), true);
+  offer(host, 'fable').focus();
+  await offer(host, 'fable').onclick();
+  panel.paint(people(['tony', 'aim-core', 'fable']), true);
+  assert.deepEqual(sent, ['aim-core', 'fable'], 'one tap adds');
+  assert.deepEqual([offered(host), row(host).find(node => node.className === 'muted')?.textContent], [[], 'Everyone is already here.']);
+  assert.equal(document.activeElement, field(host), 'with no name left to tap, the filter has the focus');
+  field(host).value = 'ally'; field(host).oninput();
+  assert.equal(row(host).find(node => node.className === 'muted').textContent, 'No one by that name yet. Return adds it as typed.');
+  enter(host);
+  await new Promise(setImmediate);
+  assert.deepEqual(sent, ['aim-core', 'fable', 'ally'], 'a name nobody offers is added as typed');
+  let stopped = 0;
+  field(host).onkeydown({ key: 'Escape', isComposing: false, preventDefault() {}, stopPropagation: () => stopped++ });
+  assert.deepEqual([row(host).hidden, opener(host).attributes['aria-expanded'], document.activeElement, stopped], [true, 'false', opener(host), 1],
+    'Escape closes the row, not the page behind it, and the focus goes back to "+ Add"');
+});
+
+test('a repaint that offers the same names keeps their buttons, so a tap across a commit still adds', t => {
+  dom(t);
+  const host = new Element('div');
+  let candidates = [{ id: 'fable' }, { id: 'ally' }];
+  const panel = new PeoplePanel({ host, label: 'Add', candidates: () => candidates, add: async () => ({ status: 'committed' }) });
+  panel.paint(people(['tony']), true);
+  opener(host).onclick();
+  const pressed = offer(host, 'fable');
+  panel.paint(people(['tony']), true);
+  panel.paint();
+  assert.equal(offer(host, 'fable'), pressed, 'the very button a press went down on');
+  panel.busy = true; panel.paint();
+  assert.deepEqual([offer(host, 'fable'), pressed.disabled], [pressed, true], 'busy only disables it');
+  panel.busy = false; panel.paint();
+  assert.equal(pressed.disabled, false);
+  candidates = [{ id: 'fable' }, { id: 'ally' }, { id: 'aim-core' }];
+  panel.paint();
+  assert.notEqual(offer(host, 'fable'), pressed, 'a different list is drawn afresh');
+  assert.deepEqual(offered(host), ['fable', 'ally', 'aim-core']);
 });
 
 test('a repaint keeps the very field the person is typing in, with what they typed', t => {
   dom(t);
   const host = new Element('div');
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n' });
+  const panel = new PeoplePanel({ host, label: 'Add' });
   panel.paint(people(['tony']), true);
+  opener(host).onclick();
   const typing = field(host);
   typing.value = 'fab';
   panel.paint(people(['tony', 'ally']), true);
   panel.paint(people(['ally']), true);
   assert.equal(field(host), typing, 'the same input element stays in place');
   assert.equal(typing.value, 'fab');
+  assert.equal(row(host).hidden, false, 'the row stays open');
   assert.deepEqual(host.children.map(node => node.className), ['chips', 'people-add', 'notice'], 'the host keeps its three parts');
 });
 
-test('a repaint while a remove button holds focus keeps focus on that person, or on the field once they are gone', t => {
+test('a repaint while a remove button holds focus keeps focus on that person, or on "+ Add" once they are gone', t => {
   dom(t);
   const host = new Element('div');
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n' });
+  const panel = new PeoplePanel({ host, label: 'Add' });
   const out = id => host.find(node => node.attributes['aria-label'] === `Remove ${id}`);
   panel.paint(people(['ally', 'tony']), true);
   out('tony').focus();
   panel.paint(people(['ally', 'fable', 'tony']), true);
   assert.equal(document.activeElement, out('tony'), 'the new button for the same person has focus');
+  const add = opener(host);
   panel.paint(people(['ally', 'fable']), true);
-  assert.equal(document.activeElement, field(host), 'with them gone, the field has it');
+  assert.equal(document.activeElement, add, 'with them gone, "+ Add" has it');
+  assert.equal(opener(host), add, '"+ Add" is the same button after every repaint');
+  assert.deepEqual(host.children[0].children.at(-1), add, 'and it comes after the people');
+  panel.paint(people(['ally', 'fable', 'tony']), true);
+  assert.equal(document.activeElement, add, 'a repaint that adds people leaves "+ Add" its focus');
   document.activeElement = null;
   panel.paint(people(['ally']), true);
   assert.equal(document.activeElement, null, 'a repaint does not take focus it did not hold');
@@ -124,31 +209,31 @@ test('a repaint that would show what is there already leaves the chips and their
   const host = new Element('div');
   const kept = new Element('button');
   let color = 'agent-1', light = null, fixed = [];
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', fixed: () => fixed, named: person => person.actor_id === 'fable' ? kept : null,
+  const panel = new PeoplePanel({ host, label: 'Add', fixed: () => fixed, named: person => person.actor_id === 'fable' ? kept : null,
     pill: person => person.actor_id === 'fable' ? color : '', light: person => person.actor_id === 'fable' ? light : null });
-  const chips = () => host.children[0].children;
+  const chips = () => [...host.children[0].children];
   const out = id => host.find(node => node.attributes['aria-label'] === `Remove ${id}`);
   panel.paint(people(['fable', 'tony']), true);
   const first = chips(), button = out('fable');
   panel.paint(people(['fable', 'tony']), true);
   panel.paint();
-  assert.equal(chips(), first, 'the same chips, not new ones');
+  assert.ok(sameNodes(chips(), first), 'the same chips, not new ones');
   assert.equal(out('fable'), button, 'the very button a press went down on');
   // Each thing a chip shows repaints it when it changes.
   const changes = [() => { color = 'agent-2'; }, () => { light = 'not woken'; }, () => { fixed = ['fable']; }, () => { panel.busy = true; }];
   for (const change of changes) {
     const before = chips();
     change(); panel.paint();
-    assert.notEqual(chips(), before, String(change));
+    assert.ok(!sameNodes(chips(), before), String(change));
   }
   assert.equal(out('tony').disabled, true, 'a busy panel disables its buttons');
   assert.equal(out('fable'), undefined, 'a fixed person has no button');
   let before = chips(); panel.paint(people(['tony', 'fable']), true);
-  assert.notEqual(chips(), before, 'a new order repaints');
+  assert.ok(!sameNodes(chips(), before), 'a new order repaints');
   before = chips(); panel.paint(people(['tony', 'fable']), false);
   assert.equal(out('tony'), undefined, 'a reader who may not manage sees no button');
   before = chips(); panel.paint(people(['tony']), false);
-  assert.notEqual(chips(), before, 'someone leaving repaints');
+  assert.ok(!sameNodes(chips(), before), 'someone leaving repaints');
 });
 
 test('a repaint while a person\'s name control holds focus gives it to that person\'s name again', t => {
@@ -157,7 +242,7 @@ test('a repaint while a person\'s name control holds focus gives it to that pers
   // A name may be a control: a new one each paint, or the same one put back.
   const kept = new Element('button');
   const named = person => person.actor_id === 'ally' ? kept : Object.assign(new Element('button'), { name: person.actor_id });
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', named });
+  const panel = new PeoplePanel({ host, label: 'Add', named });
   const name = id => panel.namers.get(id);
   panel.paint(people(['ally', 'fable', 'tony']), false);
   const first = name('fable');
@@ -173,45 +258,45 @@ test('a repaint while a person\'s name control holds focus gives it to that pers
   assert.equal(document.activeElement, null, 'a repaint does not take focus it did not hold');
 });
 
-test('Enter or Add sends the typed name once; a refusal or failure is said beside the field', async t => {
+test('Return sends the typed name once; a refusal or failure is said beside the filter', async t => {
   dom(t);
   const host = new Element('div'), sent = [];
   let answer = { status: 'committed' }, release;
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', add: async id => { sent.push(['add', id]); await new Promise(resolve => { release = resolve; }); return answer; },
+  const panel = new PeoplePanel({ host, label: 'Add', add: async id => { sent.push(['add', id]); await new Promise(resolve => { release = resolve; }); return answer; },
     remove: async id => { sent.push(['remove', id]); return answer; } });
   panel.paint(people(['tony']), true);
+  opener(host).onclick();
   const type = text => { field(host).value = text; };
-  const add = () => host.find(node => node.textContent === 'Add');
   type('  @fable ');
   let prevented = 0;
-  field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault: () => prevented++ });
-  assert.equal(add().disabled, true, 'Add waits while the change is sent');
-  assert.notEqual(field(host).disabled, true, 'the field stays usable, so it keeps focus');
-  add().onclick();
+  enter(host, { preventDefault: () => prevented++ });
+  assert.notEqual(field(host).disabled, true, 'the filter stays usable, so it keeps focus');
+  enter(host);
   release();
   await new Promise(setImmediate);
-  assert.deepEqual([sent, prevented], [[['add', 'fable']], 1]);
+  assert.deepEqual([sent, prevented], [[['add', 'fable']], 1], 'a second Return while the add is out sends nothing');
   assert.equal(notice(host), null);
-  assert.equal(field(host).value, '', 'an added name leaves the field');
+  assert.equal(field(host).value, '', 'an added name leaves the filter');
 
   answer = { status: 'refused', error: { message: 'Unknown recipient' } };
   type('nobody');
-  add().onclick();
+  enter(host);
   release();
   await new Promise(setImmediate);
-  assert.deepEqual([field(host).value, notice(host)], ['nobody', 'Unknown recipient'], 'a refused name stays in the field to correct');
+  assert.deepEqual([field(host).value, notice(host)], ['nobody', 'Unknown recipient'], 'a refused name stays in the filter to correct');
 
   answer = { status: 'committed' };
   type('ally');
-  add().onclick();
+  enter(host);
   release();
   await new Promise(setImmediate);
   assert.equal(notice(host), null, 'a later success clears the refusal');
 
   type('   ');
-  add().onclick();
-  field(host).onkeydown({ key: 'Enter', isComposing: true, repeat: false, preventDefault: () => prevented++ });
-  assert.equal(sent.length, 3, 'an empty name or a composing Enter sends nothing');
+  enter(host);
+  enter(host, { isComposing: true });
+  enter(host, { repeat: true });
+  assert.equal(sent.length, 3, 'an empty name, a composing Enter or a held Return sends nothing');
 
   answer = { status: 'refused', error: { message: 'No permission for this topic' } };
   host.find(node => node.tag === 'button' && node.textContent === '×').onclick();
@@ -224,31 +309,59 @@ test('Enter or Add sends the typed name once; a refusal or failure is said besid
   await new Promise(setImmediate);
   assert.match(notice(host), /not confirmed/);
 
-  assert.equal(document.activeElement, field(host), 'after a removal the field holds focus, not the page');
+  assert.equal(document.activeElement, opener(host), 'after a removal "+ Add" holds focus, not the page');
   panel.remove = async () => { throw Error('offline'); };
   host.find(node => node.tag === 'button' && node.textContent === '×').onclick();
   await new Promise(setImmediate);
   assert.equal(notice(host), 'offline');
-  assert.equal(add().disabled, false);
 });
 
-test('a name typed while an add is out stays in the field when that add commits', async t => {
+test('a name typed while an add is out stays in the filter when that add commits', async t => {
   dom(t);
   const host = new Element('div'), sent = [];
   let release;
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n',
+  const panel = new PeoplePanel({ host, label: 'Add',
     add: async id => { sent.push(id); await new Promise(resolve => { release = resolve; }); return { status: 'committed' }; } });
   panel.paint(people(['tony']), true);
+  opener(host).onclick();
   field(host).value = 'fable';
-  field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {} });
+  enter(host);
   field(host).value = 'ally';
   release();
   await new Promise(setImmediate);
   assert.deepEqual([sent, field(host).value], [['fable'], 'ally'], 'the next name the person typed is kept');
-  field(host).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {} });
+  enter(host);
   release();
   await new Promise(setImmediate);
-  assert.deepEqual([sent, field(host).value], [['fable', 'ally'], ''], 'a field still holding what was sent is cleared');
+  assert.deepEqual([sent, field(host).value], [['fable', 'ally'], ''], 'a filter still holding what was sent is cleared');
+});
+
+test('Address is the topic\'s people as names tapped once, lit while named; anyone else named has a ×; a repaint keeps the focus on the same name', t => {
+  dom(t);
+  const host = new Element('div'), field = new Element('input'), toggled = [], removed = [];
+  let named = ['fable', 'stranger'];
+  const paint = (people = ['fable', 'tony', 'fable']) => paintAddress(host, field, { people, named, reach: () => ({ reachable: true }),
+    toggle: (name, on) => toggled.push([name, on]), remove: name => removed.push(name) });
+  paint();
+  const chip = name => host.children.find(node => node.dataset.name === name);
+  assert.deepEqual(host.children.map(node => [node.tag, node.dataset.name, node.attributes['aria-pressed'] ?? null]),
+    [['button', 'fable', 'true'], ['button', 'tony', 'false'], ['span', 'stranger', null]], 'each of the topic\'s people once, then anyone else named');
+  assert.deepEqual([chip('fable').className, chip('tony').textContent], ['choice-chip', 'tony']);
+  chip('tony').onclick(); chip('fable').onclick();
+  assert.deepEqual(toggled, [['tony', true], ['fable', false]], 'a tap names them, a second takes them off');
+  chip('stranger').find(node => node.attributes['aria-label'] === 'Remove stranger').onclick();
+  assert.deepEqual(removed, ['stranger']);
+  // A repaint keeps the focus where it was: the same name, or the same button on the same chip.
+  chip('tony').focus(); named = ['fable', 'tony', 'stranger']; paint();
+  assert.deepEqual([document.activeElement, chip('tony').attributes['aria-pressed']], [chip('tony'), 'true']);
+  chip('stranger').children.find(node => node.tag === 'button').focus(); paint();
+  assert.equal(document.activeElement, chip('stranger').children.find(node => node.tag === 'button'), 'the × on the new chip');
+  named = ['fable']; paint();
+  assert.equal(document.activeElement, field, 'with that person gone, the field has the focus');
+  document.activeElement = null; paint();
+  assert.equal(document.activeElement, null, 'a repaint takes no focus it did not hold');
+  named = []; paint([]);
+  assert.deepEqual(host.children, [], 'nobody in the topic and nobody named: no chips');
 });
 
 test('a recipient outside the topic is marked, with an offer to add them only for a reader who may', async t => {
@@ -317,7 +430,7 @@ test('a change that is not confirmed reads who is here once and says so; a faile
   dom(t);
   const host = new Element('div'), sent = [];
   let reads = 0, read = async () => { reads++; return people(['tony', 'fable', 'aim-core']); };
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', read: () => read(), add: async id => { sent.push(id); return { status: 'unknown' }; },
+  const panel = new PeoplePanel({ host, label: 'Add', read: () => read(), add: async id => { sent.push(id); return { status: 'unknown' }; },
     remove: async id => { sent.push(id); return { status: 'unknown' }; } });
   panel.paint(people(['tony', 'ally']), true);
   host.find(node => node.attributes['aria-label'] === 'Remove ally').onclick(); await new Promise(setImmediate);
@@ -329,7 +442,7 @@ test('a change that is not confirmed reads who is here once and says so; a faile
   assert.equal(notice(host), 'The change was not confirmed, and reading who is here again failed too.');
   assert.deepEqual(chips(host), ['tony', 'fable', 'aim-core'], 'it keeps what it last showed');
   assert.deepEqual([sent.length, reads], [2, 2]);
-  const bare = new PeoplePanel({ host: new Element('div'), label: 'Add', names: 'n', add: async () => ({}), remove: async () => ({ status: 'unknown' }) });
+  const bare = new PeoplePanel({ host: new Element('div'), label: 'Add', add: async () => ({}), remove: async () => ({ status: 'unknown' }) });
   bare.paint(people(['tony', 'ally']), true);
   bare.host.find(node => node.attributes['aria-label'] === 'Remove ally').onclick(); await new Promise(setImmediate);
   assert.equal(notice(bare.host), 'The change was not confirmed, and reading who is here again failed too.', 'a panel with no read never says Refresh');

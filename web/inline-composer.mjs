@@ -1,4 +1,4 @@
-import { markReach, replaceChips } from './people.mjs';
+import { paintAddress } from './people.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
 import { WritingInput } from './writing-input.mjs';
 
@@ -23,7 +23,6 @@ export class InlineComposer {
     });
     this.field.addEventListener('paste', event => this.paste(event));
     this.$('send').onclick = () => this.send();
-    this.$('add-recipient').onclick = () => this.addRecipient();
     this.$('recipient-input').onkeydown = event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); if (!event.repeat) this.addRecipient(); }
     };
@@ -68,7 +67,7 @@ export class InlineComposer {
   fail(message) {
     this.root.hidden = false;
     this.field.disabled = true;
-    for (const name of ['recipient-input', 'add-recipient', 'add-image', 'send']) this.$(name).disabled = true;
+    for (const name of ['recipient-input', 'add-image', 'send']) this.$(name).disabled = true;
     this.$('notice').textContent = 'New message is unavailable. ' + message;
     this.$('notice').hidden = false;
     this.$('save-state').textContent = 'Writing is disabled until this composer can load.';
@@ -86,26 +85,31 @@ export class InlineComposer {
     const picker = this.imagePicker; this.imagePicker = null;
     picker?.uploads.cancel(picker.token); this.$('image-file').value = ''; this.paintStatus();
   }
+  // The topic's people are names tapped once; the small field beside them names anyone else.
   paintRecipients() {
     const p = this.presentation, editor = this.editor;
-    replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices(editor.draft.addressees).map(({ name, removeLabel }) => {
-      const chip = node('span', name, 'chip'), remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
-      chip.dataset.name = name;
-      remove.onclick = () => {
-        if (!this.admits(p, editor) || this.state().readOnly) return;
-        editor.edit({ addressees: editor.draft.addressees.filter(value => value !== name) });
-        this.callbacks.edit(editor, p); this.paintRecipients();
-      };
-      chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
-    }));
+    const off = name => {
+      if (!this.admits(p, editor) || this.state().readOnly) return;
+      editor.edit({ addressees: editor.draft.addressees.filter(value => value !== name) });
+      this.callbacks.edit(editor, p); this.paintRecipients();
+    };
+    paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.people?.() ?? [],
+      named: recipientChoices(editor.draft.addressees).map(({ name }) => name), reach: this.callbacks.reach, remove: off,
+      toggle: (name, on) => on ? this.address(name) : off(name) });
   }
   addRecipient() {
-    const p = this.presentation, editor = this.editor, input = this.$('recipient-input'), name = input.value.trim().replace(/^@/, '');
-    if (!name || !this.admits(p, editor) || this.state().readOnly) return;
+    const input = this.$('recipient-input'), name = input.value.trim().replace(/^@/, '');
+    if (!name || !this.address(name)) return;
+    input.value = ''; input.focus();
+  }
+  // Name someone in the message; false when the writing cannot change now.
+  address(name) {
+    const p = this.presentation, editor = this.editor;
+    if (!this.admits(p, editor) || this.state().readOnly) return false;
     if (!editor.draft.addressees.includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name] }); this.callbacks.edit(editor, p); this.paintRecipients();
     }
-    input.value = ''; input.focus();
+    return true;
   }
   paintImages() {
     const p = this.presentation, editor = this.editor, uploads = this.callbacks.uploads(editor), host = this.$('attachments');
@@ -142,7 +146,7 @@ export class InlineComposer {
     this.$('retry').textContent = 'Retry access';
     this.$('retry').hidden = Boolean(editor.authorityRecovery || this.presentation.availabilityChecking || !(this.presentation.availabilityUnconfirmed || editor.unavailable));
     this.$('send').disabled = state.sendDisabled;
-    this.$('recipient-input').disabled = state.readOnly; this.$('add-recipient').disabled = state.readOnly;
+    this.$('recipient-input').disabled = state.readOnly;
     this.$('add-image').hidden = Boolean(editor.imageReservation); this.$('add-image').disabled = state.addDisabled;
     this.$('cancel-image').hidden = !editor.imageReservation;
     this.$('review-versions').hidden = !this.callbacks.needsReview(editor);

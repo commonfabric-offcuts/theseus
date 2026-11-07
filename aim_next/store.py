@@ -597,6 +597,25 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             self._change(db, "actor", member, "workspace", workspace["id"], version)
         return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
 
+    def _command_workspace_update(self, db, actor, envelope):
+        """Whoever organises an outcome renames it or says what it is for, in place after creating it."""
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"workspace_id"} or not args or set(args) - {"title", "purpose"}:
+            raise Refusal("INVALID_ARGUMENT", "Name one outcome and its new title, purpose or both")
+        workspace = self._workspace(db, actor, target["workspace_id"], organise=True)
+        _revision(envelope["expected"], "workspace_revision", workspace["version"])
+        title = _body(args.get("title", workspace["title"]))
+        if not title.strip():
+            raise Refusal("EMPTY_TITLE", "An outcome needs a title")
+        purpose = _body(args.get("purpose", workspace["purpose"]))
+        if (title, purpose) == (workspace["title"], workspace["purpose"]):
+            return {"workspace_id": workspace["id"], "title": title, "purpose": purpose, "version": workspace["version"]}, []
+        version = workspace["version"] + 1
+        db.execute("UPDATE workspaces SET title=?,purpose=?,version=? WHERE id=?", (title, purpose, version, workspace["id"]))
+        self._change(db, "workspace", workspace["id"], "workspace", workspace["id"], version)
+        return {"workspace_id": workspace["id"], "title": title, "purpose": purpose, "version": version}, [
+            {"kind": "workspace", "id": workspace["id"], "version": version}]
+
     def _view_workspace_topics(self, db, actor, args):
         """One page of an outcome's topics, latest activity first (docs/topic-list.md).
 

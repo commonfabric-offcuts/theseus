@@ -31,10 +31,10 @@ export class OpeningView {
     this.notice=el('p','','notice');this.notice.id='opening-notice';this.notice.setAttribute('role','status');this.notice.hidden=true;
     const titleLabel=el('label','Topic title');this.title=el('input');this.title.id='opening-title-input';this.title.autocomplete='off';titleLabel.append(this.title);
     this.title.oninput=()=>this.run(()=>draft.edit({title:this.title.value}));
-    this.chips=el('div',undefined,'chips');this.members=el('div',undefined,'member-choices');this.members.id='opening-members';
+    // One row of names: you, then each of the outcome's members, tapped once to put them in or take them out.
+    this.chips=el('div',undefined,'state-chips people-chips');this.chips.id='opening-members';this.chips.setAttribute('role','group');this.chips.setAttribute('aria-label','Topic participants');
     this.moreMembers=button('More members',()=>this.run(()=>draft.loadMembers(true)));
     this.membersState=el('p','','muted');this.retryMembers=button('Retry members',()=>this.run(()=>this.loadMembers()));
-    const people=el('div',undefined,'actor-choices');people.append(this.chips);
     const bodyLabel=el('label','Opening message');this.body=el('textarea');this.body.id='opening-body';this.body.rows=8;
     this.body.placeholder='Write the opening message…';this.body.spellcheck=true;bodyLabel.append(this.body);
     const writer={get draft(){return {body:draft.writing.body};},edit:({body})=>draft.edit({body})};
@@ -60,9 +60,9 @@ export class OpeningView {
     this.confirm=button('Discard this opening',()=>this.run(async()=>{this.confirming=false;await draft.discard();}));this.confirm.id='opening-discard-confirm';
     this.keep=button('Keep it',()=>{this.confirming=false;this.paint();this.discard.focus();});
     const actions=el('div',undefined,'creation-actions');actions.append(this.sendButton,this.later,this.discard,this.confirm,this.keep);
-    host.append(this.state,this.notice,this.answers,titleLabel,el('h2','Topic participants'),people,this.members,this.membersState,this.moreMembers,this.retryMembers,
-      el('p','Participants receive this topic’s messages. Choose from this outcome’s members.','muted'),
-      bodyLabel,this.attachments,this.file,this.addImage,this.conflict,this.outcome,actions);
+    const imageRow=el('div',undefined,'creation-actions');imageRow.append(this.addImage);
+    host.append(this.state,this.notice,this.answers,titleLabel,el('h2','People'),this.chips,this.membersState,this.moreMembers,this.retryMembers,
+      bodyLabel,this.attachments,this.file,imageRow,this.conflict,this.outcome,actions);
     draft.changed=()=>this.paint();this.paint();
   }
   async run(action){
@@ -90,22 +90,15 @@ export class OpeningView {
       if(caret)field.setSelectionRange(Math.min(caret[0],value.length),Math.min(caret[1],value.length));
     }
     this.title.readOnly=this.body.readOnly=!editable;
-    keyed(this.chips,[d.bootstrap.actor,...w.participants],id=>{
-      const chip=el('span',undefined,'chip');chip.append(el('span'));
-      if(id!==d.bootstrap.actor)chip.append(button('×',()=>this.run(()=>{d.setParticipants(d.writing.participants.filter(x=>x!==id));this.title.focus();})));
+    // Members first, then anyone saved in this opening who is not (or no longer) listed as one.
+    const ids=[...new Set([...d.members.map(m=>m.actor_id),...w.participants])].filter(id=>id!==d.bootstrap.actor);
+    keyed(this.chips,[d.bootstrap.actor,...ids],id=>{
+      if(id===d.bootstrap.actor){const you=el('span',undefined,'choice-chip');you.setAttribute('aria-pressed','true');return you;}
+      const chip=button('',()=>this.run(()=>d.setParticipants(d.writing.participants.includes(id)?d.writing.participants.filter(x=>x!==id):[...d.writing.participants,id])),'choice-chip');
       return chip;
     },(chip,id)=>{
-      chip.children[0].textContent=id===d.bootstrap.actor?`${id} · you`:this.name(id);
-      if(chip.children[1]){chip.children[1].setAttribute('aria-label','Remove '+this.name(id));chip.children[1].disabled=!editable;}
-    });
-    const choices=d.members.filter(m=>m.actor_id!==d.bootstrap.actor);
-    keyed(this.members,choices.map(m=>m.actor_id),id=>{
-      const label=el('label',undefined,'member-choice'),box=el('input');box.type='checkbox';
-      box.onchange=()=>this.run(()=>d.setParticipants(box.checked?[...d.writing.participants,id]:d.writing.participants.filter(x=>x!==id)));
-      label.append(box,el('span'));return label;
-    },(label,id)=>{
-      const [box,text]=label.children,m=choices.find(m=>m.actor_id===id);
-      box.checked=d.writing.participants.includes(id);box.disabled=!editable;text.textContent=` ${this.name(id)} · ${m.kind}`;
+      if(id===d.bootstrap.actor){chip.textContent=`${id} · you`;return;}
+      chip.textContent=this.name(id);chip.setAttribute('aria-pressed',w.participants.includes(id)?'true':'false');chip.disabled=!editable;
     });
     this.moreMembers.hidden=d.membersNext===null;this.retryMembers.hidden=!this.membersError;
     this.membersState.textContent=this.membersError?'Outcome members are unavailable. '+this.membersError:'';this.membersState.hidden=!this.membersError;

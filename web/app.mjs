@@ -7,7 +7,7 @@ import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
-import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince, startFrom } from './topic-navigation.mjs';
+import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
 import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
@@ -25,6 +25,8 @@ import { paintTopicHeader } from './topic-header.mjs';
 import { TopicSettings } from './topic-settings.mjs';
 import { repaintTimes, watchDays } from './times.mjs';
 import { PeoplePanel, fillNames, readDirectory, readMembers } from './people.mjs';
+import { OneLine, OutcomeStart, TopicStart, lineFromButton, firstSentence } from './quick-create.mjs';
+import { PurposeLine } from './outcome-purpose.mjs';
 import { Marks, paintMarkButton, paintAuthor, marksWords } from './marks.mjs';
 import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
@@ -700,10 +702,36 @@ function paintMarks() {
   });
   paintReaderMark();
 }
+// "Start a topic from this": one title line right in the Reader, filled from the
+// message's first sentence. Return starts the topic with the message quoted as
+// its opening and its author in it; people and more words come afterwards, in
+// the topic. Escape, or a second press, closes it.
+let startLine = null;
+function closeStartLine(focus = false) {
+  if (!startLine) return;
+  startLine.line.root.remove(); startLine = null;
+  $('start-from-message').setAttribute('aria-expanded', 'false');
+  if (focus) $('start-from-message').focus();
+}
+function openStartLine() {
+  if (startLine) { closeStartLine(true); return; }
+  const p = registry?.current, source = p?.source, ref = source?.source_ref;
+  if (ref?.kind !== 'message' || !topic || p.sourceUnavailable) return;
+  const author = typeof source.author === 'string' && source.author !== bootstrap.actor ? source.author : null;
+  const starter = new TopicStart({ api, bootstrap, workspace: topic.workspace_id, source: ref.id, participants: author ? [author] : [] });
+  const line = new OneLine({ id: 'start-topic-title', label: 'Title of the topic to start from this message', value: firstSentence(source.body), className: 'start-topic-line',
+    submit: async title => { const id = await starter.start(title); closeStartLine(); await openDestination({ kind: 'topic', id }, title); },
+    cancel: () => closeStartLine(true), open: link => openDestination({ kind: 'topic', id: link.id }, link.title) });
+  startLine = { line, message: ref.id };
+  $('start-from-message').after(line.root); $('start-from-message').setAttribute('aria-expanded', 'true');
+  line.focus(true);
+}
 function paintReaderMark() {
   const p = registry?.current, ref = p?.source?.source_ref;
   // Any readable message can start a topic of its own in this outcome.
   $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
+  // A title line started from another message goes when the Reader moves on.
+  if (startLine && (startLine.message !== ref?.id || $('start-from-message').hidden)) closeStartLine();
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
   paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
 }
@@ -1057,7 +1085,10 @@ async function initialize() {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
-  participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add a participant to this topic', names: 'directory-names',
+  // Those who can be added: the outcome's team, or everyone when the team cannot be read.
+  participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add someone to this topic',
+    candidates: () => outcomeMembers ? outcomeMembers.filter(person => person.enabled !== false).map(person => ({ id: person.actor_id, name: person.name, kind: person.kind })) : directoryPeople,
+    opened: () => { refreshMembers(); refreshDirectory(); },
     add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight, pill: participantPill,
     read: async () => (await readTopic()).participants });
   await wakeLights.load();
@@ -1087,7 +1118,7 @@ async function initialize() {
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
   inline = new InlineComposer({
     admits: (p, editor) => registry?.isCurrent(p, editor),
-    reach: recipientReach,
+    reach: recipientReach, people: addressPeople,
     uploads: editor => registry.sessionFor(editor).uploads,
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, needsReview,
@@ -1100,7 +1131,7 @@ async function initialize() {
     admits: (p, editor) => registry?.isCurrent(p, editor),
     writes: (p, editor) => registry?.isWritable(p, editor),
     closing: p => registry?.isClosing(p),
-    reach: recipientReach,
+    reach: recipientReach, people: addressPeople,
     revisionOffer,
     retrySource: () => run(retrySource),
     uploads: editor => registry?.sessionFor(editor).uploads,
@@ -1142,10 +1173,8 @@ async function initialize() {
       target: { item_id: id }, expected: { authority: { authority_id, authority_epoch } }, args: { revision } });
   } });
   $('mark-unread').onclick = () => run(toggleMark);
-  $('start-from-message').onclick = () => run(() => {
-    const ref = registry.current?.source?.source_ref;
-    if (ref?.kind === 'message' && topic) return openDestination(startFrom(topic.workspace_id, ref.id), 'New topic');
-  });
+  $('start-from-message').setAttribute('aria-expanded', 'false');
+  $('start-from-message').onclick = () => openStartLine();
   $('read-mark').onclick = () => run(() => {
     const next = marks.marked(topic.id)[0];
     if (next) return openSource({ kind: 'message', id: next.messageId }, $('read-mark'), marks.capture(next.messageId));
@@ -1257,6 +1286,10 @@ function paintParticipants(current, participants) {
   if (reader?.sessions) reader.paintRecipients();
   if (inline?.editor) inline.paintRecipients();
 }
+// The topic's people a message can be to, as names tapped once: everyone in it but the reader.
+function addressPeople() {
+  return (views?.participants ?? []).filter(person => person.enabled !== false && person.actor_id !== bootstrap.actor).map(person => person.actor_id);
+}
 // Whether a message to name would reach them: they must be able to see the
 // topic. Unknown when the outcome's team could not be read.
 function recipientReach(name) {
@@ -1303,9 +1336,13 @@ function refreshMembers() {
 }
 // The directory feeds every field that adds someone to a team or topic; it is
 // read at start and again whenever such a field is focused.
-let directoryRead = null;
+let directoryRead = null, directoryPeople = [];
 function refreshDirectory() {
-  directoryRead ??= readDirectory(api, bootstrap.instance_id).then(({ items }) => fillNames($('directory-names'), items))
+  directoryRead ??= readDirectory(api, bootstrap.instance_id).then(({ items }) => {
+    fillNames($('directory-names'), items);
+    directoryPeople = items.map(item => ({ id: item.id, name: item.name, kind: item.kind }));
+    teamPanel?.paintChoices(); participantsPanel?.paintChoices();
+  })
     .catch(() => {}).finally(() => { directoryRead = null; });
   return directoryRead;
 }
@@ -1356,8 +1393,12 @@ function initializeOutcomeNavigation(current=null,painted=()=>{}) {
     event.preventDefault();return openDestination({kind:'root'},'Outcomes');
   };
   $('outcomes-home').onclick=home;document.querySelector('.wordmark').onclick=home;
+  // New outcome is one title line under the heading: Return creates it and opens its page.
   $('new-outcome').disabled=false;
-  $('new-outcome').onclick=()=>openDestination({kind:'create',intent:crypto.randomUUID()},'New outcome');
+  const outcomes=new OutcomeStart({api,bootstrap});
+  const line=new OneLine({id:'new-outcome-title',label:'Title of the new outcome',placeholder:'New outcome title',className:'rail-line',
+    submit:async title=>{const id=await outcomes.create(title);line.input.value='';close();await openDestination({kind:'workspace',id},title);}});
+  const close=lineFromButton({button:$('new-outcome'),after:$('new-outcome').closest('.rail-heading'),line});
   const read=async args=>{
     if(registry&&authorityReviewPending())throw Error('The runtime changed. Review saved writing before reloading.');
     const answer=checkedView(await (registry ? registry.cleanup.list(options=>api.view('workspaces',args,options)) : api.view('workspaces',args,{readClass:'foreground'})),bootstrap.instance_id);
@@ -1441,7 +1482,10 @@ async function initializeOutcomePage(route) {
       const workspace=answer.workspace;
       if(workspace?.id!==route.id||typeof workspace.title!=='string')throw Error('The outcome identity could not be confirmed.');
       $('topic-navigation').hidden=false;
-      $('topic-title').textContent=workspace.title;$('topic-description').textContent=workspace.purpose||'Choose a topic, or start a new one.';
+      $('topic-title').textContent=workspace.title;
+      purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
+        save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
+      purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
       $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);
       await paintTeam(workspace,()=>reload());
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
@@ -1474,14 +1518,14 @@ function outcomePages(workspace,recorded) {
 }
 // An outcome's team, which its owner and its coordinator may change. The owner
 // cannot be removed, so the owner's chip is fixed.
-let teamPanel=null;
+let teamPanel=null,purposeLine=null;
 async function paintTeam(workspace,refresh) {
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
     .then(receipt=>{run(refresh);return receipt;});
   if(!teamPanel){
     const section=$('outcome-team');$('outcome-page').append(section);
-    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',names:'directory-names',fixed:()=>[teamPanel.owner],light:wakeLight,
-      read:()=>readMembers(api,bootstrap.instance_id,workspace.id)});
+    teamPanel=new PeoplePanel({host:$('team-people'),label:'Add someone to this outcome\'s team',fixed:()=>[teamPanel.owner],light:wakeLight,
+      read:()=>readMembers(api,bootstrap.instance_id,workspace.id),candidates:()=>directoryPeople,opened:()=>refreshDirectory()});
   }
   Object.assign(teamPanel,{owner:workspace.owner_id,add:id=>send(id,true),remove:id=>send(id,false)});
   let members;
@@ -1491,9 +1535,17 @@ async function paintTeam(workspace,refresh) {
   teamPanel.paint(members,organises(workspace,bootstrap.actor));teamPanel.error='';
   $('outcome-team').hidden=false;
 }
+// New topic is one title line in the topic list: Return starts the topic with
+// the reader in it and opens it; people and the first message are added there.
+let topicLine=null;
 function enableNewTopic(workspace) {
   $('new-topic').disabled=false;
-  $('new-topic').onclick=()=>openDestination({kind:'opening',workspace,opening:crypto.randomUUID(),topic:crypto.randomUUID()},'New topic');
+  if(topicLine?.workspace===workspace)return;
+  let starter=new TopicStart({api,bootstrap,workspace});
+  const line=new OneLine({id:'new-topic-title',label:'Title of the new topic',placeholder:'New topic title',className:'rail-line',
+    submit:async title=>{const id=await starter.start(title);starter=new TopicStart({api,bootstrap,workspace});line.input.value='';close();await openDestination({kind:'topic',id},title);}});
+  const close=lineFromButton({button:$('new-topic'),after:$('new-topic').closest('.rail-heading'),line});
+  topicLine={workspace,line};
 }
 async function initializeOpeningPage(route) {
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;

@@ -195,14 +195,16 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await p.key('Tab',8);
     assert.equal(await p.evaluate('document.activeElement.textContent'),'Add to topic (gets all its messages)','Shift-Tab from the field reaches the chip\'s offer');
     await p.key('Enter');
-    await until(()=>p.evaluate(`!!${chip}&&!${chip}.classList.contains('unreachable')`),'the chip is repainted once they are in the topic');
+    // Once in the topic they are one of its people: a name tapped once, lit while the reply names them.
+    const named=`document.querySelector('#recipient-chips button.choice-chip[data-name=${JSON.stringify(name)}]')`;
+    await until(()=>p.evaluate(`${named}?.getAttribute('aria-pressed')==='true' && !${chip}`),'the chip is repainted once they are in the topic');
     assert.ok((await participants()).includes(name),'Return on the offer added them');
     assert.equal(await focused(),'recipient-input','focus stays in the reader, on the recipient field');
     await p.key('Tab',8);
-    assert.equal(await p.evaluate(`document.activeElement===${chip}.querySelector('button')`),true,'Shift-Tab reaches the chip\'s remove button');
+    assert.equal(await p.evaluate(`document.activeElement===${named}`),true,'Shift-Tab reaches their name');
     await p.key('Enter');
-    assert.equal(await p.evaluate(`!${chip}`),true,'Return on it removes the recipient');
-    assert.equal(await focused(),'recipient-input','and focus goes back to the recipient field');
+    await until(()=>p.evaluate(`${named}?.getAttribute('aria-pressed')==='false'`),'Return on it takes them off the reply, and their name stays to tap again');
+    assert.equal(await p.evaluate(`document.activeElement===${named}`),true,'and the focus stays on their name');
     await until(async()=>(await view('editor_state',{source_ref:facts.sources[1],topic_id:facts.topic_id})).draft?.addressees.length===0,'the draft keeps no recipient');
     // Leave the topic's participants as they were found.
     await p.evaluate(`document.querySelector('#participants button[aria-label="Remove ${name}"]').click()`);
@@ -239,7 +241,7 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.ok(await p.evaluate('document.querySelector("#recipient-chips").textContent.includes("fixture-agent")'));
     await p.point('#toggle-note'); await replace(p, 'Private note remains private');
     await p.point('#toggle-note'); assert.equal(await field(p), 'Reply remains separate from its private note');
-    await p.point('#recipient-chips button'); assert.equal(await p.evaluate('document.querySelector("#recipient-chips").children.length'), 0);
+    await p.point('#recipient-chips [aria-label="Remove fixture-agent"]'); assert.equal(await p.evaluate('Boolean(document.querySelector("#recipient-chips [data-name=\'fixture-agent\']"))'), false);
     await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
     const chooser = await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'Reader native image chooser');
     await p.send('DOM.setFileInputFiles', { backendNodeId: chooser.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });

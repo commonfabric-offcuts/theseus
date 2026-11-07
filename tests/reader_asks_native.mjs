@@ -8,9 +8,12 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
   const row = '#topics .nav-item[data-topic-id="t1"]';
   const mark = p => p.evaluate(`(()=>{const m=document.querySelector(${JSON.stringify(row + ' .topic-state')});return m?{text:m.textContent,title:m.title,state:m.dataset.state,mine:m.classList.contains('mine')}:null})()`);
   const asks = async () => (await view('topic', { topic_id: 't1' })).topic.asks ?? [];
+  // Someone in the topic is a name tapped once to address them; anyone else is typed.
   const addressTo = async (p, name) => {
-    await p.point('#recipient-input'); await p.send('Input.insertText', { text: name }); await p.key('Enter');
-    await until(() => p.evaluate(`[...document.querySelectorAll('#recipient-chips .chip')].some(c=>c.dataset.name===${JSON.stringify(name)})`), 'recipient chip');
+    const chip = `#recipient-chips .choice-chip[data-name=${JSON.stringify(name)}]`;
+    if (await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(chip)}))`)) await p.point(chip);
+    else { await p.point('#recipient-input'); await p.send('Input.insertText', { text: name }); await p.key('Enter'); }
+    await until(() => p.evaluate(`[...document.querySelectorAll('#recipient-chips [data-name]')].some(c=>c.dataset.name===${JSON.stringify(name)}&&(c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true'))`), 'recipient named');
   };
   const sent = async (p, from) => {
     await p.point('#send-reply');
