@@ -8,7 +8,7 @@ import { checkChart, problemsChart } from './charts.mjs';
 import {
   CANDIDATE_STATE, PROBLEM_KIND, STATUS, STEP_GROUP, WORD, bylineWords, countCell, groupCounts, kindWords, loopSteps, number, plural,
   problemsHeadline, ruleWords, standingSentence, stepCompareWords, took,
-  NO_CHECKS, WRITE_KEYS, askWords, noTargetWords, provesWords, writeButtonWords, writeHowWords,
+  NO_CHECKS, WRITE_KEYS, REACH_KEYS, ACCEPT_KEYS, REACH_WHY_FIRST, ACCEPT_WHY_FIRST, askWords, noTargetWords, provesWords, writeButtonWords, writeHowWords,
 } from './targets-words.mjs';
 
 export const measurementsHref = workspace => '?' + new URLSearchParams({ measurements: workspace });
@@ -43,6 +43,47 @@ class Folds {
     return node;
   }
 }
+
+// Every repaint replaces a panel's nodes. The control that had the focus, found again by its data-key
+// (or a fold's summary by its data-fold), gets it back, with the caret where it was in a box.
+function focusSelector(node) {
+  if (node.dataset?.key) return `[data-key="${CSS.escape(node.dataset.key)}"]`;
+  if (node.tagName === 'SUMMARY' && node.parentElement?.dataset.fold) return `[data-fold="${CSS.escape(node.parentElement.dataset.fold)}"] > summary`;
+  return null;
+}
+function replaceKeepingFocus(host, ...nodes) {
+  const active = document.activeElement;
+  const selector = active && active !== host && host.contains(active) ? focusSelector(active) : null;
+  const caret = selector && typeof active.selectionStart === 'number' ? [active.selectionStart, active.selectionEnd] : null;
+  host.replaceChildren(...nodes);
+  const again = selector && host.querySelector(selector);
+  if (!again) return;
+  again.focus({ preventScroll: true });
+  if (caret && typeof again.setSelectionRange === 'function') again.setSelectionRange(...caret);
+}
+
+// A reason box: Return sends its words, Shift+Return is a new line, Escape steps back.
+const reasonKeys = (send, back) => event => {
+  if (event.key === 'Escape') { event.preventDefault(); back(); }
+  else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!event.repeat) send(); }
+};
+const reasonBox = (draft, attrs) => {
+  const box = el('textarea', { rows: '2', class: 'tg-reason', enterkeyhint: 'done', ...attrs });
+  box.value = draft.words;
+  box.readOnly = draft.busy;
+  // The box grows with the words, a line at a time, where the browser cannot size it to them itself.
+  const fit = () => { if (!CSS.supports('field-sizing', 'content')) { box.style.height = 'auto'; box.style.height = `${box.scrollHeight + 2}px`; } };
+  box.addEventListener('input', () => {
+    draft.words = box.value;
+    fit();
+    if (draft.error) { draft.error = ''; box.parentElement?.querySelector(':scope > .notice')?.remove(); }
+  });
+  box.addEventListener('focus', fit);
+  return box;
+};
+const reasonFoot = (draft, keys, ...more) => [
+  el('p', { class: 'muted tg-reason-keys' }, el('span', { text: draft.busy ? 'Saving…' : keys }), ...more),
+  draft.error ? el('p', { class: 'notice', role: 'status', text: draft.error }) : null];
 
 async function sent(send, kind, target, args, expected) {
   const receipt = await send(kind, target, args, expected);
@@ -86,7 +127,8 @@ export class OutcomeTargets {
     Object.assign(this, { hosts, workspace, reader, read, send });
     this.folds = new Folds();
     this.notice = '';
-    this.reaching = false;
+    this.reaching = null; // the Reached box's draft while it is open: { words, anyway, busy, error }
+    this.accepting = new Map(); // check_id -> the draft of its "Ship it anyway" reason
     this.writer = null;
   }
 
@@ -134,8 +176,8 @@ export class OutcomeTargets {
       if (view.you_own) {
         const settle = outcome => () => this.act(() => sent(this.send, 'target.settle', { workspace_id: view.workspace_id }, { revision: proposed.revision, outcome },
           { target_revision: view.relevant_versions.checks }));
-        box.append(el('div', { class: 'tg-actions' }, el('button', { type: 'button', class: 'primary', text: 'Use these words', onclick: settle('accepted') }),
-          el('button', { type: 'button', text: 'Keep the current words', onclick: settle('declined') })));
+        box.append(el('div', { class: 'tg-actions' }, el('button', { type: 'button', class: 'primary', 'data-key': 'settle-accepted', text: 'Use these words', onclick: settle('accepted') }),
+          el('button', { type: 'button', 'data-key': 'settle-declined', text: 'Keep the current words', onclick: settle('declined') })));
       }
       parts.push(box);
     }
@@ -159,16 +201,14 @@ export class OutcomeTargets {
     }
     if (view.groups.length) parts.push(el('p', { class: 'tg-links' }, el('a', { href: measurementsHref(view.workspace_id), text: 'Open Measurements: every reading by release' })));
     // A repaint on every commit moves the open box into the new card; the writer keeps their place in it.
-    const field = this.writer?.field, typing = field && document.activeElement === field ? [field.selectionStart, field.selectionEnd] : null;
-    host.replaceChildren(el('div', { class: 'tg-card' }, parts));
-    if (typing) { field.focus({ preventScroll: true }); field.setSelectionRange(...typing); }
+    replaceKeepingFocus(host, el('div', { class: 'tg-card' }, parts));
   }
 
   // D8: "Write the target", for the owner and the coordinator; the box opens in place and keeps what is typed across repaints.
   writing(view) {
     const hasTarget = Boolean(view.target?.text), youOwn = view.you_own;
     if (!this.writer) {
-      return el('div', { class: 'tg-write-open' }, el('button', { type: 'button', class: hasTarget ? '' : 'primary', text: writeButtonWords({ hasTarget, youOwn }),
+      return el('div', { class: 'tg-write-open' }, el('button', { type: 'button', class: hasTarget ? '' : 'primary', 'data-key': 'write-open', text: writeButtonWords({ hasTarget, youOwn }),
         onclick: () => this.openWriter(view) }));
     }
     const writer = this.writer;
@@ -182,13 +222,13 @@ export class OutcomeTargets {
   }
 
   openWriter(view) {
-    const field = el('textarea', { rows: '3', class: 'tg-write-text', 'aria-label': 'The target, in a few sentences',
+    const field = el('textarea', { rows: '3', class: 'tg-write-text', 'data-key': 'writer', 'aria-label': 'The target, in a few sentences',
       placeholder: 'What done looks like, in a few sentences' });
     field.value = view.target?.text ?? '';
     const how = el('p', { class: 'muted tg-write-how' }), topicsLine = el('div', { class: 'tg-topics', role: 'group', 'aria-label': 'The topic the ask goes in' });
     const error = el('p', { class: 'notice', role: 'status' });
-    const save = el('button', { type: 'button', class: 'primary', text: 'Save', onclick: () => this.saveWriter() });
-    const cancel = el('button', { type: 'button', text: 'Cancel', onclick: () => this.closeWriter() });
+    const save = el('button', { type: 'button', class: 'primary', 'data-key': 'writer-save', text: 'Save', onclick: () => this.saveWriter() });
+    const cancel = el('button', { type: 'button', 'data-key': 'writer-cancel', text: 'Cancel', onclick: () => this.closeWriter() });
     const node = el('div', { class: 'tg-write' }, field, how, topicsLine, error,
       el('div', { class: 'tg-actions' }, save, cancel, el('span', { class: 'muted tg-write-keys', text: WRITE_KEYS })));
     this.writer = { node, field, how, topicsLine, error, save, cancel, original: field.value, topics: null, topic: null, busy: false, needsAsk: false };
@@ -206,7 +246,7 @@ export class OutcomeTargets {
     const had = this.writer;
     this.writer = null;
     this.paint();
-    if (had) this.hosts.target.querySelector('.tg-write-open button')?.focus();
+    if (had) this.hosts.target.querySelector('[data-key="write-open"]')?.focus();
   }
 
   writerReady() {
@@ -234,7 +274,7 @@ export class OutcomeTargets {
       writer.topicsLine.replaceChildren(el('span', { class: 'muted', text: `No topic in this outcome yet. Start one, then ask ${view.owner} there.` }));
       return;
     }
-    writer.topicsLine.replaceChildren(...writer.topics.map(topic => el('button', { type: 'button', class: 'tg-topic-chip', 'aria-pressed': String(topic.id === writer.topic),
+    writer.topicsLine.replaceChildren(...writer.topics.map(topic => el('button', { type: 'button', class: 'tg-topic-chip', 'data-key': 'ask-topic:' + topic.id, 'aria-pressed': String(topic.id === writer.topic),
       text: topic.title, title: topic.title, onclick: () => { writer.topic = topic.id; this.paint(); } })));
   }
 
@@ -263,29 +303,60 @@ export class OutcomeTargets {
     const line = el('div', { class: 'tg-kind' }, el('span', { class: 'muted', text: kindWords(view.kind.kind) }));
     if (view.reached || !view.kind.you_change) return line;
     const other = view.kind.kind === 'reach' ? 'keep' : 'reach';
-    line.append(el('button', { type: 'button', class: 'link-button', text: `Make it an outcome to ${other}`,
+    line.append(el('button', { type: 'button', class: 'link-button', 'data-key': 'kind-switch', text: `Make it an outcome to ${other}`,
       onclick: () => this.act(() => sent(this.send, 'outcome.kind_set', { workspace_id: view.workspace_id }, { kind: other }, { workspace_revision: view.relevant_versions.workspace })) }));
-    if (view.kind.kind === 'reach') {
-      if (!this.reaching) {
-        line.append(el('button', { type: 'button', class: view.reach?.offered ? 'primary' : '', text: 'Say it is reached', onclick: () => { this.reaching = true; this.paint(); } }));
-      } else {
-        const words = el('textarea', { rows: '2', 'aria-label': 'Why it is reached, in your words', placeholder: 'Why it is reached, in your own words' });
-        const unmet = view.reach?.unmet ?? [];
-        const confirm = el('input', { type: 'checkbox' });
-        const form = el('div', { class: 'tg-reach' }, el('p', null, 'Reached is final: every topic of this outcome closes and is kept to read, and nothing more changes in it.'), words,
-          unmet.length ? el('label', null, confirm, ` Mark it reached anyway: not met yet, ${unmet.map(item => `“${item.name}” (${item.why.replace('_', ' ')})`).join(', ')}`) : null,
-          el('div', { class: 'tg-actions' },
-            el('button', { type: 'button', class: 'primary', text: 'Mark it reached', onclick: () => this.act(async () => {
-              const args = { words: words.value };
-              if (unmet.length && confirm.checked) args.unmet_confirmed = true;
-              await sent(this.send, 'outcome.reach', { workspace_id: view.workspace_id }, args, { workspace_revision: view.relevant_versions.workspace });
-              this.reaching = false;
-            }) }),
-            el('button', { type: 'button', text: 'Not yet', onclick: () => { this.reaching = false; this.paint(); } })));
-        return el('div', null, line, form);
-      }
+    if (view.kind.kind !== 'reach') return line;
+    if (!this.reaching) {
+      line.append(el('button', { type: 'button', class: view.reach?.offered ? 'primary' : '', 'data-key': 'say-reached', text: 'Say it is reached', onclick: () => this.openReach() }));
+      return line;
     }
-    return line;
+    return el('div', null, line, this.reachBox(view));
+  }
+
+  // D42: Reached is final, so it opens in place first; then one or two sentences, and Return marks it reached.
+  reachBox(view) {
+    const draft = this.reaching, unmet = view.reach?.unmet ?? [];
+    const words = reasonBox(draft, { 'data-key': 'reach-words', maxlength: '500', 'aria-label': 'Why it is reached, in your own words', placeholder: 'Why it is reached, in a sentence or two' });
+    words.addEventListener('keydown', reasonKeys(() => this.sendReach(), () => this.closeReach()));
+    let anyway = null;
+    if (unmet.length) {
+      anyway = el('input', { type: 'checkbox', 'data-key': 'reach-anyway', disabled: draft.busy });
+      anyway.checked = draft.anyway;
+      anyway.addEventListener('change', () => { draft.anyway = anyway.checked; });
+    }
+    return el('div', { class: 'tg-reach' }, el('p', null, 'Reached is final: every topic of this outcome closes and is kept to read, and nothing more changes in it.'),
+      anyway ? el('label', null, anyway, ` Mark it reached anyway: not met yet, ${unmet.map(item => `“${item.name}” (${item.why.replace('_', ' ')})`).join(', ')}`) : null,
+      words, reasonFoot(draft, REACH_KEYS, el('button', { type: 'button', class: 'link-button', 'data-key': 'reach-not-yet', text: 'Not yet', onclick: () => this.closeReach() })));
+  }
+
+  openReach() {
+    this.reaching = { words: '', anyway: false, busy: false, error: '' };
+    this.paint();
+    this.hosts.target.querySelector('[data-key="reach-words"]')?.focus();
+  }
+
+  closeReach() {
+    if (this.reaching?.busy) return;
+    this.reaching = null;
+    this.paint();
+    this.hosts.target.querySelector('[data-key="say-reached"]')?.focus();
+  }
+
+  async sendReach() {
+    const draft = this.reaching, view = this.view;
+    if (!draft || draft.busy) return;
+    if (!draft.words.trim()) { draft.error = REACH_WHY_FIRST; this.paint(); return; }
+    const args = { words: draft.words };
+    if (draft.anyway && view.reach?.unmet?.length) args.unmet_confirmed = true;
+    draft.busy = true; draft.error = ''; this.paint();
+    try {
+      await sent(this.send, 'outcome.reach', { workspace_id: view.workspace_id }, args, { workspace_revision: view.relevant_versions.workspace });
+      if (this.reaching === draft) this.reaching = null;
+      await this.load();
+    } catch (failure) {
+      draft.busy = false; draft.error = failure.message;
+      this.paint();
+    }
   }
 
   paintLoop(view) {
@@ -305,7 +376,7 @@ export class OutcomeTargets {
         el('p', { class: 'muted', text: 'One chart per measure. Point at a mark, or open its numbers, to see which release and what produced each reading.' }),
         el('div', { class: 'tg-charts' }, charted.map(checkChart), view.problems ? problemsChart(view.problems) : null));
     }
-    host.replaceChildren(...parts);
+    replaceKeepingFocus(host, ...parts);
   }
 
   candidateCard(view, loop) {
@@ -343,12 +414,38 @@ export class OutcomeTargets {
     return el('section', { class: 'tg-card tg-candidate', 'aria-label': candidate.label }, parts);
   }
 
+  // D31: shipping a worse result is deliberate, so the fold opens first; then one or two sentences, and Return accepts it.
   acceptForm(view, item, candidate) {
-    const why = el('textarea', { rows: '2', 'aria-label': 'Why you accept this worse result', placeholder: 'Why the trade is worth it, in your own words' });
-    return this.folds.details('accept:' + item.check_id, false, { class: 'tg-accept' }, 'Ship it anyway: accept this worse result',
+    const key = item.check_id;
+    if (!this.accepting.has(key)) this.accepting.set(key, { words: '', busy: false, error: '' });
+    const draft = this.accepting.get(key);
+    const why = reasonBox(draft, { 'data-key': 'accept-why:' + key, maxlength: '2000', 'aria-label': 'Why you accept this worse result', placeholder: 'Why the trade is worth it, in a sentence or two' });
+    const fold = this.folds.details('accept:' + key, false, { class: 'tg-accept' }, 'Ship it anyway: accept this worse result',
       el('p', { class: 'muted', text: 'Only a worse measure can be accepted, by you, at this commit. Your words are kept beside the result; the target does not change.' }),
-      why, el('button', { type: 'button', class: 'primary', text: 'Accept it', onclick: () => this.act(() => sent(this.send, 'check.accept_worse',
-        { workspace_id: view.workspace_id, check_id: item.check_id }, { run_id: candidate.run_id, why: why.value }, { checks_revision: view.relevant_versions.checks })) }));
+      why, reasonFoot(draft, ACCEPT_KEYS));
+    why.addEventListener('keydown', reasonKeys(() => this.sendAccept(key, candidate.run_id), () => {
+      if (draft.busy) return;
+      this.folds.chosen.set('accept:' + key, false);
+      fold.open = false;
+      fold.querySelector('summary').focus();
+    }));
+    return fold;
+  }
+
+  async sendAccept(checkId, runId) {
+    const draft = this.accepting.get(checkId), view = this.view;
+    if (!draft || draft.busy) return;
+    if (!draft.words.trim()) { draft.error = ACCEPT_WHY_FIRST; this.paint(); return; }
+    draft.busy = true; draft.error = ''; this.paint();
+    try {
+      await sent(this.send, 'check.accept_worse', { workspace_id: view.workspace_id, check_id: checkId }, { run_id: runId, why: draft.words },
+        { checks_revision: view.relevant_versions.checks });
+      this.accepting.delete(checkId);
+      await this.load();
+    } catch (failure) {
+      draft.busy = false; draft.error = failure.message;
+      this.paint();
+    }
   }
 
   paintProblems(view) {
@@ -365,7 +462,7 @@ export class OutcomeTargets {
           ', ', time(problem.found_ms)),
         el('p', { class: 'tg-cover' }, el('strong', { text: 'Check that now covers it: ' }), problem.cover ? problem.cover.words || (problem.cover.item ? `item ${problem.cover.item.number}` : '') : 'no check yet',
           problem.closed ? ` Closed: shown to fail without the fix.` : '. Closed once that check is shown to fail without the fix.'))))));
-    host.replaceChildren(this.folds.details('problems', false, { class: 'tg-problems-fold' },
+    replaceKeepingFocus(host, this.folds.details('problems', false, { class: 'tg-problems-fold' },
       [el('span', { class: 'tg-section', text: 'Problems found before a check' }), el('span', { class: 'muted', text: problemsHeadline(problems) })],
       el('p', { class: 'muted', text: 'Each problem found in the live app before any check caught it, under the release it was found in. A defect: the code did not do what was decided. A design miss: it did what was decided, and that was wrong. Fewer per release is the aim.' }),
       body.length ? body : el('p', { class: 'muted', text: 'None found yet.' })));
