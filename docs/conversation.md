@@ -68,16 +68,16 @@ the sidebar read its waits as for any topic.
 
 A message sent to the conversation from the Reader about a message in another
 topic carries `about_id`, that message, set by `message.send`. Switching the
-Reader's To between This topic and Conversation moves the writing, all of it:
-the words, quotes, the names it goes to and the choice of Whisper, Tell or Ask.
-It is carried into the other place's draft and kept on the device first, then
-the draft it left is emptied, so switching back and forth loses nothing, leaves
-nothing behind, and Send sends all of it. Writing the other draft already held
-is kept: its words first, each quote and name once, and its choice of Whisper,
-Tell or Ask only where the moved writing made none. A choice the moved writing
-made comes whole, so a Whisper stays a Whisper and never takes the other
-draft's Ask. Writing with images does not move, whatever state the
-images are in (attached, still uploading, failed); To says why.
+Reader's To between This topic and Conversation never merges two drafts. The
+writing is everything the person wrote or chose: the words, quotes, the names
+it goes to, the choice of Whisper, Tell or Ask, and any image chosen for it.
+When the other place's draft holds none of that, the writing moves there whole,
+as it is: it is kept in the other draft on the device first, then the draft it
+left is emptied, so an interrupted switch leaves it where it was. When the
+other draft already holds writing, nothing moves: the other draft opens as it
+is, the writing just left stays in its own draft, and one line says so ("Your
+writing for This topic is kept there."). Writing with images, in any state
+(attached, still uploading, failed), never moves; the same line says it stayed.
 
 ## Views
 

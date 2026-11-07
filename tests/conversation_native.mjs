@@ -176,37 +176,42 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('conversation writing with an image stays where the image was chosen: To says why and nothing moves', async () => {
+  await check('conversation writing with an image stays where the image was chosen: To opens the conversation empty and says the writing is kept here', async () => {
     const p = await open('conversation-reader-image', '/?topic=t1');
     await p.open(1);
     const png = (await readFile(new URL('./fixtures/media/one.png', import.meta.url))).toString('base64');
     const to = () => quiet(p, `({chips:[...document.querySelectorAll('#reply-destination button')].map(b=>[b.textContent,b.getAttribute('aria-pressed')]),
-      body:document.querySelector('#writing-body').value,notice:document.querySelector('#reader-notice').hidden?null:document.querySelector('#reader-notice').textContent})`);
+      body:document.querySelector('#writing-body').value,images:document.querySelector('#writing-attachments').children.length,
+      notice:document.querySelector('#reader-notice').hidden?null:document.querySelector('#reader-notice').textContent})`);
+    const draft = async topicId => (await view('editor_state', { source_ref: facts.sources[1], topic_id: topicId })).draft;
     await until(async () => (await to())?.chips.length === 2, 'two chips under To');
     await replace(p, 'With a picture.');
     // A page-owned paste event, as the image checks do; never the OS pasteboard.
     assert.equal(await p.evaluate(`(()=>{const data=new DataTransfer();data.items.add(new File([Uint8Array.from(atob(${JSON.stringify(png)}),c=>c.charCodeAt(0))],'one.png',{type:'image/png'}));
       const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});document.querySelector('#writing-body').dispatchEvent(event);return event.defaultPrevented})()`), true);
-    await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 1, 'the image is in the draft');
+    await until(async () => (await draft('t1'))?.attachments.length === 1, 'the image is in the draft');
     await p.point('#reply-destination button:nth-child(2)');
-    const stayed = await until(async () => { const t = await to(); return (t?.notice || t?.chips[1]?.[1] === 'true') && t; }, 'To answers the tap');
-    assert.deepEqual(stayed, { chips: [['This topic', 'true'], ['Conversation', 'false']], body: 'With a picture.',
-      notice: 'Images go where they were chosen. Send or remove them before choosing another place.' });
-    const kept = (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft;
+    // The line is written in the same task that presses the chip, so either one shows the answer whole.
+    const there = await until(async () => { const t = await to(); return (t?.notice || t?.chips[1]?.[1] === 'true') && t; }, 'To answers the tap');
+    assert.deepEqual(there, { chips: [['This topic', 'false'], ['Conversation', 'true']], body: '', images: 0, notice: 'Your writing for This topic is kept there.' },
+      'the conversation opens with its own empty draft');
+    const kept = await draft('t1');
     assert.deepEqual([kept.body, kept.attachments.length], ['With a picture.', 1], 'the writing and its image are where they were');
-    assert.equal((await view('editor_state', { source_ref: facts.sources[1], topic_id: conversation.topic_id })).draft?.body ?? '', '', 'and nothing went to the conversation');
+    assert.equal((await draft(conversation.topic_id))?.body ?? '', '', 'and nothing went to the conversation');
+    await p.point('#reply-destination button:nth-child(1)');
+    const back = await until(async () => { const t = await to(); return t?.chips[0]?.[1] === 'true' && t.images === 1 && t; }, 'back on This topic');
+    assert.deepEqual([back.body, back.notice], ['With a picture.', null], 'the writing is there as it was, and the empty conversation had nothing to keep');
     // The checks after these read this message's reply empty: Remove the image, and delete the words.
     await p.point('#writing-attachments .image-choice button:last-child');
     await p.point('#writing-body'); await p.key('a', 4);
     for (const type of ['rawKeyDown', 'keyUp']) {
       await p.send('Input.dispatchKeyEvent', { type, key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, ...(type === 'keyUp' ? {} : { commands: ['deleteBackward'] }) });
     }
-    await until(async () => { const d = (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft; return d?.body === '' && d.attachments.length === 0; },
-      'the reply is empty again');
+    await until(async () => { const d = await draft('t1'); return d?.body === '' && d.attachments.length === 0; }, 'the reply is empty again');
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('conversation an image still uploading, or one whose upload failed, keeps its writing where it was chosen: To says why and nothing moves', async () => {
+  await check('conversation an image still uploading, or one whose upload failed, keeps its writing where it was chosen: To opens the conversation and nothing moves', async () => {
     const p = await open('conversation-reader-uploading', '/?topic=t1');
     await p.open(1);
     const png = (await readFile(new URL('./fixtures/media/one.png', import.meta.url))).toString('base64');
@@ -215,16 +220,15 @@ export async function conversationChecks({ check, page, until, control, view, fa
     const draft = async topicId => (await view('editor_state', { source_ref: facts.sources[1], topic_id: topicId })).draft;
     const paste = () => p.evaluate(`(()=>{const data=new DataTransfer();data.items.add(new File([Uint8Array.from(atob(${JSON.stringify(png)}),c=>c.charCodeAt(0))],'one.png',{type:'image/png'}));
       const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});document.querySelector('#writing-body').dispatchEvent(event);return event.defaultPrevented})()`);
-    // Each notice the Reader shows, counted, so a refusal that repeats the
-    // words already showing is seen as an answer to the new tap.
-    await p.evaluate(`(()=>{window.noticesShown=0;new MutationObserver(()=>window.noticesShown++).observe(document.querySelector('#reader-notice'),{childList:true})})()`);
-    const refused = async why => {
-      const before = await p.evaluate('window.noticesShown');
+    const tap = async (index, why) => {
+      await p.point(`#reply-destination button:nth-child(${index + 1})`);
+      return until(async () => { const t = await to(); return t?.chips[index]?.[1] === 'true' && t; }, `To answers the tap ${why}`);
+    };
+    const kept = async why => {
       await p.point('#reply-destination button:nth-child(2)');
-      const stayed = await until(async () => { const t = await to(), shown = await quiet(p, 'window.noticesShown');
-        return (shown > before && t?.notice || t?.chips[1]?.[1] === 'true') && t; }, `To answers the tap ${why}`);
-      assert.deepEqual(stayed, { chips: [['This topic', 'true'], ['Conversation', 'false']], body: 'With a picture.',
-        notice: 'Images go where they were chosen. Send or remove them before choosing another place.' }, why);
+      assert.deepEqual(await until(async () => { const t = await to(); return (t?.notice || t?.chips[1]?.[1] === 'true') && t; }, `To answers the tap ${why}`),
+        { chips: [['This topic', 'false'], ['Conversation', 'true']], body: '', notice: 'Your writing for This topic is kept there.' }, why);
+      assert.equal((await draft(conversation.topic_id))?.body ?? '', '', `nothing went to the conversation ${why}`);
     };
     const remove = async () => {
       assert.equal(await p.evaluate(`document.querySelector('#writing-attachments .image-choice button:last-child')?.textContent`), 'Remove');
@@ -239,10 +243,12 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.equal(await paste(), true);
     const held = await until(() => p.held.find(e => e.event.request.url.endsWith('/api/media/upload')), 'the upload is held');
     await until(() => quiet(p, `document.querySelector('#writing-attachments').textContent.includes('Uploading')`), 'the Reply shows it uploading');
-    await refused('while the image uploads');
+    await kept('while the image uploads');
     p.intercept(null); await p.release(held);
     await until(async () => (await draft('t1'))?.attachments.length === 1, 'the upload finishes into the draft it was chosen for');
     assert.deepEqual([(await draft('t1')).body, (await draft(conversation.topic_id))?.body ?? ''], ['With a picture.', ''], 'the words stayed with their image');
+    assert.equal((await tap(0, 'back')).body, 'With a picture.', 'back on This topic, the writing is there');
+    await until(() => quiet(p, `document.querySelector('#writing-attachments').children.length===1`), 'with its image');
     await remove();
     // An upload that fails leaves the image chosen but never attached.
     p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
@@ -252,8 +258,9 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(() => quiet(p, `!document.querySelector('#writing-attachments').textContent.includes('Uploading') && document.querySelector('#writing-attachments').children.length===1`), 'the upload failed');
     assert.match(await p.evaluate(`document.querySelector('#writing-attachments').textContent`), /^one\.png/, 'the failed image is still chosen');
     assert.equal((await draft('t1'))?.attachments.length ?? 0, 0, 'and not attached');
-    await refused('after the upload failed');
-    assert.equal((await draft(conversation.topic_id))?.body ?? '', '', 'nothing went to the conversation');
+    await kept('after the upload failed');
+    assert.equal((await tap(0, 'back again')).body, 'With a picture.');
+    await until(() => quiet(p, `document.querySelector('#writing-attachments').textContent.startsWith('one.png')`), 'the failed image is still chosen there');
     // The checks after these read this message's reply empty.
     await remove();
     await p.point('#writing-body'); await p.key('a', 4);
@@ -294,7 +301,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('conversation a Whisper moved by To stays a Whisper, even onto a draft there that holds an Ask, and is sent to that agent alone', async () => {
+  await check('conversation To never merges two drafts: a Whisper switched onto a conversation draft holding an Ask leaves both as they were, and is sent to that agent alone', async () => {
     const p = await open('conversation-reader-whisper', '/?topic=t1');
     const source = facts.sources[0];
     const draft = async topicId => {
@@ -302,7 +309,9 @@ export async function conversationChecks({ check, page, until, control, view, fa
       return { body: d?.body ?? '', addressees: d?.addressees ?? [], intent: d?.intent ?? null, whisper: d?.whisper ?? null };
     };
     const reply = () => quiet(p, `({checked:[...document.querySelectorAll('#intent-row label[data-intent] input:checked')].map(i=>i.value),
-      send:document.querySelector('#send-reply .send-word').textContent,line:document.querySelector('#intent-row .audience-line').textContent,
+      send:document.querySelector('#send-reply .send-word').textContent,body:document.querySelector('#writing-body').value,
+      names:[...document.querySelectorAll('#recipient-chips .chip')].map(c=>c.dataset.name),
+      notice:document.querySelector('#reader-notice').hidden?null:document.querySelector('#reader-notice').textContent,
       to:[...document.querySelectorAll('#reply-destination button')].map(b=>b.getAttribute('aria-pressed'))})`);
     const name = async () => {
       await p.point('#recipient-input'); await p.send('Input.insertText', { text: other }); await p.key('Enter');
@@ -312,6 +321,8 @@ export async function conversationChecks({ check, page, until, control, view, fa
       await p.point(`#intent-row label[data-intent="${value}"]`);
       await until(async () => (await reply())?.checked[0] === value, `${value} is chosen`);
     };
+    const ask = { body: 'Old question.', addressees: [other], intent: 'ask', whisper: false };
+    const whisper = { body: 'Private note.', addressees: [other], intent: null, whisper: true };
     // An Ask left waiting in the conversation's draft of this message: the Reader opens on This topic again afterwards.
     await p.open(0);
     await until(() => quiet(p, `document.querySelectorAll('#reply-destination button').length===2`), 'two chips under To');
@@ -319,29 +330,31 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await replace(p, 'Old question.');
     await until(async () => (await draft('t1')).body === 'Old question.', 'saved where it was written');
     await p.point('#reply-destination button:nth-child(2)');
-    assert.deepEqual(await until(async () => { const d = await draft(conversation.topic_id); return d.body && d; }, 'the Ask waits in the conversation'),
-      { body: 'Old question.', addressees: [other], intent: 'ask', whisper: false });
+    assert.deepEqual(await until(async () => { const d = await draft(conversation.topic_id); return d.body && d; }, 'the Ask moved whole into the empty conversation draft'), ask);
     await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
     // A Whisper to one agent, chosen in this topic.
     await p.open(0);
     await until(async () => (await reply())?.to.join() === 'true,false', 'the Reader opens on This topic');
     await name(); await choose('tell'); await choose('whisper');
     await replace(p, 'Private note.');
-    assert.deepEqual(await until(async () => { const d = await draft('t1'); return d.body === 'Private note.' && d; }, 'the whisper is saved here'),
-      { body: 'Private note.', addressees: [other], intent: null, whisper: true });
+    assert.deepEqual(await until(async () => { const d = await draft('t1'); return d.body === 'Private note.' && d; }, 'the whisper is saved here'), whisper);
     await p.point('#reply-destination button:nth-child(2)');
-    const moved = await until(async () => { const r = await reply(); return r?.to.join() === 'false,true' && r; }, 'Conversation is chosen');
-    assert.deepEqual([moved.checked, moved.send], [['whisper'], 'Whisper'], `the Whisper stayed a Whisper (${moved.line})`);
-    assert.match(moved.line, new RegExp(`^Only you and ${other} will see this\\.`));
-    assert.deepEqual(await until(async () => { const d = await draft(conversation.topic_id); return d.body.includes('Private note.') && d; }, 'saved in the conversation'),
-      { body: 'Old question.\n\nPrivate note.', addressees: [other], intent: null, whisper: true }, 'the Ask there did not come through');
-    // With Answered by, the whisper's line and an earlier reply's Review, Send sits below the Reply's fold at 900 tall: scrolled to, as a person would.
+    const there = await until(async () => { const r = await reply(); return r?.to.join() === 'false,true' && (r.notice || r.body && r.body !== 'Old question.') && r; }, 'Conversation is chosen');
+    assert.deepEqual([there.body, there.names, there.checked, there.notice], ['Old question.', [other], ['ask'], 'Your writing for This topic is kept there.'],
+      "the conversation's own draft opens as it was, and one line says where the whisper is");
+    await shot(p, 'conversation-reader-kept');
+    assert.deepEqual([await draft(conversation.topic_id), await draft('t1')], [ask, whisper], 'nothing merged: both drafts are as they were');
+    await p.point('#reply-destination button:nth-child(1)');
+    const back = await until(async () => { const r = await reply(); return r?.to.join() === 'true,false' && (r.notice || r.body && r.body !== 'Private note.') && r; }, 'This topic is chosen again');
+    assert.deepEqual([back.body, back.names, back.checked, back.send, back.notice], ['Private note.', [other], ['whisper'], 'Whisper', 'Your writing for the conversation is kept there.'],
+      'the Whisper is still a Whisper, in its own draft');
+    assert.deepEqual([await draft(conversation.topic_id), await draft('t1')], [ask, whisper], 'and switching back merged nothing either');
     await p.evaluate(`document.querySelector('#send-reply').scrollIntoView({block:'nearest'})`);
     const sentId = await sent(p, p.calls.length);
     const message = await view('source', { source_ref: { kind: 'message', id: sentId } });
     assert.deepEqual([message.topic_id, message.whisper ?? false, message.private_to ?? null, message.intent ?? null, message.body],
-      [conversation.topic_id, true, other, null, 'Old question.\n\nPrivate note.'], 'sent to that agent alone, never on the record');
-    assert.deepEqual(await draft('t1'), { body: '', addressees: [], intent: null, whisper: null }, 'nothing is left waiting in this topic');
+      ['t1', true, other, null, 'Private note.'], 'sent to that agent alone, never on the record');
+    assert.deepEqual(await draft(conversation.topic_id), ask, "the conversation's Ask still waits in its own draft");
     assert.deepEqual(p.errors, []); await p.close();
   });
 

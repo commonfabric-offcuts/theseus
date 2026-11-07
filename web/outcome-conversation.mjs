@@ -183,54 +183,33 @@ export function conversationDestination(host, { topic, conversation, outcome, ch
   host.replaceChildren(chip(topic.id, 'This topic', `This topic: ${topic.title}`), chip(conversation, 'Conversation', `${outcome} conversation`));
 }
 
-// Switching the Reader's To moves the writing: it is carried into the other
-// destination's draft first, and the draft it leaves is emptied after
-// (noWriting), so the writing lives in one place and goes whole with each
-// switch. What moves is every field the editor takes as writing
-// (WRITING_FIELDS), each by its own rule below; a field with no rule stops this
-// module loading, so it can never be left behind. Writing the destination already holds is
-// never lost: its words come first unless the carried words contain them,
-// quotes and names are kept once each, a choice of Ask, Tell or Whisper the
-// carried writing made wins and one it left open keeps the destination's, and
-// images there stay there. Images never move (imagesStay), so carried writing
-// holding one is refused.
-//
-// Ask, Tell or Whisper is one choice held in two fields (whisper-choice.mjs:
-// Whisper is {whisper: true, intent: null}), so it moves as one: when the
-// carried writing made any choice both fields come from it, and only when it
-// made none do both stay as the destination holds them. Each rule takes the
-// two drafts and the field's name.
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const each = move => (held, carried, name) => move(held[name], carried[name]);
-const once = each((held, carried) => [...held, ...carried.filter(item => !held.some(kept => same(kept, item)))]);
-const CHOICE = ['intent', 'whisper'];
-const choice = (held, carried, name) => (CHOICE.some(field => carried[field] !== null) ? carried : held)[name];
-const MOVES = {
-  body: each((held, carried) => !held.trim() ? carried : !carried.trim() ? held : carried.includes(held) ? carried : held.includes(carried) ? held : `${held.trimEnd()}\n\n${carried}`),
-  quotes: once, addressees: once, intent: choice, whisper: choice,
-  attachments: each((held, carried) => { if (carried.length) throw Error('Images do not move between places.'); return held; }),
-};
-const FIELDS = WRITING_FIELDS.filter(name => name !== 'caret');
-for (const name of FIELDS) if (!MOVES[name]) throw Error(`The writing's ${name} has no rule to move it between places.`);
-// Returns the destination's writing after the move, or null when there is
-// nothing to carry.
-export function carriedWriting(from, to) {
-  const empty = noWriting(), fill = draft => Object.fromEntries(FIELDS.map(name => [name, draft?.[name] ?? empty[name]]));
-  const held = fill(to), carried = fill(from);
-  if (FIELDS.every(name => same(carried[name], empty[name]))) return null;
-  const result = Object.fromEntries(FIELDS.map(name => [name, MOVES[name](held, carried, name)]));
-  result.caret = result.body === carried.body && from.caret ? { ...from.caret } : { start: result.body.length, end: result.body.length };
-  return result;
-}
-// Images belong to the place they were chosen for, in every state: attached,
-// still uploading, failed or refused, kept on this device but never sent, or
-// an image action under way. Writing with any of them does not move: the
-// switch is refused, saying why, and nothing changes. An image sent with an
-// earlier message belongs to that message, and one removed to nobody.
+// Switching the Reader's To never merges two drafts. The writing is every
+// field the editor takes as writing (WRITING_FIELDS) and any image chosen for
+// it. When the place left holds writing and the other place holds none, the
+// writing moves there whole, as one unit: kept in the other draft first, and
+// only then is the draft left emptied, so an interrupted switch leaves it
+// where it was. Otherwise nothing moves: the other place's draft opens as it
+// is, the writing left stays in its own draft, and the result is true so the
+// Reader says so. Images belong to the place they were chosen for, in every
+// state (attached, uploading, failed or refused, kept on this device but never
+// sent, or an image action under way), so writing with one never moves. An
+// image sent with an earlier message belongs to that message, and one removed
+// to nobody. keep(editor) keeps an editor's writing on this device.
+const NONE = noWriting();
 const chosenImage = entry => entry?.selected !== false && entry?.owner?.kind !== 'submission';
-export const imagesStay = editor => editor.draft.attachments?.length || editor.imageBusy || editor.imageReservation || editor.adopting ||
-  editor.uploadOpaque || editor.uploadState && !(Array.isArray(editor.uploadState.entries) && !editor.uploadState.entries.some(chosenImage))
-  ? 'Images go where they were chosen. Send or remove them before choosing another place.' : null;
+const imageIn = editor => Boolean(editor.draft.attachments?.length || editor.imageBusy || editor.imageReservation || editor.adopting ||
+  editor.uploadOpaque || editor.uploadState && !(Array.isArray(editor.uploadState.entries) && !editor.uploadState.entries.some(chosenImage)));
+const writingIn = editor => imageIn(editor) ||
+  WRITING_FIELDS.some(name => name !== 'caret' && JSON.stringify(editor.draft[name] ?? NONE[name]) !== JSON.stringify(NONE[name]));
+export const switchWriting = async (left, there, keep) => {
+  if (!writingIn(left)) return false;
+  if (imageIn(left) || writingIn(there) || there.unavailable || there.conflict || there.authorityRecovery) return true;
+  there.receive(Object.fromEntries(WRITING_FIELDS.map(name => [name, left.draft[name] ?? NONE[name]])));
+  await keep(there);
+  left.edit(noWriting());
+  await keep(left);
+  return false;
+};
 
 // "Answered by": the coordinator, then the rest of the team, each a name
 // tapped once. With nobody named the coordinator answers, so theirs is pressed
