@@ -90,6 +90,19 @@ class OwnerCase(fixtures.StoreCase):
                          "INVALID_ARGUMENT", recorded=False)
         self.assertEqual(self.state(), before)
 
+    def test_being_on_another_outcomes_team_is_not_being_on_this_one(self):
+        self.assertEqual(self.command("workspace.create", {"id": "w2", "title": "Other", "team": ["outsider"]})["status"], "committed")
+        before = self.state()
+        self.refused(self.owner_set("outsider"), "NOT_A_MEMBER")
+        self.assertEqual(self.state(), before)
+
+    def test_an_unexpected_expected_field_is_refused_unrecorded(self):
+        before = self.state()
+        self.refused(self.command("workspace.owner_set", {"owner_id": "agent-b"}, {"workspace_id": "w1"},
+                                  {"workspace_revision": self.base, "topic_revision": 1}), "INVALID_ARGUMENT", recorded=False)
+        self.assertEqual(self.state(), before)
+        self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE kind='workspace.owner_set'"), [(0,)])
+
     def test_handing_it_to_the_owner_is_an_answer_not_a_change(self):
         before = self.state()
         receipt = self.owner_set("owner")
