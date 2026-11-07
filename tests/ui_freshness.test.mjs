@@ -307,6 +307,26 @@ test('loaded Notebook key beyond twenty refreshes exactly, and racing More never
   assert.equal(v.memory.get('n21').revision, 3); assert.equal(v.memory.get('n22').revision, 1);
 });
 
+// A handover changes no topic version, so its key is the outcome's record (docs/changes-query.md).
+test('a change to the topic\'s outcome re-reads the topic, so a new owner or coordinator is painted without a reload', async () => {
+  const workspaceKey = { seq: 1, resource_kind: 'workspace', resource_id: 'w1', version: 40 };
+  assert.deepEqual(fresh.changesPage(page(1, [workspaceKey]), bootstrap, 't1', cursor(0)).items, [workspaceKey]);
+  const { TopicViews } = await import('../web/topic-views.mjs');
+  const painted = [];
+  const v = new TopicViews({ instanceId: 'i1', topicId: 't1', paint: kind => painted.push(kind) });
+  v.topic = { id: 't1', version: 5, owner_id: 'owner', coordinator_id: 'agent-a' };
+  // Whatever the outcome's version, the topic's own need not move.
+  assert.deepEqual(v.keys(workspaceKey), [{ key: 'topic', version: 0 }]);
+  assert.deepEqual(painted, [], 'it offers no Notebook page');
+  const handed = { id: 't1', version: 5, owner_id: 'tony', coordinator_id: 'fable' };
+  await v.refresh('topic', 0, async () => ({ instance_id: 'i1', topic: handed, participants: [], summary: { topic_id: 't1', latest_message_id: null } }));
+  assert.deepEqual([v.topic.owner_id, v.topic.coordinator_id, painted], ['tony', 'fable', ['topic']]);
+  // Through the feed: the outcome's key makes one topic read.
+  const { f, paints } = fixture({ api: { view: async () => page(1, [workspaceKey]) }, keys: item => v.keys(item) });
+  await f.request();
+  assert.deepEqual(paints, [{ key: 'topic', version: 0 }]);
+});
+
 test('unloaded Notebook changes stay bounded and a mismatched keyed summary cannot paint', async () => {
   const { TopicViews } = await import('../web/topic-views.mjs');
   const v = new TopicViews({ instanceId: 'i1', topicId: 't1' }); v.memoryCursor = 20;

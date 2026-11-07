@@ -435,6 +435,13 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         db.execute("INSERT INTO changes(scope_kind,scope_id,resource_kind,resource_id,version) VALUES (?,?,?,?,?)",
                    (scope_kind, scope_id, kind, record_id, version))
 
+    def _outcome_change(self, db, workspace_id, version):
+        """The outcome's own record changed: its team, owner or coordinator. Open outcome
+        pages read the key in the workspace scope, and open topic pages in the outcome
+        scope, which holds only these keys, so a page learns who may organise it now."""
+        self._change(db, "workspace", workspace_id, "workspace", workspace_id, version)
+        self._change(db, "outcome", workspace_id, "workspace", workspace_id, version)
+
     def _command_workspace_create(self, db, actor, envelope):
         args = envelope.get("args", {})
         workspace_id = _identifier(args.get("id") or "w-" + uuid.uuid4().hex)
@@ -465,7 +472,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         db.execute("INSERT INTO workspaces VALUES (?,?,?,?,?,1)",
                    (workspace_id, actor, title, _body(args.get("purpose", "")), coordinator))
         db.executemany("INSERT INTO workspace_members VALUES (?,?)", [(workspace_id, member) for member in team])
-        self._change(db, "workspace", workspace_id, "workspace", workspace_id, 1)
+        self._outcome_change(db, workspace_id, 1)
         return {"workspace": {"id": workspace_id, "owner_id": actor, "title": title, "version": 1}}, [
             {"kind": "workspace", "id": workspace_id, "version": 1}]
 
@@ -561,7 +568,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         coordinator = None if not present and member == workspace["coordinator_id"] else workspace["coordinator_id"]
         db.execute("UPDATE workspaces SET version=version+1,coordinator_id=? WHERE id=?", (coordinator, workspace["id"]))
         version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace["id"],)).fetchone()[0]
-        self._change(db, "workspace", workspace["id"], "workspace", workspace["id"], version)
+        self._outcome_change(db, workspace["id"], version)
         self._change(db, "actor", member, "workspace", workspace["id"], version)
         return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
 
@@ -585,7 +592,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         db.execute("INSERT OR IGNORE INTO workspace_members VALUES (?,?)", (workspace["id"], workspace["owner_id"]))
         db.execute("UPDATE workspaces SET version=version+1,owner_id=? WHERE id=?", (owner, workspace["id"]))
         version = workspace["version"] + 1
-        self._change(db, "workspace", workspace["id"], "workspace", workspace["id"], version)
+        self._outcome_change(db, workspace["id"], version)
         for member in (owner, workspace["owner_id"]):
             self._change(db, "actor", member, "workspace", workspace["id"], version)
         return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]

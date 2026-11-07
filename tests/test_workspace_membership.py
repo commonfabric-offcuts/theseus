@@ -43,7 +43,8 @@ class MembershipCase(fixtures.StoreCase):
         self.assertEqual(self.version(), version)
         self.assertEqual(self.sql("SELECT scope_kind,scope_id,resource_kind,resource_id,version FROM changes "
                                   "WHERE resource_kind='workspace' ORDER BY seq"),
-                         [("workspace", "w1", "workspace", "w1", 1), ("workspace", "w1", "workspace", "w1", version),
+                         [("workspace", "w1", "workspace", "w1", 1), ("outcome", "w1", "workspace", "w1", 1),
+                          ("workspace", "w1", "workspace", "w1", version), ("outcome", "w1", "workspace", "w1", version),
                           ("actor", "outsider", "workspace", "w1", version)])
         self.assertEqual(self.workspace_ids("outsider"), ["w1"])
         listing = self.members("outsider")

@@ -100,6 +100,30 @@ class CoordinatorCase(fixtures.ReaderCase):
         # The former owner made t1, so it still manages that topic as its creator.
         self.committed(self.update({"title": "By its creator"}, actor="owner"))
 
+    def test_an_open_topic_page_learns_when_its_outcome_changes_hands(self):
+        scope = {"kind": "topic", "id": "t1"}
+        self.committed(self.command("workspace.create", {"id": "w2", "title": "Other", "team": ["agent-b"]}))
+        checkpoint = self.store.view("owner", "changes", {"scope": scope})["checkpoint"]
+        self.committed(self.owner_set("agent-b", actor="owner", workspace="w2"))
+        self.committed(self.owner_set("agent-b", actor="owner"))
+        handed = self.version()
+        self.committed(self.update({"title": "Moved"}, actor="agent-b"))
+        page = self.store.view("agent-a", "changes", {"scope": scope, "cursor": dict(checkpoint, actor_id="agent-a")})
+        self.assertNotIn("error", page, page)
+        # Its outcome's record, then its own topic, in the order they changed;
+        # nothing of the other outcome, nor the topic's key in the outcome's scope.
+        self.assertEqual([(item["resource_kind"], item["resource_id"]) for item in page["items"]], [("workspace", "w1"), ("topic", "t1")])
+        self.assertEqual(page["items"][0]["version"], handed)
+        # Paged one key at a time, the same keys arrive in the same order.
+        cursor, seen = dict(checkpoint, actor_id="agent-a"), []
+        while True:
+            step = self.store.view("agent-a", "changes", {"scope": scope, "cursor": cursor, "limit": 1})
+            seen.extend(step["items"])
+            if not step["has_more"]:
+                break
+            cursor = step["continuation"]
+        self.assertEqual(seen, page["items"])
+
 
 if __name__ == "__main__":
     unittest.main()

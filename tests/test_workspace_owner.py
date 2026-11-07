@@ -51,8 +51,8 @@ class OwnerCase(fixtures.StoreCase):
                          [("agent-a",), ("agent-b",), ("owner",)])
         # Open outcome pages and both owners' own lists learn of it.
         self.assertEqual(self.sql("SELECT scope_kind,scope_id,resource_kind,resource_id,version FROM changes WHERE seq>? ORDER BY seq", (seq,)),
-                         [("workspace", "w1", "workspace", "w1", version), ("actor", "agent-b", "workspace", "w1", version),
-                          ("actor", "owner", "workspace", "w1", version)])
+                         [("workspace", "w1", "workspace", "w1", version), ("outcome", "w1", "workspace", "w1", version),
+                          ("actor", "agent-b", "workspace", "w1", version), ("actor", "owner", "workspace", "w1", version)])
         self.assertEqual(self.owners("owner"), [("w1", "agent-b")])
         self.assertEqual(self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["owner_id"], "agent-b")
         # What only the owner may do moves with it.

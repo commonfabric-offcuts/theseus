@@ -137,7 +137,8 @@ offers no remove for, is the owner.
   `workspace_members`. A no-op still advances nothing and returns the
   current state.
 - A change bumps the workspace version and records
-  `("workspace", W, "workspace", W, version)` and
+  `("workspace", W, "workspace", W, version)`,
+  `("outcome", W, "workspace", W, version)` and
   `("actor", member, "workspace", W, version)`.
 - Removal ends workspace access. Topic participation that the member holds
   separately is unchanged. Removing the workspace's coordinator also clears
@@ -165,9 +166,12 @@ offers no remove for, is the owner.
   team as an ordinary member, whom the new owner may later remove. The
   coordinator is unchanged. The workspace version advances by one and the
   change records `("workspace", W, "workspace", W, version)`,
+  `("outcome", W, "workspace", W, version)`,
   `("actor", new_owner, "workspace", W, version)` and
   `("actor", former_owner, "workspace", W, version)`. Topic versions do not
-  change, though a topic's `owner_id` (read through its outcome) does.
+  change, though a topic's `owner_id` (read through its outcome) does; an
+  open topic page learns of it from the `outcome` key in its topic's changes
+  ([changes-query.md](changes-query.md)) and reads the topic again.
 - What being the owner grants moves with it: handing the outcome on, the
   `wakes` notice, and organising the outcome beside its coordinator (see
   [Who organises an outcome](#who-organises-an-outcome)). The former owner
