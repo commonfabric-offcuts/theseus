@@ -108,7 +108,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(Object.assign(scope, overrides));
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,STATES,stateLabel,waitsOn,managesTopic,organises}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,workNote,STATES,stateLabel,waitsOn,managesTopic,organises}; })())', context);
   const headerSource = readFileSync(new URL('../web/topic-header.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + headerSource + '; return {paintTopicHeader}; })())', context);
   const settingsSource = readFileSync(new URL('../web/topic-settings.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -140,6 +140,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.OutcomeReferences = (()=>{' + referencesSource + '; return OutcomeReferences; })()', context);
   const scopeSource = readFileSync(new URL('../web/outcome-scope.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + scopeSource + '; return {OutcomeScope,placeBrand}; })())', context);
+  // The pipeline's page, its rail row and its line on the outcome page, with their words (item 84).
+  const pipelineSource = ['pipeline-words.mjs', 'pipeline.mjs'].map(name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8')
+    .replace(/^import [^;]*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ')).join('\n');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + pipelineSource + '; return {PipelinePage,PipelineRow,paintPipelineLine,pipelineHref,titleLine,firstLine}; })())', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');

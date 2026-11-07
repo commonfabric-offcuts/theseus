@@ -334,6 +334,32 @@ class WakesFixtureTests(FixtureCase):
         self.assertNotIn("notice", self.wakes())
 
 
+class PipelineFixtureTests(FixtureCase):
+    """The pipeline control the native pipeline check drives, read back through the real server."""
+
+    def pipeline(self, kind, target, args, **request):
+        return self.control("pipeline", kind=kind, operation_id="fixture-%s-%d" % (kind, self.counter), target=target, args=args, **request)
+
+    def test_the_owner_and_the_agent_act_each_at_the_revision_they_read(self):
+        w1 = {"workspace_id": "w1"}
+        self.assertEqual(self.pipeline("pipeline.configure", w1, {"enabled": True})["status"], "committed")
+        self.pipeline("pipeline.stages_set", w1, {"stages": [{"stage_id": "build", "name": "Build"},
+                                                             {"stage_id": "review", "name": "Review", "gate": {"owner": True}}]})
+        number = self.pipeline("pipeline.item_add", w1, {"title": "Build me", "section": "now", "sources": [{"note": "n"}]})["result"]["number"]
+        self.pipeline("pipeline.item_edit", dict(w1, number=number), {"size": "small"})
+        piece = self.pipeline("pipeline.piece_start", w1, {"numbers": [number], "topic_id": "t1", "stage_id": "build"})["result"]["piece_id"]
+        # An agent enters the owner-gated stage only after asking the person there.
+        refused = self.pipeline("pipeline.stage_enter", {"piece_id": piece}, {"stage_id": "review", "left_outcome": "approved"}, sender="agent", refusable=True)
+        self.assertEqual(refused["error"]["code"], "ASK_REQUIRED")
+        entered = self.pipeline("pipeline.stage_enter", {"piece_id": piece}, {"stage_id": "review", "left_outcome": "approved"},
+                                sender="agent", ask="Does the review read well?")
+        self.assertEqual(entered["status"], "committed", entered)
+        status, view = self.view("pipeline", {"workspace_id": "w1", "section": "now"})
+        self.assertEqual(status, 200, view)
+        self.assertEqual([(p["id"], p["stage"]["stage_id"], p["stage"]["you_leave_it"]) for p in view["pieces"]], [(piece, "review", True)])
+        self.assertEqual([(i["number"], i["size"]) for i in view["items"]], [(number, "small")])
+
+
 class LegacyObservationTests(FixtureCase):
     fixture_flags = ("--legacy-read-admission",)
 

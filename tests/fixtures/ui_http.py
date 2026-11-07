@@ -674,6 +674,32 @@ def main():
                             "title": request["title"], "body": request["body"], "attachments": [], "references": []},
                             {"item_id": request["item_id"], "owner_scope": {"kind": "workspace", "id": "w1"}},
                             {"item_revision": 0}, sender=agent)
+                    elif freshness and request["method"] == "pipeline":
+                        # Someone acts on an outcome's pipeline as their CLI does: a
+                        # pipeline.* command fenced on the revision that sender reads
+                        # now. "sender": "agent" is the fixture's agent, on w1's team;
+                        # otherwise the person, w1's owner. With "ask", the sender
+                        # first asks the person in t1, as an owner-gated stage needs.
+                        kind, operation, target = request["kind"], request["operation_id"], request["target"]
+                        assert kind.startswith("pipeline."), kind
+                        sender = on_team(operation) if request.get("sender") == "agent" else actor
+                        args, workspace = dict(request.get("args") or {}), request.get("workspace_id", "w1")
+                        if request.get("ask"):
+                            asked = agent_message({"operation_id": operation + "-ask", "sender": sender, "body": request["ask"],
+                                                   "addressees": [actor], "intent": "ask"})
+                            args["ask_message_id"] = asked["result"]["message_id"]
+                        if kind in ("pipeline.configure", "pipeline.stages_set"):
+                            current = store().view(sender, "pipeline", {"workspace_id": workspace, "limit": 1})["pipeline"]
+                            expected = {"pipeline_revision": current["version"] if current else 0}
+                        elif "number" in target:
+                            expected = {"item_revision": store().view(sender, "pipeline_item", target)["item"]["version"]}
+                        elif "piece_id" in target:
+                            [piece] = [piece for piece in store().view(sender, "pipeline", {"workspace_id": workspace, "section": "now"})["pieces"]
+                                       if piece["id"] == target["piece_id"]]
+                            expected = {"piece_revision": piece["version"]}
+                        else:
+                            expected = {}
+                        answer = command(kind, operation, args, target, expected, sender=sender, refusable=request.get("refusable", False))
                     elif freshness and request["method"] == "memory_revise":
                         answer = command("memory.revise", request["operation_id"], {
                             "title": request["title"], "body": request["body"], "attachments": [], "references": []},
