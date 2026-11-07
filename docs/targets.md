@@ -102,10 +102,16 @@ reading naming its fix topic, and notes on the release piece "Held: Wake time
 got worse." Then the deploy refuses, naming what got worse first, then a
 summary that did not pass. The outcome page shows the candidate stopped, its
 fix topic and the owner's choice to accept a worse measure; once he has, the
-same commit is deployed again and goes on. Before anything stops, the release
-piece of this release, at this commit, leaves `checks` for `deploy`; its gate
-holds on the readings `02-run` wrote. A dry run measures and says what got
-worse, and writes nothing.
+same commit is deployed again and goes on. Every candidate run the deploy
+records while a release piece is open (and its commit is not already a
+release) is that piece's: its readings name the piece, whether the piece was
+combined with a commit, without one, or is checking a new commit after a stop.
+The piece's gate, its "Held" note and the held test that lets the coordinator
+take an item back read those readings. Before anything stops, the release
+piece leaves `checks` for `deploy`; its gate holds on the readings `02-run`
+wrote. A new candidate after a stop is the piece's next round of `checks`,
+which the gate does not hold. A dry run measures and says what got worse, and
+writes nothing.
 
 ## The improvement loop
 

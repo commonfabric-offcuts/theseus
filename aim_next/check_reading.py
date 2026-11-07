@@ -21,7 +21,7 @@ def _thousands(number):
 
 
 def steps_of(summary):
-    """The run's steps from a summary: name, cases passed and run, milliseconds, passed."""
+    """The run's steps from a summary: name, the tool that ran it, cases passed and run, milliseconds, passed."""
     steps = []
     for step in summary.get("steps") or []:
         if not isinstance(step, dict) or not step.get("name"):
@@ -30,6 +30,8 @@ def steps_of(summary):
         started, finished = _ms(step.get("started_at")), _ms(step.get("finished_at"))
         entry = {"name": step["name"], "passed": bool(step.get("passed")),
                  "ms": (finished - started) if started is not None and finished is not None else None}
+        if isinstance(step.get("tool"), str):
+            entry["tool"] = step["tool"]
         if isinstance(counts.get("tests"), int):
             entry["total"] = counts["tests"]
             entry["pass"] = counts.get("pass", counts["tests"] if step.get("passed") else 0)

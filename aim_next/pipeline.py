@@ -720,7 +720,8 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "round is a whole number from 1")
         if stage["stage_id"] == entry["stage_id"] and (stage["rounds"] == "none" or round_number != entry["round"] + 1):
             raise Refusal("INVALID_ARGUMENT", "Entering the same stage again is its next round, in a stage that has rounds")
-        if not self._gate_open(db, piece, leaving):
+        # D18 holds a piece in a gated stage; its next round there (D35: a new candidate after a stop) is not leaving it.
+        if stage["stage_id"] != entry["stage_id"] and not self._gate_open(db, piece, leaving):
             raise Refusal("STAGE_GATED", "This stage's checks have not passed")
         ms = _now_ms()
         self._leave(db, actor, entry, args["left_outcome"], ms, _text(args.get("left_note", ""), "left_note", required=False, limit=1024))
@@ -877,7 +878,8 @@ class Pipeline:
                     "note": entry["note"], "progress": _loads(entry["progress"], None)}
         current = next((entry for entry in entries if entry["left_ms"] is None), None)
         members = self._members(db, piece["id"])
-        view = {"id": piece["id"], "kind": piece["kind"], "release_number": piece["release_number"], "commit": piece["commit_sha"],
+        view = {"id": piece["id"], "kind": piece["kind"], "release_number": piece["release_number"],
+                "commit": self._release_commit(db, piece) if piece["kind"] == "release" else None,
                 "size": entries[0]["size"] if entries else None, "items": members,
                 "titles": {str(number): titles.get(number) for number in members},
                 "started": {"by": entries[0]["entered_by"], "ms": entries[0]["entered_ms"]} if entries else None,

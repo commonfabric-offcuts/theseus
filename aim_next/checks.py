@@ -183,12 +183,29 @@ class Checks:
         row = db.execute("SELECT ships_in_releases,enabled FROM pipelines WHERE workspace_id=?", (workspace_id,)).fetchone()
         return bool(row and row["ships_in_releases"])
 
-    def _release_piece_number(self, db, workspace_id, commit):
-        row = db.execute("SELECT release_number FROM pipeline_pieces WHERE workspace_id=? AND kind='release' AND commit_sha=? "
-                         "ORDER BY rowid DESC LIMIT 1", (workspace_id, commit)).fetchone()
-        return row[0] if row else None
+    def _open_release(self, db, workspace_id):
+        """The outcome's open release piece that no release record has shipped yet, with its open entry; None without one.
 
-    def _place_run(self, db, workspace_id, run, releases):
+        A release-check run of a commit no record names is this piece's candidate: record_checks writes its readings with
+        the piece's id, so the piece's gate (D18), its hold (D35) and its number read the readings of the commits actually
+        checked, whichever commit that is and whether or not combine was given one."""
+        row = db.execute("SELECT p.*,e.stage_id,e.round,e.progress,e.entered_ms FROM pipeline_pieces p JOIN pipeline_stage_entries e "
+                         "ON e.piece_id=p.id AND e.left_ms IS NULL WHERE p.workspace_id=? AND p.kind='release' "
+                         "AND p.release_number NOT IN (SELECT number FROM releases) ORDER BY e.entered_ms DESC LIMIT 1", (workspace_id,)).fetchone()
+        return dict(row) if row else None
+
+    def _planned(self, db, run_ids):
+        """{run id: the release number of the piece its readings were checked for}."""
+        return dict(db.execute("SELECT DISTINCT r.run_id,p.release_number FROM check_readings r JOIN pipeline_pieces p ON p.id=r.piece_id "
+                               "WHERE p.kind='release' AND r.run_id IN (SELECT value FROM json_each(?))", (_json(list(run_ids)),)).fetchall())
+
+    def _release_commit(self, db, piece):
+        """A release piece's commit: the newest commit checked for it, else the one combine was given, else None."""
+        row = db.execute("SELECT u.commit_sha FROM check_readings r INDEXED BY readings_by_piece JOIN check_runs u ON u.id=r.run_id "
+                         "WHERE r.piece_id=? ORDER BY u.started_ms DESC LIMIT 1", (piece["id"],)).fetchone()
+        return row[0] if row else piece["commit_sha"]
+
+    def _place_run(self, run, releases, planned):
         """(release, candidate, label) for a run: its commit's release, a candidate's planned number, or the release live then."""
         by_commit = {release["commit_sha"]: release["number"] for release in releases}
         live = releases[-1]["number"] if releases else None
@@ -196,7 +213,7 @@ class Checks:
             if run["commit_sha"] in by_commit:
                 number = by_commit[run["commit_sha"]]
                 return number, False, "Release %d" % number
-            number = self._release_piece_number(db, workspace_id, run["commit_sha"]) or ((live or 0) + 1)
+            number = planned.get(run["id"]) or ((live or 0) + 1)
             return number, True, "Release %d candidate" % number
         then = [release["number"] for release in releases if release["deployed_ms"] <= run["started_ms"]]
         number = then[-1] if then else None
@@ -231,7 +248,8 @@ class Checks:
         releases = self._releases(db)
         runs = self._runs(db, workspace_id)
         readings = self._readings_of(db, [run["id"] for run in runs])
-        places = {run["id"]: self._place_run(db, workspace_id, run, releases) for run in runs}
+        planned = self._planned(db, [run["id"] for run in runs])
+        places = {run["id"]: self._place_run(run, releases, planned) for run in runs}
         main_runs = [run for run in runs if run["base_for_commit"] is None and run["trial_of"] is None]
         by_check = {check["check_id"]: [] for check in checks}
         for run in main_runs:
@@ -327,26 +345,17 @@ class Checks:
     # ---- a gate that names checks (D18) ------------------------------------------
 
     def _gate_open(self, db, piece, stage):
-        """Leaving a stage whose gate names checks needs each one's latest reading for the piece (or at its commit) to pass."""
-        checks = stage["gate"].get("checks") or []
-        for check_id in checks:
-            if piece["kind"] == "release":
-                if not piece["commit_sha"]:
-                    return False
-                row = db.execute("SELECT r.result FROM check_readings r JOIN check_runs u ON u.id=r.run_id WHERE u.workspace_id=? "
-                                 "AND u.commit_sha=? AND u.base_for_commit IS NULL AND u.trial_of IS NULL AND r.check_id=? "
-                                 "ORDER BY u.started_ms DESC LIMIT 1", (piece["workspace_id"], piece["commit_sha"], check_id)).fetchone()
-            else:
-                row = db.execute("SELECT r.result FROM check_readings r INDEXED BY readings_by_piece JOIN check_runs u ON u.id=r.run_id "
-                                 "WHERE r.piece_id=? AND r.check_id=? ORDER BY u.started_ms DESC LIMIT 1", (piece["id"], check_id)).fetchone()
+        """Leaving a stage whose gate names checks needs each one's latest reading for the piece to pass: a release piece's
+        readings are its candidates' (record_checks), so the commit is whichever was checked last."""
+        for check_id in stage["gate"].get("checks") or []:
+            row = db.execute("SELECT r.result FROM check_readings r INDEXED BY readings_by_piece JOIN check_runs u ON u.id=r.run_id "
+                             "WHERE r.piece_id=? AND r.check_id=? ORDER BY u.started_ms DESC LIMIT 1", (piece["id"], check_id)).fetchone()
             if row is None or row[0] != "passed":
                 return False
         return True
 
     def _release_held(self, db, workspace_id, piece):
         """D35: a release piece is held when its newest candidate run has a worse reading."""
-        if not piece["commit_sha"]:
-            return False
         workspace = db.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
         loop = self._loop(db, workspace["owner_id"], workspace, self._checks_context(db, workspace["owner_id"], workspace))
         return bool(loop and loop["candidate"] and loop["candidate"]["state"] == "stopped")
@@ -830,13 +839,7 @@ class Checks:
                       and run["trial_of"] is None and run["commit_sha"] and run["commit_sha"] not in by_commit
                       and (live_release is None or run["started_ms"] >= live_release["deployed_ms"])]
         pipeline = db.execute("SELECT * FROM pipelines WHERE workspace_id=? AND enabled=1", (workspace["id"],)).fetchone()
-        piece = None
-        if pipeline is not None and pipeline["ships_in_releases"]:
-            piece = db.execute("SELECT p.*,e.stage_id,e.round,e.progress,e.entered_ms FROM pipeline_pieces p JOIN pipeline_stage_entries e "
-                               "ON e.piece_id=p.id AND e.left_ms IS NULL WHERE p.workspace_id=? AND p.kind='release' ORDER BY e.entered_ms DESC LIMIT 1",
-                               (workspace["id"],)).fetchone()
-            if piece is not None and piece["release_number"] in {release["number"] for release in releases}:
-                piece = None
+        piece = self._open_release(db, workspace["id"]) if pipeline is not None and pipeline["ships_in_releases"] else None
         progress = _loads(piece["progress"], None) if piece is not None and piece["stage_id"] == "checks" else None
         run = candidates[0] if candidates else None
         if progress and (run is None or progress.get("commit") != run["commit_sha"]):
@@ -857,7 +860,7 @@ class Checks:
         if run is None and not progress:
             return answer
         commit = run["commit_sha"] if run else progress.get("commit")
-        number = (piece["release_number"] if piece is not None else None) or self._release_piece_number(db, workspace["id"], commit) or (
+        number = (piece["release_number"] if piece is not None else None) or (self._planned(db, [run["id"]]).get(run["id"]) if run else None) or (
             (live_release["number"] if live_release else 0) + 1)
         live_steps = {step["name"]: step for step in (live_run["steps"] if live_run else [])}
         if run is not None:
@@ -917,15 +920,19 @@ class Checks:
             rerun_run = next((other for other in context["runs"] if other["base_for_commit"] == run["commit_sha"]), None)
             candidate["tools_same_as_base"] = outcome_rules.comparable(rerun_run, run) if rerun_run else None
             trials = []
+            stopped_ids = [item["check_id"] for item in open_worse]
             for trial in [other for other in context["runs"] if other["trial_of"] == run["commit_sha"]]:
                 trial_found = self._run_regressions(db, workspace["id"], context, dict(trial, commit_sha=trial["commit_sha"]))
-                trial_worse = sorted({item["check_id"] for item in trial_found["worse"]})
-                values = {check_id: row["value"] for check_id, row in context["readings_by_run"].get(trial["id"], {}).items()}
+                read = context["readings_by_run"].get(trial["id"], {})
+                # A trial reruns only the steps of the checks that stopped the candidate (D34): any other check it did
+                # not read is not a result of the trial, but a stopped check it did not read is still worse.
+                trial_worse = sorted({item["check_id"] for item in trial_found["worse"] if not item.get("missing")}
+                                     | {check_id for check_id in stopped_ids if check_id not in read})
+                values = {check_id: row["value"] for check_id, row in read.items()}
                 trials.append({"run_id": trial["id"], "without": (trial["without"] or {}).get("items", []), "worse_checks": trial_worse,
                                "worse": bool(trial_worse), "values": values,
                                "tools_same": outcome_rules.comparable(rerun_run, trial) if rerun_run else None})
             candidate["trials"] = trials
-            stopped_ids = [item["check_id"] for item in open_worse]
             candidate["likely_cause"] = outcome_rules.likely_cause(stopped_ids, trials) if open_worse else None
             fix_topics = sorted({item["fix_topic"]["id"] for item in worse if item.get("fix_topic")})
             if fix_topics:
@@ -1074,15 +1081,13 @@ class Checks:
             allowances = [dict(row) for row in db.execute("SELECT * FROM check_allowances WHERE workspace_id=? AND (kind='fewer' OR commit_sha=?)",
                                                           (workspace["id"], commit))]
         live = context["releases"][-1]["number"] if context["releases"] else 0
-        number = (self._release_piece_number(db, workspace["id"], commit) if commit else None) or live + 1
-        piece = db.execute("SELECT p.id,p.release_number,p.commit_sha,e.stage_id FROM pipeline_pieces p JOIN pipeline_stage_entries e "
-                           "ON e.piece_id=p.id AND e.left_ms IS NULL WHERE p.workspace_id=? AND p.kind='release' AND p.release_number=? "
-                           "ORDER BY e.entered_ms DESC LIMIT 1", (workspace["id"], number)).fetchone()
+        piece = self._open_release(db, workspace["id"])
+        number = piece["release_number"] if piece else live + 1
         return {"instance_id": self.instance_id, "workspace_id": workspace["id"], "reader": actor, "coordinator": workspace["coordinator_id"],
                 "members": [row[0] for row in db.execute("SELECT actor_id FROM workspace_members WHERE workspace_id=?", (workspace["id"],))],
                 "checks": context["checks"], "live": {"run_id": run["id"], "commit": run["commit_sha"], "tools": run["tools"]} if run else None,
                 "readings": readings, "allowances": allowances, "candidate_release": number,
-                "release_piece": {"id": piece["id"], "release": piece["release_number"], "commit": piece["commit_sha"], "stage": piece["stage_id"]} if piece else None,
+                "release_piece": {"id": piece["id"], "release": piece["release_number"], "stage": piece["stage_id"], "round": piece["round"]} if piece else None,
                 "fix_topics": {check_id: self._open_fix_topic(db, workspace["id"], check_id) for check_id in (c["check_id"] for c in context["checks"])}}
 
     def _open_fix_topic(self, db, workspace_id, check_id):
@@ -1107,7 +1112,12 @@ def record_checks(store, db, run, actor):
     if run.get("source", "release-check") != "release-check":
         raise Refusal("INVALID_ARGUMENT", "The deploy records release-check runs")
     body = {key: run.get(key) for key in ("commit", "started_at", "finished_at", "tools", "steps", "note")}
-    identity, written = store._write_run(db, actor, workspace_id, body, run.get("readings", []), "release-check")
+    readings = run.get("readings", [])
+    piece = store._open_release(db, workspace_id)
+    if piece is not None and not db.execute("SELECT 1 FROM releases WHERE commit_sha=?", (run.get("commit"),)).fetchone():
+        # A candidate's readings are its release piece's, whatever commit it is (D18, D35).
+        readings = [dict(reading, piece_id=piece["id"]) if isinstance(reading, dict) else reading for reading in readings]
+    identity, written = store._write_run(db, actor, workspace_id, body, readings, "release-check")
     base = run.get("base")
     if base:
         body = {key: base.get(key) for key in ("commit", "started_at", "finished_at", "tools", "steps", "note")}

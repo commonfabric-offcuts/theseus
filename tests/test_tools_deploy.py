@@ -949,7 +949,7 @@ class FullDeploy(Restarting):
         self.assertEqual(json.loads((self.evidence / "11-release.json").read_text())["writes"][-1]["exit"], 2)
 
 
-class ReleaseCheckGate(DeployCase):
+class DeployRefuses(DeployCase):
     def test_a_summary_that_is_not_of_this_commit_is_refused_before_anything_is_read(self):
         # 7.2 step 1: its counts do not describe this commit, so there is nothing to measure.
         cases = ((None, "no readable release-check summary"),
@@ -1041,7 +1041,7 @@ def counted(python=600, node=300, commit=SHA):
     return dict(written, started_at="2026-11-07T05:00:00-08:00", finished_at="2026-11-07T05:20:00-08:00")
 
 
-PIECE = {"id": "p-release-20", "release": 20, "commit": SHA, "stage": "checks"}
+PIECE = {"id": "p-release-20", "release": 20, "stage": "checks"}
 
 
 def live_view(units=900, coordinator="agent-a", allowances=(), reader="agent-b", fix_topic=None, piece=PIECE):
@@ -1179,9 +1179,9 @@ class OutcomeChecksBeforeAnythingStops(DeployCase):
         self.assertEqual((run["outcome"], run["commit"], [(r["check_id"], r["value"], r.get("fix_topic_id")) for r in run["readings"]]),
                          ("building-theseus", SHA, [("units", 900, "t-fix")]))
         self.assertEqual(host.wrote("stage-note"), [["stage-note", "p-release-20", "Held: Unit checks got worse."]])
-        other = ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000, piece=dict(PIECE, commit="d" * 40))) + "\n", 0)])
+        other = ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000, piece=None)) + "\n", 0)])
         self.refused(other)
-        self.assertEqual(other.wrote("stage-note"), [], "a release piece of another commit is not this candidate's to hold")
+        self.assertEqual(other.wrote("stage-note"), [], "with no release piece open, nothing is held")
         writes = [index for index, argv in enumerate(host.calls) if "record-checks" in argv or argv[7:8] in (["start"], ["stage-note"])]
         self.assertEqual([("record-checks" in host.calls[index]) or host.calls[index][7] for index in writes], ["start", True, "stage-note"],
                          "the topic is opened before the run is written, and the piece is held after")
@@ -1229,8 +1229,8 @@ class OutcomeChecksBeforeAnythingStops(DeployCase):
         with self.assertRaisesRegex(AssertionError, "must not start a process"):
             self.deploy(host)
 
-    def test_a_release_piece_for_another_release_commit_or_stage_is_left_where_it_is(self):
-        for piece in (dict(PIECE, commit="d" * 40), dict(PIECE, stage="deploy"), dict(PIECE, release=21), None):
+    def test_a_release_piece_for_another_release_or_stage_is_left_where_it_is(self):
+        for piece in (dict(PIECE, stage="deploy"), dict(PIECE, stage="combine"), dict(PIECE, release=21), None):
             with self.subTest(piece=piece):
                 host = ChecksHost(self.config, checks=[(json.dumps(live_view(piece=piece)) + "\n", 0)])
                 self.restarted(host)
@@ -1286,7 +1286,8 @@ class Started(Exception):
 
 class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
     """7.2 steps 1 to 9 through the real agent CLI and admin verb into a real store (D15, D27, D31, D35): outcome w1 with
-    owner "owner", coordinator agent-a and reporter agent-b; release 22 live at HEAD; release 23's piece at SHA in checks."""
+    owner "owner", coordinator agent-a and reporter agent-b; release 22 live at HEAD; release 23's piece combined with no
+    commit, as Building Theseus's stages combine before the release commit exists, and moved on into checks."""
 
     on, add, stages = PipelineCase.on, PipelineCase.add, PipelineCase.stages
 
@@ -1313,13 +1314,15 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                                  "agent-a")
         self.committed(self.on(ships_in_releases=True))
         self.stages({"stage_id": "build", "name": "Build"}, {"stage_id": "wait", "name": "Wait"},
+                    {"stage_id": "combine", "name": "Combine", "scope": "release"},
                     {"stage_id": "checks", "name": "Browser checks", "scope": "release", "rounds": "together", "gate": {"checks": ["units", "browser-checks"]}},
                     {"stage_id": "deploy", "name": "Deploy", "scope": "release"})
         numbers = [self.add("Item %d" % n, section="now", size="small") for n in (1, 2)]
         piece = self.committed(self.command("pipeline.piece_start", {"numbers": numbers, "topic_id": "t1", "stage_id": "build"}, {"workspace_id": "w1"}))
         self.committed(self.command("pipeline.stage_enter", {"stage_id": "wait", "left_outcome": "approved"}, {"piece_id": piece["piece_id"]}))
-        self.release = self.committed(self.command("pipeline.combine", {"release_number": 23, "commit_sha": SHA, "piece_ids": [piece["piece_id"]],
-                                                                        "topic_id": "t1"}, {"workspace_id": "w1"}))["piece_id"]
+        self.release = self.committed(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [piece["piece_id"]], "topic_id": "t1"},
+                                                   {"workspace_id": "w1"}))["piece_id"]
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "checks", "left_outcome": "passed"}, {"piece_id": self.release}))
         self.kills = []
 
     def revision(self):
@@ -1401,6 +1404,46 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual(self.sql("SELECT number,left_reason FROM pipeline_piece_members WHERE piece_id=? ORDER BY number", (self.release,)),
                          [(1, "returned"), (2, None)])
 
+    def test_the_release_checks_report_enters_the_next_round_of_checks_and_shows_its_running_steps(self):
+        # 7.1 --report through the real agent CLI (D35, D36): already in checks, the piece enters round 2, held.
+        reporter = release_check.Reporter(str(Path(cli.__file__).resolve().parents[1] / "bin" / "aim-next"), str(self.profiles["agent-b"]), "w1", "d" * 40)
+        self.evidence.mkdir()
+        with redirect_stderr(io.StringIO()) as err:
+            reporter.start(2)
+            reporter.note([], {"name": "python-units", "since_ms": 1}, self.evidence)
+        self.assertEqual(err.getvalue(), "")
+        self.assertEqual(self.sql("SELECT stage_id,round,left_outcome FROM pipeline_stage_entries WHERE piece_id=? ORDER BY entered_ms,round",
+                                  (self.release,))[-2:], [("checks", 1, "held"), ("checks", 2, None)])
+        candidate = self.candidate()
+        self.assertEqual((candidate["state"], candidate["commit"], [(step["name"], step["state"]) for step in candidate["steps"]][:1]),
+                         ("running", "d" * 40, [("python-units", "running")]))
+        landed = {"name": "python-units", "tool": "unittest", "passed": True, "counts": {"tests": 600, "pass": 600},
+                  "started_at": "2026-11-07T08:00:00-08:00", "finished_at": "2026-11-07T08:01:00-08:00"}
+        with redirect_stderr(io.StringIO()):
+            reporter.note([landed], {"name": "node-units", "since_ms": 2}, self.evidence)
+        steps = [(step["name"], step["state"]) for step in self.candidate()["steps"]]
+        self.assertEqual(steps[:2], [("python-units", "landed"), ("node-units", "running")])
+
+    def test_a_replay_measured_beside_code_that_is_not_live_is_refused_before_anything_is_told_or_stopped(self):
+        self.define(WAKE_CHECK)
+        topics = self.sql("SELECT count(*) FROM topics")
+        for base in ("e" * 40, None):
+            with self.subTest(base=base):
+                self.write_summary(wake=([20.0, 21.0], [13.0, 13.4]))
+                written = json.loads(self.summary.read_text())
+                if base is None:
+                    del written["base"]
+                else:
+                    written["base"]["commit"] = base
+                self.summary.write_text(json.dumps(written))
+                self.assertEqual(self.deploy(), "the replay was measured beside %s, but release 22 (%s) is live; run the release check again; "
+                                 "nothing was stopped" % (base[:12] if base else "nothing (the summary has no base)", HEAD[:12]))
+                self.assertEqual((self.kills, self.sql("SELECT count(*) FROM topics"), self.sql("SELECT count(*) FROM check_runs WHERE commit_sha=?", (SHA,))),
+                                 ([], topics, [(0,)]))
+        # Beside the live head, the same replay is measured (and here it got worse).
+        self.write_summary(wake=([20.0, 21.0], [13.0, 13.4]))
+        self.assertEqual(self.deploy(), "Wake time got worse: aim-ux got worse in every run")
+
     def test_a_worse_measure_the_owner_accepts_lets_the_same_commit_go_on_into_deploy(self):
         self.define(WAKE_CHECK)
         self.write_summary(wake=([20.0, 21.0], [13.0, 13.4]))
@@ -1421,11 +1464,51 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual([pid for pid, _ in self.kills], [222, 111], "then everything stops, as before")
 
     def test_without_a_run_at_its_commit_the_release_piece_cannot_leave_checks(self):
-        # The gate reads readings at the piece's commit (D18); the deploy's 02-run is what writes them.
+        # The gate reads the release piece's own readings (D18); the deploy's 02-run is what writes them.
         self.rejected(self.command("pipeline.stage_enter", {"stage_id": "deploy", "left_outcome": "passed"}, {"piece_id": self.release}, actor="agent-b"),
                       "STAGE_GATED")
         self.write_summary()
         self.assertEqual(self.deploy(), "restarting")
+        self.assertEqual(self.stage(), ("deploy", "agent-b"))
+        self.assertEqual(json.loads((self.evidence / "03-stage.json").read_text())["entered"], "deploy")
+
+    def recorded(self, commit, units="passed", base=None, at="2026-11-07T04:00:00-08:00"):
+        """A release-check run of the outcome recorded as the deploy's 02-run records one, with its base rerun when given."""
+        run = {"outcome": "w1", "commit": commit, "started_at": at, "finished_at": at, "tools": {"release-check": release_check.TOOL},
+               "steps": [], "note": "", "readings": [{"check_id": "units", "result": units, "value": 900, "words": "900"},
+                                                      {"check_id": "browser-checks", "result": "passed", "value": 10, "words": "all"}]}
+        if base:
+            run["base"] = dict(run, commit=HEAD, readings=[dict(reading, result=base) for reading in run["readings"]])
+        return self.store.record_checks(run, "agent-b")
+
+    def move_on(self, actor="agent-a"):
+        return self.command("pipeline.stage_enter", {"stage_id": "deploy", "left_outcome": "passed"}, {"piece_id": self.release}, actor=actor)
+
+    def test_the_release_piece_reads_its_own_candidates_and_nothing_else(self):
+        # A base rerun that passed and a run of the live release's commit are not this release's readings.
+        self.recorded(SHA, units="failed", base="passed")
+        self.recorded(HEAD, at="2026-11-07T04:30:00-08:00")
+        self.rejected(self.move_on(), "STAGE_GATED")
+        # Whatever commit the candidate is, its passing run is what the gate reads: no commit was named at combine.
+        self.recorded("d" * 40, at="2026-11-07T05:00:00-08:00")
+        self.committed(self.move_on())
+        self.assertEqual(self.stage(), ("deploy", "agent-a"))
+
+    def test_a_new_commit_after_a_stop_is_checked_and_shipped_as_the_release(self):
+        # D35: the first candidate stopped; its cause goes back to building; the next commit is checked and goes on.
+        older = "d" * 40
+        self.recorded(older, units="failed")
+        self.assertEqual((self.candidate()["commit"], self.candidate()["state"]), (older, "stopped"))
+        self.committed(self.command("opening.save", {"workspace_id": "w1", "topic_id": "t-fix", "title": "Fix", "participants": ["agent-a"],
+                                                     "body": "Unit checks failed", "attachments": []}, {"opening_id": "o-fix"}, {"opening_revision": 0}))
+        self.committed(self.command("opening.publish", {}, {"opening_id": "o-fix"}, {"opening_revision": 1}))
+        self.committed(self.command("pipeline.piece_start", {"numbers": [1], "topic_id": "t-fix", "stage_id": "build", "from_release": True},
+                                    {"workspace_id": "w1"}, actor="agent-a"))
+        self.assertEqual(self.sql("SELECT number,left_reason FROM pipeline_piece_members WHERE piece_id=? ORDER BY number", (self.release,)),
+                         [(1, "returned"), (2, None)])
+        self.write_summary()
+        self.assertEqual(self.deploy(), "restarting")
+        self.assertEqual((self.candidate()["commit"], self.candidate()["state"]), (SHA, "passed"))
         self.assertEqual(self.stage(), ("deploy", "agent-b"))
 
 

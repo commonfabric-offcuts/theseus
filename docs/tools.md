@@ -38,13 +38,29 @@ Then it runs, one at a time:
 
 1. Python units: `/usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v` (`--python` to change).
 2. Node units: `node --test --test-reporter=tap tests/*.test.mjs` (`--node` to change).
-3. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties`, `sources`, `wakes` and `header` among them), `tests/reader_openings_native.mjs`, and the default and five modes of `tests/reader_native.mjs`. A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
+3. The deploy's refusals: `tests/test_tools_deploy.py -k DeployRefuses`, which the outcome's "deploy refuses" check reads.
+4. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties`, `sources`, `wakes` and `header` among them), `tests/reader_openings_native.mjs`, and the default and five modes of `tests/reader_native.mjs`. A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
+5. The wake replay (below), `--repeats` times (default 2), which the outcome's wake time check reads.
+
+A unit check also holds every machine-read check source in `tools/pipeline/checks.json` to a step here: each is read from its own steps (`SOURCE_STEPS`) and from no other, so a check cannot be seeded that no step produces.
 
 Every step runs with its own `PYTHONPYCACHEPREFIX` and log. A step passes only when it exits 0 and its own report agrees: unittest's `OK` with at least one test, TAP's `# fail 0` and `# cancelled 0` with at least one test, or a harness results file with at least one case, every case passed and the browser closed. One failing step does not stop the others, so one run shows everything; it does fail the run (exit 1).
 
 Chrome for Testing comes from `--chrome`, else `AIM_CHROME_FOR_TESTING`, else the one version under `~/Library/Caches/aim-chrome-for-testing/chrome/`. It refuses when there are none or several.
 
 `--out/summary.json` records the commit, every step's command, exit, counts and log, and whether the checkout was still at that commit and unchanged afterwards. `passed` is true only when every step passed and the checkout did not change. A refused run writes a summary with `refused` and `passed: false`, unless `--out` is the reason, so a refusal never changes the checkout.
+
+The summary also names its `tools` (3.5): the blobs of `tools/release_check.py` and of every harness, the replay tool, its queue and its traffic file, and the Python, Node and Chrome versions. The deploy compares a measure only with a rerun the same tools produced (D32).
+
+- `--only STEP,STEP` runs only those steps. Such a summary is marked `only` and never ships a commit; trials use it.
+- `--base --cli LIVE/bin/aim-next --profile P` reads the live release's commit with the live CLI, takes its code from this repository (`git archive`, nothing written to the repository), and reruns the wake replay on it, alternating base and candidate, with this commit's harnesses and traffic. The summary's `base` holds that commit, its tools and its steps.
+- `--report OUTCOME --cli … --profile P` (D35, D36) enters the outcome's open release piece into `checks` (its next round, held, when it is already there) and notes after every step the steps so far and the one running, which the outcome page shows beside the live release. A note that cannot be written is printed and changes nothing.
+
+### The wake replay: `tools/wake_replay.py`
+
+`tools/wake_replay.py run --file tests/fixtures/replay/wake-2026-11-05.json --out DIR --code CHECKOUT` replays a captured window of traffic against a fresh copy running CHECKOUT's code: the server, the effects runner and the wake broker, with each routed agent's queue a stand-in (`tools/wake_standin.py`) for the codex app-server that records when each hint arrives. It posts the file's messages on their schedule, with idle gaps longer than 5 s cut and turns kept, reads each agent's work when its wake comes (after the turn the file keeps for it, if any), and writes `replay.json`: per agent the median time from a commit to its wake reaching the queue, the wakes and the offsets of any message whose wake never came (lost, which fails the reading). Everything runs in a temporary directory removed afterwards, and every child is started and waited on by PID.
+
+`tools/wake_replay.py capture --db BACKUP --from ISO --to ISO [--limit N] --out FILE` writes such a file from a read-only copy of a backup: who wrote to whom and when, the topics' participants, the routed agents and any hosted turns, with people named `person-N` and no words. The record keeps no turn spans for broker-routed agents, so the committed file has none: its replay measures the commit-to-queue time with every wake read at once.
 
 For development, `tools/native.py --out DIR STEP [CASE_FILTER]` runs one native step (`journal`, `live`, `colors`, `openings`, `reader-keyboard`, ...) and lists each failed case with its most common failure kinds.
 
@@ -57,7 +73,7 @@ tools/deploy.py --config INSTANCE/deploy.json --release-check EVIDENCE/release-S
 
 The deploy ships only a commit the release check passed. `SHA` must be the full 40-character commit, and the summary must name exactly that commit, show every required step passed and the checkout unchanged during the run. A summary that is unreadable, of another commit or of a checkout that changed is recorded in `00-release-check.json` and refused before anything is read. One of this commit whose steps failed is measured first (below) and refused after the checks, before anything stops. Run it from the release-check worktree at `SHA`, so the deploy's list of required steps is that commit's own.
 
-With `outcome` in the config, the deploy measures the summary as a run of that outcome's checks before anything stops ([targets.md](targets.md#what-got-worse)), as `reporter_profile`'s actor through the live CLI: `02-checks` reads the checks, live baseline, allowances, fix topics and release piece (`checks OUTCOME --live SHA`) and refuses a reporter who is the coordinator or not a member; `02-worse` posts each worse check into its open fix topic or starts one (`post … --operation fix-post-CHECK-SHA12`, `start … --operation fix-CHECK-SHA12`); `02-run` writes the run with `bin/aim-next-admin record-checks --as REPORTER` and notes "Held: … got worse." on the release piece. The verdict follows: anything worse refuses first, then a summary that did not pass. After `02-release`, `03-stage` moves the release piece of this release at `SHA` from `checks` into `deploy`. When the live code keeps no outcome checks, `02-checks.json` says so and keeps the run, which the checks import writes from the release record.
+With `outcome` in the config, the deploy measures the summary as a run of that outcome's checks before anything stops ([targets.md](targets.md#what-got-worse)), as `reporter_profile`'s actor through the live CLI: `02-checks` reads the checks, live baseline, allowances, fix topics and release piece (`checks OUTCOME --live SHA`) and refuses a reporter who is the coordinator or not a member, and, when a check reads a replayed measure, a summary whose `base.commit` is not the live head ("the replay was measured beside …, but release N is live; run the release check again"); `02-worse` posts each worse check into its open fix topic or starts one (`post … --operation fix-post-CHECK-SHA12`, `start … --operation fix-CHECK-SHA12`); `02-run` writes the run with `bin/aim-next-admin record-checks --as REPORTER` and notes "Held: … got worse." on the release piece. The verdict follows: anything worse refuses first, then a summary that did not pass. After `02-release`, `03-stage` moves the open release piece of this release from `checks` into `deploy`; its gate reads the readings `02-run` linked to that piece, whatever commit the piece was combined with (or none). When the live code keeps no outcome checks, `02-checks.json` says so and keeps the run, which the checks import writes from the release record.
 
 Before stopping anything it also works out the release records it will write (docs/releases.md) and writes them to `02-release.json`. This release's record holds the pipeline items named by `Pipeline:` trailers (the last paragraph, as git reads trailers) in every commit from the live HEAD to `SHA`, merges included and oldest first; each commit and the items it named; the release check's counts; and the release number, one past the latest release. The latest release is found from what the system keeps, so the number is never typed:
 
@@ -88,6 +104,14 @@ The config is a JSON object. Paths for profiles and routes are relative to `inst
 | `outcome`, `reporter_profile` | optional, together: the outcome whose checks the deploy measures, and the profile of a member who is not its coordinator, who reads them, opens fix topics, writes the run and moves the release piece |
 
 An unknown or missing key is refused. Keep the live config beside the instance it describes, not in the repository.
+
+## Trials: `tools/checks.py trial`
+
+```sh
+tools/checks.py trial --cli LIVE/bin/aim-next --profile P --outcome OUTCOME --of SHA --without 34 --revert SHA1[,SHA2] --out DIR
+```
+
+A trial asks whether leaving suspects out clears a stopped candidate (D34). It refuses unless SHA is the outcome's candidate with a worse reading not accepted, and every reverted commit lies between the live release and SHA. It clones the repository (`--repo`, this checkout by default) at SHA into a temporary directory, reverts the commits newest first (a conflict refuses), and runs that clone's release check with `--only` the steps the stopped checks read and `--base`. It reports the run with `check-report` as a trial of SHA, `without` the items and the reverted commits, and prints, by the same rule as the deploy, which stopped checks it cleared. The clone is removed whatever happens. The outcome page names the trial with the fewest items left out that clears every stopped check as the likely cause; a stopped check the trial did not read counts as still worse, and checks it did not rerun are not its results. It never posts: the coordinator says what it found in the fix topic.
 
 ## Release pipeline page: `tools/pipeline/build_pipeline.py`
 

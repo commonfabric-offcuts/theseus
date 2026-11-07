@@ -489,9 +489,9 @@ def tell_worse(config, sha, view, found, summary):
     return told
 
 
-def record_run(config, evidence, sha, view, measured, found, told):
-    """02-run: the candidate's run, written by the server as the reporter, each worse reading naming its fix topic; the
-    release piece at SHA, held, says why."""
+def record_run(config, evidence, view, measured, found, told):
+    """02-run: the candidate's run, written by the server as the reporter, each worse reading naming its fix topic, and
+    so read by Core as the open release piece's; that piece, held, says why."""
     measured = dict(measured, readings=[dict(reading, fix_topic_id=told[reading["check_id"]]) if reading["check_id"] in told else reading
                                         for reading in measured["readings"]])
     path = (evidence / "checks-run.json").resolve()
@@ -501,7 +501,7 @@ def record_run(config, evidence, sha, view, measured, found, told):
     wrote = run(argv)
     result = {"run": str(path), "exit": wrote.returncode, "stdout": wrote.stdout, "stderr": wrote.stderr, "held": None}
     piece = view["release_piece"]
-    if wrote.returncode == 0 and found and piece and piece["commit"] == sha:
+    if wrote.returncode == 0 and found and piece:
         words = "Held: %s got worse." % names(found)
         as_reporter(config, "stage-note", piece["id"], words)
         result["held"] = {"piece": piece["id"], "note": words}
@@ -510,15 +510,15 @@ def record_run(config, evidence, sha, view, measured, found, told):
             % (wrote.stdout or wrote.stderr).strip()[:300])
 
 
-def enter_deploy(config, evidence, sha, view, planned):
-    """03-stage: the release piece of this release, at SHA, leaves checks for deploy; its gate holds on 02-run's readings."""
+def enter_deploy(config, evidence, view, planned):
+    """03-stage: the release piece of this release leaves checks for deploy; its gate holds on the readings 02-run wrote."""
     piece = view["release_piece"]
     if not planned or not piece:
         record(evidence, "03-stage", {"entered": None, "why": "no release piece for this release" if planned else "a restart ships nothing"})
         return
-    if (piece["release"], piece["commit"], piece["stage"]) != (planned["release"], sha, "checks"):
+    if (piece["release"], piece["stage"]) != (planned["release"], "checks"):
         record(evidence, "03-stage", {"entered": None, "piece": piece,
-                                      "why": "the release piece is not in checks at %s for release %d" % (sha[:12], planned["release"])})
+                                      "why": "the release piece is not in checks for release %d" % planned["release"]})
         return
     result = as_reporter(config, "enter-stage", piece["id"], "deploy", "--left", "passed")
     record(evidence, "03-stage", {"entered": "deploy", "piece": piece, "result": result})
@@ -579,7 +579,15 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
             require(view["reader"] in view["members"] and view["reader"] != view["coordinator"],
                     "the reporter, %s, must be a member of %s and not its coordinator (%s); nothing was stopped"
                     % (view["reader"], config.outcome, view["coordinator"]))
-            measured = outcome_checks.run_from_summary(json.loads(Path(summary).read_text()), view["checks"], config.outcome)
+            written = json.loads(Path(summary).read_text())
+            measured = outcome_checks.run_from_summary(written, view["checks"], config.outcome)
+            # A replayed measure compares with its rerun beside the candidate, so that rerun must be of the code now live.
+            replayed = [check["check_id"] for check in view["checks"] if not check.get("retired_why")
+                        and set(release_check.SOURCE_STEPS.get(check["source"], ())) & set(release_check.REPLAYED)]
+            beside = (written.get("base") or {}).get("commit") if isinstance(written.get("base"), dict) else None
+            if replayed and beside != head:
+                raise Refused("the replay was measured beside %s, but release %d (%s) is live; run the release check again; nothing was stopped" % (
+                    beside[:12] if beside else "nothing (the summary has no base)", view["candidate_release"] - 1, head[:12]))
             found = outcome_checks.worse(measured, view)
             record(evidence, "02-checks", {"outcome": config.outcome, "live": view["live"], "candidate_release": view["candidate_release"],
                                            "checks": len(view["checks"]), "allowances": view["allowances"], "fix_topics": view["fix_topics"],
@@ -589,7 +597,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
                 # 02-worse, then 02-run: told before the run is written, since a reading never changes and a worse one names its fix topic.
                 told = tell_worse(config, sha, view, found, Path(summary).resolve())
                 record(evidence, "02-worse", {"told": told})
-                record_run(config, evidence, sha, view, measured, found, told)
+                record_run(config, evidence, view, measured, found, told)
     # The verdict: anything worse first, then a summary that did not pass. Nothing has stopped.
     if found:
         raise Refused("%s got worse: %s" % (names(found), "; ".join(item["why"] for item in found)))
@@ -604,7 +612,7 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     if dry:
         return
     if view is not None:
-        enter_deploy(config, evidence, sha, view, planned)
+        enter_deploy(config, evidence, view, planned)
 
     # 2. Stop the runner, then the server, by captured PID; wait on each exit event. A supervisor
     # passes the stop to its runner and exits only after the runner has.
