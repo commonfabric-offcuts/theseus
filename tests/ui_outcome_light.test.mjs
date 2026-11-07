@@ -31,7 +31,7 @@ class Element {
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   get text() { return (this.textContent ?? '') + this.children.map(node => node instanceof Element ? node.text : String(node)).join(''); }
   getBoundingClientRect() { return this.box; }
-  focus() { globalThis.document.activeElement = this; }
+  focus(options) { globalThis.document.activeElement = this; globalThis.document.focusOptions = options; }
 }
 function dom(t, { hover = true, width = 1440, height = 900 } = {}) {
   const previous = { document: globalThis.document, window: globalThis.window };
@@ -313,6 +313,7 @@ test('a control on the card that held focus keeps it when a commit repaints the 
     before.focus(); paint();
     assert.notEqual(control(), before, `${name} is drawn anew`);
     assert.equal(document.activeElement, control(), `${name} keeps focus across the repaint`);
+    assert.deepEqual(document.focusOptions, { preventScroll: true }, `${name} takes focus without scrolling the page to it`);
   }
   // Try again, on a card that could not read, keeps it as well.
   paintStandingFailed(host, () => {});

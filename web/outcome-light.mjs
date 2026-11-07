@@ -69,7 +69,8 @@ function lastNode(answer, open, tag = 'p', hold = (key, node) => node) {
 // of (the lead, the facts, the also-lines and where it comes from) opens in
 // place from the small ⓘ, and stays open across the repaint on each commit.
 // A control on the card that held focus (the ⓘ, a topic's link, Try again)
-// keeps it when it is drawn again; focus anywhere else is left alone.
+// keeps it when it is drawn again, and the page does not move to it; focus
+// anywhere else is left alone.
 export function paintStanding(host, answer, { open, retry, outcome = '' } = {}) {
   const light = answer?.light ?? null, facts = Array.isArray(answer?.facts) ? answer.facts : [], also = Array.isArray(answer?.also) ? answer.also : [];
   const unreadable = !light || light.light === null;
@@ -103,7 +104,8 @@ export function paintStanding(host, answer, { open, retry, outcome = '' } = {}) 
   if (unreadable && retry) children.push(hold('retry', element('button', { type: 'button', className: 'retry', textContent: 'Try again', onclick: retry })));
   host.replaceChildren(...children, details);
   host.hidden = false;
-  refocus?.focus();
+  // Without moving the page: a reader who scrolled away from the card stays where they are.
+  refocus?.focus({ preventScroll: true });
 }
 
 // The panel when its read failed: no light, no guess, and a way to try again.

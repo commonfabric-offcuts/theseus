@@ -264,4 +264,38 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  await check('light the ⓘ keeps focus across a repaint without moving the page the reader scrolled away from it', async () => {
+    await ensure('light-scroll', 'Scrolled outcome', { id: 'light-scroll-topic', title: 'Scroll topic' }, 'Which way down?');
+    const p = await page('light-scroll', null, true, { url: facts.origin + '/?workspace=light-scroll' });
+    // A short laptop window, so the card leaves the view when the reader scrolls on down the page.
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 360, deviceScaleFactor: 1, mobile: false });
+    await until(() => p.evaluate(`!document.querySelector('#outcome-standing').hidden && Boolean(document.querySelector('#outcome-standing .standing-last a'))`), 'the card with its Last line');
+    // The page once its scrolling has come to rest: the same position over three frames.
+    const rest = () => p.evaluate(`new Promise(done=>{let y=scrollY,same=0;const frame=()=>{if(scrollY===y){if(++same>=3)return done(y)}else{same=0;y=scrollY}requestAnimationFrame(frame)};requestAnimationFrame(frame)})`);
+    const where = () => p.evaluate(`(()=>{const s=document.querySelector('#outcome-standing'),i=s.querySelector('.standing-info');
+      return {scroll:scrollY,card:Math.round(s.getBoundingClientRect().top),info:Math.round(i.getBoundingClientRect().bottom),focused:document.activeElement===i,
+        expanded:i.getAttribute('aria-expanded'),more:!s.querySelector('#standing-more').hidden}})()`);
+    // The card sits below the window's top bar: the reader scrolls to it, then presses the ⓘ with the mouse.
+    await p.evaluate(`document.querySelector('#outcome-standing .standing-info').scrollIntoView({block:'center'})`);
+    await rest();
+    await p.point('#outcome-standing .standing-info');
+    await until(async () => (await where()).more, 'a press of the ⓘ opens what the light is made of');
+    assert.equal((await where()).focused, true, 'the pressed ⓘ holds focus');
+    // The reader turns the mouse wheel until the ⓘ is above the top of the window; focus stays on it.
+    for (let n = 0; n < 40 && (await where()).info >= 0; n++) {
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 640, y: 300, deltaX: 0, deltaY: 120 });
+      await rest();
+    }
+    const scrolled = await where();
+    assert.ok(scrolled.info < 0, 'the ⓘ is scrolled out of view above the window: ' + JSON.stringify(scrolled));
+    assert.equal(scrolled.focused, true, 'scrolling leaves focus on the ⓘ');
+    await p.evaluate(`window.lightScrollCard=document.querySelector('#outcome-standing .standing-info')`);
+    await control({ method: 'agent_message', operation_id: 'light-scroll-post-1', body: 'Post 1', topic_id: 'light-scroll-topic', source: 'topic' });
+    await until(() => p.evaluate(`document.querySelector('#outcome-standing .standing-info')!==window.lightScrollCard`), 'the commit repaints the card');
+    await rest();
+    assert.deepEqual(await where(), { ...scrolled, focused: true, expanded: 'true', more: true }, 'the page stays where the reader scrolled it, and the new ⓘ has focus, still open');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }

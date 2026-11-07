@@ -55,8 +55,9 @@ A state and a time, and one line naming the newest thing; nothing more.
   is made of") opens, in place, what the light is made of: the lead, the
   facts, the also-lines (with "It might be stuck…") and where it comes from.
   It stays open across the repaint on each commit, and a control on the card
-  that held keyboard focus (the ⓘ, a topic's link, "Try again") keeps it;
-  focus elsewhere on the page is left where it is. When the read failed, the
+  that held keyboard focus (the ⓘ, a topic's link, "Try again") keeps it
+  without the page moving to it, so a reader who scrolled on stays where they
+  are; focus elsewhere on the page is left where it is. When the read failed, the
   card says "Couldn't check where it stands" with "Try again".
 - **The peek** on a laptop says what the card says: the name with its time and
   the Last line, in plain words.
