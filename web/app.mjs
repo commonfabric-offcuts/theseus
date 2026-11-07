@@ -1068,10 +1068,12 @@ async function initialize() {
   // The topic as the topic view gives it, read once after a change that was not confirmed.
   const readTopic = async () => validate(await registry.cleanup.list(options => api.view('topic', { topic_id: topicId }, options)));
   topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), painted: paintHeader, read: readTopic,
-    send: (current, args) => {
+    // Words not saved are shown, in Topic settings, even when leaving it was what saved them.
+    attention: () => { if (!$('topic-settings').open) settings.open(); },
+    send: (current, args, fields) => {
       const { authority_id, authority_epoch } = bootstrap.authority;
       return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.update',
-        target: { topic_id: current.id }, expected: { topic_revision: current.version, authority: { authority_id, authority_epoch } }, args });
+        target: { topic_id: current.id }, expected: { topic_fields: fields, authority: { authority_id, authority_epoch } }, args });
     },
     sendNote: (current, note, revision) => {
       const { authority_id, authority_epoch } = bootstrap.authority;

@@ -55,7 +55,8 @@ export async function workChecks({ check, page, until, control, view, shot }) {
   await check('work a teammate who has written in a topic can say where it stands, and is not woken by later messages', async () => {
     const agent = 'fixture-planning-agent', participant = 'fixture-notebook-agent';
     const chips = p => p.evaluate(`[...document.querySelectorAll('#participants .person-pill')].map(chip=>chip.textContent)`);
-    const line = p => p.evaluate(`document.querySelector('#topic-state .state-line')?.textContent ?? ''`);
+    // Where it stands in Topic settings: the lit chip, the note, and who said it.
+    const line = p => p.evaluate(`(s=>s.hidden?'':[...s.querySelectorAll('.state-chips [aria-pressed=true]')].map(e=>e.textContent).concat([s.querySelector('#topic-state-note')?.value??'',s.querySelector('.state-by')?.textContent??'']).join(' | '))(document.querySelector('#topic-state'))`);
     const p = await page('work-writer-says', null, true);
     await until(async () => (await chips(p)).length > 0, 'participants drawn');
     assert.equal((await chips(p)).some(words => words.includes(agent)), false, 'not a participant before writing');
@@ -66,7 +67,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     assert.equal(said.status, 'committed', 'Core takes the writer\'s word: ' + JSON.stringify(said.error));
     assert.deepEqual([said.result.state, said.result.state_by], ['review', agent]);
     const shown = await until(async () => { const words = await line(p); return words.includes('Ready to read') && words; }, 'the page shows where it stands');
-    assert.match(shown, /^Ready for review · Ready to read — fixture-planning-agent, /);
+    assert.match(shown, /^Ready for review \| Ready to read \| Set by fixture-planning-agent, /);
     // The top of the topic says it too: the state word, then the note.
     await until(() => p.evaluate(`document.querySelector('#topic-description').textContent === 'Ready for review Ready to read'`), 'the subtitle shows the state and the note');
     assert.equal((await chips(p)).some(words => words.includes(agent)), false, 'still not listed among the participants');

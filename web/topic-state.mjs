@@ -1,5 +1,5 @@
 // Where a topic stands, as its participants say: a row mark in topic lists,
-// its line in Topic settings with a form to change it, and the topics that
+// its chips and lines in Topic settings, set in place, and the topics that
 // wait on the reader. Core keeps every value; nothing here decides one.
 import { datedTime, spokenNode, spokenTime, timeNode } from './times.mjs';
 
@@ -111,10 +111,20 @@ const at = (lead, ms) => Number.isSafeInteger(ms) ? [lead, timeNode(ms, document
 const joined = (groups, gap) => groups.filter(parts => parts.length).flatMap((parts, index) => index ? [gap, ...parts] : parts);
 // The same, kept on one line so a narrow screen never breaks inside the time.
 const whole = (lead, ms) => Number.isSafeInteger(ms) ? [lead, element('span', { className: 'together' }, timeNode(ms, document))] : [];
-const names = value => [...new Set(value.split(',').map(name => name.trim()).filter(Boolean))];
 const known = state => STATES.includes(state) ? state : 'active';
-const CHANGED = 'This topic changed while you were choosing. What you chose is kept here: check it against the line above and save again.';
-const NOTE_CHANGED = 'Your note changed elsewhere while you were writing. What you wrote is kept here: check it against the list above and save again.';
+// What Core holds for each field of the topic itself, as last read.
+const HELD = { title: topic => topic.title, archived: topic => topic.archived === true, state: topic => known(topic.state),
+  note: topic => topic.state_note ?? '', waiting_on: topic => Array.isArray(topic.waiting_on) ? topic.waiting_on : [] };
+// Two values of a field alike; who a topic waits on compares as a set.
+const alike = (a, b) => Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every(id => b.includes(id)) : a === b;
+// Answered for a change refused only because the person's own lost change came first.
+const AGAIN = Symbol('again');
+// A chip shows the topic as it now stands; a line keeps what was typed.
+const CHANGED = 'Someone else changed this topic first, so that was not saved. Here it is as it stands now; what you typed is kept. Try again.';
+// A line's words refused over newer ones: both show, and the person's are kept.
+const KEPT = { note: 'Someone else changed the note first', title: 'Someone else renamed it first', duty: 'Your part changed elsewhere first' };
+const kept = (name, now) => now === null ? `${KEPT[name]}, so yours was not saved; your words are kept. Reading it again failed, so press Return to try again.`
+  : `${KEPT[name]}, so yours was not saved; your words are kept. ${now ? `It now reads “${now}”` : 'It is now empty'}: press Return to save yours in its place.`;
 const NOTE_BYTES = 1024;
 
 // What each participant said they are responsible for, beside where the topic
@@ -125,37 +135,112 @@ export function responsibilities(participants, reader) {
   return [...said.filter(person => person.actor_id === reader), ...said.filter(person => person.actor_id !== reader)]
     .map(person => ({ who: named(person.actor_id, reader), note: person.responsibility + (person.responsibility_truncated ? '…' : '') }));
 }
-const NOT_SENT = 'That was not sent: another change was still being saved. Press it again.';
 
-// Where the topic stands, in Topic settings, and a form for those who may change it:
-// participants, and whoever has written in it (Core's reader_may_say), say
-// where it stands; whoever organises the outcome (its owner and coordinator) and
-// the topic's creator also rename and archive it.
+// A chip that is tapped once: aria-pressed says whether it is lit.
+const chip = (label, onclick) => {
+  const button = element('button', { type: 'button', className: 'choice-chip', textContent: label });
+  button.setAttribute('aria-pressed', 'false'); button.onclick = onclick;
+  return button;
+};
+const lit = (button, on) => button.setAttribute('aria-pressed', on ? 'true' : 'false');
+
+// A one-line field that saves itself: Return or leaving it saves what was
+// typed (leave, when leaving it means something else), and Escape cancels:
+// cancel() puts back what is saved and says whether it did anything. An
+// Escape with nothing to cancel closes the dialog as usual.
+function lineField(props, { touch, save, cancel, leave = save }) {
+  const input = element('input', { type: 'text', autocomplete: 'off', enterKeyHint: 'done', ...props });
+  input.oninput = touch;
+  input.onkeydown = event => {
+    if (event.isComposing) return;
+    if (event.key === 'Enter') { event.preventDefault(); save(); }
+    else if (event.key === 'Escape' && cancel()) { event.preventDefault(); event.stopPropagation(); }
+  };
+  input.onblur = leave;
+  return input;
+}
+
+// One line set in place: the note, Your part or the title. read() is what
+// Core holds for it now, { value, fence }, where fence is what Core checks a
+// save against: the saved words themselves, or Your part's revision.
 //
-// The form is built once per topic and kept across repaints, so focus and
-// whatever the person has typed survive fresh data. A field the person has
-// not touched shows the data; one they have touched keeps their value until
-// it is saved. A new state starts with an empty note and nobody waited on,
-// as in Core, unless the person typed them.
+// While the person edits, start is what was saved when they began, and
+// session counts their edits: Escape, or words found saved, ends one. Their
+// words are a change only when they differ from where they began and from
+// what is saved now; otherwise a save sends nothing and the line follows the
+// data again. Each save is fenced on the start as it was when the person
+// made it (the panel's acts, below). Only the person's own change known
+// saved moves the start, to what Core saved; a refusal moves it to the newer
+// words once they show. Fresh data shows in a line nobody is editing, and
+// never over words being edited.
+class Line {
+  constructor(input, read) { Object.assign(this, { input, read, start: null, session: 0 }); }
+  // The first key: the line begins from what is saved.
+  begin() { this.start ??= this.read(); }
+  // Whether the words are no change: those it began from, or those saved now.
+  same(from = this.start) { return !from || this.input.value === from.value || this.input.value === this.read().value; }
+  stop() { this.start = null; this.session += 1; this.follow(); }
+  follow() { if (!this.start) this.input.value = this.read().value; }
+  // The person's own change, fenced on from, is known saved as to ({ value,
+  // fence }); words: what it sent from this line, if anything. Words already
+  // saved end the edit; any others go on from what Core saved.
+  landed(from, to, words) {
+    if (!this.start || !alike(this.start.fence, from)) return;
+    if (this.input.value === to.value || this.input.value === words) this.stop(); else this.start = to;
+  }
+  // Core refused a change fenced on fence over someone else's newer words,
+  // just read and now shown: the line begins from those, so the next Return,
+  // made once the person has seen them, goes in their place.
+  refused(fence) { if (this.start && alike(this.start.fence, fence)) this.start = this.read(); }
+}
+
+// Where the topic stands, in Topic settings, set in place. Those who may say
+// where it stands (participants, and whoever has written in it: Core's
+// reader_may_say) tap one of four chips; Waiting then shows the topic's people
+// as chips for who it waits on. The note is one line under the chips, and a
+// participant's own part one line after it; each saves on Return or on
+// leaving it. Whoever organises the outcome (its owner and coordinator) and
+// the topic's creator also rename and archive it, from quiet actions at the bottom. Every save is a Core command;
+// a quiet "Saved" or the refusal in plain words says what became of the last.
 //
-// A notice says what became of the person's last press, so it stays until
-// they press again: the fresh data a refusal asks for does not answer it.
+// The fields are built once per topic and kept across repaints, so focus and
+// whatever the person has typed survive fresh data (Line, above).
+//
+// Each press, key or leaving is an act. An act is fenced, field by field, on
+// what the person saw when they made it ({ value, fence }), and sends only
+// what its own control changed: a chip never sends the note, and keeps it
+// (keep_note); a change to a field it is not fenced on never refuses it.
+// Acts go one at a time, in the order made; one with nothing left to change
+// when its turn comes is not sent. Two things move an act's fences:
+//   - a change of the person's own known saved, confirmed or found by a read
+//     after its answer was lost, moves every act fenced on what that change
+//     read to what Core saved (landed);
+//   - a refusal over someone else's newer value ends every act made before
+//     it was shown that is fenced on the same value (overtaken): each would
+//     go over a value the person never saw. Their next act goes from what
+//     now shows.
 export class TopicStatePanel {
-  // refresh asks the page for fresh topic data; it is called after every answer
-  // to a change, so a refusal for a stale version is followed by the news.
+  // send(topic, args, fields) asks Core to change the topic, fenced on fields.
   // sendNote(topic, note, revision) says what the reader is responsible for.
+  // refresh asks the page for fresh topic data; it is called after every answer.
   // painted(topic) hears each topic the panel paints, the newest it has seen,
   // so the page's subtitle shows a saved change at once.
   // read, when given, answers the topic as the topic view gives it ({topic,
-  // participants}); it is read once after a change that was not confirmed, so
-  // the notice says where the topic stands now.
-  constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {}, read = null }) {
-    Object.assign(this, { host, reader, send, sendNote, refresh, painted, read });
-    this.topic = null; this.out = null; this.controls = null; this.touched = new Set();
+  // participants}); it is read once after a refusal or a change whose answer
+  // was lost, so the notice says what it holds now.
+  // attention() is called when words the person sent from a line are not
+  // known to be saved, so the page can show Topic settings if it was closed.
+  constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {}, read = null, attention = () => {} }) {
+    Object.assign(this, { host, reader, send, sendNote, refresh, painted, read, attention });
+    // kept: the refusal said over a line's words, while they stay unsaved.
+    // lost: by field, a list of { fence, would }, one for each change of the
+    // person's own whose answer was lost: what it read of the field, and what
+    // it would have left there. Each stays only while the field holds what
+    // it read, since until then it may still land.
+    // pending: the acts not yet settled, in order. found: how many changes
+    // of the person's own reads have found saved.
+    this.topic = null; this.controls = null; this.lines = {}; this.kept = null; this.lost = {}; this.pending = []; this.found = 0; this.queue = Promise.resolve();
     this.heading = element('h3', { id: 'stand-heading', textContent: 'Where it stands' });
-    this.line = element('p', { className: 'state-line' });
-    this.duties = element('ul', { className: 'responsibilities', hidden: true });
-    this.duties.setAttribute('aria-label', 'Who is responsible for what');
     // One notice, kept in place, so a screen reader announces each new text.
     this.notice = element('p', { className: 'notice', hidden: true });
     this.notice.setAttribute('role', 'status');
@@ -168,156 +253,365 @@ export class TopicStatePanel {
     this.topic = topic; this.participants = participants;
     const reader = this.reader, manager = managesTopic(topic, reader);
     const participant = participants.some(person => person.actor_id === reader);
-    const says = topic.reader_may_say === true || participant;
-    const mark = element('strong', { className: 'topic-state', textContent: stateLabel(topic, reader), title: stateLabel(topic, reader) });
-    mark.dataset.state = waitsOn(topic).length ? 'waiting' : topic.state ?? 'active';
-    if (waitsOn(topic).includes(reader)) mark.classList.add('mine');
-    const line = [mark];
-    if (topic.state_note) line.push(' · ', element('span', { className: 'state-note', textContent: topic.state_note }));
-    if (topic.state_by) line.push(element('span', { className: 'muted' }, ` — ${named(topic.state_by, reader)}`, ...whole(', ', topic.state_ms)));
-    for (const { words, since } of askParts(topic, reader)) line.push(element('span', { className: 'muted ask-line' }, ` · ${words}`, ...whole(', since ', since)));
-    if (topic.archived) line.push(element('span', { className: 'muted', textContent: ' · Archived' }));
-    this.line.replaceChildren(...line);
-    const duties = responsibilities(participants, reader);
-    this.duties.replaceChildren(...duties.map(({ who, note }) => element('li', {}, element('strong', { textContent: who }), ` ${note}`)));
-    this.duties.hidden = !duties.length;
-    if (!(manager || says)) this.drop();
-    else {
-      if (!this.controls) this.host.insertBefore(this.build(), this.notice);
-      this.manage(manager); this.duty(participant); this.follow();
-    }
+    const says = topic.reader_may_say === true || participant || manager;
+    if (!this.controls || this.controls.says !== says) this.build(says);
+    this.manage(manager); this.duty(participant && !!this.sendNote); this.follow();
     this.host.hidden = false;
     this.painted(topic);
   }
 
   reset() {
-    this.controls = null; this.touched.clear(); this.show(null);
-    this.host.replaceChildren(this.heading, this.line, this.duties, this.notice);
+    this.controls = null; this.lines = {}; this.kept = null; this.lost = {}; this.pending = []; this.show(null);
   }
 
-  drop() {
-    this.controls?.form.remove(); this.controls = null; this.touched.clear(); this.show(null);
+  // The chips, the note and the quiet line of who said it: chips to tap for
+  // those who may say where it stands, the state alone for everyone else.
+  build(says) {
+    const chips = element('div', { className: 'state-chips' });
+    chips.setAttribute('role', 'group'); chips.setAttribute('aria-labelledby', 'stand-heading');
+    const states = new Map();
+    const waitingLabel = element('span', { id: 'waiting-label', className: 'chips-label', textContent: 'Waiting on' });
+    const people = element('div', { className: 'state-chips people-chips' });
+    people.setAttribute('role', 'group'); people.setAttribute('aria-labelledby', 'waiting-label');
+    const waiting = element('div', { className: 'waiting-on', hidden: true }, waitingLabel, people);
+    let note;
+    this.lines = {};
+    if (says) {
+      for (const value of STATES) {
+        const button = chip(LABELS[value], () => this.choose(value));
+        button.dataset.state = value; states.set(value, button); chips.append(button);
+      }
+      note = this.line('note', { id: 'topic-state-note', maxLength: NOTE_BYTES, placeholder: 'Add a note…' });
+      note.setAttribute('aria-label', 'Note');
+    } else {
+      note = element('p', { className: 'state-note-line' });
+    }
+    const by = element('p', { className: 'muted state-by' });
+    const duties = element('ul', { className: 'responsibilities', hidden: true });
+    duties.setAttribute('aria-label', 'Who is responsible for what');
+    const part = element('div', { className: 'settings-part' }, duties);
+    const actions = element('div', { className: 'settings-actions', hidden: true });
+    this.host.replaceChildren(this.heading, chips, waiting, note, by, part, this.notice, actions);
+    this.controls = { says, chips, states, waiting, people, personChips: new Map(), note, by, part, duties, actions, duty: null, managed: null };
   }
 
-  build() {
-    const touch = name => () => { this.touched.add(name); };
-    // Always open, under its own heading: the dialog that holds it is opened on purpose.
-    const heading = element('h3', { id: 'change-heading', textContent: 'Change where it stands' });
-    const state = element('select', { id: 'topic-state-choice' }, ...STATES.map(value => element('option', { value, textContent: LABELS[value] })));
-    const note = element('input', { id: 'topic-state-note', maxLength: 1024, autocomplete: 'off' });
-    const waiting = element('input', { id: 'topic-state-waiting', autocomplete: 'off', placeholder: 'Names, separated by commas' });
-    const waitingField = element('label', { className: 'field-label' }, 'Waiting on ', waiting);
-    state.onchange = () => { this.touched.add('state'); this.follow(); };
-    note.oninput = touch('note'); waiting.oninput = touch('waiting');
-    const save = element('button', { type: 'button', className: 'primary', textContent: 'Save' });
-    save.onclick = () => this.submit({ state: state.value, note: note.value, ...(state.value === 'waiting' ? { waiting_on: names(waiting.value) } : {}) },
-      ['state', 'note', 'waiting']);
-    const fields = element('div', { className: 'state-fields' },
-      element('label', { className: 'field-label' }, 'State ', state),
-      element('label', { className: 'field-label' }, 'Note ', note), waitingField, save);
-    fields.setAttribute('role', 'group'); fields.setAttribute('aria-labelledby', 'change-heading');
-    const form = element('div', { className: 'state-form' }, heading, fields);
-    this.controls = { form, state, note, waiting, waitingField, save, managed: null };
-    return form;
+  // A line by name, saved on Return or leaving it; Escape puts back what is saved.
+  line(name, props, events = {}) {
+    const input = lineField(props, { touch: () => this.lines[name]?.begin(), save: () => this.saveLine(name), cancel: () => this.cancel(name), ...events });
+    this.lines[name] = new Line(input, () => this.field(name));
+    return input;
   }
 
-  // Renaming and archiving, for whoever organises the outcome and the topic's creator.
+  // What Core holds for a field, { value, fence }, as this panel last read
+  // it: a field of the topic, fenced on its value, or the reader's part,
+  // fenced on its revision.
+  field(name) {
+    if (name !== 'duty') { const value = HELD[name](this.topic); return { value, fence: value }; }
+    const mine = this.mine(), revision = mine?.responsibility_revision;
+    return { value: mine?.responsibility ?? '', fence: Number.isSafeInteger(revision) ? revision : 0 };
+  }
+
+  // Renaming and archiving, for whoever organises the outcome and the topic's creator:
+  // two quiet actions. Rename puts a one-line title in their place.
   manage(manager) {
     const controls = this.controls;
     if (manager && !controls.managed) {
-      const title = element('input', { id: 'topic-rename', autocomplete: 'off' });
-      title.oninput = () => { this.touched.add('title'); };
-      const rename = element('button', { type: 'button', textContent: 'Rename' });
-      rename.onclick = () => this.submit({ title: title.value }, ['title']);
-      const archive = element('button', { type: 'button' });
-      archive.onclick = () => this.submit({ archived: !this.topic.archived }, []);
-      const row = element('div', { className: 'state-fields' }, element('label', { className: 'field-label' }, 'Title ', title), rename, archive);
-      controls.form.append(row);
-      controls.managed = { row, title, rename, archive };
-      this.mark();
+      const unchanged = () => this.lines.title?.input.value === this.topic?.title;
+      const title = this.line('title', { id: 'topic-rename', className: 'rename-line', hidden: true },
+        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!unchanged()) this.saveLine('title'); } });
+      title.setAttribute('aria-label', 'Title');
+      // Leaving the title unchanged puts the actions back, where the focus went.
+      title.addEventListener('blur', () => { if (unchanged() && !title.hidden) this.renaming(false, false); });
+      const rename = element('button', { type: 'button', className: 'text-action', textContent: 'Rename' });
+      rename.onclick = () => this.renaming(true);
+      const archive = element('button', { type: 'button', className: 'text-action' });
+      // Archive says what it does when pressed; done already, there is nothing to send.
+      archive.onclick = () => {
+        const act = this.act(['archived']), archived = !act.fences.archived.value;
+        return this.after(act, () => act.fences.archived.value === archived || this.field('archived').value === archived ? undefined : this.submit(act, { archived }));
+      };
+      controls.actions.replaceChildren(title, rename, archive);
+      controls.actions.hidden = false;
+      controls.managed = { title, rename, archive };
     } else if (!manager && controls.managed) {
-      controls.managed.row.remove(); controls.managed = null; this.touched.delete('title');
+      controls.actions.replaceChildren(); controls.actions.hidden = true; controls.managed = null; delete this.lines.title;
     }
   }
 
-  // The reader's own note, for a participant: only they say what they do here.
+  // Whether the one-line title shows in place of Rename and Archive.
+  // focus: whether the focus moves too, to the title or back to Rename.
+  renaming(on, focus = true) {
+    const managed = this.controls?.managed;
+    if (!managed) return;
+    const had = managed.title === document.activeElement;
+    if (!on) this.lines.title.stop();
+    managed.title.hidden = !on; managed.rename.hidden = managed.archive.hidden = on;
+    if (!focus) return;
+    if (on) { managed.title.focus(); managed.title.select(); }
+    else if (had || document.activeElement === document.body || !document.activeElement) managed.rename.focus();
+  }
+
+  // Escape in a line: what is saved comes back, if the line held anything else.
+  cancel(name) {
+    const line = this.lines[name], dirty = !!line && !line.same();
+    line?.stop();
+    return dirty;
+  }
+
+  // The reader's own part, for a participant: only they say what they do here.
   duty(participant) {
     const controls = this.controls;
-    if (participant && this.sendNote && !controls.duty) {
-      const note = element('input', { id: 'topic-responsibility', maxLength: NOTE_BYTES, autocomplete: 'off', placeholder: 'What you do in this topic' });
-      note.oninput = () => { this.touched.add('duty'); };
-      const save = element('button', { type: 'button', id: 'topic-responsibility-save', textContent: 'Save my part' });
-      save.onclick = () => this.submitNote();
-      const row = element('div', { className: 'state-fields' }, element('label', { className: 'field-label' }, 'You are responsible for ', note), save);
-      controls.form.append(row);
-      controls.duty = { row, note, save };
-      this.mark();
-    } else if (!(participant && this.sendNote) && controls.duty) {
-      controls.duty.row.remove(); controls.duty = null; this.touched.delete('duty');
+    if (participant && !controls.duty) {
+      const heading = element('h3', { id: 'part-heading', textContent: 'Your part' });
+      const note = this.line('duty', { id: 'topic-responsibility', maxLength: NOTE_BYTES, placeholder: 'What you do here…' });
+      note.setAttribute('aria-labelledby', 'part-heading');
+      controls.part.prepend(heading, note);
+      controls.duty = { heading, note };
+    } else if (!participant && controls.duty) {
+      controls.duty.heading.remove(); controls.duty.note.remove(); controls.duty = null; delete this.lines.duty;
     }
   }
 
   mine() { return this.participants?.find(person => person.actor_id === this.reader) ?? null; }
 
-  // The reader's note goes fenced on the revision the page read. Like a state
-  // change, one is out at a time, and the notice says what became of it.
-  async submitNote() {
-    const duty = this.controls?.duty, mine = this.mine();
-    if (!duty || !this.topic || !mine) return;
-    const value = duty.note.value, args = JSON.stringify({ note: value });
-    if (this.out !== null) { if (args !== this.out) this.show(NOT_SENT); return; }
-    if (new TextEncoder().encode(value).length > NOTE_BYTES) { this.show(`A note is at most ${NOTE_BYTES} bytes; shorten it and save again.`); return; }
-    const topic = this.topic;
-    this.out = args; this.show(null); this.mark();
-    let message = null, unconfirmed = false;
+  // What a tap is fenced on: where the topic stands and who it waits on, and
+  // the note when Core will start it afresh after a reopen. A tap keeps any
+  // other note without sending it, so a change to the note never refuses one.
+  stands() {
+    return ['state', 'waiting_on', ...(this.topic.state_message_id ? ['note'] : [])];
+  }
+
+  // An act of the person's, made now: fenced on each named field as the
+  // panel shows it (a line: where its edit began). It waits in pending
+  // until it settles, so what settles before it can move or end it.
+  act(names, fences = Object.fromEntries(names.map(name => [name, this.field(name)]))) {
+    const act = { fences, dead: false };
+    this.pending.push(act);
+    return act;
+  }
+
+  // A tap is a change of its own: lines whose words are no change follow the data again.
+  tapped() {
+    for (const line of Object.values(this.lines)) if (line.start && line.same()) line.stop();
+  }
+
+  // A state chip means the state it names, over the state shown when pressed.
+  choose(state) {
+    this.tapped();
+    const act = this.act(this.stands());
+    return this.after(act, () => state === act.fences.state.value || state === HELD.state(this.topic) ? undefined : this.submit(act, { state, keep_note: true }));
+  }
+
+  // A person chip adds or takes away one person the topic waits on, as the
+  // chip showed when tapped; one already so, on a waiting topic, sends nothing.
+  toggle(actor) {
+    this.tapped();
+    const act = this.act(this.stands()), on = !act.fences.waiting_on.value.includes(actor);
+    const so = (state, list) => state === 'waiting' && list.includes(actor) === on;
+    return this.after(act, () => {
+      const was = act.fences.waiting_on.value;
+      if (so(act.fences.state.value, was) || so(HELD.state(this.topic), HELD.waiting_on(this.topic))) return undefined;
+      return this.submit(act, { state: 'waiting', waiting_on: on ? [...was.filter(id => id !== actor), actor] : was.filter(id => id !== actor), keep_note: true });
+    });
+  }
+
+  // A line's words, weighed when their turn comes, fenced on where the edit
+  // began when the person saved. An edit that ended meanwhile (Escape, or
+  // its words found saved) sends nothing.
+  saveLine(name) {
+    const line = this.lines[name], session = line?.session;
+    const act = this.act([], line?.start ? { [name]: line.start } : {});
+    const turn = this.after(act, () => {
+      const line = this.lines[name], from = act.fences[name];
+      if (!line || !from || !line.start || line.session !== session) return undefined;
+      if (line.same(from)) { line.stop(); return undefined; }
+      return name === 'duty' ? this.submitNote(act, line.input.value) : this.submit(act, { [name]: line.input.value }, name);
+    });
+    return name === 'title' ? turn.then(() => { if (!this.lines.title?.start) this.renaming(false); }) : turn;
+  }
+
+  // Each act waits for the one before it; one that fails outright never
+  // holds up the next, and one overtaken meanwhile sends nothing. Each
+  // returns its turn. An act refused only because the person's own lost
+  // change came first is worked out again, from what that one saved
+  // (answered); each time a read has found one more such change of theirs
+  // saved, and none is added meanwhile, so this ends.
+  after(act, run) {
+    const topic = this.topic, current = () => this.topic?.id === topic?.id;
+    const next = this.queue.then(async () => {
+      try { while (current() && !act.dead && await run() === AGAIN); } finally { this.pending = this.pending.filter(item => item !== act); }
+    });
+    this.queue = next.catch(error => { this.show(error?.message ?? String(error)); });
+    return this.queue;
+  }
+
+  // The reader's part, fenced on its revision.
+  async submitNote(act, words) {
+    if (!this.topic || !this.mine()) return;
+    if (new TextEncoder().encode(words).length > NOTE_BYTES) { this.show(`Your part is at most ${NOTE_BYTES} bytes; shorten it and press Return again.`); return; }
+    const topic = this.topic, fence = act.fences.duty.fence;
+    return this.answered(act, topic, () => this.sendNote(topic, words, fence), { duty: fence }, 'duty', { duty: words }, result => {
+      if (result.actor_id !== this.reader) return null;
+      const participants = this.participants.map(person => person.actor_id === this.reader
+        ? { ...person, responsibility: result.note, responsibility_truncated: false, responsibility_revision: result.responsibility_revision } : person);
+      this.paint(Number.isSafeInteger(result.version) && result.version > this.topic.version ? { ...this.topic, version: result.version } : this.topic, participants);
+      return { duty: { value: result.note, fence: result.responsibility_revision } };
+    }, answer => {
+      const note = answer.participants?.find(person => person.actor_id === this.reader)?.responsibility;
+      return note ? `Your note was not confirmed. You are responsible for: ${note}.` : 'Your note was not confirmed. You have no note in this topic.';
+    }, 'Your note was not confirmed, and reading it again failed too.');
+  }
+
+  // A change to the topic: args, fenced on the act's fields. sent: the line
+  // whose words it sends, if any.
+  submit(act, args, sent = null) {
+    if (!this.topic) return undefined;
+    const topic = this.topic, fields = Object.fromEntries(Object.entries(act.fences).map(([name, seen]) => [name, seen.fence]));
+    // What each field it changes would hold had it committed, by Core's
+    // rules: what it sends; the note, which a state starts afresh after a
+    // reopen; and who it waits on, which only a waiting topic keeps.
+    const left = { ...('state' in args && topic.state_message_id ? { note: '' } : {}), ...('state' in args && args.state !== 'waiting' ? { waiting_on: [] } : {}), ...args };
+    const would = Object.fromEntries(Object.keys(fields).filter(name => name in left && !alike(left[name], fields[name])).map(name => [name, left[name]]));
+    return this.answered(act, topic, () => this.send(topic, args, fields), fields, sent, would, result => {
+      this.advance(result, args);
+      const now = { title: result.title, archived: result.archived, state: result.state, state_note: result.note, waiting_on: result.waiting_on };
+      return Object.fromEntries(Object.keys(fields).map(name => { const value = HELD[name](now); return [name, { value, fence: value }]; }));
+    }, answer => ['The change was not confirmed. It stands as: ', ...this.standing(answer.topic), '.'],
+    'The change was not confirmed, and reading where the topic stands again failed too.');
+  }
+
+  // Core's answer to an act, settled on each field it was fenced on
+  // (fields: by name, what it read). sent: the line whose words went; would:
+  // what each field it changes would hold had it committed. apply(result)
+  // paints a committed answer and gives what Core saved, by field;
+  // unsure(answer) and unread word a change that was not confirmed, after
+  // one read of the topic. Answers AGAIN when the act is to be worked out
+  // again, after the person's own lost change that came first.
+  async answered(act, topic, go, fields, sent, would, apply, unsure, unread) {
+    let message = null, receipt = null, lost = false, again = false;
     try {
-      const receipt = await this.sendNote(topic, value, Number.isSafeInteger(mine.responsibility_revision) ? mine.responsibility_revision : 0);
-      const result = receipt?.result;
-      if (receipt?.status === 'committed' && result?.topic_id === topic.id && result.actor_id === this.reader) {
-        if (this.controls?.duty?.note.value === value) this.touched.delete('duty');
-        const participants = this.participants.map(person => person.actor_id === this.reader
-          ? { ...person, responsibility: result.note, responsibility_truncated: false, responsibility_revision: result.responsibility_revision } : person);
-        if (Number.isSafeInteger(result.version) && result.version > this.topic.version) this.paint({ ...this.topic, version: result.version }, participants);
-        else this.paint(this.topic, participants);
-      } else if (receipt?.error?.code === 'REVISION_CONFLICT') message = NOTE_CHANGED;
-      else if (receipt?.error?.message) message = receipt.error.message;
-      else unconfirmed = true;
+      receipt = await go();
     } catch (error) {
-      message = error.message;
-    } finally {
-      this.out = null; this.mark();
+      message = error.message; lost = true;
     }
-    if (this.topic?.id !== topic.id) return;
-    if (unconfirmed) {
+    if (this.topic?.id !== topic.id) return undefined;
+    const names = Object.keys(fields), refused = receipt?.error?.code === 'REVISION_CONFLICT';
+    const saved = receipt?.status === 'committed' && receipt.result?.topic_id === topic.id ? apply(receipt.result) : null;
+    if (saved) {
+      // Its paint has settled what the person's lost changes left (settle).
+      for (const name of names) if (saved[name]) this.landed(name, fields[name], saved[name], sent === name ? would[name] : undefined);
+    } else if (refused) {
+      // Read once, so whatever came first shows: the person's own lost
+      // change, found saved by this read, which this act then goes again
+      // from; or someone else's newer value, which shows beside the
+      // person's own words before anything of theirs goes over it.
+      const found = this.found, answer = await this.readAgain(topic);
+      const stale = answer ? names.filter(name => !alike(act.fences[name].fence, this.field(name).fence)) : names;
+      again = !!answer && this.found > found && !stale.length;
+      if (!again) {
+        this.overtaken(act, stale.length ? stale : names);
+        if (answer && sent) this.lines[sent]?.refused(act.fences[sent].fence);
+        message = sent ? kept(sent, answer ? this.field(sent).value : null) : CHANGED;
+      }
+    } else if (receipt?.error?.message) {
+      message = receipt.error.message;
+    } else {
+      // Read once, before the next act is weighed, so what this one saved is where its fields begin.
+      for (const name of Object.keys(would)) (this.lost[name] ??= []).push({ fence: fields[name], would: would[name] });
       const answer = await this.readAgain(topic);
-      const note = answer ? answer.participants?.find(person => person.actor_id === this.reader)?.responsibility : undefined;
-      message = !answer ? 'Your note was not confirmed, and reading it again failed too.'
-        : note ? `Your note was not confirmed. You are responsible for: ${note}.` : 'Your note was not confirmed. You have no note in this topic.';
+      if (!lost) message = answer ? unsure(answer) : unread;
     }
-    if (message) this.show(message);
+    if (!again) {
+      if (!saved && this.lines[sent] && !this.lines[sent].same()) this.attention();
+      // A refusal over newer words stays said, past later changes, until that line's words are saved or put back.
+      if (sent && refused) this.kept = { name: sent, message };
+      else if (this.kept && (this.kept.name === sent || this.lines[this.kept.name]?.same() !== false)) this.kept = null;
+    }
+    this.show(message ?? this.kept?.message ?? 'Saved', !message && !this.kept);
     this.refresh();
+    return again ? AGAIN : undefined;
   }
 
-  // Each untouched field shows the topic as it stands. The note and who it
-  // waits on belong to the topic's state, so another chosen state starts both empty.
-  follow() {
-    const { state, note, waiting, waitingField, managed, duty } = this.controls, topic = this.topic, touched = this.touched;
-    if (duty && !touched.has('duty')) duty.note.value = this.mine()?.responsibility ?? '';
-    if (!touched.has('state')) state.value = known(topic.state);
-    const current = state.value === known(topic.state);
-    if (!touched.has('note')) note.value = current ? topic.state_note ?? '' : '';
-    if (!touched.has('waiting')) waiting.value = current ? (topic.waiting_on ?? []).join(', ') : '';
-    waitingField.hidden = state.value !== 'waiting';
-    if (managed) {
-      if (!touched.has('title')) managed.title.value = topic.title;
-      managed.archive.textContent = topic.archived ? 'Unarchive' : 'Archive';
+  // The person's own change to a field, fenced on from, is known saved as
+  // to ({ value, fence }): where its line's edit began, and every act made
+  // from that same value, go on from what Core saved. words: what it sent
+  // from that line, if anything.
+  landed(name, from, to, words) {
+    this.found += 1;
+    this.lines[name]?.landed(from, to, words);
+    for (const act of this.pending) if (act.fences[name] && alike(act.fences[name].fence, from)) act.fences[name] = to;
+  }
+
+  // A refusal of act, said now, over someone else's change to the stale
+  // fields: every act after it fenced on the same value of one of those was
+  // made before the person saw the newer value, so it is never sent.
+  overtaken(act, stale) {
+    for (const later of this.pending.slice(this.pending.indexOf(act) + 1)) {
+      if (stale.some(name => later.fences[name] && alike(later.fences[name].fence, act.fences[name].fence))) later.dead = true;
     }
   }
 
-  // message: words, or a list of parts holding times.
-  show(message) {
+  // What fresh data says of each change of the person's whose answer was
+  // lost: still unsaved while the field holds what it read; found saved when
+  // the field holds what it would have left; otherwise past, as someone
+  // else's change has come since. Either way the record goes.
+  settle() {
+    for (const [name, entries] of Object.entries(this.lost)) {
+      const now = this.field(name), waiting = entries.filter(entry => alike(now.fence, entry.fence));
+      const found = entries.find(entry => !alike(now.fence, entry.fence) && alike(now.value, entry.would));
+      if (waiting.length) this.lost[name] = waiting; else delete this.lost[name];
+      if (found) this.landed(name, found.fence, now, found.would);
+    }
+  }
+
+  // Each line nobody is editing shows the topic as it stands; the chips always do.
+  follow() {
+    const controls = this.controls, topic = this.topic, reader = this.reader;
+    this.settle();
+    for (const line of Object.values(this.lines)) line.follow();
+    const state = known(topic.state);
+    if (controls.says) {
+      for (const [value, button] of controls.states) lit(button, value === state);
+      this.people(state === 'waiting');
+    } else {
+      const mark = element('span', { className: 'choice-chip', textContent: stateLabel(topic, reader) });
+      mark.setAttribute('aria-pressed', 'true');
+      controls.chips.replaceChildren(mark);
+      controls.note.textContent = topic.state_note ?? ''; controls.note.hidden = !topic.state_note;
+    }
+    const by = topic.state_by ? [`Set by ${named(topic.state_by, reader)}`, ...whole(', ', topic.state_ms)] : [];
+    const asks = askParts(topic, reader).map(({ words, since }) => [words, ...whole(', since ', since)]);
+    const said = joined([by, ...asks, topic.archived ? ['Archived'] : []], ' · ');
+    controls.by.replaceChildren(...said); controls.by.hidden = !said.length;
+    const duties = responsibilities(this.participants, reader).filter(({ who }) => !(controls.duty && who === 'you'));
+    controls.duties.replaceChildren(...duties.map(({ who, note }) => element('li', {}, element('strong', { textContent: who }), ` ${note}`)));
+    controls.duties.hidden = !duties.length;
+    if (controls.managed) controls.managed.archive.textContent = topic.archived ? 'Unarchive' : 'Archive';
+  }
+
+  // Who a waiting topic can wait on: its people, the reader as "you" first,
+  // and anyone it already waits on. The chips are kept by person, so the one
+  // just tapped keeps its focus.
+  people(show) {
+    const { waiting, people, personChips } = this.controls, topic = this.topic, reader = this.reader;
+    waiting.hidden = !show;
+    if (!show) return;
+    const said = Array.isArray(topic.waiting_on) ? topic.waiting_on : [];
+    const ids = [...new Set([...this.participants.filter(person => typeof person?.actor_id === 'string' && person.active !== 0 && person.active !== false)
+      .map(person => person.actor_id), ...said])];
+    const order = [...ids.filter(id => id === reader), ...ids.filter(id => id !== reader)];
+    for (const id of order) if (!personChips.has(id)) personChips.set(id, chip(named(id, reader), () => this.toggle(id)));
+    for (const [id, button] of personChips) if (!order.includes(id)) { button.remove(); personChips.delete(id); }
+    if (order.some((id, index) => people.children[index] !== personChips.get(id))) people.append(...order.map(id => personChips.get(id)));
+    for (const id of order) lit(personChips.get(id), said.includes(id));
+  }
+
+  // message: words, or a list of parts holding times. quiet: a plain
+  // "Saved", not a warning.
+  show(message, quiet = false) {
     if (Array.isArray(message)) this.notice.replaceChildren(...message); else this.notice.textContent = message ?? '';
     this.notice.hidden = !message;
+    this.notice.classList.toggle('quiet', quiet);
   }
 
   // One read of the topic as it stands, never a second send. The panel keeps
@@ -338,64 +632,19 @@ export class TopicStatePanel {
       ...(topic.state_by ? [` — ${named(topic.state_by, this.reader)}`, ...at(', ', topic.state_ms)] : [])];
   }
 
-  // While a change is out, the buttons say they are unavailable. They are not
-  // disabled, so the one pressed keeps its focus.
-  mark() {
-    const { save, managed, duty } = this.controls ?? {};
-    for (const button of [save, managed?.rename, managed?.archive, duty?.save]) {
-      if (!button) continue;
-      if (this.out !== null) button.setAttribute('aria-disabled', 'true'); else button.removeAttribute('aria-disabled');
-    }
-  }
-
-  // fields: the touched fields this change saves. Once it commits, each that
-  // still holds what was sent follows the data again. Another change pressed
-  // while one is out is not sent, and the notice says so; the same change
-  // pressed twice is the one already on its way.
-  async submit(args, fields) {
-    if (!this.topic) return;
-    if (this.out !== null) { if (JSON.stringify(args) !== this.out) this.show(NOT_SENT); return; }
-    const topic = this.topic, field = name => name === 'title' ? this.controls?.managed?.title : this.controls?.[name];
-    const sent = fields.map(name => [name, field(name)?.value]);
-    this.out = JSON.stringify(args); this.show(null); this.mark();
-    let message = null, unconfirmed = false;
-    try {
-      const receipt = await this.send(topic, args);
-      if (receipt?.status === 'committed') {
-        for (const [name, value] of sent) if (field(name)?.value === value) this.touched.delete(name);
-        this.advance(receipt.result);
-        // Fresh data newer than this answer may already be painted; the
-        // fields this change saved follow it.
-        if (this.controls) this.follow();
-      } else if (receipt?.error?.code === 'REVISION_CONFLICT') message = CHANGED;
-      else if (receipt?.error?.message) message = receipt.error.message;
-      else unconfirmed = true;
-    } catch (error) {
-      message = error.message;
-    } finally {
-      this.out = null; this.mark();
-    }
-    if (this.topic?.id !== topic.id) return;
-    if (unconfirmed) {
-      const answer = await this.readAgain(topic);
-      message = answer ? ['The change was not confirmed. It stands as: ', ...this.standing(answer.topic), '.']
-        : 'The change was not confirmed, and reading where the topic stands again failed too.';
-    }
-    if (message) this.show(message);
-    this.refresh();
-  }
-
   // Core's answer to a committed change is the topic as it now stands: paint
-  // it, so the next change sends the version this one made.
-  advance(result) {
-    if (result?.topic_id !== this.topic?.id || !Number.isSafeInteger(result.version)) return;
+  // it, so the next change reads what this one made.
+  advance(result, args) {
+    if (!Number.isSafeInteger(result.version)) return;
     const { version, title, archived, state, note, waiting_on, state_by, state_ms } = result;
     // The answer says what was said; the open asks are as the page last read them.
-    this.paint({ ...this.topic, version, title, archived, state, state_note: note, waiting_on, state_by, state_ms });
+    // A state someone said is no longer a message's.
+    const said = ['state', 'note', 'waiting_on'].some(name => name in args) ? { state_message_id: null } : {};
+    this.paint({ ...this.topic, version, title, archived, state, state_note: note, waiting_on, state_by, state_ms, ...said });
   }
 
   hide() {
-    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.touched.clear(); this.show(null);
+    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.lines = {}; this.kept = null; this.lost = {}; this.pending = []; this.show(null);
   }
 }
 

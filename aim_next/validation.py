@@ -28,7 +28,7 @@ COMMANDS = {
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
-            "participation.set": {"topic_revision"}, "topic.update": {"topic_revision"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
+            "participation.set": {"topic_revision"}, "topic.update": {"topic_revision", "topic_fields"}, "message.send": set(), "topic.create_and_send": set(), "delivery.ack": set(),
             "message.post": set(), "topic.read_through": set(),
             "memory.create": {"item_revision"}, "memory.revise": {"item_revision"}, "memory.read": set(),
             "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
@@ -38,7 +38,7 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "message.mark": {"mark_revision"}, "color.set": {"color_revision"},
             "responsibility.set": {"responsibility_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
-                     "submission.prepare": "draft_revision", "participation.set": "topic_revision", "topic.update": "topic_revision",
+                     "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision",
                      "workspace.member_set": "workspace_revision", "workspace.owner_set": "workspace_revision",
@@ -104,7 +104,8 @@ def _command_envelope(envelope):
     if required is not None and required not in expected:
         raise Refusal("INVALID_ARGUMENT", "An explicit %s is required" % required)
     for key, value in expected.items():
-        if key == "authority":
+        # topic.update may be fenced on field values instead (topic_state._fenced checks them).
+        if key == "authority" or (kind, key) == ("topic.update", "topic_fields"):
             continue
         if type(value) is not int or value < 0 or value > 9223372036854775807:
             raise Refusal("INVALID_ARGUMENT", "Expected revisions must be nonnegative integers")

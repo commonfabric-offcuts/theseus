@@ -97,6 +97,25 @@ ACTIVITY_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM topics WHERE state_message_id 
 REOPENED_NOTE = "Reopened by a new message"
 
 
+def _fenced(expected, version, held):
+    """Refuse a topic update made from what has changed since its sender read it.
+
+    It is fenced on the topic's version (`topic_revision`), or on the value the
+    sender read of each field it names (`topic_fields`, keyed as the update's
+    args), so a change to another field never refuses it. `held` is each
+    field as the topic holds it now."""
+    fields = expected.get("topic_fields")
+    if fields is None:
+        return _revision(expected, "topic_revision", version)
+    if "topic_revision" in expected or not isinstance(fields, dict) or not fields or not set(fields) <= set(held):
+        raise Refusal("INVALID_ARGUMENT", "A topic update is fenced on its revision or on fields it names: " + ", ".join(held))
+    for name, seen in fields.items():
+        if name == "waiting_on" and isinstance(seen, list) and all(isinstance(member, str) for member in seen):
+            seen = sorted(seen)
+        if type(seen) is not type(held[name]) or seen != held[name]:
+            raise Refusal("REVISION_CONFLICT", "The topic's %s changed since it was read; nothing was changed" % name, {"topic_revision": version})
+
+
 def order_cursor(done, activity_ms, topic_id):
     """The position of a topic in its outcome's list: "DONE:ACTIVITY_MS:ID"."""
     return "%d:%d:%s" % (int(bool(done)), activity_ms, topic_id)
@@ -117,10 +136,15 @@ class TopicState:
         if set(target) != {"topic_id"}:
             raise Refusal("INVALID_ARGUMENT", "A topic update names only its topic")
         topic = self._topic(db, actor, target["topic_id"])
-        _revision(envelope.get("expected", {}), "topic_revision", topic["version"])
+        old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? AND said=1 ORDER BY actor_id", (topic["id"],))]
+        _fenced(envelope.get("expected", {}), topic["version"], {"title": topic["title"], "archived": bool(topic["archived"]),
+                "state": topic["state"], "note": topic["state_note"], "waiting_on": old_waiting})
         args = envelope.get("args", {})
-        if not args or not set(args) <= {"title", "archived", "state", "note", "waiting_on"}:
+        if not args or not set(args) <= {"title", "archived", "state", "note", "waiting_on", "keep_note"}:
             raise Refusal("INVALID_ARGUMENT", "A topic update changes its title, whether it is archived, its state, note or who it waits on")
+        keep = "keep_note" in args
+        if keep and (args["keep_note"] is not True or "note" in args or "state" not in args):
+            raise Refusal("INVALID_ARGUMENT", "keep_note is true, with a state and without a note")
         manager = organises(topic, actor) or actor == topic["creator_id"]
         if "title" in args:
             if not manager:
@@ -136,7 +160,6 @@ class TopicState:
                 raise Refusal("INVALID_ARGUMENT", "Archived is true or false")
             db.execute("UPDATE topics SET archived=? WHERE id=?", (int(args["archived"]), topic["id"]))
             db.execute("UPDATE topic_waiting SET archived=? WHERE topic_id=?", (int(args["archived"]), topic["id"]))
-        old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? AND said=1 ORDER BY actor_id", (topic["id"],))]
         if args.keys() & {"state", "note", "waiting_on"}:
             if not self._may_say(db, topic, actor):
                 raise Refusal("FORBIDDEN", "Only the topic's participants, those who have written in it, its creator or the outcome's owner or coordinator "
@@ -144,9 +167,9 @@ class TopicState:
             state = args.get("state", topic["state"])
             if state not in STATES:
                 raise Refusal("INVALID_ARGUMENT", "A topic's state is one of: " + ", ".join(STATES))
-            # A new state starts with its own note unless one is given; so does
-            # any word after a reopen, whose note was the message's, not said.
-            said = state == topic["state"] and topic["state_message_id"] is None
+            # A new state starts with its own note unless one is given or kept;
+            # so does any word after a reopen, whose note was the message's, not said.
+            said = (state == topic["state"] or keep) and topic["state_message_id"] is None
             note = args.get("note", topic["state_note"] if said else "")
             note = _body(note)
             if len(note.encode("utf-8")) > NOTE_UTF8_BYTES:

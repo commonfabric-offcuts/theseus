@@ -697,9 +697,10 @@ test('a message sent by name opens where it can even when the page never started
 const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
 // A person in the topic's people: one pill, at the bottom of the page.
 const isPill = node => String(node.className ?? '').split(' ').includes('person-pill');
-// A small stand-in for Core: participation.set, workspace.member_set and
-// topic.update check the revision as Core does, apply the change and advance
-// it. A topic.update answers with the topic as it now stands, as Core does.
+// A small stand-in for Core: participation.set and workspace.member_set check
+// the revision as Core does, topic.update each field it is fenced on; each
+// applies the change and advances the version. A topic.update answers with the
+// topic as it now stands, as Core does.
 const pickerApi = (f, { topic = {}, workspace = {} } = {}) => {
   const state = f.pickers = {
     topic: { ...f.topic, version: 3, owner_id: 'fixture-person', creator_id: 'other', ...topic },
@@ -721,10 +722,14 @@ const pickerApi = (f, { topic = {}, workspace = {} } = {}) => {
     f.calls.push({ kind: envelope.kind, envelope });
     const [record, field, list] = envelope.kind === 'participation.set' ? [state.topic, 'topic_revision', 'participants']
       : envelope.kind === 'topic.update' ? [state.topic, 'topic_revision', null] : [state.workspace, 'workspace_revision', 'members'];
-    if (envelope.expected[field] !== record.version)
+    const held = { title: record.title, archived: record.archived ?? false, state: record.state ?? 'active', note: record.state_note ?? '', waiting_on: record.waiting_on ?? [] };
+    const fenced = envelope.kind === 'topic.update' ? Object.entries(envelope.expected.topic_fields).every(([name, seen]) => JSON.stringify(seen) === JSON.stringify(held[name]))
+      : envelope.expected[field] === record.version;
+    if (!fenced)
       return { status: 'rejected', error: { code: 'REVISION_CONFLICT', message: 'Writing changed; preserve this attempt and reconcile', current_versions: { [field]: record.version } } };
     if (envelope.kind === 'topic.update') {
-      const { title = record.title, archived = record.archived ?? false, state: said = record.state ?? 'active', note = said === record.state ? record.state_note ?? '' : '', waiting_on = [] } = envelope.args;
+      const { title = record.title, archived = record.archived ?? false, state: said = record.state ?? 'active', waiting_on = [] } = envelope.args;
+      const note = envelope.args.note ?? (said === record.state || envelope.args.keep_note ? record.state_note ?? '' : '');
       Object.assign(record, { title, archived, state: said, state_note: note, waiting_on, state_by: 'fixture-person', state_ms: null, version: record.version + 1 });
       return { status: 'committed', result: { topic_id: record.id, version: record.version, title, archived, state: said, note, waiting_on, state_by: 'fixture-person', state_ms: null } };
     }
@@ -1079,37 +1084,47 @@ test('a reply is offered only to an author a message would reach', () => {
 // Every element under a node; text children are skipped.
 const deep = node => node.children.flatMap(child => typeof child === 'object' ? [child, ...deep(child)] : []);
 
-// Where a topic stands, wired into the page: the panel's form sends the
-// topic's current version, a commit asks for fresh views, and a fresh topic
-// view repaints the panel.
-test('a topic page says where it stands, sends its change at the current version, and repaints from fresh data', async () => {
+// Where a topic stands, wired into the page: a tapped chip saves at once at
+// the topic's current version, a commit asks for fresh views, and a fresh
+// topic view repaints the panel.
+test('a topic page says where it stands, saves a tapped state or person fenced on where it stands, and repaints from fresh data', async () => {
   const f = fixture();
   pickerApi(f);
   await f.initialize();
   const panel = f.get('topic-state');
-  const find = predicate => deep(panel).find(predicate);
+  const all = () => deep(panel), find = predicate => all().find(predicate);
+  const classes = node => String(node.className ?? '').split(' ');
+  // The four state chips, by the one that is lit.
+  const lit = () => all().filter(node => node.dataset?.state && node['aria-pressed'] === 'true').map(node => node.textContent);
+  const chip = words => find(node => classes(node).includes('choice-chip') && node.textContent === words);
+  const notice = () => find(node => classes(node).includes('notice'));
   assert.equal(panel.hidden, false);
-  assert.equal(find(node => node.className === 'topic-state')?.textContent, 'Active');
-  const choice = find(node => node.id === 'topic-state-choice'), save = find(node => node.textContent === 'Save');
-  choice.value = 'review'; choice.onchange();
+  assert.deepEqual(lit(), ['Active'], 'the state that holds is the lit chip');
+  assert.equal(find(node => node.textContent === 'Save'), undefined, 'there is no Save to press');
   const requests = () => f.events.filter(([kind]) => kind === 'request').length, before = requests();
-  await save.onclick();
+  await chip('Ready for review').onclick();
   // Envelopes come from the page's realm; compare them as data.
-  const sent = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'topic.update').map(call => [call.envelope.target, call.envelope.expected.topic_revision, call.envelope.args])));
-  assert.deepEqual(sent(), [[{ topic_id: 't1' }, 3, { state: 'review', note: '' }]]);
+  const sent = () => JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === 'topic.update').map(call => [call.envelope.target, call.envelope.expected.topic_fields, call.envelope.args])));
+  const stands = (state, waiting_on = []) => ({ state, waiting_on });
+  assert.deepEqual(sent(), [[{ topic_id: 't1' }, stands('active'), { state: 'review', keep_note: true }]], 'one tap, one change, fenced on where it stands');
   assert.deepEqual([f.pickers.topic.state, f.pickers.topic.version], ['review', 4], 'Core took the change');
-  assert.equal(find(node => node.className === 'notice')?.hidden, true, 'no refusal is shown');
-  assert.equal(find(node => node.className === 'topic-state')?.textContent, 'Ready for review', 'Core\'s answer is painted before any fresh read');
+  assert.deepEqual([notice()?.hidden, notice()?.textContent, classes(notice()).includes('quiet')], [false, 'Saved', true], 'a quiet Saved, not a refusal');
+  assert.deepEqual(lit(), ['Ready for review'], 'Core\'s answer is painted before any fresh read');
   assert.equal(requests(), before + 1, 'a committed change asks for fresh views');
-  // The next change sends the version the first one made.
-  choice.value = 'waiting'; choice.onchange();
-  await save.onclick();
-  assert.deepEqual(sent()[1], [{ topic_id: 't1' }, 4, { state: 'waiting', note: '', waiting_on: [] }]);
-  assert.equal(f.pickers.topic.version, 5);
-  Object.assign(f.views, { topic: { ...f.views.topic, version: 6, state: 'done', state_note: 'Shipped' }, messages: new Map() });
+  // The next change is fenced on what the first one made; Waiting then
+  // offers the topic's people, the reader first as you.
+  await chip('Waiting').onclick();
+  assert.deepEqual(sent()[1], [{ topic_id: 't1' }, stands('review'), { state: 'waiting', keep_note: true }]);
+  const people = find(node => classes(node).includes('people-chips'));
+  assert.deepEqual([people.parent.hidden, people.children.map(node => node.textContent)], [false, ['you', 'fable']]);
+  await chip('fable').onclick();
+  assert.deepEqual(sent()[2], [{ topic_id: 't1' }, stands('waiting'), { state: 'waiting', waiting_on: ['fable'], keep_note: true }]);
+  assert.deepEqual([f.pickers.topic.version, chip('fable')['aria-pressed'], chip('you')['aria-pressed']], [6, 'true', 'false']);
+  Object.assign(f.views, { topic: { ...f.views.topic, version: 7, state: 'done', state_note: 'Shipped', waiting_on: [] }, messages: new Map() });
   f.paintViews('topic');
-  assert.equal(find(node => node.className === 'topic-state')?.textContent, 'Done', 'a fresh topic view repaints the panel');
-  assert.equal(find(node => node.className === 'state-note')?.textContent, 'Shipped');
+  assert.deepEqual(lit(), ['Done'], 'a fresh topic view repaints the panel');
+  assert.equal(find(node => node.id === 'topic-state-note')?.value, 'Shipped');
+  assert.equal(people.parent.hidden, true, 'a done topic offers nobody to wait on');
 });
 
 // Item 86: every outcome's questions are listed on the Outcomes home only; an

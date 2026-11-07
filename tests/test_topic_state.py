@@ -296,3 +296,61 @@ class TopicStateCase(fixtures.ReaderCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FieldFenceCase(TopicStateCase):
+    """A page sets one field in place, fenced on what it read of that field
+    (expected.topic_fields), so a change to another field never refuses it;
+    a tap on a state keeps the note someone said (keep_note)."""
+
+    def fenced(self, args, fields, actor="owner"):
+        return self.command("topic.update", args, target={"topic_id": "t1"}, expected={"topic_fields": fields}, actor=actor)
+
+    def test_a_field_fenced_on_what_was_read_is_saved_over_a_change_to_another_field_and_refused_over_a_change_to_itself(self):
+        self.committed(self.update({"state": "waiting", "note": "Old", "waiting_on": ["owner"]}, actor="agent-a"))
+        # Someone else renames it and changes who it waits on: the note, read as Old, still saves.
+        self.committed(self.update({"title": "Renamed elsewhere"}))
+        self.committed(self.update({"waiting_on": ["agent-a", "owner"]}, actor="agent-a"))
+        before = self.topic()
+        result = self.committed(self.fenced({"note": "Mine"}, {"note": "Old"}, actor="agent-a"))
+        self.assertEqual((result["version"], result["note"], result["title"], result["waiting_on"]),
+                         (before["version"] + 1, "Mine", "Renamed elsewhere", ["agent-a", "owner"]))
+        # Words over a note that changed since it was read are refused, and nothing changes.
+        before = self.topic()
+        receipt = self.fenced({"note": "Late"}, {"note": "Old"}, actor="agent-a")
+        self.rejected(receipt, "REVISION_CONFLICT")
+        self.assertEqual(receipt["error"]["current_versions"], {"topic_revision": before["version"]})
+        self.assertEqual(self.topic(), before)
+        # Each field compares as the topic holds it: who it waits on as a set, archived as true or false.
+        self.committed(self.fenced({"waiting_on": ["owner"]}, {"waiting_on": ["owner", "agent-a"], "state": "waiting"}, actor="agent-a"))
+        self.rejected(self.fenced({"archived": True}, {"archived": 0}), "REVISION_CONFLICT")
+        self.rejected(self.fenced({"title": "Again"}, {"title": "Naming"}), "REVISION_CONFLICT")
+        self.committed(self.fenced({"title": "Again", "archived": True}, {"title": "Renamed elsewhere", "archived": False}))
+        self.assertEqual((self.topic()["title"], self.topic()["archived"]), ("Again", True))
+
+    def test_a_fence_names_known_fields_or_the_revision_never_both_nor_neither(self):
+        before = self.topic()
+        for expected in ({"topic_fields": {}}, {"topic_fields": {"priority": 1}}, {"topic_fields": ["note"]},
+                         {"topic_fields": {"note": ""}, "topic_revision": before["version"]}, {}):
+            with self.subTest(expected=expected):
+                self.rejected(self.command("topic.update", {"note": "x"}, target={"topic_id": "t1"}, expected=expected), "INVALID_ARGUMENT")
+        self.assertEqual(self.topic(), before)
+
+    def test_a_tap_on_a_new_state_keeps_the_note_someone_said_and_never_a_reopen_note(self):
+        self.committed(self.update({"state": "waiting", "note": "Which name?", "waiting_on": ["owner"]}, actor="agent-a"))
+        result = self.committed(self.fenced({"state": "review", "keep_note": True}, {"state": "waiting"}, actor="agent-a"))
+        self.assertEqual((result["state"], result["note"], result["waiting_on"]), ("review", "Which name?", []))
+        # Without keep_note, a new state still starts with its own note, as agents say it.
+        self.committed(self.update({"state": "done"}, actor="agent-a"))
+        self.assertEqual(self.topic()["state_note"], "")
+        self.committed(self.update({"state": "done", "note": "Shipped"}, actor="agent-a"))
+        self.send("One more thing")
+        self.assertEqual((self.topic()["state"], self.topic()["state_note"]), ("active", "Reopened by a new message"))
+        result = self.committed(self.fenced({"state": "review", "keep_note": True}, {"state": "active", "note": "Reopened by a new message"}, actor="agent-a"))
+        self.assertEqual((result["state"], result["note"], self.topic()["state_message_id"]), ("review", "", None))
+        before = self.topic()
+        for args in ({"state": "done", "keep_note": True, "note": "x"}, {"keep_note": True}, {"state": "done", "keep_note": False},
+                     {"state": "done", "keep_note": 1}):
+            with self.subTest(args=args):
+                self.rejected(self.fenced(args, {"state": "review"}, actor="agent-a"), "INVALID_ARGUMENT")
+        self.assertEqual(self.topic(), before)

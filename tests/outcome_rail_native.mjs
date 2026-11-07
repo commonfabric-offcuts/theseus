@@ -205,21 +205,24 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(text)})`), 'the write shows');
     assert.equal(await loaded(p), before, 'with no reload');
     // A state change whose answer is lost: Core took it, the page was not told.
-    // The state form is in Topic settings, which the gear beside the title opens.
+    // Where it stands is in Topic settings, which the gear beside the title
+    // opens: the note saves on Return, and the chip tapped after it is lost.
     await p.evaluate('scrollTo(0,0)');
     await p.point('#settings-open');
     await until(() => p.evaluate("document.querySelector('#topic-settings').open"), 'Topic settings is open');
-    await p.evaluate("(s=>{s.value='review';s.dispatchEvent(new Event('change'))})(document.querySelector('#topic-state-choice'))");
-    await p.point('#topic-state-note'); await p.send('Input.insertText', { text: 'Ready for a read' });
+    await p.point('#topic-state-note'); await p.send('Input.insertText', { text: 'Ready for a read' }); await p.key('Enter');
+    await until(async () => (await view('topic', { topic_id: 't1' })).topic.state_note === 'Ready for a read', 'the note is saved');
+    await until(() => p.evaluate("document.querySelector('#topic-state > p.notice')?.textContent === 'Saved'"), 'and said to be');
+    const sentBefore = p.calls.filter(c => c.payload?.kind === 'topic.update').length;
     p.intercept(payload => payload?.kind === 'topic.update');
-    await p.point('#topic-state button.primary');
+    await p.point('#topic-state [data-state=review]');
     const held = await until(() => p.held.find(h => h.payload?.kind === 'topic.update'), 'the state change reached Core');
     p.intercept(null);
     await p.send('Fetch.fulfillRequest', { requestId: held.event.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
       body: Buffer.from(JSON.stringify({ instance_id: facts.instance_id, status: 'unknown' })).toString('base64') });
     const notice = await until(async () => { const words = await p.evaluate("document.querySelector('#topic-state > p.notice')?.textContent ?? ''"); return words.startsWith('The change was not confirmed') && words; }, 'the panel says the change was not confirmed');
     assert.match(notice, new RegExp('^The change was not confirmed\\. It stands as: Ready for review · Ready for a read — you, (Yesterday )?\\d{1,2}:\\d{2} (AM|PM)\\.$'), 'and where the topic stands, as read again: ' + notice);
-    assert.equal(p.calls.filter(c => c.payload?.kind === 'topic.update').length, 1, 'the change is never sent again');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'topic.update').length, sentBefore + 1, 'the change is never sent again');
     assert.equal((await view('topic', { topic_id: 't1' })).topic.state, 'review', 'Core holds the change the page reports');
     await shot(p, 'rail-state-unconfirmed');
     assert.deepEqual(p.errors, []);
