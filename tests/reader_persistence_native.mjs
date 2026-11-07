@@ -187,7 +187,15 @@ try {
     // A pointer action lands on its target: whatever covers the point (a
     // dialog still closing, a backdrop, a neighbour) fails here by name rather
     // than as a later wait. A check that means to press a covered target says so.
+    // A target still moving (a row painted above it, the Reader giving the
+    // reply more room, a dialog settling) is pressed once it is where it was
+    // when last looked at, as a person aims at a still target.
+    const still = selector => { let last; return until(async () => {
+      const now = await box(selector), same = Boolean(last) && ['x', 'y', 'width', 'height'].every(key => now?.[key] === last[key]);
+      last = now; return !now || same;
+    }, `${selector} holds its place`); };
     const point = async (selector, kind = 'click', { covered = false } = {}) => {
+      await still(selector);
       const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
       const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);
       assert.ok(x >= 0 && y >= 0 && x < bounds.viewportWidth && y < bounds.viewportHeight, `target ${selector} is inside the viewport before a native pointer action`);
