@@ -156,3 +156,61 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created):
     return {"light": _light("quiet", {"kind": "since", "ms": last["ms"] if last else None}),
             "lead": {"kind": "topics_quiet"},
             "facts": [dict(last, kind="last_activity")] if last else [], "also": [stalled]}
+
+
+# ---------------------------------------------------------------------------
+# The pipeline (item 84; docs/pipeline.md): an item's glyph, a stage's words
+# and a stage's typical time, each a function of values.
+
+# How far back "typical" looks, and how few past visits are too few (D2).
+TYPICAL_WINDOW = 20
+TYPICAL_MIN = 3
+TYPICAL_LOOSE_BELOW = 5
+# How many of an item's sources a page carries; the record shows them all.
+SOURCES_SHOWN = 32
+# How many stages one outcome may define.
+STAGES_MAX = 16
+
+GLYPHS = ("building", "next", "idle", "decide", "shipped", "dropped")
+
+
+def glyph(section, shipped, open_asks, in_stage):
+    """An item's glyph for one reader (6.1): dropped, shipped, a question to the
+    reader about it, being built (its piece is in a stage), next, or idle."""
+    if section == "dropped":
+        return "dropped"
+    if shipped:
+        return "shipped"
+    if open_asks:
+        return "decide"
+    if in_stage:
+        return "building"
+    if section == "next":
+        return "next"
+    return "idle"
+
+
+def stage_name(name, rounds, round_number):
+    """A stage as a person reads it: "Build", "Build, round 2", "Review, round 1" (6.2)."""
+    if rounds == "together":
+        return "%s, round %d" % (name, round_number)
+    if rounds == "split" and round_number > 1:
+        return "%s, round %d" % (name, round_number)
+    return name
+
+
+def median(values):
+    """The median; of an even count, the mean of the middle two, rounded to the minute."""
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return int(round((ordered[middle - 1] + ordered[middle]) / 2.0 / 60000.0)) * 60000
+
+
+def typical(durations_newest_first, basis):
+    """A stage's typical time from the newest finished visits (6.3, D2)."""
+    window = list(durations_newest_first[:TYPICAL_WINDOW])
+    if len(window) < TYPICAL_MIN:
+        return {"too_few": len(window), "min": TYPICAL_MIN}
+    return {"ms": median(window), "of": len(window), "basis": basis, "loose": len(window) < TYPICAL_LOOSE_BELOW}

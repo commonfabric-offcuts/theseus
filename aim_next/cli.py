@@ -28,6 +28,9 @@ class UsageError(ValueError):
     pass
 
 
+from .cli_outcome import PipelineVerbs, register as register_pipeline
+
+
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         # Do not echo arbitrary arguments or request contents in diagnostics.
@@ -173,7 +176,12 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] "
-         "| attachment ATTACHMENT --message MESSAGE --out FILE}")
+         "| attachment ATTACHMENT --message MESSAGE --out FILE "
+         "| pipeline OUTCOME [--section S] | item OUTCOME N | pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
+         "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
+         "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION | --undo EVENT) "
+         "| piece OUTCOME N,M --topic TOPIC --stage S | enter-stage PIECE STAGE [--round N] [--left approved|sent-back|passed|held] "
+         "| stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
@@ -272,6 +280,8 @@ def _parser():
     attachment.add_argument("attachment")
     attachment.add_argument("--message", required=True)
     attachment.add_argument("--out", required=True)
+    post.add_argument("--subject")
+    register_pipeline(verb)
     return parser
 
 
@@ -398,7 +408,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent:
+class Agent(PipelineVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):
@@ -848,6 +858,9 @@ class Agent:
             args["reply_to"] = options.reply_to
         if options.part:
             args["part"] = True
+        if options.subject:
+            # --subject item:92,item:31: what the post is about, written with it.
+            args["subjects"] = [dict(zip(("kind", "ref"), part.strip().split(":", 1))) for part in options.subject.split(",") if part.strip()]
         result = self.command("message.post", {"topic_id": options.topic}, args)
         self.out.plain("posted %s in %s (%s deliveries queued)" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"]))
 

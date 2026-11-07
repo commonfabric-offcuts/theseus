@@ -11,7 +11,6 @@ the window for when Theseus last saw something, which stops as soon as no
 older topic can hold anything newer, or after LAST_SCAN_MAX topics.
 
 Seams until the rest of release 21 lands, each one place:
-- the pipeline (item 84) is off for every outcome (_pipeline_facts);
 - the kind (D41) is KIND_BEFORE_R21, nothing is Reached (D42) and no outcome
   has checks (item 14), so Done never shows (_done_facts);
 - no outcome has a start record (D22), so "Started by" names the owner
@@ -120,9 +119,9 @@ class OutcomeLight:
                 last = None
         return talk, waits, has_topics, last
 
-    def _pipeline_facts(self, db, workspace_id):
-        """None: no outcome's pipeline is on until item 84's records land (the seam)."""
-        return None
+    def _pipeline_facts(self, db, actor, workspace_id):
+        """None while the outcome's pipeline is off; else its Now items with their work (pipeline.py)."""
+        return self._pipeline_light_facts(db, actor, workspace_id)
 
     def _done_facts(self, db, workspace_id):
         """Until items 14 and D41/D42 land: every outcome is to keep, not reached, with no checks."""
@@ -138,7 +137,7 @@ class OutcomeLight:
         # The questions are read first and alone, so a failure elsewhere never hides them.
         asks = self._light_asks(db, actor, workspace["id"])
         try:
-            pipeline = self._pipeline_facts(db, workspace["id"])
+            pipeline = self._pipeline_facts(db, actor, workspace["id"])
             done_facts = self._done_facts(db, workspace["id"])
             talk, waits, has_topics, last = self._light_reads(db, actor, workspace, now)
         except sqlite3.OperationalError as error:

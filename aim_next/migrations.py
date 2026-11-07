@@ -29,6 +29,7 @@ from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCH
 from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
 from .standing_conversation import STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
+from .pipeline import PIPELINE_DOWN, PIPELINE_OCCUPIED, PIPELINE_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -96,6 +97,11 @@ STEPS = (
     # conversation exists the step back is refused: release 22 would show it as
     # an ordinary topic and lose what became of its items.
     ("27", "28", STANDING_SCHEMA, STANDING_DOWN, STANDING_OCCUPIED),
+    # Version 27 keeps each outcome's pipeline: its stages and numbered items,
+    # where each came from, its pieces of work and their stage entries, every
+    # placement and edit, the messages whose subject is an item, and the release
+    # notes written by hand. Stepping back is refused once any of them exists.
+    ("26", "27", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
 )
 
 

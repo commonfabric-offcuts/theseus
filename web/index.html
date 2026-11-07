@@ -34,6 +34,10 @@
       <div class="rail-heading"><h2 id="conversation-heading">Conversation</h2></div>
       <div id="conversation-row"></div>
       </section>
+      <section id="pipeline-navigation" aria-labelledby="pipeline-heading" hidden>
+      <div class="rail-heading"><h2 id="pipeline-heading">Pipeline</h2></div>
+      <div id="pipeline-links"></div>
+      </section>
       <section id="topic-navigation" aria-label="Topics">
       <div class="rail-heading"><h2 id="topics-heading">Topics</h2><button id="new-topic" type="button" disabled>New topic</button></div>
       <div id="topics-status" class="notice" role="status" hidden></div>
@@ -60,6 +64,8 @@
       <section id="outcome-page" class="selection-page" hidden></section>
       <p id="also-waiting" class="also-waiting" hidden></p>
       <section id="outcome-standing" class="outcome-standing" aria-labelledby="standing-heading" hidden></section>
+      <p id="pipeline-line" class="pipeline-line" hidden></p>
+      <section id="pipeline-page" class="pipeline-page" aria-label="Pipeline" hidden></section>
       <section id="outcome-team" class="outcome-team" aria-labelledby="team-heading" hidden><h2 id="team-heading">Team</h2><div id="team-people"></div></section>
       <section id="unfinished-work" class="selection-page" aria-label="Unfinished work" hidden></section>
       <section id="page-here" class="page-here" aria-label="Notebook page" hidden></section>
@@ -113,9 +119,11 @@
           <button id="retry-source" type="button" hidden>Retry access</button>
           <button id="mark-unread" type="button" aria-pressed="false" hidden>Mark unread</button>
           <button id="start-from-message" type="button" hidden>Start a topic from this</button>
+          <button id="add-to-pipeline" type="button" hidden>Add to pipeline</button>
           <span class="muted">Select a passage, then Return</span>
           <div id="reader-stepping"><button id="previous-message" type="button" aria-label="Previous eligible message">←</button><button id="next-message" type="button" aria-label="Next eligible message">→</button></div>
         </footer>
+        <div id="pipeline-add" class="pipeline-add" hidden></div>
       </section>
       <div id="reader-divider" role="separator" tabindex="0" aria-label="Resize reading and writing panes" aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-valuenow="48" title="Drag or use arrow keys to resize. Double-click to reset."><span aria-hidden="true"></span></div>
       <section class="writing-pane" aria-label="Your writing">

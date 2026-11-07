@@ -34,6 +34,7 @@ from .releases import Releases, RELEASE_SCHEMA, write_release
 from .outcome_light import OutcomeLight
 from .whispers import WHISPER_SCHEMA
 from .standing_conversation import StandingConversation, STANDING_SCHEMA
+from .pipeline import Pipeline, PIPELINE_SCHEMA, import_seed
 
 
 SCHEMA_VERSION = "28"
@@ -110,7 +111,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -144,7 +145,7 @@ class StoreOpenError(StoreError):
 
 
 class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Releases, OutcomeLight,
-            StandingConversation):
+            StandingConversation, Pipeline):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -212,6 +213,16 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             return written
         written = self._operator_write(write, "recorded", "release record")
         return {"instance_id": self.instance_id, "release": found["release"], "recorded": written}
+
+    def import_pipeline(self, seed, actor):
+        """Operator import of the hand-written pipeline (docs/pipeline.md); never a command or an HTTP route."""
+        found = {}
+
+        def write(db):
+            found["report"] = import_seed(self, db, seed, actor, _now_ms())
+            return found["report"]["imported"]
+        self._operator_write(write, "imported", "pipeline import")
+        return dict(found["report"], instance_id=self.instance_id)
 
     def _operator_write(self, write, done, noun):
         """Run write(db) in one short write transaction; it returns whether it changed anything."""

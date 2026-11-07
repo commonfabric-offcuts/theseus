@@ -395,6 +395,12 @@ class NativeCoverage(unittest.TestCase):
         self.assertEqual((steps["conversation"].harness, steps["conversation"].flags), (release_check.PERSISTENCE, ("--conversation",)))
         self.assertIn("native-conversation", release_check.REQUIRED)
 
+    def test_the_pipeline_mode_is_a_step(self):
+        # The pipeline's page, its rail row, its outcome line and Add to pipeline in the Reader (item 84).
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual((steps["pipeline"].harness, steps["pipeline"].flags), (release_check.PERSISTENCE, ("--pipeline",)))
+        self.assertIn("native-pipeline", release_check.REQUIRED)
+
     def test_every_harness_mode_is_a_step(self):
         steps = [(step.harness, tuple(step.flags)) for step in release_check.NATIVE_STEPS]
         self.assertEqual(len(steps), len(set(steps)), "a mode runs twice")

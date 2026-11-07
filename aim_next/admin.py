@@ -40,6 +40,10 @@ def _parser():
     conversation.add_argument("--outcome", required=True)
     conversation.add_argument("--coordinator")
     conversation.add_argument("--replaces")
+    pipeline = verbs.add_parser("pipeline-import", add_help=False)
+    pipeline.add_argument("--profile", required=True)
+    pipeline.add_argument("--seed", required=True)
+    pipeline.add_argument("--as", dest="actor", required=True)
     return parser
 
 
@@ -63,6 +67,8 @@ def _run(options):
     if options.verb == "conversation-start":
         replaces = [topic for topic in (options.replaces or "").split(",") if topic]
         return profile.store().start_conversation(options.outcome, options.coordinator, replaces)
+    if options.verb == "pipeline-import":
+        return profile.store().import_pipeline(_record(options.seed), options.actor)
     return profile.store().register_actor(options.id, options.kind, options.name)
 
 
@@ -73,13 +79,14 @@ def main(argv=None, *, stdout=None, stderr=None):
         options = _parser().parse_args(argv)
         if options.verb is None or any(not Path(path).is_absolute() for path in (
                 getattr(options, "db", "/"), getattr(options, "binding", "/"), getattr(options, "profile", "/"),
-                getattr(options, "record", "/"))):
+                getattr(options, "record", "/"), getattr(options, "seed", "/"))):
             raise ValueError("absolute paths")
     except ValueError:
         stderr.write("usage: aim-next-admin migrate --db /abs/db --instance ID --binding /abs/profile.json [--to VERSION]\n"
                      "       aim-next-admin add-actor --profile /abs/profile.json --id ID --kind human|agent --name NAME\n"
                      "       aim-next-admin record-release --profile /abs/profile.json --record /abs/release.json\n"
-                     "       aim-next-admin conversation-start --profile /abs/profile.json --outcome W [--coordinator NAME] [--replaces T1,T2]\n")
+                     "       aim-next-admin conversation-start --profile /abs/profile.json --outcome W [--coordinator NAME] [--replaces T1,T2]\n"
+                     "       aim-next-admin pipeline-import --profile /abs/profile.json --seed /abs/seed.json --as ACTOR\n")
         return 2
     try:
         result, code = dict(_run(options), ok=True), 0
