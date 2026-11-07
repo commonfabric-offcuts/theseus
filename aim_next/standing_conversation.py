@@ -209,7 +209,10 @@ class StandingConversation:
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"workspace_id"} or set(args) != {"actor_id"}:
             raise Refusal("INVALID_ARGUMENT", "Name one outcome and its coordinator, or null for nobody")
-        workspace = self._workspace(db, actor, target["workspace_id"], owner=True)
+        workspace = self._workspace(db, actor, target["workspace_id"])
+        # Only the owner chooses who answers in the conversation; organising it is not enough.
+        if workspace["owner_id"] != actor:
+            raise Refusal("FORBIDDEN", "Only the outcome's owner chooses its coordinator")
         _revision(envelope.get("expected", {}), "workspace_revision", workspace["version"])
         chosen = args["actor_id"]
         if chosen is not None:
