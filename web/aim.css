@@ -329,7 +329,8 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 .pl-stagedefs-foot{margin:.5rem 0 0}
 .pl-stagedefs-foot button{min-height:2.2rem;padding:0 .6rem;font-size:.8rem;margin-left:.2rem}
 @media(max-width:760px){.pl-origin{margin-left:0}.pl-release-items .pl-origin{margin-left:1.8rem}.pl-stagedefs li{padding:.5rem .6rem}}
-.pl-item>.pl-head:not(:first-child){margin-top:.5rem}
+.pl-item>.pl-head:not(:first-child),.pl-piece-item+.pl-piece-item{margin-top:.5rem}
+.pl-piece-item{position:relative;padding-right:2.6rem;min-width:0}.pl-piece-item>.pl-steer{position:absolute;top:-.35rem;right:-.4rem}
 
 /* The page's forms, refusals and the outcome page's pipeline line. */
 .pipeline-line{margin:0 0 1.2rem;overflow-wrap:anywhere}

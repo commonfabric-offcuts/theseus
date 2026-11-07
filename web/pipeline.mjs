@@ -187,10 +187,18 @@ export class PipelinePage {
   pieceCard(piece, byNumber, pipeline, now, first) {
     const card = el('article', { class: 'pl-item', 'data-key': `piece:${piece.id}`, 'aria-label': `Item${piece.items.length > 1 ? 's' : ''} ${listWords(piece.items)}` });
     piece.items.forEach((number, index) => {
-      const item = byNumber.get(number) ?? { number, title: piece.titles?.[String(number)] ?? '', glyph: 'building', sources: null, raised_by: null, raised_note: '', size: null, asks: [] };
+      const known = byNumber.get(number);
+      const item = known ?? { number, title: piece.titles?.[String(number)] ?? '', glyph: 'building', sources: null, raised_by: null, raised_note: '', size: null, asks: [] };
       const ring = index === 0 && piece.topic?.work?.observed
         ? el('span', { class: 'topic-work', 'aria-hidden': 'true', title: workNote(piece.topic.work, this.reader) }) : null;
-      card.append(this.head(item, item.glyph === 'decide' ? 'decide' : 'building', ring), this.meta(item, pipeline, now), ...this.origin(item));
+      // Each item being built keeps its own ⋯ (9.1.3, D3): Open its record, and Drop…, which asks first.
+      const key = `item:${number}`;
+      const lines = el('div', { class: 'pl-piece-item', 'data-key': key, 'data-number': String(number) },
+        this.head(item, item.glyph === 'decide' ? 'decide' : 'building', ring), this.meta(item, pipeline, now), ...this.origin(item));
+      if (this.confirming === number) lines.append(this.dropConfirm(item));
+      if (this.errors.get(key)) lines.append(el('p', { class: 'pl-error', role: 'status', text: this.errors.get(key) }));
+      if (known && pipeline.you_steer) lines.append(...this.steer(item, [item], 0, pipeline, { underway: true }));
+      card.append(lines);
     });
     if (piece.topic) {
       const words = pieceTopicWords(piece, now);
@@ -299,11 +307,7 @@ export class PipelinePage {
       body.append(el('p', { class: 'pl-note' }, el('button', { type: 'button', 'data-role': 'undo', text: 'Restore',
         onclick: () => this.act(key, () => this.command('pipeline.item_move', { workspace_id: this.workspace, number: item.number }, { undo_of: item.dropped.event }, { item_revision: item.version })) })));
     }
-    if (this.confirming === item.number) {
-      body.append(el('p', { class: 'pl-confirm', role: 'alert' }, `Drop ${item.number}? It is being built now, so this stops work under way. `,
-        el('button', { type: 'button', 'data-role': 'drop-confirm', text: 'Drop it', onclick: () => { this.confirming = null; this.act(key, () => this.move(item, { section: 'dropped', underway_confirmed: true })); } }),
-        el('button', { type: 'button', 'data-role': 'drop-keep', text: 'Keep it', onclick: () => { this.confirming = null; this.paint(); } })));
-    }
+    if (this.confirming === item.number) body.append(this.dropConfirm(item));
     const editable = item.section !== 'dropped' && item.glyph !== 'shipped';
     if (editable && this.details === item.number) body.append(this.detailsPanel(item, pipeline));
     const error = this.errors.get(key);
@@ -311,27 +315,42 @@ export class PipelinePage {
     li.append(body);
     if (editable) li.append(el('button', { type: 'button', class: 'pl-edit', 'data-role': 'details', 'aria-expanded': this.details === item.number ? 'true' : 'false',
       'aria-label': `${this.details === item.number ? 'Close details' : 'Details'} of ${item.number}`, text: this.details === item.number ? 'Close' : 'Details', onclick: () => this.toggleDetails(item.number) }));
-    if (pipeline.you_steer && item.section !== 'dropped' && item.glyph !== 'shipped') {
-      li.append(el('button', { type: 'button', class: 'pl-steer', 'data-role': 'steer', 'aria-label': `Steer ${item.number}`, 'aria-haspopup': 'menu',
-        'aria-expanded': this.menu === item.number ? 'true' : 'false', text: '⋯',
-        onclick: () => { this.menu = this.menu === item.number ? null : item.number; this.paint(); this.host.querySelector(`[data-key="${key}"] .pl-menu button`)?.focus(); } }));
-      if (this.menu === item.number) li.append(this.steerMenu(item, list, index, pipeline));
-    }
+    if (pipeline.you_steer && item.section !== 'dropped' && item.glyph !== 'shipped') li.append(...this.steer(item, list, index, pipeline));
     return li;
   }
 
-  steerMenu(item, list, index, pipeline) {
+  // Drop… on an item being built asks first (D3): Drop it, or Keep it, which changes nothing.
+  dropConfirm(item) {
+    const key = `item:${item.number}`;
+    return el('p', { class: 'pl-confirm', role: 'alert' }, `Drop ${item.number}? It is being built now, so this stops work under way. `,
+      el('button', { type: 'button', 'data-role': 'drop-confirm', text: 'Drop it', onclick: () => { this.confirming = null; this.act(key, () => this.move(item, { section: 'dropped', underway_confirmed: true })); } }),
+      el('button', { type: 'button', 'data-role': 'drop-keep', text: 'Keep it', onclick: () => { this.confirming = null; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="steer"]`)?.focus(); } }));
+  }
+
+  // The ⋯ button and, while it is open, its menu.
+  steer(item, list, index, pipeline, { underway = false } = {}) {
+    const key = `item:${item.number}`;
+    const button = el('button', { type: 'button', class: 'pl-steer', 'data-role': 'steer', 'aria-label': `Steer ${item.number}`, 'aria-haspopup': 'menu',
+      'aria-expanded': this.menu === item.number ? 'true' : 'false', text: '⋯',
+      onclick: () => { this.menu = this.menu === item.number ? null : item.number; this.paint(); this.host.querySelector(`[data-key="${key}"] .pl-menu button`)?.focus(); } });
+    return this.menu === item.number ? [button, this.steerMenu(item, list, index, pipeline, underway)] : [button];
+  }
+
+  // An item being built (`underway`) is not ordered or moved from here: its menu is Open its record and Drop….
+  steerMenu(item, list, index, pipeline, underway = false) {
     const words = pipeline.section_words ?? {};
     const button = (label, keys, action) => el('button', { type: 'button', role: 'menuitem', onclick: () => { this.menu = null; action(); } },
       el('span', { text: label }), keys ? el('kbd', { text: keys }) : null);
     const key = `item:${item.number}`;
     const up = index > 0 ? list[index - 1] : null, down = index < list.length - 1 ? list[index + 1] : null;
     const menu = el('div', { class: 'pl-menu', role: 'menu', 'aria-label': `Steer ${item.number}` });
-    if (up) menu.append(button('Move up', '⌘↑', () => this.act(key, () => this.move(item, { above: up.number }))));
-    if (down) menu.append(button('Move down', '⌘↓', () => this.act(key, () => this.move(item, { below: down.number }))));
-    menu.append(el('hr'));
-    for (const name of SECTION_ORDER) if (name !== item.section) menu.append(button(`Move to ${words[name] ?? name}`, null, () => this.act(key, () => this.move(item, { section: name }))));
-    menu.append(el('hr'));
+    if (!underway) {
+      if (up) menu.append(button('Move up', '⌘↑', () => this.act(key, () => this.move(item, { above: up.number }))));
+      if (down) menu.append(button('Move down', '⌘↓', () => this.act(key, () => this.move(item, { below: down.number }))));
+      menu.append(el('hr'));
+      for (const name of SECTION_ORDER) if (name !== item.section) menu.append(button(`Move to ${words[name] ?? name}`, null, () => this.act(key, () => this.move(item, { section: name }))));
+      menu.append(el('hr'));
+    }
     menu.append(button('Open its record', null, () => location.assign(pipelineHref(this.workspace, item.number))));
     menu.append(button('Drop…', null, () => {
       if (item.stage) { this.confirming = item.number; this.paint(); this.host.querySelector(`[data-key="${key}"] [data-role="drop-keep"]`)?.focus(); }
@@ -377,7 +396,7 @@ export class PipelinePage {
   // An edit on the item as last read; the acts run one after another, so each reads the revision the last one left.
   edit(number, args) {
     const item = this.current(number);
-    if (!item) throw Error(`${number} is no longer on this page. Refresh to see where it went.`);
+    if (!item) throw Error(`${number} moved since this page read it. It is shown where it is now.`);
     return this.command('pipeline.item_edit', { workspace_id: this.workspace, number }, args, { item_revision: item.version });
   }
 
@@ -394,7 +413,8 @@ export class PipelinePage {
     const run = async () => {
       this.errors.delete(key);
       try { await action(); await this.load(); }
-      catch (error) { this.errors.set(key, error.message); this.paint(); }
+      // A refusal says why under its row, and the page reads again, so what it shows is how things stand now.
+      catch (error) { this.errors.set(key, error.message); try { await this.load(); } catch { this.paint(); } }
       if (role === false) return;
       const scope = `[data-key="${CSS.escape(key)}"]`;
       const target = (role ? this.host.querySelector(`${scope} [data-role="${CSS.escape(role)}"]`) : null) ?? this.host.querySelector(`${scope} a, ${scope} button`);
@@ -453,7 +473,7 @@ export class PipelinePage {
               index < stages.length - 1 ? move('stage-down', '↓', `Move ${name} down`, list => { list.splice(index + 1, 0, list.splice(index, 1)[0]); }) : null,
               stages.length > 1 ? move('stage-remove', '×', `Remove ${name}`, list => {
                 const at = list.findIndex(other => other.stage_id === id);
-                if (at < 0) throw Error(`${name} is no longer a stage. Refresh to see the stages.`);
+                if (at < 0) throw Error(`${name} is no longer a stage. The stages are shown as they are now.`);
                 this.removed = { stage: list.splice(at, 1)[0], index: at };
               }) : null)),
           note, error ? el('p', { class: 'pl-error', role: 'status', text: error }) : null));
@@ -529,7 +549,7 @@ export class PipelinePage {
   // as the page last read it, at its turn, with the revision that read carried.
   setStages(change) {
     const pipeline = this.answer?.pipeline;
-    if (!pipeline) throw Error('This pipeline is no longer on this page. Refresh to see it.');
+    if (!pipeline) throw Error('This pipeline changed since this page read it. It is shown as it is now.');
     const list = pipeline.stages.map(({ you_leave_it, ...stage }) => ({ ...stage, gate: { ...stage.gate } }));
     change(list);
     return this.command('pipeline.stages_set', { workspace_id: this.workspace }, { stages: list }, { pipeline_revision: pipeline.version });
@@ -652,11 +672,12 @@ export class PipelinePage {
   // Turning a pipeline on is one tap with the defaults (the form rule); its title and
   // whether items are sized are changed afterwards on the page, in place.
   turnOn(pipeline) {
+    // The owner or the coordinator turns it on (they steer it together).
     const answer = this.answer;
-    const owner = answer.pipeline ? answer.pipeline.you_own : answer.you_own === true;
+    const steers = answer.pipeline ? answer.pipeline.you_steer : answer.you_steer === true;
     const box = el('div', { class: 'pl-empty' }, el('p', {}, el('strong', { text: 'This outcome’s pipeline is off.' })),
       el('p', { class: 'muted', text: 'A pipeline numbers every piece of work this outcome delivers, from first mention to the release that shipped it. Turning it on keeps nothing hidden; turning it off keeps every item.' }));
-    if (!owner) return box;
+    if (!steers) return box;
     box.append(el('p', { class: 'pl-turn-on' }, el('button', { type: 'button', class: 'primary', 'data-role': 'turn-on', text: 'Turn on',
       onclick: () => this.act('turn-on', async () => {
         await this.command('pipeline.configure', { workspace_id: this.workspace }, { enabled: true }, { pipeline_revision: pipeline?.version ?? 0 });
@@ -794,7 +815,7 @@ function setStageText(stage, field, text) {
 }
 function stageIn(list, id) {
   const stage = list.find(other => other.stage_id === id);
-  if (!stage) throw Error('That stage is no longer there. Refresh to see the stages.');
+  if (!stage) throw Error('That stage is no longer there. The stages are shown as they are now.');
   return stage;
 }
 
@@ -834,7 +855,7 @@ export class PipelineRow {
 }
 
 // The outcome page's pipeline line (D11): "Pipeline: Release pipeline ›", or,
-// for the owner of an outcome whose pipeline is off, "Pipeline: off · Turn on".
+// for its owner or coordinator while the pipeline is off, "Pipeline: off · Turn on".
 export async function paintPipelineLine(host, { workspace, read }) {
   let answer;
   try { answer = await read('pipeline_row', { workspace_id: workspace }); } catch { host.hidden = true; return false; }
@@ -843,7 +864,7 @@ export async function paintPipelineLine(host, { workspace, read }) {
     host.replaceChildren('Pipeline: ', el('a', { href: pipelineHref(workspace), text: `${answer.pipeline.title} ›` }),
       answer.pipeline.asks ? el('span', { class: 'topic-state mine', 'data-state': 'waiting', text: 'Waiting on you' }) : '');
     host.hidden = false;
-  } else if (answer.you_own) {
+  } else if (answer.you_steer) {
     host.replaceChildren('Pipeline: off · ', el('a', { href: pipelineHref(workspace), text: 'Turn on' }));
     host.hidden = false;
   } else host.hidden = true;

@@ -1528,7 +1528,7 @@ function pipelineSection(workspace,current,loaded=()=>{}) {
 // rail read again on every commit.
 async function initializePipelinePage(route) {
   status('');
-  for(const id of ['notebook','participants','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('pipeline-page').hidden=false;
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
   const page=new PipelinePage({host:$('pipeline-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},

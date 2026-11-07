@@ -283,7 +283,8 @@ are absolute local times.
   lists items in order, with their stage, where they came from and any ask.
 - `item OUTCOME N` shows one item with its stages and events.
 - `pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off]`
-  turns it on or off (the owner only).
+  turns it on or off (the owner or the coordinator); its title, units, sizing
+  and releases are the owner's alone.
 - `stages OUTCOME [--set FILE]` lists the stages, or replaces them from JSON.
 - `add OUTCOME --title T [--size S] [--section S] [--group G] [--from MSG,...] [--note N] [--raised-by A] TEXT`
   adds an item; `add-source OUTCOME N --from MSG,...|--page ID|--note N` adds

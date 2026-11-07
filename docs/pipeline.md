@@ -57,17 +57,19 @@ records the message's author as who raised it.
 Anyone on the outcome (its owner or a member) adds an item, adds a source to
 one, and changes an item's title, words, size, group, what it waits for and
 where it gathers; only the owner and the coordinator change who raised it. The
-owner and the coordinator steer: they move, drop and restore items and change
-the stages. Turning the pipeline on or off, and its title, units, sizing,
-releases and section words (`configure`), are the owner's alone. An item the
+owner and the coordinator steer together: they move, drop and restore items,
+change the stages, and turn the pipeline on or off. Its title, units, sizing,
+releases and section words (the rest of `configure`) are the owner's alone. An item the
 owner placed is moved only by the owner (`OWNER_PLACED`). Dropping an item that
-is being built needs a confirmation (`ITEM_UNDERWAY`). A stage gated on the
+is being built needs a confirmation (`ITEM_UNDERWAY`): on the page, each item on
+a piece card has its own ⋯ with Open its record and Drop…, and Drop… asks first.
+A stage gated on the
 owner's word is left only by the owner.
 
 ## Turning it on and changing its stages
 
-Turn on is one tap: the pipeline starts as "Pipeline", with items sized (or, if
-it was on before, as it was). The owner then changes the title where it stands
+Turn on is one tap, for the owner or the coordinator: the pipeline starts as
+"Pipeline", with items sized (or, if it was on before, as it was). The owner then changes the title where it stands
 in the page header (Return or clicking away saves it, Escape puts it back) and
 whether items are sized with one chip under it.
 
@@ -111,7 +113,9 @@ Views:
 - `pipeline_item {workspace_id, number}`: one item with every source, piece and
   event.
 - `pipeline_row {workspace_id}`: the rail's row (title, how many asks wait on
-  the reader, the newest work seen in a Now piece's topic), and `you_own`.
+  the reader, the newest work seen in a Now piece's topic), `you_own`, and
+  `you_steer` (the owner or the coordinator, who may turn it on). The
+  `pipeline` view says `you_steer` too, also while there is no pipeline yet.
 
 ## The import
 

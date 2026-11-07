@@ -160,6 +160,10 @@ class Pipeline:
             raise Refusal("FORBIDDEN", "Only this outcome's owner%s may do this" % (" or coordinator" if coordinator else ""))
         return workspace
 
+    def _steers(self, workspace, actor):
+        """Whether the actor steers this outcome's pipeline: its owner or its coordinator."""
+        return actor in (workspace["owner_id"], workspace["coordinator_id"])
+
     def _stages(self, db, workspace_id, current=True):
         rows = db.execute("SELECT * FROM pipeline_stages WHERE workspace_id=?" + (" AND position IS NOT NULL" if current else "")
                           + " ORDER BY position IS NULL, position, stage_id", (workspace_id,)).fetchall()
@@ -313,12 +317,16 @@ class Pipeline:
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"workspace_id"}:
             raise Refusal("INVALID_ARGUMENT", "Name one outcome")
-        workspace = self._steerer(db, actor, target["workspace_id"], coordinator=False)
+        # The owner and the coordinator steer together: either turns the pipeline
+        # on or off; its settings are the owner's alone.
+        workspace = self._steerer(db, actor, target["workspace_id"])
         current = self._pipeline_row(db, workspace["id"])
         self._check_revision(envelope, "pipeline_revision", current["version"] if current else 0)
         allowed = {"enabled", "title", "unit_one", "unit_many", "sized", "ships_in_releases", "section_words"}
         if set(args) - allowed or "enabled" not in args:
             raise Refusal("INVALID_ARGUMENT", "A pipeline is turned on or off, with its title, units, sizes, releases and section words")
+        if actor != workspace["owner_id"] and set(args) != {"enabled"}:
+            raise Refusal("FORBIDDEN", "Only this outcome's owner changes its pipeline's settings; its coordinator turns it on or off")
         before = dict(current) if current else None
         settings = {
             "enabled": _flag(args["enabled"], "enabled"),
@@ -1023,7 +1031,7 @@ class Pipeline:
         return {"enabled": bool(pipeline["enabled"]), "title": pipeline["title"], "unit_one": pipeline["unit_one"],
                 "unit_many": pipeline["unit_many"], "sized": bool(pipeline["sized"]), "ships_in_releases": bool(pipeline["ships_in_releases"]),
                 "section_words": _loads(pipeline["section_words"], SECTION_WORDS), "coordinator": workspace["coordinator_id"],
-                "owner": workspace["owner_id"], "you_steer": actor in (workspace["owner_id"], workspace["coordinator_id"]),
+                "owner": workspace["owner_id"], "you_steer": self._steers(workspace, actor),
                 "you_own": actor == workspace["owner_id"],
                 "stages": [{"stage_id": stage["stage_id"], "name": stage["name"], "done_when": stage["done_when"], "gate": stage["gate"],
                             "rounds": stage["rounds"], "scope": stage["scope"], "added_note": stage["added_note"],
@@ -1035,7 +1043,8 @@ class Pipeline:
         pipeline, stages, releases, asks, pieces, by_item, cache = self._pipeline_context(db, actor, workspace)
         answer = {"instance_id": self.instance_id, "workspace_id": workspace["id"], "workspace_title": workspace["title"]}
         if pipeline is None:
-            return dict(answer, pipeline=None, you_own=actor == workspace["owner_id"], items=[], next_cursor=None, relevant_versions={"pipeline": 0, "workspace": workspace["version"]})
+            return dict(answer, pipeline=None, you_own=actor == workspace["owner_id"], you_steer=self._steers(workspace, actor), items=[], next_cursor=None,
+                        relevant_versions={"pipeline": 0, "workspace": workspace["version"]})
         answer["pipeline"] = self._pipeline_shape(workspace, pipeline, stages, actor)
         answer["relevant_versions"] = {"pipeline": pipeline["version"], "workspace": workspace["version"]}
         section = args.get("section", "now")
@@ -1113,7 +1122,8 @@ class Pipeline:
         pipeline = self._pipeline_row(db, workspace["id"])
         if pipeline is None or not pipeline["enabled"]:
             return {"instance_id": self.instance_id, "workspace_id": workspace["id"], "pipeline": None,
-                    "you_own": actor == workspace["owner_id"], "relevant_versions": {"pipeline": pipeline["version"] if pipeline else 0}}
+                    "you_own": actor == workspace["owner_id"], "you_steer": self._steers(workspace, actor),
+                    "relevant_versions": {"pipeline": pipeline["version"] if pipeline else 0}}
         asks = self._asks_about(db, actor, workspace["id"])
         topics = [row[0] for row in db.execute("SELECT DISTINCT p.topic_id FROM pipeline_stage_entries e INDEXED BY open_entries "
                                                "JOIN pipeline_pieces p ON p.id=e.piece_id WHERE e.workspace_id=? AND e.left_ms IS NULL",
@@ -1122,7 +1132,8 @@ class Pipeline:
         seen = max((value for value in work.values() if value["observed"]), key=lambda value: value["seen_ms"] or 0, default=None)
         return {"instance_id": self.instance_id, "workspace_id": workspace["id"],
                 "pipeline": {"title": pipeline["title"], "asks": sum(len(rows) for rows in asks.values()), "work": seen},
-                "you_own": actor == workspace["owner_id"], "relevant_versions": {"pipeline": pipeline["version"]}}
+                "you_own": actor == workspace["owner_id"], "you_steer": self._steers(workspace, actor),
+                "relevant_versions": {"pipeline": pipeline["version"]}}
 
     def _pipeline_light_facts(self, db, actor, workspace_id):
         """The outcome light's pipeline facts (86, D4): None while the pipeline is off."""
