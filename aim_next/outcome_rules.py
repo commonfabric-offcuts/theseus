@@ -395,7 +395,7 @@ def regressions(checks, base, now, allowances=(), rerun=None, commit=None):
     now: {check_id: reading} the candidate's; rerun: {check_id: reading} the
     base rerun beside the candidate; allowances: the owner's check_allowances
     rows bearing on this candidate. Returns {"worse": [...], "all": [...]}, each
-    {check_id, kind ("failed" | "fewer"), why, member?, now?, base?, unit?} with
+    {check_id, kind ("failed" | "fewer"), why, cases?, missing?, member?, now?, base?, unit?} with
     allowed_by or accepted_by on what an allowance covers."""
     found = []
     rerun = rerun or {}
@@ -408,7 +408,7 @@ def regressions(checks, base, now, allowances=(), rerun=None, commit=None):
             if before is None:
                 continue
             if after is None:
-                found.append({"check_id": check_id, "kind": "fewer", "why": "%s did not run" % name})
+                found.append({"check_id": check_id, "kind": "fewer", "why": "%s did not run" % name, "missing": True})
             elif before["result"] == "passed" and after["result"] != "passed":
                 failed = (after.get("detail") or {}).get("failed") or {}
                 cases = [case for names in failed.values() for case in names] if isinstance(failed, dict) else list(failed)
@@ -420,7 +420,7 @@ def regressions(checks, base, now, allowances=(), rerun=None, commit=None):
         # A measure compares only with a base measured by the same tools (D32).
         if after is None:
             if before is not None:
-                found.append({"check_id": check_id, "kind": "fewer", "why": "%s did not run" % name})
+                found.append({"check_id": check_id, "kind": "fewer", "why": "%s did not run" % name, "missing": True})
             continue
         if after["result"] == "failed":
             found.append({"check_id": check_id, "kind": "failed", "why": "%s did not finish: a wake never came" % name})

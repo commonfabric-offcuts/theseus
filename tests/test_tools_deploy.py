@@ -13,8 +13,10 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
-from aim_next import supervisor as runner_supervisor
+from aim_next import admin, cli, outcome_rules, supervisor as runner_supervisor
 from tools import deploy, release_check
+import test_agent_cli
+from test_pipeline_steering import PipelineCase
 
 SHA = "c" * 40
 # os.kill before any test replaces it with a recorder.
@@ -948,11 +950,11 @@ class FullDeploy(Restarting):
 
 
 class ReleaseCheckGate(DeployCase):
-    def test_without_a_passed_release_check_for_the_commit_nothing_is_read_or_stopped(self):
+    def test_a_summary_that_is_not_of_this_commit_is_refused_before_anything_is_read(self):
+        # 7.2 step 1: its counts do not describe this commit, so there is nothing to measure.
         cases = ((None, "no readable release-check summary"),
-                 (summary(failed=("native-colors",)), "native-colors failed"),
                  (summary(commit="d" * 40), "ran on " + "d" * 40),
-                 (dict(summary(), passed=False), "did not pass"))
+                 (dict(summary(), tree_unchanged=False), "the checkout changed while the release check ran"))
         for written, reason in cases:
             with self.subTest(reason):
                 if written is None:
@@ -965,6 +967,18 @@ class ReleaseCheckGate(DeployCase):
                 self.assertEqual(self.kills, [])
                 self.assertEqual(self.records(), ["00-release-check"])
                 self.assertFalse(json.loads((self.evidence / "00-release-check.json").read_text())["passed"])
+
+    def test_a_summary_of_this_commit_that_did_not_pass_is_read_and_refused_before_anything_stops(self):
+        # 7.2 steps 1 and 6: it goes on to be measured, and its refusal comes after the checks, before the plan.
+        for written, reason in ((summary(failed=("native-colors",)), "native-colors failed"), (dict(summary(), passed=False), "did not pass")):
+            with self.subTest(reason):
+                self.summary.write_text(json.dumps(written))
+                host = FakeHost(self.config)
+                refusal = self.refused(host)
+                self.assertIn("the release check has not passed for %s: " % SHA, refusal)
+                self.assertIn(reason, refusal)
+                self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout"])
+                self.assertEqual((self.kills, host.ran("merge"), host.ran("-c")), ([], [], []))
 
     def test_a_passed_release_check_for_the_commit_lets_the_deploy_go_on(self):
         host = FakeHost(self.config, ff=False)
@@ -992,6 +1006,28 @@ class ReleaseCheckGate(DeployCase):
         self.assertEqual(caught.exception.code, 2)
 
 
+class FixTopicTitles(unittest.TestCase):
+    """D15: a fix topic is named for what failed, from what the deploy knows, at the release N candidate."""
+
+    def test_each_kind_of_worse_names_what_failed(self):
+        checks = [dict(UNITS_CHECK, name="Browser checks"), {"check_id": "units-2", "name": "Unit checks", "kind": "pass", "source": "release-check:units"},
+                  {"check_id": "wake", "name": "Wake time", "kind": "measure", "source": "release-check:wake-replay", "better": "lower"}]
+        base = {"units": {"result": "passed", "value": 10}, "units-2": {"result": "passed", "value": 900}, "wake": {"result": "measured", "value": 13}}
+        found = outcome_rules.regressions(checks, base, {"units": {"result": "failed", "value": 8, "detail": {"failed": {"native-live": ["one case", "two"],
+                                                                                                                      "native-rail": ["three"]}}}})["worse"]
+        named = {item["check_id"]: dict(item, name=next(c["name"] for c in checks if c["check_id"] == item["check_id"])) for item in found}
+        title = lambda check_id: deploy.outcome_checks.fix_title(named[check_id], 23)
+        self.assertEqual(title("units"), "\u201cone case\u201d and 2 more fail at the release 23 candidate")
+        self.assertEqual(title("units-2"), "Unit checks did not run at the release 23 candidate")
+        self.assertEqual(title("wake"), "Wake time did not run at the release 23 candidate")
+        one = dict(named["units"], cases=["one case"])
+        self.assertEqual(deploy.outcome_checks.fix_title(one, 23), "\u201cone case\u201d fails at the release 23 candidate")
+        slower = {"check_id": "wake", "name": "Wake time", "kind": "failed", "why": "aim-ux got worse in every run"}
+        self.assertEqual(deploy.outcome_checks.fix_title(slower, 23), "Wake time got worse at the release 23 candidate")
+        fewer = {"check_id": "units-2", "name": "Unit checks", "kind": "fewer", "why": "800 passing, 900 at the live release"}
+        self.assertEqual(deploy.outcome_checks.fix_title(fewer, 23), "Unit checks got worse at the release 23 candidate")
+
+
 UNITS_CHECK = {"check_id": "units", "group_name": "Checks", "position": 1, "name": "Unit checks", "kind": "pass", "source": "release-check:units"}
 
 
@@ -1005,21 +1041,27 @@ def counted(python=600, node=300, commit=SHA):
     return dict(written, started_at="2026-11-07T05:00:00-08:00", finished_at="2026-11-07T05:20:00-08:00")
 
 
-def live_view(units=900, coordinator="agent-a", allowances=()):
-    return {"instance_id": "i-1", "workspace_id": "building-theseus", "coordinator": coordinator, "members": ["agent-a", "agent-b"],
-            "checks": [UNITS_CHECK], "live": {"run_id": "run-19", "commit": HEAD, "tools": {"release-check": "theseus-release-check"}},
+PIECE = {"id": "p-release-20", "release": 20, "commit": SHA, "stage": "checks"}
+
+
+def live_view(units=900, coordinator="agent-a", allowances=(), reader="agent-b", fix_topic=None, piece=PIECE):
+    return {"instance_id": "i-1", "workspace_id": "building-theseus", "reader": reader, "coordinator": coordinator,
+            "members": ["agent-a", "agent-b"], "checks": [UNITS_CHECK],
+            "live": {"run_id": "run-19", "commit": HEAD, "tools": {"release-check": "theseus-release-check"}},
             "readings": {"units": {"result": "passed", "value": units, "detail": {}}} if units is not None else {},
-            "allowances": list(allowances), "fix_topics": {"units": None}}
+            "allowances": list(allowances), "fix_topics": {"units": fix_topic}, "candidate_release": 20, "release_piece": piece}
 
 
 class ChecksHost(FakeHost):
     """FakeHost that also answers whether the live code keeps outcome checks, the live CLI's checks read, and record-checks."""
 
-    def __init__(self, config, keeps_checks=True, checks=None, record_checks=0, **more):
+    def __init__(self, config, keeps_checks=True, checks=None, record_checks=0, refuse=(), **more):
         super().__init__(config, **more)
         # keeps_checks: whether the live checkout has aim_next/checks.py, None when git cannot say. checks: the
         # CLI's (stdout, exit) for `checks OUTCOME --live SHA`, as a list answered in turn; record_checks: its exit.
+        # refuse: the reporter's writes (start, post, stage-note, enter-stage) Core refuses.
         self.keeps_checks, self.checks, self.record_checks, self.recorded_runs = keeps_checks, list(checks or []), record_checks, []
+        self.refuse = set(refuse)
 
     def __call__(self, argv, **kw):
         if argv[0] == "git" and "ls-tree" in argv and argv[-1] == "aim_next/checks.py":
@@ -1035,7 +1077,19 @@ class ChecksHost(FakeHost):
             self.recorded_runs.append(json.loads(Path(argv[argv.index("--run") + 1]).read_text()))
             return subprocess.CompletedProcess(argv, self.record_checks, "{}\n" if self.record_checks == 0 else "",
                                                "" if self.record_checks == 0 else "NOT_FOUND")
+        verb = argv[7] if len(argv) > 7 and argv[3] == str(self.config.live / "bin/aim-next") else None
+        if verb in ("start", "post", "stage-note", "enter-stage"):
+            self.calls.append(argv)
+            if verb in self.refuse:
+                return subprocess.CompletedProcess(argv, 2, '{"error":{"code":"STAGE_GATED","message":"no"}}\n', "")
+            result = {"start": {"message_id": "m-1", "topic": {"id": "t-fix"}}, "post": {"message_id": "m-2", "topic": {"id": argv[8]}},
+                      "stage-note": {"piece_id": argv[8]}, "enter-stage": {"piece_id": argv[8], "stage_id": argv[9], "round": 1}}[verb]
+            return subprocess.CompletedProcess(argv, 0, json.dumps({"status": "committed", "result": result}) + "\n", "")
         return super().__call__(argv, **kw)
+
+    def wrote(self, verb):
+        """The reporter's writes of one verb, each from its verb on: [verb, args...]."""
+        return [argv[7:] for argv in self.calls if len(argv) > 7 and argv[3] == str(self.config.live / "bin/aim-next") and argv[7] == verb]
 
 
 class OutcomeChecksConfig(DeployCase):
@@ -1073,9 +1127,11 @@ class OutcomeChecksBeforeAnythingStops(DeployCase):
     def test_a_live_release_that_keeps_no_checks_is_said_and_the_deploy_goes_on(self):
         host = ChecksHost(self.config, keeps_checks=False)
         self.planned(host)
-        self.assertEqual(json.loads((self.evidence / "02-checks.json").read_text())["live"], None)
+        written = json.loads((self.evidence / "02-checks.json").read_text())
+        self.assertEqual(written["checks"], "the live release keeps no outcome checks yet")
+        self.assertEqual((written["run"]["commit"], written["run"]["readings"]), (SHA, []), "the run is kept in the evidence only")
         self.assertEqual(self.checks_read(host), [], "nothing to read, known from the live code, not from a failed read")
-        self.assertNotIn("02-worse", self.records())
+        self.assertEqual(host.ran("record-checks"), [])
 
     def test_a_checks_read_that_fails_stops_the_deploy_rather_than_counting_as_no_checks(self):
         for host, reason in ((ChecksHost(self.config, keeps_checks=None), "whether the live code keeps outcome checks could not be read"),
@@ -1087,26 +1143,116 @@ class OutcomeChecksBeforeAnythingStops(DeployCase):
                 self.assertEqual(self.kills, [])
                 self.assertEqual(host.ran("merge") + host.ran("-c"), [])
 
-    def test_the_read_is_the_live_cli_as_the_reporter_for_this_commit(self):
+    def test_the_read_is_the_live_cli_as_the_reporter_for_this_commit_and_a_dry_run_writes_nothing(self):
         host = ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0)])
         self.planned(host)
         self.assertEqual(self.checks_read(host), [[self.config.python, "-I", "-B", str(self.config.live / "bin/aim-next"), "--profile",
                                                    str(self.instance / "agent-b.profile.json"), "--json", "checks", "building-theseus", "--live", SHA]])
-        self.assertEqual(json.loads((self.evidence / "02-worse.json").read_text())["worse"], [])
+        self.assertEqual(json.loads((self.evidence / "02-checks.json").read_text())["worse"], [])
+        self.assertEqual(host.ran("record-checks") + host.wrote("start") + host.wrote("stage-note"), [])
+        self.assertNotIn("02-run", self.records())
 
-    def test_a_check_made_worse_stops_the_deploy_before_anything_stops_unless_the_owner_allowed_it(self):
+    def test_a_reporter_that_is_the_coordinator_or_not_a_member_is_refused_before_anything_is_written(self):
+        # D27: Core never delivers a message to its own author, so the coordinator telling itself wakes nobody.
+        for view, reason in ((live_view(units=1000, reader="agent-a"), "the reporter, agent-a, must be a member of building-theseus and not its coordinator"),
+                             (live_view(units=1000, reader="outsider"), "the reporter, outsider, must be a member")):
+            with self.subTest(reason=reason):
+                host = ChecksHost(self.config, checks=[(json.dumps(view) + "\n", 0)])
+                self.assertIn(reason, self.refused(host))
+                self.assertEqual(host.ran("record-checks") + host.wrote("start") + host.wrote("post"), [])
+                self.assertEqual((self.kills, host.ran("merge")), ([], []))
+        self.planned(ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0)]))
+
+    def test_a_check_made_worse_opens_its_fix_topic_records_the_run_and_holds_the_release_before_the_refusal(self):
         host = ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000)) + "\n", 0)])
         reason = self.refused(host)
-        self.assertIn("the release check made Unit checks: 900 passing, 1000 at the live release worse", reason)
-        self.assertEqual(json.loads((self.evidence / "02-worse.json").read_text())["titles"], ["Unit checks: 900 passing, 1000 at the live release"])
-        self.assertEqual((self.kills, host.ran("merge"), host.ran("-c")), ([], [], []))
-        self.assertNotIn("02-release", self.records(), "nothing after the checks ran")
+        self.assertTrue(reason.startswith("Unit checks got worse: "), reason)
+        [start] = host.wrote("start")
+        self.assertEqual(start[:-1], ["start", "building-theseus", "--title", "Unit checks got worse at the release 20 candidate",
+                                      "--with", "agent-a", "--operation", "fix-units-" + SHA[:12]])
+        self.assertIn("Evidence: %s" % self.summary.resolve(), start[-1])
+        self.assertIn("Rename this topic to say what is wrong in your own words", start[-1])
+        [argv] = host.ran("record-checks")
+        self.assertEqual((argv[3], argv[argv.index("--profile") + 1], argv[argv.index("--as") + 1]),
+                         (str(self.config.live / "bin/aim-next-admin"), str(self.config.server_profile), "agent-b"))
+        [run] = host.recorded_runs
+        self.assertEqual((run["outcome"], run["commit"], [(r["check_id"], r["value"], r.get("fix_topic_id")) for r in run["readings"]]),
+                         ("building-theseus", SHA, [("units", 900, "t-fix")]))
+        self.assertEqual(host.wrote("stage-note"), [["stage-note", "p-release-20", "Held: Unit checks got worse."]])
+        other = ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000, piece=dict(PIECE, commit="d" * 40))) + "\n", 0)])
+        self.refused(other)
+        self.assertEqual(other.wrote("stage-note"), [], "a release piece of another commit is not this candidate's to hold")
+        writes = [index for index, argv in enumerate(host.calls) if "record-checks" in argv or argv[7:8] in (["start"], ["stage-note"])]
+        self.assertEqual([("record-checks" in host.calls[index]) or host.calls[index][7] for index in writes], ["start", True, "stage-note"],
+                         "the topic is opened before the run is written, and the piece is held after")
+        self.assertEqual((self.kills, host.ran("merge"), host.ran("-c"), host.wrote("enter-stage")), ([], [], [], []))
+        self.assertNotIn("02-release", self.records(), "nothing after the verdict")
+        # A dry run says the same, and writes nothing.
+        dry = ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000)) + "\n", 0)])
+        self.assertEqual(self.refused(dry, dry=True), reason)
+        self.assertEqual(dry.ran("record-checks") + dry.wrote("start") + dry.wrote("stage-note"), [])
+        # What the owner allowed is not worse.
         allowed = {"check_id": "units", "kind": "fewer", "allowed_count": 900, "allowed_by": "owner", "commit_sha": None}
         self.planned(ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000, allowances=[allowed])) + "\n", 0)]))
 
+    def test_a_check_with_an_open_fix_topic_is_told_there_and_once_for_its_commit(self):
+        older = live_view(units=1000, fix_topic={"topic_id": "t-open", "commit": "d" * 40})
+        host = ChecksHost(self.config, checks=[(json.dumps(older) + "\n", 0)])
+        self.refused(host)
+        self.assertEqual(host.wrote("start"), [])
+        [post] = host.wrote("post")
+        self.assertEqual(post[:-1], ["post", "t-open", "--tells", "agent-a", "--subject", "check:units", "--operation", "fix-post-units-" + SHA[:12]])
+        self.assertNotIn("Rename this topic", post[-1])
+        self.assertEqual([r.get("fix_topic_id") for r in host.recorded_runs[0]["readings"]], ["t-open"])
+        # Its reading at this commit already names the topic: the deploy was run again, and tells nobody twice.
+        again = ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000, fix_topic={"topic_id": "t-open", "commit": SHA})) + "\n", 0)])
+        self.refused(again)
+        self.assertEqual(again.wrote("start") + again.wrote("post"), [])
+        self.assertEqual([r.get("fix_topic_id") for r in again.recorded_runs[0]["readings"]], ["t-open"])
 
-class OutcomeChecksAfterRelease(Restarting):
-    """12-checks: once the release is live and recorded, its readings are the coordinator's run of the outcome's checks."""
+    def test_a_summary_that_did_not_pass_is_recorded_as_measured_before_its_refusal(self):
+        written = counted()
+        for step in written["steps"]:
+            if step["name"] == "native-colors":
+                step.update(passed=False, exit=1)
+        self.summary.write_text(json.dumps(dict(written, passed=False)))
+        host = ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0)])
+        self.assertIn("the release check has not passed for %s: native-colors failed" % SHA, self.refused(host))
+        self.assertEqual([r["check_id"] for r in host.recorded_runs[0]["readings"]], ["units"])
+        self.assertEqual(host.wrote("stage-note"), [], "nothing got worse")
+        # With something worse as well, the refusal names it first.
+        worse = ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000)) + "\n", 0)])
+        self.assertTrue(self.refused(worse).startswith("Unit checks got worse"))
+
+    def restarted(self, host):
+        """A deploy that must go on to its restart (here, a start that stops the test)."""
+        with self.assertRaisesRegex(AssertionError, "must not start a process"):
+            self.deploy(host)
+
+    def test_a_release_piece_for_another_release_commit_or_stage_is_left_where_it_is(self):
+        for piece in (dict(PIECE, commit="d" * 40), dict(PIECE, stage="deploy"), dict(PIECE, release=21), None):
+            with self.subTest(piece=piece):
+                host = ChecksHost(self.config, checks=[(json.dumps(live_view(piece=piece)) + "\n", 0)])
+                self.restarted(host)
+                self.assertEqual(host.wrote("enter-stage"), [])
+                self.assertIsNone(json.loads((self.evidence / "03-stage.json").read_text())["entered"])
+        host = ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0)])
+        self.restarted(host)
+        self.assertEqual(host.wrote("enter-stage"), [["enter-stage", "p-release-20", "deploy", "--left", "passed"]])
+
+    def test_a_run_or_a_write_that_is_refused_stops_the_deploy_before_anything_stops(self):
+        for host, reason in ((ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000)) + "\n", 0)], record_checks=2),
+                              "the candidate's run of the outcome's checks was not written"),
+                             (ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000)) + "\n", 0)], refuse={"start"}), "start was not written"),
+                             (ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0)], refuse={"enter-stage"}), "enter-stage was not written")):
+            with self.subTest(reason=reason):
+                self.assertIn(reason, self.refused(host))
+                self.assertEqual((self.kills, host.ran("merge"), host.ran("-c")), ([], [], []))
+        self.assertEqual(host.wrote("enter-stage"), [["enter-stage", "p-release-20", "deploy", "--left", "passed"]])
+
+
+class OutcomeChecksWithTheRelease(Restarting):
+    """02-run and 03-stage: the candidate's run is written, and the release piece enters deploy, before anything stops."""
 
     def setUp(self):
         super().setUp()
@@ -1114,47 +1260,174 @@ class OutcomeChecksAfterRelease(Restarting):
         self.config = deploy.load_config(self.config_path)
         self.summary.write_text(json.dumps(counted()))
 
-    def test_the_live_release_records_its_run_as_the_coordinator(self):
-        view = json.dumps(live_view()) + "\n"
-        host = ChecksHost(self.config, checks=[(view, 0), (view, 0)])
-        try:
-            self.run_deploy(host)
-        except Exception as error:  # a refusal or a crash here is the failure under test
-            self.fail("the deploy did not complete: %r" % error)
-        [argv] = host.ran("record-checks")
-        self.assertEqual(argv[3:5], [str(self.config.live / "bin/aim-next-admin"), "record-checks"])
-        self.assertEqual((argv[argv.index("--profile") + 1], argv[argv.index("--as") + 1]), (str(self.config.server_profile), "agent-a"))
-        [run] = host.recorded_runs
-        self.assertEqual((run["outcome"], run["commit"], [(r["check_id"], r["result"], r["value"]) for r in run["readings"]]),
-                         ("building-theseus", SHA, [("units", "passed", 900)]))
-        self.assertEqual(json.loads((self.evidence / "12-checks.json").read_text())["exit"], 0)
-        order = [index for index, call in enumerate(host.calls) if "record-release" in call or "record-checks" in call]
-        self.assertEqual(["record-checks" in host.calls[index] for index in order], [False, True], "the release is recorded first")
+    def test_the_run_is_written_and_the_release_piece_enters_deploy_before_anything_stops(self):
+        host = ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0)])
+        self.completed(host)
+        order = {name: [index for index, argv in enumerate(host.calls) if name in argv] for name in ("record-checks", "enter-stage", "-c", "record-release")}
+        self.assertEqual([len(found) for found in order.values()], [1, 1, 1, 1])
+        self.assertLess(order["record-checks"][0], order["enter-stage"][0])
+        self.assertLess(order["enter-stage"][0], order["-c"][0], "the piece moves before anything stops (the backup follows the stop)")
+        self.assertEqual(host.wrote("enter-stage"), [["enter-stage", "p-release-20", "deploy", "--left", "passed"]])
+        self.assertEqual(json.loads((self.evidence / "03-stage.json").read_text())["entered"], "deploy")
+        self.assertEqual(len([argv for argv in host.calls if "--live" in argv]), 1, "nothing is read or written once the release is live")
+        self.assertNotIn("12-checks", self.records())
 
-    def not_written(self, host):
-        try:
-            self.run_deploy(host)
-        except deploy.Refused as refusal:
-            message = str(refusal)
-        except Exception as error:  # the failure under test: anything but a refusal
-            self.fail("the deploy did not refuse, it raised %r" % error)
-        else:
-            self.fail("the deploy was not refused")
-        self.assertIn("release 20 is live and recorded, but its run of the outcome's checks was not written", message)
-        self.assertEqual(len(host.written), 1, "the release record was written")
-        return message
 
-    def test_a_run_the_instance_refuses_says_the_release_is_live_and_how_to_write_it(self):
-        view = json.dumps(live_view()) + "\n"
-        host = ChecksHost(self.config, checks=[(view, 0), (view, 0)], record_checks=2)
-        message = self.not_written(host)
-        self.assertIn("NOT_FOUND", message)
-        self.assertIn("write it with: " + " ".join(host.ran("record-checks")[0]), message)
+NATIVE_CHECK = {"check_id": "browser-checks", "group_name": "Checks", "position": 2, "name": "Browser checks", "kind": "pass",
+                "source": "release-check:native"}
+WAKE_CHECK = {"check_id": "wake-time", "group_name": "Measures", "position": 3, "name": "Wake time", "kind": "measure",
+              "source": "release-check:wake-replay", "unit": "s", "better": "lower", "target_value": 10, "tolerance": 0.2, "repeats": 2}
+CASE = "a new arrival keeps your place while you write"
 
-    def test_a_checks_read_that_fails_once_live_says_the_release_is_live(self):
-        host = ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0), ("", 1)])
-        self.assertIn("the live outcome's checks could not be read", self.not_written(host))
-        self.assertEqual(host.ran("record-checks"), [])
+
+class Started(Exception):
+    """The deploy reached its restart: everything before the stop went on."""
+
+
+class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
+    """7.2 steps 1 to 9 through the real agent CLI and admin verb into a real store (D15, D27, D31, D35): outcome w1 with
+    owner "owner", coordinator agent-a and reporter agent-b; release 22 live at HEAD; release 23's piece at SHA in checks."""
+
+    on, add, stages = PipelineCase.on, PipelineCase.add, PipelineCase.stages
+
+    def setUp(self):
+        super().setUp()
+        base = Path(self.temp.name).resolve()
+        for name, pid, last in (("run-server-03", 111, None), ("run-runner-02", 222, '{"status": "stopped"}')):
+            (base / name).mkdir()
+            (base / name / "pid.json").write_text(json.dumps({"pid": pid}))
+            if last:
+                (base / name / "stdout.log").write_text('{"event": "acquired"}\n' + last + "\n")
+        config = {"live": str(base / "live"), "instance": str(base), "server_profile": "agent-a.json", "port": 5192,
+                  "runner_profile": "runner.json", "runner_id": "runner-01", "routes": "routes.json", "outcome": "w1", "reporter_profile": "agent-b.json"}
+        (base / "deploy.json").write_text(json.dumps(config))
+        self.config, self.evidence, self.summary = deploy.load_config(base / "deploy.json"), base / "evidence", base / "summary.json"
+        for check in (UNITS_CHECK, NATIVE_CHECK):
+            self.define(check)
+        self.assertTrue(self.store.record_release({"release": 22, "commit": HEAD, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [],
+                                                   "source": "backfill"})["recorded"])
+        self.store.record_checks({"outcome": "w1", "commit": HEAD, "started_at": "2026-11-06T04:00:00-08:00", "finished_at": "2026-11-06T04:15:00-08:00",
+                                  "tools": {"release-check": release_check.TOOL}, "steps": [], "note": "", "readings": [
+                                      {"check_id": "units", "result": "passed", "value": 900, "words": "900"},
+                                      {"check_id": "browser-checks", "result": "passed", "value": 10 * len(release_check.NATIVE_STEPS), "words": "all"}]},
+                                 "agent-a")
+        self.committed(self.on(ships_in_releases=True))
+        self.stages({"stage_id": "build", "name": "Build"}, {"stage_id": "wait", "name": "Wait"},
+                    {"stage_id": "checks", "name": "Browser checks", "scope": "release", "rounds": "together", "gate": {"checks": ["units", "browser-checks"]}},
+                    {"stage_id": "deploy", "name": "Deploy", "scope": "release"})
+        numbers = [self.add("Item %d" % n, section="now", size="small") for n in (1, 2)]
+        piece = self.committed(self.command("pipeline.piece_start", {"numbers": numbers, "topic_id": "t1", "stage_id": "build"}, {"workspace_id": "w1"}))
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "wait", "left_outcome": "approved"}, {"piece_id": piece["piece_id"]}))
+        self.release = self.committed(self.command("pipeline.combine", {"release_number": 23, "commit_sha": SHA, "piece_ids": [piece["piece_id"]],
+                                                                        "topic_id": "t1"}, {"workspace_id": "w1"}))["piece_id"]
+        self.kills = []
+
+    def revision(self):
+        return self.store.view("owner", "outcome_checks", {"workspace_id": "w1"})["relevant_versions"]["checks"]
+
+    def define(self, check):
+        self.committed(self.command("check.define", {"check": check}, {"workspace_id": "w1"}, {"checks_revision": self.revision()}, actor="agent-a"))
+
+    def write_summary(self, failed=(), wake=None):
+        """counted(), with ten browser cases a step (one failing in each step named), and a wake replay (runs now, runs at the base) when given."""
+        written = counted()
+        for step in written["steps"]:
+            if step["name"].startswith("native-"):
+                broken = step["name"] in failed
+                step.update(passed=not broken, exit=int(broken), counts={"tests": 10, "pass": 9 if broken else 10, **({"failed": [CASE]} if broken else {})})
+        if wake:
+            replay = lambda runs: {"name": "wake-replay", "passed": True, "series": {"aim-ux": {"runs": runs, "median": sorted(runs)[len(runs) // 2]}}}
+            written["steps"].append(replay(wake[0]))
+            written["base"] = {"commit": HEAD, "tools": {"release-check": release_check.TOOL}, "steps": [replay(wake[1])]}
+        self.summary.write_text(json.dumps(dict(written, passed=not failed)))
+
+    def deploy(self):
+        """The deploy's answer, through the real CLI (as the reporter) and admin verb; ps, git and the release records from FakeHost."""
+        fallback = ChecksHost(self.config, releases=(page(22), 0), log=log(("Items one and two", ["1", "2"])))
+        live_cli, admin_cli = str(self.config.live / "bin/aim-next"), str(self.config.live / "bin/aim-next-admin")
+
+        def run(argv, **kw):
+            if len(argv) > 4 and (argv[3] == live_cli and "releases" not in argv or argv[3:5] == [admin_cli, "record-checks"]):
+                out, err = io.StringIO(), io.StringIO()
+                if argv[3] == live_cli:
+                    code = cli.main(argv[4:], stdin=io.BytesIO(b""), stdout=out, stderr=err)
+                else:
+                    code = admin.main(argv[4:], stdout=out, stderr=err)
+                return subprocess.CompletedProcess(argv, code, out.getvalue(), err.getvalue())
+            return fallback(argv, **kw)
+        with mock.patch.object(deploy, "run", run), \
+                mock.patch.object(deploy.os, "kill", lambda pid, sig: self.kills.append((pid, sig))), \
+                mock.patch.object(deploy, "wait_exit", return_value="exited"), \
+                mock.patch.object(deploy, "start", side_effect=Started), \
+                redirect_stdout(io.StringIO()):
+            try:
+                deploy.deploy(self.config, SHA, self.evidence, self.summary, False)
+            except deploy.Refused as refusal:
+                return str(refusal)
+            except Started:
+                return "restarting"
+        self.fail("the deploy neither refused nor reached its restart")
+
+    def candidate(self):
+        return self.store.view("owner", "outcome_checks", {"workspace_id": "w1"})["loop"]["candidate"]
+
+    def stage(self):
+        return self.sql("SELECT stage_id,entered_by FROM pipeline_stage_entries WHERE piece_id=? AND left_ms IS NULL", (self.release,))[0]
+
+    def test_a_failing_browser_case_holds_the_release_with_its_fix_topic_and_its_items_can_go_back_to_building(self):
+        # Mockup 14's "A check fails": a summary that did not pass is measured, told and recorded before the refusal.
+        self.write_summary(failed=("native-live",))
+        topics = self.sql("SELECT count(*) FROM topics")[0][0]
+        self.assertEqual(self.deploy(), "Browser checks got worse: a passing check now fails")
+        [(topic, title, creator)] = self.sql("SELECT id,title,creator_id FROM topics WHERE id NOT IN ('t1')")
+        self.assertEqual((title, creator), ("“%s” fails at the release 23 candidate" % CASE, "agent-b"))
+        self.assertEqual(self.sql("SELECT actor_id FROM topic_participants WHERE topic_id=? ORDER BY actor_id", (topic,)), [("agent-a",), ("agent-b",)])
+        candidate = self.candidate()
+        self.assertEqual((candidate["label"], candidate["state"], [(item["check_id"], item["fix_topic"]["id"]) for item in candidate["worse"]]),
+                         ("Release 23 candidate", "stopped", [("browser-checks", topic)]))
+        self.assertEqual(self.sql("SELECT note FROM pipeline_stage_entries WHERE piece_id=? AND left_ms IS NULL", (self.release,)),
+                         [("Held: Browser checks got worse.",)])
+        self.assertEqual(self.kills, [])
+        # Run again for the same commit, it finds the same run and topic and tells nobody twice.
+        messages = self.sql("SELECT count(*) FROM messages WHERE topic_id=?", (topic,))
+        self.assertEqual(self.deploy(), "Browser checks got worse: a passing check now fails")
+        self.assertEqual((self.sql("SELECT count(*) FROM topics")[0][0], self.sql("SELECT count(*) FROM messages WHERE topic_id=?", (topic,))),
+                         (topics + 1, messages))
+        self.assertEqual(self.stage(), ("checks", "owner"), "held in checks")
+        # D35: the owner takes the cause's item back to building, in the fix topic.
+        back = self.committed(self.command("pipeline.piece_start", {"numbers": [1], "topic_id": topic, "stage_id": "build", "from_release": True},
+                                           {"workspace_id": "w1"}))
+        self.assertEqual(back["numbers"], [1])
+        self.assertEqual(self.sql("SELECT number,left_reason FROM pipeline_piece_members WHERE piece_id=? ORDER BY number", (self.release,)),
+                         [(1, "returned"), (2, None)])
+
+    def test_a_worse_measure_the_owner_accepts_lets_the_same_commit_go_on_into_deploy(self):
+        self.define(WAKE_CHECK)
+        self.write_summary(wake=([20.0, 21.0], [13.0, 13.4]))
+        self.assertEqual(self.deploy(), "Wake time got worse: aim-ux got worse in every run")
+        candidate = self.candidate()
+        self.assertEqual((candidate["state"], candidate["you_accept"], candidate["tools_same_as_base"]), ("stopped", True, True))
+        [(title,)] = self.sql("SELECT title FROM topics WHERE id NOT IN ('t1')")
+        self.assertEqual(title, "Wake time got worse at the release 23 candidate")
+        # D31: only on the owner's own word.
+        self.committed(self.command("check.accept_worse", {"run_id": candidate["run_id"], "why": "Worth it for the faster wakes"},
+                                    {"workspace_id": "w1", "check_id": "wake-time"}, {"checks_revision": self.revision()}, actor="owner"))
+        self.assertEqual(self.deploy(), "restarting")
+        self.assertEqual(self.candidate()["state"], "accepted")
+        self.assertEqual(self.sql("SELECT count(*) FROM check_runs WHERE commit_sha=? AND base_for_commit IS NULL", (SHA,)), [(1,)], "the same run")
+        self.assertEqual(self.stage(), ("deploy", "agent-b"))
+        self.assertEqual(self.sql("SELECT left_outcome,left_by FROM pipeline_stage_entries WHERE piece_id=? AND stage_id='checks'", (self.release,)),
+                         [("passed", "agent-b")])
+        self.assertEqual([pid for pid, _ in self.kills], [222, 111], "then everything stops, as before")
+
+    def test_without_a_run_at_its_commit_the_release_piece_cannot_leave_checks(self):
+        # The gate reads readings at the piece's commit (D18); the deploy's 02-run is what writes them.
+        self.rejected(self.command("pipeline.stage_enter", {"stage_id": "deploy", "left_outcome": "passed"}, {"piece_id": self.release}, actor="agent-b"),
+                      "STAGE_GATED")
+        self.write_summary()
+        self.assertEqual(self.deploy(), "restarting")
+        self.assertEqual(self.stage(), ("deploy", "agent-b"))
+
 
 if __name__ == "__main__":
     unittest.main()

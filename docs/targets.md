@@ -66,7 +66,9 @@ A check's status: **waiting** (an ask about it awaits the owner), **not run**,
 target), **holding** (met at the last two releases in a row), or **measured**
 (a measure with no target, or met but not yet held). A group of checks opens
 by itself when one of its checks fails or waits; otherwise it is closed. A run
-of the checks shows on the page live, with no reload. Measurements lists every
+of the checks shows on the page live, with no reload: each panel is painted
+again in place, so what is on screen stays the same controls, a press held
+while something commits still lands, and a fold the reader opened stays open. Measurements lists every
 reading of every check by release, with a chart per check: every mark is also
 in the table under it, with what produced it, and a candidate is drawn hollow.
 A line under each chart says the reading of the mark under the pointer, or of
@@ -83,11 +85,27 @@ only when it is slower in every run. Two records cover a regression: an
 allowance for fewer cases from a commit on, and the owner's word that one
 measure got worse at one run (accept-worse). Nothing else covers a failure.
 
-`tools/deploy.py` reads the live release's checks before anything stops
-(`02-checks`), refuses the deploy when something got worse that nothing covers
-(`02-worse`, naming each), and once the new release is live and recorded,
-writes its run of the checks as the outcome's coordinator (`12-checks`). A
-failed read refuses; it never reads as "no checks".
+`tools/deploy.py` measures the candidate before anything stops, as the
+config's reporter: a member of the outcome who is not its coordinator, so the
+coordinator is told rather than telling itself. A release check summary of the
+commit is measured even when its steps failed. `02-checks` reads the live
+release's checks, the owner's allowances and each check's open fix topic and
+works out what got worse; a failed read refuses, and never reads as "no
+checks". For each worse check, `02-worse` tells the coordinator: in the check's
+open fix topic, or in a new one named for what failed ("“A new arrival keeps
+your place while you write” fails at the release 23 candidate", "Wake time got
+worse at the release 23 candidate", "Unit checks did not run at …"), whose
+first message asks for a clearer title if there is one. Each write is named
+from the check and the commit, so a deploy run again for the same commit finds
+the same topic and tells nobody twice. `02-run` writes the run, each worse
+reading naming its fix topic, and notes on the release piece "Held: Wake time
+got worse." Then the deploy refuses, naming what got worse first, then a
+summary that did not pass. The outcome page shows the candidate stopped, its
+fix topic and the owner's choice to accept a worse measure; once he has, the
+same commit is deployed again and goes on. Before anything stops, the release
+piece of this release, at this commit, leaves `checks` for `deploy`; its gate
+holds on the readings `02-run` wrote. A dry run measures and says what got
+worse, and writes nothing.
 
 ## The improvement loop
 

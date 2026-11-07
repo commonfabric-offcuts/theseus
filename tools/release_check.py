@@ -230,28 +230,36 @@ def check(root, out, chrome, python, node):
     return summary
 
 
-def verify_summary(path, commit):
-    """Reasons a summary does not show a passed release check for exactly this commit; [] when it does."""
+def judge_summary(path, commit):
+    """(foreign, unpassed): reasons a summary does not describe a run at exactly this commit (unreadable, not a
+    summary, another commit, a tree that changed while it ran), and reasons that run did not pass (a required step
+    failed or is missing). A summary that describes the commit can be measured even when it did not pass."""
     try:
         summary = json.loads(Path(path).read_text())
     except (OSError, ValueError) as error:
-        return ["no readable release-check summary at %s: %s" % (path, error)]
+        return ["no readable release-check summary at %s: %s" % (path, error)], []
     if not isinstance(summary, dict) or summary.get("tool") != TOOL:
-        return ["%s is not a release-check summary" % path]
-    reasons = []
+        return ["%s is not a release-check summary" % path], []
+    foreign, reasons = [], []
     if summary.get("commit") != commit:
-        reasons.append("the release check ran on %s, not %s" % (summary.get("commit"), commit))
+        foreign.append("the release check ran on %s, not %s" % (summary.get("commit"), commit))
     if summary.get("tree_unchanged") is not True:
-        reasons.append("the checkout changed while the release check ran")
+        foreign.append("the checkout changed while the release check ran")
     steps = {step.get("name"): step for step in summary.get("steps") or [] if isinstance(step, dict)}
     for name in sorted(set(REQUIRED) | set(summary.get("required") or [])):
         if name not in steps:
             reasons.append("the release check did not run %s" % name)
         elif steps[name].get("passed") is not True:
             reasons.append("%s failed (exit %s)" % (name, steps[name].get("exit")))
-    if summary.get("passed") is not True and not reasons:
+    if summary.get("passed") is not True and not reasons and not foreign:
         reasons.append("the release check did not pass")
-    return reasons
+    return foreign, reasons
+
+
+def verify_summary(path, commit):
+    """Reasons a summary does not show a passed release check for exactly this commit; [] when it does."""
+    foreign, unpassed = judge_summary(path, commit)
+    return foreign + unpassed
 
 
 def main(argv=None):

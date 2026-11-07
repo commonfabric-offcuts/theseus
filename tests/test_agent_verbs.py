@@ -304,6 +304,45 @@ class ReadingVerbCase(AgentVerbCase):
         self.assertEqual((code, out), (2, ""))
         self.assertIn("FORBIDDEN", err)
 
+    def test_a_start_or_post_named_by_its_operation_returns_the_same_topic_and_message_when_sent_again(self):
+        # A deploy that stopped after opening a fix topic runs again: the same operation answers with what it made.
+        topics = lambda: self.sql("SELECT count(*) FROM topics")[0][0]
+        answers = lambda result: (result[0], [json.loads(line) for line in result[1].splitlines()], result[2])
+        before = topics()
+        first = self.run_cli("--json", "start", "w1", "--title", "Fix it", "--with", "agent-b", "--operation", "fix-units-abc", "It got worse")
+        self.assertEqual(first[0], 0, first[2])
+        again = self.run_cli("--json", "start", "w1", "--title", "Fix it", "--with", "agent-b", "--operation", "fix-units-abc", "It got worse")
+        self.assertEqual(answers(again), answers(first))
+        self.assertEqual(topics(), before + 1)
+        [(topic,)] = self.sql("SELECT id FROM topics WHERE title='Fix it'")
+        self.assertIn(topic, first[1])
+        post = ("--json", "post", topic, "--tells", "agent-b", "--operation", "fix-post-units-abc", "Worse again")
+        sent = self.run_cli(*post)
+        self.assertEqual(sent[0], 0, sent[2])
+        self.assertEqual(answers(self.run_cli(*post)), answers(sent))
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE topic_id=?", (topic,)), [(2,)])
+        # The same name for different words is refused, and sends nothing.
+        code, out, _ = self.run_cli("--json", "post", topic, "--tells", "agent-b", "--operation", "fix-post-units-abc", "Other words")
+        self.assertEqual((code, json.loads(out)["error"]["code"]), (2, "OPERATION_PAYLOAD_MISMATCH"))
+        code, out, _ = self.run_cli("--json", "start", "w1", "--title", "Fix it now", "--operation", "fix-units-abc", "It got worse")
+        self.assertEqual((code, json.loads(out)["error"]["code"]), (2, "OPERATION_PAYLOAD_MISMATCH"))
+        self.assertEqual((topics(), self.sql("SELECT count(*) FROM messages WHERE topic_id=?", (topic,))), (before + 1, [(2,)]))
+        # A request saved but never recorded keeps its name: other words under it are refused before they are sent.
+        blocker = sqlite3.connect(str(self.path), isolation_level=None)
+        self.addCleanup(blocker.close)
+        blocker.execute("BEGIN IMMEDIATE")
+        self.assertEqual(self.run_cli("post", topic, "--tells", "agent-b", "--operation", "fix-post-units-def", "First words")[0], 75)
+        blocker.rollback()
+        code, out, _ = self.run_cli("--json", "post", topic, "--tells", "agent-b", "--operation", "fix-post-units-def", "Later words")
+        self.assertEqual((code, json.loads(out)["error"]["code"]), (2, "OPERATION_PAYLOAD_MISMATCH"))
+        self.assertEqual(self.run_cli("post", topic, "--tells", "agent-b", "--operation", "fix-post-units-def", "First words")[0], 0)
+        self.assertEqual([row[0] for row in self.sql("SELECT body FROM messages WHERE topic_id=? ORDER BY seq", (topic,))][1:],
+                         ["Worse again", "First words"])
+        # Without --operation, each start is its own topic.
+        self.assertEqual(self.run_cli("start", "w1", "--title", "Fix it", "words")[0], 0)
+        self.assertEqual(self.run_cli("start", "w1", "--title", "Fix it", "words")[0], 0)
+        self.assertEqual(topics(), before + 3)
+
     def test_a_recorded_but_unconfirmed_start_names_its_opening_for_publish(self):
         class Lost(io.StringIO):
             def write(self, text):

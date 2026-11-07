@@ -77,6 +77,11 @@ done, dropped with its last item, or combined into a release. The database
 keeps this rule where every stage entry is opened and closed, not each command,
 so no way of moving a piece steps around it.
 
+A stage gated on checks is left only when each one's newest reading passed: for a
+release piece, a reading at its commit (`STAGE_GATED` otherwise). The deploy
+writes those readings for the candidate before it moves the release piece from
+`checks` into `deploy` ([targets.md](targets.md#what-got-worse)).
+
 ## Turning it on and changing its stages
 
 Turn on is one tap, for the owner or the coordinator: the pipeline starts as

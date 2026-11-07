@@ -1062,7 +1062,9 @@ class Checks:
     # ---- the deploy's read (7.2) and its operator write (7.3) ------------------------
 
     def _view_outcome_live(self, db, actor, args):
-        """What the deploy reads before it measures: the checks, the coordinator, the live baseline and the owner's allowances bearing on SHA."""
+        """What the deploy reads before it measures (7.2 step 3): who reads (the reporter, D27), the checks, the coordinator,
+        the live baseline, the owner's allowances bearing on SHA, each check's open fix topic, the number the candidate
+        would ship as, and the open release piece of that number."""
         workspace = self._workspace(db, actor, args.get("workspace_id"))
         context = self._checks_context(db, actor, workspace)
         run, readings = self._live_baseline(context)
@@ -1071,17 +1073,24 @@ class Checks:
         if commit is not None:
             allowances = [dict(row) for row in db.execute("SELECT * FROM check_allowances WHERE workspace_id=? AND (kind='fewer' OR commit_sha=?)",
                                                           (workspace["id"], commit))]
-        return {"instance_id": self.instance_id, "workspace_id": workspace["id"], "coordinator": workspace["coordinator_id"],
+        live = context["releases"][-1]["number"] if context["releases"] else 0
+        number = (self._release_piece_number(db, workspace["id"], commit) if commit else None) or live + 1
+        piece = db.execute("SELECT p.id,p.release_number,p.commit_sha,e.stage_id FROM pipeline_pieces p JOIN pipeline_stage_entries e "
+                           "ON e.piece_id=p.id AND e.left_ms IS NULL WHERE p.workspace_id=? AND p.kind='release' AND p.release_number=? "
+                           "ORDER BY e.entered_ms DESC LIMIT 1", (workspace["id"], number)).fetchone()
+        return {"instance_id": self.instance_id, "workspace_id": workspace["id"], "reader": actor, "coordinator": workspace["coordinator_id"],
                 "members": [row[0] for row in db.execute("SELECT actor_id FROM workspace_members WHERE workspace_id=?", (workspace["id"],))],
                 "checks": context["checks"], "live": {"run_id": run["id"], "commit": run["commit_sha"], "tools": run["tools"]} if run else None,
-                "readings": readings, "allowances": allowances,
+                "readings": readings, "allowances": allowances, "candidate_release": number,
+                "release_piece": {"id": piece["id"], "release": piece["release_number"], "commit": piece["commit_sha"], "stage": piece["stage_id"]} if piece else None,
                 "fix_topics": {check_id: self._open_fix_topic(db, workspace["id"], check_id) for check_id in (c["check_id"] for c in context["checks"])}}
 
     def _open_fix_topic(self, db, workspace_id, check_id):
-        row = db.execute("SELECT r.fix_topic_id FROM check_readings r JOIN check_runs u ON u.id=r.run_id JOIN topics t ON t.id=r.fix_topic_id "
+        """The newest open fix topic a reading of this check names, and the commit of that reading's run (D15: opened once)."""
+        row = db.execute("SELECT r.fix_topic_id,u.commit_sha FROM check_readings r JOIN check_runs u ON u.id=r.run_id JOIN topics t ON t.id=r.fix_topic_id "
                          "WHERE r.workspace_id=? AND r.check_id=? AND r.fix_topic_id IS NOT NULL AND t.state<>'done' "
                          "ORDER BY u.started_ms DESC LIMIT 1", (workspace_id, check_id)).fetchone()
-        return row[0] if row else None
+        return {"topic_id": row[0], "commit": row[1]} if row else None
 
 
 def _is_measure(checks, check_id):

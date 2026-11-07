@@ -3,6 +3,7 @@ from __future__ import annotations
 """Explicit local Store calls; transport success never acknowledges delivery."""
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -174,7 +175,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT|- "
+         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--operation ID] TEXT|- "
+         "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] "
@@ -237,6 +239,8 @@ def _parser():
     post.add_argument("--to")
     post.add_argument("--reply-to")
     post.add_argument("--part", action="store_true")
+    # --operation ID: the write's own operation id, so sending it again returns the same message (a deploy's retry).
+    post.add_argument("--operation")
     post.add_argument("text")
     whisper = verb("whisper")
     whisper.add_argument("topic")
@@ -251,6 +255,9 @@ def _parser():
     start.add_argument("--from", dest="source")
     start.add_argument("--seen")
     start.add_argument("--part", action="store_true")
+    # --operation ID: the start's operation id; the opening, its topic and both writes are named from it, so starting
+    # again with the same words returns the same topic.
+    start.add_argument("--operation")
     start.add_argument("text")
     coordinator = verb("coordinator")
     coordinator.add_argument("outcome")
@@ -539,18 +546,36 @@ class Agent(PipelineVerbs, TargetVerbs):
             raise Failed(code, recorded=receipt.get("recorded") is True)
         return receipt["result"]
 
-    def command(self, kind, target, args, expected=None):
+    def command(self, kind, target, args, expected=None, operation=None):
+        """Saves the request in the outbox, then sends it. A caller's own operation id that is already saved is sent
+        again when the request is the same (Core then answers with what it recorded), and refused when it is not."""
         directory = self.outbox()
-        envelope = {"v": 1, "instance_id": self.profile.instance_id, "operation_id": "cli-" + uuid.uuid4().hex,
+        envelope = {"v": 1, "instance_id": self.profile.instance_id, "operation_id": operation or "cli-" + uuid.uuid4().hex,
                     "kind": kind, "target": target, "args": args,
                     "expected": dict(expected or {}, authority={key: self.binding[key] for key in ("authority_id", "authority_epoch")})}
         request = {"v": 1, "binding": self.binding, "command": envelope}
         try:
             self._save_request(directory, envelope["operation_id"], request)
+        except FileExistsError:
+            try:
+                saved = json.loads((directory / (envelope["operation_id"] + ".request.json")).read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                self.unsent("operation %s is saved, and its request could not be read" % envelope["operation_id"])
+            if operation is None or saved != request:
+                self.refuse("OPERATION_PAYLOAD_MISMATCH", "Operation %s already names a different request; nothing was sent" % envelope["operation_id"])
         except OSError:
             self.unsent("the request could not be saved")
         self.operation = envelope["operation_id"]
         return self.dispatch(directory, request)
+
+    def operation_of(self, suffix=""):
+        """The caller's --operation id with suffix, checked as a name; None when it gave none."""
+        operation = getattr(self.options, "operation", None)
+        if operation is None:
+            return None
+        if not SAFE_NAME.fullmatch(operation + suffix):
+            self.refuse("INVALID_ARGUMENT", "--operation is a name of letters, digits, '.', '_', '@' and '-'; nothing was sent")
+        return operation + suffix
 
     def text(self):
         if self.options.text != "-":
@@ -879,7 +904,7 @@ class Agent(PipelineVerbs, TargetVerbs):
         if options.subject:
             # --subject item:92,item:31: what the post is about, written with it.
             args["subjects"] = [dict(zip(("kind", "ref"), part.strip().split(":", 1))) for part in options.subject.split(",") if part.strip()]
-        result = self.command("message.post", {"topic_id": options.topic}, args)
+        result = self.command("message.post", {"topic_id": options.topic}, args, operation=self.operation_of())
         self.out.plain("posted %s in %s (%s deliveries queued)" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"]))
 
     def do_whisper(self):
@@ -910,7 +935,12 @@ class Agent(PipelineVerbs, TargetVerbs):
 
     def do_start(self):
         options = self.options
-        opening, topic = "o-" + uuid.uuid4().hex, "t-" + uuid.uuid4().hex
+        named = self.operation_of()
+        if named is None:
+            opening, topic = "o-" + uuid.uuid4().hex, "t-" + uuid.uuid4().hex
+        else:
+            digest = hashlib.sha256(named.encode("utf-8")).hexdigest()[:32]
+            opening, topic = "o-" + digest, "t-" + digest
         body = self.text()
         seen = self.seen()
         writing = {"workspace_id": options.outcome, "topic_id": topic, "title": options.title,
@@ -923,7 +953,7 @@ class Agent(PipelineVerbs, TargetVerbs):
         elif seen:
             self.refuse("INVALID_ARGUMENT", "--seen names topics started from the message --from names; nothing was sent")
         try:
-            saved = self.command("opening.save", {"opening_id": opening}, writing, {"opening_revision": 0})
+            saved = self.command("opening.save", {"opening_id": opening}, writing, {"opening_revision": 0}, self.operation_of("-save"))
         except BaseException as stopped:
             # Once the save request is saved, any end but a final refusal may
             # leave the save recorded (or recordable by `retry`), so the
@@ -933,7 +963,7 @@ class Agent(PipelineVerbs, TargetVerbs):
             raise
         try:
             result = self.command("opening.publish", {"opening_id": opening}, {"seen": seen} if options.source is not None else {},
-                                  {"opening_revision": saved["opening_revision"]})
+                                  {"opening_revision": saved["opening_revision"]}, self.operation_of("-publish"))
         except BaseException as stopped:
             # The save is recorded, so the opening stays whatever ends the publish.
             if isinstance(stopped, Failed) and stopped.code == 2:

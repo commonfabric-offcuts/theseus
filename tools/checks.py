@@ -39,16 +39,50 @@ def tools_of(summary):
 
 
 def run_from_summary(summary, checks, outcome, note=""):
+    """The run a summary describes; with the summary's `base` (7.1 --base: the live release's commit, its tools and the
+    steps rerun beside the candidate), that rerun under `base`, read from its steps alone (D32)."""
     steps = check_reading.steps_of(summary)
     started, finished = _ms(summary["started_at"]), _ms(summary["finished_at"])
-    return {"outcome": outcome, "commit": summary["commit"], "started_at": summary["started_at"], "finished_at": summary["finished_at"],
-            "tools": tools_of(summary), "steps": steps, "note": note,
-            "readings": check_reading.readings(checks, steps, started, finished)}
+    run = {"outcome": outcome, "commit": summary["commit"], "started_at": summary["started_at"], "finished_at": summary["finished_at"],
+           "tools": tools_of(summary), "steps": steps, "note": note,
+           "readings": check_reading.readings(checks, steps, started, finished)}
+    base = summary.get("base")
+    if isinstance(base, dict):
+        rerun = check_reading.steps_of(base)
+        run["base"] = {"commit": base["commit"], "started_at": summary["started_at"], "finished_at": summary["finished_at"],
+                       "tools": base.get("tools") or run["tools"], "steps": rerun, "note": "rerun of the live release",
+                       "readings": check_reading.readings(checks, rerun)}
+    return run
 
 
-def fix_title(item):
-    """The fix topic's title for one worse result (D16): the check and what happened."""
-    return "%s: %s" % (item.get("name") or item["check_id"], item["why"])
+RENAME = "Rename this topic to say what is wrong in your own words, if that is clearer."
+
+
+def fix_title(item, release):
+    """D15: the fix topic's title for one worse result, named for what failed at the release N candidate.
+
+    A pass check with failed cases takes the first case's name; a check that did not run says so; anything else
+    got worse."""
+    at = "at the release %d candidate" % release
+    cases = item.get("cases") or []
+    if item["kind"] == "failed" and cases:
+        more = len(cases) - 1
+        return "\u201c%s\u201d %s %s" % (cases[0], "and %d more fail" % more if more else "fails", at)
+    return "%s %s %s" % (item.get("name") or item["check_id"], "did not run" if item.get("missing") else "got worse", at)
+
+
+def fix_body(item, release, evidence, opening):
+    """What the deploy says in a fix topic: what got worse, the failed cases, where the evidence is, and, in the
+    topic's first message, that its title may be put in the coordinator's own words."""
+    lines = ["%s got worse at the release %d candidate: %s." % (item.get("name") or item["check_id"], release, item["why"])]
+    if item.get("cases"):
+        lines.append("Failed: " + "; ".join(item["cases"][:20]) + ("; and %d more" % (len(item["cases"]) - 20) if len(item["cases"]) > 20 else "") + ".")
+    if isinstance(item.get("now"), (int, float)):
+        lines.append("Now %s%s, was %s." % (item["now"], " " + item["unit"] if item.get("unit") else "", item.get("base")))
+    lines.append("Evidence: %s" % evidence)
+    if opening:
+        lines.append(RENAME)
+    return "\n\n".join(lines)
 
 
 def worse(run, live):
@@ -85,7 +119,7 @@ def main(argv=None):
         sys.stdout.write(json.dumps(run, indent=1) + "\n")
         return 0
     found = worse(json.loads(Path(options.run).read_text(encoding="utf-8")), live)
-    sys.stdout.write(json.dumps({"worse": found, "titles": [fix_title(item) for item in found]}, indent=1) + "\n")
+    sys.stdout.write(json.dumps({"worse": found, "titles": [fix_title(item, live["candidate_release"]) for item in found]}, indent=1) + "\n")
     return 1 if found else 0
 
 
