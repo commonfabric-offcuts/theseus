@@ -76,7 +76,7 @@ class WhoIsInItCase(ConversationCase):
         light = self.store.view("owner", "outcome_light", {"workspace_id": "w2"})
         self.assertEqual((light["light"]["light"], light["lead"]), ("quiet", {"kind": "no_topics"}), "its conversation is not one of its topics")
 
-    def test_changing_the_coordinator_moves_who_is_in_it_once_and_takes_the_old_ones_asks_off(self):
+    def test_changing_the_coordinator_moves_who_is_in_it_once_and_the_old_one_still_owes_its_asks(self):
         ask = self.posted("Can you check the copy?", addressees=["agent-a"], intent="ask")
         self.assertEqual(self.waiting(), [("agent-a", ask)])
         workspace, topic = self.versions()
@@ -84,9 +84,12 @@ class WhoIsInItCase(ConversationCase):
                                     expected={"workspace_revision": workspace}))
         self.assertEqual(self.participants(), ["agent-b", "owner"])
         self.assertEqual(self.versions(), (workspace + 1, topic + 1), "one act, one step of each version")
-        self.assertEqual(self.waiting(), [], "the old coordinator's open ask there is taken off with it")
-        self.assertEqual(self.sql("SELECT count(*) FROM conversation_waits"), [(0,)])
+        # Still on the team, the old coordinator reads the conversation and can reply; only that, or leaving, clears it.
+        self.assertEqual(self.waiting(), [("agent-a", ask)], "the old coordinator's open ask there still waits on it")
+        self.assertEqual([(wait["ask_message_id"], wait["on"]) for wait in self.found()["waits"]], [(ask, "agent-a")])
         self.assertEqual(self.found()["coordinator"]["actor_id"], "agent-b")
+        self.posted("Checked; it reads well.", actor="agent-a", reply_to=ask)
+        self.assertEqual((self.waiting(), self.found()["waits"]), ([], []), "its reply to that ask clears it")
         # Choosing the same coordinator again changes nothing.
         workspace, topic = self.versions()
         self.committed(self.command("workspace.coordinator_set", {"actor_id": "agent-b"}, target={"workspace_id": "w1"},
@@ -430,6 +433,27 @@ class WaitsCase(ConversationCase):
         self.assertEqual(self.waiting(), [("owner", ask_b)])
         self.posted("The second.", reply_to=ask_b)
         self.assertEqual(self.waiting(), [])
+
+    def test_an_agent_asked_there_that_leaves_the_team_is_waited_on_no_more_and_rejoining_brings_nothing_back(self):
+        # agent-b is on the team, so it reads the conversation, but it is not a participant there.
+        ask = self.posted("@agent-b which build?", addressees=["agent-b"], intent="ask")
+        mine = self.posted("@owner is the copy final?", actor="agent-a", addressees=["owner"], intent="ask")
+        self.assertNotIn("agent-b", self.participants())
+        self.assertEqual(self.waiting(), [("agent-b", ask), ("owner", mine)])
+        topic = self.versions()[1]
+        self.committed(self.command("workspace.member_set", {"actor_id": "agent-b", "present": False}, target={"workspace_id": "w1"},
+                                    expected={"workspace_revision": self.versions()[0]}))
+        self.assertEqual(self.waiting(), [("owner", mine)], "the conversation no longer waits on someone who cannot read it")
+        self.assertEqual(self.sql("SELECT ask_id,actor_id FROM conversation_waits ORDER BY actor_id"), [(mine, "owner")],
+                         "its open ask there goes with it; the ask on the owner stays")
+        self.assertEqual([(wait["ask_message_id"], wait["on"]) for wait in self.found()["waits"]], [(mine, "owner")])
+        self.assertGreater(self.versions()[1], topic, "open conversation pages learn the wait went")
+        self.assertIn(("actor", "agent-b", "waiting", self.conversation),
+                      set(self.sql("SELECT scope_kind,scope_id,resource_kind,resource_id FROM changes")), "its attention learns it too")
+        self.committed(self.command("workspace.member_set", {"actor_id": "agent-b", "present": True}, target={"workspace_id": "w1"},
+                                    expected={"workspace_revision": self.versions()[0]}))
+        self.assertEqual(self.waiting(), [("owner", mine)], "rejoining does not bring the old ask back")
+        self.assertEqual([wait["on"] for wait in self.found()["waits"]], ["owner"], "the page and the attention list agree")
 
     def test_the_waiting_words_are_the_asks_first_sentence_without_its_names(self):
         self.assertEqual(standing.excerpt("@agent-b, @owner: Is it ready? And more."), "Is it ready?")

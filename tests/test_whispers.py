@@ -536,11 +536,11 @@ VIEW_PATHS = {
 MESSAGE_READS = {
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations", 20),
-    "aim_next/standing_conversation.py": ("a conversation's items, answers and asks, which a whisper never is, and the about links of a page already read through VISIBLE", 8),
+    "aim_next/standing_conversation.py": ("a conversation's items, answers and asks, which a whisper never is, and the about links of a page already read through VISIBLE", 7),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
-    "aim_next/topic_state.py": ("asks and the latest message on the record", 4),
+    "aim_next/topic_state.py": ("asks, the conversation asks to someone who can no longer read it, and the latest message on the record", 5),
     "aim_next/sources.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/wake_health.py": ("on the record only (private_to IS NULL)", 1),
     "aim_next/whispers.py": ("the rule itself", 5),

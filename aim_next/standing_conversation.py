@@ -13,9 +13,10 @@ What became of an item is written by Theseus itself, in the same act that
 did it, as a take (`conversation_takes`): answered by its answerer's reply,
 taken into a topic started from it, or put on the pipeline. A take settles
 the item unless it took only part of it. An ask there waits on each person
-it asks until that person replies to that ask (`conversation_waits`); the
-topic's `topic_waiting` rows are kept in step with those, so attention, the
-sidebar and the outcome light read waits as for any topic.
+it asks until that person replies to that ask, or leaves the team
+(`conversation_waits`); the topic's `topic_waiting` rows are kept in step with
+those, so attention, the sidebar and the outcome light read waits as for any
+topic.
 """
 
 import json
@@ -49,7 +50,8 @@ STANDING_SCHEMA = [
     "CREATE INDEX item_takes ON conversation_takes(item_id,id)",
     "CREATE TRIGGER immutable_takes_update BEFORE UPDATE ON conversation_takes BEGIN SELECT RAISE(ABORT, 'immutable take'); END",
     "CREATE TRIGGER immutable_takes_delete BEFORE DELETE ON conversation_takes BEGIN SELECT RAISE(ABORT, 'immutable take'); END",
-    # Each open ask in a conversation, per person asked; it goes when that person replies to that ask, or leaves.
+    # Each open ask in a conversation, per person asked; it goes when that person replies to that ask,
+    # or can no longer read the conversation because they left the team (Store._unwait).
     "CREATE TABLE conversation_waits (ask_id TEXT NOT NULL REFERENCES messages(id), "
     "actor_id TEXT NOT NULL REFERENCES actors(id), PRIMARY KEY(ask_id,actor_id))",
 ]
@@ -115,9 +117,12 @@ class StandingConversation:
     def _sync_participants(self, db, workspace_id):
         """Make the conversation's participants exactly the team's people plus the coordinator.
 
-        Whoever it drops has their subscription cancelled and their open asks
-        there taken off; whoever it adds is a participant from now on. Returns
-        the conversation row, or None when the outcome has none yet."""
+        Whoever it drops has their subscription cancelled; whoever it adds is a
+        participant from now on. An open ask to someone still waits while they
+        can read the conversation: only their reply to it, or losing the
+        conversation (Store._unwait, called by the act that took their place on
+        the team), clears it. Returns the conversation row, or None when the
+        outcome has none yet."""
         conversation = self._conversation_of(db, workspace_id)
         if conversation is None:
             return None
@@ -133,8 +138,6 @@ class StandingConversation:
         for member in sorted(current - wanted):
             self._cancel_subscription(db, member, conversation["id"], rows[member]["epoch"])
             db.execute("UPDATE topic_participants SET active=0,epoch=epoch+1 WHERE topic_id=? AND actor_id=?", (conversation["id"], member))
-            db.execute("DELETE FROM conversation_waits WHERE actor_id=? AND ask_id IN (SELECT id FROM messages WHERE topic_id=?)",
-                       (member, conversation["id"]))
             changed.append(member)
         for member in sorted(wanted - current):
             if member in rows:

@@ -213,11 +213,18 @@ class TopicState:
         the topics whose `scope` ("id" or "workspace_id") is scope_id; return those topics.
 
         Every command that takes away read access calls this, so a topic waits only on
-        someone who can read it. The caller touches each returned topic."""
+        someone who can read it. In a conversation each open ask to them goes too
+        (conversation_waits, standing_conversation.py): they can no longer reply to
+        it, and nothing else would clear it. The caller touches each returned topic."""
+        # A conversation's topic_waiting row stands while any ask there waits on them (_sync_waits), so this finds it too.
         topics = db.execute("SELECT t.*,w.owner_id FROM topic_waiting q JOIN topics t ON t.id=q.topic_id JOIN workspaces w ON w.id=t.workspace_id "
                             "WHERE q.actor_id=:actor AND t." + scope + "=:scope AND NOT " + READABLE,
                             {"actor": member, "scope": scope_id}).fetchall()
-        db.executemany("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", [(topic["id"], member) for topic in topics])
+        for topic in topics:
+            db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic["id"], member))
+            if topic["kind"] == "conversation":
+                db.execute("DELETE FROM conversation_waits WHERE actor_id=? AND ask_id IN (SELECT id FROM messages WHERE topic_id=?)",
+                           (member, topic["id"]))
         return topics
 
     def _ask(self, db, topic, author, message_id, sent_ms, asked):

@@ -567,14 +567,16 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         else:
             # Topic participation held separately is unchanged.
             db.execute("DELETE FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace["id"], member))
-            # A topic they can no longer read stops waiting on them; touching it advances the outcome too.
-            for topic in self._unwait(db, member, "workspace_id", workspace["id"]):
-                self._change(db, "actor", member, "waiting", topic["id"], self._touch_topic(db, topic))
         # A removed coordinator no longer coordinates; the workspace names nobody.
         coordinator = None if not present and member == workspace["coordinator_id"] else workspace["coordinator_id"]
         db.execute("UPDATE workspaces SET version=version+1,coordinator_id=? WHERE id=?", (coordinator, workspace["id"]))
         # The conversation's people follow the team, and its coordinator (standing_conversation.py).
         self._sync_participants(db, workspace["id"])
+        if not present:
+            # A topic they can no longer read, the conversation among them, stops waiting on them;
+            # touching it advances the outcome too.
+            for topic in self._unwait(db, member, "workspace_id", workspace["id"]):
+                self._change(db, "actor", member, "waiting", topic["id"], self._touch_topic(db, topic))
         version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace["id"],)).fetchone()[0]
         self._outcome_change(db, workspace["id"], version)
         self._change(db, "actor", member, "workspace", workspace["id"], version)
