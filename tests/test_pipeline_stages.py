@@ -5,6 +5,7 @@ docs/pipeline.md): starting a piece, entering stages in rounds, a stage gated on
 the owner's word, combining pieces into a release, finishing, and changing the
 stages without losing past times."""
 
+import datetime
 import unittest
 
 from test_pipeline_steering import PipelineCase
@@ -179,10 +180,13 @@ class StagesCase(PipelineCase):
         now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
         self.assertEqual((now["facts"]["next_release"]["release"], now["facts"]["next_release"]["items"]), (23, [1, 2, 3]))
         self.assertEqual(now["pieces"], [], "the work pieces are in the release now")
-        # Once the release is recorded, its items have shipped and its piece is no longer open.
-        self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": "2026-11-07T05:28:35-08:00", "items": [1, 2, 3], "source": "deploy"})
+        # Once the release is recorded, its items have shipped and its piece is no longer open. It
+        # goes live after the stages above were entered, whenever this check runs.
+        entered = self.sql("SELECT max(entered_ms) FROM pipeline_stage_entries")[0][0]
+        live = datetime.datetime.fromtimestamp(entered / 1000 + 1, datetime.timezone.utc).isoformat(timespec="seconds")
+        self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": live, "items": [1, 2, 3], "source": "deploy"})
         now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
-        self.assertEqual((now["facts"]["next_release"], now["banner"]["release"], now["items"]), (None, 23, []))
+        self.assertEqual((now["facts"]["next_release"], (now["banner"] or {}).get("release"), now["items"]), (None, 23, []))
         self.rejected(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first], "topic_id": "t1"}, {"workspace_id": "w1"}), "RELEASE_EXISTS")
 
     CHECKS = {"stage_id": "checks", "name": "Release checks", "scope": "release"}

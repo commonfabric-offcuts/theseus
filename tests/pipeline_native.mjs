@@ -217,6 +217,35 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     assert.deepEqual(o.errors, []); await o.close();
   });
 
+  await check('pipeline a whisper in the Reader is never offered as an item, and a message on the record next to it still is', async () => {
+    // A whisper stays between its two people (docs/whispers.md): its words never
+    // become an item's title on a page the whole outcome reads.
+    const said = 'The page could say which release is live.', kept = 'Just between us: the release notes are late.';
+    const message = (await control({ method: 'agent_message', operation_id: 'pipeline-native-record', body: said })).result.message_id;
+    const whisper = (await control({ method: 'agent_message', operation_id: 'pipeline-native-whisper', sender: 'person', body: kept,
+      addressees: [facts.agent], whisper: true })).result.message_id;
+    const r = await open('pipeline-reader-whisper', '/?topic=t1');
+    const show = async (id, words) => {
+      const card = `#messages [data-id="${id}"]`;
+      await until(() => r.evaluate(`Boolean(document.querySelector('${card}'))`).catch(() => false), 'the card is drawn');
+      if (await r.evaluate(`document.querySelector('#reader').open`)) {
+        await r.point('#reader-close');
+        await until(() => r.evaluate(`!document.querySelector('#reader').open`), 'the Reader closes');
+      }
+      await tap(r, card);
+      await until(() => r.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.includes(${JSON.stringify(words)})`), 'the Reader shows it');
+    };
+    const offered = () => r.evaluate(`(()=>{const b=document.getElementById('add-to-pipeline');return Boolean(b)&&!b.hidden&&b.getClientRects().length>0})()`);
+    await show(message, said);
+    await until(offered, 'a message on the record offers Add to pipeline');
+    await show(whisper, kept);
+    assert.equal(await offered(), false, 'a whisper does not offer Add to pipeline');
+    assert.equal(await r.evaluate(`document.getElementById('pipeline-add').hidden`), true, 'and no line opens under it');
+    await show(message, said);
+    await until(offered, 'back on the message on the record, Add to pipeline is offered again');
+    assert.deepEqual(r.errors, []); await r.close();
+  });
+
   await check('pipeline the page and an item’s record fit 1280 and 390, light and dark, with no People heading and no sideways scroll', async () => {
     for (const [size, theme] of COMBOS) {
       const at = `${size} ${theme}`;
