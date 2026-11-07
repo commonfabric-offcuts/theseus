@@ -22,6 +22,15 @@ const node = (tag, text, className) => {
 };
 const visible = el => el.getClientRects().length && !el.disabled && !el.hidden;
 
+// The topic page shows its newest message on top, so the message above the
+// one open is the next (newer) one and the one below is the previous
+// (older). The up and down buttons, their words and the ⌘↑/⌘↓ keys all read
+// this one rule: a page that put its newest message at the bottom flips
+// them together here.
+const NEWEST_ON_TOP = true;
+const neighborAt = where => (where === 'above') === NEWEST_ON_TOP ? 'next' : 'previous';
+const STEPPING = { above: { glyph: '↑', key: 'ArrowUp' }, below: { glyph: '↓', key: 'ArrowDown' } };
+
 export class Reader {
   constructor(callbacks) {
     this.callbacks = callbacks;
@@ -80,8 +89,13 @@ export class Reader {
       catch (error) { this.notice(error.message); }
       finally { this.paintStatus(); }
     };
-    this.$('previous-message').onclick = () => this.step(-1);
-    this.$('next-message').onclick = () => this.step(1);
+    for (const where of ['above', 'below']) {
+      const neighbor = neighborAt(where), button = this.$(`${neighbor}-message`);
+      const words = `${neighbor === 'next' ? 'Newer' : 'Older'} message (${where})`;
+      button.textContent = STEPPING[where].glyph; button.setAttribute('aria-label', words); button.title = words;
+      button.onclick = () => this.stepTo(where);
+      this.$('reader-stepping').append(button);
+    }
     this.$('recipient-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
@@ -704,6 +718,8 @@ export class Reader {
   }
 
   async step(direction) { this.rememberPlace(); await this.callbacks.step(direction); }
+  // Steps to the message above or below the open one, as the page shows them.
+  stepTo(where) { return this.step(neighborAt(where) === 'next' ? 1 : -1); }
   escape() {
     if (this.hover || !window.getSelection()?.isCollapsed) { this.disarm(); window.getSelection()?.removeAllRanges(); return; }
     this.close();
@@ -746,8 +762,9 @@ export class Reader {
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
       event.preventDefault(); navigator.clipboard.writeText(this.source.body).catch(() => this.notice('Could not copy. Select the text and use Copy.')); return;
     }
-    if (!inEditor && event.metaKey && !event.shiftKey && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
-      event.preventDefault(); if (this.source.source_ref.kind === 'message') this.step(event.key === 'ArrowLeft' ? -1 : 1); return;
+    const where = Object.keys(STEPPING).find(at => STEPPING[at].key === event.key);
+    if (!inEditor && event.metaKey && !event.shiftKey && where) {
+      event.preventDefault(); if (this.source.source_ref.kind === 'message') this.stepTo(where); return;
     }
     const reply = this.sessions.reply.draft;
     const action = keyAction(event, { context: this.mode === 'note' && event.metaKey ? 'note' : inEditor ? this.mode : 'reader',
