@@ -45,6 +45,7 @@ import { openMessageMenu, sayOn, copyText } from './message-menu.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
+import { railDrawer } from './rail-drawer.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -290,8 +291,12 @@ async function showCorrection(editor, item, opener, presentation = presentationF
   $('review-content').append(prepare);
 }
 
+// Replies still in doubt: not confirmed sent, by this device or by the
+// server's record of the send. A reply that went needs no Review button.
 function pendingCount(editor) {
-  return new Set([...editor.submissions.map(item => item.id), ...registry.pending(editor).items.map(item => item.id)]).size;
+  const sent = new Set([...editor.submissions.filter(item => item.status === 'confirmed').map(item => item.id),
+    ...registry.pending(editor).items.filter(item => item.send_status === 'committed').map(item => item.id)]);
+  return new Set([...editor.submissions.map(item => item.id), ...registry.pending(editor).items.map(item => item.id)].filter(id => !sent.has(id))).size;
 }
 function pendingButton(host, editor, presentation = presentationFor(editor)) {
   const count = pendingCount(editor), label = `Review ${count} ${count === 1 ? 'reply' : 'replies'}`;
@@ -347,10 +352,13 @@ function changed(editor) {
   }
   if (inline?.editor === editor) inline.paintStatus();
   invalidateComparison(editor);
-  if (editor.context.kind === 'reply' && editor.context.sourceRef.kind !== 'topic' && pendingCount(editor)) {
+  if (editor.context.kind === 'reply' && editor.context.sourceRef.kind !== 'topic') {
     let host = [...$('topic-pending').children].find(child => child.dataset.key === editor.key);
-    if (!host) { host = node('div'); host.dataset.key = editor.key; $('topic-pending').append(host); }
-    pendingButton(host, editor);
+    if (!pendingCount(editor)) host?.remove();
+    else {
+      if (!host) { host = node('div'); host.dataset.key = editor.key; $('topic-pending').append(host); }
+      pendingButton(host, editor);
+    }
   }
   for (const item of editor.submissions) {
     const version = item.status === 'confirmed' && item.receipt?.result?.topic?.version;
@@ -2022,4 +2030,5 @@ function begin(starting = start) {
     return false;
   });
 }
+railDrawer();
 begin();

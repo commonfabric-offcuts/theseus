@@ -513,3 +513,19 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .message-menu-list{z-index:20;display:flex;flex-direction:column;width:max-content;max-width:calc(100vw - 16px);padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);box-shadow:0 6px 24px rgb(0 0 0 / .18)}
 .message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem}
 .message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}
+
+/* On a phone the topic comes first: the rail folds away behind "☰ Topics" at the top of the topic and opens as a drawer over it (web/rail-drawer.mjs). Its notices stay above the topic while it is closed. Desktop keeps the rail beside the topic. */
+#rail-open,.rail-backdrop{display:none}
+@media(max-width:760px){
+.workspace-layout:not(:has(>.rail[hidden])) .eyebrow-row{display:flex;align-items:center;gap:.6rem;margin-bottom:.3rem;min-width:0}
+.workspace-layout:not(:has(>.rail[hidden])) .eyebrow-row .eyebrow{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.workspace-layout:not(:has(>.rail[hidden])) #rail-open{display:inline-flex;align-items:center;flex:none;padding:.3rem .8rem;border-radius:1.4rem;font-size:.85rem;color:var(--accent)}
+.rail:not(.open){padding:0;border:0}
+.rail:not(.open)>:not(.notice){display:none!important}
+.rail:not(.open)>.notice:not([hidden]){margin:.6rem 1rem 0}
+.rail.open{position:fixed;inset:0 auto 0 0;z-index:25;width:min(22rem,86vw);overflow-y:auto;overscroll-behavior:contain;background:var(--paper);border-right:1px solid var(--line);border-bottom:0;padding:max(.8rem,env(safe-area-inset-top)) 1rem max(1rem,env(safe-area-inset-bottom));box-shadow:0 6px 24px rgb(0 0 0 / .25)}
+.rail.open #topics,.rail.open .topic-list,.rail.open #outcome-references-list,.rail.open #pipeline-links{display:block;overflow:visible;padding:0}
+.rail.open #topics a.nav-item,.rail.open .topic-list a.nav-item,.rail.open #outcome-references-list .nav-item,.rail.open #pipeline-links a.nav-item{display:block;width:100%;max-width:none;margin:.2rem 0}
+.rail-backdrop:not([hidden]){display:block;position:fixed;inset:0;z-index:24;background:rgb(0 0 0 / .4)}
+body:has(.rail.open){overflow:hidden}
+}

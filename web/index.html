@@ -11,7 +11,7 @@
 </head>
 <body>
   <div class="workspace-layout">
-    <nav class="rail" aria-label="Outcomes and topics">
+    <nav id="rail" class="rail" aria-label="Outcomes and topics">
       <div class="brand">
         <a class="wordmark" href="/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"></span></a>
         <span id="instance-label">Opening your workspace…</span>
@@ -56,9 +56,10 @@
       <button id="more-references" type="button" hidden>More pages</button>
       </section>
     </nav>
+    <div id="rail-backdrop" class="rail-backdrop" aria-hidden="true" hidden></div>
     <div id="light-tip" class="light-tip" role="tooltip" hidden></div>
     <main id="main" tabindex="-1">
-      <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
+      <header class="topic-header"><div><div class="eyebrow-row"><button id="rail-open" type="button" class="rail-open" aria-controls="rail" aria-expanded="false">☰ Topics</button><p id="workspace-name" class="eyebrow"></p></div><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
       <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
       <section id="outcome-page" class="selection-page" hidden></section>
