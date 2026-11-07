@@ -98,7 +98,8 @@ export function followStrip(strip, win = strip.ownerDocument.defaultView) {
 // One page inside an outcome. sections: [{name, node, load}] in any order;
 // they are placed in RAIL_ORDER under "← Outcomes" when the rail is shown,
 // and load() reads each. attention: the page's Attention, told which outcome
-// this is so its answer says whether that outcome is one of those waiting.
+// this is so its answer says whether that outcome is one of those waiting;
+// only answers read about this outcome are painted.
 export class OutcomeScope {
   constructor({ workspaceId, kind, rail, home, attention = null, sections = [], open, homeReadable = true, doc = rail.ownerDocument }) {
     Object.assign(this, { workspaceId, kind, rail, home, attention, sections, open, doc });
@@ -121,9 +122,12 @@ export class OutcomeScope {
       for (const strip of rail.querySelectorAll('#topics, .topic-list, #outcome-references-list')) followStrip(strip);
     }
     if (attention) {
+      // Only an answer read about this outcome says whether it is one of
+      // those waiting; one read before the page knew it would count it as other.
+      const paint = () => { if (attention.last && attention.lastHere === workspaceId) this.paintHome(elsewhereWaiting(attention.last)); };
       attention.here = workspaceId;
-      attention.listen(answer => this.paintHome(elsewhereWaiting(answer)));
-      if (attention.last) this.paintHome(elsewhereWaiting(attention.last));
+      attention.listen(paint);
+      paint();
       attention.refresh();
     }
   }

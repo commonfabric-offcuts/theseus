@@ -409,7 +409,9 @@ test('inside an outcome attention asks about that outcome, so the answer says wh
   const attention = new Attention({ api, instanceId: 'i1', doc: { title: 'Theseus', hidden: false, hasFocus: () => true }, notifications: null, open() {}, focus() {} });
   attention.listen(answer => heard.push(answer.waiting_outcomes));
   await attention.refresh();
+  assert.equal(attention.lastHere, null, 'the answer was read about no outcome');
   attention.here = 'w1'; await attention.refresh();
+  assert.equal(attention.lastHere, 'w1', 'the answer was read about w1');
   assert.deepEqual(asked, [['attention', {}], ['attention', { workspace_id: 'w1' }]]);
   assert.deepEqual(heard.at(-1), { count: 2, here: true }, 'listeners hear the outcomes waiting');
 });

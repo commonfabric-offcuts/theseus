@@ -11,6 +11,8 @@ export class Attention {
     Object.assign(this, { api, instanceId, doc, notifications, open, focus });
     // after: the newest delivery number already known; only a later one is news.
     this.baseTitle = doc.title; this.after = Number.isSafeInteger(after) ? after : null; this.running = null; this.again = false; this.last = null; this.here = null;
+    // lastHere: the outcome the last answer was read about, null when none.
+    this.lastHere = null;
     this.unread = 0; this.addressed = 0; this.listeners = new Set();
   }
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
@@ -40,7 +42,7 @@ export class Attention {
     const numbers = answer.latest_addressed.map(item => item.seq).filter(Number.isSafeInteger);
     const fresh = this.after === null ? [] : answer.latest_addressed.filter(item => Number.isSafeInteger(item.seq) && item.seq > this.after);
     this.after = Math.max(this.after ?? 0, ...numbers);
-    this.last = answer;
+    this.last = answer; this.lastHere = args.workspace_id ?? null;
     for (const listener of [...this.listeners]) listener(answer);
     if (this.notifications?.permission !== 'granted' || (!this.doc.hidden && this.doc.hasFocus?.())) return;
     for (const item of fresh.reverse()) this.notify(item);

@@ -128,6 +128,38 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual([...p.errors, ...o.errors], []);
   });
 
+  await check('rail waited on only in this outcome, a topic page never lights ← Outcomes as it loads; with a wait elsewhere too it counts one other', async () => {
+    // An agent asks the reader in t1, in this outcome w1: only this outcome waits.
+    await control({ method: 'agent_message', operation_id: 'rail-here-ask', body: 'Is the outline right?', topic_id: 't1', addressees: [facts.actor], intent: 'ask' });
+    // Every state "← Outcomes" is drawn in, from the page's first script on.
+    const watch = `(()=>{window.homeSeen=[];const seen=()=>{const h=document.getElementById('outcomes-home'),l=h?.querySelector('.outcome-light');
+      const now=h?{lit:Boolean(l&&!l.hidden),label:h.getAttribute('aria-label')}:null,last=homeSeen.at(-1);
+      if(now&&JSON.stringify(now)!==JSON.stringify(last))homeSeen.push(now)};new MutationObserver(seen).observe(document,{subtree:true,childList:true,attributes:true,characterData:true})})()`;
+    const p = await page('rail-here', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+      await q.send('Emulation.setDeviceMetricsOverride', SIZES.laptop);
+      await q.send('Page.addScriptToEvaluateOnNewDocument', { source: watch });
+    } });
+    // The read that names this outcome has answered.
+    const asked = e => e.method === 'Network.requestWillBeSent' && e.params.request.url === facts.origin + '/api/view' && /"name":"attention"/.test(e.params.request.postData ?? '') && /"workspace_id":"w1"/.test(e.params.request.postData ?? '');
+    const read = await until(() => p.network.find(asked)?.params.requestId, 'the page asks about w1');
+    await until(() => p.network.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === read), 'the read about w1 answered');
+    await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), 'the topic rail is drawn');
+    const loading = await p.evaluate('homeSeen.length');
+    // A wait in another outcome too: one other outcome, never two.
+    const elsewhere = await control({ method: 'elsewhere_ask', operation_id: 'rail-here-elsewhere', body: 'And the cover?' });
+    await until(async () => (await home(p)).lit, 'the wait elsewhere lights ← Outcomes, live');
+    assert.deepEqual(await home(p), { lit: true, words: '1 other outcome is waiting on you', said: '1 other outcome is waiting on you', label: 'Outcomes. 1 other outcome is waiting on you.' });
+    const seen = await p.evaluate('homeSeen');
+    assert.ok(seen.length > 0, 'the watch saw ← Outcomes drawn');
+    assert.deepEqual(seen.slice(0, loading).filter(state => state.lit || state.label !== null), [], 'while only this outcome waits, ← Outcomes is never lit nor labelled: ' + JSON.stringify(seen));
+    assert.deepEqual(seen.slice(loading).map(state => state.label).filter(Boolean), ['Outcomes. 1 other outcome is waiting on you.'], 'once a wait elsewhere lands, it says one other, and only that');
+    // Both answered, so the checks after this one start with nothing waiting.
+    await control({ method: 'agent_message', operation_id: 'rail-here-answer', sender: 'person', topic_id: 't1', whole_topic: true, body: 'Yes.' });
+    await control({ method: 'agent_message', operation_id: 'rail-here-elsewhere-answer', sender: 'person', topic_id: elsewhere.topic_id, whole_topic: true, body: 'The blue one.' });
+    await until(async () => (await home(p)).lit === false, 'answered, the light goes');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('rail at 390 the open topic shows whole in the strip, and a lit neighbour beside it is not cut', async () => {
     // Twelve topics, newest first in the strip; the open one is the ninth, and
     // the one after it waits on the reader.

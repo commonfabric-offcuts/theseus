@@ -84,7 +84,9 @@ work it is woken for. So what it folds is exactly what is never unread.
   with "1 other outcome is waiting on you" (`count` less one when `here`), so
   a rail that shows only one outcome never hides an ask elsewhere. On the
   outcome's own page the light shows without the words, which screen readers
-  still hear.
+  still hear. The link paints only an answer read with that outcome's
+  `workspace_id`: one read before the page knew its outcome says `here: false`
+  and would count this outcome as another.
 
 An archived topic is out of the outcome's list, and the browser lists archived
 topics only behind the list's closed "Archived (N)" line, so it counts nowhere
