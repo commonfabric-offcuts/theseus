@@ -310,7 +310,10 @@ test('loaded Notebook key beyond twenty refreshes exactly, and racing More never
 // A handover changes no topic version, so its key is the outcome's record (docs/changes-query.md).
 test('a change to the topic\'s outcome re-reads the topic, so a new owner or coordinator is painted without a reload', async () => {
   const workspaceKey = { seq: 1, resource_kind: 'workspace', resource_id: 'w1', version: 40 };
-  assert.deepEqual(fresh.changesPage(page(1, [workspaceKey]), bootstrap, 't1', cursor(0)).items, [workspaceKey]);
+  // The outcome's key is a well-formed key of this topic's page, not a malformed one.
+  let accepted;
+  assert.doesNotThrow(() => { accepted = fresh.changesPage(page(1, [workspaceKey]), bootstrap, 't1', cursor(0)); }, 'the outcome\'s key is accepted');
+  assert.deepEqual(accepted.items, [workspaceKey]);
   const { TopicViews } = await import('../web/topic-views.mjs');
   const painted = [];
   const v = new TopicViews({ instanceId: 'i1', topicId: 't1', paint: kind => painted.push(kind) });

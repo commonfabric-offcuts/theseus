@@ -552,9 +552,13 @@ def main():
                         # A topic in an outcome an agent owns, which the agent started
                         # with the reader in it: the reader takes part but is neither
                         # the outcome's owner nor the topic's creator.
+                        # With "team": true the reader is on the outcome's team, and with
+                        # "coordinator": true also its coordinator.
                         agent, prefix = "fixture-notebook-agent", request["operation_id"]
                         workspace, topic_id = prefix + "-w", prefix + "-t"
-                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "The agent's outcome", "team": []}, sender=agent)
+                        command("workspace.create", prefix + "-workspace", dict(
+                            {"id": workspace, "title": "The agent's outcome", "team": [actor] if request.get("team") or request.get("coordinator") else []},
+                            **({"coordinator": actor} if request.get("coordinator") else {})), sender=agent)
                         command("draft.save", prefix + "-save", {
                             "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
                             "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
@@ -565,6 +569,18 @@ def main():
                                 {"topic_id": topic_id}, {"draft_revision": 1}, sender=agent)
                         command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}, sender=agent)
                         answer = {"topic_id": topic_id, "workspace_id": workspace}
+                    elif freshness and request["method"] == "outcome_change":
+                        # Someone who organises an outcome changes its record, as the CLI
+                        # does: {"owner": id} hands it on, {"member": id, "present": bool}
+                        # changes its team. Fenced on the version that sender reads.
+                        sender, workspace = request["sender"], request["workspace_id"]
+                        version = store().view(sender, "workspace", {"workspace_id": workspace})["workspace"]["version"]
+                        if "owner" in request:
+                            answer = command("workspace.owner_set", request["operation_id"], {"owner_id": request["owner"]},
+                                             {"workspace_id": workspace}, {"workspace_revision": version}, sender=sender)
+                        else:
+                            answer = command("workspace.member_set", request["operation_id"], {"actor_id": request["member"], "present": request["present"]},
+                                             {"workspace_id": workspace}, {"workspace_revision": version}, sender=sender)
                     elif freshness and request["method"] == "lost_named_message":
                         # The reader is named in a message in another outcome's
                         # topic and then taken out of it: Core keeps exactly that

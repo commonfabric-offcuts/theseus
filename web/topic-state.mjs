@@ -135,8 +135,8 @@ const NOT_SENT = 'That was not sent: another change was still being saved. Press
 
 // Where the topic stands, in Topic settings, and a form for those who may change it:
 // participants, and whoever has written in it (Core's reader_may_say), say
-// where it stands; the outcome's owner and the topic's creator also rename and
-// archive it.
+// where it stands; whoever organises the outcome (its owner and coordinator) and
+// the topic's creator also rename and archive it.
 //
 // The form is built once per topic and kept across repaints, so focus and
 // whatever the person has typed survive fresh data. A field the person has

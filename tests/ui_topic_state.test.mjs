@@ -122,10 +122,10 @@ test('whoever organises the outcome manages its topics beside their creator; a c
   assert.ok(fable.host.find(node => node.id === 'topic-rename'), 'the coordinator may rename it');
   assert.equal(fable.host.find(node => node.textContent === 'Archive')?.tag, 'button', 'and archive it');
   fable.paint(topic({ coordinator_id: null }), []);
-  assert.equal(fable.host.find(node => node.tag === 'details'), undefined, 'once no longer coordinator, the controls go');
+  assert.equal(fable.host.find(node => node.id === 'topic-rename'), undefined, 'once no longer coordinator, Rename and Archive go');
   const warp = new TopicStatePanel({ host: new Element('section'), reader: 'warp', send: async () => ({}) });
   warp.paint(topic({ coordinator_id: 'fable' }), []);
-  assert.equal(warp.host.find(node => node.tag === 'details'), undefined, 'a plain member who does not work in it gets nothing');
+  assert.equal(warp.host.find(node => node.id === 'topic-rename'), undefined, 'a plain member who did not start it cannot rename it');
 });
 
 // The form's controls, found by what the person sees.

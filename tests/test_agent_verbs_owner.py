@@ -23,7 +23,7 @@ class OwnerVerbCase(AgentVerbCase):
     def test_the_owner_hands_the_outcome_on_and_outcomes_shows_it(self):
         self.assertEqual(self.run_cli("owner", "w1", "agent-b", actor="owner"), (0, "w1 is now owned by agent-b (was owner)\n", ""))
         self.assertEqual(self.sql("SELECT owner_id,coordinator_id FROM workspaces WHERE id='w1'"), [("agent-b", "agent-a")])
-        self.assertEqual(self.run_cli("outcomes", actor="owner"), (0, "w1  Isolated test  (owner agent-b)\n", ""))
+        self.assertEqual(self.run_cli("outcomes", actor="owner"), (0, "w1  Isolated test  (owner agent-b)  quiet\n", ""))
         self.assertEqual(self.run_cli("owner", "w1", "agent-b", actor="agent-b"), (0, "w1 is already owned by agent-b\n", ""))
         code, out, err = self.run_cli("--json", "owner", "w1", "owner", actor="agent-b")
         self.assertEqual((code, err), (0, ""))

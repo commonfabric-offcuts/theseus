@@ -157,6 +157,81 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
+  // Whoever organises an outcome, its owner and its coordinator, renames and
+  // archives its topics and changes who takes part, beside each topic's
+  // creator. The open page learns of a handover or a cleared coordinator from
+  // the outcome's own change key: no topic version moves, and nothing reloads.
+  const managing = p => p.evaluate(`(()=>{const people=document.querySelector('#participants .people-add');
+    return {rename:Boolean(document.querySelector('#topic-settings #topic-rename')),add:Boolean(people&&!people.hidden),
+      removes:[...document.querySelectorAll('#participants [aria-label^="Remove "]')].map(b=>b.getAttribute('aria-label'))}})()`);
+  const openTopic = async (suffix, made, title) => {
+    const p = await page(suffix, null, true, { url: `${facts.origin}/?topic=${made.topic_id}` });
+    await until(() => p.evaluate(`document.querySelector('#topic-title').textContent === ${JSON.stringify(title)} && !document.querySelector('#settings-open').hidden`), 'the agent\'s topic open');
+    return p;
+  };
+
+  await check('header the outcome\'s coordinator renames a topic they did not start and changes who takes part, until they no longer coordinate', async () => {
+    const made = await control({ method: 'agent_topic', operation_id: 'header-coordinator', title: 'Coordinated by the reader', body: 'Tidy this one.', coordinator: true });
+    const p = await openTopic('header-coordinator', made, 'Coordinated by the reader');
+    await until(async () => (await managing(p)).add, 'the add field shows for the coordinator');
+    const coordinating = await managing(p);
+    assert.deepEqual([coordinating.rename, coordinating.add, coordinating.removes.includes(`Remove ${facts.actor}`)], [true, true, true],
+      'the coordinator renames, archives and changes who takes part: ' + JSON.stringify(coordinating));
+    await openByPointer(p);
+    await p.point('#topic-rename');
+    await p.key('a', 4);
+    await p.send('Input.insertText', { text: 'Renamed by its coordinator' });
+    const before = p.calls.length;
+    // The Rename button sits right after the title field, in its row.
+    assert.equal(await p.evaluate(`document.querySelector('.state-fields:has(#topic-rename) > button').textContent`), 'Rename');
+    await p.point('.state-fields:has(#topic-rename) > button');
+    await until(() => p.calls.slice(before).find(c => c.payload?.kind === 'topic.update' && c.payload.args?.title === 'Renamed by its coordinator'), 'the rename is sent');
+    await until(() => p.evaluate(`document.querySelector('#topic-title').textContent === 'Renamed by its coordinator'`), 'the title changes without a reload');
+    assert.equal((await view('topic', { topic_id: made.topic_id })).topic.title, 'Renamed by its coordinator', 'Core took the coordinator\'s rename');
+    await until(() => p.evaluate(`document.getAnimations().every(a=>a.playState!=='running')`), 'settled');
+    await shot(p, 'header-coordinator');
+    await p.key('Escape');
+    await until(async () => !await isOpen(p), 'Escape closes it');
+    // The owner takes the reader off the team: the outcome names no coordinator,
+    // the reader still takes part, and the controls go while the page stays open.
+    await control({ method: 'outcome_change', operation_id: 'header-coordinator-cleared', sender: facts.agent, workspace_id: made.workspace_id, member: facts.actor, present: false });
+    await until(async () => { const m = await managing(p); return !m.rename && !m.add && !m.removes.length; }, 'Rename, the add field and the remove buttons go without a reload');
+    assert.equal(await p.evaluate(`document.querySelector('#topic-title').textContent`), 'Renamed by its coordinator', 'the topic stays open');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header an open topic page shows its outcome handed to the reader, and handed on again, without a reload', async () => {
+    const made = await control({ method: 'agent_topic', operation_id: 'header-handover', title: 'Handed over', body: 'Yours soon.', team: true });
+    const p = await openTopic('header-handover', made, 'Handed over');
+    assert.deepEqual(await managing(p), { rename: false, add: false, removes: [] }, 'a member who neither owns, coordinates nor started it manages nothing');
+    await control({ method: 'outcome_change', operation_id: 'header-handover-to-reader', sender: facts.agent, workspace_id: made.workspace_id, owner: facts.actor });
+    await until(async () => { const m = await managing(p); return m.rename && m.add; }, 'the new owner\'s Rename and add field arrive without a reload');
+    assert.equal((await view('workspace', { workspace_id: made.workspace_id })).workspace.owner_id, facts.actor);
+    await control({ method: 'outcome_change', operation_id: 'header-handover-back', sender: facts.actor, workspace_id: made.workspace_id, owner: facts.agent });
+    await until(async () => { const m = await managing(p); return !m.rename && !m.add; }, 'handed back, they go again without a reload');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header the outcome\'s coordinator adds to its team on the outcome page, and the owner\'s chip stays fixed', async () => {
+    const made = await control({ method: 'agent_topic', operation_id: 'header-team', title: 'Team topic', body: 'Who is on it?', coordinator: true });
+    const p = await page('header-team', null, true, { url: `${facts.origin}/?workspace=${made.workspace_id}` });
+    const team = () => p.evaluate(`(()=>{const add=document.querySelector('#team-people .people-add');
+      return {shown:!document.querySelector('#outcome-team').hidden,add:Boolean(add&&!add.hidden),chips:[...document.querySelectorAll('#team-people .chips > *')].map(c=>c.firstChild.textContent),
+        removes:[...document.querySelectorAll('#team-people [aria-label^="Remove "]')].map(b=>b.getAttribute('aria-label'))}})()`);
+    await until(async () => (await team()).chips.length === 2, 'the team painted');
+    const shown = await team();
+    assert.deepEqual([shown.shown, shown.add], [true, true], 'the coordinator gets the add field');
+    assert.ok(!shown.removes.includes(`Remove ${facts.agent}`), 'the owner cannot be removed: ' + JSON.stringify(shown));
+    await p.point('#team-people .people-add input');
+    await p.send('Input.insertText', { text: 'fixture-outside-agent' });
+    await p.key('Enter');
+    await until(async () => (await team()).chips.includes('fixture-outside-agent'), 'the coordinator\'s add shows on the team');
+    const members = await view('workspace_members', { workspace_id: made.workspace_id });
+    assert.ok(members.items.some(m => m.actor_id === 'fixture-outside-agent'), 'Core took it: ' + JSON.stringify(members.items));
+    await shot(p, 'header-team-coordinator');
+    assert.deepEqual(p.errors, []);
+  });
+
   await check('header a press on the backdrop closes Topic settings and a press on its own empty space does not', async () => {
     const p = await page('header-backdrop', null, true);
     await openByPointer(p);
