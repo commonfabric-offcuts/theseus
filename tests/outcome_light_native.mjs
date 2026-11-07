@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 
 // The outcome light in the real browser against the real server (item 86): the
 // words of each light on the Outcomes home, the peek under a real pointer and
-// keyboard, and an outcome's own questions said once on its page. The peek's
+// keyboard, and "Where it stands" on an outcome's page: two lines, its own
+// questions said once, and what the light is made of behind a real press of the ⓘ. The peek's
 // rule is checked both ways, each step by real pointer in small steps, as a
 // hand moves: it touches its row, it holds while the pointer crosses from the
 // row onto it and back, and leaving both, or Escape, closes it.
@@ -78,7 +79,8 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     await until(async () => (await standing(p, 'light-peek'))?.light === 'built', 'the sidebar lists the outcome with its light');
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
     const tip = () => p.evaluate(`(()=>{const t=document.querySelector('#light-tip');if(t.hidden)return null;const b=t.getBoundingClientRect();
-      return {x:b.x,y:b.y,right:b.right,bottom:b.bottom,name:t.querySelector('strong')?.textContent,text:t.textContent,events:getComputedStyle(t).pointerEvents}})()`);
+      return {x:b.x,y:b.y,right:b.right,bottom:b.bottom,name:t.querySelector('strong')?.textContent,last:t.querySelector('.standing-last')?.textContent??null,
+        links:t.querySelectorAll('a').length,text:t.textContent,events:getComputedStyle(t).pointerEvents}})()`);
     const rect = selector => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:b.x,y:b.y,right:b.right,bottom:b.bottom}})()`);
     let at = { x: 1400, y: 880 };
     // A hand's move: small steps from where the pointer is to the point.
@@ -93,8 +95,12 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     const r = await rect(row);
     const centre = { x: r.x + (r.right - r.x) / 2, y: r.y + (r.bottom - r.y) / 2 };
     await glide(centre.x, centre.y);
-    const opened = await until(async () => { const t = await tip(); return t?.text.includes('This comes from posts') && t; }, 'hovering the row opens its peek, read from the server');
-    assert.equal(opened.name, 'Being worked on', 'the peek is the hovered row\'s');
+    const opened = await until(async () => { const t = await tip(); return t?.last && t; }, 'hovering the row opens its peek, read from the server');
+    // The peek says what the card says: the name with its time, and the Last line in plain words; nothing more.
+    assert.match(opened.name, /^Worked on at \d{1,2}:\d{2}\s[AP]M$/, 'the peek is the hovered row\'s');
+    assert.equal(opened.last, 'Last: fixture-notebook-agent in “Peek topic”');
+    assert.equal(opened.text, opened.name + opened.last, 'a state and a time, and one Last line');
+    assert.equal(opened.links, 0, 'no link in the peek: the row is the way in');
     assert.notEqual(opened.events, 'none', 'the peek takes the pointer like any panel');
     // (1) It touches its row.
     assert.ok(opened.x <= r.right && opened.right >= r.x && opened.y <= r.bottom && opened.bottom >= r.y, `the peek touches its row: ${JSON.stringify([opened, r])}`);
@@ -124,11 +130,12 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     await p.evaluate(`document.querySelector(${JSON.stringify(rowOf('light-later'))}).scrollIntoView({block:'center'})`);
     const later = await rect(rowOf('light-later'));
     await glide(later.x + 20, later.y + (later.bottom - later.y) / 2);
-    const other = await until(async () => { const t = await tip(); return t?.text.includes('This comes from posts') && t; }, 'the other row\'s peek');
+    const other = await until(async () => { const t = await tip(); return t?.last && t; }, 'the other row\'s peek');
     assert.equal(other.name, 'No topics yet');
+    assert.equal(other.last, `Started by ${facts.actor}.`, 'with no topic, who started it');
     // A topic opened by another member while the peek is open changes it, without a reload.
     await control({ method: 'light_outcome', outcome: 'light-later', exists: true, topic: { id: 'light-later-topic', title: 'Later topic' } });
-    await until(async () => (await tip())?.name === 'Being worked on', 'the open peek follows the commit');
+    await until(async () => { const t = await tip(); return /^Worked on at /.test(t?.name ?? '') && t.last === 'Last: fixture-notebook-agent in “Later topic”'; }, 'the open peek follows the commit');
     // The row repaints from its own read of the list, which may land after the peek's.
     await until(async () => (await p.evaluate(`document.querySelector(${JSON.stringify(rowOf('light-later') + ' small.standing')}).dataset.light`)) === 'built', 'and so does its row');
     await shot(p, 'light-peek');
@@ -143,7 +150,7 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
       focused = await p.evaluate(`document.activeElement?.closest?.('#workspaces a')?.dataset.workspaceId ?? null`);
     }
     assert.ok(focused, 'Tab reaches an outcome row');
-    const byKey = await until(async () => { const t = await tip(); return t?.text.includes('This comes from posts') && t; }, 'focus by Tab opens the peek');
+    const byKey = await until(() => tip(), 'focus by Tab opens the peek');
     assert.ok(byKey.name.length > 0);
     await p.key('Escape');
     assert.equal(await tip(), null);
@@ -151,15 +158,16 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     await p.close();
   });
 
-  await check('light an outcome page says its own questions once, and other outcomes\' in one line that opens them', async () => {
+  await check('light an outcome page says where it stands in two lines, its own questions once, and other outcomes\' in one line that opens them; the ⓘ opens what the light is made of', async () => {
     await pitch();
     const p = await page('light-outcome-page', null, true, { url: facts.origin + '/?workspace=w1' });
     await until(() => p.evaluate(`!document.querySelector('#outcome-standing').hidden && !document.querySelector('#also-waiting').hidden`), 'the outcome page says where it stands');
     const top = await p.evaluate(`(()=>{const s=document.querySelector('#outcome-standing'),t=document.querySelector('#topic-navigation'),w=document.querySelector('#waiting-on-you');
       return {also:document.querySelector('#also-waiting').textContent,heading:s.querySelector('h2').textContent,before:Boolean(s.compareDocumentPosition(t)&Node.DOCUMENT_POSITION_FOLLOWING),
         alsoFirst:Boolean(document.querySelector('#also-waiting').compareDocumentPosition(s)&Node.DOCUMENT_POSITION_FOLLOWING),
-        box:!w.hidden&&w.textContent.includes('Waiting on you ('),source:s.textContent.includes('This comes from posts, agent work and questions in Theseus.')}})()`);
-    assert.deepEqual(top, { also: 'Also waiting on you: 1 in Pitch deck ›', heading: 'Where this outcome stands', before: true, alsoFirst: true, box: false, source: true });
+        box:!w.hidden&&w.textContent.includes('Waiting on you ('),more:s.querySelector('#standing-more').hidden,source:s.querySelector('#standing-more').textContent.includes('This comes from posts, agent work and questions in Theseus.')}})()`);
+    assert.deepEqual(top, { also: 'Also waiting on you: 1 in Pitch deck ›', heading: 'Where it stands', before: true, alsoFirst: true, box: false, more: true, source: true },
+      'what it is made of, where it comes from among it, waits behind the ⓘ');
     // The line names the one other outcome the "← Outcomes" light counts, so the light shows without its words.
     const home = await until(() => p.evaluate(`(()=>{const h=document.getElementById('outcomes-home'),l=h.querySelector('.outcome-light'),w=h.querySelector('.elsewhere-words');
       return l&&l.getClientRects().length>0&&{words:w.getClientRects().length>0?w.textContent:null,label:h.getAttribute('aria-label')}})()`), 'the light is lit');
@@ -167,25 +175,127 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     await shot(p, 'light-outcome-page');
     await p.point('#also-waiting a');
     await until(() => p.evaluate(`document.body?.dataset.ready==='true' && new URL(location.href).searchParams.get('workspace')==='light-pitch' && !document.querySelector('#outcome-standing').hidden`), 'the link opens Pitch deck\'s page');
-    const own = await p.evaluate(`(()=>{const s=document.querySelector('#outcome-standing'),w=document.querySelector('#waiting-on-you');
-      return {also:document.querySelector('#also-waiting').hidden,name:s.querySelector('.state-line').textContent,lead:s.querySelector('.lead').textContent,
-        facts:[...s.querySelectorAll('.standing-facts li')].map(li=>li.textContent),box:!w.hidden}})()`);
+    // The card, as a person sees it: the lines drawn, not the words in the page.
+    const card = () => p.evaluate(`(()=>{const s=document.querySelector('#outcome-standing'),w=document.querySelector('#waiting-on-you'),i=s.querySelector('.standing-info'),
+        m=s.querySelector('#standing-more'),l=s.querySelector('.standing-last'),lb=l?.getBoundingClientRect(),ib=i.getBoundingClientRect(),sb=s.getBoundingClientRect();
+      return {also:document.querySelector('#also-waiting').hidden,box:!w.hidden,shown:[...s.children].filter(c=>c.getClientRects().length>0).map(c=>c.textContent),
+        name:s.querySelector('.state-line').textContent,last:l?.textContent??null,lastHeight:lb?Math.round(lb.height):null,lineHeight:l?parseFloat(getComputedStyle(l).lineHeight)||null:null,
+        info:{label:i.getAttribute('aria-label'),expanded:i.getAttribute('aria-expanded'),size:[Math.round(ib.width),Math.round(ib.height)],inside:ib.right<=sb.right&&ib.top>=sb.top},
+        more:{hidden:m.hidden,source:m.querySelector('.source')?.textContent??null,lead:m.querySelector('.lead')?.textContent??null,facts:[...m.querySelectorAll('.standing-facts li')].map(li=>li.textContent)}}})()`);
+    const own = await card();
     assert.equal(own.also, true, 'no line for its own questions');
     assert.equal(own.box, false, 'and no Waiting on you box');
-    assert.equal(own.name, 'Waiting on you');
-    assert.equal(own.lead, 'A question is waiting for your answer:');
-    assert.equal(own.facts.length, 1);
-    assert.match(own.facts[0], /^Speaker notes — fixture-notebook-agent asked at \d{1,2}:\d{2}\s[AP]M$/);
+    assert.deepEqual(own.shown, ['Where it standsi', 'Waiting on you · 1 question', 'Asked: fixture-notebook-agent in “Speaker notes”'], 'two lines under the heading, and nothing more shown');
+    assert.equal(own.name, 'Waiting on you · 1 question');
+    assert.ok(own.lastHeight > 0 && own.lastHeight <= Math.ceil(own.lineHeight * 1.5), 'the Last line is one line: ' + JSON.stringify(own));
+    assert.deepEqual(own.info, { label: 'What this is made of', expanded: 'false', size: own.info.size, inside: true });
+    assert.equal(own.more.hidden, true);
     await shot(p, 'light-pitch-page');
+    // A real press of the ⓘ opens what the light is made of, in place; another closes it.
+    await p.point('#outcome-standing .standing-info');
+    const opened = await until(async () => { const c = await card(); return !c.more.hidden && c; }, 'the ⓘ opens what the light is made of');
+    assert.equal(opened.info.expanded, 'true');
+    assert.equal(opened.more.lead, 'A question is waiting for your answer:');
+    assert.equal(opened.more.facts.length, 1);
+    assert.match(opened.more.facts[0], /^Speaker notes — fixture-notebook-agent asked at \d{1,2}:\d{2}\s[AP]M$/);
+    assert.equal(opened.more.source, 'This comes from posts, agent work and questions in Theseus. Work done somewhere else won’t show here.', 'with where it comes from');
+    assert.equal(opened.shown.length, 4, 'shown below the two lines, in place');
+    await shot(p, 'light-pitch-page-open');
+    await p.point('#outcome-standing .standing-info');
+    await until(async () => (await card()).more.hidden, 'a second press closes it');
+    assert.equal((await card()).info.expanded, 'false');
+    // The Last line's topic is a link: a real click opens the topic.
+    await p.point('#outcome-standing .standing-last a');
+    await until(() => p.evaluate(`document.body?.dataset.ready==='true' && new URL(location.href).searchParams.get('topic')==='light-notes'`), 'the Last line opens its topic');
     assert.deepEqual(p.errors, []);
     await p.close();
     // On a phone the line wraps between links, each kept whole, and nothing scrolls sideways.
     const small = await page('light-outcome-phone', null, true, { url: facts.origin + '/?workspace=w1', beforeNavigate: phone });
-    await until(() => small.evaluate(`!document.querySelector('#also-waiting').hidden`), 'phone: the line');
+    await until(() => small.evaluate(`!document.querySelector('#also-waiting').hidden && !document.querySelector('#outcome-standing').hidden`), 'phone: the line');
     assert.equal(await small.evaluate(`getComputedStyle(document.querySelector('#also-waiting a')).whiteSpace`), 'nowrap');
+    // The card fits the screen, its Last line cut with an ellipsis where it does not fit.
+    const fit = await small.evaluate(`(()=>{const s=document.querySelector('#outcome-standing').getBoundingClientRect(),l=document.querySelector('#outcome-standing .standing-last');
+      if(!l)return {inside:s.right<=innerWidth,last:null};const b=l.getBoundingClientRect(),t=l.querySelector('.title');
+      return {inside:s.right<=innerWidth&&b.right<=s.right,last:{nowrap:getComputedStyle(l).whiteSpace,ellipsis:t?getComputedStyle(t).textOverflow:null}}})()`);
+    assert.equal(fit.inside, true, 'phone: the card and its lines inside the screen');
+    if (fit.last) assert.deepEqual(fit.last, { nowrap: 'nowrap', ellipsis: 'ellipsis' });
     assert.ok(await sideways(small) <= 0, 'no sideways scroll at 390');
     await shot(small, 'light-outcome-phone');
     assert.deepEqual(small.errors, []);
     await small.close();
+  });
+
+  await check('light a control on the card that holds keyboard focus keeps it when a commit repaints the card, and focus elsewhere stays where it is', async () => {
+    await ensure('light-keys', 'Keyboard outcome', { id: 'light-keys-topic', title: 'Keys topic' }, 'Which key first?');
+    const p = await page('light-keys', null, true, { url: facts.origin + '/?workspace=light-keys' });
+    await until(() => p.evaluate(`!document.querySelector('#outcome-standing').hidden && Boolean(document.querySelector('#outcome-standing .standing-last a'))`), 'the card with its Last line');
+    let posts = 0;
+    // An agent posts in the outcome's topic; the card is drawn anew from the commit.
+    const commit = async () => {
+      await p.evaluate(`window.lightKeysCard=document.querySelector('#outcome-standing .standing-info')`);
+      await control({ method: 'agent_message', operation_id: 'light-keys-post-' + (++posts), body: 'Post ' + posts, topic_id: 'light-keys-topic', source: 'topic' });
+      await until(() => p.evaluate(`document.querySelector('#outcome-standing .standing-info')!==window.lightKeysCard`), 'the commit repaints the card');
+    };
+    const held = () => p.evaluate(`(()=>{const a=document.activeElement,s=document.querySelector('#outcome-standing');
+      return {tag:a?.tagName??null,inCard:s.contains(a),info:a===s.querySelector('.standing-info'),last:a===s.querySelector('.standing-last a'),
+        fact:a===s.querySelector('#standing-more .standing-facts a'),expanded:s.querySelector('.standing-info').getAttribute('aria-expanded'),more:!s.querySelector('#standing-more').hidden}})()`);
+    await p.evaluate(`document.activeElement?.blur?.()`);
+    let reached = false;
+    for (let n = 0; n < 60 && !reached; n++) { await p.key('Tab'); reached = (await held()).info; }
+    assert.ok(reached, 'Tab reaches the ⓘ');
+    await p.key('Enter');
+    await until(async () => (await held()).more, 'Enter opens what the light is made of');
+    assert.deepEqual(await held(), { tag: 'BUTTON', inCard: true, info: true, last: false, fact: false, expanded: 'true', more: true });
+    await commit();
+    assert.deepEqual(await held(), { tag: 'BUTTON', inCard: true, info: true, last: false, fact: false, expanded: 'true', more: true }, 'the ⓘ keeps focus, still open, after the repaint');
+    // Tab on from the ⓘ: the Last line's link, then a fact's link, each keeps focus across a repaint.
+    await p.key('Tab');
+    assert.equal((await held()).last, true, 'Tab goes on to the Last line\'s link');
+    await commit();
+    assert.equal((await held()).last, true, 'the Last line\'s link keeps focus after the repaint');
+    await p.key('Tab');
+    assert.equal((await held()).fact, true, 'Tab goes on to a fact\'s link');
+    await commit();
+    assert.equal((await held()).fact, true, 'the fact\'s link keeps focus after the repaint');
+    // Focus outside the card is never taken by a repaint.
+    await p.evaluate(`document.activeElement.blur()`);
+    await commit();
+    assert.deepEqual(await held(), { tag: 'BODY', inCard: false, info: false, last: false, fact: false, expanded: 'true', more: true }, 'focus outside the card stays outside');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('light the ⓘ keeps focus across a repaint without moving the page the reader scrolled away from it', async () => {
+    await ensure('light-scroll', 'Scrolled outcome', { id: 'light-scroll-topic', title: 'Scroll topic' }, 'Which way down?');
+    const p = await page('light-scroll', null, true, { url: facts.origin + '/?workspace=light-scroll' });
+    // A short laptop window, so the card leaves the view when the reader scrolls on down the page.
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 360, deviceScaleFactor: 1, mobile: false });
+    await until(() => p.evaluate(`!document.querySelector('#outcome-standing').hidden && Boolean(document.querySelector('#outcome-standing .standing-last a'))`), 'the card with its Last line');
+    // The page once its scrolling has come to rest: the same position over three frames.
+    const rest = () => p.evaluate(`new Promise(done=>{let y=scrollY,same=0;const frame=()=>{if(scrollY===y){if(++same>=3)return done(y)}else{same=0;y=scrollY}requestAnimationFrame(frame)};requestAnimationFrame(frame)})`);
+    const where = () => p.evaluate(`(()=>{const s=document.querySelector('#outcome-standing'),i=s.querySelector('.standing-info');
+      return {scroll:scrollY,card:Math.round(s.getBoundingClientRect().top),info:Math.round(i.getBoundingClientRect().bottom),focused:document.activeElement===i,
+        expanded:i.getAttribute('aria-expanded'),more:!s.querySelector('#standing-more').hidden}})()`);
+    // The card sits below the window's top bar: the reader scrolls to it, then presses the ⓘ with the mouse.
+    await p.evaluate(`document.querySelector('#outcome-standing .standing-info').scrollIntoView({block:'center'})`);
+    await rest();
+    await p.point('#outcome-standing .standing-info');
+    await until(async () => (await where()).more, 'a press of the ⓘ opens what the light is made of');
+    assert.equal((await where()).focused, true, 'the pressed ⓘ holds focus');
+    // The reader turns the mouse wheel until the ⓘ is above the top of the window; focus stays on it.
+    for (let n = 0; n < 40 && (await where()).info >= 0; n++) {
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 640, y: 300, deltaX: 0, deltaY: 120 });
+      await rest();
+    }
+    const scrolled = await where();
+    assert.ok(scrolled.info < 0, 'the ⓘ is scrolled out of view above the window: ' + JSON.stringify(scrolled));
+    assert.equal(scrolled.focused, true, 'scrolling leaves focus on the ⓘ');
+    await p.evaluate(`window.lightScrollCard=document.querySelector('#outcome-standing .standing-info')`);
+    await control({ method: 'agent_message', operation_id: 'light-scroll-post-1', body: 'Post 1', topic_id: 'light-scroll-topic', source: 'topic' });
+    await until(() => p.evaluate(`document.querySelector('#outcome-standing .standing-info')!==window.lightScrollCard`), 'the commit repaints the card');
+    await rest();
+    assert.deepEqual(await where(), { ...scrolled, focused: true, expanded: 'true', more: true }, 'the page stays where the reader scrolled it, and the new ⓘ has focus, still open');
+    assert.deepEqual(p.errors, []);
+    await p.close();
   });
 }

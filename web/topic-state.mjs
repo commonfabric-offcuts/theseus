@@ -38,29 +38,23 @@ export function askLines(item, reader) {
 }
 
 // Whether work is observed on a topic, by the server's one rule (aim_next/work.py),
-// said out loud (item 86): "aim-spec posted at 6:45 AM", "warp worked on it at
-// 6:30 AM", "Quiet since fable posted yesterday at 11:00 PM". It never says
-// nobody is working: only that it is quiet, and since when. The server reads
-// the rule for this reader, so what it names is never the reader's own.
-// A waiting topic's words are its pill's ("Waiting on you"), passed as
-// waiting; without them it waits on someone the page cannot name. When its
-// newest activity is the open ask itself, it says who asked.
-export function workNote(work, reader, waiting = '', asks = []) {
+// as a state and a time (item 86): "aim-spec · 6:45 AM" (who worked in it
+// last, in the last hour), "Quiet since yesterday 11:00 PM", "Waiting on you ·
+// 6:20 AM". It never says nobody is working: only that it is quiet, and since
+// when. The server reads the rule for this reader, so who it names is never
+// the reader. A waiting topic's words are its pill's ("Waiting on you"),
+// passed as waiting; without them it waits on someone the page cannot name.
+export function workNote(work, reader, waiting = '') {
   if (!work || typeof work !== 'object') return '';
-  const known = Number.isSafeInteger(work.seen_ms);
+  const when = Number.isSafeInteger(work.seen_ms) ? spokenTime(work.seen_ms, 'short') : null;
   const by = typeof work.by === 'string' ? named(work.by, reader) : null;
-  const did = known ? `${work.how === 'turn' ? 'worked on it' : 'posted'} ${spokenTime(work.seen_ms, 'at')}` : '';
   // The server counts every wait as observed work.
   if (work.waits) {
     const who = waiting || 'Waiting on someone';
-    if (!known) return who;
-    const ask = asks.find(item => item.by === work.by && item.since_ms === work.seen_ms);
-    if (ask) return `${who} · ${named(ask.by, reader)} asked ${spokenTime(work.seen_ms, 'at')}`;
-    return `${who} · ${by ? `${by} ${did}` : `Worked on ${spokenTime(work.seen_ms, 'at')}`}`;
+    return when ? `${who} · ${when}` : who;
   }
-  if (work.observed && known) return by ? `${by} ${did}` : `Worked on ${spokenTime(work.seen_ms, 'at')}`;
-  if (!known) return 'Quiet';
-  return by ? `Quiet since ${by} ${did}` : `Quiet since ${spokenTime(work.seen_ms, 'since')}`;
+  if (work.observed && when) return by ? `${by} · ${when}` : `Worked on · ${when}`;
+  return when ? `Quiet since ${when}` : 'Quiet';
 }
 
 // A row with observed work carries a small dot; every row's title and
@@ -69,7 +63,7 @@ export function workNote(work, reader, waiting = '', asks = []) {
 // row already says, so they do not say it twice.
 export function paintWork(host, item, reader) {
   const pill = pillMarked(item) && waitsOn(item).length ? stateLabel(item, reader) : '';
-  const note = workNote(item?.work, reader, pill, asksOf(item));
+  const note = workNote(item?.work, reader, pill);
   if (!note) { host.removeAttribute('title'); return; }
   host.setAttribute('title', note);
   if (item.work.observed) {

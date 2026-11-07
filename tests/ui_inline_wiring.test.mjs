@@ -1113,7 +1113,7 @@ test('a topic page says where it stands, sends its change at the current version
 });
 
 // Item 86: every outcome's questions are listed on the Outcomes home only; an
-// outcome's own page says its questions once, in "Where this outcome stands".
+// outcome's own page says its questions once, in "Where it stands".
 const waitingPage = async (href, waiting) => {
   const f = fixture(href);
   f.inject({ api: f.api, bootstrap: f.bootstrap });

@@ -70,7 +70,7 @@ def stands(asks, pipeline, talk, waits, done_facts, has_topics, last, created):
     done_facts: {"reached": {by, ms, words} | None, "kind": "keep" | "reach",
       "target_word": "on_target" | ... | None, "checks": {count, last_run_ms} | None}.
     has_topics: whether the outcome has any topic.
-    last: {by, how, topic_title, ms} the newest activity by others in its
+    last: {by, how, topic_id, topic_title, title_truncated, ms} the newest activity by others in its
       open topics, or None (none seen, or the scan stopped on its cap).
     created: {by, ms | None}, who started the outcome and when.
     """
