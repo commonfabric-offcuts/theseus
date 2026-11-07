@@ -26,10 +26,9 @@ function painted(t) {
   const chosenBy = [];
   const paint = (draft, names, options = {}) => paintChoice(row, { draft, names, kindOf, everyone: EVERYONE, send, field,
     onChoose: choice => chosenBy.push(choice), ...options });
-  const radios = () => Object.fromEntries(row.querySelectorAll('label[data-intent]').map(label => {
-    const input = label.querySelector('input');
-    return [label.dataset.intent, { checked: input.checked, disabled: input.disabled, why: label.title, said: label.querySelector('.sr-only').textContent }];
-  }));
+  // Each choice is a chip tapped once: aria-pressed says which is on.
+  const radios = () => Object.fromEntries(row.querySelectorAll('button[data-intent]').map(chip =>
+    [chip.dataset.intent, { checked: chip.getAttribute('aria-pressed') === 'true', disabled: chip.disabled, why: chip.title, said: chip.querySelector('.sr-only').textContent }]));
   const line = () => row.querySelector('.audience-line');
   return { document, row, field, send, word, paint, radios, line, chosenBy };
 }
@@ -55,7 +54,9 @@ test('Whisper greys out unless exactly one agent is named, and Ask while nobody 
     whisper: { checked: false, disabled: true, why: 'Name one agent to whisper to them.', said: ', Name one agent to whisper to them.' },
     tell: { checked: true, disabled: false, why: '', said: '' },
     ask: { checked: false, disabled: true, why: 'Name someone to ask them.', said: ', Name someone to ask them.' } });
-  assert.equal(f.row.querySelector('.intent-choice').attributes.role, 'radiogroup');
+  assert.equal(f.row.querySelector('.intent-choice').attributes.role, 'group');
+  assert.deepEqual(f.row.querySelectorAll('input').length, 0, 'chips, never round buttons');
+  assert.ok(f.row.querySelectorAll('button[data-intent]').every(chip => chip.classList.contains('choice-chip') && chip.type === 'button'));
   assert.equal(f.row.querySelector('.intent-choice').attributes['aria-label'], 'How this is sent');
   f.paint({}, ['fable']);
   assert.deepEqual(Object.fromEntries(Object.entries(f.radios()).map(([key, value]) => [key, [value.checked, value.disabled]])),
@@ -66,10 +67,20 @@ test('Whisper greys out unless exactly one agent is named, and Ask while nobody 
   assert.deepEqual([f.radios().whisper.disabled, f.radios().whisper.why], [true, 'A whisper goes to one agent. With more than one name, choose Tell or Ask.']);
   f.paint({}, ['fable'], { readOnly: true });
   assert.ok(Object.values(f.radios()).every(radio => radio.disabled), 'writing that cannot change cannot change how it is sent');
-  // A click on a choice is handed to the composer that owns the draft.
-  const tell = f.row.querySelectorAll('label[data-intent]').find(label => label.dataset.intent === 'tell').querySelector('input');
-  tell.checked = true; tell.onchange();
+  // A tap on a choice is handed to the composer that owns the draft; a tap on the one already on changes nothing.
+  const chip = value => f.row.querySelectorAll('button[data-intent]').find(each => each.dataset.intent === value);
+  chip('tell').onclick(); chip('whisper').onclick();
   assert.deepEqual(f.chosenBy, ['tell']);
+  // An arrow moves the choice along the chips, as on round buttons, wrapping at either end, and passes over one that cannot be chosen.
+  f.paint({ intent: 'tell' }, ['fable']);
+  const key = (value, name) => { let stopped = false; f.row.querySelector('.intent-choice').listeners.keydown({ key: name, target: chip(value), preventDefault: () => { stopped = true; } }); return stopped; };
+  assert.equal(key('ask', 'ArrowRight'), true); assert.equal(key('whisper', 'ArrowLeft'), true); assert.equal(key('tell', 'ArrowRight'), true);
+  assert.equal(key('tell', 'Enter'), false, 'other keys are the button\'s own');
+  assert.deepEqual(f.chosenBy, ['tell', 'whisper', 'ask', 'ask']);
+  assert.equal(f.document.activeElement, chip('ask'), 'the focus goes with the choice');
+  f.paint({ intent: 'ask' }, ['cynthia']);
+  key('ask', 'ArrowRight');
+  assert.deepEqual(f.chosenBy.at(-1), 'tell', 'Whisper cannot be chosen for a person, so the arrow goes on to Tell');
 });
 
 test('the line above Send says in words who will see it, for each choice, and a phone keeps who', t => {
@@ -190,7 +201,7 @@ function reader(t, { source, offered = ['fable'], kinds = kindOf } = {}) {
       people: () => ({ kindOf: kinds, everyone: EVERYONE }), send: editor => { sent.push({ ...editor.draft }); return Promise.resolve(); } },
   });
   send.append(Object.assign(document.createElement('span'), { className: 'send-word', textContent: 'Send' }));
-  const checked = () => document.byId('intent-row').querySelectorAll('input').find(input => input.checked)?.value;
+  const checked = () => document.byId('intent-row').querySelectorAll('button[data-intent]').find(chip => chip.getAttribute('aria-pressed') === 'true')?.dataset.intent;
   return { r, reply, sent, checked, line: () => document.byId('intent-row').querySelector('.audience-line').text, document, send };
 }
 

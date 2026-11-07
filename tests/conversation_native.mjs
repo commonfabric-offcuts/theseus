@@ -281,9 +281,9 @@ export async function conversationChecks({ check, page, until, control, view, fa
     };
     await until(() => quiet(p, `document.querySelectorAll('#reply-destination button').length===2`), 'two chips under To');
     await p.point('#recipient-input'); await p.send('Input.insertText', { text: other }); await p.key('Enter');
-    await until(() => quiet(p, `[...document.querySelectorAll('#recipient-chips .chip')].some(c=>c.dataset.name===${JSON.stringify(other)})`), 'the name is a chip');
-    await p.point('#intent-row label[data-intent="ask"]');
-    await until(() => quiet(p, `document.querySelector('#intent-row label[data-intent="ask"] input').checked`), 'Ask is chosen');
+    await until(() => quiet(p, `[...document.querySelectorAll('#recipient-chips [data-name]')].filter(c=>c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true').map(c=>c.dataset.name).includes(${JSON.stringify(other)})`), 'the name is a chip');
+    await p.point('#intent-row button[data-intent="ask"]');
+    await until(() => quiet(p, `document.querySelector('#intent-row button[data-intent="ask"]').getAttribute('aria-pressed')==='true'`), 'Ask is chosen');
     await replace(p, 'Which build is it?');
     await until(async () => (await draft('t1')).body === 'Which build is it?', 'saved where it was written');
     await p.point('#reply-destination button:nth-child(2)');
@@ -292,8 +292,8 @@ export async function conversationChecks({ check, page, until, control, view, fa
       { body: 'Which build is it?', addressees: [other], intent: 'ask' }, 'the name and Ask went with the words');
     assert.deepEqual(await until(async () => { const d = await draft('t1'); return !d.body && d; }, 'the draft it left is emptied'),
       { body: '', addressees: [], intent: null }, 'and nothing of it stayed behind');
-    assert.deepEqual([await quiet(p, `[...document.querySelectorAll('#recipient-chips .chip')].map(c=>c.dataset.name)`),
-      await quiet(p, `document.querySelector('#intent-row label[data-intent="ask"] input').checked`)], [[other], true], 'the Reply still shows them');
+    assert.deepEqual([await quiet(p, `[...document.querySelectorAll('#recipient-chips [data-name]')].filter(c=>c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true').map(c=>c.dataset.name)`),
+      await quiet(p, `document.querySelector('#intent-row button[data-intent="ask"]').getAttribute('aria-pressed')==='true'`)], [[other], true], 'the Reply still shows them');
     const sentId = await sent(p, p.calls.length);
     const message = await view('source', { source_ref: { kind: 'message', id: sentId } });
     assert.deepEqual([message.topic_id, message.intent ?? null, message.addressees ?? []], [conversation.topic_id, 'ask', [other]], 'the ask was sent to whoever it names');
@@ -308,17 +308,17 @@ export async function conversationChecks({ check, page, until, control, view, fa
       const d = (await view('editor_state', { source_ref: source, topic_id: topicId })).draft;
       return { body: d?.body ?? '', addressees: d?.addressees ?? [], intent: d?.intent ?? null, whisper: d?.whisper ?? null };
     };
-    const reply = () => quiet(p, `({checked:[...document.querySelectorAll('#intent-row label[data-intent] input:checked')].map(i=>i.value),
+    const reply = () => quiet(p, `({checked:[...document.querySelectorAll('#intent-row button[data-intent][aria-pressed=true]')].map(c=>c.dataset.intent),
       send:document.querySelector('#send-reply .send-word').textContent,body:document.querySelector('#writing-body').value,
-      names:[...document.querySelectorAll('#recipient-chips .chip')].map(c=>c.dataset.name),
+      names:[...document.querySelectorAll('#recipient-chips [data-name]')].filter(c=>c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true').map(c=>c.dataset.name),
       notice:document.querySelector('#reader-notice').hidden?null:document.querySelector('#reader-notice').textContent,
       to:[...document.querySelectorAll('#reply-destination button')].map(b=>b.getAttribute('aria-pressed'))})`);
     const name = async () => {
       await p.point('#recipient-input'); await p.send('Input.insertText', { text: other }); await p.key('Enter');
-      await until(() => quiet(p, `[...document.querySelectorAll('#recipient-chips .chip')].some(c=>c.dataset.name===${JSON.stringify(other)})`), 'the name is a chip');
+      await until(() => quiet(p, `[...document.querySelectorAll('#recipient-chips [data-name]')].filter(c=>c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true').map(c=>c.dataset.name).includes(${JSON.stringify(other)})`), 'the name is a chip');
     };
     const choose = async value => {
-      await p.point(`#intent-row label[data-intent="${value}"]`);
+      await p.point(`#intent-row button[data-intent="${value}"]`);
       await until(async () => (await reply())?.checked[0] === value, `${value} is chosen`);
     };
     const ask = { body: 'Old question.', addressees: [other], intent: 'ask', whisper: false };
@@ -375,10 +375,10 @@ export async function conversationChecks({ check, page, until, control, view, fa
       const d = (await view('editor_state', { source_ref: source, topic_id: topicId })).draft;
       return { body: d?.body ?? '', addressees: d?.addressees ?? [], intent: d?.intent ?? null, whisper: d?.whisper ?? null };
     };
-    const reply = () => quiet(p, `({checked:[...document.querySelectorAll('#intent-row label[data-intent] input:checked')].map(i=>i.value),
+    const reply = () => quiet(p, `({checked:[...document.querySelectorAll('#intent-row button[data-intent][aria-pressed=true]')].map(c=>c.dataset.intent),
       send:document.querySelector('#send-reply .send-word').textContent,body:document.querySelector('#writing-body').value,
       who:document.querySelector('#intent-row .audience-line strong')?.textContent??null,
-      names:[...document.querySelectorAll('#recipient-chips .chip')].map(c=>c.dataset.name),
+      names:[...document.querySelectorAll('#recipient-chips [data-name]')].filter(c=>c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true').map(c=>c.dataset.name),
       notice:document.querySelector('#reader-notice').hidden?null:document.querySelector('#reader-notice').textContent,
       to:[...document.querySelectorAll('#reply-destination button')].map(b=>b.getAttribute('aria-pressed'))})`);
     const tap = async (index, body, why) => {
@@ -412,7 +412,11 @@ export async function conversationChecks({ check, page, until, control, view, fa
     // The other way: a Tell to one agent written in the conversation, moved into this topic's empty draft.
     await reopen();
     await tap(1, '', 'Conversation is chosen, with nothing to move');
-    if ((await reply()).names.includes(agent)) await p.point(`#recipient-chips .chip[data-name="${agent}"] button`);
+    // Someone in the topic is a name tapped once, and a second tap takes them off; anyone else has a ×.
+    if ((await reply()).names.includes(agent)) {
+      const chip = `#recipient-chips [data-name="${agent}"]`;
+      await p.point(await quiet(p, `document.querySelector(${JSON.stringify(chip)}).classList.contains('choice-chip')`) ? chip : `${chip} button`);
+    }
     await p.point('#recipient-input'); await p.send('Input.insertText', { text: other }); await p.key('Enter');
     await until(async () => (await reply())?.names.join() === other, 'only the second agent is named');
     await replace(p, status);

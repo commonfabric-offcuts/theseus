@@ -98,33 +98,43 @@ export function audienceWords({ choice, switched }, names, everyone, { answering
 }
 
 // Paints the choice and its line into row, the Send button's word and the
-// writing field's dashed line; returns the choice. The radios are made once
-// per row, so a choice that keeps the focus keeps it across paints.
+// writing field's dashed line; returns the choice. The choice is three chips
+// tapped once (aria-pressed says which is on), never round buttons; an arrow
+// key moves the choice along them, as it did on round buttons. The chips are
+// made once per row, so a choice that keeps the focus keeps it across paints.
 export function paintChoice(row, { draft, names, kindOf, everyone, send, field, readOnly = false, answeringWhisper = false,
   conversation = false, onChoose }) {
   if (!row.querySelector('.intent-choice')) {
     const group = node('div', undefined, 'intent-choice');
-    group.setAttribute('role', 'radiogroup'); group.setAttribute('aria-label', 'How this is sent');
+    group.setAttribute('role', 'group'); group.setAttribute('aria-label', 'How this is sent');
     for (const [value, words] of CHOICES) {
-      const label = node('label'); label.dataset.intent = value;
-      const input = node('input'); input.type = 'radio'; input.name = `${row.id}-choice`; input.value = value;
-      input.onchange = () => { if (input.checked) row.choose?.(value); };
-      label.append(input, words, node('span', '', 'sr-only'));
-      group.append(label);
+      const chip = node('button', undefined, 'choice-chip'); chip.type = 'button'; chip.dataset.intent = value;
+      chip.onclick = () => { if (chip.getAttribute('aria-pressed') !== 'true') row.choose?.(value); };
+      chip.append(words, node('span', '', 'sr-only'));
+      group.append(chip);
     }
+    group.addEventListener('keydown', event => {
+      const step = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key];
+      const chips = [...group.querySelectorAll('button[data-intent]')].filter(chip => !chip.disabled);
+      const at = chips.indexOf(event.target?.closest?.('button[data-intent]'));
+      if (!step || at < 0) return;
+      event.preventDefault();
+      const next = chips[(at + step + chips.length) % chips.length];
+      next.focus(); next.onclick();
+    });
     const line = node('p', undefined, 'audience-line'); line.setAttribute('aria-live', 'polite');
     row.replaceChildren(group, line);
   }
   row.choose = onChoose;
   const state = choiceOf(draft, names, kindOf, { conversation });
-  for (const label of row.querySelectorAll('label[data-intent]')) {
-    const input = label.querySelector('input'), value = label.dataset.intent;
+  for (const chip of row.querySelectorAll('button[data-intent]')) {
+    const value = chip.dataset.intent;
     const why = value === 'whisper' && !canWhisper(names, kindOf) ? (names.length > 1 ? WHISPER_TO_ONE : WHISPER_NEEDS_ONE)
       : value === 'ask' && !names.length ? ASK_NEEDS_SOMEONE : '';
-    input.checked = value === state.choice;
-    input.disabled = readOnly || Boolean(why);
-    label.title = why;
-    label.querySelector('.sr-only').textContent = why ? `, ${why}` : '';
+    chip.setAttribute('aria-pressed', value === state.choice ? 'true' : 'false');
+    chip.disabled = readOnly || Boolean(why);
+    chip.title = why;
+    chip.querySelector('.sr-only').textContent = why ? `, ${why}` : '';
   }
   const [who, words, more] = audienceWords(state, names, everyone, { answeringWhisper });
   const line = row.querySelector('.audience-line');

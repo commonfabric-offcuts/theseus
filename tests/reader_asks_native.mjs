@@ -8,8 +8,8 @@ import assert from 'node:assert/strict';
 export async function asksChecks({ check, page, until, control, view, facts, replace, shot }) {
   const row = '#topics .nav-item[data-topic-id="t1"]';
   const mark = p => p.evaluate(`(()=>{const m=document.querySelector(${JSON.stringify(row + ' .topic-state')});return m?{text:m.textContent,title:m.title,state:m.dataset.state,mine:m.classList.contains('mine')}:null})()`);
-  const choice = p => p.evaluate(`Object.fromEntries([...document.querySelectorAll('#intent-row label[data-intent]')].map(l=>[l.dataset.intent,
-    (l.querySelector('input').checked?'checked':'')+(l.querySelector('input').disabled?'disabled':'')]))`);
+  const choice = p => p.evaluate(`Object.fromEntries([...document.querySelectorAll('#intent-row button[data-intent]')].map(c=>[c.dataset.intent,
+    (c.getAttribute('aria-pressed')==='true'?'checked':'')+(c.disabled?'disabled':'')]))`);
   const asks = async () => (await view('topic', { topic_id: 't1' })).topic.asks ?? [];
   // Someone in the topic is a name tapped once to address them; anyone else is typed.
   const addressTo = async (p, name) => {
@@ -42,7 +42,7 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
     await replace(p, 'The fourth works.');
     await addressTo(p, facts.agent);
     assert.deepEqual(await choice(p), { whisper: 'checked', tell: '', ask: '' }, 'Ask can be chosen once someone is named');
-    await p.point('#intent-row label[data-intent="tell"]');
+    await p.point('#intent-row button[data-intent="tell"]');
     await until(async () => (await choice(p)).tell === 'checked', 'Tell chosen');
     const id = await sent(p, 0);
     const source = await view('source', { source_ref: { kind: 'message', id } });
@@ -78,7 +78,7 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
     const p = await page('asks-ask', null, true); await p.open(1);
     await replace(p, 'Who signs off on it?');
     await addressTo(p, facts.agent);
-    await p.point('#intent-row label[data-intent="ask"]');
+    await p.point('#intent-row button[data-intent="ask"]');
     await until(async () => (await choice(p)).ask === 'checked', 'Ask chosen');
     assert.equal(await p.evaluate('document.querySelector("#send-reply .send-word").textContent'), 'Ask');
     const id = await sent(p, 0);

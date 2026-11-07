@@ -8,14 +8,20 @@ import assert from 'node:assert/strict';
 export async function whispersChecks({ check, page, until, control, view, facts, replace, shot }) {
   const agent = facts.agent;
   const quiet = async (p, expression) => { try { return await p.evaluate(expression); } catch { return false; } };
-  const choice = (p, row = '#intent-row') => p.evaluate(`Object.fromEntries([...document.querySelectorAll(${JSON.stringify(row + ' label[data-intent]')})].map(l=>[l.dataset.intent,
-    (l.querySelector('input').checked?'checked':'')+(l.querySelector('input').disabled?'disabled':'')]))`);
+  // Each choice is a chip tapped once; aria-pressed says which is on.
+  const choice = (p, row = '#intent-row') => p.evaluate(`Object.fromEntries([...document.querySelectorAll(${JSON.stringify(row + ' button[data-intent]')})].map(c=>[c.dataset.intent,
+    (c.getAttribute('aria-pressed')==='true'?'checked':'')+(c.disabled?'disabled':'')]))`);
   const line = (p, row = '#intent-row') => p.evaluate(`document.querySelector(${JSON.stringify(row + ' .audience-line')})?.textContent ?? null`);
   const word = (p, button = '#send-reply') => p.evaluate(`document.querySelector(${JSON.stringify(button + ' .send-word')}).textContent`);
   const dashed = (p, selector) => p.evaluate(`(e=>e&&getComputedStyle(e).borderTopStyle)(document.querySelector(${JSON.stringify(selector)}))`);
   const addressTo = async (p, name, input = '#recipient-input', chips = '#recipient-chips') => {
     await p.point(input); await p.send('Input.insertText', { text: name }); await p.key('Enter');
-    await until(() => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(chips + ' .chip')})].some(c=>c.dataset.name===${JSON.stringify(name)})`), 'recipient chip');
+    await until(() => p.evaluate(`[...document.querySelectorAll(${JSON.stringify(chips + ' [data-name]')})].some(c=>c.dataset.name===${JSON.stringify(name)}&&(c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true'))`), 'recipient named');
+  };
+  // Someone in the topic is a name tapped once, and a second tap takes them off; anyone else has a ×.
+  const unname = async (p, name, chips = '#recipient-chips') => {
+    const chip = `${chips} [data-name=${JSON.stringify(name)}]`;
+    await p.point(await p.evaluate(`document.querySelector(${JSON.stringify(chip)}).classList.contains('choice-chip')`) ? chip : `${chip} button`);
   };
   const sent = async (p, from) => {
     await p.point('#send-reply');
@@ -54,8 +60,8 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     assert.equal(await word(p), 'Whisper');
     assert.equal(await dashed(p, '#writing-body'), 'dashed', 'the writing box has a dashed line while whispering');
     await shot(p, 'whispers-writing');
-    // The keys of a radio group: an arrow moves the choice, and back.
-    await p.evaluate(`document.querySelector('#intent-row input[value="whisper"]').focus()`);
+    // An arrow moves the choice along the chips, and back.
+    await p.evaluate(`document.querySelector('#intent-row button[data-intent="whisper"]').focus()`);
     await p.key('ArrowRight');
     await until(async () => (await choice(p)).tell === 'checked', 'an arrow chooses Tell');
     assert.equal(await word(p), 'Send');
@@ -67,9 +73,9 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     await p.key('ArrowLeft'); await p.key('ArrowLeft');
     await until(async () => (await choice(p)).whisper === 'checked', 'arrows come back to Whisper');
     // And by pointer.
-    await p.point('#intent-row label[data-intent="tell"]');
+    await p.point('#intent-row button[data-intent="tell"]');
     await until(async () => (await choice(p)).tell === 'checked', 'a tap chooses Tell');
-    await p.point('#intent-row label[data-intent="whisper"]');
+    await p.point('#intent-row button[data-intent="whisper"]');
     await until(async () => (await choice(p)).whisper === 'checked', 'a tap chooses Whisper');
     assert.equal(await word(p), 'Whisper');
     const before = await shared();
@@ -123,12 +129,12 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     assert.equal((await choice(p)).whisper, 'checked');
     await addressTo(p, second);
     assert.deepEqual(await choice(p), { whisper: 'disabled', tell: 'checked', ask: '' }, 'two names cannot whisper');
-    assert.equal(await p.evaluate(`document.querySelector('#intent-row label[data-intent="whisper"]').title`), 'A whisper goes to one agent. With more than one name, choose Tell or Ask.');
+    assert.equal(await p.evaluate(`document.querySelector('#intent-row button[data-intent="whisper"]').title`), 'A whisper goes to one agent. With more than one name, choose Tell or Ask.');
     assert.match(await line(p), new RegExp(`^Everyone in this topic will see this\\. A whisper goes to one agent\\. Nothing you wrote is lost\\. Adding ${second} made this a Tell\\.`));
     assert.equal(await word(p), 'Send');
     assert.equal(await field(p), 'Who has the launch copy?', 'the words stay');
     await shot(p, 'whispers-switched');
-    await p.point(`#recipient-chips .chip[data-name="${second}"] button`);
+    await unname(p, second);
     await until(async () => (await choice(p)).whisper === 'checked', 'taking the second name away whispers again');
     assert.equal(await word(p), 'Whisper');
     assert.deepEqual(p.errors, []);
@@ -157,7 +163,7 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     await addressTo(p, agent);
     assert.equal((await choice(p)).whisper, 'checked');
     const fit = await p.evaluate(`(()=>{const v=innerWidth,r=e=>e.getBoundingClientRect(),send=r(document.querySelector('#send-reply'));
-      const out=[...document.querySelectorAll('#intent-row label, #intent-row .audience-line, #send-reply')].filter(e=>{const b=r(e);return b.left<0||b.right>v+0.5}).map(e=>e.id||e.className||e.dataset.intent);
+      const out=[...document.querySelectorAll('#intent-row button, #intent-row .audience-line, #send-reply')].filter(e=>{const b=r(e);return b.left<0||b.right>v+0.5}).map(e=>e.id||e.className||e.dataset.intent);
       return {sideways:document.scrollingElement.scrollWidth>v,dialog:document.querySelector('#reader').scrollWidth>document.querySelector('#reader').clientWidth,out,
         send:send.top>=0&&send.bottom<=innerHeight+0.5,where:[send.top,send.bottom,innerHeight],more:getComputedStyle(document.querySelector('#intent-row .audience-more')).display,
         header:r(document.querySelector('#reader .reader-header')).height}})()`);
