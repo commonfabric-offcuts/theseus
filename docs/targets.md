@@ -103,9 +103,12 @@ got worse." Then the deploy refuses, naming what got worse first, then a
 summary that did not pass. The outcome page shows the candidate stopped, its
 fix topic and the owner's choice to accept a worse measure; once he has, the
 same commit is deployed again and goes on. Every candidate run the deploy
-records while a release piece is open (and its commit is not already a
-release) is that piece's: its readings name the piece, whether the piece was
-combined with a commit, without one, or is checking a new commit after a stop.
+records (its commit not already a release) is the run of the next release, one
+past the latest recorded, and its readings name that release's piece, whether
+the piece was combined with a commit, without one, or is checking a new commit
+after a stop. A later release combined meanwhile is not that piece, and a
+release is combined once (`RELEASE_PIECE_EXISTS`). A trial or a base rerun
+names no piece (D32, D34), so neither ever opens a gate.
 The piece's gate, its "Held" note and the held test that lets the coordinator
 take an item back read those readings. Before anything stops, the release
 piece leaves `checks` for `deploy`; its gate holds on the readings `02-run`

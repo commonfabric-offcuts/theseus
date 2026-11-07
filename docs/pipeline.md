@@ -127,13 +127,15 @@ and `part: true` keeps that item new. `item_move` takes `section`,
 `combine` takes the pieces waiting in the last stage a piece goes through (the
 approved ones; `PIECE_NOT_APPROVED` otherwise) into a new release piece in the
 first release stage, with `ask_message_id` when that stage waits on the owner.
+A release number is combined once (`RELEASE_PIECE_EXISTS` names its piece), so
+"the release piece for release N" is one piece.
 
 Views:
 
 - `pipeline {workspace_id, section, cursor, limit}`: one section's items, in
   order, paged by an offset cursor. Section `now` also carries the head: the
   facts boxes, the banner for the live release until a stage is entered after its deploy, the release
-  being put together, what waits on the reader, the pieces in Now and the
+  being put together (the lowest number not yet shipped, whichever was combined last), what waits on the reader, the pieces in Now and the
   table of typical stage times. Section `shipped` gives groups, newest first.
 - `pipeline_item {workspace_id, number}`: one item with every source, piece and
   event.

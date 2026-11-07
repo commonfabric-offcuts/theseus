@@ -184,14 +184,15 @@ class Checks:
         return bool(row and row["ships_in_releases"])
 
     def _open_release(self, db, workspace_id):
-        """The outcome's open release piece that no release record has shipped yet, with its open entry; None without one.
+        """The outcome's release piece for the next release, one past the latest recorded, with its open entry; None without one.
 
-        A release-check run of a commit no record names is this piece's candidate: record_checks writes its readings with
+        A release-check run of a commit no record names is this release's candidate: record_checks writes its readings with
         the piece's id, so the piece's gate (D18), its hold (D35) and its number read the readings of the commits actually
-        checked, whichever commit that is and whether or not combine was given one."""
+        checked, whichever commit that is and whether or not combine was given one. A later release combined meanwhile is
+        not this one (7.2 step 9), and combine keeps one piece to a release."""
         row = db.execute("SELECT p.*,e.stage_id,e.round,e.progress,e.entered_ms FROM pipeline_pieces p JOIN pipeline_stage_entries e "
                          "ON e.piece_id=p.id AND e.left_ms IS NULL WHERE p.workspace_id=? AND p.kind='release' "
-                         "AND p.release_number NOT IN (SELECT number FROM releases) ORDER BY e.entered_ms DESC LIMIT 1", (workspace_id,)).fetchone()
+                         "AND p.release_number=(SELECT coalesce(max(number),0)+1 FROM releases)", (workspace_id,)).fetchone()
         return dict(row) if row else None
 
     def _planned(self, db, run_ids):
@@ -355,7 +356,10 @@ class Checks:
         return True
 
     def _release_held(self, db, workspace_id, piece):
-        """D35: a release piece is held when its newest candidate run has a worse reading."""
+        """D35: a release piece is held when its newest candidate run has a worse reading. Candidates are the next release's
+        (record_checks), so a later release combined meanwhile has none and is never held by this one's stop."""
+        if piece["id"] != (self._open_release(db, workspace_id) or {}).get("id"):
+            return False
         workspace = db.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
         loop = self._loop(db, workspace["owner_id"], workspace, self._checks_context(db, workspace["owner_id"], workspace))
         return bool(loop and loop["candidate"] and loop["candidate"]["state"] == "stopped")
@@ -528,6 +532,10 @@ class Checks:
         if not isinstance(tools, dict) or not isinstance(steps, list) or len(steps) > 64:
             raise Refusal("INVALID_ARGUMENT", "A run's tools is an object and its steps a list")
         trial_of, without = run.get("trial_of"), run.get("without")
+        if (trial_of is not None or base_for is not None) and any(isinstance(reading, dict) and reading.get("piece_id") is not None
+                                                                  for reading in readings):
+            # D32, D34: a base rerun or a trial is never a release's reading and never gates a stage.
+            raise Refusal("INVALID_ARGUMENT", "A trial's or a base rerun's readings belong to no piece")
         identity = run_id(workspace_id, commit, started, source, base_for, trial_of, _json(without) if without is not None else None)
         current = {row["id"]: row for row in db.execute("SELECT id FROM check_runs WHERE id=?", (identity,))}
         definitions = {check["check_id"]: check for check in self._current_checks(db, workspace_id)}

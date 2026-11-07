@@ -763,6 +763,11 @@ class Pipeline:
         release = _number(args.get("release_number"), "release_number")
         if db.execute("SELECT 1 FROM releases WHERE number=?", (release,)).fetchone():
             raise Refusal("RELEASE_EXISTS", "Release %d is already recorded" % release)
+        combined = db.execute("SELECT id FROM pipeline_pieces WHERE workspace_id=? AND kind='release' AND release_number=?",
+                              (workspace["id"], release)).fetchone()
+        if combined:
+            # 7.2 step 9: the deploy moves the release piece for its release number, so a release has one.
+            raise Refusal("RELEASE_PIECE_EXISTS", "Release %d is already combined, as %s" % (release, combined[0]))
         topic = self._topic(db, actor, args.get("topic_id"))
         if topic["workspace_id"] != workspace["id"]:
             raise Refusal("TOPIC_OUTSIDE_OUTCOME", "The release's topic belongs to this outcome")
@@ -1034,7 +1039,8 @@ class Pipeline:
 
     def _pipeline_head(self, db, actor, workspace, pipeline, stages, releases, asks, pieces, cache):
         live = db.execute("SELECT number,deployed_ms,items FROM releases ORDER BY number DESC LIMIT 1").fetchone() if pipeline["ships_in_releases"] else None
-        release_piece = next((piece for piece in pieces if piece["kind"] == "release"), None)
+        # The next release is the lowest number not yet shipped, whichever release was combined last.
+        release_piece = min((piece for piece in pieces if piece["kind"] == "release"), key=lambda piece: piece["release_number"], default=None)
         work_pieces = [piece for piece in pieces if piece["kind"] == "piece"]
         last_piece_stage = None
         if pipeline["ships_in_releases"]:

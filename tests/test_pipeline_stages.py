@@ -189,6 +189,22 @@ class StagesCase(PipelineCase):
         self.assertEqual((now["facts"]["next_release"], (now["banner"] or {}).get("release"), now["items"]), (None, 23, []))
         self.rejected(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first], "topic_id": "t1"}, {"workspace_id": "w1"}), "RELEASE_EXISTS")
 
+    def test_a_release_has_one_piece_and_the_next_release_is_the_lowest_number_still_open(self):
+        # 7.2 step 9 needs "the release piece for this release number": one, whichever piece was entered last.
+        self.release_stages(*STAGES[:3], self.CHECKS)
+        self.topic("t2")
+        first = self.committed(self.start(stage="wait"))["piece_id"]
+        second = self.committed(self.start(numbers=(3,), topic="t2", stage="wait"))["piece_id"]
+        this = self.committed(self.combine([first]))["piece_id"]
+        self.rejected(self.combine([second]), "RELEASE_PIECE_EXISTS")
+        self.assertEqual(self.entries(second), [("wait", 1, None, 0)], "nothing was combined")
+        later = self.committed(self.combine([second], release=24))["piece_id"]
+        now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
+        self.assertEqual((now["facts"]["next_release"]["release"], now["facts"]["next_release"]["piece_id"], now["release_piece"]["id"]),
+                         (23, this, this), "release 24 was combined last, but 23 ships first")
+        self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": "2026-11-07T08:00:00-08:00", "items": [1, 2], "source": "deploy"})
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"]["piece_id"], later)
+
     CHECKS = {"stage_id": "checks", "name": "Release checks", "scope": "release"}
 
     def release_stages(self, *stages):
