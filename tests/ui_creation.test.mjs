@@ -9,7 +9,8 @@ const bootstrap={instance_id:'fixture',actor:'person',authority:{authority_id:'a
 const defer=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return {promise,resolve,reject};};
 function fixture() {
   const rows=new Map(),calls=[],reads=[];let fail=false,owned=true,serial=0,answer=null;
-  const journal={claim:async()=>owned,get:async id=>copy(rows.get(id)??null),put:async row=>{
+  // claimWhenFree: the lock another tab holds is never let go in these checks (ui_creation_claim covers its release).
+  const journal={claim:async()=>owned,claimWhenFree:()=>new Promise(()=>{}),get:async id=>copy(rows.get(id)??null),put:async row=>{
     if(fail)throw Error('Storage failed');rows.set(row.id,copy(row));return copy(row);
   }};
   const receipt=envelope=>({instance_id:'fixture',operation_id:envelope.operation_id,kind:envelope.kind,recorded:true,status:'committed',
@@ -26,7 +27,8 @@ test('creation view adopts title purpose and team together without replacing loc
   const f=fixture(),c=f.create();await c.load();await c.edit({title:'Old title',purpose:'Old purpose'});
   const v=new CreateOutcomeView({host:document.body,creation:c,open(){},confirmed(){}});
   c.writable=false;const next={...copy(c.row),form:{title:'New title',purpose:'New purpose',team:['new-agent']}};f.rows.set('intent',next);
-  await v.run(()=>c.refresh());
+  // The load a granted lock runs (awaitClaim).
+  await v.run(()=>c.load());
   assert.equal(v.title.value,'New title');assert.equal(v.purpose.value,'New purpose');assert.equal(v.create.disabled,false);
   assert.equal(v.team.chips.children[1].textContent,'new-agent');
   assert.equal(v.team.input.list,'directory-names','the team field offers the directory');
@@ -125,9 +127,11 @@ test('creation transient confirmation read cannot replace a terminal receipt',as
     assert.equal(f.rows.get('intent').phase,phase);
   }
 });
-test('read-only creation Refresh makes no write and does not trap departure',async()=>{
+test('a read-only creation form makes no write, offers no Try saving again, and does not trap departure',async()=>{
   const f=fixture(),first=f.create();await first.load();await first.edit({title:'Kept'});f.deny();const second=f.create();await second.load();
-  f.journal.put=async()=>{throw Error('Readonly write attempted');};await second.refresh();await second.leave('root','Outcomes');assert.equal(second.storageError,undefined);
+  f.journal.put=async()=>{throw Error('Readonly write attempted');};
+  assert.equal(second.canSaveAgain,false);await assert.rejects(second.saveAgain(),/another tab|read.only/i);
+  await second.leave('root','Outcomes');assert.equal(second.storageError,undefined);
 });
 test('authority preflight failure keeps an editable draft with no imagined frozen request',async()=>{
   const f=fixture(),c=f.create();await c.load();await c.edit({title:'Kept'});f.api.bootstrap=async()=>{throw Error('Offline');};
@@ -147,10 +151,10 @@ test('creation ownership acquisition coalesces and cannot persist or publish the
   f.rows.set('intent',copy(newer));const reading=defer(),release=defer();let reads=0,writes=0;
   f.journal.get=async()=>{reads++;reading.resolve();await release.promise;return copy(newer);};
   f.journal.put=async row=>{writes++;f.rows.set(row.id,copy(row));};
-  const first=c.refresh();await reading.promise;
+  const first=c.load();await reading.promise;
   try {
     assert.equal(c.readOnly,true,'ownership cannot become writable before row adoption');
-    const again=c.refresh();assert.equal(again,first,'Refresh joins the same acquisition');
+    const again=c.load();assert.equal(again,first,'a second load joins the same acquisition');
     await assert.rejects(c.edit({title:'stale overwrite'}),/busy|locked|read.only|loading/i);
     await assert.rejects(c.persist(),/busy|locked|read.only|loading/i);
     assert.equal(c.create(),first,'Create during acquisition joins the busy action without queuing a public act');

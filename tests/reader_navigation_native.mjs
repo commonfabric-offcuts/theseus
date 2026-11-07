@@ -30,13 +30,6 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     import('/creation.mjs').then(({OutcomeCreation})=>{const original=OutcomeCreation.prototype.persist;OutcomeCreation.prototype.persist=function(...args){console.log('ux-journal-write','creation.persist');return original.apply(this,args);};});
   `});
   const storageActs=p=>p.events.filter(e=>e.method==='Runtime.consoleAPICalled'&&['ux-storage-write','ux-journal-write'].includes(e.params.args[0]?.value));
-  let observedActionId=0;
-  const observedAction=async(p,selector,kind)=>{
-    const token=kind+':'+(++observedActionId);
-    await p.evaluate(`(()=>{const node=document.querySelector(${JSON.stringify(selector)}),original=node.onclick;if(typeof original!=='function')throw Error('Native action handler absent');node.onclick=function(...args){const result=original.apply(this,args);Promise.resolve(result).then(()=>console.log('ux-action-settled',${JSON.stringify(token)}),()=>console.log('ux-action-settled',${JSON.stringify(token)}));return result;};node.scrollIntoView({block:'center'});})()`);
-    await p.point(selector);
-    await until(()=>p.events.some(e=>e.method==='Runtime.consoleAPICalled'&&e.params.args[0]?.value==='ux-action-settled'&&e.params.args[1]?.value===token),'exact native '+kind+' handler settled');
-  };
 
   await check('navigation outcomes root empty paging keyboard and protected departure', async () => {
     // Outcomes list in workspace-ID order (docs/workspaces-query.md), and this
@@ -53,8 +46,13 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const labels=await p.evaluate('[...document.querySelectorAll("#workspaces a")].slice(0,2).map(a=>a.textContent)');
     assert.notEqual(labels[0],labels[1]);assert.ok(labels.every(x=>x.includes('Same outcome')&&x.includes('outcome-')));
     await shot(p,'outcomes-root');
+    // With no Refresh button, a page reads its lists again after each commit
+    // the live stream brings. A commit made elsewhere: the person marks, or
+    // clears, a message in t1 as another tab would. It changes no outcome.
+    const [marking]=(await view('topic_messages',{topic_id:'t1',direction:'before',limit:1})).items;let markings=0;
+    const commitElsewhere=marked=>control({method:'mark',operation_id:'navigation-commit-'+(++markings),message_ids:[marking.id],marked});
     await control({method:'read_fault',name:'workspaces',status:503,body:{error:{code:'DATABASE_BUSY',message:'Outcomes temporarily unavailable',retryable:true}},count:1});
-    await activate('#refresh');
+    await commitElsewhere(true);
     await until(()=>p.evaluate('!document.querySelector("#retry-workspaces").hidden'),'outcome retry is discoverable');
     assert.match(await p.evaluate('document.querySelector("#outcomes-status").textContent'),/Outcomes temporarily unavailable/);
     assert.equal(await p.evaluate('document.querySelectorAll("#workspaces a").length'),20,'transient error preserves available choices');
@@ -82,12 +80,13 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await p.key('Enter');
     await until(()=>p.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'),'workspace topics');
     await control({method:'read_fault',name:'workspace',status:403,body:{error:{code:'FORBIDDEN',message:'Outcome access denied'}},count:1});
-    await activate('#refresh');
+    await commitElsewhere(false);
     await until(()=>p.evaluate('document.querySelector("#topic-navigation").hidden'),'denied outcome hides its previous topic choices');
     assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Outcome unavailable');
     assert.equal(await p.evaluate('document.querySelector("#app-status").hidden'),false);
-    await activate('#refresh');
-    await until(()=>p.evaluate('!document.querySelector("#topic-navigation").hidden && document.querySelector("#app-status").hidden'),'Refresh restores permitted outcome');
+    await commitElsewhere(true);
+    await until(()=>p.evaluate('!document.querySelector("#topic-navigation").hidden && document.querySelector("#app-status").hidden'),'the next commit restores the permitted outcome');
+    await commitElsewhere(false);
     await activate('#topics a[data-topic-id="t1"]');await ready(p,'t1');
     await p.evaluate('document.querySelector("#inline-writing-body").scrollIntoView({block:"center"})');await activate('#inline-writing-body');
     const body='Writing preserved when choosing Outcomes';await p.send('Input.insertText',{text:body});const entered=Date.now();
@@ -124,8 +123,11 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const contender=await page('handover-contender',null,true,{url:route});assert.equal(await contender.evaluate('document.querySelector("#outcome-title-input").value'),'Old title');
     await type(owner,'#outcome-title-input','New title');await type(owner,'#outcome-purpose-input','New purpose');
     await type(owner,'[aria-label="Add outcome team member"]','fixture-notebook-agent');await owner.key('Enter');
-    await until(()=>owner.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'new form saved');await owner.close();
-    await click(contender,'#refresh');await until(()=>contender.evaluate('!document.querySelector("#create-outcome").disabled'),'handover completed');
+    await until(()=>owner.evaluate('document.querySelector("#outcome-page").textContent.includes("Form saved on this browser")'),'new form saved');
+    assert.equal(await contender.evaluate('document.querySelector("#create-outcome").disabled'),true,'the contender stays read-only while the owner tab is open');
+    // The owner tab closing hands the form over, with nothing pressed here.
+    await owner.close();
+    await until(()=>contender.evaluate('!document.querySelector("#create-outcome").disabled'),'handover completed when the owner tab closed');
     assert.equal(await contender.evaluate('document.querySelector("#outcome-title-input").value'),'New title');
     assert.equal(await contender.evaluate('document.querySelector("#outcome-purpose-input").value'),'New purpose');
     assert.match(await contender.evaluate('document.querySelector("#outcome-page .chips").textContent'),/fixture-notebookbook-agent|fixture-notebook-agent/);
@@ -180,11 +182,12 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await control({method:'read_fault',name:'topic',status:503,body:{error:{code:'DATABASE_BUSY',message:'Topic read delayed',retryable:true}},count:1});
     await click(p,'t1');
     // Api's non-2xx AttemptError preserves the human message, not the code.
-    await until(()=>p.evaluate('!document.querySelector("#app-status").hidden && document.querySelector("#app-status").textContent==="Topic read delayed"'),'startup refusal remains visible');
+    // A start that fails says why, with Reload this page beside it.
+    await until(()=>p.evaluate('!document.querySelector("#app-status").hidden && document.querySelector("#app-status").textContent==="Topic read delayed Reload this page" && Boolean(document.querySelector("#app-status #start-reload"))'),'startup refusal remains visible');
     assert.ok(p.responses.some(r=>r.payload?.name==='topic' && r.status===503 && r.body.error?.code==='DATABASE_BUSY'),'typed refusal was actually received');
     observations.push({name:'startup refusal feedback',text:await p.evaluate('document.querySelector("#app-status").textContent')});
     await emptyHeader('startup refusal');
-    await p.point('#refresh');await ready(p,'t1');
+    await p.point('#start-reload');await ready(p,'t1');
     assert.equal((await header()).title,'Read here');
     await p.send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
     await p.send('Emulation.setTouchEmulationEnabled',{enabled:true});
@@ -205,8 +208,9 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const original = await p.evaluate('performance.timeOrigin'); await click(p, 't1');
     assert.equal(await p.evaluate('performance.timeOrigin'), original, 'current topic is a no-op');
     // Tab/Return activation from ordinary document focus, never click().
-    // Earlier cases leave more outcomes in the rail; Tab passes each of them.
-    await p.evaluate('document.querySelector("#refresh").scrollIntoView({block:"center"})'); await p.point('#refresh');
+    // A press on the logo block's workspace name starts Tab there; Tab passes
+    // the notices and ← Outcomes before the topics.
+    await p.evaluate('document.querySelector("#instance-label").scrollIntoView({block:"center"})'); await p.point('#instance-label');
     const tabLimit = await p.evaluate('document.querySelectorAll("a[href],button,input,textarea,select,[tabindex]").length + 2');
     for (let n = 0; n < tabLimit && await p.evaluate('document.activeElement?.dataset.topicId') !== 't2'; ++n) await p.key('Tab');
     assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), 't2');
@@ -283,7 +287,10 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.deepEqual([...added].sort(), ['t2', 't3'], 'the next page holds the two topics left');
     assert.equal(await p.evaluate('document.activeElement?.dataset.topicId'), added[0], 'last More hands focus to the next new link');
     await control({ method: 'read_fault', name: 'workspace_topics', read_class: 'foreground', status: 503, body: { error: { code: 'SERVER_BUSY', message: 'Topic list delayed', retryable: true } }, count: 1 });
-    await p.evaluate('document.querySelector("#refresh").scrollIntoView({block:"center"})'); await p.point('#refresh');
+    // A commit made elsewhere, as another tab marking a message would, reads
+    // the list again; nothing on this page is pressed.
+    const [marking] = (await view('topic_messages', { topic_id: 't1', direction: 'before', limit: 1 })).items;
+    await control({ method: 'mark', operation_id: 'navigation-paging-mark', message_ids: [marking.id], marked: true });
     await until(() => p.evaluate('!document.querySelector("#retry-topics").hidden'), 'topic list failure exposes Retry');
     assert.equal(await p.evaluate('document.querySelectorAll("#topics a").length'), 23, 'transient error retains the previous links');
     await control({ method: 'read_fault', name: 'workspace_topics', read_class: 'foreground', status: 403, body: { error: { code: 'FORBIDDEN', message: 'Workspace unavailable', retryable: false } }, count: 1 });
@@ -292,6 +299,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     // A reload reads back to the last row the reader had loaded, so Retry
     // restores all 23 links and leaves nothing for More.
     await p.point('#retry-topics'); await until(() => p.evaluate('!document.querySelector("#topics").hidden && document.querySelectorAll("#topics a").length===23 && document.querySelector("#more-topics").hidden'), 'explicit Retry restores every confirmed workspace link the reader had');
+    await control({ method: 'mark', operation_id: 'navigation-paging-clear', message_ids: [marking.id], marked: false });
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await p.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     await p.evaluate(`document.querySelector(${JSON.stringify(link('t2'))}).scrollIntoView({block:'center',inline:'center'})`);
@@ -425,7 +433,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   });
 
 
-  await check('navigation creation actual pending departure unknown return and read-only Refresh',async()=>{
+  await check('navigation creation actual pending departure unknown return and a read-only tab a commit reaches',async()=>{
     const p=await page('creation-departure',null,true,{url:facts.origin+'/?new=outcome&intent=departure-intent'});
     const click=async(q,selector)=>{await q.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await q.point(selector);};
     await click(p,'#outcome-title-input');await p.send('Input.insertText',{text:'Guarded outcome'});
@@ -433,10 +441,16 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     const route=await p.evaluate('location.href');
     const other=await page('creation-competing',null,true,{url:route,beforeNavigate:observeStorage});
     assert.match(await other.evaluate('document.querySelector("#outcome-page").textContent'),/read-only/);
-    await observedAction(other,'#refresh','creation');
-    await until(()=>other.evaluate('document.querySelector("#outcome-page").textContent.includes("read-only")'),'read-only Refresh settled');
-    assert.equal(other.calls.some(c=>c.payload?.kind),false,'read-only Refresh cannot dispatch a write');
-    assert.deepEqual(storageActs(other),[],'actual intent/recovery stores and journal entry points stay unwritten after Refresh');
+    assert.equal(await other.evaluate('document.querySelector("#save-outcome-form").hidden'),true,'a read-only tab offers no Try saving again');
+    // A commit reaches the read-only tab: it reads its lists again and writes nothing.
+    const [marking]=(await view('topic_messages',{topic_id:'t1',direction:'before',limit:1})).items;
+    other.recordResponses();
+    await control({method:'mark',operation_id:'navigation-read-only-mark',message_ids:[marking.id],marked:true});
+    await until(()=>other.responses.some(r=>r.payload?.name==='workspaces'),'the read-only tab read its lists again after the commit');
+    await control({method:'mark',operation_id:'navigation-read-only-clear',message_ids:[marking.id],marked:false});
+    assert.match(await other.evaluate('document.querySelector("#outcome-page").textContent'),/read-only/,'still read-only after the commit');
+    assert.equal(other.calls.some(c=>c.payload?.kind),false,'a read-only tab cannot dispatch a write');
+    assert.deepEqual(storageActs(other),[],'actual intent/recovery stores and journal entry points stay unwritten after a commit');
     await click(other,'#creation-later');await until(()=>other.evaluate('document.body?.dataset.ready==="true" && location.search===""'),'competing tab can leave');
     assert.deepEqual(storageActs(other),[],'read-only departure attempts no journal write or delete');noPrompt(other);await other.close();
     p.intercept(payload=>payload?.kind==='workspace.create');await click(p,'#create-outcome');

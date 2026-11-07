@@ -133,13 +133,16 @@ export class OutcomeCreation {
     this.waiting??=this.journal.claimWhenFree(this.intentId).then(async granted=>{
       this.waiting=null;
       if(!granted)return false;
+      // A load still under way read the form before the grant; this one reads it after.
+      await this.pending?.catch(()=>{});
       await this.load();return true;
     }).catch(error=>{this.waiting=null;this.notice=error.message;this.changed();return false;});
     return this.waiting;
   }
-  // After saving on this browser failed, the person can try once more.
+  // After saving on this browser failed, the person can try once more; a form
+  // this tab does not hold is refused before anything is written.
   get canSaveAgain(){return Boolean(this.storageError)&&this.writable&&!this.parked&&!this.row?.envelope;}
-  saveAgain() {return this.perform(()=>this.persist());}
+  saveAgain() {return this.perform(()=>{this.owns();return this.persist();});}
   async leave(destination,title) {
     const previous=this.departureChoice;this.departureChoice=null;
     if(this.pending)throw Error('Wait for creation or its confirmation check to finish before leaving.');

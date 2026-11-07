@@ -319,8 +319,8 @@ clear a mark.
   told it: every page of the `marks` view, an open's `editor_state`, a
   receipt, a refusal's `current_versions`. A mark the page knew before a
   `marks` read began and that read no longer lists has been cleared since.
-  It reads the marks at start, on Refresh, after each commit (beside the
-  rails), and after any recorded answer to a mark it sent.
+  It reads the marks at start, after each commit (beside the rails), and
+  after any recorded answer to a mark it sent.
 - Loaded cards show an Unread pill beside the author. When the person has
   marks in the topic, a line says how many ("1 message marked unread") and
   its Read it opens the oldest one in the Reader directly by its source,
@@ -354,13 +354,13 @@ server's answer, the unread counts and the Unread pills never disagree, and
 they follow reading live.
 
 The line is placed from that answer when the topic opens and when the reader
-presses Refresh. During the visit it stays put while they read, so it does not
+presses Mark read in this page. During the visit it stays put while they read, so it does not
 vanish a second after a short topic opens; it is a marker of where they were,
 not a count:
 
 - Reading on screen, here or in another tab, never moves the line up, even
-  when everything is read. Opening the topic again, or Refresh, places it
-  afresh: under the oldest message still unread, or nowhere.
+  when everything is read. Opening the topic again places it afresh: under
+  the oldest message still unread, or nowhere.
 - The line moves during the visit only to show more unread: a message marked
   unread further back than the line (here or anywhere) moves it down to just
   below that message, and a message that arrives while there is no line

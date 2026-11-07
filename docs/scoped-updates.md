@@ -7,8 +7,8 @@ release receipt identifies what is installed and running. The original
 ## Reading and writing
 
 While the page is visible, it checks for changes to the open topic and updates
-its loaded message and Notebook lists. Incoming replies appear without pressing
-Refresh. **More** still loads older messages or further Notebook items; automatic
+its loaded message and Notebook lists. Incoming replies appear on their own;
+the page has no Refresh button. **More** still loads older messages or further Notebook items; automatic
 updates do not load the whole history or scan every topic.
 
 An open source stays on the revision you chose. A newer Notebook revision offers
@@ -23,11 +23,11 @@ in it (as a sent reply leaves its place, or once you empty it) holds no revision
 it is about the revision you are reading, and Core moves an empty private slot to
 the revision its next save names, while one that holds writing keeps its own.
 
-While automatic updates are running, **Refresh** joins the same coalesced work.
-If updates are disabled or stopped by a diagnostic, it rereads the lists without
-restarting automatic checks. A refused topic stays hidden until **Retry updates**
-restores access; writing parked for authority review cannot be replaced by a
-Refresh. Hidden pages stop scheduling checks and catch up when visible again.
+If updates are stopped by a diagnostic, **Retry updates** restarts them, and
+they bring what arrived meanwhile. A refused topic stays hidden until **Retry
+updates** restores access: a commit arriving meanwhile never repaints it, and
+writing parked for authority review is never replaced. Hidden pages stop
+scheduling checks and catch up when visible again.
 
 ### The live stream
 
@@ -87,8 +87,8 @@ them only if the last reload could not read them: anything saved while the
 stream was down changes its first number, which arrives as a commit, so a feed
 that keeps reconnecting does not reread every list. A page starts following
 commits before its first read, so a commit that lands while that read is out is
-read after it. A reload asked for while a list is loading, by a commit, Refresh
-or Retry, never settles with that load: the load was sent before the ask and may
+read after it. A reload asked for while a list is loading, by a commit or
+Retry, never settles with that load: the load was sent before the ask and may
 not show the commit, so one more load runs once it ends, however many asks
 arrive. A reload reads again every row the reader has loaded, the pages **More**
 added included, in pages as large as the view allows, and changes the list once
@@ -113,7 +113,8 @@ check for the same commit runs beside them rather than after them.
   for the refused topic.
 
 A server without the supported read-admission capability keeps automatic updates
-off and says that they need the updated server. Manual Refresh remains available.
+off and says so: `Automatic updates need the updated server. Reload this page to
+see newer messages.` A reload runs the same first read.
 An unexplained read failure stops with a diagnostic rather than silently showing
 an empty, apparently current topic.
 

@@ -168,6 +168,20 @@ class FreshnessFixtureTests(FixtureCase):
         after = self.control("deliveries_to", actors=[agent, participant])
         self.assertEqual((after[agent] - before[agent], after[participant] - before[participant]), (0, 1))
 
+    def test_an_ask_in_another_outcome_waits_on_the_reader_there_until_they_answer(self):
+        # The control the native rail check drives, without a browser.
+        _, before = self.view("attention", {"workspace_id": "w1"})
+        self.assertEqual(before["waiting_outcomes"], {"count": 0, "here": False})
+        asked = self.control("elsewhere_ask", operation_id="rail-ask", body="Which deck do we send?")
+        _, here = self.view("attention", {"workspace_id": "w1"})
+        self.assertEqual(here["waiting_outcomes"], {"count": 1, "here": False})
+        _, there = self.view("attention", {"workspace_id": asked["workspace_id"]})
+        self.assertEqual(there["waiting_outcomes"], {"count": 1, "here": True})
+        self.control("agent_message", operation_id="rail-answer", sender="person", topic_id=asked["topic_id"],
+                     whole_topic=True, body="The short one.")
+        _, after = self.view("attention", {"workspace_id": "w1"})
+        self.assertEqual(after["waiting_outcomes"], {"count": 0, "here": False})
+
     def test_command_and_ack_counters_have_a_positive_control(self):
         self.control("agent_message", operation_id="counter-source", body="Counter control",
                      topic_id="t1", addressees=[self.ready["actor"]])

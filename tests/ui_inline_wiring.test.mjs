@@ -34,9 +34,15 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get classList() { return { add: name => { this.className = this.className ? `${this.className} ${name}` : name; } }; }
     append(...items) { for (const item of items) { if (typeof item === 'object') item.parent = this; this.children.push(item); } }
     replaceChildren(...items) { this.children = []; this.append(...items); }
+    prepend(...items) { for (const item of items) item.remove(); this.children.unshift(...items); for (const item of items) item.parent = this; }
+    after(...items) { const host = this.parent; if (!host) return; for (const item of items) item.remove(); host.children.splice(host.children.indexOf(this) + 1, 0, ...items); for (const item of items) item.parent = host; }
+    get parentNode() { return this.parent ?? null; }
+    get ownerDocument() { return this.owner ?? document; }
+    set ownerDocument(value) { this.owner = value; }
     get firstElementChild() { return this.children[0]; }
     querySelector(selector) { return get(selector.slice(1)); }
-    querySelectorAll() { return [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
+    // The rail's sideways strips are a phone layout this fixture does not draw.
+    querySelectorAll(selector = '') { return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
     setAttribute(name, value) { this[name] = value; }
     removeAttribute(name) { delete this[name]; }
     getAttribute(name) { return this[name] ?? null; }
@@ -93,7 +99,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
     OpeningDraft: class { constructor(o) { events.push(['opening-draft', { workspace: o.workspace, opening: o.opening, topic: o.topic }]); this.editable = false; }
-      load() { events.push(['opening-load']); return Promise.resolve('editing'); } loadSource() { return Promise.resolve(); } leave() {} refresh() {} cancelSave() {} },
+      load() { events.push(['opening-load']); return Promise.resolve('editing'); } loadSource() { return Promise.resolve(); } leave() {} follow() { events.push(['opening-follow']); return Promise.resolve(true); } cancelSave() {} },
     OpeningView: class { constructor() { this.title = { focus() {} }; } run(action) { return Promise.resolve().then(action); } loadMembers() { return Promise.resolve(); } },
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(Object.assign(scope, overrides));
@@ -115,15 +121,17 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.OutcomeRail = (()=>{' + outcomeSource + '; return OutcomeRail; })()', context);
   const referencesSource = readFileSync(new URL('../web/outcome-references.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeReferences', 'class OutcomeReferences');
   vm.runInContext('globalThis.OutcomeReferences = (()=>{' + referencesSource + '; return OutcomeReferences; })()', context);
+  const scopeSource = readFileSync(new URL('../web/outcome-scope.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + scopeSource + '; return {OutcomeScope,placeBrand}; })())', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
-  assert.equal(source.match(/^run\(start\);$/gm)?.length, 1); source = source.replace(/^run\(start\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, refreshLists, toggleMark, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
+  assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
-    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,marks}; } };`, context);
+    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
     edit: editor => events.push(['inline-edit',editor.key]),
     needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
@@ -152,9 +160,12 @@ test('inline Ctrl-W uses the shared writing input path and preserves readonly wr
   assert.equal(field.value,kept);assert.equal(f.editor.draft.body,kept);
 });
 
-test('outcome detail keeps transient choices, hides denied content, and recovers through Refresh', async () => {
-  const f = fixture('https://fixture/?workspace=w1');
-  f.inject({ api:f.api, bootstrap:f.bootstrap });
+// A commit from the live feed, and everything the page reads after it.
+const commit = async (live, seq) => { live.emit({ kind: 'commit', seq }); await drain(); };
+
+test('outcome detail keeps transient choices, hides denied content, and recovers on the next commit', async () => {
+  const f = fixture('https://fixture/?workspace=w1'), live = stream();
+  f.inject({ api:f.api, bootstrap:f.bootstrap }); f.useLive(live);
   let failure = null;
   f.api.view = async name => {
     if(name==='workspace') {
@@ -167,23 +178,23 @@ test('outcome detail keeps transient choices, hides denied content, and recovers
   assert.equal(f.get('topic-title').textContent,'Real outcome');
   assert.equal(f.get('topics').children.length,1);
   failure = Object.assign(Error('Temporarily offline'),{code:'DATABASE_BUSY'});
-  await f.get('refresh').onclick();
+  await commit(live, 2);
   assert.equal(f.get('topic-navigation').hidden,false);
   assert.equal(f.get('topic-title').textContent,'Real outcome');
   failure = Object.assign(Error('Access denied'),{code:'FORBIDDEN'});
-  await f.get('refresh').onclick();
+  await commit(live, 3);
   assert.equal(f.get('topic-navigation').hidden,true,'confirmed denial removes stale topic choices');
   assert.equal(f.get('topic-title').textContent,'Outcome unavailable');
   assert.equal(f.get('topic-description').textContent,'');
   assert.equal(f.get('app-status').hidden,false);
-  failure = null;await f.get('refresh').onclick();
+  failure = null;await commit(live, 4);
   assert.equal(f.get('topic-navigation').hidden,false);
   assert.equal(f.get('topic-title').textContent,'Real outcome');
   assert.equal(f.get('app-status').hidden,true);
 });
 
-test('inline startup failure disables ownerless input but paints lists, enables freshness and keeps one registry on Refresh', async () => {
-  const f = fixture(); f.registry.inline = null;
+test('inline startup failure disables ownerless input but paints lists, enables freshness and keeps one registry on a commit', async () => {
+  const f = fixture(), live = stream(); f.registry.inline = null; f.useLive(live);
   f.registry.initializeInline = async () => { throw Object.assign(Error('Read deadline expired'), { code: 'READ_TIMEOUT' }); };
   await f.initialize();
   assert.deepEqual(f.paints, ['messages','memory']); assert.equal(f.get('body').dataset.ready, 'true');
@@ -191,7 +202,7 @@ test('inline startup failure disables ownerless input but paints lists, enables 
   assert.equal(f.get('inline-composer').hidden, false); assert.equal(f.get('inline-writing-body').disabled, true);
   assert.match(f.get('inline-notice').textContent, /Read deadline/); assert.equal(f.registry.inline, null);
   assert.equal(f.get('inline-send').disabled, true); assert.equal(f.get('inline-retry').hidden, false);
-  await f.get('refresh').onclick();
+  await commit(live, 2);
   assert.equal(f.events.filter(e => e[0] === 'registry').length, 1); assert.equal(f.events.filter(e => e[0] === 'journal').length, 1);
   assert.equal(f.calls.some(c => c.kind), false);
   f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
@@ -200,13 +211,15 @@ test('inline startup failure disables ownerless input but paints lists, enables 
   assert.equal(f.get('inline-retry').hidden, true);
   assert.equal(f.events.filter(e => e[0] === 'registry').length, 1); assert.equal(f.events.filter(e => e[0] === 'journal').length, 1);
 });
-test('optional outcome and topic rail reads begin after the primary composer is initialized',async()=>{
+test('the rail\'s reads begin after the primary composer is initialized, and a topic page reads no list of outcomes',async()=>{
   const f=fixture(),order=[],read=f.api.view;
-  f.api.view=async(name,args)=>{order.push(name);return read(name,args);};
+  f.api.view=async(name,args)=>{order.push(name==='memory_items'?name+':'+args.owner_scope?.kind:name);return read(name,args);};
   f.registry.initializeInline=async()=>{order.push('composer');f.registry.inline=f.p;return f.p;};
   await f.initialize();await new Promise(resolve=>setImmediate(resolve));
-  assert.ok(order.indexOf('composer')<order.indexOf('workspaces'));
+  assert.ok(order.includes('workspace_topics')&&order.includes('memory_items:workspace'));
   assert.ok(order.indexOf('composer')<order.indexOf('workspace_topics'));
+  assert.ok(order.indexOf('composer')<order.indexOf('memory_items:workspace'),'the outcome\'s Notebook pages too');
+  assert.equal(order.includes('workspaces'),false,'inside an outcome the rail shows only that outcome');
 });
 test('a recheck replaces only the rechecked rows the page lists, at once, and only for an editor the registry still holds',async()=>{
   const f=fixture(),applied=[],validation=new Promise(()=>{});let holds=true;
@@ -333,33 +346,35 @@ test('the first page of a review is drawn when the registry applied it and its s
   assert.equal(all(f.get('review-content'),'More versions').length,1,'with its More versions');
   assert.equal(f.get('review-retry').hidden,false);
 });
-test('actual home wordmark and outcome links preserve dirty writing before same-tab departure',async()=>{
+test('actual home wordmark, Outcomes and topic links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
   f.registry.keepEditorsLocal=async()=>{};f.registry.unconfirmedSends=[];
   Object.assign(f.editor,{localVersion:1,ackVersion:0});Object.defineProperty(f.editor,'dirty',{get:()=>f.editor.ackVersion<f.editor.localVersion});
   f.registry.flush=async()=>({recorded:false,status:'unknown'});
-  f.api.view=async(name,args)=>name==='workspaces'?{instance_id:'fixture',items:[{id:'w2',owner_id:'fixture-person',title:'Second',title_truncated:false,version:1}],next_cursor:null}:read(name,args);
-  await f.initialize();await new Promise(resolve=>setImmediate(resolve));
-  for(const control of [f.get('outcomes-home'),f.get('wordmark'),f.get('workspaces').children[0]]){
+  f.api.view=async(name,args)=>name==='workspace_topics'?{instance_id:'fixture',items:[{id:'t2',title:'Second',workspace_id:'w1',activity_ms:1}],next_cursor:null}:read(name,args);
+  await f.initialize();await drain();
+  const row=()=>f.get('topics').children.find(child=>child.dataset?.topicId==='t2');
+  for(const control of [f.get('outcomes-home'),f.get('wordmark'),row()]){
     assert.ok(control);let prevented=false;await control.onclick({button:0,preventDefault(){prevented=true;}});
     assert.equal(prevented,true);assert.equal(f.events.some(e=>e[0]==='navigate'),false);assert.equal(f.editor.draft.body,'kept');
     assert.match(f.get('topic-navigation-status').textContent,/not confirmed saved/);
     await control.onclick({button:0,metaKey:true,preventDefault(){throw Error('modified link intercepted');}});
   }
   f.registry.flush=async()=>{f.editor.ackVersion=1;return {recorded:true,status:'committed'};};
-  await f.get('workspaces').children[0].onclick({button:0,preventDefault(){}});
-  assert.deepEqual(f.events.filter(e=>e[0]==='navigate'),[['navigate','?workspace=w2']]);
+  await row().onclick({button:0,preventDefault(){}});
+  assert.deepEqual(f.events.filter(e=>e[0]==='navigate'),[['navigate','?topic=t2']]);
 });
-test('outcome Refresh sequences reads so an older denial cannot repaint a newer result',async()=>{
-  const f=fixture('https://fixture/?workspace=w1'),held=defer();let count=0;
-  f.inject({api:f.api,bootstrap:f.bootstrap});
+test('outcome reloads are sequenced so an older denial cannot repaint a newer result',async()=>{
+  const f=fixture('https://fixture/?workspace=w1'),held=defer(),live=stream();let count=0;
+  f.inject({api:f.api,bootstrap:f.bootstrap});f.useLive(live);
   f.api.view=async name=>{
     if(name==='workspace'){count++;if(count===2)return held.promise;return {instance_id:'fixture',workspace:{id:'w1',title:count===1?'Initial':'New title',purpose:''}};}
     return {instance_id:'fixture',items:[],next_cursor:null};
   };
-  await f.initialize();const first=f.get('refresh').onclick(),second=f.get('refresh').onclick();
-  held.resolve({instance_id:'fixture',error:{code:'FORBIDDEN',message:'Old denial'}});await Promise.all([first,second]);
+  await f.initialize();live.emit({kind:'commit',seq:2});live.emit({kind:'commit',seq:3});await drain();
+  held.resolve({instance_id:'fixture',error:{code:'FORBIDDEN',message:'Old denial'}});await drain();
+  assert.equal(count,3,'the second commit reads again after the first');
   assert.equal(f.get('topic-title').textContent,'New title');assert.equal(f.get('topic-navigation').hidden,false);assert.equal(f.get('app-status').hidden,true);
 });
 
@@ -564,22 +579,22 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 const messages = (from, through) => Array.from({ length: through - from + 1 }, (_, i) => ({ id: 'm' + (from + i), seq: from + i, author_id: 'agent-a', body: 'Body ' + (from + i), topic_id: 't1' }));
 const page = (from, through, next) => ({ instance_id: 'fixture', items: messages(from, through), next_cursor: next, relevant_versions: { topic: 1 } });
 
-test('a Refresh that leaves a gap in the loaded messages never reads across it', async () => {
+test('a page that leaves a gap in the loaded messages never reads across it', async () => {
   const { f, ranges, card } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
   f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
   views.messagesPage(page(22, 31, 22), { initial: true }); await settle();
-  // Freshness is stopped; #32..#41 arrive meanwhile, then #42..#71. Refresh
-  // loads the newest page, so #32..#41 are not loaded.
-  f.fresh.stopped = true;
-  const pages = [page(42, 71, 42), page(32, 41, 32), page(20, 31, 20)];
+  // #32..#41 arrive, then #42..#71, and a newest page is loaded on its own
+  // (a page that neither continues nor overlaps what was loaded), so #32..#41
+  // are not loaded.
+  const pages = [page(32, 41, 32), page(20, 31, 20)];
   const view = f.api.view;
   f.api.view = async (name, args) => {
     if (name === 'topic_messages') { f.calls.push({ name, args }); return pages.shift(); }
     if (name === 'memory_items') return { instance_id: 'fixture', items: [], next_cursor: null, relevant_versions: { notebook: 1 } };
     return view(name, args);
   };
-  await f.refreshLists(); await settle();
+  views.messagesPage(page(42, 71, 42), { initial: true, cursor: views.olderCursor }); await settle();
   assert.equal(views.messages.has('m35'), false, 'the gap is real: #35 was never loaded');
   const shown = seqs => f.observers[0].callback(seqs.map(seq => ({ target: card(seq), isIntersecting: true, intersectionRatio: 1, intersectionRect: { height: 40 }, rootBounds: { height: 600 } })));
   shown([30, 31, 42, 43]); await settle(); await settle();
@@ -806,7 +821,7 @@ test('a team read on focus that fails keeps the team the page had; one refused f
 
 test('an outcome\'s owner changes its team on the outcome page; the owner cannot be removed there', async () => {
   const f = fixture('https://fixture/?workspace=w1');
-  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.live = stream(); f.useLive(f.live);
   pickerApi(f);
   await f.initialize();
   const team = f.get('team-people');
@@ -825,8 +840,7 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
 
   // A team that cannot be read keeps the chips it had and says so.
   f.pickers.membersRefused = true;
-  await f.get('refresh').onclick();
-  await drain();
+  await commit(f.live, 2);
   assert.deepEqual(walk(team).filter(node => node.className === 'chip').map(node => node.textContent), ['fixture-person', 'tony']);
   assert.match(walk(team).find(node => node.className === 'notice').textContent, /^The team could not be read/);
 
@@ -852,15 +866,14 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
 });
 
 test('an outcome that becomes unavailable stops showing its team', async () => {
-  const f = fixture('https://fixture/?workspace=w1');
-  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  const f = fixture('https://fixture/?workspace=w1'), live = stream();
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   pickerApi(f);
   await f.initialize();
   assert.equal(f.get('outcome-team').hidden, false);
   const view = f.api.view;
   f.api.view = async (name, args) => name === 'workspace' ? { error: { code: 'FORBIDDEN', message: 'No permission for this workspace' } } : view(name, args);
-  await f.get('refresh').onclick();
-  await drain();
+  await commit(live, 2);
   assert.equal(f.get('topic-title').textContent, 'Outcome unavailable');
   assert.equal(f.get('outcome-team').hidden, true);
 });
@@ -1132,14 +1145,14 @@ test('a commit while the outcomes page reads its first list is read after that r
   assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['a', 'b']);
 });
 
-test('a commit while Refresh reads the outcomes is read after it, and a failed reload is read again when the stream returns', async () => {
+test('a commit while a reload reads the outcomes is read after it, and a failed reload is read again when the stream returns', async () => {
   const f = fixture('https://fixture/?'), live = stream(), o = outcomesPage(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   o.answers.push(o.page(['a'])); await f.initialize(); await drain();
   let release; o.answers.push(() => new Promise(resolve => release = resolve), o.page(['a', 'b']));
-  const refresh = f.get('refresh').onclick(); await drain();
+  live.emit({ kind: 'commit', seq: 6 }); await drain();
   live.emit({ kind: 'commit', seq: 7 });
-  release(o.page(['a'])); await refresh; await drain();
+  release(o.page(['a'])); await drain();
   assert.equal(o.reads(), 3);
   assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['a', 'b']);
   o.answers.push(() => Promise.reject(Object.assign(Error('This read could not enter its bounded lane.'), { status: 503 })));
@@ -1154,7 +1167,7 @@ test('a commit while Refresh reads the outcomes is read after it, and a failed r
   assert.equal(f.get('retry-workspaces').hidden, true);
 });
 
-test('on an outcome page a commit reads the outcome rail as well as the outcome and its topics', async () => {
+test('on an outcome page a commit reads the outcome and its topics, and no list of outcomes, since the page has no rail', async () => {
   const f = fixture('https://fixture/?workspace=w1'), live = stream(), o = outcomesPage(f);
   f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   o.answers.push(o.page(['w1']), o.page(['w1', 'w2']));
@@ -1163,11 +1176,11 @@ test('on an outcome page a commit reads the outcome rail as well as the outcome 
   const before = { workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') };
   live.emit({ kind: 'commit', seq: 9 }); await drain();
   assert.deepEqual({ workspaces: count('workspaces'), workspace: count('workspace'), topics: count('workspace_topics') },
-    { workspaces: before.workspaces + 1, workspace: before.workspace + 1, topics: before.topics + 1 });
-  assert.deepEqual([...f.owners().outcomeRail.pages.items.map(item => item.id)], ['w1', 'w2']);
+    { workspaces: 0, workspace: before.workspace + 1, topics: before.topics + 1 });
+  assert.equal(f.get('rail').hidden, true, 'the outcome page has no rail');
   f.document.visibilityState = 'hidden';
   live.emit({ kind: 'commit', seq: 10 }); await drain();
-  assert.equal(count('workspaces'), before.workspaces + 1, 'a hidden page waits');
+  assert.equal(count('workspace_topics'), before.topics + 1, 'a hidden page waits');
 });
 
 test('the page starts its attention from the bootstrap\'s number', async () => {
@@ -1259,7 +1272,7 @@ test('a commit\'s rail reload leaves a freshness pass already reading alone', as
 // The stream's return rereads a page's lists only when a reload could not read
 // them: anything saved while it was down changes its first number, which comes
 // as a commit.
-for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspaces', 'workspace', 'workspace_topics']], ['?topic=t1', ['workspaces', 'workspace_topics']]]) {
+for (const [route, lists] of [['?', ['workspaces']], ['?workspace=w1', ['workspace', 'workspace_topics']], ['?topic=t1', ['workspace_topics', 'memory_items']]]) {
   test(`the stream coming back rereads the lists on ${route} only after a reload that failed`, async () => {
     const f = fixture('https://fixture/' + route), live = stream(), failing = new Set();
     if (route !== '?topic=t1') f.inject({ api: f.api, bootstrap: f.bootstrap });
@@ -1313,12 +1326,12 @@ test('a New line read that failed after a commit is read again when the stream r
   assert.equal(reads, before, 'once read, the next return reads nothing');
 });
 
-// The new-topic and new-outcome pages show the outcome list beside the writing.
-for (const route of ['?workspace=w1&opening=o1&opening_topic=t9', '?new=outcome&intent=i1']) {
+// The new outcome page shows the outcome list beside the writing.
+for (const route of ['?new=outcome&intent=i1']) {
   test(`the outcome list beside ${route} is read again after each commit`, async () => {
     const f = fixture('https://fixture/' + route, {
       openIntentJournal: async () => ({ close() {} }),
-      OutcomeCreation: class { constructor() { this.row = { phase: 'draft' }; } async load() {} refresh() {} leave() {} },
+      OutcomeCreation: class { constructor() { this.row = { phase: 'draft' }; } async load() {} leave() {} },
       CreateOutcomeView: class { run(action) { return Promise.resolve().then(action); } } });
     const live = stream(), o = outcomesPage(f);
     f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
@@ -1334,6 +1347,24 @@ for (const route of ['?workspace=w1&opening=o1&opening_topic=t9', '?new=outcome&
     assert.equal(o.reads(), 2, 'a hidden page waits');
   });
 }
+
+// Beside a new topic the rail shows only its outcome: its topics and its
+// Notebook pages, read again after each commit with the opening itself.
+test('the rail beside a new topic shows its outcome, and each commit reads it and the opening once, never the list of outcomes', async () => {
+  const f = fixture('https://fixture/?workspace=w1&opening=o1&opening_topic=t9'), live = stream();
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
+  f.api.view = async (name, args) => { f.calls.push({ name, args });
+    return name === 'workspace' ? { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome' } } : { instance_id: 'fixture', items: [], next_cursor: null }; };
+  await f.initialize(); await drain();
+  const count = name => f.calls.filter(call => call.name === name).length, follows = () => f.events.filter(e => e[0] === 'opening-follow').length;
+  assert.equal(f.get('body').dataset.ready, 'true');
+  assert.deepEqual([count('workspace_topics'), count('memory_items'), follows()], [1, 1, 1], 'the first read');
+  assert.equal(f.get('outcome-navigation').hidden, true, 'no list of outcomes in the rail');
+  assert.equal(f.get('rail')['aria-label'], 'This outcome');
+  await commit(live, 2);
+  assert.deepEqual([count('workspace_topics'), count('memory_items'), follows()], [2, 2, 2], 'a commit reads the rail and the opening again');
+  assert.equal(count('workspaces'), 0, 'and never the list of outcomes');
+});
 
 test('attention is read again when the stream comes back, and not when it goes down', async () => {
   const f = fixture('https://fixture/?'), live = stream(), o = outcomesPage(f), view = f.api.view;
@@ -1576,7 +1607,7 @@ test('pressing the older-below line while the page may not read stops at once an
   assert.equal(f.get('messages').children.at(-1).dataset.line, 'older', 'the line still waits at the bottom');
 });
 
-test('during a visit the New line holds as the person reads, moves to show more, and Refresh or Mark read place it afresh, the card being read held still', async () => {
+test('during a visit the New line holds as the person reads, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {
   const scrolls = [];
   const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
@@ -1610,15 +1641,6 @@ test('during a visit the New line holds as the person reads, moves to show more,
   live.emit({ kind: 'commit', seq: 8 }); for (let n = 0; n < 5; n++) await settle();
   assert.equal(order(), '26 25 24 23 22 21 20 new', 'a mark further back moves the line down');
   assert.deepEqual(scrolls, [-30], 'the card being read is held where it was');
-  answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 9 };
-  await f.refreshLists(); await settle();
-  assert.equal(reads.length, 3, 'Refresh reads it too');
-  assert.equal(order(), '26 25 24 new 23 22 21 20', 'and places the line afresh, under the oldest unread message');
-  assert.deepEqual(scrolls, [-30, 30], 'the card being read still holds still');
-  // Read meanwhile, the line holds; the person's own Mark read in the Reader places it afresh.
-  answer = { oldest_unread: null, commit_seq: 10 };
-  live.emit({ kind: 'commit', seq: 10 }); for (let n = 0; n < 5; n++) await settle();
-  assert.equal(order(), '26 25 24 new 23 22 21 20', 'everything read: the line still holds');
   // Pressed in the Reader on message seq: the mark it had, and the one Core records.
   const press = async (seq, from, to) => {
     const id = 'm' + seq;
@@ -1628,6 +1650,19 @@ test('during a visit the New line holds as the person reads, moves to show more,
       result: { message_id: id, topic_id: 't1', seq, marked: to % 2 === 1, mark_revision: to, changed: true } });
     await f.toggleMark(); for (let n = 0; n < 5; n++) await settle();
   };
+  // A commit reads the line again but never places it afresh: #24 is newer than the line, which holds.
+  answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 9 };
+  live.emit({ kind: 'commit', seq: 9 }); for (let n = 0; n < 5; n++) await settle();
+  assert.equal(reads.length, 3, 'the commit reads it');
+  assert.equal(order(), '26 25 24 23 22 21 20 new', 'and leaves the line where it was');
+  // The person's own Mark read in the Reader places it afresh, under the oldest unread message.
+  await press(23, 1, 2);
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'Mark read places the line afresh, under the oldest unread message');
+  assert.deepEqual(scrolls.filter(Boolean), [-30, 30], 'the card being read still holds still');
+  // Read meanwhile, the line holds.
+  answer = { oldest_unread: null, commit_seq: 10 };
+  live.emit({ kind: 'commit', seq: 10 }); for (let n = 0; n < 5; n++) await settle();
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'everything read: the line still holds');
   // Mark unread on a message newer than the line: it is already shown as new, so the line holds.
   answer = { oldest_unread: { seq: 26, id: 'm26' }, commit_seq: 11 };
   await press(26, 0, 1);
@@ -1649,7 +1684,7 @@ test('during a visit the New line holds as the person reads, moves to show more,
   assert.equal(order(), '26 25 24 23 22 21 20', 'the stream returns: the read is made again and the line placed afresh');
   // A read that fails leaves the line where it was, and the reload is owed.
   f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
-  await f.refreshLists(); await settle();
+  live.emit({ kind: 'commit', seq: 16 }); for (let n = 0; n < 5; n++) await settle();
   assert.equal(order(), '26 25 24 23 22 21 20');
 });
 
@@ -1777,8 +1812,8 @@ test('on an outcome page its Notebook pages are listed after its topics and read
 });
 
 test('an outcome that becomes unavailable stops showing its Notebook pages and the page open in place, and shows them again on recovery', async () => {
-  const f = fixture('https://fixture/?workspace=w1');
-  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  const f = fixture('https://fixture/?workspace=w1'), live = stream();
+  f.inject({ api: f.api, bootstrap: f.bootstrap }); f.useLive(live);
   let failure = null;
   const item = { id: 'p1', seq: 1, title: 'Release plan', revision: 2, read_revision: 1, owner_scope: { kind: 'workspace', id: 'w1' }, source_ref: { kind: 'memory', id: 'p1', revision: 2 } };
   f.api.view = async name => {
@@ -1789,10 +1824,10 @@ test('an outcome that becomes unavailable stops showing its Notebook pages and t
   assert.equal(f.get('outcome-references').hidden, false);
   f.get('page-here').hidden = false;
   failure = Object.assign(Error('Access denied'), { code: 'FORBIDDEN' });
-  await f.get('refresh').onclick();
+  await commit(live, 2);
   assert.equal(f.get('outcome-references').hidden, true, 'a denied outcome lists no pages');
   assert.equal(f.get('page-here').hidden, true, 'and shows none open');
-  failure = null; await f.get('refresh').onclick();
+  failure = null; await commit(live, 3);
   assert.equal(f.get('outcome-references').hidden, false, 'recovery lists them again');
 });
 
@@ -1975,4 +2010,47 @@ test('the outcomes page an owner lands on says so too, and reads the wakes again
   for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
   await drain();
   assert.equal(f.get('wakes-status').hidden, true);
+});
+
+// A start that fails was recovered by the Refresh button; now it says why with
+// a button that reloads the page, which runs start again from nothing.
+test('a start that fails says why with Reload this page, and a start that succeeds offers nothing', async () => {
+  const f = fixture('https://fixture/?');
+  assert.equal(await f.begin(async () => { throw Error('This page needs a session from the Theseus server.'); }), false);
+  const status = f.get('app-status'), reload = status.children.find(child => child.id === 'start-reload');
+  assert.equal(status.hidden, false); assert.equal(status.textContent, 'This page needs a session from the Theseus server.');
+  assert.ok(reload, 'a button to start again'); assert.equal(reload.textContent, 'Reload this page'); assert.equal(reload.type, 'button');
+  reload.onclick(); assert.deepEqual(f.events.filter(e => e[0] === 'reload'), [['reload']]);
+  const g = fixture('https://fixture/?');
+  assert.equal(await g.begin(async () => {}), true);
+  assert.equal(g.get('app-status').children.some(child => child.id === 'start-reload'), false);
+});
+
+// The Outcomes home and the new outcome page keep the list of outcomes; only
+// pages inside an outcome show that outcome alone.
+for (const route of ['?', '?new=outcome&intent=i1']) {
+  test(`the list of outcomes stays on ${route}, with its heading and New outcome`, async () => {
+    const f = fixture('https://fixture/' + route, {
+      openIntentJournal: async () => ({ close() {} }),
+      OutcomeCreation: class { constructor() { this.row = { phase: 'draft' }; } async load() {} leave() {} },
+      CreateOutcomeView: class { run(action) { return Promise.resolve().then(action); } } });
+    const o = outcomesPage(f); o.answers.push(o.page(['w1']), o.page(['w1']));
+    f.inject({ api: f.api, bootstrap: f.bootstrap });
+    await f.initialize(); await drain();
+    assert.equal(f.get('outcome-navigation').hidden, false, 'the outcomes list shows');
+    assert.equal(f.get('new-outcome').disabled, false, 'New outcome is offered');
+    assert.equal(f.get('rail')['aria-label'], undefined, 'the rail is not narrowed to one outcome');
+    assert.equal(o.reads(), 1, 'the list is read');
+  });
+}
+
+test('on an outcome\'s own page the logo block heads the main column, then "← Outcomes", and the rail is hidden', async () => {
+  const f = fixture('https://fixture/?workspace=w1');
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  f.api.view = async name => name === 'workspace' ? { instance_id: 'fixture', workspace: { id: 'w1', title: 'Real outcome', purpose: '' } } : { instance_id: 'fixture', items: [], next_cursor: null };
+  await f.initialize(); await drain();
+  assert.deepEqual(f.get('main').children.slice(0, 5).map(child => child.id), ['brand', 'app-status', 'wakes-status', 'updates-status', 'outcomes-home']);
+  assert.equal(f.get('rail').hidden, true);
+  let opened = false; await f.get('outcomes-home').onclick({ button: 0, preventDefault() { opened = true; } });
+  assert.equal(opened, true, '"← Outcomes" opens the Outcomes home');
 });

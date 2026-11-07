@@ -402,3 +402,14 @@ test('focus on the last row to leave goes to the page\'s main region, and on a r
   paintSent(host, { addressed: 2, latest_addressed: [lost('d3', 'New one'), lost('d4', 'New two')] }, actions);
   assert.equal(globalThis.document.activeElement, control('New one', 'Read it here'));
 });
+
+test('inside an outcome attention asks about that outcome, so the answer says whether it is one of those waiting; elsewhere it asks about none', async () => {
+  const asked = [], heard = [];
+  const api = { view: async (name, args) => { asked.push([name, args]); return { instance_id: 'i1', unread: 0, addressed: 0, latest_addressed: [], waiting_outcomes: { count: 2, here: true } }; } };
+  const attention = new Attention({ api, instanceId: 'i1', doc: { title: 'Theseus', hidden: false, hasFocus: () => true }, notifications: null, open() {}, focus() {} });
+  attention.listen(answer => heard.push(answer.waiting_outcomes));
+  await attention.refresh();
+  attention.here = 'w1'; await attention.refresh();
+  assert.deepEqual(asked, [['attention', {}], ['attention', { workspace_id: 'w1' }]]);
+  assert.deepEqual(heard.at(-1), { count: 2, here: true }, 'listeners hear the outcomes waiting');
+});

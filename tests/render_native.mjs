@@ -216,12 +216,13 @@ export async function renderChecks({ check, page, until, control, origin, eviden
       writeFileSync(join(shots, state + '.json'), JSON.stringify(answer, null, 1));
       for (const problem of [...answer.problems, ...judgePixels(image, answer), ...legibility]) found.push({ state, ...problem });
     };
-    const topicRows = [...markedIds.map(id => `#messages [data-id="${id}"]`), '#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#done-topic-list [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
-    // A done topic is listed under the Done line, which the person opens.
+    const topicRows = [...markedIds.map(id => `#messages [data-id="${id}"]`), '#topics [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#done-topic-list [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
+    // A done topic is listed under the Done line, which the person opens. Inside
+    // an outcome the rail lists no outcomes; "← Outcomes" heads it instead.
     const listed = "(id => document.querySelector(':is(#topics, #done-topic-list) [data-topic-id=\"' + id + '\"] .unread-count'))";
-    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(${listed}) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine')) && ${JSON.stringify(markedIds)}.every(id => document.querySelector('#messages [data-id="' + id + '"] .unread-mark'))`],
+    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(${listed}) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine')) && ${JSON.stringify(markedIds)}.every(id => document.querySelector('#messages [data-id="' + id + '"] .unread-mark'))`],
       // A plain state on the row shaded as the current topic.
-      ['done', origin + '/?topic=render-crowd-2', ['#done-topic-list [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(${listed}) && Boolean(document.querySelector('#done-topic-list [aria-current=page] .topic-state[data-state=done]')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`],
+      ['done', origin + '/?topic=render-crowd-2', ['#done-topic-list [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(${listed}) && Boolean(document.querySelector('#done-topic-list [aria-current=page] .topic-state[data-state=done]'))`],
       ['outcomes', origin + '/', ['#workspaces [data-workspace-id="w1"]'], `Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`]]) {
       for (const scheme of ['light', 'dark']) {
         for (const [layout, metrics] of [['laptop', { width: 1280, height: 900, deviceScaleFactor: 2, mobile: false }], ['phone', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true }]]) {

@@ -1517,9 +1517,14 @@ window.addEventListener('pageshow', event => { if (event.persisted) location.rel
 // Every shown time follows the viewer's day: at midnight today's "4:40 AM"
 // becomes "Yesterday 4:40 AM", with a topic's list held where the reader was.
 watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
-// A start that fails says why, with a way to start again from nothing.
-start().catch(error => {
-  status(error.message);
-  const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => location.reload();
-  $('app-status').append(' ', again);
-});
+// A start that fails says why, with a way to start again from nothing: the
+// reload runs start afresh. Settles true when the page started.
+function begin(starting = start) {
+  return Promise.resolve().then(starting).then(() => true, error => {
+    status(error.message);
+    const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => location.reload();
+    $('app-status').append(' ', again);
+    return false;
+  });
+}
+begin();

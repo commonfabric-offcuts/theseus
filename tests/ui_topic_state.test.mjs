@@ -13,6 +13,9 @@ clock.now = () => new Date(2026, 10, 6, 12, 0).getTime();
 class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], dataset: {}, attributes: {}, hidden: false, classes: new Set(), parent: null }); }
   get classList() { return { add: name => this.classes.add(name) }; }
+  // As in a browser, setting the words replaces whatever the element held.
+  set textContent(value) { if (this.children.length) this.replaceChildren(); this.words = value; }
+  get textContent() { return this.words; }
   set className(value) { this.classes = new Set(value.split(' ').filter(Boolean)); }
   get className() { return [...this.classes].join(' '); }
   adopt(node) { if (node instanceof Element) { node.remove(); node.parent = this; } return typeof node === 'string' ? { text: node } : node; }
@@ -557,4 +560,53 @@ test('a note refused for a newer one keeps what the person wrote and says so; on
   await host.find(node => node.textContent === 'Save my part').onclick();
   assert.deepEqual(sent, [1], 'a note over 1024 bytes is not sent');
   assert.match(controls(host).notice.textContent, /at most 1024 bytes/);
+});
+
+// With no Refresh button, a change whose answer never came reads the topic
+// once, at that moment, and says what it found. The write is never sent again.
+test('a state change that is not confirmed reads the topic once and says where it stands; a failed read says so too', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  let reads = 0, read = async () => { reads++; return { topic: topic({ version: 5, state: 'waiting', waiting_on: ['tony'], state_note: 'Needs a call on the deck',
+    state_by: 'fable', state_ms: new Date(2026, 10, 5, 17, 33).getTime() }), participants: [] }; };
+  const panel = new TopicStatePanel({ host, reader: 'tony', read: () => read(), send: async (current, args) => { sent.push(args); return { status: 'unknown' }; } });
+  panel.paint(topic(), []);
+  choose(controls(host).choice, 'done'); await controls(host).save.onclick();
+  const notice = controls(host).notice;
+  assert.equal(notice.text, 'The change was not confirmed. It stands as: Waiting on you · Needs a call on the deck — fable, Yesterday 5:33 PM.');
+  assert.equal(notice.find(node => node.tag === 'time')?.dataset.ms, String(new Date(2026, 10, 5, 17, 33).getTime()), 'its time is a time node, repainted at midnight');
+  assert.deepEqual([sent.length, reads], [1, 1], 'read once; the change is not sent again');
+  assert.match(host.children[0].text, /^Waiting on you · Needs a call on the deck/, 'the panel shows the topic as read');
+  read = async () => { reads++; throw Error('offline'); };
+  choose(controls(host).choice, 'done'); await controls(host).save.onclick();
+  assert.equal(controls(host).notice.text, 'The change was not confirmed, and reading where the topic stands again failed too.');
+  assert.match(host.children[0].text, /^Waiting on you · Needs a call on the deck/, 'it keeps what it last showed');
+  assert.deepEqual([sent.length, reads], [2, 2]);
+  const bare = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({ status: 'unknown' }) });
+  bare.paint(topic(), []); choose(controls(bare.host).choice, 'done'); await controls(bare.host).save.onclick();
+  assert.equal(controls(bare.host).notice.text, 'The change was not confirmed, and reading where the topic stands again failed too.', 'a panel with no read never says Refresh');
+  // A refusal with Core's own words says those, and reads nothing.
+  const refusing = new TopicStatePanel({ host: new Element('section'), reader: 'tony', read: () => read(), send: async () => ({ status: 'rejected', error: { code: 'FORBIDDEN', message: 'No permission for this topic' } }) });
+  refusing.paint(topic(), []); choose(controls(refusing.host).choice, 'done'); await controls(refusing.host).save.onclick();
+  assert.equal(controls(refusing.host).notice.text, 'No permission for this topic'); assert.equal(reads, 2);
+});
+
+test('a note that is not confirmed reads the topic once and says what the reader is responsible for now', async t => {
+  dom(t);
+  const host = new Element('section'), sent = [];
+  let reads = 0, read = async () => { reads++; return { topic: topic({ version: 5 }), participants: people(['fable', 'Drafts the notes', 4]) }; };
+  const panel = new TopicStatePanel({ host, reader: 'fable', send: async () => ({}), read: () => read(),
+    sendNote: async (current, note) => { sent.push(note); return { status: 'unknown' }; } });
+  panel.paint(topic(), people(['fable', 'Mine', 1]));
+  const save = () => host.find(node => node.textContent === 'Save my part').onclick();
+  type(host.find(node => node.id === 'topic-responsibility'), 'Newer words'); await save();
+  assert.equal(controls(host).notice.text, 'Your note was not confirmed. You are responsible for: Drafts the notes.');
+  assert.deepEqual([sent, reads], [['Newer words'], 1]);
+  read = async () => { reads++; return { topic: topic({ version: 6 }), participants: people(['fable', '', 5]) }; };
+  await save();
+  assert.equal(controls(host).notice.text, 'Your note was not confirmed. You have no note in this topic.');
+  read = async () => { reads++; throw Error('offline'); };
+  await save();
+  assert.equal(controls(host).notice.text, 'Your note was not confirmed, and reading it again failed too.');
+  assert.equal(reads, 3);
 });
