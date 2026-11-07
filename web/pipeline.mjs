@@ -1,4 +1,5 @@
-// The pipeline page, an item's record, the steer menu, Add item, Change stages,
+// The pipeline page, an item's record, the steer menu, the one-line add at the top
+// of each section with words and size set on the item in place, Change stages,
 // and the rail's Pipeline row (item 84; docs/pipeline.md). Every word comes
 // from pipeline-words.mjs; every fact from the `pipeline`, `pipeline_item` and
 // `pipeline_row` views. The page reads its views again on every commit and
@@ -41,7 +42,10 @@ export class PipelinePage {
   constructor({ host, header, reader, instanceId, workspace, item = null, read, send }) {
     Object.assign(this, { host, header, reader, instanceId, workspace, itemNumber: item, read, send });
     this.open = new Set(); this.closed = new Set(); this.menu = null; this.confirming = null; this.errors = new Map();
-    this.answer = null; this.serial = 0; this.adding = false; this.editing = false;
+    this.answer = null; this.serial = 0; this.editing = false; this.chain = Promise.resolve();
+    // The one-line add's text per section, the words being written per item, the
+    // item whose words and size are open, and what was just added.
+    this.addDrafts = {}; this.wordDrafts = new Map(); this.details = null; this.added = null; this.savedWords = null;
     host.addEventListener('toggle', event => {
       const key = event.target?.dataset?.key; if (!key) return;
       if (event.target.open) { this.open.add(key); this.closed.delete(key); } else { this.open.delete(key); this.closed.add(key); }
@@ -82,8 +86,10 @@ export class PipelinePage {
   // ---- painting ----------------------------------------------------------------
 
   paint() {
-    const focused = document.activeElement?.closest?.('[data-key]')?.dataset.key;
-    const focusedRole = document.activeElement?.dataset?.role;
+    const active = document.activeElement;
+    const focused = active?.closest?.('[data-key]')?.dataset.key;
+    const focusedRole = active?.dataset?.role;
+    const caret = isField(active) ? [active.selectionStart, active.selectionEnd] : null;
     const now = clock.now();
     if (this.itemNumber !== null) this.paintRecord(now);
     else this.paintPage(now);
@@ -92,6 +98,8 @@ export class PipelinePage {
       const row = this.host.querySelector(`[data-key="${CSS.escape(focused)}"]`);
       const target = row && (focusedRole ? row.querySelector(`[data-role="${CSS.escape(focusedRole)}"]`) : null) || row?.querySelector('a,button');
       target?.focus({ preventScroll: true });
+      // What is being typed keeps its caret: a repaint never moves it.
+      if (caret && isField(target)) try { target.setSelectionRange(...caret); } catch { /* a field with no caret */ }
     }
   }
 
@@ -126,13 +134,7 @@ export class PipelinePage {
     }
     page.push(el('div', { class: 'pl-facts' }, ...factBoxes(answer, now).map(([label, value, sub]) =>
       el('div', { class: 'pl-fact-box' }, el('span', { class: 'label', text: label }), el('span', { class: 'value', text: value }), sub ? el('span', { class: 'muted', text: sub }) : null))));
-    page.push(this.addItem(pipeline));
-    if (!any) {
-      page.push(el('div', { class: 'pl-empty' }, el('p', {}, el('strong', { text: EMPTY_WORDS[0] })), el('p', { text: EMPTY_WORDS[1] }), el('p', { class: 'muted', text: EMPTY_WORDS[2] })));
-      page.push(this.stagesSection(pipeline));
-      this.host.replaceChildren(...page);
-      return;
-    }
+    if (!any) page.push(el('div', { class: 'pl-empty' }, el('p', {}, el('strong', { text: EMPTY_WORDS[0] })), el('p', { text: EMPTY_WORDS[1] }), el('p', { class: 'muted', text: EMPTY_WORDS[2] })));
     const words = pipeline.section_words ?? {};
     const byNumber = new Map(SECTION_ORDER.flatMap(name => sections[name]).map(item => [item.number, item]));
     if (answer.release_piece) {
@@ -149,23 +151,24 @@ export class PipelinePage {
     const pieces = answer.pieces ?? [];
     const inPiece = new Set(pieces.flatMap(piece => piece.items).concat(answer.release_piece?.items ?? []));
     const nowRows = sections.now.filter(item => !inPiece.has(item.number));
+    // Each section opens with its one line: a title and Return adds an item there.
     page.push(section(words.now ?? 'Now', sized ? 'Being built, and what is planned for this release.' : 'Being prepared, soonest first.',
+      this.addLine(pipeline, 'now'),
       ...pieces.map((piece, index) => this.pieceCard(piece, byNumber, pipeline, now, index === 0)),
       nowRows.length && pieces.length ? el('p', { class: 'muted pl-planned', text: 'Planned for this release, not started yet' }) : null,
-      nowRows.length ? this.rows(nowRows, pipeline, now) : (pieces.length ? null : el('p', { class: 'muted', text: 'Nothing here yet.' }))));
+      nowRows.length ? this.rows(nowRows, pipeline, now) : null));
     const coordinator = pipeline.coordinator ? sentenceName(pipeline.coordinator === this.reader ? 'you' : pipeline.coordinator) : 'The owner';
-    if (sections.next.length) page.push(section(words.next ?? 'Next', sized ? `The release after Now. ${coordinator} order${pipeline.coordinator === this.reader ? '' : 's'} it; steer with ⋯.` : 'Not started; steer with ⋯.', this.rows(sections.next, pipeline, now)));
-    if (sections.later.length) page.push(section(words.later ?? 'Later', null, this.rows(sections.later, pipeline, now)));
-    if (sections.candidates.length) {
-      const groups = [...new Set(sections.candidates.map(item => item.candidate_group))];
-      page.push(section(words.candidates ?? 'Candidates', 'Not ordered yet.', ...groups.map(group => {
-        const items = sections.candidates.filter(item => item.candidate_group === group);
-        const key = `group:${group}`;
-        const asked = items.some(item => item.glyph === 'decide');
-        return el('details', { class: 'pl-group', 'data-key': key, open: this.open.has(key) || (asked && !this.closed.has(key)) },
-          el('summary', {}, sentenceName(group || 'Ungrouped'), el('span', { class: 'muted', text: ` · ${items.length}` })), this.rows(items, pipeline, now));
-      })));
-    }
+    page.push(section(words.next ?? 'Next', sized ? `The release after Now. ${coordinator} order${pipeline.coordinator === this.reader ? '' : 's'} it; steer with ⋯.` : 'Not started; steer with ⋯.',
+      this.addLine(pipeline, 'next'), sections.next.length ? this.rows(sections.next, pipeline, now) : null));
+    page.push(section(words.later ?? 'Later', null, this.addLine(pipeline, 'later'), sections.later.length ? this.rows(sections.later, pipeline, now) : null));
+    const groups = [...new Set(sections.candidates.map(item => item.candidate_group))];
+    page.push(section(words.candidates ?? 'Candidates', 'Not ordered yet.', this.addLine(pipeline, 'candidates'), ...groups.map(group => {
+      const items = sections.candidates.filter(item => item.candidate_group === group);
+      const key = `group:${group}`;
+      const asked = items.some(item => item.glyph === 'decide');
+      return el('details', { class: 'pl-group', 'data-key': key, open: this.open.has(key) || (asked && !this.closed.has(key)) },
+        el('summary', {}, sentenceName(group || 'Ungrouped'), el('span', { class: 'muted', text: ` · ${items.length}` })), this.rows(items, pipeline, now));
+    })));
     page.push(this.stagesSection(pipeline));
     page.push(this.timesSection(answer, pipeline));
     page.push(this.shippedSection(answer, pipeline, now));
@@ -293,9 +296,13 @@ export class PipelinePage {
         el('button', { type: 'button', 'data-role': 'drop-confirm', text: 'Drop it', onclick: () => { this.confirming = null; this.act(key, () => this.move(item, { section: 'dropped', underway_confirmed: true })); } }),
         el('button', { type: 'button', 'data-role': 'drop-keep', text: 'Keep it', onclick: () => { this.confirming = null; this.paint(); } })));
     }
+    const editable = item.section !== 'dropped' && item.glyph !== 'shipped';
+    if (editable && this.details === item.number) body.append(this.detailsPanel(item, pipeline));
     const error = this.errors.get(key);
     if (error) body.append(el('p', { class: 'pl-error', role: 'status', text: error }));
     li.append(body);
+    if (editable) li.append(el('button', { type: 'button', class: 'pl-edit', 'data-role': 'details', 'aria-expanded': this.details === item.number ? 'true' : 'false',
+      'aria-label': `${this.details === item.number ? 'Close details' : 'Details'} of ${item.number}`, text: this.details === item.number ? 'Close' : 'Details', onclick: () => this.toggleDetails(item.number) }));
     if (pipeline.you_steer && item.section !== 'dropped' && item.glyph !== 'shipped') {
       li.append(el('button', { type: 'button', class: 'pl-steer', 'data-role': 'steer', 'aria-label': `Steer ${item.number}`, 'aria-haspopup': 'menu',
         'aria-expanded': this.menu === item.number ? 'true' : 'false', text: '⋯',
@@ -354,6 +361,18 @@ export class PipelinePage {
     return this.command('pipeline.item_move', { workspace_id: this.workspace, number: item.number }, args, { item_revision: item.version });
   }
 
+  // The item as this page last read it: a row of the page, or the record's own item.
+  current(number) {
+    return this.itemNumber !== null ? (this.record?.item?.number === number ? this.record.item : null) : this.findItem(number);
+  }
+
+  // An edit on the item as last read; the acts run one after another, so each reads the revision the last one left.
+  edit(number, args) {
+    const item = this.current(number);
+    if (!item) throw Error(`${number} is no longer on this page. Refresh to see where it went.`);
+    return this.command('pipeline.item_edit', { workspace_id: this.workspace, number }, args, { item_revision: item.version });
+  }
+
   async command(kind, target, args, expected = {}) {
     const receipt = await this.send(kind, target, args, expected);
     if (receipt?.status !== 'committed') throw Error(receipt?.error?.message ?? 'Theseus did not confirm this change.');
@@ -361,11 +380,20 @@ export class PipelinePage {
   }
 
   // An act from the page: its refusal shows in plain words under the row and keeps focus there.
-  async act(key, action) {
-    this.errors.delete(key);
-    try { await action(); await this.load(); }
-    catch (error) { this.errors.set(key, error.message); this.paint(); }
-    this.host.querySelector(`[data-key="${CSS.escape(key)}"] a, [data-key="${CSS.escape(key)}"] button`)?.focus({ preventScroll: true });
+  // Acts run one at a time. `role` names the control that takes focus after; false leaves
+  // focus where the reader put it (the repaint keeps it).
+  act(key, action, role = null) {
+    const run = async () => {
+      this.errors.delete(key);
+      try { await action(); await this.load(); }
+      catch (error) { this.errors.set(key, error.message); this.paint(); }
+      if (role === false) return;
+      const scope = `[data-key="${CSS.escape(key)}"]`;
+      const target = (role ? this.host.querySelector(`${scope} [data-role="${CSS.escape(role)}"]`) : null) ?? this.host.querySelector(`${scope} a, ${scope} button`);
+      target?.focus({ preventScroll: true });
+    };
+    this.chain = this.chain.then(run, run);
+    return this.chain;
   }
 
   stagesSection(pipeline) {
@@ -447,39 +475,86 @@ export class PipelinePage {
       }));
   }
 
-  addItem(pipeline) {
-    const key = 'add';
-    const details = el('details', { class: 'pl-add', 'data-key': key, open: this.open.has(key) }, el('summary', { text: 'Add item' }));
-    this.addDraft ??= { title: '', words: '', size: pipeline.sized ? 'small' : '', from: '', section: 'candidates' };
-    const draft = this.addDraft;
-    const input = (label, name, attrs = {}) => el('label', {}, el('span', { text: label }),
-      el(attrs.multiline ? 'textarea' : 'input', { value: attrs.multiline ? null : draft[name], ...(attrs.multiline ? {} : attrs), oninput: event => { draft[name] = event.target.value; } }, attrs.multiline ? draft[name] : null));
-    const form = el('form', { class: 'pl-add-form' },
-      input('Title', 'title', { required: true }),
-      input('Words', 'words', { multiline: true }),
-      pipeline.sized ? el('label', {}, el('span', { text: 'Size' }), el('select', { onchange: event => { draft.size = event.target.value; } },
-        ...['small', 'medium', 'large'].map(size => el('option', { value: size, selected: draft.size === size, text: SIZE_WORDS[size] })))) : null,
-      input('From message', 'from', { placeholder: 'Message numbers, like 461, 462', inputmode: 'numeric' }),
-      el('label', {}, el('span', { text: 'Section' }), el('select', { onchange: event => { draft.section = event.target.value; } },
-        ...SECTION_ORDER.map(name => el('option', { value: name, selected: draft.section === name, text: pipeline.section_words?.[name] ?? name })))),
-      el('p', { class: 'muted', text: 'With a message and no one named, the message’s author is recorded as who raised it.' }),
-      el('button', { type: 'submit', class: 'primary', text: 'Add item' }));
+  // The one line at the top of a section (the form rule): a title and Return adds it
+  // there, last; Escape clears it. Words and size are set on the item afterwards.
+  addLine(pipeline, name) {
+    const key = `add:${name}`, label = pipeline.section_words?.[name] ?? sentenceName(name);
+    const form = titleLine({
+      key, value: this.addDrafts[name] ?? '', label: `Add an item to ${label}`, hint: `Return adds it to ${label} · Escape clears`,
+      input: value => { this.addDrafts[name] = value; },
+      cancel: (had, input) => { if (!had) input.blur(); },
+      submit: title => {
+        // The line clears at once, so the next title can be typed while this one is added.
+        this.addDrafts[name] = ''; this.added = null; this.paint();
+        this.act(key, async () => {
+          const args = { title, section: name, sources: [{ note: `added by ${this.reader} on the pipeline page` }] };
+          if (name === 'candidates') args.candidate_group = '';
+          try {
+            const result = await this.command('pipeline.item_add', { workspace_id: this.workspace }, args);
+            if (this.details !== null) this.saveWords(this.details);
+            this.added = { section: name, number: result.number }; this.details = result.number;
+            if (name === 'candidates') { this.open.add('group:'); this.closed.delete('group:'); }
+          } catch (error) {
+            if (!this.addDrafts[name]) this.addDrafts[name] = title;
+            throw error;
+          }
+        }, false);
+      },
+    });
+    if (this.added?.section === name) form.append(el('p', { class: 'pl-line-note muted', role: 'status', text: `Added ${this.added.number}, last in ${label}. ${pipeline.sized ? 'Words and a size are' : 'Words are'} optional; set them on it below.` }));
     const error = this.errors.get(key);
-    if (error) form.append(el('p', { class: 'pl-error', role: 'status', text: error }));
-    form.onsubmit = event => { event.preventDefault(); this.act(key, async () => {
-      const numbers = draft.from.split(/[\s,#]+/).filter(Boolean).map(Number);
-      if (numbers.some(number => !Number.isSafeInteger(number))) throw Error('Give message numbers, like 461, 462.');
-      const sources = numbers.length ? numbers.map(seq => ({ message_seq: seq })) : [{ note: `added by ${this.reader} on the pipeline page` }];
-      const args = { title: draft.title, description: draft.words, section: draft.section, sources };
-      if (pipeline.sized) args.size = draft.size;
-      if (draft.section === 'candidates') args.candidate_group = '';
-      const result = await this.command('pipeline.item_add', { workspace_id: this.workspace }, args);
-      this.addDraft = null; this.open.delete(key); this.errors.set(key, '');
-      this.added = result.number;
-    }); };
-    details.append(form);
-    if (this.added) details.append(el('p', { class: 'muted', role: 'status', text: `Added ${this.added}.` }));
-    return details;
+    if (error) form.append(el('p', { class: 'pl-error pl-line-note', role: 'status', text: error }));
+    return form;
+  }
+
+  // An item's words (a sentence or two) and its size as three chips, set in place.
+  detailsPanel(item, pipeline, record = false) {
+    const number = item.number, key = `item:${number}`;
+    const area = el('textarea', { class: 'pl-words-box', rows: '2', 'data-role': 'words', placeholder: 'Words, if they help: a sentence or two', 'aria-label': `Words for ${number}` });
+    area.value = this.wordDrafts.get(number) ?? item.description ?? '';
+    area.oninput = () => { this.wordDrafts.set(number, area.value); if (this.savedWords === number) this.savedWords = null; };
+    area.onblur = () => this.saveWords(number);
+    area.onkeydown = event => {
+      if (event.key === 'Escape' && !record) { event.preventDefault(); this.closeDetails(number); }
+      else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); this.saveWords(number); }
+    };
+    const panel = el('div', { class: 'pl-details' }, area);
+    if (pipeline.sized) {
+      panel.append(el('div', { class: 'pl-sizes', role: 'group', 'aria-label': `Size of ${number}` }, el('span', { class: 'muted', text: 'Size' }),
+        ...['small', 'medium', 'large'].map(size => el('button', {
+          type: 'button', class: 'pl-size', 'data-role': `size-${size}`, 'aria-pressed': item.size === size ? 'true' : 'false', 'aria-label': SIZE_WORDS[size],
+          title: item.size === size ? `${SIZE_WORDS[size]}. Tap again for no size.` : SIZE_WORDS[size], text: size[0].toUpperCase(),
+          onclick: () => this.act(key, () => this.edit(number, { size: item.size === size ? null : size }), `size-${size}`),
+        }))));
+    }
+    panel.append(el('p', { class: 'pl-details-note muted', text: this.savedWords === number ? 'Saved.' : 'Optional. Words save when you click away or press ⌘Return.' }));
+    return panel;
+  }
+
+  saveWords(number) {
+    const draft = this.wordDrafts.get(number), item = this.current(number);
+    if (draft === undefined || !item) return this.chain;
+    if (draft === (item.description ?? '')) { this.wordDrafts.delete(number); return this.chain; }
+    return this.act(`item:${number}`, async () => {
+      // Read again when its turn comes: an earlier save may already have sent these words.
+      const words = this.wordDrafts.get(number), now = this.current(number);
+      if (words === undefined || !now) return;
+      if (words !== (now.description ?? '')) { await this.edit(number, { description: words }); this.savedWords = number; }
+      if (this.wordDrafts.get(number) === words) this.wordDrafts.delete(number);
+    }, false);
+  }
+
+  toggleDetails(number) {
+    if (this.details === number) return this.closeDetails(number);
+    if (this.details !== null) this.saveWords(this.details);
+    this.details = number; this.savedWords = null; this.paint();
+    this.host.querySelector(`[data-key="item:${number}"] [data-role="words"]`)?.focus();
+  }
+
+  closeDetails(number) {
+    this.saveWords(number);
+    this.details = null; this.paint();
+    this.host.querySelector(`[data-key="item:${number}"] [data-role="details"]`)?.focus();
   }
 
   turnOn(pipeline) {
@@ -510,7 +585,9 @@ export class PipelinePage {
     const status = item.shipped ? (item.shipped.release ? `Shipped in release ${item.shipped.release}, ${shownTime(item.shipped.deployed_ms, now)}.`
       : item.shipped.note ? `Shipped ${item.shipped.note}.` : `Done ${shownTime(item.shipped.done_ms, now)}.`)
       : item.section === 'dropped' ? 'Dropped. Kept with its number, so it can come back.' : `In ${pipeline.section_words?.[item.section] ?? item.section}.`;
-    page.push(el('article', { class: 'pl-item', 'data-key': `item:${item.number}` }, this.head(item), this.meta(item, pipeline, now), el('p', { class: 'pl-meta', text: status })));
+    const editable = item.section !== 'dropped' && !item.shipped;
+    page.push(el('article', { class: 'pl-item', 'data-key': `item:${item.number}` }, this.head(item), this.meta(item, pipeline, now), el('p', { class: 'pl-meta', text: status }),
+      editable ? this.detailsPanel(item, pipeline, true) : null, this.errors.get(`item:${item.number}`) ? el('p', { class: 'pl-error', role: 'status', text: this.errors.get(`item:${item.number}`) }) : null));
     for (const ask of item.asks) page.push(el('p', { class: 'pl-note' }, `${ask.by} asked you, since ${shownTime(ask.since_ms, now)}: “${ask.excerpt}” In `, el('a', { href: topicHref(ask.topic_id), text: ask.topic_title }), '.'));
     const runs = sourceRuns(item.sources, this.reader);
     page.push(section('Where this came from', null, runs.parts.length
@@ -529,6 +606,28 @@ export class PipelinePage {
     page.push(section('What happened to it', null, el('ol', { class: 'pl-events' }, ...item.events.map(event => el('li', { text: eventWords(event, this.reader, pipeline.section_words, now) })))));
     this.host.replaceChildren(...page);
   }
+}
+
+const isField = node => node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement;
+
+// One line for a title (the form rule): placeholder "Add an item…", Return submits it,
+// Escape clears it (and then `cancel` hears whether it held text). The pipeline page's
+// sections and a message's Add to pipeline both use it.
+export function titleLine({ key, value = '', label, hint, placeholder = 'Add an item…', input, submit, cancel }) {
+  const field = el('input', { type: 'text', class: 'pl-line-input', 'data-role': 'add-title', placeholder, 'aria-label': label, autocomplete: 'off',
+    enterkeyhint: 'done', maxlength: '500', spellcheck: 'true' });
+  field.value = value;
+  field.oninput = () => input?.(field.value);
+  field.onkeydown = event => {
+    if (event.key !== 'Escape' || event.isComposing) return;
+    event.preventDefault(); event.stopPropagation();
+    const had = field.value !== '';
+    if (had) { field.value = ''; input?.(''); }
+    cancel?.(had, field);
+  };
+  const form = el('form', { class: 'pl-line', 'data-key': key }, field, el('span', { class: 'pl-line-hint muted', text: hint }));
+  form.onsubmit = event => { event.preventDefault(); const title = field.value.trim(); if (title) submit(title, field); };
+  return form;
 }
 
 function glyph(kind) {
@@ -553,6 +652,7 @@ function gateWords(stage, owner) {
 export class PipelineRow {
   constructor({ section, host, workspace, current = false, read, reader }) {
     Object.assign(this, { section, host, workspace, current, read, reader });
+    this.on = false; // whether the outcome's pipeline is on: a message offers Add to pipeline only then
   }
   async load() {
     let answer;
@@ -560,6 +660,7 @@ export class PipelineRow {
     catch { return false; }
     if (answer?.error) return false;
     const row = answer.pipeline;
+    this.on = !!row;
     this.section.hidden = !row;
     if (!row) { this.host.replaceChildren(); return true; }
     const link = el('a', { class: 'nav-item', href: pipelineHref(this.workspace), 'aria-current': this.current ? 'page' : null }, row.title);

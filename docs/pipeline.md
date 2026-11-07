@@ -19,7 +19,8 @@ light (the glyph, stage names by round, typical times) are
   piece or a whole release passes through it. A change applies to items that
   enter a stage after it; past times stay with the stage they were measured in.
 - **Items** (`pipeline_items`): a number that never changes, a title, words, a
-  size, who raised it, its section (`now`, `next`, `later`, `candidates`,
+  size (optional, even in a sized pipeline: an item can be added by its title
+  alone and sized later), who raised it, its section (`now`, `next`, `later`, `candidates`,
   `dropped`) and place, its candidate group, the items it waits for, and, when
   it is still gathering context, the reply thread or Notebook page that holds it.
 - **Where an item came from** (`pipeline_item_sources`): messages, Notebook
@@ -39,6 +40,17 @@ light (the glyph, stage names by round, typical times) are
 
 Shipped is read from the release records (`releases`, written by
 `record-release`): an item a recorded release names has shipped in it.
+
+## Adding an item
+
+Each section of the page (Now, Next, Later, Candidates) opens with one line,
+"Add an item…": a title and Return adds the item there, last in the section.
+Words (a sentence or two) and the size (three chips, S, M and L) are optional
+and set on the item afterwards, in place, through `item_edit`; tapping the
+chosen size again clears it. A message in the Reader offers Add to pipeline
+while its outcome's pipeline is on: the same line, its title the message's first
+line, adds the item to Candidates with the message as its source, so Core
+records the message's author as who raised it.
 
 ## Who changes what
 

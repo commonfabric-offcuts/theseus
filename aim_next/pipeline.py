@@ -405,9 +405,10 @@ class Pipeline:
         if args.get("part") and not any(row[0] for row in sources):
             raise Refusal("INVALID_ARGUMENT", "part names a message the item takes from; give a message source")
         size = args.get("size")
+        # A size is optional: an item can be added by its title alone and sized later.
         if pipeline["sized"]:
-            if size not in SIZES:
-                raise Refusal("INVALID_ARGUMENT", "Each item in this pipeline is small, medium or large")
+            if size is not None and size not in SIZES:
+                raise Refusal("INVALID_ARGUMENT", "An item in this pipeline is small, medium or large, or has no size yet")
         elif size is not None:
             raise Refusal("INVALID_ARGUMENT", "This pipeline's items have no size")
         section = args.get("section", "candidates")
@@ -468,8 +469,8 @@ class Pipeline:
         if "description" in args:
             changes["description"] = _text(args["description"], "The words", required=False)
         if "size" in args:
-            if (args["size"] not in SIZES) if pipeline["sized"] else (args["size"] is not None):
-                raise Refusal("INVALID_ARGUMENT", "Each item in this pipeline is small, medium or large" if pipeline["sized"] else "No size here")
+            if (args["size"] is not None and args["size"] not in SIZES) if pipeline["sized"] else (args["size"] is not None):
+                raise Refusal("INVALID_ARGUMENT", "An item in this pipeline is small, medium or large, or has no size yet" if pipeline["sized"] else "No size here")
             changes["size"] = args["size"]
         if "candidate_group" in args:
             changes["candidate_group"] = _text(args["candidate_group"], "candidate_group", required=False, limit=200)

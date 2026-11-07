@@ -8,10 +8,23 @@ export const GLYPHS = {
   decide: ['❓', 'Needs your decision'], shipped: ['✅', 'Shipped'], dropped: ['–', 'Dropped'],
 };
 export const SIZE_WORDS = { small: 'Small', medium: 'Medium', large: 'Large' };
-// D14: until a message's ⋯ menu offers "Add to pipeline" (24).
+const EDITED_WORDS = { description: 'its words', size: 'its size', title: 'its title', candidate_group: 'its group', raised_by: 'who raised it', raised_note: 'who raised it', needs: 'what it waits for', gathering: 'where it gathers' };
+// D14, with the one-line add (the form rule): a title on a section's first line, or a message's Add to pipeline.
 export const EMPTY_WORDS = ['Nothing in this pipeline yet.',
-  'Add the first item with Add item. Give a message number and its author is recorded as who raised it.',
+  'Type a title on any section’s first line and press Return. Or open a message and choose Add to pipeline: whoever wrote it is recorded as who raised it.',
   'Stages and their times appear once work starts. Typical times appear once at least 3 past items of a size have been through a stage.'];
+
+// A message's first line as an item's title: its first line with words, without
+// list or heading marks, emphasis, or the names it opens by addressing ("@Tony");
+// a long line is cut at a word near 140 characters.
+export function firstLine(text) {
+  const line = String(text ?? '').split('\n')
+    .map(part => part.replace(/\*\*|__|`/g, '').replace(/^\s*(?:[#>*\-•]+\s*|\d+[.)]\s+)*/, '').replace(/^(?:@[\w.-]+[,:]?\s+)+/, '').trim())
+    .find(Boolean) ?? '';
+  if (line.length <= 140) return line;
+  const cut = line.slice(0, 140), space = cut.lastIndexOf(' ');
+  return `${(space > 80 ? cut.slice(0, space) : cut).replace(/[\s,;:.]+$/, '')}…`;
+}
 
 // A name that starts a sentence is capitalised: "Fable orders it".
 export const sentenceName = name => name ? name[0].toUpperCase() + name.slice(1) : '';
@@ -176,7 +189,7 @@ export function eventWords(event, reader, sectionWords, now) {
   const who = event.by === reader ? 'you' : event.by;
   const when = shownTime(event.ms, now);
   if (event.kind === 'added') return `Added by ${who}, ${when}${event.payload?.imported ? ', from the hand-written page' : ''}.`;
-  if (event.kind === 'edited') return `Edited by ${who}, ${when}: ${Object.keys(event.payload?.after ?? {}).join(', ')}.`;
+  if (event.kind === 'edited') return `Edited by ${who}, ${when}: ${listWords(Object.keys(event.payload?.after ?? {}).map(key => EDITED_WORDS[key] ?? key))}.`;
   if (event.kind === 'moved') {
     const after = event.payload?.after ?? {};
     if (after.section === 'dropped') return `Dropped by ${who}, ${when}.`;

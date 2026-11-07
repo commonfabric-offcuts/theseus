@@ -333,8 +333,6 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 
 /* The page's forms, refusals and the outcome page's pipeline line. */
 .pipeline-line{margin:0 0 1.2rem;overflow-wrap:anywhere}
-.pl-add{margin:0 0 1.4rem}
-.pl-add>summary{cursor:pointer;color:var(--accent);font-weight:600;width:max-content;max-width:100%}
 .pl-add-form,.pl-stage-editor{display:grid;gap:.6rem;margin:.6rem 0 0;padding:.8rem 1rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}
 .pl-add-form label,.pl-stage-editor label{display:grid;gap:.2rem;font-size:.85rem}
 .pl-add-form label:has(input[type=checkbox]),.pl-stage-editor label:has(input[type=checkbox]){display:flex;align-items:center;gap:.4rem}
@@ -351,3 +349,30 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 .pl-events{margin:0;padding-left:1.2rem;font-size:.86rem}.pl-events li{margin:.2rem 0;overflow-wrap:anywhere}
 .pl-origin-whole{font-size:.88rem;overflow-wrap:anywhere;line-height:1.6}
 @media(max-width:760px){.pl-confirm{margin-left:0}}
+/* The one-line add (the form rule): a title line about a sentence wide; Return adds it. */
+.pl-line{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .8rem;margin:0 0 .6rem}
+.pl-line-input{flex:0 1 36rem;width:100%;max-width:36rem;min-width:0;min-height:2.5rem;padding:.4rem .75rem;border:1px solid var(--line);border-radius:.55rem;background:var(--panel);font-size:.92rem}
+.pl-line-input::placeholder{color:var(--muted)}
+.pl-line-input:placeholder-shown{border-style:dashed}
+.pl-line-input:focus{border-style:solid;border-color:var(--focus)}
+.pl-line-input:placeholder-shown+.pl-line-hint{display:none}
+.pl-line-hint{font-size:.76rem}
+.pl-line-note{flex:1 0 100%;margin:0;font-size:.8rem}
+/* An item's words and size, set in place. */
+.pl-edit{flex:0 0 auto;align-self:flex-start;min-height:2.4rem;padding:0 .5rem;border-color:transparent;background:transparent;color:var(--muted);font-size:.8rem}
+.pl-edit:hover,.pl-edit[aria-expanded=true]{background:var(--soft);color:var(--ink)}
+.pl-row>.pl-steer{align-self:flex-start}
+@media(hover:hover){.pl-row:not(:hover):not(:focus-within) .pl-edit[aria-expanded=false]{opacity:0}}
+.pl-details{display:flex;flex-wrap:wrap;align-items:flex-start;gap:.5rem .9rem;margin:.5rem 0 .2rem 1.9rem}
+.pl-item>.pl-details{margin-top:.7rem}
+textarea.pl-words-box{flex:0 1 40rem;width:100%;max-width:40rem;min-width:0;min-height:3.6rem;max-height:12rem;padding:.5rem .7rem;border-radius:.55rem;font-size:.88rem;line-height:1.5;resize:vertical;field-sizing:content}
+.pl-sizes{display:flex;align-items:center;gap:.35rem}
+.pl-sizes>.muted{font-size:.8rem;margin-right:.1rem}
+.pl-size{min-height:2.4rem;min-width:2.4rem;padding:0;border-radius:1.2rem;font-size:.85rem;font-weight:650;color:var(--muted)}
+.pl-size:hover{color:var(--ink);border-color:var(--muted)}
+.pl-size[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+.pl-details-note{flex:1 0 100%;margin:0;font-size:.76rem}
+.pipeline-add{padding:.6rem 0 0}
+.pipeline-add .pl-line{margin:0}
+.pipeline-add a{margin-left:.3rem}
+@media(max-width:760px){.pl-details{margin-left:0}.pl-line-hint{display:none}}

@@ -38,7 +38,8 @@ import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith } from './links.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
-import { PipelinePage, PipelineRow, paintPipelineLine } from './pipeline.mjs';
+import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
+import { firstLine } from './pipeline-words.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -55,6 +56,7 @@ let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
 let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
+let pipelineRow = null, pipelineAddFor = null;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
@@ -701,10 +703,52 @@ function paintMarks() {
   });
   paintReaderMark();
 }
+// A message's Add to pipeline: one line under the message, its first line as the
+// title; Return adds it to Candidates with the message as where it came from, and
+// Core records the message's author as who raised it. Escape closes the line.
+function openPipelineAdd() {
+  const p = registry?.current, ref = p?.source?.source_ref, host = $('pipeline-add');
+  if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic) return;
+  const author = p.source.author, raised = !author ? '' : author === bootstrap.actor ? ', raised by you' : `, raised by ${author}`;
+  const workspace = topic.workspace_id;
+  pipelineAddFor = ref.id;
+  const line = titleLine({ key: 'message-add', value: firstLine(p.source.body), label: 'Title of the new pipeline item',
+    hint: `Return adds it to Candidates${raised} · Escape cancels`,
+    cancel: () => closePipelineAdd(true),
+    submit: (title, field) => run(async () => {
+      field.disabled = true;
+      host.querySelector('.pl-error')?.remove();
+      try {
+        const { authority_id, authority_epoch } = registry.runtime.current;
+        const receipt = await api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'pipeline.item_add',
+          target: { workspace_id: workspace }, expected: { authority: { authority_id, authority_epoch } },
+          args: { title, section: 'candidates', candidate_group: '', sources: [{ message_id: ref.id }] } });
+        if (receipt?.status !== 'committed') throw Error(receipt?.error?.message ?? 'Theseus did not confirm this item.');
+        if (pipelineAddFor !== ref.id) return;
+        const open = node('a', 'Open it'); open.href = pipelineHref(workspace, receipt.result.number);
+        const done = node('p', `Added ${receipt.result.number} to Candidates.`, 'muted'); done.setAttribute('role', 'status'); done.append(open);
+        host.replaceChildren(done); open.focus();
+      } catch (error) {
+        field.disabled = false; field.focus();
+        const message = node('p', error.message, 'pl-error'); message.setAttribute('role', 'status'); line.append(message);
+      }
+    }) });
+  host.replaceChildren(line); host.hidden = false;
+  const field = line.querySelector('input');
+  field.focus(); field.setSelectionRange(field.value.length, field.value.length);
+}
+function closePipelineAdd(refocus) {
+  pipelineAddFor = null;
+  const host = $('pipeline-add'); host.hidden = true; host.replaceChildren();
+  if (refocus) $('add-to-pipeline').focus();
+}
 function paintReaderMark() {
   const p = registry?.current, ref = p?.source?.source_ref;
   // Any readable message can start a topic of its own in this outcome.
   $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
+  // And, while the outcome's pipeline is on, become an item in it.
+  $('add-to-pipeline').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && pipelineRow?.on);
+  if (pipelineAddFor !== null && pipelineAddFor !== ref?.id) closePipelineAdd(false);
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
   paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
 }
@@ -1143,6 +1187,7 @@ async function initialize() {
       target: { item_id: id }, expected: { authority: { authority_id, authority_epoch } }, args: { revision } });
   } });
   $('mark-unread').onclick = () => run(toggleMark);
+  $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
   $('start-from-message').onclick = () => run(() => {
     const ref = registry.current?.source?.source_ref;
     if (ref?.kind === 'message' && topic) return openDestination(startFrom(topic.workspace_id, ref.id), 'New topic');
@@ -1192,9 +1237,11 @@ async function initialize() {
     open: (ref, row) => run(() => openSource(ref, row)),
     seen: items => { for (const item of items) views.revisions.observe(item.id, item.revision); reader.paintOffer(); },
   });
-  // The rail shows only this topic's outcome.
+  // The rail shows only this topic's outcome. A message's Add to pipeline
+  // follows the Pipeline row's read.
+  const pipeline = pipelineSection(topic.workspace_id, false, paintReaderMark); pipelineRow = pipeline.row;
   outcomeScope = new OutcomeScope({ workspaceId: topic.workspace_id, kind: 'topic', rail: document.querySelector('.rail'), home: $('outcomes-home'),
-    attention, open: openDestination, sections: [pipelineSection(topic.workspace_id, false), { name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
+    attention, open: openDestination, sections: [pipeline, { name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
       { name: 'notebook', node: $('outcome-references'), load: () => outcomeReferences.load() }] });
   placeBrand(document.querySelector('.rail'));
   outcomeScope.load();
@@ -1471,9 +1518,10 @@ function pipelineSend(kind,target,args,expected={}) {
 }
 // The rail's Pipeline row (D19), placed by the outcome's rail between the
 // conversation and the topics, and read with the rail on every commit.
-function pipelineSection(workspace,current) {
+// loaded hears each read (a message's Add to pipeline shows only while the pipeline is on).
+function pipelineSection(workspace,current,loaded=()=>{}) {
   const row=new PipelineRow({section:$('pipeline-navigation'),host:$('pipeline-links'),workspace,current,read:pipelineView,reader:bootstrap.actor});
-  return {name:'pipeline',node:$('pipeline-navigation'),load:()=>row.load()};
+  return {name:'pipeline',node:$('pipeline-navigation'),row,load:()=>row.load().then(read=>{loaded(read);return read;})};
 }
 // An outcome's pipeline, or one item's record in it: the rail shows this
 // outcome (its Pipeline row, topics and Notebook pages); the page and the
