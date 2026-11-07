@@ -8,8 +8,9 @@ const afterId = (id,previous) => {
   return a.length>b.length;
 };
 const badRoute = () => { throw Error('This destination link is incomplete or ambiguous. Open Outcomes to choose a place.'); };
-// An opening may name the message its topic answers ('from').
-const OPTIONAL = {opening:['from']};
+// An opening may name the message its topic answers ('from'); a topic, the
+// message to open in the Reader when it opens ('message', docs/links.md).
+const OPTIONAL = {opening:['from'],topic:['message']};
 export function routeKey(route) {
   const fields = {root:[],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
@@ -18,7 +19,7 @@ export function routeKey(route) {
 }
 export function routeHref(route) {
   routeKey(route);
-  const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id} : route.kind === 'conversation' ? {conversation:route.id} :
+  const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{})} : route.kind === 'conversation' ? {conversation:route.id} :
     route.kind === 'workspace' ? {workspace:route.id} : route.kind === 'pipeline' ? {pipeline:route.id} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
@@ -32,6 +33,7 @@ export function parseRoute(url) {
   let route;
   if (!keys.length) route={kind:'root'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
+  else if (keys.length===2 && p.has('topic') && p.has('message')) route={kind:'topic',id:p.get('topic'),message:p.get('message')};
   else if (keys.length===1 && p.has('workspace')) route={kind:'workspace',id:p.get('workspace')};
   else if (keys.length===1 && p.has('conversation')) route={kind:'conversation',id:p.get('conversation')};
   // An outcome's pipeline, and one item's record in it (docs/pipeline.md).
