@@ -167,7 +167,7 @@ def _output(stdout, stderr, result, code):
 
 LEGACY_VERBS = ("binding", "view", "command")
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
-         "{binding | view FILE|- | command FILE|- | outcomes | new-outcome --title TITLE [--purpose TEXT] [--team A,B] "
+         "{binding | view FILE|- | command FILE|- | outcomes | new-outcome --title TITLE [--purpose TEXT] [--team A,B] | owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
@@ -203,6 +203,9 @@ def _parser():
     outcome.add_argument("--title", required=True)
     outcome.add_argument("--purpose", default="")
     outcome.add_argument("--team", default="")
+    owner = verb("owner")
+    owner.add_argument("outcome")
+    owner.add_argument("owner")
     topics = verb("topics")
     topics.add_argument("outcome")
     topics.add_argument("--archived", action="store_true")
@@ -552,6 +555,16 @@ class Agent:
         self.command("workspace.create", {}, {"id": outcome, "title": options.title, "purpose": options.purpose,
                                               "team": _names(options.team)}, {"workspace_revision": 0})
         self.out.plain('created outcome %s "%s"' % (outcome, _one_line(options.title, 60)))
+
+    def do_owner(self):
+        """Hands the outcome to another member of its team; only its owner can."""
+        workspace = self.view("workspace", {"workspace_id": self.options.outcome})["workspace"]
+        result = self.command("workspace.owner_set", {"workspace_id": workspace["id"]}, {"owner_id": self.options.owner},
+                              {"workspace_revision": workspace["version"]})
+        if result["owner_id"] == result["previous_owner_id"]:
+            self.out.plain("%s is already owned by %s" % (result["workspace_id"], result["owner_id"]))
+        else:
+            self.out.plain("%s is now owned by %s (was %s)" % (result["workspace_id"], result["owner_id"], result["previous_owner_id"]))
 
     def do_topics(self):
         # The server lists them latest activity first; done topics follow the rest, and

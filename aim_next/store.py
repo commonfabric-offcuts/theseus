@@ -9,7 +9,7 @@ import uuid
 from typing import Any
 
 
-from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body, _bounded_page, _page_size, _prefix, _revision
+from .contract import LIMITS, Refusal, StoreError, organises, _json, _identifier, _body, _bounded_page, _page_size, _prefix, _revision
 from .drafts import Drafts, DRAFT_SCHEMA
 from .openings import Openings, OPENING_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA, MESSAGE_INTENT_SCHEMA, MESSAGE_TIME_SCHEMA, WRITTEN_SCHEMA
@@ -417,11 +417,16 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             if fence is not None:
                 fence.close()
 
-    def _workspace(self, db, actor, workspace_id, owner=False):
+    def _workspace(self, db, actor, workspace_id, organise=False):
+        """The workspace actor may read (its owner and members), or with organise=True
+        may organise (contract.organises). Being coordinator grants no reading."""
         _identifier(workspace_id, "workspace_id")
         row = db.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
-        allowed = row and (row["owner_id"] == actor or (not owner and db.execute(
-            "SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace_id, actor)).fetchone()))
+        if organise:
+            allowed = row and organises(row, actor)
+        else:
+            allowed = row and (row["owner_id"] == actor or db.execute(
+                "SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace_id, actor)).fetchone())
         if not allowed:
             raise Refusal("FORBIDDEN", "No permission for this workspace")
         return row
@@ -429,6 +434,13 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
     def _change(self, db, scope_kind, scope_id, kind, record_id, version):
         db.execute("INSERT INTO changes(scope_kind,scope_id,resource_kind,resource_id,version) VALUES (?,?,?,?,?)",
                    (scope_kind, scope_id, kind, record_id, version))
+
+    def _outcome_change(self, db, workspace_id, version):
+        """The outcome's own record changed: its team, owner or coordinator. Open outcome
+        pages read the key in the workspace scope, and open topic pages in the outcome
+        scope, which holds only these keys, so a page learns who may organise it now."""
+        self._change(db, "workspace", workspace_id, "workspace", workspace_id, version)
+        self._change(db, "outcome", workspace_id, "workspace", workspace_id, version)
 
     def _command_workspace_create(self, db, actor, envelope):
         args = envelope.get("args", {})
@@ -460,7 +472,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         db.execute("INSERT INTO workspaces VALUES (?,?,?,?,?,1)",
                    (workspace_id, actor, title, _body(args.get("purpose", "")), coordinator))
         db.executemany("INSERT INTO workspace_members VALUES (?,?)", [(workspace_id, member) for member in team])
-        self._change(db, "workspace", workspace_id, "workspace", workspace_id, 1)
+        self._outcome_change(db, workspace_id, 1)
         return {"workspace": {"id": workspace_id, "owner_id": actor, "title": title, "version": 1}}, [
             {"kind": "workspace", "id": workspace_id, "version": 1}]
 
@@ -530,7 +542,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"workspace_id"} or set(args) != {"actor_id", "present"} or not isinstance(args["present"], bool):
             raise Refusal("INVALID_ARGUMENT", "Name one workspace, one actor and whether they are present")
-        workspace = self._workspace(db, actor, target["workspace_id"], owner=True)
+        workspace = self._workspace(db, actor, target["workspace_id"], organise=True)
         _revision(envelope["expected"], "workspace_revision", workspace["version"])
         present = args["present"]
         member = self._recipients(db, [args["actor_id"]], require_enabled=present)[0]
@@ -556,8 +568,33 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         coordinator = None if not present and member == workspace["coordinator_id"] else workspace["coordinator_id"]
         db.execute("UPDATE workspaces SET version=version+1,coordinator_id=? WHERE id=?", (coordinator, workspace["id"]))
         version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace["id"],)).fetchone()[0]
-        self._change(db, "workspace", workspace["id"], "workspace", workspace["id"], version)
+        self._outcome_change(db, workspace["id"], version)
         self._change(db, "actor", member, "workspace", workspace["id"], version)
+        return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
+
+    def _command_workspace_owner_set(self, db, actor, envelope):
+        """The owner hands the outcome to another member, and stays on its team."""
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"workspace_id"} or set(args) != {"owner_id"}:
+            raise Refusal("INVALID_ARGUMENT", "Name one workspace and its new owner")
+        workspace = self._workspace(db, actor, target["workspace_id"], organise=True)
+        if actor != workspace["owner_id"]:
+            raise Refusal("FORBIDDEN", "Only the outcome's owner can hand it on")
+        _revision(envelope["expected"], "workspace_revision", workspace["version"])
+        owner = self._recipients(db, [args["owner_id"]])[0]
+        result = {"workspace_id": workspace["id"], "owner_id": owner, "previous_owner_id": workspace["owner_id"],
+                  "version": workspace["version"]}
+        if owner == workspace["owner_id"]:
+            return result, []
+        if not db.execute("SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace["id"], owner)).fetchone():
+            raise Refusal("NOT_A_MEMBER", "Add %s to the outcome's team before handing it to them" % owner)
+        # Creation and member_set keep the owner on the team, so this adds no one a command could reach.
+        db.execute("INSERT OR IGNORE INTO workspace_members VALUES (?,?)", (workspace["id"], workspace["owner_id"]))
+        db.execute("UPDATE workspaces SET version=version+1,owner_id=? WHERE id=?", (owner, workspace["id"]))
+        version = workspace["version"] + 1
+        self._outcome_change(db, workspace["id"], version)
+        for member in (owner, workspace["owner_id"]):
+            self._change(db, "actor", member, "workspace", workspace["id"], version)
         return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
 
     def _view_workspace_topics(self, db, actor, args):

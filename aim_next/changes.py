@@ -47,15 +47,17 @@ def _cursor(value):
 
 class Changes:
     def _change_access(self, db, actor, scope):
+        """The scope's versions, and the scopes its keys are read from: a topic's own,
+        and its outcome's record keys (Store._outcome_change)."""
         if scope["kind"] == "actor":
             if scope["id"] != actor:
                 raise Refusal("FORBIDDEN", "Only your own private changes are readable")
-            return {}
+            return {}, [scope]
         if scope["kind"] == "topic":
             record = self._topic(db, actor, scope["id"])
-        else:
-            record = self._workspace(db, actor, scope["id"])
-        return {scope["kind"]: record["version"]}
+            return {"topic": record["version"]}, [scope, {"kind": "outcome", "id": record["workspace_id"]}]
+        record = self._workspace(db, actor, scope["id"])
+        return {"workspace": record["version"]}, [scope]
 
     def _view_changes(self, db, actor, args):
         scope, limit = _scope(args.get("scope")), _page_size(args)
@@ -65,7 +67,7 @@ class Changes:
         if cursor is not None and any(cursor[key] != value for key, value in identity.items()):
             raise Refusal("RESYNC_REQUIRED", "Changes cursor belongs to another actor, scope or authority; explicitly reload this scope")
         # Every continuation rechecks current access. A cursor never grants it.
-        versions = self._change_access(db, actor, scope)
+        versions, sources = self._change_access(db, actor, scope)
         # The global right edge is constant work even for an empty scope.
         # AUTOINCREMENT and transaction-local _change writes prevent seq reuse
         # or publication after an already observed committed upper boundary.
@@ -92,8 +94,11 @@ class Changes:
             return response([])
         # No retention/pruning exists. Global gaps and a zero/old position are
         # valid; a future pruning feature must persist an explicit history floor.
-        rows = db.execute("SELECT seq,resource_kind,resource_id,version FROM changes WHERE scope_kind=? AND scope_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT ?",
-                          (scope["kind"], scope["id"], cursor["after_seq"], upper, limit + 1)).fetchall()
+        # Each source is read in its own index range, so a page still reads at most
+        # limit + 1 keys from each; the first limit + 1 of them all are a page's.
+        rows = sorted((row for source in sources for row in db.execute(
+            "SELECT seq,resource_kind,resource_id,version FROM changes WHERE scope_kind=? AND scope_id=? AND seq>? AND seq<=? ORDER BY seq LIMIT ?",
+            (source["kind"], source["id"], cursor["after_seq"], upper, limit + 1)).fetchall()), key=lambda row: row["seq"])[:limit + 1]
         items = []
         for row in rows[:limit]:
             items.append(dict(row))

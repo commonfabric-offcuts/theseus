@@ -128,7 +128,10 @@ class ChangesCase(ReaderCase):
         lower = dict(cursor, after_seq=0)
         page = self.read(cursor=lower)
         self.assertTrue(page["items"])
-        expected = self.sql("SELECT seq,resource_kind,resource_id,version FROM changes WHERE scope_kind='topic' AND scope_id='t1' ORDER BY seq")
+        # The topic's own keys and its outcome's record keys.
+        expected = self.sql("SELECT seq,resource_kind,resource_id,version FROM changes WHERE scope_kind='topic' AND scope_id='t1' "
+                            "OR scope_kind='outcome' AND scope_id='w1' ORDER BY seq")
+        self.assertIn(("workspace", "w1"), [(row[1], row[2]) for row in expected])
         self.assertEqual([(r["seq"], r["resource_kind"], r["resource_id"], r["version"]) for r in page["items"]], expected)
         self.rejected(self.store.view("outsider", "changes", {"scope": TOPIC, "cursor": dict(lower, actor_id="outsider")}), "FORBIDDEN")
 

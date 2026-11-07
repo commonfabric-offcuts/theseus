@@ -65,7 +65,7 @@ export function changesPage(answer, bootstrap, topicId, input = null) {
   }
   for (const item of answer.items) {
     if (!integer(item.seq) || item.seq <= previous || item.seq > upper || !integer(item.version) || item.version < 1 ||
-        typeof item.resource_id !== 'string' || !item.resource_id || !['topic', 'memory'].includes(item.resource_kind) ||
+        typeof item.resource_id !== 'string' || !item.resource_id || !['topic', 'memory', 'workspace'].includes(item.resource_kind) ||
         item.resource_kind === 'topic' && item.resource_id !== topicId) throw diagnostic('The change key is malformed or outside this topic.');
     previous = item.seq;
   }

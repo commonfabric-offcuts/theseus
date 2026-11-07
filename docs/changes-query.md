@@ -55,11 +55,17 @@ access grant. Existing authority-fence errors retain their original codes.
 Explicit resync captures a fresh baseline and rereads permitted dependent views;
 it must preserve writing and old operation identities through recovery.
 
-At this revision, topic keys are topic versions and scoped Notebook item
-versions. Workspace keys are workspace creation and membership, topic versions
+At this revision, topic keys are topic versions, scoped Notebook item
+versions, and the topic's outcome's own record keys (`workspace`, keyed by the
+outcome, when its team, owner or coordinator changes), so an open topic page
+reads the topic again for who may organise it; a topic's key carries the
+topic's version, an outcome key the outcome's. Core writes those outcome keys
+under an `outcome` scope that holds nothing else, and a topic read takes them
+from it in its own index range; `outcome` cannot be requested itself. Workspace keys are workspace creation, membership and ownership, topic versions
 and workspace Notebook items. Actor keys are private drafts, notes,
 submissions, media, openings, participation, deliveries, workspace membership
-(`workspace`, keyed by the workspace, when the actor is added or removed) and
+(`workspace`, keyed by the workspace, when the actor is added or removed,
+or gains or hands on its ownership) and
 `waiting` (keyed by the topic, at its new version, when a topic starts or
 stops waiting on the actor, including when they lose the topic), and `mark`
 (keyed by the message, at its new mark revision, when the actor marks a

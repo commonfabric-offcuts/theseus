@@ -29,8 +29,8 @@ class TopicStateVerbCase(AgentVerbCase):
         for argv, actor, code, word in ((("state", "t1", "done"), "agent-b", 2, "FORBIDDEN"),
                                         (("state", "t1", "review", "--waiting-on", "owner"), "agent-a", 2, "INVALID_ARGUMENT"),
                                         (("state", "t1", "paused"), "agent-a", 2, "state TOPIC active|waiting|review|done"),
-                                        (("rename", "t1", "Mine now"), "agent-a", 2, "FORBIDDEN"),
-                                        (("archive", "t1"), "agent-a", 2, "FORBIDDEN"),
+                                        (("rename", "t1", "Mine now"), "agent-b", 2, "FORBIDDEN"),
+                                        (("archive", "t1"), "agent-b", 2, "FORBIDDEN"),
                                         (("state", "t-missing", "done"), "agent-a", 2, "FORBIDDEN")):
             with self.subTest(argv=argv):
                 result, out, err = self.run_cli(*argv, actor=actor)

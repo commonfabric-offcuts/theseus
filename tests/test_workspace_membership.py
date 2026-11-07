@@ -43,7 +43,8 @@ class MembershipCase(fixtures.StoreCase):
         self.assertEqual(self.version(), version)
         self.assertEqual(self.sql("SELECT scope_kind,scope_id,resource_kind,resource_id,version FROM changes "
                                   "WHERE resource_kind='workspace' ORDER BY seq"),
-                         [("workspace", "w1", "workspace", "w1", 1), ("workspace", "w1", "workspace", "w1", version),
+                         [("workspace", "w1", "workspace", "w1", 1), ("outcome", "w1", "workspace", "w1", 1),
+                          ("workspace", "w1", "workspace", "w1", version), ("outcome", "w1", "workspace", "w1", version),
                           ("actor", "outsider", "workspace", "w1", version)])
         self.assertEqual(self.workspace_ids("outsider"), ["w1"])
         listing = self.members("outsider")
@@ -81,9 +82,10 @@ class MembershipCase(fixtures.StoreCase):
         self.assertEqual((receipt["status"], receipt["result"]["version"]), ("committed", version), receipt)
 
     def test_only_the_owner_changes_membership_and_cannot_be_removed(self):
+        # agent-b is a plain member; what the coordinator agent-a may do is in test_coordinator_rights.
         before = self.state()
-        self.refused(self.member_set("outsider", True, actor="agent-a"), "FORBIDDEN")
-        self.refused(self.member_set("agent-b", False, actor="agent-a"), "FORBIDDEN")
+        self.refused(self.member_set("outsider", True, actor="agent-b"), "FORBIDDEN")
+        self.refused(self.member_set("agent-a", False, actor="agent-b"), "FORBIDDEN")
         self.refused(self.member_set("outsider", True, actor="outsider"), "FORBIDDEN")
         self.refused(self.member_set("owner", False), "OWNER_REQUIRED")
         self.refused(self.member_set("outsider", True, revision=self.base - 1), "REVISION_CONFLICT")

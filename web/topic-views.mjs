@@ -38,6 +38,9 @@ export class TopicViews {
   }
   keys(item) {
     if (item.resource_kind === 'topic') return [{ key: 'topic', version: item.version }];
+    // Its outcome's record changed (its team, owner or coordinator) and the topic's
+    // version did not: the topic is read again for who may organise it now.
+    if (item.resource_kind === 'workspace') return [{ key: 'topic', version: 0 }];
     this.retain(); this.revisions.observe(item.resource_id, item.version); this.paint('offer');
     if (this.memory.has(item.resource_id)) return [{ key: 'memory:' + item.resource_id, version: item.version }];
     this.unloadedChanged = true;
