@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 
 // Asking in the real browser against the real server: an agent's ask shows on
 // the topic's row as waiting on the reader, with how long it has waited; the
-// reader's reply clears it; and a reply sent with Ask ticked waits on whoever
-// it names, while one sent without Ask waits on nobody.
+// reader's reply clears it; and a reply sent with Ask chosen waits on whoever
+// it names, while one sent as a Tell waits on nobody. (A reply to one agent
+// starts as a whisper, whisper_native.mjs; these choose Tell or Ask.)
 export async function asksChecks({ check, page, until, control, view, facts, replace, shot }) {
   const row = '#topics .nav-item[data-topic-id="t1"]';
   const mark = p => p.evaluate(`(()=>{const m=document.querySelector(${JSON.stringify(row + ' .topic-state')});return m?{text:m.textContent,title:m.title,state:m.dataset.state,mine:m.classList.contains('mine')}:null})()`);
+  const choice = p => p.evaluate(`Object.fromEntries([...document.querySelectorAll('#intent-row label[data-intent]')].map(l=>[l.dataset.intent,
+    (l.querySelector('input').checked?'checked':'')+(l.querySelector('input').disabled?'disabled':'')]))`);
   const asks = async () => (await view('topic', { topic_id: 't1' })).topic.asks ?? [];
   const addressTo = async (p, name) => {
     await p.point('#recipient-input'); await p.send('Input.insertText', { text: name }); await p.key('Enter');
@@ -30,15 +33,17 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
     assert.deepEqual(p.errors, []);
   });
 
-  await check('asks a reply with Ask unticked tells, and ends the wait on the reader', async () => {
+  await check('asks a reply chosen as a Tell tells, and ends the wait on the reader', async () => {
     const p = await page('asks-tell', null, true); await p.open(1);
-    assert.equal(await p.evaluate('document.querySelector("#ask-choice").hidden'), true, 'no Ask before anyone is named');
+    assert.equal((await choice(p)).ask, 'disabled', 'no Ask before anyone is named');
     await replace(p, 'The fourth works.');
     await addressTo(p, facts.agent);
-    assert.equal(await p.evaluate('!document.querySelector("#ask-choice").hidden && !document.querySelector("#ask-toggle").checked'), true, 'Ask shows, unticked');
+    assert.deepEqual(await choice(p), { whisper: 'checked', tell: '', ask: '' }, 'Ask can be chosen once someone is named');
+    await p.point('#intent-row label[data-intent="tell"]');
+    await until(async () => (await choice(p)).tell === 'checked', 'Tell chosen');
     const id = await sent(p, 0);
     const source = await view('source', { source_ref: { kind: 'message', id } });
-    assert.equal(source.intent, 'tell', 'an unticked reply is a tell');
+    assert.equal(source.intent, 'tell', 'a reply chosen as a Tell tells');
     assert.deepEqual((await asks()).filter(a => a.actor_id === facts.actor), [], 'the reader answered, so nothing waits on them');
     await until(async () => (await mark(p)) === null, 'row mark gone once nothing waits');
     assert.deepEqual(p.errors, []);
@@ -48,8 +53,9 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
     const p = await page('asks-ask', null, true); await p.open(1);
     await replace(p, 'Who signs off on it?');
     await addressTo(p, facts.agent);
-    await p.point('#ask-toggle');
-    assert.equal(await p.evaluate('document.querySelector("#ask-toggle").checked'), true);
+    await p.point('#intent-row label[data-intent="ask"]');
+    await until(async () => (await choice(p)).ask === 'checked', 'Ask chosen');
+    assert.equal(await p.evaluate('document.querySelector("#send-reply .send-word").textContent'), 'Ask');
     const id = await sent(p, 0);
     assert.equal((await view('source', { source_ref: { kind: 'message', id } })).intent, 'ask');
     assert.deepEqual((await asks()).map(a => [a.actor_id, a.message_id, a.by]), [[facts.agent, id, facts.actor]]);

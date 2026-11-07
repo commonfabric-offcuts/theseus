@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { Editor } from '../web/editor.mjs';
 import { Reader } from '../web/reader.mjs';
 import { replyLine } from '../web/replies.mjs';
+import { miniDocument } from './fixtures/mini_dom.mjs';
 
 const context = { instanceId: 'fixture', actor: 'tony', sourceRef: { kind: 'message', id: 'm-1' }, topicId: 't1', kind: 'reply' };
 const editor = (draft = {}) => new Editor(context, { id: 'reply', revision: 0, generation: 'g', ...draft });
@@ -63,13 +64,14 @@ test('the Reader shows the offered author as a recipient, and its remove decline
   globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
   t.after(() => { globalThis.document = previous; });
   const chips = Object.assign(new Element('div'), { root: true }), input = new Element('input'), edits = [];
-  const ask = new Element('label'), toggle = new Element('input');
   const reply = editor();
   reply.offerAddressees(['fable']);
   const reader = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply }, presentation: {}, admits: () => true,
-    $: id => ({ 'recipient-chips': chips, 'recipient-input': input, 'ask-choice': ask, 'ask-toggle': toggle })[id],
+    $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id],
     callbacks: { edit: e => edits.push(e), reach: () => ({ reachable: true }) },
+    // How the reply is sent has its own checks (ui_whisper.test.mjs).
+    paintChoice() {},
   });
   reader.paintRecipients();
   assert.deepEqual(chips.children.map(chip => chip.dataset.name), ['fable']);
@@ -86,13 +88,14 @@ test('after typing, one press on the offered author\'s remove takes them off, an
   globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
   t.after(() => { globalThis.document = previous; });
   const chips = Object.assign(new Element('div'), { root: true }), input = new Element('input'), edits = [];
-  const ask = new Element('label'), toggle = new Element('input');
   const reply = editor();
   reply.offerAddressees(['fable']);
   const reader = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply }, presentation: {}, admits: () => true,
-    $: id => ({ 'recipient-chips': chips, 'recipient-input': input, 'ask-choice': ask, 'ask-toggle': toggle })[id],
+    $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id],
     callbacks: { edit: e => edits.push(e), reach: () => ({ reachable: true }) },
+    // How the reply is sent has its own checks (ui_whisper.test.mjs).
+    paintChoice() {},
   });
   reader.paintRecipients();
   // Typing edits the writing and leaves the recipient chips as they were drawn.
@@ -102,7 +105,7 @@ test('after typing, one press on the offered author\'s remove takes them off, an
   chips.children[0].children.find(node => node.tag === 'button').onclick();
   assert.deepEqual({ addressees: reply.draft.addressees, chips: chips.children.map(chip => chip.dataset.name) },
     { addressees: [], chips: [] }, 'one press removes them');
-  assert.deepEqual([reply.draft.intent, ask.hidden], [null, true], 'a reply to nobody neither asks nor tells, and Ask goes');
+  assert.deepEqual([reply.draft.intent, reply.draft.whisper], [null, null], 'a reply to nobody neither asks, tells nor whispers');
   assert.equal(edits.length, 1, 'the removal is saved like any other edit');
   reply.edit({ body: '' });
   reader.paintRecipients();
@@ -111,33 +114,33 @@ test('after typing, one press on the offered author\'s remove takes them off, an
     { addressees: [], chips: [] }, 'emptying the reply does not offer them again');
 });
 
-test('typing that takes the offered author shows Ask beside their name', t => {
+test('a reply offered to an agent shows Whisper from the start, and typing that takes the author keeps it', t => {
   const previous = { document: globalThis.document, window: globalThis.window };
-  globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
+  const document = miniDocument();
+  globalThis.document = document;
   const win = { listeners: {}, getSelection: () => null, addEventListener(type, listener, capture) { this.listeners[type] = [listener, capture]; } };
   globalThis.window = win;
   t.after(() => Object.assign(globalThis, previous));
   // The Reader's own wiring: every element it binds listens, and the writing
   // field is typed into as a browser does, through its input event.
-  const listening = tag => Object.assign(new Element(tag), {
-    listeners: {}, addEventListener(type, listener) { this.listeners[type] = listener; },
-  });
-  const elements = new Map(), element = id => elements.get(id) ?? elements.set(id, listening('el')).get(id);
-  const field = Object.assign(listening('textarea'), { value: '', selectionStart: 0, selectionEnd: 0, readOnly: false });
+  const element = id => document.byId(id);
+  const field = Object.assign(document.createElement('textarea'), { value: '', selectionStart: 0, selectionEnd: 0, readOnly: false });
   const reply = editor();
   reply.offerAddressees(['fable']);
   const reader = Object.assign(Object.create(Reader.prototype), {
-    dialog: Object.assign(listening('dialog'), { querySelector: selector => element(selector.replace(/^#/, '')) }),
-    field, sourceBody: Object.assign(listening('div'), { querySelectorAll: () => [] }), mode: 'reply', sessions: { reply }, presentation: {},
-    callbacks: { edit() {}, admits: () => true }, paintStatus() {},
+    dialog: Object.assign(document.createElement('dialog'), { querySelector: selector => element(selector.replace(/^#/, '')) }),
+    field, sourceBody: Object.assign(document.createElement('div'), { querySelectorAll: () => [] }), mode: 'reply', sessions: { reply }, presentation: {},
+    callbacks: { edit() {}, admits: () => true, people: () => ({ kindOf: name => name === 'fable' ? 'agent' : undefined, everyone: ['fable'] }) }, paintStatus() {},
   });
   reader.bind();
-  reader.paintAsk();
-  assert.equal(element('ask-choice').hidden, true, 'an empty reply only offers the author, so it asks no one yet');
+  const checked = () => element('intent-row').querySelectorAll('input').find(input => input.checked)?.value;
+  reader.paintChoice();
+  assert.deepEqual([reply.draft.addressees, checked()], [[], 'whisper'], 'an empty reply only offers the author, and already shows how it would go');
   field.value = 'H'; field.selectionStart = field.selectionEnd = 1;
   field.listeners.input();
   assert.deepEqual(reply.draft.addressees, ['fable'], 'the first letter took the offered author');
-  assert.equal(element('ask-choice').hidden, false, 'the reply now names them, so Ask shows');  // A click outside, on the backdrop, closes the Reader as × does; one inside does not.
+  assert.equal(checked(), 'whisper', 'the reply now names them, and is still a whisper');
+  // A click outside, on the backdrop, closes the Reader as × does; one inside does not.
   let closes = 0;
   reader.close = () => { closes++; };
   // No smaller pop-up is open inside it.

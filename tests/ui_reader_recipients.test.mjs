@@ -42,8 +42,10 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
   const editor = { draft: { addressees: ['fable', 'stranger'] }, edit(patch) { Object.assign(this.draft, patch); }, declineAddressee() {} };
   const reader = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply: editor }, presentation: {}, admits: () => true,
-    $: id => ({ 'recipient-chips': chips, 'recipient-input': input, 'ask-choice': new Element('label'), 'ask-toggle': new Element('input') })[id],
+    $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id],
     callbacks: { edit() {}, reach: name => name === 'stranger' && !inTopic ? { reachable: false, add: async () => answer } : { reachable: true } },
+    // How the reply is sent has its own checks (ui_whisper.test.mjs).
+    paintChoice() {},
   });
   const chip = name => chips.children.find(node => node.textContent === name);
   const offer = () => chip('stranger').children.find(node => node.textContent.startsWith('Add to topic'));
@@ -82,7 +84,7 @@ test('a chip rebuilt while its add is out shows it still out, sends nothing more
   const reach = name => ({ reachable: false, scope, add: () => { adds++; return new Promise(resolve => { settle = resolve; }); } });
   const reader = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply: editor }, presentation: {}, admits: () => true,
-    $: id => ({ 'recipient-chips': chips, 'recipient-input': input, 'ask-choice': new Element('label'), 'ask-toggle': new Element('input') })[id], callbacks: { edit() {}, reach },
+    $: id => ({ 'recipient-chips': chips, 'recipient-input': input })[id], callbacks: { edit() {}, reach }, paintChoice() {},
   });
   const offer = () => chips.children[0].children.find(node => node.textContent.startsWith('Add to topic'));
   const said = () => chips.children[0].children.find(node => node.className === 'reach-notice');
@@ -122,7 +124,9 @@ test('the origin line names the author, the kind and when it was sent, and leave
   globalThis.document = { createElement: tag => new Element(tag) };
   t.after(() => { globalThis.document = previous; clock.now = now; });
   const origin = new Element('div');
-  const reader = Object.assign(Object.create(Reader.prototype), { $: id => { assert.equal(id, 'reader-origin'); return origin; } });
+  const whispering = [];
+  const reader = Object.assign(Object.create(Reader.prototype), { $: id => { assert.equal(id, 'reader-origin'); return origin; },
+    sourceBody: { classList: { toggle: (name, on) => whispering.push([name, on]) } } });
   const sent_ms = new Date(2026, 10, 5, 5, 44).getTime();
   clock.now = () => new Date(2026, 10, 6, 9, 0).getTime();
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm1' }, sent_ms });
@@ -133,4 +137,5 @@ test('the origin line names the author, the kind and when it was sent, and leave
   assert.equal(origin.text, 'tony · Message · 5:44 AM Thu Nov 5', 'from before yesterday: dated');
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'memory', id: 'n1', revision: 3 } });
   assert.equal(origin.text, 'tony · Notebook · revision 3');
+  assert.ok(whispering.every(([name, on]) => name === 'whispering' && on === false), 'none of these is a whisper, so none wears its line');
 });

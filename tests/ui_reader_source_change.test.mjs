@@ -11,6 +11,8 @@ function reader(editor, shown) {
   const r = Object.assign(Object.create(Reader.prototype), {
     $, mode: 'reply', sessions: { reply: editor, note: editor }, source: { source_ref: shown }, presentation: {},
     field: { readOnly: false }, callbacks: {}, paintImages() {}, paintOffer() {}, paintAccess() {},
+    // How the reply is sent has its own checks (ui_whisper.test.mjs).
+    paintChoice() {},
   });
   r.paintStatus();
   return $('source-update');

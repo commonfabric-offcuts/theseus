@@ -599,9 +599,10 @@ function paintViews(kind) {
         if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
         return open(event);
       };
+      // On its card first, so a whisper's words name the card for a screen reader.
       const author = node('span', undefined, 'message-author');
-      paintCardAuthor(author, item);
       card.append(author);
+      paintCardAuthor(author, item);
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
@@ -719,8 +720,9 @@ function paintMarks() {
 }
 function paintReaderMark() {
   const p = registry?.current, ref = p?.source?.source_ref;
-  // Any readable message can start a topic of its own in this outcome.
-  $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
+  // Any readable message can start a topic of its own in this outcome, except
+  // a whisper, which stays between its two people (docs/whispers.md).
+  $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && !p.source.whisper);
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
   paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
 }

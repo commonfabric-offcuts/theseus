@@ -167,7 +167,13 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await touch(add.x + add.width + 2, add.y + add.height / 2);
     assert.equal(await field(p), 'Footer touch narrow');
     assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0, 'an Add image edge touch cannot send');
-    if (await p.evaluate('!document.querySelector("#cancel-image").hidden')) await p.point('#cancel-image');
+    // While an image is being chosen the footer says why Send waits, and at a
+    // phone's width, under the Whisper/Tell/Ask row and a reply under review,
+    // the writing pane scrolls to its Cancel as a person would.
+    if (await p.evaluate('!document.querySelector("#cancel-image").hidden')) {
+      await p.evaluate('document.querySelector("#cancel-image").scrollIntoView({block:"nearest"})');
+      await p.point('#cancel-image');
+    }
     await shot(p, 'restoration-footer-touch');
     const sendAfterEdge = await p.box('#send-reply');
     await touch(sendAfterEdge.x + sendAfterEdge.width / 2, sendAfterEdge.y + sendAfterEdge.height / 2);

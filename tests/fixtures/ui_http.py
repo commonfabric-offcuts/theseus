@@ -411,8 +411,10 @@ def main():
                 "source_ref": source, "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
                 # An agent's message to someone says ask or tell; a case that names
-                # no intent tells.
-                **({"intent": request.get("intent") or "tell"} if request.get("addressees") or request.get("intent") else {})),
+                # no intent tells. With "whisper": true it answers a whisper instead,
+                # which says neither.
+                **({"whisper": True} if request.get("whisper") else
+                   {"intent": request.get("intent") or "tell"} if request.get("addressees") or request.get("intent") else {})),
                 {"draft_id": draft["id"]}, {"draft_revision": draft["revision"]}, sender=sender)
             command("submission.prepare", operation + "-prepare", {
                 "draft_id": draft["id"], "submission_id": operation + "-submission",

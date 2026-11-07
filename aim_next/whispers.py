@@ -31,7 +31,7 @@ WHISPER_SCHEMA = [
     "BEGIN SELECT RAISE(ABORT, 'whisper shape'); END",
 ]
 WHISPER_DOWN = ("DROP TRIGGER whisper_shape", "DROP INDEX message_reply_links", "ALTER TABLE messages DROP COLUMN private_to")
-# Release 20's code would show every whisper to every reader, so once one exists
+# Release 22's code would show every whisper to every reader, so once one exists
 # the step back is refused and a bad release is fixed forward.
 WHISPER_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM messages WHERE private_to IS NOT NULL)"
 

@@ -172,9 +172,13 @@ export class Freshness {
     this.stopped = true; this.status(result);
   }
   // A whisper in the open topic, from the reader's own scope: its key loads
-  // the topic's newest messages down to it (TopicViews.refresh).
+  // the topic's newest messages down to it (TopicViews.refresh). A checkpoint
+  // stands at the newest commit anywhere when it was read, so while the
+  // topic's is no further on than the reader's own, nothing can have been
+  // whispered since, and an idle page reads one scope a pass, as before.
   async readWhispers(read, current) {
     let input = this.actorCheckpoint;
+    if (!input || this.continuation || this.checkpoint.after_seq <= input.after_seq) return;
     while (input && current()) {
       const answer = actorPage(await read('changes', { scope: actorScope(this.bootstrap), limit: 50, cursor: input }), this.bootstrap);
       if (!current()) return;
