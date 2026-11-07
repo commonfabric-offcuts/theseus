@@ -513,3 +513,13 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .message-menu-list{z-index:20;display:flex;flex-direction:column;width:max-content;max-width:calc(100vw - 16px);padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);box-shadow:0 6px 24px rgb(0 0 0 / .18)}
 .message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem}
 .message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}
+/* The Health page (docs/health.md): its quiet entry under the instance label, what is wrong at the top, then one line each, opening in place. */
+.health-link{font-size:.85rem;color:var(--muted);text-underline-offset:3px;min-height:1.75rem;display:inline-flex;align-items:center}.health-link[aria-current=page]{color:var(--accent);font-weight:600}
+.health-page{max-width:46rem}
+.health-top{display:grid;gap:.5rem;margin:0 0 1.6rem;width:fit-content;max-width:100%}.health-top p{overflow-wrap:anywhere}
+.health-top.health-bad p{font-weight:600;color:var(--alert)}
+.health-heading{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:1.4rem 0 .3rem}
+.health-line{width:fit-content;max-width:100%}.health-line summary{cursor:pointer;min-height:2.75rem;padding:.55rem 0;overflow-wrap:anywhere}
+.health-line summary::marker{color:var(--muted)}.health-line .health-label{color:var(--muted)}
+.health-line.bad summary{color:var(--alert)}.health-line.bad .health-label{color:inherit}
+.health-line p{margin:0 0 .35rem 1.1rem;overflow-wrap:anywhere}

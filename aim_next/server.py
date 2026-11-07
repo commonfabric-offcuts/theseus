@@ -551,6 +551,10 @@ class Handler(BaseHTTPRequestHandler):
             result = self.server.shared_reads.read(key, lambda begun, disconnected: self._store_call(
                 lambda store: store.view(self.server.actor, value["name"], value["args"]),
                 begun=begun, disconnected=disconnected, arrived=arrived), self._read_disconnected, arrived)
+            if value["name"] == "health" and isinstance(result, dict) and "error" not in result:
+                # The one line Core cannot know: this server, which answered the read.
+                result = dict(result, server={"started_ms": self.server.started_ms, "pid": os.getpid(),
+                                              "live_feed": self.server.live_feed is not None})
         self._json_response(200, result)
 
     def _upload_framing(self):
@@ -925,6 +929,7 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
     if max_reads < 1 or max_json_bytes < 1:
         raise ValueError("Positive request bounds are required")
     server = AIMHTTPServer((host, port), Handler)
+    server.started_ms = int(time.time() * 1000)
     server.store_factory = store_factory
     server.instance_id = instance_id
     server.actor = actor

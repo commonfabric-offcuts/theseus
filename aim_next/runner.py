@@ -221,8 +221,11 @@ class Runner:
     def _acquire(self, db, guard, now, lease_ms, reason=None):
         token = "r-" + uuid.uuid4().hex
         until = now + lease_ms
-        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=?,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
-                   (token, guard.runner_id, guard.generation, until, reason, os.getpid(), now))
+        # How the run this one replaces ended, for the Health page (health.py).
+        prior = self._runner_prior(self._runner_state(db), now)
+        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=?,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL,"
+                   "prior_state=?,prior_reason=?,prior_ended_ms=? WHERE id=1",
+                   (token, guard.runner_id, guard.generation, until, reason, os.getpid(), now) + prior)
         return {"status": "acquired", "runner_token": token, "lease_until_ms": until}, True
 
     def acquire_runner(self, guard, lease_ms=30000):
@@ -282,6 +285,7 @@ class Runner:
                     raise RunnerError("RUNNER_STATE_INVALID", "A live claim appeared in the due index")
                 if row["claim_token"] is not None:
                     db.execute("INSERT INTO wake_results SELECT id,'expired',? FROM wake_attempts WHERE claim_token=?", (now, row["claim_token"]))
+                    self._wake_settled(db, row["recipient_id"], "expired", now)
                 attempt, claim = "a-" + uuid.uuid4().hex, "c-" + uuid.uuid4().hex
                 db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms,handed_seq) "
                            "VALUES (?,?,?,?,?,?,?,?,?)", (attempt, claim, runner_token, row["recipient_id"], row["wake_generation"], row["last_seq"], now, until, row["handed_seq"]))
@@ -323,6 +327,7 @@ class Runner:
             else:
                 due = now + delay
             db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], outcome, now))
+            self._wake_settled(db, row["recipient_id"], outcome, now)
             db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,retry_count=? WHERE recipient_id=?", (due, retry, row["recipient_id"]))
             if outcome == "accepted" and row["pending_count"]:
                 # The notice reached the agent's chat; it stays unanswered until the agent acts.
@@ -376,6 +381,7 @@ class Runner:
         if pending and row["last_seq"] > attempt["captured_seq"] and self._pending_above(db, attempt["recipient_id"], attempt["captured_seq"]):
             due = now
         db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], "handed", now))
+        self._wake_settled(db, attempt["recipient_id"], "handed", now)
         db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,error_code,finished_ms) "
                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                    (attempt["id"], attempt["recipient_id"], turn["thread_id"], turn["turn_id"], turn["mode"], turn["client_id"],
@@ -611,7 +617,8 @@ class Runner:
                 return {"status": "paused", "version": state["version"]}, False
             if ownership != "running":
                 return {"status": "lost"}, False
-            db.execute("UPDATE runner_state SET state='paused',version=version+1,reason_code=? WHERE id=1", (reason_code,))
+            # ended_ms says since when wakes have been paused; the next acquisition clears it.
+            db.execute("UPDATE runner_state SET state='paused',version=version+1,reason_code=?,ended_ms=? WHERE id=1", (reason_code, now))
             if child is not None:
                 db.execute("UPDATE runner_state SET child_pid=?,child_started_at=? WHERE id=1", child)
             return {"status": "paused", "version": state["version"] + 1}, True

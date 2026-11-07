@@ -30,6 +30,7 @@ from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
 from .standing_conversation import STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
 from .pipeline import PIPELINE_DOWN, PIPELINE_OCCUPIED, PIPELINE_SCHEMA
+from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -102,6 +103,11 @@ STEPS = (
     # placement and edit, the messages whose subject is an item, and the release
     # notes written by hand. Stepping back is refused once any of them exists.
     ("28", "29", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
+    # The next version keeps, per recipient, when a wake last got through and
+    # how many have not since, and how the runner's previous run ended, for the
+    # Health page. Both are worked out from settlements, so stepping back loses
+    # no record.
+    ("29", "30", HEALTH_SCHEMA + HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED),
 )
 
 

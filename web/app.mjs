@@ -45,6 +45,7 @@ import { openMessageMenu, sayOn, copyText } from './message-menu.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
+import { HealthPage } from './health.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -1759,6 +1760,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='create')return initializeCreationPage(route);
   if(route.kind==='opening')return initializeOpeningPage(route);
   if(route.kind==='pipeline'||route.kind==='item')return initializePipelinePage(route);
+  if(route.kind==='health')return initializeHealthPage();
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   status('');
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
@@ -1887,6 +1889,23 @@ async function initializePipelinePage(route) {
       {name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
+  document.body.dataset.ready='true';
+}
+// The instance's Health page (docs/health.md): no rail, the logo block and
+// "← Outcomes" head it; it reads the health view again on every commit and
+// says at once when the live feed drops.
+async function initializeHealthPage() {
+  status('');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  document.querySelector('.rail').hidden=true;
+  $('main').prepend($('outcomes-home'));placeBrand($('main'));
+  $('health-link').setAttribute('aria-current','page');
+  $('topic-title').textContent='Health';$('topic-description').textContent='Read live from Theseus; it follows every change.';
+  const page=new HealthPage({host:$('health-page'),feed:()=>live?.state??null,
+    read:async()=>checkedView(await api.view('health',{},{readClass:'foreground'}),bootstrap.instance_id)});
+  $('health-page').hidden=false;
+  live?.listen(event=>{if(event.kind==='state')page.paint();});
+  await followCommits(()=>page.load())();
   document.body.dataset.ready='true';
 }
 // An outcome's Notebook pages on its own page, each opening in place.
