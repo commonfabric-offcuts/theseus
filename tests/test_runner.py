@@ -164,6 +164,47 @@ class RunnerCase(DeliveryCase):
         self.assertNotEqual(resumed["runner_token"], token)
         self.assertEqual(reopened.view("owner", "capabilities", {})["runner"]["state"], "running")
 
+    def test_a_cleanup_pause_names_its_child_and_only_its_resume_may_say_the_group_is_gone(self):
+        self.send_next()
+        guard = self.guard()
+        token = self.token(guard)
+        claim = self.claim(guard, token)
+        self.assertEqual(self.store.record_runner_child(guard, token, claim["claim_token"], 4100, "registered")["status"], "recorded")
+        for reason, child in (("storage_failure", (4200, "t")), ("cleanup_failed", (0, "t")),
+                              ("cleanup_failed", (4200, "")), ("cleanup_failed", [4200, "t"])):
+            with self.subTest(reason=reason, child=child), self.assertRaises(StoreError):
+                self.store.pause_runner(guard, token, reason, child=child)
+        # The pause, not an earlier registration, names the child whose group it waits on.
+        paused = self.store.pause_runner(guard, token, "cleanup_failed", child=(4200, "2026-11-07T01:40:35+00:00"))
+        self.assertEqual(paused["status"], "paused")
+        self.assertEqual(self.sql("SELECT state,reason_code,child_pid,child_started_at FROM runner_state"),
+                         [("paused", "cleanup_failed", 4200, "2026-11-07T01:40:35+00:00")])
+        holder = self.store.runner_status()["holder"]
+        self.assertEqual((holder["child_pid"], holder["child_started_at"]), (4200, "2026-11-07T01:40:35+00:00"))
+        guard.close()
+        fresh = self.guard("resumer")
+        with self.assertRaises(StoreError):
+            self.store.resume_runner(fresh, paused["version"], reason="anything")
+        resumed = self.store.resume_runner(fresh, paused["version"], reason="cleanup_confirmed")
+        self.assertEqual(resumed["status"], "acquired")
+        # Status shows why it runs again until its next pause or acquisition.
+        self.assertEqual(self.sql("SELECT state,reason_code,child_pid FROM runner_state"),
+                         [("running", "cleanup_confirmed", None)])
+        self.assertEqual(self.store.runner_status()["reason_code"], "cleanup_confirmed")
+
+    def test_only_a_cleanup_pause_is_resumed_for_its_childs_group_being_gone(self):
+        guard = self.guard()
+        token = self.token(guard)
+        paused = self.store.pause_runner(guard, token, "storage_failure")
+        guard.close()
+        fresh = self.guard("resumer")
+        with self.assertRaises(StoreError) as caught:
+            self.store.resume_runner(fresh, paused["version"], reason="cleanup_confirmed")
+        self.assertEqual(caught.exception.code, "REVISION_CONFLICT")
+        self.assertEqual(self.sql("SELECT state FROM runner_state"), [("paused",)])
+        self.assertEqual(self.store.resume_runner(fresh, paused["version"])["status"], "acquired")
+        self.assertEqual(self.sql("SELECT reason_code FROM runner_state"), [(None,)])
+
     def test_pause_refuses_superseded_token_changed_epoch_and_closed_guard(self):
         guard = self.guard()
         old = self.token(guard)

@@ -31,8 +31,11 @@ class Clock:
 
 
 class LoopFault(Exception):
-    def __init__(self, reason='storage_failure'):
+    def __init__(self, reason='storage_failure', child=None, detail=None):
         self.reason = reason
+        # cleanup_failed: the (pid, started_at) whose group cleanup was not
+        # confirmed, and the fixed code of the step that did not confirm it.
+        self.child, self.detail = child, detail
 
 
 class ShortLease(Exception):
@@ -51,13 +54,14 @@ class EffectsLoop:
     a delivery, provisions a pin, creates a service or reloads that mapping.
     """
     def __init__(self, profile, store, guard, watch, routes, *, selected_executable,
-                 resume_version=None, clock=None, emit=None, hosted=frozenset(), host_log=None):
+                 resume_version=None, resume_reason=None, clock=None, emit=None, hosted=frozenset(), host_log=None):
         self.profile, self.store, self.guard, self.watch = profile, store, guard, watch
         self.routes = dict(routes)
         # Only these actors are ever claimed; people and unrouted agents stay pending.
         self.routed = sorted(self.routes)
         self.executable = selected_executable
         self.resume_version = resume_version
+        self.resume_reason = resume_reason
         self.clock = clock or Clock()
         self.emit = emit or (lambda event: None)
         self.token = None
@@ -179,7 +183,8 @@ class EffectsLoop:
     def _acquire(self):
         def operation():
             if self.resume_version is not None:
-                return self.store.resume_runner(self.guard,self.resume_version,lease_ms=30000)
+                return self.store.resume_runner(self.guard,self.resume_version,lease_ms=30000,
+                                                reason=self.resume_reason)
             return self.store.acquire_runner(self.guard,lease_ms=30000)
         value = self._preclaim('acquire',operation)
         if value is None: return None
@@ -338,8 +343,10 @@ class EffectsLoop:
                         owner_lease_until_ms=self.lease,
                         record_child=lambda pid,started_at:self._register(claim,pid,started_at))
                 except wake_adapter.AdapterFault as error:
-                    reason = 'cleanup_failed' if str(error)=='cleanup_unconfirmed' else 'storage_failure'
-                    raise LoopFault(reason) from error
+                    if str(error)=='cleanup_unconfirmed':
+                        raise LoopFault('cleanup_failed',child=error.child,
+                                        detail=_fault_code(error.__cause__)) from error
+                    raise LoopFault('storage_failure') from error
                 except wake_adapter.RouteUnavailable as error:
                     # The adapter propagates these post-validation binding
                     # verdicts instead of presenting them as ordinary absence.
@@ -358,12 +365,19 @@ class EffectsLoop:
                 or (result.outcome=='accepted' and result.exit_code != 0)
                 or (result.outcome=='queued' and result.exit_code != wake_adapter.QUEUED_EXIT)):
             raise LoopFault()
-        self._response(self._storage(lambda:self.store.finish_wake(
-            self.guard,self.token,claim['claim_token'],result.outcome)),'settled')
+        settled = self._response(self._storage(lambda:self.store.finish_wake(
+            self.guard,self.token,claim['claim_token'],result.outcome)))
+        stale = settled.get('status') == 'stale'
+        if not stale and settled.get('status') != 'settled':
+            raise LoopFault()
+        # A result confirmed after the claim's lease (cleanup may take until the
+        # runner's own lease ends) is late, as on the hosted path: Core records
+        # the claim expired at the next claim, and a lost or paused runner
+        # learns so at its next renewal. The child's cleanup is already confirmed.
         self.outstanding = None
         self.due = None
         self.read_needed = True
-        self._event('settled',outcome=result.outcome)
+        self._event('settled',outcome=result.outcome,**({'stale':True} if stale else {}))
 
     @staticmethod
     def _pin_reason(error):
@@ -401,16 +415,21 @@ class EffectsLoop:
             self.read_floor = self.clock.monotonic()+1
         return None
 
-    def _fault(self, reason):
+    def _fault(self, reason, child=None, detail=None):
         if self.token is None:
             return self._result('startup_failed',reason=reason,pause_saved=False)
+        # The pause names the child it waits on, so whoever resumes it (a person,
+        # or the supervisor once that group is gone) checks the right group.
+        named = {} if child is None else dict(child=child)
+        said = dict(reason=reason,**({} if detail is None else dict(detail=detail)),
+                    **({} if child is None else dict(child_pid=child[0])))
         try:
             self._response(self._storage(lambda:self.store.pause_runner(
-                self.guard,self.token,reason)),'paused')
+                self.guard,self.token,reason,**named)),'paused')
         except BaseException:
-            self._event('pause_unsaved',reason=reason)
+            self._event('pause_unsaved',**said)
             return self._result('fatal_unsaved',reason=reason,pause_saved=False)
-        self._event('paused',reason=reason)
+        self._event('paused',**said)
         return self._result('paused',reason=reason,pause_saved=True)
 
     def _stopped(self):
@@ -510,7 +529,7 @@ class EffectsLoop:
                 timeout = max(0,min(60,min(deadlines)-now))
                 self._wait(timeout)
         except LoopFault as error:
-            return self._fault(error.reason)
+            return self._fault(error.reason,error.child,error.detail)
         except codex_host.HostFault as error:
             return self._fault(error.reason)
         except (Exception,KeyboardInterrupt):
@@ -518,7 +537,14 @@ class EffectsLoop:
             return self._fault('storage_failure')
 
 
-def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
+def _fault_code(cause):
+    """The fixed code of the step that failed, never exception text."""
+    if isinstance(cause,wake_adapter.AdapterFault) and re.fullmatch('[a-z_]{1,64}',str(cause)):
+        return str(cause)
+    return None if cause is None else type(cause).__name__
+
+
+def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None, resume_reason=None,
                    selected_executable=None, emit=None, host_dir=None):
     """Dedicated process entry. No successful return implies activation.
 
@@ -543,7 +569,7 @@ def run_foreground(profile_path, runner_id, routes_path, *, resume_version=None,
         guard = store.runner_guard(runner_id)
         guard.__enter__()
         loop = EffectsLoop(profile,store,guard,watch,routes,
-            selected_executable=executable,resume_version=resume_version,emit=emit,
+            selected_executable=executable,resume_version=resume_version,resume_reason=resume_reason,emit=emit,
             hosted=hosted,host_log=host_log)
         result = loop.run()
     except (Exception,KeyboardInterrupt) as error:
@@ -597,11 +623,16 @@ def main(argv=None):
     parser.add_argument('--runner-id',required=True)
     parser.add_argument('--routes',required=True)
     parser.add_argument('--resume-version',type=int)
+    parser.add_argument('--resume-reason',choices=['cleanup_confirmed'],
+                        help='why this resume is safe, recorded with it: the supervisor saw the paused child\'s group gone')
     parser.add_argument('--host-dir',help='private directory for the host event log, required by hosted routes')
     args = parser.parse_args(argv)
+    if args.resume_reason is not None and args.resume_version is None:
+        parser.error('--resume-reason needs --resume-version')
     def report(event):
         print(json.dumps(event,separators=(',',':')),flush=True)
     result = run_foreground(args.profile,args.runner_id,args.routes,
-                            resume_version=args.resume_version,emit=report,host_dir=args.host_dir)
+                            resume_version=args.resume_version,resume_reason=args.resume_reason,
+                            emit=report,host_dir=args.host_dir)
     report(result)
     return 0 if result['status']=='stopped' else (75 if result['status']=='idle_lease_lost' else 2)

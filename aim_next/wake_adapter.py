@@ -54,7 +54,14 @@ class RouteResult:
 
 
 class AdapterFault(Exception):
-    """The caller must persist a pause; only fixed nonsecret codes escape."""
+    """The caller must persist a pause; only fixed nonsecret codes escape.
+
+    cleanup_unconfirmed names the child it could not confirm, as (pid,
+    started_at), so the pause can record exactly which group it waits on."""
+
+    def __init__(self, code, child=None):
+        super().__init__(code)
+        self.child = child
 
 
 # Preserve ownership if cleanup cannot be confirmed. The dedicated runner must
@@ -62,6 +69,11 @@ class AdapterFault(Exception):
 # Inherited guards independently fence children.
 _UNCONFIRMED_CHILDREN = []
 _PS_LIMIT = 1048576
+# Cleanup always has at least this long, however little of the runner's lease
+# is left (a wall-clock jump can end a lease at once); otherwise it has until
+# the lease ends. Escalation from TERM to KILL comes after ESCALATE_NS.
+CLEANUP_FLOOR_NS = 1000000000
+ESCALATE_NS = 400000000
 
 
 def _ticks():
@@ -72,13 +84,24 @@ def _remaining(deadline):
     return max(0.0, (deadline - _ticks()) / 1000000000)
 
 
-def _process_group(pid, deadline):
-    """Bounded observation, never a killpg(0) existence test or broker reap.
+def _lease_bound(owner_lease_until_ms):
+    """The runner's lease end as a monotonic deadline, fixed now so a later
+    wall-clock change cannot move it."""
+    if type(owner_lease_until_ms) is not int:
+        return _ticks()
+    left_ms = owner_lease_until_ms - int(time.time() * 1000)
+    return _ticks() + max(0, left_ms) * 1000000
 
-    Bounded by the caller's deadline alone, which keeps the invocation inside
-    the runner's lease: ps is waited on for as long as the caller may act, so a
-    ps slowed by load is not a failed observation."""
-    if not _remaining(deadline):
+
+def _process_group(pid, deadline, *, leader=True):
+    """One full process listing, never a killpg(0) existence test or broker reap.
+
+    Bounded by the caller's deadline alone (None: no bound), which keeps the
+    invocation inside the runner's lease: ps is waited on for as long as the
+    caller may act, so a ps slowed by load is not a failed observation. With
+    leader, the retained leader must appear; without, an absent leader is
+    simply not a member."""
+    if deadline is not None and not _remaining(deadline):
         raise AdapterFault("process_observation_failed")
     helper = subprocess.Popen(["/bin/ps", "-A", "-o", "pid=,pgid=,stat="],
                               stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -88,8 +111,8 @@ def _process_group(pid, deadline):
     try:
         os.set_blocking(helper.stdout.fileno(), False)
         while True:
-            left = _remaining(deadline)
-            if not left:
+            left = None if deadline is None else _remaining(deadline)
+            if left is not None and not left:
                 raise AdapterFault("process_observation_failed")
             if not select.select([helper.stdout], [], [], left)[0]:
                 raise AdapterFault("process_observation_failed")
@@ -117,7 +140,7 @@ def _process_group(pid, deadline):
                 members[row_pid] = parts[2]
         # A live or zombie direct child reserves this identity. An absent leader
         # is ambiguous (possibly an unrelated reaper), never permission to signal.
-        if pid not in members:
+        if leader and pid not in members:
             raise AdapterFault("leader_identity_unconfirmed")
         return members
     except (OSError, ValueError, subprocess.SubprocessError) as error:
@@ -132,41 +155,122 @@ def _process_group(pid, deadline):
             helper.wait()
 
 
-def _cleanup_child(child):
-    """Confirm no live group members, then and only then reap its leader."""
-    deadline = _ticks() + 1000000000
-    escalate = _ticks() + 400000000
-    sent_term = sent_kill = False
-    saw_descendant = False
-    empty_observations = 0
-    while _remaining(deadline):
-        members = _process_group(child.pid, deadline)
-        live = [pid for pid, state in members.items() if not state.startswith("Z")]
-        saw_descendant = saw_descendant or any(pid != child.pid for pid in live)
+class _GroupWatch:
+    """The live members of one process group, each with its exit event armed.
+
+    A process listing is the truth; the exit events only say when to look
+    again, so nothing here waits on a timer for a member to go. A member is
+    armed before the listing that is relied on, so its exit after that
+    listing always wakes the wait."""
+
+    def __init__(self, pgid, *, leader):
+        self.pgid, self.leader = pgid, leader
+        self.armed = set()
+        self.queue = select.kqueue()
+
+    def close(self):
+        self.queue.close()
+
+    def live(self, deadline):
+        """(live members, whether every one of them was armed before this listing)."""
+        members = _process_group(self.pgid, deadline, leader=self.leader)
+        live = {pid for pid, state in members.items() if not state.startswith("Z")}
+        fresh = live - self.armed
+        for pid in fresh:
+            try:
+                self.queue.control([select.kevent(pid, filter=select.KQ_FILTER_PROC,
+                    flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_ONESHOT,
+                    fflags=select.KQ_NOTE_EXIT)], 0, 0)
+            except OSError as error:
+                # Gone already: the next listing shows it so.
+                if error.errno != errno.ESRCH:
+                    raise AdapterFault("exit_observation_failed") from error
+            else:
+                self.armed.add(pid)
+        return live, not fresh
+
+    def wait(self, deadline):
+        """Until an armed member exits or the deadline (None: for as long as it takes)."""
+        timeout = None if deadline is None else _remaining(deadline)
+        events = self.queue.control(None, max(1, len(self.armed)), timeout)
+        for event in events:
+            if event.flags & select.KQ_EV_ERROR:
+                raise AdapterFault("exit_observation_failed")
+            self.armed.discard(event.ident)
+        return bool(events)
+
+
+def _empty_twice(watch, deadline, on_live=None):
+    """Return once two listings in a row find no live member.
+
+    Between listings it waits only on armed members' exits, or on on_live's
+    own deadline (its next escalation). Past deadline it is unconfirmed."""
+    empty = 0
+    while True:
+        live, armed = watch.live(deadline)
         if not live:
-            empty_observations += 1
-            if empty_observations >= 2:
-                return child.wait(timeout=_remaining(deadline)), saw_descendant
-        else:
-            empty_observations = 0
-            next_signal = None
-            if not sent_term:
-                sent_term = True
-                next_signal = signal.SIGTERM
-            elif not sent_kill and _ticks() >= escalate:
-                sent_kill = True
-                next_signal = signal.SIGKILL
-            if next_signal is not None:
-                try:
-                    os.killpg(child.pid, next_signal)
-                except OSError as error:
-                    # The retained leader still reserves this group. A member
-                    # can exit between observation and signal; only a later
-                    # observation may confirm cleanup. Do not reset escalation.
-                    if error.errno not in (errno.EPERM, errno.ESRCH):
-                        raise
-        time.sleep(min(0.01, _remaining(deadline)))
-    raise AdapterFault("cleanup_unconfirmed")
+            empty += 1
+            if empty >= 2:
+                return
+            continue
+        empty = 0
+        until = on_live(live) if on_live is not None else deadline
+        if not armed:
+            continue
+        if not watch.wait(until) and deadline is not None and not _remaining(deadline):
+            raise AdapterFault("cleanup_unconfirmed")
+
+
+def wait_group_gone(pgid):
+    """Block until no live process is left in process group pgid, with no bound.
+
+    For an observer that does not own the group: it never signals, and it
+    never needs the group's leader, which may long since have been reaped.
+    It wakes on members' exit events and confirms with two listings in a row."""
+    watch = _GroupWatch(pgid, leader=False)
+    try:
+        _empty_twice(watch, None)
+    finally:
+        watch.close()
+
+
+def _cleanup_child(child, deadline):
+    """Confirm no live group members, then and only then reap its leader.
+
+    Waits on members' exits, never on a fixed budget: only deadline (the
+    runner's lease end) bounds it. TERM on the first live member, KILL
+    ESCALATE_NS later."""
+    escalate = _ticks() + ESCALATE_NS
+    sent = []
+    saw_descendant = []
+
+    def on_live(live):
+        if any(pid != child.pid for pid in live):
+            saw_descendant.append(True)
+        next_signal = None
+        if not sent:
+            next_signal = signal.SIGTERM
+        elif len(sent) == 1 and _ticks() >= escalate:
+            next_signal = signal.SIGKILL
+        if next_signal is not None:
+            sent.append(next_signal)
+            try:
+                os.killpg(child.pid, next_signal)
+            except OSError as error:
+                # The retained leader still reserves this group. A member
+                # can exit between observation and signal; only a later
+                # observation may confirm cleanup. Do not reset escalation.
+                if error.errno not in (errno.EPERM, errno.ESRCH):
+                    raise
+        return deadline if len(sent) == 2 else min(escalate, deadline)
+
+    watch = _GroupWatch(child.pid, leader=True)
+    try:
+        _empty_twice(watch, deadline, on_live)
+    finally:
+        watch.close()
+    # Two listings found its leader a zombie and nothing else live: reaping it is immediate.
+    return child.wait(), bool(saw_descendant)
 
 
 def _watch_exit(queue, child, deadline):
@@ -199,9 +303,9 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
     # confirms it, so one failed observation does not refuse every later one.
     for child in list(_UNCONFIRMED_CHILDREN):
         try:
-            _cleanup_child(child)
+            _cleanup_child(child, max(_lease_bound(owner_lease_until_ms), _ticks() + CLEANUP_FLOOR_NS))
         except BaseException as error:
-            raise AdapterFault("cleanup_unconfirmed") from error
+            raise AdapterFault("cleanup_unconfirmed", child=(child.pid, child.aim_started_at)) from error
         _UNCONFIRMED_CHILDREN.remove(child)
     try:
         prepared = prepare_route(route_path, claim, guard)
@@ -222,6 +326,9 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
             return RouteResult("unavailable", None, "insufficient_lease")
         started_at = datetime.now(timezone.utc).isoformat()
         deadline = _ticks() + 5000000000
+        # Observing and cleaning up the child may take until the runner's
+        # lease ends: past it the runner cannot go on in any case.
+        bound = _lease_bound(owner_lease_until_ms)
     except RouteUnavailable as error:
         if error.code in ("binding_mismatch", "guard_mismatch"):
             raise
@@ -277,6 +384,7 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
         child = subprocess.Popen(prepared.argv, executable=prepared.executable,
             shell=False, start_new_session=True, pass_fds=pass_fds, env=environment,
             stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        child.aim_started_at = started_at
         # Deliver only after ownership and restoration, within the managed try.
         drain_signals()
         registered = record_child(child.pid, started_at)
@@ -285,7 +393,7 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
                 or not _remaining(deadline)):
             raise AdapterFault("child_registration_failed")
         queue = select.kqueue()
-        exited = _watch_exit(queue, child, deadline)
+        exited = _watch_exit(queue, child, bound)
         os.set_blocking(child.stdin.fileno(), False)
         pending = memoryview(prepared.stdin)
         while not exited:
@@ -335,10 +443,10 @@ def run_route(route_path, claim, guard, *, owner_lease_until_ms, record_child):
             return RouteResult("unavailable", None, "invocation_unavailable")
         raise (fault or AdapterFault("invocation_fault")) from launch_error
     try:
-        exit_code, descendants = _cleanup_child(child)
+        exit_code, descendants = _cleanup_child(child, max(bound, _ticks() + CLEANUP_FLOOR_NS))
     except BaseException as error:
         _UNCONFIRMED_CHILDREN.append(child)
-        raise AdapterFault("cleanup_unconfirmed") from error
+        raise AdapterFault("cleanup_unconfirmed", child=(child.pid, started_at)) from error
     if fault is not None:
         raise fault from None
     if timed_out:

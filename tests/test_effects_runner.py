@@ -470,9 +470,47 @@ class EffectsRunnerCase(unittest.TestCase):
         def invoke(*args,**kwargs):
             result=original(*args,**kwargs);self.clock.advance(31);return result
         with mock.patch.object(wake_adapter,'run_route',invoke): result=self.loop()
-        self.assertEqual(result['status'],'paused')
-        self.assert_pause('storage_failure')
+        # Its cleanup was confirmed, so a late result is not a pause either.
+        self.assertNotEqual(result['status'],'paused')
+        self.assertEqual(self.sql('SELECT count(*) FROM wake_results'),[(0,)])
+        self.assertIn({'event':'settled','outcome':'accepted','stale':True},self.trace)
         self.assertEqual(len(list(self.root.glob('*.observation.json'))),1)
+        self.assertEqual(self.sql('SELECT count(*) FROM wake_attempts'),[(1,)])
+
+    def test_a_result_confirmed_after_the_claim_lease_is_late_and_the_work_is_woken_again(self):
+        # Cleanup may now take until the runner's lease ends; a result that
+        # lands after the claim's own lease is late, never a pause. Core
+        # records that attempt expired and the work is claimed again.
+        self.api();self.create_topic();self.send_next(addressees=['agent-b'])
+        self.wait.stop_at=22
+        original=wake_adapter.run_route
+        calls=[]
+        def invoke(*args,**kwargs):
+            result=original(*args,**kwargs);calls.append(result.outcome)
+            if len(calls)==1: self.clock.advance(21)
+            return result
+        with mock.patch.object(wake_adapter,'run_route',invoke): result=self.loop()
+        self.assertEqual(result['status'],'stopped')
+        self.assertEqual(self.sql('SELECT state FROM runner_state'),[('stopped',)])
+        first=self.sql('SELECT recipient_id FROM wake_attempts ORDER BY started_ms LIMIT 1')[0][0]
+        self.assertEqual(self.sql('SELECT r.outcome FROM wake_attempts a JOIN wake_results r ON r.attempt_id=a.id '
+                                  'WHERE a.recipient_id=? ORDER BY a.started_ms',(first,)),[('expired',),('accepted',)])
+        settled=[e for e in self.trace if e['event'] in ('settled','paused')]
+        self.assertEqual(settled[0],{'event':'settled','outcome':'accepted','stale':True})
+        self.assertNotIn('paused',[e['event'] for e in settled])
+
+    def test_a_cleanup_pause_names_its_child_and_the_step_that_did_not_confirm_it(self):
+        self.api();self.create_topic()
+        def invoke(*args,**kwargs):
+            try:
+                raise wake_adapter.AdapterFault('process_observation_failed')
+            except wake_adapter.AdapterFault as cause:
+                raise wake_adapter.AdapterFault('cleanup_unconfirmed',child=(4242,'2026-11-07T01:40:35+00:00')) from cause
+        with mock.patch.object(wake_adapter,'run_route',invoke): result=self.loop()
+        self.assertEqual(result['status'],'paused')
+        self.assert_pause('cleanup_failed')
+        self.assertEqual(self.sql('SELECT child_pid,child_started_at FROM runner_state'),[(4242,'2026-11-07T01:40:35+00:00')])
+        self.assertIn({'event':'paused','reason':'cleanup_failed','detail':'process_observation_failed','child_pid':4242},self.trace)
 
     def test_persistent_renew_busy_exits_idle_and_fresh_guard_finds_pending_work(self):
         self.api();self.create_topic();self.wait.stop_at=40

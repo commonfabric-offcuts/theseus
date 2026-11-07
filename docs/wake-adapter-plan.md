@@ -151,8 +151,9 @@ delivery requires a separately tested broker with durable acceptance/dedup.
   implicit stop/disable interpretation for a child exit code in the new runtime.
 - Busy/error use Core's durable 1,2,4,8,16,32,60-second capped backoff;
   unavailable uses 60 seconds. No retry-count cutoff discards recipient work.
-- One broker child at a time; it gets a five-second execution deadline plus at
-  most one second for owned-child cleanup. Launch only when at least seven
+- One broker child at a time; it gets a five-second execution deadline, then
+  owned-child cleanup bounded by the runner's lease (and never less than one
+  second). Launch only when at least seven
   seconds remain on the claim and singleton ownership is confirmed by Core.
   Core's proposed claim duration is 20 seconds and singleton lease 30 seconds.
   Claiming checks that the singleton lease extends through the entire claim.
@@ -171,7 +172,7 @@ delivery requires a separately tested broker with durable acceptance/dedup.
   reused before a signal. The concrete Mac mechanism and its limits are below.
   This does not prove that a deliberately detached descendant or durable broker
   queue was recalled.
-  If cleanup cannot be confirmed within the cleanup budget, pause the
+  If cleanup cannot be confirmed before the runner's lease ends, pause the
   runner rather than starting a second child. Broker contracts forbid escaping
   the owned process group except for an explicitly accepted durable queue.
 - A stale settlement cannot update a newer attempt. Recipient acknowledgement,
@@ -289,22 +290,32 @@ This does not promise recovery from SIGKILL, process crashes, arbitrary Python
 exceptions injected inside the subprocess constructor after fork, or a foreign
 reaper. It establishes the ordinary signal boundary with the owned child.
 
-Use a bounded `/bin/ps -A -o pid=,pgid=,stat=` observation, filter numeric PGID in
+Use a `/bin/ps -A -o pid=,pgid=,stat=` observation, filter numeric PGID in
 Python, and exclude zombie rows when finding live members. The helper has a
-bounded output cap and runs only within the remaining cleanup/invocation budget;
-malformed, truncated, timed-out or otherwise ambiguous observations fail closed.
+bounded output cap and is waited on until the runner's lease ends, so a ps
+slowed by load is not a failed observation; malformed, truncated, timed-out
+or otherwise ambiguous observations fail closed.
 This is a diagnostic helper, not a second broker. Do not use killpg(pgid, 0) as
 an absence oracle: Fable's actual Mac probe returns PermissionError for a
 zombie-only group. If descendants survive leader exit, terminate the owned group
-while the unreaped leader still reserves its identity, escalate within the
-one-second cleanup budget, confirm two consecutive observations with no live
-group members, then reap the leader. Any observed live member resets that
-confirmation. EPERM or ESRCH from TERM/KILL can mean the group became zombie-only
+while the unreaped leader still reserves its identity, escalate to KILL 0.4 s
+after TERM, confirm two consecutive observations with no live group members,
+then reap the leader. Any observed live member resets that confirmation.
+Between observations cleanup waits on events, not a timer: each live member's
+NOTE_EXIT is armed before the observation that is relied on, so its exit
+always wakes the wait, and the only timed wake is the KILL escalation. A
+member seen live whose exit event cannot be armed (ESRCH) is already exiting;
+it is listed again at once. The only bound is the runner's lease, fixed as a
+monotonic deadline at launch and never less than one second from the start
+of cleanup: past the lease the runner cannot renew and so cannot go on in any
+case, and a member that outlives TERM, KILL and the lease is stuck in a way a
+pause, which names the child, should record. EPERM or ESRCH from TERM/KILL can mean the group became zombie-only
 after observation: re-observe under the original deadline, counting the signal
 phase as attempted so escalation is unchanged. Other signal errors fail closed.
 A surviving descendant makes the invocation an error even when the leader exits
 zero. Reap only after cleanup, and never signal that PGID after reap. Unconfirmed
-cleanup raises a fault requiring the existing persistent pause. Unexpected
+cleanup raises a fault requiring the existing persistent pause, carrying the
+child's PID and start time for the pause to record. Unexpected
 internal exceptions follow the same owned cleanup, then return a fixed fault;
 they do not enter a hot retry loop. Guard/lease/settlement and acknowledgement
 stay Core-owned.
@@ -325,10 +336,10 @@ and the ordinary fork-then-exit handoff; they cannot prove quiescence against an
 arbitrary rapidly forking/exiting chain. The trusted broker must confirm its own
 children have exited before returning zero and must not daemonize or double-fork
 descendants. Inherited guard fencing remains independent of these observations.
-Invocation currently checks exit/lease at most every 25ms and cleanup reobserves
-after a 10ms wait. Those bounded polling costs remain named limits, not an
-event-driven efficiency claim. A wall-clock jump can expire a lease immediately;
-owned cleanup can then extend up to its one-second budget beyond that wall time.
+Invocation currently checks exit/lease at most every 25ms; that bounded
+polling cost remains a named limit. Cleanup no longer re-lists on a timer. A
+wall-clock jump can expire a lease immediately; owned cleanup then still has
+its one-second floor beyond that wall time.
 
 Named adapter checks: exact literal argv/stdin and allowlisted parent environment;
 real inherited guard descriptors; no child on missing/mismatched route or spent

@@ -21,6 +21,14 @@ Before starting it again it waits for the runner guard to be free: a broker
 child of the runner that ended inherits the guard and may still hold it.
 Its own events go to stderr as JSON lines; the runner's own output passes
 through untouched, so its last stdout line is still its result.
+
+One pause it resumes on its own: cleanup_failed, saved by the runner it
+started. That pause names the broker child whose process group the runner
+could not confirm gone. Once the runner has exited, the supervisor waits on
+that group's members' exit events until two process listings in a row find
+no live member of it, then starts the runner with the pause's exact version
+and the recorded reason cleanup_confirmed. It never signals that group. Any
+other pause, or a pause another process saved, still needs a person.
 """
 
 import argparse
@@ -44,9 +52,13 @@ class _Stop(Exception):
 
 
 class Supervisor:
-    def __init__(self, child_argv, record_exit, wait_for_guard, emit, *, clock=time.monotonic):
+    def __init__(self, child_argv, record_exit, wait_for_guard, emit, *, clock=time.monotonic,
+                 cleanup_pause=None, wait_group_gone=None):
         self.child_argv = list(child_argv)
         self.record_exit, self.wait_for_guard, self.emit, self.clock = record_exit, wait_for_guard, emit, clock
+        # cleanup_pause(pid): the cleanup pause that runner saved, or None.
+        # wait_group_gone(pgid): returns once no live process is in that group.
+        self.cleanup_pause, self.wait_group_gone = cleanup_pause, wait_group_gone
         self.child = None
         self.stopping = False
         self.waiting = False
@@ -74,9 +86,10 @@ class Supervisor:
 
     def _run(self):
         at_start = 0
+        extra = []
         while True:
             started = self.clock()
-            pid = self._spawn()
+            pid = self._spawn(extra)
             if pid is None:
                 self._event("stopped", **{"while": "starting"})
                 return STOPPED
@@ -86,17 +99,32 @@ class Supervisor:
             self._event("runner_exited", pid=pid, exit=code, ran_s=round(ran, 3), record=record)
             at_start = at_start + 1 if ran < RUN_AT_START_S else 0
             why = self._why_not_again(code, record, at_start)
-            if why is not None:
+            pause = self._resumable(pid, why, at_start)
+            if why is not None and pause is None:
                 self._event("not_restarting", why=why)
                 return code if code >= 0 else 128 - code
-            self._event("restarting", after="guard_free")
             self.waiting = True
             try:
                 if self.stopping:
                     raise _Stop()
+                extra = []
+                if pause is not None:
+                    child = dict(child_pid=pause["child_pid"], child_started_at=pause["child_started_at"])
+                    self._event("awaiting_child_group", version=pause["version"], **child)
+                    self.wait_group_gone(pause["child_pid"])
+                    self._event("resuming", reason="cleanup_confirmed", version=pause["version"], **child)
+                    extra = ["--resume-version", str(pause["version"]), "--resume-reason", "cleanup_confirmed"]
+                else:
+                    self._event("restarting", after="guard_free")
                 self.wait_for_guard()
             finally:
                 self.waiting = False
+
+    def _resumable(self, pid, why, at_start):
+        """The cleanup pause this runner saved, if the supervisor may wait it out."""
+        if why != "refused_or_paused" or at_start >= RUNS_AT_START or self.cleanup_pause is None:
+            return None
+        return self.cleanup_pause(pid)
 
     def _why_not_again(self, code, record, at_start):
         if self.stopping:
@@ -111,14 +139,15 @@ class Supervisor:
             return "ending_at_start"
         return None
 
-    def _spawn(self):
+    def _spawn(self, extra=()):
         """Start the runner with no signal blocked, in its own group, so only the supervisor passes a terminal's ^C on."""
+        argv = self.child_argv + list(extra)
         old = signal.pthread_sigmask(signal.SIG_BLOCK, STOP_SIGNALS)
         try:
             if self.stopping:
                 return None
             # A stop that arrives now waits until self.child names the runner, then reaches it.
-            self.child = os.posix_spawn(self.child_argv[0], self.child_argv, os.environ,
+            self.child = os.posix_spawn(argv[0], argv, os.environ,
                                         setpgroup=0, setsigmask=(), setsigdef=STOP_SIGNALS)
             self._event("runner_started", pid=self.child)
             return self.child
@@ -169,6 +198,33 @@ def core_hooks(profile_path):
     return record_exit, wait_for_guard
 
 
+def resume_hooks(profile_path):
+    """Read, from Core, the cleanup pause a given runner saved; and wait for a process group to go."""
+    from .authority import AuthorityError
+    from .contract import StoreError
+    from .profile import ProfileError, load_profile
+    from .runner import RunnerError
+    from .wake_adapter import wait_group_gone
+    known = (AuthorityError, StoreError, ProfileError, RunnerError)
+
+    def cleanup_pause(pid):
+        try:
+            status = load_profile(profile_path).store().runner_status()
+        except known:
+            # Could not read is not "no pause": either way a person decides.
+            return None
+        registered = status.get("holder") or status.get("last_registered") or {}
+        child = registered.get("child_pid")
+        if (status.get("state") != "paused" or status.get("reason_code") != "cleanup_failed"
+                or registered.get("runner_pid") != pid or type(child) is not int or child <= 1
+                or type(status.get("version")) is not int):
+            return None
+        return {"version": status["version"], "child_pid": child,
+                "child_started_at": registered.get("child_started_at")}
+
+    return {"cleanup_pause": cleanup_pause, "wait_group_gone": wait_group_gone}
+
+
 def child_argv(argv):
     return [sys.executable, "-I", str(Path(__file__).resolve().parents[1] / "bin" / "aim-next-runner"), *argv]
 
@@ -182,4 +238,4 @@ def main(argv):
 
     def report(event):
         print(json.dumps(event, separators=(",", ":")), file=sys.stderr, flush=True)
-    return Supervisor(child_argv(argv), *core_hooks(known.profile), report).run()
+    return Supervisor(child_argv(argv), *core_hooks(known.profile), report, **resume_hooks(known.profile)).run()

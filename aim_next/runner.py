@@ -218,11 +218,11 @@ class Runner:
             return "lost"
         return "running"
 
-    def _acquire(self, db, guard, now, lease_ms):
+    def _acquire(self, db, guard, now, lease_ms, reason=None):
         token = "r-" + uuid.uuid4().hex
         until = now + lease_ms
-        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=NULL,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
-                   (token, guard.runner_id, guard.generation, until, os.getpid(), now))
+        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=?,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
+                   (token, guard.runner_id, guard.generation, until, reason, os.getpid(), now))
         return {"status": "acquired", "runner_token": token, "lease_until_ms": until}, True
 
     def acquire_runner(self, guard, lease_ms=30000):
@@ -594,9 +594,16 @@ class Runner:
                 raise RunnerError("DATABASE_BUSY", "Runner state is busy; the exit was not recorded", retryable=True) from error
             raise RunnerError("RUNNER_STORAGE_ERROR", "The runner's exit could not be confirmed") from error
 
-    def pause_runner(self, guard, runner_token, reason_code):
+    def pause_runner(self, guard, runner_token, reason_code, child=None):
+        """child, for cleanup_failed only: (pid, started_at) of the broker whose
+        group cleanup was not confirmed, recorded with the pause itself."""
         if reason_code not in ("cleanup_failed", "route_binding_changed", "storage_failure", "operator_pause"):
             raise RunnerError("INVALID_ARGUMENT", "Use a bounded runner pause reason")
+        if child is not None:
+            if reason_code != "cleanup_failed" or not isinstance(child, tuple) or len(child) != 2:
+                raise RunnerError("INVALID_ARGUMENT", "Only a cleanup pause names its child, as (pid, started_at)")
+            _bounded(child[0], 1, 2147483647, "pid")
+            _text(child[1], "started_at", 128)
         def action(db, now):
             state = self._runner_state(db)
             ownership = self._ownership(state, guard, runner_token, now, allow_expired=True)
@@ -605,19 +612,28 @@ class Runner:
             if ownership != "running":
                 return {"status": "lost"}, False
             db.execute("UPDATE runner_state SET state='paused',version=version+1,reason_code=? WHERE id=1", (reason_code,))
+            if child is not None:
+                db.execute("UPDATE runner_state SET child_pid=?,child_started_at=? WHERE id=1", child)
             return {"status": "paused", "version": state["version"] + 1}, True
         return self._effect(guard, action)
 
-    def resume_runner(self, guard, expected_pause_version, lease_ms=30000):
+    def resume_runner(self, guard, expected_pause_version, lease_ms=30000, reason=None):
+        """reason "cleanup_confirmed": the supervisor resumed a cleanup pause once
+        it saw the named child's group gone; kept on the running row until the
+        next acquisition or pause, so status shows why it is running."""
         _bounded(lease_ms, 1000, 120000, "lease_ms")
         _bounded(expected_pause_version, 1, 9223372036854775807, "expected_pause_version")
+        if reason not in (None, "cleanup_confirmed"):
+            raise RunnerError("INVALID_ARGUMENT", "Use a bounded resume reason")
         def action(db, now):
             state = self._runner_state(db)
             if state["state"] != "paused" or state["version"] != expected_pause_version:
                 raise RunnerError("REVISION_CONFLICT", "The runner pause changed; inspect it before resuming")
             if state["guard_generation"] == guard.generation:
                 raise RunnerError("GUARD_NOT_DRAINED", "Close the old guard and acquire a new one after owned cleanup")
-            return self._acquire(db, guard, now, lease_ms)
+            if reason is not None and state["reason_code"] != "cleanup_failed":
+                raise RunnerError("REVISION_CONFLICT", "Only a cleanup pause is resumed for its child's group being gone")
+            return self._acquire(db, guard, now, lease_ms, reason)
         return self._effect(guard, action)
 
     def record_runner_child(self, guard, runner_token, claim_token, pid, started_at):

@@ -264,6 +264,10 @@ class WakeInvocationTests(unittest.TestCase):
         self.assertEqual(int(actual), pid)
         return int(group), state
 
+    def cleanup_deadline(self, seconds=1):
+        """The bound a direct cleanup call gets: the floor run_route always grants."""
+        return wake_adapter._ticks() + int(seconds * 1000000000)
+
     def start_fixture_broker(self, mode):
         """Establish cleanup instrumentation without invoking application code."""
         argv = self.configure(mode)
@@ -658,11 +662,11 @@ class WakeInvocationTests(unittest.TestCase):
         self.configure("never-read")
         actual = wake_adapter._process_group
         calls = []
-        def once(pid, deadline):
+        def once(pid, deadline, **kw):
             calls.append(pid)
             if len(calls) == 1:
                 raise wake_adapter.AdapterFault("process_observation_failed")
-            return actual(pid, deadline)
+            return actual(pid, deadline, **kw)
         with mock.patch.object(wake_adapter, "_process_group", side_effect=once):
             with self.assertRaises(wake_adapter.AdapterFault) as caught:
                 self.invoke()
@@ -769,6 +773,150 @@ class WakeInvocationTests(unittest.TestCase):
                 self.assert_reaped(helpers[0].pid)
         self.assertIsNone(child.returncode)
 
+    def slow_ps(self, delay):
+        """A stand-in for /bin/ps on a loaded Mac: the real listing, delivered after delay seconds."""
+        stand_in = self.root / "slow-ps"
+        stand_in.write_text("#!/bin/sh\n/bin/sleep %s\nexec /bin/ps \"$@\"\n" % delay)
+        stand_in.chmod(0o700)
+        listings = []
+        actual = self.actual_popen
+
+        def popen(args, *a, **kw):
+            if list(args[:1]) == ["/bin/ps"]:
+                listings.append(time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW))
+                return actual([str(stand_in)] + list(args[1:]), *a, **kw)
+            return actual(args, *a, **kw)
+        return popen, listings
+
+    def test_a_slow_process_list_does_not_turn_a_broker_that_exited_into_unconfirmed_cleanup(self):
+        # The live pause on a loaded Mac: the broker has exited, but each
+        # listing that would confirm it takes 0.6 s, more than the old fixed
+        # second allowed for two of them.
+        for delay in (0, 0.6):
+            with self.subTest(ps_seconds=delay):
+                self.configure("normal")
+                popen, listings = self.slow_ps(delay)
+                self.actual_popen = popen
+                before = list(wake_adapter._UNCONFIRMED_CHILDREN)
+                start = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+                try:
+                    result = self.invoke()
+                except wake_adapter.AdapterFault as fault:
+                    self.fail("a broker that exited became %s with ps taking %ss" % (fault, delay))
+                finally:
+                    self.actual_popen = subprocess.Popen
+                    wake_adapter._UNCONFIRMED_CHILDREN[:] = before
+                elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - start) / 1e9
+                self.assertEqual((result.outcome, result.reason), ("accepted", "accepted"))
+                # Not vacuous: at least two listings ran through the stand-in, slowly when asked.
+                self.assertGreaterEqual(len(listings), 2)
+                if delay:
+                    self.assertGreaterEqual(elapsed, 2 * delay)
+                pid = self.spawned[-1]["child"].pid
+                self.assert_reaped(pid)
+                self.assert_no_live_group(pid)
+
+    def test_cleanup_waits_for_a_members_exit_event_rather_than_a_fixed_second(self):
+        # The leader exits at once and leaves a descendant that no signal
+        # reaches (EPERM, as for a member we may not signal); it ends on its
+        # own 1.5 s later. Cleanup waits for that exit, listing again only when
+        # an exit event or the KILL escalation wakes it.
+        self.configure("descendant")
+        refused = []
+
+        def refuse(group, sig):
+            refused.append(sig)
+            raise OSError(errno.EPERM, "fixture: this signal reaches no member")
+        release = threading.Timer(1.5, self.close_control, ["fixture-stop"])
+        listings = []
+        actual_group = wake_adapter._process_group
+
+        def count(pid, deadline, **kw):
+            listings.append(pid)
+            return actual_group(pid, deadline, **kw)
+        before = list(wake_adapter._UNCONFIRMED_CHILDREN)
+        start = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+        release.start()
+        try:
+            with mock.patch.object(self, "actual_killpg", side_effect=refuse), \
+                    mock.patch.object(wake_adapter, "_process_group", side_effect=count):
+                try:
+                    result = self.invoke()
+                except wake_adapter.AdapterFault as fault:
+                    self.fail("a member that exits after a second became %s" % fault)
+        finally:
+            release.cancel()
+            wake_adapter._UNCONFIRMED_CHILDREN[:] = before
+        elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - start) / 1e9
+        self.assertEqual((result.outcome, result.reason), ("error", "surviving_descendant"))
+        self.assertEqual(refused, [signal.SIGTERM, signal.SIGKILL])
+        self.assertGreaterEqual(elapsed, 1.45)
+        # Event-driven: one listing for the exit check, a few around TERM, KILL
+        # and the descendant's exit, two to confirm. A 10 ms re-listing loop
+        # would make well over a hundred in 1.5 s.
+        self.assertLessEqual(len(listings), 10, listings)
+        report = json.loads(self.report.read_text())
+        self.assert_reaped(report["pid"])
+        self.assert_no_live_group(report["pgid"])
+
+    def test_a_group_that_never_goes_is_unconfirmed_only_when_the_runners_lease_ends(self):
+        # A member that survives TERM and KILL keeps the runner from going on,
+        # but only the runner's lease (here 8 s from now, so about 3 s after the
+        # five-second run) bounds the wait, not a fixed second.
+        self.configure("never-read")
+        now = int(time.time() * 1000)
+        self.owner_until = now + 8000
+        self.claim["lease_until_ms"] = now + 7600
+        before = list(wake_adapter._UNCONFIRMED_CHILDREN)
+
+        def refuse(group, sig):
+            raise OSError(errno.EPERM, "fixture: this signal reaches no member")
+        start = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+        try:
+            with mock.patch.object(self, "actual_killpg", side_effect=refuse):
+                with self.assertRaises(wake_adapter.AdapterFault) as caught:
+                    self.invoke()
+            elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - start) / 1e9
+            self.assertEqual(str(caught.exception), "cleanup_unconfirmed")
+            self.assertGreaterEqual(elapsed, 7.7, "cleanup gave up before the runner's lease ended")
+            self.assertLess(elapsed, 9.5)
+            child = self.spawned[0]["child"]
+            # The fault names the child the pause must wait on.
+            self.assertEqual(caught.exception.child, (child.pid, self.registered[0][1]))
+            self.assertIs(wake_adapter._UNCONFIRMED_CHILDREN[-1], child)
+            self.assertIsNone(child.returncode, "A leader with a live group was reaped")
+            self.assertEqual(self.live_group_members({child.pid})[0][0], child.pid)
+        finally:
+            self.cleanup_brokers()
+            wake_adapter._UNCONFIRMED_CHILDREN[:] = before
+
+    def test_waiting_for_a_group_to_go_needs_no_leader_and_never_signals(self):
+        # What the supervisor uses: the leader is long reaped, a member lives on
+        # until the test lets it end; the wait returns only after that exit.
+        child, report = self.start_fixture_broker("descendant")
+        self.assertEqual(child.wait(timeout=2), 0)
+        self.assertTrue(self.live_group_members({child.pid}), "No live member: the wait is vacuous")
+        listings = []
+        actual_group = wake_adapter._process_group
+
+        def count(pid, deadline, **kw):
+            listings.append(kw.get("leader"))
+            return actual_group(pid, deadline, **kw)
+        release = threading.Timer(0.5, self.close_control, ["fixture-stop"])
+        start = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
+        release.start()
+        try:
+            with mock.patch.object(os, "killpg", side_effect=AssertionError("an observer signalled")), \
+                    mock.patch.object(wake_adapter, "_process_group", side_effect=count):
+                wake_adapter.wait_group_gone(child.pid)
+        finally:
+            release.cancel()
+        elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - start) / 1e9
+        self.assertEqual(self.live_group_members({child.pid}), [])
+        self.assertGreaterEqual(elapsed, 0.45)
+        self.assertLessEqual(len(listings), 6, "it listed on a timer, not on the member's exit")
+        self.assertEqual(set(listings), {False})
+
     def test_term_ignoring_broker_is_killed_within_cleanup_budget(self):
         self.configure("ignore-term")
         start = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
@@ -821,7 +969,7 @@ class WakeInvocationTests(unittest.TestCase):
         try:
             with mock.patch.object(os, "killpg", side_effect=signal_after_exit):
                 try:
-                    result = wake_adapter._cleanup_child(child)
+                    result = wake_adapter._cleanup_child(child, self.cleanup_deadline())
                 except (OSError, wake_adapter.AdapterFault) as error:
                     failure = str(error)
         finally:
@@ -851,7 +999,7 @@ class WakeInvocationTests(unittest.TestCase):
                 caught = None
                 with mock.patch.object(os, "killpg", side_effect=refused):
                     try:
-                        wake_adapter._cleanup_child(child)
+                        wake_adapter._cleanup_child(child, self.cleanup_deadline())
                     except (OSError, wake_adapter.AdapterFault) as error:
                         caught = error
                 elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - start) / 1e9
@@ -889,8 +1037,8 @@ class WakeInvocationTests(unittest.TestCase):
         self.assertTrue(self.process_state(child.pid)[1].startswith("Z"))
         original = wake_adapter._process_group
         snapshots = []
-        def partial_then_real(pid, deadline):
-            actual = original(pid, deadline)
+        def partial_then_real(pid, deadline, **kw):
+            actual = original(pid, deadline, **kw)
             returned = dict(actual)
             if not snapshots:
                 self.assertIn(report["descendant"], actual)
@@ -899,7 +1047,7 @@ class WakeInvocationTests(unittest.TestCase):
             snapshots.append({"actual": actual, "returned": returned})
             return returned
         with mock.patch.object(wake_adapter, "_process_group", side_effect=partial_then_real):
-            result = wake_adapter._cleanup_child(child)
+            result = wake_adapter._cleanup_child(child, self.cleanup_deadline())
         self.save_observations(snapshots)
         self.assertEqual(result, (0, True), "One partial snapshot falsely accepted a live descendant")
         self.assertGreaterEqual(len(snapshots), 4)
@@ -916,7 +1064,7 @@ class WakeInvocationTests(unittest.TestCase):
         started = time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW)
         with mock.patch.object(os, "killpg", side_effect=OSError(errno.EBADF, "fixture bad descriptor")):
             try:
-                wake_adapter._cleanup_child(child)
+                wake_adapter._cleanup_child(child, self.cleanup_deadline())
             except (OSError, wake_adapter.AdapterFault) as error:
                 caught = error
         elapsed = (time.clock_gettime_ns(time.CLOCK_MONOTONIC_RAW) - started) / 1e9
