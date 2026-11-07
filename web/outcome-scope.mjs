@@ -46,9 +46,8 @@ export function placeBrand(host, doc = host.ownerDocument) {
   host.prepend(brand, ...notices);
 }
 
-// A row carrying a lit light: a topic waiting on the reader, or an outcome's
-// "waiting on you" light.
-const LIT = '.topic-state.mine, .outcome-light[data-light="you"]';
+// A row carrying a lit light: a topic waiting on the reader.
+const LIT = '.topic-state.mine';
 
 // At phone width a sideways strip scrolls itself so its open row sits in the
 // middle; then, when a lit row would be cut at either edge, it moves by the
