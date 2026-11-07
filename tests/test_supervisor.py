@@ -29,6 +29,7 @@ from unittest import mock
 from aim_next import authority, supervisor
 from aim_next.profile import load_profile, write_profile
 import test_store as core_fixture
+import test_delivery
 from test_wake_contract import own_cases
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -272,7 +273,14 @@ class RealStoreCase(core_fixture.StoreCase):
         other.__enter__()
         self.addCleanup(other.close)
         token = self.store.resume_runner(other, paused["version"])["runner_token"]
+        # A storage pause can leave a registered child on the row (its
+        # registration was refused, say); it is still not a cleanup pause.
+        self.create_topic()
+        test_delivery.DeliveryCase.send_next(self)
+        claim = self.store.claim_wakes(other, token, ["owner", "agent-a", "agent-b"])["claims"][0]
+        self.store.record_runner_child(other, token, claim["claim_token"], 4100, "registered")
         self.store.pause_runner(other, token, "storage_failure")
+        self.assertEqual(self.sql("SELECT reason_code,child_pid FROM runner_state"), [("storage_failure", 4100)])
         self.assertIsNone(cleanup_pause(os.getpid()), "only a cleanup pause is waited out")
 
     def test_a_real_cleanup_pause_is_resumed_only_after_the_named_group_has_gone(self):
