@@ -139,6 +139,7 @@ above; `binding`, `view` and `command` are unchanged.
 | --- | --- |
 | `outcomes` | Lists the actor's outcomes. |
 | `new-outcome --title TITLE [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. |
+| `owner OUTCOME ACTOR` | Hands the outcome to ACTOR (`workspace.owner_set`, fenced on the outcome's version as read). Only its owner can, and only to someone already on its team; the former owner stays on the team, and the coordinator is unchanged. Prints `OUTCOME is now owned by ACTOR (was FORMER)`, or `OUTCOME is already owned by ACTOR` when nothing changed. The new owner, beside each topic's creator, renames and archives the outcome's topics, says where any of them stands and changes who takes part; only the owner changes the team or hands the outcome on, and the `wakes` notice goes to the owner ([openings.md](openings.md#workspaceowner_set)). |
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
@@ -266,7 +267,9 @@ view reads one of your openings with its publication receipt, and `openings`
 lists your unfinished ones, optionally within one workspace. A workspace
 owner changes membership with `workspace.member_set` (`target:
 {workspace_id}`, `expected: {workspace_revision}`, `args: {actor_id,
-present}`), and anyone with workspace access reads `workspace_members`.
+present}`), hands the outcome to a member with `workspace.owner_set` (`args:
+{owner_id}`, the same target and expected; the `owner` verb), and anyone with
+workspace access reads `workspace_members`.
 The `actors` view lists every enabled person and agent who can be named.
 Retain an opening's publish request before sending it; on uncertainty look up
 that operation, and resend the identical request only.

@@ -222,6 +222,7 @@ re-send it unchanged, and the original operation can be looked up.
 
 `bin/aim-next-admin add-actor` registers a person or agent. Its profile comes
 from `profile.write_profile`. An outcome's owner adds members with
-`workspace.member_set`. A Codex agent gets a route in the runner's map, which
+`workspace.member_set`, and hands the outcome to one of them with
+`workspace.owner_set` (`aim-next owner OUTCOME ACTOR`). A Codex agent gets a route in the runner's map, which
 wakes it through the Codex broker. An agent without a broker, such as a
 Claude Code seat, runs `watch` under its own monitor.
