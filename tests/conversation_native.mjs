@@ -342,6 +342,11 @@ export async function conversationChecks({ check, page, until, control, view, fa
     const there = await until(async () => { const r = await reply(); return r?.to.join() === 'false,true' && (r.notice || r.body && r.body !== 'Old question.') && r; }, 'Conversation is chosen');
     assert.deepEqual([there.body, there.names, there.checked, there.notice], ['Old question.', [other], ['ask'], 'Your writing for This topic is kept there.'],
       "the conversation's own draft opens as it was, and one line says where the whisper is");
+    // The line is as wide as its words, not the pane.
+    const fits = await p.evaluate(`(n=>{const r=document.createRange();r.selectNodeContents(n);const s=getComputedStyle(n);
+      const edges=['paddingLeft','paddingRight','borderLeftWidth','borderRightWidth'].reduce((sum,key)=>sum+parseFloat(s[key]),0);
+      return {box:n.getBoundingClientRect().width,words:r.getBoundingClientRect().width+edges,pane:n.parentElement.clientWidth}})(document.querySelector('#reader-notice'))`);
+    assert.ok(fits.box <= fits.words + 2 && fits.box < fits.pane / 2, `the line is as wide as its words: ${fits.box} for ${fits.words}, in a pane ${fits.pane} wide`);
     await shot(p, 'conversation-reader-kept');
     assert.deepEqual([await draft(conversation.topic_id), await draft('t1')], [ask, whisper], 'nothing merged: both drafts are as they were');
     await p.point('#reply-destination button:nth-child(1)');
@@ -355,6 +360,70 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual([message.topic_id, message.whisper ?? false, message.private_to ?? null, message.intent ?? null, message.body],
       ['t1', true, other, null, 'Private note.'], 'sent to that agent alone, never on the record');
     assert.deepEqual(await draft(conversation.topic_id), ask, "the conversation's Ask still waits in its own draft");
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('conversation writing that To moves into an empty draft keeps the Whisper or Tell the Reader showed, and is sent as that, either way', async () => {
+    const text = 'Private: I think the build is broken.', status = 'Status, please.', words = 'The build finished.';
+    // A topic of its own in the outcome, so the checks after these find nothing new in t1.
+    const place = 'conversation-kind';
+    await control({ method: 'navigation_topics', topics: [{ id: place, title: 'Build watch' }] });
+    const id = (await control({ method: 'agent_message', operation_id: 'conversation-kind-source', topic_id: place, source: 'topic', join: true, body: words })).result.message_id;
+    const p = await open('conversation-reader-kind', `/?topic=${place}`);
+    const source = { kind: 'message', id };
+    const draft = async topicId => {
+      const d = (await view('editor_state', { source_ref: source, topic_id: topicId })).draft;
+      return { body: d?.body ?? '', addressees: d?.addressees ?? [], intent: d?.intent ?? null, whisper: d?.whisper ?? null };
+    };
+    const reply = () => quiet(p, `({checked:[...document.querySelectorAll('#intent-row label[data-intent] input:checked')].map(i=>i.value),
+      send:document.querySelector('#send-reply .send-word').textContent,body:document.querySelector('#writing-body').value,
+      who:document.querySelector('#intent-row .audience-line strong')?.textContent??null,
+      names:[...document.querySelectorAll('#recipient-chips .chip')].map(c=>c.dataset.name),
+      notice:document.querySelector('#reader-notice').hidden?null:document.querySelector('#reader-notice').textContent,
+      to:[...document.querySelectorAll('#reply-destination button')].map(b=>b.getAttribute('aria-pressed'))})`);
+    const tap = async (index, body, why) => {
+      await p.point(`#reply-destination button:nth-child(${index + 1})`);
+      return until(async () => { const r = await reply(); return r?.to[index] === 'true' && r.body === body && r; }, why);
+    };
+    const sentAs = async () => {
+      await p.evaluate(`document.querySelector('#send-reply').scrollIntoView({block:'nearest'})`);
+      const message = await view('source', { source_ref: { kind: 'message', id: await sent(p, p.calls.length) } });
+      return [message.topic_id, message.whisper ?? false, message.private_to ?? null, message.intent ?? null, message.body];
+    };
+    const reopen = async () => {
+      if (await quiet(p, 'document.querySelector("#reader").open')) {
+        await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+      }
+      await openCard(p, id, words);
+      await until(async () => (await reply())?.to.join() === 'true,false', 'the Reader opens on This topic');
+    };
+    // A reply to one agent in this topic starts as a Whisper (D1); in the conversation the same writing would start as a Tell (I3).
+    await reopen();
+    await replace(p, text);
+    await until(async () => (await draft(place)).body === text, 'saved where it was written');
+    const here = await reply();
+    assert.deepEqual([here.checked, here.send, here.who], [['whisper'], 'Whisper', `Only you and ${agent}`], 'the Reader shows a Whisper to the agent');
+    const moved = await tap(1, text, 'Conversation is chosen, with the writing');
+    assert.deepEqual([moved.checked, moved.send, moved.who, moved.names, moved.notice], [['whisper'], 'Whisper', `Only you and ${agent}`, [agent], null],
+      'the moved writing keeps the Whisper the Reader showed');
+    assert.deepEqual(await until(async () => { const d = await draft(conversation.topic_id); return d.body && d; }, 'kept in the conversation'),
+      { body: text, addressees: [agent], intent: null, whisper: true });
+    assert.deepEqual(await sentAs(), [conversation.topic_id, true, agent, null, text], 'sent to that agent alone, never on the record');
+    // The other way: a Tell to one agent written in the conversation, moved into this topic's empty draft.
+    await reopen();
+    await tap(1, '', 'Conversation is chosen, with nothing to move');
+    if ((await reply()).names.includes(agent)) await p.point(`#recipient-chips .chip[data-name="${agent}"] button`);
+    await p.point('#recipient-input'); await p.send('Input.insertText', { text: other }); await p.key('Enter');
+    await until(async () => (await reply())?.names.join() === other, 'only the second agent is named');
+    await replace(p, status);
+    await until(async () => (await draft(conversation.topic_id)).body === status, 'saved in the conversation');
+    const there = await reply();
+    assert.deepEqual([there.checked, there.send, there.who], [['tell'], 'Send', 'Everyone in this topic'], 'the conversation shows a Tell');
+    const back = await tap(0, status, 'This topic is chosen, with the writing');
+    assert.deepEqual([back.checked, back.send, back.who, back.names, back.notice], [['tell'], 'Send', 'Everyone in this topic', [other], null],
+      'the moved writing keeps the Tell the Reader showed');
+    const told = await sentAs();
+    assert.deepEqual(told, [place, false, null, 'tell', status], 'sent on the record as a Tell, as shown');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

@@ -8,6 +8,7 @@
 import { timeNode } from './times.mjs';
 import { workNote } from './topic-state.mjs';
 import { WRITING_FIELDS, noWriting } from './editor.mjs';
+import { shownChoice } from './whisper-choice.mjs';
 
 const element = (doc, tag, props = {}, ...children) => {
   const node = doc.createElement(tag);
@@ -195,16 +196,25 @@ export function conversationDestination(host, { topic, conversation, outcome, ch
 // sent, or an image action under way), so writing with one never moves. An
 // image sent with an earlier message belongs to that message, and one removed
 // to nobody. keep(editor) keeps an editor's writing on this device.
+//
+// Writing moves as the Reader showed it, so it is the same message where it
+// arrives: the author a reply is offered to counts as named, and with no choice
+// of the person's the default where it was written is written down (D1 makes a
+// reply to one agent a Whisper in a topic, I3 a Tell in the conversation).
+// shown is {kindOf, conversation}: who is an agent, and whether the place left
+// is the conversation.
 const NONE = noWriting();
 const chosenImage = entry => entry?.selected !== false && entry?.owner?.kind !== 'submission';
 const imageIn = editor => Boolean(editor.draft.attachments?.length || editor.imageBusy || editor.imageReservation || editor.adopting ||
   editor.uploadOpaque || editor.uploadState && !(Array.isArray(editor.uploadState.entries) && !editor.uploadState.entries.some(chosenImage)));
 const writingIn = editor => imageIn(editor) ||
   WRITING_FIELDS.some(name => name !== 'caret' && JSON.stringify(editor.draft[name] ?? NONE[name]) !== JSON.stringify(NONE[name]));
-export const switchWriting = async (left, there, keep) => {
+export const switchWriting = async (left, there, keep, { kindOf, conversation }) => {
   if (!writingIn(left)) return false;
   if (imageIn(left) || writingIn(there) || there.unavailable || there.conflict || there.authorityRecovery) return true;
-  there.receive(Object.fromEntries(WRITING_FIELDS.map(name => [name, left.draft[name] ?? NONE[name]])));
+  const writing = Object.fromEntries(WRITING_FIELDS.map(name => [name, left.draft[name] ?? NONE[name]]));
+  writing.addressees = [...left.offeredAddressees, ...writing.addressees];
+  there.receive({ ...writing, ...shownChoice(writing, writing.addressees, kindOf, { conversation }) });
   await keep(there);
   left.edit(noWriting());
   await keep(left);

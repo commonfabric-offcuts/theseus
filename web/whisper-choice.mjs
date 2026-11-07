@@ -53,6 +53,15 @@ export function chosen(choice) {
   return { whisper: false, intent: choice };
 }
 
+// The fields that write down the choice the writing shows now, for writing
+// that moves whole to a place with another default (the Reader's To, I3):
+// with someone named and no choice of the person's, the default where it was
+// written becomes the choice, so it is sent there as it was shown here.
+export function shownChoice(draft, names, kindOf, options = {}) {
+  const own = typeof draft.whisper === 'boolean' || ['ask', 'tell'].includes(draft.intent);
+  return own || !names.length ? {} : chosen(defaultChoice(names, kindOf, options));
+}
+
 // Naming someone more: a message that was a whisper by default holds the
 // whisper, so it shows as switched to a Tell and becomes a whisper again
 // when the second name is taken away.

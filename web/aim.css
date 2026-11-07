@@ -279,5 +279,7 @@ button.choice-chip[aria-pressed=true]:hover{background:var(--accent);filter:brig
 #conversation-navigation{margin-bottom:1.3rem}
 .selection-page #conversation-navigation .conversation-row{background:var(--panel);border-color:var(--line);padding:.85rem}
 .destination-note{font-size:.78rem;margin:-.2rem 0 0}
+/* The Reader's one-line notices, "Your writing for This topic is kept there." among them, are as wide as their words. */
+#reader-notice{width:fit-content;max-width:100%}
 /* At a phone's width the reply keeps room for every row it shows, the To chips among them: the passage being read gives way, so Send never falls below the screen. */
 @media(max-width:760px){.reader-main{grid-template-rows:auto minmax(0,var(--reading-share)) 16px minmax(min-content,var(--writing-share))}}

@@ -1484,10 +1484,11 @@ async function switchDestination(value) {
   if (!ref || ref.kind !== 'message' || value === p.editors.reply.context.topicId) return;
   if (![topic.id, here?.view?.topic_id].includes(value)) { reader.notice('Choose this topic or the outcome\'s conversation.'); return; }
   const left = p.editors.reply, place = left.context.topicId === topic.id ? 'This topic' : 'the conversation';
+  const shown = { kindOf: reader.kindOf, conversation: reader.toConversation(left) };
   const next = await registry.open(ref, { topicId: value, opener: p.opener });
   if (!next) return;
   const keep = editor => { if (reader.editor === editor) reader.drawEditor(); return registry.edited(editor); };
-  if (await switchWriting(left, next.editors.reply, keep)) reader.notice(`Your writing for ${place} is kept there.`);
+  if (await switchWriting(left, next.editors.reply, keep, shown)) reader.notice(`Your writing for ${place} is kept there.`);
 }
 // The Done and Archived lines under the topic list, where the person's choice
 // to keep each open is remembered, and the area the lists keep still under.

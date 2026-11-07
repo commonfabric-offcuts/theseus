@@ -73,7 +73,11 @@ writing is everything the person wrote or chose: the words, quotes, the names
 it goes to, the choice of Whisper, Tell or Ask, and any image chosen for it.
 When the other place's draft holds none of that, the writing moves there whole,
 as it is: it is kept in the other draft on the device first, then the draft it
-left is emptied, so an interrupted switch leaves it where it was. When the
+left is emptied, so an interrupted switch leaves it where it was. It moves as
+the Reader showed it, so it is the same message there: the author a reply is
+offered to stays named, and a Whisper, Tell or Ask the person did not choose
+is written down as the one shown, since a reply to one agent starts as a
+Whisper in a topic and as a Tell in the conversation. When the
 other draft already holds writing, nothing moves: the other draft opens as it
 is, the writing just left stays in its own draft, and one line says so ("Your
 writing for This topic is kept there."). Writing with images, in any state
