@@ -36,16 +36,8 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
-  // A tap aims at the target once it is where it was when last looked at: a
-  // row drawn late above it (on a phone, the outcome's conversation in the
-  // rail) moves it first.
   const tapOn = async (p, selector) => {
-    let last;
-    const b = await until(async () => {
-      const now = await p.box(selector), same = Boolean(last) && ['x', 'y', 'width', 'height'].every(key => now?.[key] === last[key]);
-      last = now; return same && now;
-    }, `${selector} holds its place`);
-    assert.ok(b && b.width > 0 && b.height > 0, `visible ${selector}`);
+    const b = await p.box(selector); assert.ok(b && b.width > 0 && b.height > 0, `visible ${selector}`);
     await tap(p, b.x + b.width / 2, b.y + b.height / 2);
   };
   const openByPointer = async p => {

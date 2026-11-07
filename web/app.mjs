@@ -1490,9 +1490,12 @@ function followCommits(load) {
 // what was painted and says so to the commit follower, which reads again.
 async function loadConversation() {
   if (!here) return true;
+  // Every outcome has its conversation: its row stands in its place from the
+  // start, so the topics and the page below it do not move when its read lands.
+  if (!here.read) paintConversationNav();
   try {
     const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
-    here.view = answer.conversation;
+    here.view = answer.conversation; here.read = true;
     paintConversationNav();
     if (here.page && here.view) {
       const page = checkedView(await api.view('topic_messages', { topic_id: here.view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
@@ -1508,7 +1511,7 @@ async function loadConversation() {
 }
 function paintConversationNav() {
   const target = { kind: 'conversation', id: here.workspaceId };
-  const shown = paintConversationRow($('conversation-row'), { view: here.view, title: here.title, reader: bootstrap.actor, current: here.page,
+  const shown = paintConversationRow($('conversation-row'), { view: here.view ?? (here.read ? null : {}), title: here.title, reader: bootstrap.actor, current: here.page,
     href: routeHref(target), open: () => openDestination(target, CONVERSATION_TITLE) });
   $('conversation-navigation').hidden = !shown;
 }

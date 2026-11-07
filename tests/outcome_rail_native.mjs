@@ -53,9 +53,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // A topic page: the logo block, then "← Outcomes", then the outcome's topics.
       const t = await open(`rail-topic-${size}-${theme}`, '/?topic=t1', size, theme);
       await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), at + ': the topic rail is drawn');
-      // The conversation's row is drawn when its own read lands, which can be after the topics'.
-      const topic = await until(async () => { const seen = await top(t); return seen.rail[0] === 'brand' && seen.rail[1] === 'outcomes-home' && seen.rail.includes('conversation-navigation') && seen; },
-        at + ': the logo block, then ← Outcomes, and the conversation\'s row');
+      const topic = await until(async () => { const seen = await top(t); return seen.rail[0] === 'brand' && seen.rail[1] === 'outcomes-home' && seen; }, at + ': the logo block, then ← Outcomes');
       assert.deepEqual([topic.headers, topic.refresh, topic.buttons], [0, false, 0], at + ': no header bar and no Refresh on the topic page');
       assert.equal(topic.brandIn, 'rail', at + ': the logo block is in the rail');
       assert.deepEqual(topic.rail.slice(0, 4), ['brand', 'outcomes-home', 'conversation-navigation', 'topic-navigation'],
@@ -90,6 +88,26 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       await shot(h, `rail-home-${size}-${theme}`);
       assert.deepEqual(h.errors, []); await h.close();
     }
+  });
+
+  await check('rail the outcome\'s conversation row stands in its place while its read is out, so on a phone the topics and the page below do not move when it lands', async () => {
+    const t = await page('rail-conversation-held', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
+      await q.send('Emulation.setDeviceMetricsOverride', SIZES.phone);
+      await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      q.intercept(payload => payload?.name === 'conversation');
+    } });
+    await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), 'the topic rail is drawn');
+    await until(() => t.held.some(entry => entry.payload?.name === 'conversation'), 'the conversation\'s read is held');
+    const where = () => t.evaluate(`(()=>{const top=s=>Math.round(document.querySelector(s).getBoundingClientRect().top);
+      return {row:!document.querySelector('#conversation-navigation').hidden&&Boolean(document.querySelector('#conversation-row a.conversation-row')),topics:top('#topic-navigation'),title:top('#topic-title')}})()`);
+    const before = await where();
+    assert.equal(before.row, true, 'the row is in its place while its read is out');
+    t.intercept(null);
+    for (const entry of t.held.splice(0)) await t.release(entry);
+    await t.evaluate('new Promise(resolve=>setTimeout(resolve,0))');
+    const after = await where();
+    assert.deepEqual(after, before, 'the read landing moves nothing');
+    assert.deepEqual(t.errors, []); await t.close();
   });
 
   await check('rail Tab from ← Outcomes reaches the conversation, New topic, then the first topic', async () => {
