@@ -6,7 +6,8 @@
 // Only a press that starts and ends outside counts: a drag or selection that
 // starts in the pop-up and is let go outside is not a click outside, nor is a
 // press that starts outside and ends inside. A press that closes a smaller
-// pop-up open inside it (such as the color picker) closes only that one.
+// pop-up open inside it (an element with role="dialog") closes only that one.
+// win is the page's window, where the press is seen first.
 const outside = (dialog, event) => {
   const box = dialog.getBoundingClientRect();
   return event.clientX < box.left || event.clientX >= box.right || event.clientY < box.top || event.clientY >= box.bottom;

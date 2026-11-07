@@ -82,7 +82,7 @@ function closeReview() {
 }
 $('review-close').onclick = closeReview; $('review-keep').onclick = closeReview;
 review.addEventListener('cancel', event => { event.preventDefault(); closeReview(); });
-closeOnOutsideClick(review, closeReview);
+closeOnOutsideClick(review, closeReview, window);
 // The version review covers the page while open; what it hides is read once it closes.
 review.addEventListener('close', () => noteRead());
 function beginReview(title, opener) {

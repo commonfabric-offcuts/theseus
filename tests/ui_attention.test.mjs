@@ -97,7 +97,7 @@ test('asking for permission is offered only while undecided', async () => {
 test('a row shows its unread count, marks a count sent by name, and shows nothing at zero', t => {
   const previous = globalThis.document;
   class Element { constructor() { this.children = []; this.attributes = {}; } append(...nodes) { this.children.push(...nodes); } setAttribute(k, v) { this.attributes[k] = v; } }
-  globalThis.document = { createElement: () => new Element() }; t.after(() => { globalThis.document = previous; });
+  globalThis.document = { createTextNode: text => ({ text }), createElement: () => new Element() }; t.after(() => { globalThis.document = previous; });
   const row = item => { const host = new Element(); paintUnread(host, item); return host.children.map(c => [c.className, c.textContent, c.attributes['aria-hidden'] ?? null]); };
   assert.deepEqual(row({ unread: 4, addressed: 0 }), [['unread-count', '4', 'true'], ['sr-only', ', 4 unread', null]]);
   assert.deepEqual(row({ unread: 4, addressed: 1 }), [['unread-count addressed', '4', 'true'], ['sr-only', ', 4 unread, 1 sent to you by name', null]]);
@@ -108,7 +108,7 @@ test('a count keeps only the title\'s last character with it, a whole grapheme, 
   const previous = globalThis.document;
   class Node { constructor(tag) { Object.assign(this, { tag, children: [] }); } append(...nodes) { this.children.push(...nodes.map(node => typeof node === 'string' ? { nodeType: 3, data: node } : node)); }
     get lastChild() { return this.children.at(-1) ?? null; } setAttribute() {} }
-  globalThis.document = { createElement: tag => new Node(tag) };
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Node(tag) };
   t.after(() => { globalThis.document = previous; });
   const row = title => {
     const host = new Node('a'); host.append(title); paintUnread(host, { unread: 2, addressed: 0 });
@@ -148,6 +148,7 @@ class Element {
   leave() { for (let at = globalThis.document.focused; at; at = at.parent) if (at === this) globalThis.document.focused = null; }
   get isConnected() { return this.root || Boolean(this.parent?.isConnected); }
   setAttribute(name, value) { (this.attributes ??= {})[name] = String(value); }
+  addEventListener(name, fn) { (this.handlers ??= {})[name] = fn; }
   getAttribute(name) { return this.attributes?.[name] ?? null; }
   removeAttribute(name) { delete this.attributes?.[name]; }
   focus() { globalThis.document.focused = this; globalThis.document.moves = (globalThis.document.moves ?? 0) + 1; }
@@ -159,7 +160,7 @@ class Element {
 
 test('the sent list links a topic the reader can open, and marks read one they have lost', async t => {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag) };
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag) };
   t.after(() => { globalThis.document = previous; });
   const host = new Element('section'), opened = [], acknowledged = [];
   const actions = { open: item => opened.push(item.id), acknowledge: async item => { acknowledged.push(item.id); } };
@@ -187,7 +188,7 @@ test('the sent list links a topic the reader can open, and marks read one they h
 
 test('a message in a topic the reader has lost can be read whole where it is listed, and stays read across repaints', async t => {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag) };
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag) };
   t.after(() => { globalThis.document = previous; });
   const f = fixture();
   const lost = { ...f.item('d2', 'The start of a long message', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
@@ -246,7 +247,7 @@ test('a message in a topic the reader has lost can be read whole where it is lis
 
 test('a read survives the list being drawn again, keeps its focus, and ends on the row now shown', async t => {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
   t.after(() => { globalThis.document = previous; });
   const f = fixture();
   const lost = { ...f.item('d2', 'The start', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
@@ -304,7 +305,7 @@ test('a read survives the list being drawn again, keeps its focus, and ends on t
 
 test('a read that ends after its message has left the list draws nothing back', async t => {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag) };
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag) };
   t.after(() => { globalThis.document = previous; });
   const f = fixture();
   const lost = { ...f.item('d2', 'The start', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
@@ -326,7 +327,7 @@ test('a read that ends after its message has left the list draws nothing back', 
 
 test('a row that leaves the list hands its focus to the row now in its place, or else the one before', async t => {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
   t.after(() => { globalThis.document = previous; });
   const f = fixture();
   const lost = (id, body) => { const item = { ...f.item(id, body, 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-' + id } }; item.message = { ...item.message, id: 'm-' + id }; return item; };
@@ -361,7 +362,7 @@ test('a row that leaves the list hands its focus to the row now in its place, or
 
 test('a list drawn again with what it already shows is left alone, so a press under way ends on the button it began on', async t => {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
   t.after(() => { globalThis.document = previous; });
   const f = fixture();
   const lost = { ...f.item('d2', 'Before you left', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
@@ -384,7 +385,7 @@ test('a list drawn again with what it already shows is left alone, so a press un
 
 test('focus on the last row to leave goes to the page\'s main region, and on a row whose neighbours all left, to the first row', async t => {
   const previous = globalThis.document;
-  globalThis.document = { createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag), focused: null, get activeElement() { return this.focused?.isConnected ? this.focused : null; } };
   t.after(() => { globalThis.document = previous; });
   const f = fixture();
   const lost = (id, body) => { const item = { ...f.item(id, body, 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-' + id } }; item.message = { ...item.message, id: 'm-' + id }; return item; };
@@ -414,4 +415,30 @@ test('inside an outcome attention asks about that outcome, so the answer says wh
   assert.equal(attention.lastHere, 'w1', 'the answer was read about w1');
   assert.deepEqual(asked, [['attention', {}], ['attention', { workspace_id: 'w1' }]]);
   assert.deepEqual(heard.at(-1), { count: 2, here: true }, 'listeners hear the outcomes waiting');
+});
+
+test('a message sent by name shows its web addresses as links, in its excerpt and read whole, and an excerpt\'s cut one as words', async t => {
+  const previous = globalThis.document;
+  globalThis.document = { createTextNode: text => ({ text }), createElement: tag => new Element(tag) };
+  t.after(() => { globalThis.document = previous; });
+  const f = fixture();
+  const kept = f.item('d3', 'The build is at https://ci.example/run/7. Look.');
+  const lost = { ...f.item('d2', 'Read https://docs.example/plan then https://docs.example/cu', 't9'), topic_readable: false, source_ref: { kind: 'message', id: 'm-2' } };
+  lost.message = { ...lost.message, id: 'm-2', preview: true };
+  const host = new Element('section');
+  let settle;
+  const actions = { open() {}, acknowledge: async () => {}, read: () => new Promise(resolve => { settle = resolve; }), attachment: () => new Element('span') };
+  paintSent(host, { addressed: 2, latest_addressed: [kept, lost] }, actions);
+  const [open, closed] = host.all().filter(node => node.tag === 'li');
+  const links = row => row.all().filter(node => node.tag === 'a' && node.className === 'words-link').map(a => [a.textContent, a.target]);
+  assert.deepEqual(links(open), [['https://ci.example/run/7', '_blank']]);
+  assert.match(open.text, /agent-a: The build is at https:\/\/ci.example\/run\/7. Look./);
+  assert.deepEqual(links(closed), [['https://docs.example/plan', '_blank']], 'the address the excerpt may have cut is words');
+  assert.match(closed.text, /then https:\/\/docs.example\/cu…/);
+  const reading = closed.all().find(node => node.tag === 'button' && node.textContent === 'Read it here').onclick();
+  settle({ body: 'Read https://docs.example/plan then https://docs.example/cut-short-no-more', source_ref: { kind: 'message', id: 'm-2' }, attachments: [] });
+  await reading;
+  const whole = host.all().filter(node => node.tag === 'li')[1].all().find(node => node.className === 'sent-whole');
+  assert.equal(whole.text, 'agent-a: Read https://docs.example/plan then https://docs.example/cut-short-no-more');
+  assert.deepEqual(links(whole), [['https://docs.example/plan', '_blank'], ['https://docs.example/cut-short-no-more', '_blank']], 'read whole, every address is a link');
 });

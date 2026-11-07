@@ -14,7 +14,9 @@ the message a new topic answers. `web/links.mjs` draws them.
   Sentence punctuation (`.,;:!?`) after it, and a closing bracket it did not
   open, stay outside the link.
 - An excerpt may have cut an address short, so on an excerpt an address that
-  runs to its end (or to the ellipsis that ends it) is left as words.
+  runs to its end (or to the ellipsis that ends it) is left as words. A
+  folded message's line shows the message's first line, so it counts as cut
+  only when the message is an excerpt whose first line is also its last.
 - A link to one of this Theseus's own places (Outcomes, an outcome, a topic)
   on the same origin opens here, through the page's navigation, which keeps
   writing as any other move does. Any other link opens in a new tab with
@@ -26,14 +28,18 @@ the message a new topic answers. `web/links.mjs` draws them.
 ## Clicking outside a pop-up
 
 A click or tap outside a modal pop-up, on its backdrop, closes it the way its
-× and Escape do (`web/dismiss.mjs`). For the Reader that close keeps the
+× and Escape do (`web/dismiss.mjs`). The Reader, Topic settings and the
+version review all close this way. For the Reader that close keeps the
 unsent writing, quotes and images, waits while a save is running, returns the
 focus to what opened it, and never sends; when the close is refused (an image
 still being chosen, or writing this device could not keep) the Reader stays
-open and says why. The version review closes as Keep both for now does. The
-color picker already closes on a press outside it.
+open and says why. The version review closes as Keep both for now does, and
+Topic settings as its ✕ does, giving the focus back to the gear. On a phone
+the Reader and Topic settings fill the screen, so nothing is outside them. The
+color picker, which is not modal, already closes on a press outside it.
 
 Only a press that starts and ends outside counts. A selection or drag that
 starts inside and is let go outside does not close the pop-up, nor does a
-press that starts outside and ends inside. A press outside the Reader while
-the color picker is open inside it closes only the picker.
+press that starts outside and ends inside, nor a press with any button but the
+main one. A press that closes a smaller pop-up open inside a modal one closes
+only the smaller one.

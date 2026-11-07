@@ -114,7 +114,8 @@ test('after typing, one press on the offered author\'s remove takes them off, an
 test('typing that takes the offered author shows Ask beside their name', t => {
   const previous = { document: globalThis.document, window: globalThis.window };
   globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
-  globalThis.window = { getSelection: () => null };
+  const win = { listeners: {}, getSelection: () => null, addEventListener(type, listener, capture) { this.listeners[type] = [listener, capture]; } };
+  globalThis.window = win;
   t.after(() => Object.assign(globalThis, previous));
   // The Reader's own wiring: every element it binds listens, and the writing
   // field is typed into as a browser does, through its input event.
@@ -136,7 +137,21 @@ test('typing that takes the offered author shows Ask beside their name', t => {
   field.value = 'H'; field.selectionStart = field.selectionEnd = 1;
   field.listeners.input();
   assert.deepEqual(reply.draft.addressees, ['fable'], 'the first letter took the offered author');
-  assert.equal(element('ask-choice').hidden, false, 'the reply now names them, so Ask shows');
+  assert.equal(element('ask-choice').hidden, false, 'the reply now names them, so Ask shows');  // A click outside, on the backdrop, closes the Reader as × does; one inside does not.
+  let closes = 0;
+  reader.close = () => { closes++; };
+  // No smaller pop-up is open inside it.
+  const named = reader.dialog.querySelector;
+  Object.assign(reader.dialog, { open: true, getBoundingClientRect: () => ({ left: 100, right: 900, top: 50, bottom: 750 }),
+    querySelector: selector => selector === '[role="dialog"]' ? null : named(selector) });
+  assert.ok(win.listeners.pointerdown, 'the Reader listens for a press outside it');
+  const [down, capture] = win.listeners.pointerdown;
+  assert.equal(capture, true, 'the press is seen on the window, on its way down');
+  const press = (x, y) => { const event = { target: reader.dialog, clientX: x, clientY: y, button: 0, isPrimary: true }; down(event); reader.dialog.listeners.click(event); };
+  press(500, 400);
+  assert.equal(closes, 0, 'a press inside the Reader keeps it open');
+  press(20, 400);
+  assert.equal(closes, 1, 'a press on the backdrop closes it');
 });
 
 test('a reply card names the author of the message it answers and how it begins', () => {

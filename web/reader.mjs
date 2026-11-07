@@ -49,7 +49,7 @@ export class Reader {
     this.$('reader-close').onclick = () => this.close();
     this.dialog.addEventListener('cancel', event => { event.preventDefault(); this.escape(); });
     // A click outside closes as × does: the writing, quotes and images are kept.
-    closeOnOutsideClick(this.dialog, () => this.close());
+    closeOnOutsideClick(this.dialog, () => this.close(), window);
     this.$('reader-parent').onclick = () => this.close('parent');
     this.$('reader-layout').onclick = () => {
       this.layout.setMode(this.layout.mode === 'wide' ? 'stacked' : 'wide');

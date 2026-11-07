@@ -4,7 +4,10 @@ export function dom() {
   const document={activeElement:null};
   class Element {
     constructor(tag){this.tagName=tag;this.children=[];this.dataset={};this.hidden=false;this.disabled=false;this.value='';this.textContent='';this.classList={add(){}};}
-    append(...items){for(const item of items){item.parent=this;this.children.push(item);}}
+    // A string appended is a text node, as in a page.
+    append(...items){for(let item of items){if(typeof item==='string')item=document.createTextNode(item);item.parent=this;this.children.push(item);}}
+    // What the page's textContent gives: its own words, or its children's.
+    get text(){return this.children.length?this.children.map(child=>child.text).join(''):this.textContent;}
     replaceChildren(...items){this.children=[];this.append(...items);}
     setAttribute(name,value){this[name]=value;}
     addEventListener(){}
@@ -14,6 +17,8 @@ export function dom() {
     removeAttribute(name){delete this[name];}
     querySelector(selector){const key=selector==='[data-more]'?'more':selector==='[data-history-retry]'?'historyRetry':null;return this.children.find(x=>key&&Object.hasOwn(x.dataset,key))??null;}
   }
-  document.createElement=tag=>new Element(tag);document.body=document.createElement('body');
+  document.createElement=tag=>new Element(tag);
+  document.createTextNode=data=>Object.assign(new Element('#text'),{textContent:data});
+  document.body=document.createElement('body');
   return document;
 }
