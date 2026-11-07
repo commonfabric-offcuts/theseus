@@ -31,7 +31,7 @@ other agent is woken only by a message that names it. With no coordinator the
 page says nobody answers yet; items still arrive.
 
 `workspace.create` starts the new outcome's conversation (its result carries
-`conversation_id`). An outcome made before version 27 gets its conversation
+`conversation_id`). An outcome made before version 28 gets its conversation
 from the operator: `aim-next-admin conversation-start --profile P --outcome W
 [--coordinator NAME] [--replaces T1,T2]`; each replaced topic becomes Done
 ("Replaced by the conversation"), archived, readable under Archived.
@@ -81,4 +81,4 @@ topic_title, author_id}`, or `{hidden: true}`) and, in a conversation, `item`
 by one actor are one line). `items: "open"` lists only items not settled.
 
 `workspace_topics` leaves the conversation out; the `topic` view carries
-`kind`. Stepping back from version 27 is refused once a conversation exists.
+`kind`. Stepping back from version 28 is refused once a conversation exists.

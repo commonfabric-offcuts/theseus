@@ -26,7 +26,7 @@ from .contract import READABLE, Refusal, _identifier, _revision
 from .delivery import _now_ms
 
 
-# Version 27: a topic's kind, the conversation a replaced topic gave way to,
+# Version 28: a topic's kind, the conversation a replaced topic gave way to,
 # the message a post to the conversation is about, and the conversation's
 # items, what became of each, and its open asks.
 STANDING_SCHEMA = [
@@ -144,7 +144,11 @@ class StandingConversation:
             changed.append(member)
         if changed:
             self._sync_waits(db, conversation, changed)
-            version = self._touch_topic(db, conversation)
+            # The act that changed the team or the coordinator advances the outcome's own version.
+            version = conversation["version"] + 1
+            db.execute("UPDATE topics SET version=? WHERE id=?", (version, conversation["id"]))
+            self._change(db, "topic", conversation["id"], "topic", conversation["id"], version)
+            self._change(db, "workspace", workspace_id, "topic", conversation["id"], version)
             for member in changed:
                 self._change(db, "actor", member, "participation", conversation["id"], version)
             conversation = self._conversation_of(db, workspace_id)
@@ -195,7 +199,8 @@ class StandingConversation:
             found["topic_id"] = self._start_conversation(db, workspace_id, list(replaces), None)
             db.execute("UPDATE workspaces SET version=version+1 WHERE id=?", (workspace_id,))
             version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace_id,)).fetchone()[0]
-            self._change(db, "workspace", workspace_id, "workspace", workspace_id, version)
+            # Open outcome and topic pages learn who coordinates now.
+            self._outcome_change(db, workspace_id, version)
             return True
         self._operator_write(write, "started", "conversation start")
         return {"instance_id": self.instance_id, "workspace_id": workspace_id, "conversation_id": found["topic_id"]}
@@ -217,7 +222,8 @@ class StandingConversation:
         db.execute("UPDATE workspaces SET coordinator_id=?,version=version+1 WHERE id=?", (chosen, workspace["id"]))
         self._sync_participants(db, workspace["id"])
         version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace["id"],)).fetchone()[0]
-        self._change(db, "workspace", workspace["id"], "workspace", workspace["id"], version)
+        # Open outcome and topic pages learn who coordinates now (Store._outcome_change).
+        self._outcome_change(db, workspace["id"], version)
         return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
 
     # Rules -------------------------------------------------------------------

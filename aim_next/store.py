@@ -477,11 +477,10 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         db.executemany("INSERT INTO workspace_members VALUES (?,?)", [(workspace_id, member) for member in team])
         # Every outcome has its conversation from the moment it is made (standing_conversation.py).
         conversation_id = self._start_conversation(db, workspace_id, [], actor)
-        version = db.execute("SELECT version FROM workspaces WHERE id=?", (workspace_id,)).fetchone()[0]
-        self._outcome_change(db, workspace_id, version)
-        return {"workspace": {"id": workspace_id, "owner_id": actor, "title": title, "version": version},
+        self._outcome_change(db, workspace_id, 1)
+        return {"workspace": {"id": workspace_id, "owner_id": actor, "title": title, "version": 1},
                 "conversation_id": conversation_id}, [
-            {"kind": "workspace", "id": workspace_id, "version": version}]
+            {"kind": "workspace", "id": workspace_id, "version": 1}]
 
     def _view_workspace(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))
@@ -631,7 +630,10 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             # latest_seq is the sequence of the topic's newest message, read through its one-row summary.
             rows += db.execute("SELECT t.*,s.message_count,m.seq AS latest_seq FROM topics t INDEXED BY workspace_topic_order "
                                "LEFT JOIN topic_summaries s ON s.topic_id=t.id LEFT JOIN messages m ON m.id=s.latest_message_id "
-                               "WHERE t.workspace_id=? AND t.archived=? AND (t.state='done')=? AND t.kind='topic'" + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
+                               "WHERE t.workspace_id=? AND t.archived=? AND (t.state='done')=?" + (
+                                   # The open list leaves out the conversation, which has its own row; it is
+                                   # never Done or archived unless its outcome is reached, and then it is listed there.
+                                   " AND t.kind='topic'" if not archived and not flag else "") + (" AND (t.activity_ms,t.id)<(?,?)" if keyset else "") +
                                " ORDER BY t.activity_ms DESC,t.id DESC LIMIT ?",
                                (workspace["id"], int(archived), flag) + (after[1:] if keyset else ()) + (limit + 1 - len(rows),)).fetchall()
             if len(rows) > limit:
@@ -647,9 +649,9 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             item["work"] = work[item["id"]]
         last = items[-1] if items else None
         # How many topics the folded lists hold, each counted in its own stretch of the index.
-        groups = {"done": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=0 AND (state='done')=1 AND kind='topic'",
+        groups = {"done": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=0 AND (state='done')=1",
                                      (workspace["id"],)).fetchone()[0],
-                  "archived": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=1 AND kind='topic'",
+                  "archived": db.execute("SELECT count(*) FROM topics INDEXED BY workspace_topic_order WHERE workspace_id=? AND archived=1",
                                          (workspace["id"],)).fetchone()[0]}
         return {"instance_id": self.instance_id, "items": items, "groups": groups,
                 "next_cursor": order_cursor(last["state"] == "done", last["activity_ms"], last["id"]) if len(rows) > limit else None,

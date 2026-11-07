@@ -530,11 +530,13 @@ VIEW_PATHS = {
     "capabilities": "no message", "operation": "the reader's own operation", "workspace": "no message",
     "opening": "the reader's own opening", "openings": "the reader's own openings", "workspace_members": "no message",
     "actors": "no message", "colors": "no message", "releases": "no message",
+    "conversation": "counts items and lists asks, and a whisper is never an item or an ask; unread from the reader's own deliveries",
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
-    "aim_next/conversation.py": ("the topic page (VISIBLE), the reader's own deliveries, a reply checked by visible(), migrations", 19),
+    "aim_next/conversation.py": ("the topic page (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations", 20),
+    "aim_next/standing_conversation.py": ("a conversation's items, answers and asks, which a whisper never is, and the about links of a page already read through VISIBLE", 8),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),

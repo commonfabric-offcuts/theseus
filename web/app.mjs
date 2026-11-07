@@ -35,8 +35,7 @@ import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
-import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout,
-  paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers } from './outcome-conversation.mjs';
+import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith } from './links.mjs';
@@ -1384,22 +1383,26 @@ function followCommits(load) {
   }
   return reload;
 }
-// The Done and Archived lines under the topic list, where the person's choice
 // The outcome's conversation: read on every commit, as the rails are, so a
-// take, an answer or a wait shows without a reload.
+// take, an answer or a wait shows without a reload. A read that fails keeps
+// what was painted and says so to the commit follower, which reads again.
 async function loadConversation() {
   if (!here) return true;
-  const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
-  here.view = answer.conversation;
-  paintConversationNav();
-  if (here.page && here.view) {
-    const page = checkedView(await api.view('topic_messages', { topic_id: here.view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
-      bootstrap.instance_id);
-    for (const item of page.items) here.items.set(item.id, item);
-    if (topic) paintHeader(topic);
-    paintConversationPage();
+  try {
+    const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
+    here.view = answer.conversation;
+    paintConversationNav();
+    if (here.page && here.view) {
+      const page = checkedView(await api.view('topic_messages', { topic_id: here.view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
+        bootstrap.instance_id);
+      for (const item of page.items) here.items.set(item.id, item);
+      if (topic) paintHeader(topic);
+      paintConversationPage();
+    }
+    return true;
+  } catch {
+    return false;
   }
-  return true;
 }
 function paintConversationNav() {
   const target = { kind: 'conversation', id: here.workspaceId };
@@ -1487,6 +1490,7 @@ async function switchDestination(value) {
   registry.edited(editor);
   if (reader.editor === editor) reader.drawEditor();
 }
+// The Done and Archived lines under the topic list, where the person's choice
 // to keep each open is remembered, and the area the lists keep still under.
 function topicFolds() {
   let storage = null;

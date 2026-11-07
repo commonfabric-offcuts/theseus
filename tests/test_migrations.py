@@ -42,6 +42,8 @@ SCHEMA_24 = (Path(__file__).parent / "fixtures" / "schema_24.sql").read_text().s
 SCHEMA_25 = (Path(__file__).parent / "fixtures" / "schema_25.sql").read_text().splitlines()
 # Release 22's layout, read from a fresh instance of its code: version 26 changed no layout.
 SCHEMA_26 = (Path(__file__).parent / "fixtures" / "schema_26.sql").read_text().splitlines()
+# Whispers' layout, read from a fresh instance of its code (3c7730f).
+SCHEMA_27 = (Path(__file__).parent / "fixtures" / "schema_27.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -61,6 +63,24 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 28 gives each outcome its conversation. No outcome had one before, so the
+        # conversation each outcome starts with today goes, with every row about it.
+        conversations = [row[0] for row in db.execute("SELECT id FROM topics WHERE kind='conversation'")]
+        for table in [row[0] for row in db.execute("SELECT m.name FROM sqlite_master m JOIN pragma_table_info(m.name) c "
+                                                   "WHERE m.type='table' AND c.name='topic_id'")]:
+            db.executemany("DELETE FROM " + table + " WHERE topic_id=?", [(topic,) for topic in conversations])
+        db.executemany("DELETE FROM changes WHERE resource_id=? OR scope_id=?", [(topic, topic) for topic in conversations])
+        db.executemany("DELETE FROM topics WHERE id=?", [(topic,) for topic in conversations])
+        db.execute("DROP TABLE conversation_waits")
+        db.execute("DROP TABLE conversation_takes")
+        db.execute("DROP TABLE conversation_items")
+        db.execute("ALTER TABLE messages DROP COLUMN about_id")
+        db.execute("ALTER TABLE topics DROP COLUMN replaced_by")
+        db.execute("DROP INDEX outcome_conversation")
+        db.execute("ALTER TABLE topics DROP COLUMN kind")
+        if version == "27":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 27 lets a person whisper to one agent: who a message is private to,
         # the index of each message's replies, and the trigger that keeps a whisper's shape.
         db.execute("DROP TRIGGER whisper_shape")
@@ -1712,7 +1732,7 @@ def fresh_schema(directory):
 # every step in between, each with its own frozen layout.
 RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("20", SCHEMA_20),
                      ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23), ("24", SCHEMA_24),
-                     ("25", SCHEMA_25), ("26", SCHEMA_26))
+                     ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27))
 
 
 class Release19ChainCase(MigrationCase):
@@ -1938,6 +1958,42 @@ class LiveShapedChainCase(MigrationCase):
                 self.assertEqual(schema(self.path), layout)
         self.assertEqual(self.fixture.read_bytes(), self.fixture_bytes, "the fixture itself was never touched")
 
+    def test_day_one_on_the_live_shaped_copy_closes_the_replaced_topics_and_no_step_back_runs_after(self):
+        self.assertTrue(self.upgrade()["migrated"])
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        # Topics that end Done and archived; t3 waits on the person, and that wait goes with it.
+        self.assertEqual(self.sql("SELECT actor_id FROM topic_waiting WHERE topic_id='t3'"), [("owner",)])
+        listed = self.store.view("owner", "workspace_topics", {"workspace_id": "w1"})["items"]
+        others = self.store.view("owner", "workspace_topics", {"workspace_id": "w2"})["items"]
+        before = self.sql("SELECT max(seq) FROM changes")[0][0]
+        result = self.store.start_conversation("w1", "agent-b", ["t1", "t3"])
+        conversation = result["conversation_id"]
+        self.assertEqual(self.sql("SELECT id,state,archived,state_note,state_by,replaced_by FROM topics WHERE id IN ('t1','t3') ORDER BY id"),
+                         [(topic, "done", 1, "Replaced by the conversation", None, conversation) for topic in ("t1", "t3")])
+        self.assertEqual(self.sql("SELECT count(*) FROM topic_waiting WHERE topic_id='t3'"), [(0,)])
+        # Its people and the coordinator (agent-b), and no other agent.
+        self.assertEqual(self.sql("SELECT actor_id FROM topic_participants WHERE topic_id=? AND active=1 ORDER BY actor_id", (conversation,)),
+                         [("agent-b",), ("owner",)])
+        self.assertEqual(self.sql("SELECT coordinator_id FROM workspaces WHERE id='w1'"), [("agent-b",)])
+        # Pages repaint: the replaced topics, the conversation and the outcome each have their change rows.
+        keys = set(self.sql("SELECT scope_kind,scope_id,resource_id FROM changes WHERE seq>?", (before,)))
+        for topic in ("t1", "t3"):
+            self.assertIn(("topic", topic, topic), keys)
+        self.assertIn(("workspace", "w1", "w1"), keys)
+        self.assertIn(("topic", conversation, conversation), keys)
+        # w1's list loses exactly the two replaced topics and never lists the conversation; w2 is untouched.
+        after = self.store.view("owner", "workspace_topics", {"workspace_id": "w1"})["items"]
+        self.assertEqual([item["id"] for item in after], [item["id"] for item in listed if item["id"] not in ("t1", "t3")])
+        self.assertEqual(self.store.view("owner", "workspace_topics", {"workspace_id": "w2"})["items"], others)
+        held = everything(self.path)
+        for target in ("27", "17"):
+            with self.subTest(target=target):
+                with self.assertRaises(MigrationError) as refused:
+                    migrate(self.path, "test-instance", self.binding, target)
+                self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(everything(self.path), held)
+        self.assertEqual(self.fixture.read_bytes(), self.fixture_bytes, "the fixture itself was never touched")
+
 
 class Schema24Case(MigrationCase):
     """A schema-24 instance: version 25 finds the New line in the reader's live groups alone."""
@@ -2123,10 +2179,12 @@ class Schema26Case(MigrationCase):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]["message_id"]
 
-    def test_upgrade_from_26_matches_a_fresh_instance_and_keeps_every_row(self):
+    def test_upgrade_from_26_matches_whispers_layout_and_keeps_every_row(self):
         before, rows = self.records(), everything(self.path)
-        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "26", "schema_version": SCHEMA_VERSION, "migrated": True})
-        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        # Version 27's own step; version 28 adds the conversation, checked in Schema27Case.
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, "27"),
+                         {"instance_id": "test-instance", "from_version": "26", "schema_version": "27", "migrated": True})
+        self.assertEqual(schema(self.path), frozen(SCHEMA_27))
         self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
                          {k: v for k, v in before.items() if k != "metadata"})
         # Every message is on the record: nobody's message became private.
@@ -2180,6 +2238,64 @@ class Schema26Case(MigrationCase):
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE private_to='agent-a'"), [(1,)])
 
 
+
+class Schema27Case(MigrationCase):
+    """A schema-27 instance (whispers): version 28 gives each outcome its conversation (item 82)."""
+
+    VERSION, FIXTURE = "27", SCHEMA_27
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "27")
+
+    def start(self, *argv):
+        """The operator's verb, as the day-one runbook runs it."""
+        code, result, err = self.admin("conversation-start", "--profile", str(self.profile), "--outcome", "w1", *argv)
+        self.assertEqual(code, 0, err)
+        return result
+
+    def test_upgrade_from_27_matches_a_fresh_instance_keeps_every_row_and_starts_no_conversation(self):
+        before, rows = self.records(), everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "27", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        # Every topic stays an ordinary topic, replacing nothing; an older outcome's conversation
+        # comes from the operator, never from the upgrade.
+        self.assertEqual(self.sql("SELECT kind,replaced_by,count(*) FROM topics GROUP BY kind,replaced_by"), [("topic", None, 1)])
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE about_id IS NOT NULL"), [(0,)])
+        widened = {"messages": 1, "topics": 2}
+        self.assertEqual({table: [row[:-widened[table]] if table in widened else row for row in kept]
+                          for table, kept in everything(self.path).items()
+                          if table not in ("conversation_items", "conversation_takes", "conversation_waits")},
+                         rows, "only the new columns are added, to messages and topics")
+        for table in ("conversation_items", "conversation_takes", "conversation_waits"):
+            self.assertEqual(self.sql("SELECT count(*) FROM " + table), [(0,)], table)
+
+    def test_step_back_without_a_conversation_gives_27_its_layout_and_every_row_and_up_again_is_the_same(self):
+        stored = everything(self.path)
+        self.upgrade()
+        at_head = schema(self.path)
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_27))
+        self.assertEqual(everything(self.path), stored)
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(schema(self.path), at_head)
+
+    def test_step_back_is_refused_once_a_conversation_exists_and_changes_nothing(self):
+        self.upgrade()
+        started = self.start("--coordinator", "agent-a", "--replaces", "t1")
+        self.assertEqual(self.sql("SELECT kind FROM topics WHERE id=?", (started["conversation_id"],)), [("conversation",)])
+        before, layout = everything(self.path), schema(self.path)
+        for target in ("27", "26"):
+            with self.subTest(target=target):
+                with self.assertRaises(MigrationError) as refused:
+                    migrate(self.path, "test-instance", self.binding, target)
+                self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(everything(self.path), before, "nothing changed")
+                self.assertEqual(schema(self.path), layout)
+        self.assertEqual(self.sql("SELECT value FROM metadata WHERE key='schema_version'"), [(SCHEMA_VERSION,)])
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -2216,6 +2332,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema25Case, _name, None)
     if _name.startswith("test_") and _name not in Schema26Case.__dict__:
         setattr(Schema26Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema27Case.__dict__:
+        setattr(Schema27Case, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

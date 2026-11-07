@@ -108,7 +108,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(Object.assign(scope, overrides));
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,STATES,stateLabel,waitsOn,managesTopic,organises}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,workNote,STATES,stateLabel,waitsOn,managesTopic,organises}; })())', context);
   const headerSource = readFileSync(new URL('../web/topic-header.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + headerSource + '; return {paintTopicHeader}; })())', context);
   const settingsSource = readFileSync(new URL('../web/topic-settings.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -143,6 +143,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   // Whisper, Tell or Ask, and whispers on cards, in the composers' and the page's own scope (docs/whispers.md).
   const choiceSource = readFileSync(new URL('../web/whisper-choice.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + choiceSource + '; return {paintChoice,clearChoice,chosen,naming,unnamed,sending,paintWhisperAuthor}; })())', context);
+  // An outcome's conversation: its page, its row and the Reader's To, in the page's own scope (docs/conversation.md).
+  const conversationSource = readFileSync(new URL('../web/outcome-conversation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + conversationSource + '; return {CONVERSATION_TITLE:TITLE,conversationSubtitle:subtitle,conversationPlaceholder:placeholder,CONVERSATION_NOTE,paintOnlyNew,paintEmpty,paintItemTags,paintAbout,paintAsksYou,paintConversationRow,conversationDestination,paintAnswerers}; })())', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
