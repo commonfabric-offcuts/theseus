@@ -119,6 +119,38 @@ test('a repaint while a remove button holds focus keeps focus on that person, or
   assert.equal(document.activeElement, null, 'a repaint does not take focus it did not hold');
 });
 
+test('a repaint that would show what is there already leaves the chips and their buttons in place, so a press across it still clicks', t => {
+  dom(t);
+  const host = new Element('div');
+  const kept = new Element('button');
+  let color = 'agent-1', light = null, fixed = [];
+  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', fixed: () => fixed, named: person => person.actor_id === 'fable' ? kept : null,
+    pill: person => person.actor_id === 'fable' ? color : '', light: person => person.actor_id === 'fable' ? light : null });
+  const chips = () => host.children[0].children;
+  const out = id => host.find(node => node.attributes['aria-label'] === `Remove ${id}`);
+  panel.paint(people(['fable', 'tony']), true);
+  const first = chips(), button = out('fable');
+  panel.paint(people(['fable', 'tony']), true);
+  panel.paint();
+  assert.equal(chips(), first, 'the same chips, not new ones');
+  assert.equal(out('fable'), button, 'the very button a press went down on');
+  // Each thing a chip shows repaints it when it changes.
+  const changes = [() => { color = 'agent-2'; }, () => { light = 'not woken'; }, () => { fixed = ['fable']; }, () => { panel.busy = true; }];
+  for (const change of changes) {
+    const before = chips();
+    change(); panel.paint();
+    assert.notEqual(chips(), before, String(change));
+  }
+  assert.equal(out('tony').disabled, true, 'a busy panel disables its buttons');
+  assert.equal(out('fable'), undefined, 'a fixed person has no button');
+  let before = chips(); panel.paint(people(['tony', 'fable']), true);
+  assert.notEqual(chips(), before, 'a new order repaints');
+  before = chips(); panel.paint(people(['tony', 'fable']), false);
+  assert.equal(out('tony'), undefined, 'a reader who may not manage sees no button');
+  before = chips(); panel.paint(people(['tony']), false);
+  assert.notEqual(chips(), before, 'someone leaving repaints');
+});
+
 test('a repaint while a person\'s name control holds focus gives it to that person\'s name again', t => {
   dom(t);
   const host = new Element('div');

@@ -380,10 +380,22 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     for (const pill of await people(small)) assert.equal(pill.remove?.inside, true, `390: ${pill.name}'s remove button is inside the pill`);
     assert.equal(await noSideways(small), true, '390: no sideways scroll');
     await small.close();
-    // The owner removes the agent with a real press on the button inside its pill.
+    // The owner removes the agent with a real press on the button inside its
+    // pill, and a commit that repaints the people while the button is held
+    // down does not swallow the press.
     const remove = `#topic-people [aria-label="Remove ${agent}"]`;
     await p.evaluate(`document.querySelector(${JSON.stringify(remove)}).scrollIntoView({block:'center'})`);
-    await p.point(remove);
+    const out = await p.box(remove), x = out.x + out.width / 2, y = out.y + out.height / 2;
+    assert.equal(await p.evaluate(`document.elementFromPoint(${x}, ${y}) === document.querySelector(${JSON.stringify(remove)})`), true, 'the remove button is what is pressed');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    // The page reloads after every commit: it reads the wake lights, which set
+    // the wakes notice's hidden attribute, and in the same turn paints the
+    // people again. A record of that attribute is that repaint having run.
+    await p.evaluate(`(()=>{window.wakesPainted=0;new MutationObserver(records=>{window.wakesPainted+=records.length;}).observe(document.querySelector('#wakes-status'),{attributes:true,attributeFilter:['hidden']});})()`);
+    await control({ method: 'agent_message', operation_id: 'header-people-repaint', body: 'A commit while the button is held down.', read: true });
+    await until(() => p.evaluate('window.wakesPainted > 0'), 'the commit repaints the people while the button is down');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
     await until(async () => !(await people(p)).some(x => x.name === agent), 'its pill leaves');
     assert.equal(await p.evaluate(`document.activeElement?.matches('#participants .people-add input')`), true, 'the focus is on the add field');
     assert.equal((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), false, 'Core took it out');

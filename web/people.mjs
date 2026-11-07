@@ -144,7 +144,7 @@ export class PeoplePanel {
   // is not confirmed, so the panel says what it found.
   constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null, light = () => null, pill = null, read = null }) {
     Object.assign(this, { host, label, names, fixed, add, remove, named, light, pill, read });
-    this.busy = false; this.error = ''; this.people = []; this.manage = false; this.removers = new Map(); this.namers = new Map();
+    this.busy = false; this.error = ''; this.people = []; this.manage = false; this.shown = null; this.removers = new Map(); this.namers = new Map();
     this.chips = element('div', { className: 'chips' });
     this.input = element('input', { autocomplete: 'off', placeholder: 'Add a name' });
     this.input.setAttribute('list', names); this.input.setAttribute('aria-label', label);
@@ -166,38 +166,49 @@ export class PeoplePanel {
   paint(people = this.people, manage = this.manage) {
     this.people = people; this.manage = manage;
     const fixed = new Set(this.fixed());
+    // What each chip shows. A name may be a control of its own (named), such as
+    // an agent's color; the light says whether this agent's wakes are getting
+    // through, when they are not.
+    const shown = people.map(person => ({ id: person.actor_id, named: this.named(person),
+      className: this.pill ? ['person-pill', this.pill(person)].filter(Boolean).join(' ') : 'chip',
+      light: this.light(person), removable: manage && !fixed.has(person.actor_id), busy: this.busy }));
+    // A repaint that would show what is there already, as after a commit that
+    // changed no one here, leaves the chips alone: a press on a button that such
+    // a repaint replaced between its down and up would click nothing.
+    const same = this.shown?.length === shown.length && shown.every((chip, index) =>
+      Object.keys(chip).every(key => chip[key] === this.shown[index][key]));
+    this.shown = shown;
+    if (!same) this.paintChips(shown);
+    this.row.hidden = !manage;
+    this.button.disabled = this.busy;
+    this.notice.textContent = this.error; this.notice.hidden = !this.error;
+    this.host.hidden = false;
+  }
+
+  paintChips(shown) {
     // A repaint replaces the remove buttons; one that held focus hands it to
     // the same person's new button, or to the field when they have gone.
     const held = [...this.removers].find(([, out]) => out === document.activeElement)?.[0];
     const heldName = [...this.namers].find(([, name]) => name === document.activeElement)?.[0];
     this.removers = new Map(); this.namers = new Map();
-    this.chips.replaceChildren(...people.map(person => {
-      // A name may be a control of its own (named), such as an agent's color.
-      const named = this.named(person);
-      if (named) this.namers.set(person.actor_id, named);
-      const className = this.pill ? ['person-pill', this.pill(person)].filter(Boolean).join(' ') : 'chip';
+    this.chips.replaceChildren(...shown.map(({ id, named, className, light, removable, busy }) => {
+      if (named) this.namers.set(id, named);
       const chip = named ? element('span', { className }, named)
-        : this.pill ? element('span', { className }, element('span', { className: 'pill-name', textContent: person.actor_id }))
-        : element('span', { className, textContent: person.actor_id });
-      // Whether this agent's wakes are getting through, when they are not.
-      const light = this.light(person);
+        : this.pill ? element('span', { className }, element('span', { className: 'pill-name', textContent: id }))
+        : element('span', { className, textContent: id });
       if (light) chip.append(element('span', { className: 'wake-light', textContent: ` · ${light}` }));
-      if (manage && !fixed.has(person.actor_id)) {
-        const out = element('button', { type: 'button', textContent: '×', disabled: this.busy, ...(this.pill ? { className: 'pill-remove' } : {}) });
-        out.setAttribute('aria-label', `Remove ${person.actor_id}`);
+      if (removable) {
+        const out = element('button', { type: 'button', textContent: '×', disabled: busy, ...(this.pill ? { className: 'pill-remove' } : {}) });
+        out.setAttribute('aria-label', `Remove ${id}`);
         // The chip goes with its person; the field keeps the reader's place.
-        out.onclick = () => { this.input.focus(); return this.submit(() => this.remove(person.actor_id), () => {}, () => this.input.focus()); };
-        this.removers.set(person.actor_id, out);
+        out.onclick = () => { this.input.focus(); return this.submit(() => this.remove(id), () => {}, () => this.input.focus()); };
+        this.removers.set(id, out);
         chip.append(out);
       }
       return chip;
     }));
-    if (held !== undefined && manage) (this.removers.get(held) ?? this.input).focus();
+    if (held !== undefined && this.manage) (this.removers.get(held) ?? this.input).focus();
     else if (heldName !== undefined) this.namers.get(heldName)?.focus();
-    this.row.hidden = !manage;
-    this.button.disabled = this.busy;
-    this.notice.textContent = this.error; this.notice.hidden = !this.error;
-    this.host.hidden = false;
   }
 
   // One read of who is here, never a second send. A refusal keeps its own
