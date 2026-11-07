@@ -56,7 +56,8 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     const publish = await enter(p);
     assert.deepEqual(publish.args, { seen: [] });
     const topic = await until(() => quiet(p, `document.body.dataset.ready==='true' && new URLSearchParams(location.search).get('topic')`), 'the new topic opens');
-    assert.equal(await p.evaluate(`document.querySelector('#topic-title').textContent`), 'Release name');
+    // The new topic opens in place, so the page was ready before it: its title is painted when the topic's read lands.
+    await until(() => quiet(p, `document.querySelector('#topic-title').textContent === 'Release name'`), 'the new topic is titled as typed');
     assert.deepEqual(await started(), [topic]);
     const read = await view('topic', { topic_id: topic });
     assert.equal(read.topic.source_message_id, message);
