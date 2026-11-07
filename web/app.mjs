@@ -1382,9 +1382,10 @@ async function initializeOutcomePage(route) {
     const reload=followCommits(async()=>{const loaded=await outcomeRail.load();await wakeLights.load();return loaded;});
     await reload();
   } else {
-    // Other outcomes' questions in one quiet line, then where this outcome stands,
-    // then its topics; its Notebook pages are listed after them, and one opens in place below them.
-    $('outcome-page').append($('also-waiting'),$('outcome-standing'),$('topic-navigation'),$('outcome-references'),$('page-here'));
+    // Other outcomes' questions in one quiet line, or why the list they are read
+    // from could not be read and Retry, then where this outcome stands, then its
+    // topics; its Notebook pages are listed after them, and one opens in place below them.
+    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('topic-navigation'),$('outcome-references'),$('page-here'));
     // The page lists the outcome's topics and pages itself, so it has no rail:
     // the logo block, then "← Outcomes", head the main column.
     const rail=document.querySelector('.rail');rail.hidden=true;

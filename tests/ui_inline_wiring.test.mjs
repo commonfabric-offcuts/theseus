@@ -1273,6 +1273,27 @@ test('on an outcome page the light keeps its words unseen only while the Also-wa
   assert.equal(words.textContent, '2 other outcomes are waiting on you');
 });
 
+test('on an outcome page a failed read of the outcome list says so with Retry where the person sees it, and its stale line goes', async () => {
+  const { f, words, also, live, state, seen, textOf } = await lightAndLine(['w2'], [{ id: 'w2', asks: 1 }, { id: 'w5' }]);
+  assert.equal(also.hidden, false); assert.equal(words.hidden, true);
+  const notice = f.get('outcomes-status'), retry = f.get('retry-workspaces');
+  assert.equal(seen(notice) && !notice.hidden, false, 'no notice while the list reads');
+  // The next read fails, and the wait in w2 has been answered meanwhile.
+  state.failing = Object.assign(Error('This read could not enter its bounded lane.'), { status: 503 });
+  live.emit({ kind: 'commit', seq: 6 }); await drain(); await drain();
+  assert.equal(also.hidden, true, 'the line from the last rows is not shown as if fresh');
+  assert.equal(seen(notice), true, 'the failure is said on the outcome page, not in the hidden rail');
+  assert.match(notice.textContent, /could not enter its bounded lane/);
+  assert.equal(seen(retry), true, 'with Retry beside it');
+  assert.equal(words.hidden, false, 'and the light, read apart from the list, says what waits in words');
+  // Retry reads the list again.
+  state.failing = null;
+  await retry.onclick(); await drain();
+  assert.equal(notice.hidden, true); assert.equal(retry.hidden, true);
+  assert.equal(also.hidden, false); assert.equal(textOf(also), 'Also waiting on you: 1 in Outcome w2 ›');
+  assert.equal(words.hidden, true);
+});
+
 test('the page starts its attention from the bootstrap\'s number', async () => {
   const f = fixture('https://fixture/?'), o = outcomesPage(f);
   o.answers.push(o.page([]));

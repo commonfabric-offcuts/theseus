@@ -3,7 +3,8 @@ import { paintRowLight } from './outcome-light.mjs';
 
 export class OutcomeRail {
   // peek, when given, opens what a row's light is made of (outcome-light.mjs);
-  // painted hears the rows after every paint, so a line that counts them agrees.
+  // painted hears the rows after every read, so a line that counts them
+  // agrees, and null when they could not be read, so it shows no stale rows.
   constructor({instanceId,current,host,more,retry,message,empty,read,open,denied,pageMax=PAGE,peek=null,painted=()=>{}}) {
     Object.assign(this,{current,host,more,retry,message,empty,read,open,isDenied:denied,pageMax,peek,painted});
     this.pages=new WorkspacePages(instanceId);this.loading=null;this.queued=null;this.failedMore=false;this.denied=false;
@@ -42,7 +43,7 @@ export class OutcomeRail {
     });
     this.host.hidden=this.denied;this.more.hidden=this.denied||this.pages.next===null;
     this.empty.hidden=this.denied||!this.pages.started||items.length>0;
-    this.painted(this.denied?[]:items);this.peek?.refresh();
+    this.peek?.refresh();
   }
   // As TopicRail.load: a More shares a running read, a reload runs once more
   // after it, and a reload reads again every page the reader has loaded.
@@ -58,14 +59,14 @@ export class OutcomeRail {
     this.more.setAttribute('aria-disabled','true');this.retry.setAttribute('aria-disabled','true');
     this.loading=(more?this.read({limit:PAGE,cursor}).then(answer=>{this.pages.accept(answer,cursor);}):reread(this.pages,this.read,this.pageMax)).then(()=>{
       const focused=document.activeElement;
-      this.denied=false;this.retry.hidden=true;this.message.hidden=true;this.paint();
+      this.denied=false;this.retry.hidden=true;this.message.hidden=true;this.paint();this.painted(this.pages.items);
       if((focused===this.more||focused===this.retry)&&focused.hidden){
         ([...this.host.children].find(x=>!prior.has(x.dataset.workspaceId))??this.host.children[0]??this.empty).focus();
       }
       return true;
     }).catch(error=>{
       this.denied=this.isDenied(error);this.failedMore=more&&!this.denied;
-      this.paint();this.empty.hidden=true;
+      this.paint();this.empty.hidden=true;this.painted(null);
       this.message.textContent=error.message+' Retry outcomes.';this.message.hidden=false;this.retry.hidden=false;
       if(document.activeElement===this.more&&this.more.hidden)this.retry.focus();
       return false;
