@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { itemTags, paintItemTags, paintAbout, paintAsksYou, paintOnlyNew, paintEmpty, paintConversationRow, conversationDestination,
-  answererChoices, paintAnswerers, subtitle, CONVERSATION_NOTE, NOBODY_ANSWERS } from '../web/outcome-conversation.mjs';
+  answererChoices, paintAnswerers, subtitle, CONVERSATION_NOTE, NOBODY_ANSWERS, carriedWriting, imagesStay } from '../web/outcome-conversation.mjs';
 import { parseRoute, routeHref, routeKey } from '../web/topic-navigation.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 
@@ -158,6 +158,25 @@ test("the Reader's To is two chips, this topic and the conversation, with the ch
   assert.deepEqual(host.children.map(chip => chip.getAttribute('aria-pressed')), ['false', 'true']);
   assert.equal(CONVERSATION_NOTE('fable'), "Goes to the outcome's conversation with a link to this message. fable answers there; nobody in this topic is woken.");
   assert.equal(CONVERSATION_NOTE(null), "Goes to the outcome's conversation with a link to this message; nobody in this topic is woken.");
+});
+
+test("switching the Reader's To moves the writing whole: what the destination holds is kept, and images never move", () => {
+  const draft = (body, quotes = [], caret = { start: body.length, end: body.length }) => ({ body, quotes, attachments: [], addressees: [], caret });
+  const quote = { source_ref: { kind: 'message', id: 'm-1' }, excerpt: 'the launch' };
+  assert.equal(carriedWriting(draft(''), draft('kept')), null, 'nothing written, nothing carried');
+  assert.equal(carriedWriting(draft('   '), draft('')), null, 'spaces are not writing');
+  assert.deepEqual(carriedWriting(draft('abc plus more', [], { start: 3, end: 3 }), draft('')),
+    { body: 'abc plus more', quotes: [], caret: { start: 3, end: 3 } }, 'into an empty draft: every word, the caret where it was');
+  assert.deepEqual(carriedWriting(draft('', [quote]), draft(''))?.quotes, [quote], 'a quote alone is writing');
+  // Writing the destination already holds: contained in what comes, or containing it, it is not repeated.
+  assert.equal(carriedWriting(draft('abc plus more'), draft('abc'))?.body, 'abc plus more');
+  assert.equal(carriedWriting(draft('abc'), draft('abc plus more'))?.body, 'abc plus more');
+  const both = carriedWriting(draft('new words', [quote]), draft('older words ', [quote, { ...quote, excerpt: 'other' }]));
+  assert.deepEqual(both, { body: 'older words\n\nnew words', quotes: [quote, { ...quote, excerpt: 'other' }], caret: { start: 22, end: 22 } },
+    'different words are both kept, the destination\'s first; each quote once');
+  assert.equal(carriedWriting(draft('a'), draft('   '))?.body, 'a', 'spaces held there are not kept');
+  assert.equal(imagesStay(draft('words')), null);
+  assert.match(imagesStay({ ...draft('words'), attachments: [{ id: 'media-1' }] }), /^Images go where they were chosen\./);
 });
 
 test('Answered by offers the coordinator first, then the team; with nobody named the coordinator is pressed and stays so', () => {

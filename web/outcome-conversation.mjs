@@ -182,6 +182,28 @@ export function conversationDestination(host, { topic, conversation, outcome, ch
   host.replaceChildren(chip(topic.id, 'This topic', `This topic: ${topic.title}`), chip(conversation, 'Conversation', `${outcome} conversation`));
 }
 
+// Switching the Reader's To moves the writing: it is carried into the other
+// destination's draft first, and the draft it leaves is emptied after, so the
+// writing lives in one place and every word goes with each switch. Returns
+// the writing for the destination's draft, or null when there is nothing to
+// carry. Writing the destination already holds is never lost: words it holds
+// that the carried writing does not already contain stay first, and the
+// quotes of both are kept once each.
+const holdsWords = draft => Boolean(draft?.body?.trim() || draft?.quotes?.length);
+// Images belong to the place they were chosen for, so writing with images
+// does not move: the switch is refused, saying why, and nothing changes.
+export const imagesStay = draft => draft?.attachments?.length
+  ? 'Images go where they were chosen. Send or remove them before choosing another place.' : null;
+export function carriedWriting(from, to) {
+  if (!holdsWords(from)) return null;
+  const kept = holdsWords(to) ? to : { body: '', quotes: [] };
+  const body = from.body.includes(kept.body) ? from.body : kept.body.includes(from.body) ? kept.body : `${kept.body.trimEnd()}\n\n${from.body}`;
+  const quotes = [...kept.quotes ?? []];
+  for (const quote of from.quotes ?? []) if (!quotes.some(held => JSON.stringify(held) === JSON.stringify(quote))) quotes.push(quote);
+  const caret = body === from.body && from.caret ? { ...from.caret } : { start: body.length, end: body.length };
+  return { body, quotes, caret };
+}
+
 // "Answered by": the coordinator, then the rest of the team, each a name
 // tapped once. With nobody named the coordinator answers, so theirs is pressed
 // and a tap on it changes nothing; a tap on anyone else names them, and a

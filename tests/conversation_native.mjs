@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 // An outcome's conversation (item 82, docs/conversation.md) in the real
 // browser against the real server: the page at ?conversation=w1 is a topic
@@ -136,6 +137,68 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual([message.about?.message_id, message.about?.topic_id, message.item?.state], [facts.sources[1].id, 't1', 'new']);
     const after = (await view('topic', { topic_id: 't1' })).topic;
     assert.deepEqual([after.version, after.latest_message_id ?? null], [before.version, before.latest_message_id ?? null], 'nothing moved in the topic');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('conversation switching To back and forth carries every word each way, leaves nothing behind, and Send sends all of it', async () => {
+    const p = await open('conversation-reader-switch', '/?topic=t1');
+    await p.open(0);
+    const source = facts.sources[0];
+    const to = () => quiet(p, `({chips:[...document.querySelectorAll('#reply-destination button')].map(b=>[b.textContent,b.getAttribute('aria-pressed')]),
+      body:document.querySelector('#writing-body').value})`);
+    const saved = async topicId => (await view('editor_state', { source_ref: source, topic_id: topicId })).draft?.body ?? '';
+    const tap = async (label, index) => {
+      await p.point(`#reply-destination button:nth-child(${index + 1})`);
+      return until(async () => { const t = await to(); return t?.chips[index]?.[1] === 'true' && t; }, `${label} is chosen`);
+    };
+    await until(async () => (await to())?.chips.length === 2, 'two chips under To');
+    await replace(p, 'abc');
+    await until(async () => await saved('t1') === 'abc', 'the writing is saved where it is');
+    const there = await tap('Conversation', 1);
+    assert.equal(there.body, 'abc', 'the writing came along');
+    await until(async () => await saved('t1') === '', 'the draft it left is emptied');
+    await replace(p, 'abc plus more');
+    await until(async () => await saved(conversation.topic_id) === 'abc plus more', 'saved in the conversation');
+    const back = await tap('This topic', 0);
+    assert.deepEqual(back, { chips: [['This topic', 'true'], ['Conversation', 'false']], body: 'abc plus more' }, 'every word written there came back');
+    await until(async () => await saved(conversation.topic_id) === '', 'and the conversation keeps nothing of it');
+    assert.equal((await tap('Conversation', 1)).body, 'abc plus more', 'and goes again, whole');
+    assert.equal((await tap('This topic', 0)).body, 'abc plus more');
+    await until(async () => await saved(conversation.topic_id) === '' && await saved('t1') === 'abc plus more', 'the writing is in one place');
+    const sentId = await sent(p, p.calls.length);
+    const message = await view('source', { source_ref: { kind: 'message', id: sentId } });
+    assert.deepEqual([message.topic_id, message.body], ['t1', 'abc plus more'], 'Send sent all of it to this topic');
+    assert.equal(await saved(conversation.topic_id), '', 'nothing is left waiting in the conversation');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  await check('conversation writing with an image stays where the image was chosen: To says why and nothing moves', async () => {
+    const p = await open('conversation-reader-image', '/?topic=t1');
+    await p.open(1);
+    const png = (await readFile(new URL('./fixtures/media/one.png', import.meta.url))).toString('base64');
+    const to = () => quiet(p, `({chips:[...document.querySelectorAll('#reply-destination button')].map(b=>[b.textContent,b.getAttribute('aria-pressed')]),
+      body:document.querySelector('#writing-body').value,notice:document.querySelector('#reader-notice').hidden?null:document.querySelector('#reader-notice').textContent})`);
+    await until(async () => (await to())?.chips.length === 2, 'two chips under To');
+    await replace(p, 'With a picture.');
+    // A page-owned paste event, as the image checks do; never the OS pasteboard.
+    assert.equal(await p.evaluate(`(()=>{const data=new DataTransfer();data.items.add(new File([Uint8Array.from(atob(${JSON.stringify(png)}),c=>c.charCodeAt(0))],'one.png',{type:'image/png'}));
+      const event=new ClipboardEvent('paste',{bubbles:true,cancelable:true,clipboardData:data});document.querySelector('#writing-body').dispatchEvent(event);return event.defaultPrevented})()`), true);
+    await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 1, 'the image is in the draft');
+    await p.point('#reply-destination button:nth-child(2)');
+    const stayed = await until(async () => { const t = await to(); return (t?.notice || t?.chips[1]?.[1] === 'true') && t; }, 'To answers the tap');
+    assert.deepEqual(stayed, { chips: [['This topic', 'true'], ['Conversation', 'false']], body: 'With a picture.',
+      notice: 'Images go where they were chosen. Send or remove them before choosing another place.' });
+    const kept = (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft;
+    assert.deepEqual([kept.body, kept.attachments.length], ['With a picture.', 1], 'the writing and its image are where they were');
+    assert.equal((await view('editor_state', { source_ref: facts.sources[1], topic_id: conversation.topic_id })).draft?.body ?? '', '', 'and nothing went to the conversation');
+    // The checks after these read this message's reply empty: Remove the image, and delete the words.
+    await p.point('#writing-attachments .image-choice button:last-child');
+    await p.point('#writing-body'); await p.key('a', 4);
+    for (const type of ['rawKeyDown', 'keyUp']) {
+      await p.send('Input.dispatchKeyEvent', { type, key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, ...(type === 'keyUp' ? {} : { commands: ['deleteBackward'] }) });
+    }
+    await until(async () => { const d = (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft; return d?.body === '' && d.attachments.length === 0; },
+      'the reply is empty again');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

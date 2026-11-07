@@ -35,7 +35,7 @@ import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
-import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers } from './outcome-conversation.mjs';
+import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers, carriedWriting, imagesStay } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith } from './links.mjs';
@@ -1474,21 +1474,27 @@ function paintReaderAudience(topicId, names = null) {
   if (reader?.sessions && (on || answering.size)) answeredBy(reader, $('reply-audience'), names ?? reader.names(), on);
 }
 // Switching the Reader between this topic and the conversation opens the same
-// message with the other destination, and carries the writing into its draft
-// when that one is empty. The writing left behind stays in its own draft.
+// message with the other destination and moves the writing there: carried into
+// its draft and kept on this device first, then the draft it left is emptied
+// (carriedWriting), so a switch back and forth loses no word and leaves nothing
+// behind. Writing with images stays where it is (imagesStay).
 async function switchDestination(value) {
   const p = registry.current, ref = p?.source?.source_ref;
   if (!ref || ref.kind !== 'message' || value === p.editors.reply.context.topicId) return;
   if (![topic.id, here?.view?.topic_id].includes(value)) { reader.notice('Choose this topic or the outcome\'s conversation.'); return; }
-  const from = p.editors.reply.draft;
-  const carry = from.body.trim() || from.quotes?.length ? { body: from.body, quotes: from.quotes ?? [] } : null;
+  const left = p.editors.reply;
+  const refused = imagesStay(left.draft);
+  if (refused) { reader.notice(refused); return; }
   const next = await registry.open(ref, { topicId: value, opener: p.opener });
-  if (!next || !carry) return;
-  const editor = next.editors.reply;
-  if (editor.draft.body.trim() || editor.draft.quotes?.length) return;
-  editor.edit({ body: carry.body, quotes: carry.quotes });
-  registry.edited(editor);
+  if (!next) return;
+  const editor = next.editors.reply, carried = carriedWriting(left.draft, editor.draft);
+  if (!carried) return;
+  if (editor.unavailable || editor.conflict || editor.authorityRecovery) { reader.notice('That place cannot take writing now; yours stays where it was.'); return; }
+  editor.edit(carried);
   if (reader.editor === editor) reader.drawEditor();
+  await registry.edited(editor);
+  left.edit({ body: '', quotes: [], caret: { start: 0, end: 0 } });
+  await registry.edited(left);
 }
 // The Done and Archived lines under the topic list, where the person's choice
 // to keep each open is remembered, and the area the lists keep still under.

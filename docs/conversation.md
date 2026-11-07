@@ -60,12 +60,19 @@ A take settles the item unless it took only part of it: `part: true` on
 on `start --from`). `part` anywhere else is refused.
 
 An ask there waits on each person it asks until that person replies to that
-ask (`reply_to` = the ask), or leaves the conversation; nothing else clears it.
+ask (`reply_to` = the ask), or leaves the team and so can no longer read the
+conversation; nothing else clears it. A coordinator the owner replaces stays
+on the team and still owes its asks.
 The conversation's `topic_waiting` rows follow the open asks, so attention and
 the sidebar read its waits as for any topic.
 
 A message sent to the conversation from the Reader about a message in another
-topic carries `about_id`, that message, set by `message.send`.
+topic carries `about_id`, that message, set by `message.send`. Switching the
+Reader's To between This topic and Conversation moves the writing: it is
+carried into the other place's draft and kept on the device first, then the
+draft it left is emptied, so switching back and forth loses no word and Send
+sends all of it. Words the other draft already held are kept, first. Writing
+with images does not move; To says why.
 
 ## Views
 
