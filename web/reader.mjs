@@ -195,8 +195,10 @@ export class Reader {
     const place = this.captureVisiblePlace();
     const shape = this.layoutShape, share = this.layout.share(shape);
     this.dialog.dataset.layout = shape;
-    this.dialog.style.setProperty('--reading-share', `${1 - share}fr`);
-    this.dialog.style.setProperty('--writing-share', `${share}fr`);
+    // In hundredths of the room, so when one pane keeps a floor (aim.css) the other
+    // still takes all that is left: shares that sum to under 1fr would leave a gap.
+    this.dialog.style.setProperty('--reading-share', `${(1 - share) * 100}fr`);
+    this.dialog.style.setProperty('--writing-share', `${share * 100}fr`);
     this.$('reader-layout').textContent = shape === 'wide' ? 'Stacked' : 'Wide';
     this.$('reader-layout').setAttribute('aria-pressed', String(shape === 'wide'));
     this.$('reader-layout').setAttribute('aria-label', shape === 'wide' ? 'Use stacked reader layout' : 'Use wide reader layout');

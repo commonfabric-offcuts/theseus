@@ -159,9 +159,12 @@ export async function whispersChecks({ check, page, until, control, view, facts,
     const fit = await p.evaluate(`(()=>{const v=innerWidth,r=e=>e.getBoundingClientRect(),send=r(document.querySelector('#send-reply'));
       const out=[...document.querySelectorAll('#intent-row label, #intent-row .audience-line, #send-reply')].filter(e=>{const b=r(e);return b.left<0||b.right>v+0.5}).map(e=>e.id||e.className||e.dataset.intent);
       return {sideways:document.scrollingElement.scrollWidth>v,dialog:document.querySelector('#reader').scrollWidth>document.querySelector('#reader').clientWidth,out,
-        send:send.top>=0&&send.bottom<=innerHeight+0.5,where:[send.top,send.bottom,innerHeight],more:getComputedStyle(document.querySelector('#intent-row .audience-more')).display}})()`);
+        send:send.top>=0&&send.bottom<=innerHeight+0.5,where:[send.top,send.bottom,innerHeight],more:getComputedStyle(document.querySelector('#intent-row .audience-more')).display,
+        header:r(document.querySelector('#reader .reader-header')).height}})()`);
     await shot(p, 'whispers-phone');
-    assert.deepEqual(fit, { sideways: false, dialog: false, out: [], send: true, where: fit.where, more: 'none' }, 'everything fits the width, Send is in view, and the line keeps its first words ' + JSON.stringify(fit.where));
+    // The passage gives way to the reply's rows, and the header keeps its own height.
+    assert.ok(fit.header < 100, `the Reader's header is not stretched (${fit.header}px)`);
+    assert.deepEqual(fit, { sideways: false, dialog: false, out: [], send: true, where: fit.where, more: 'none', header: fit.header }, 'everything fits the width, Send is in view, and the line keeps its first words ' + JSON.stringify(fit.where));
     assert.match(await line(p), new RegExp(`^Only you and ${agent} will see this\\.`));
     assert.deepEqual(p.errors, []);
   });

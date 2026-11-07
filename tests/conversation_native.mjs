@@ -142,7 +142,10 @@ export async function conversationChecks({ check, page, until, control, view, fa
   await check('conversation a link to its topic opens as ?conversation=, and Only new leaves out what is settled', async () => {
     const p = await open('conversation-address', `/?topic=${conversation.topic_id}`);
     await until(() => quiet(p, `location.search==='?conversation=w1' && document.body.classList.contains('conversation-page')`), 'the address names the conversation');
-    const settled = (await view('topic_messages', { topic_id: conversation.topic_id, direction: 'before', limit: 50 })).items.find(item => item.item?.state === 'settled').id;
+    // One item answered, so there is something settled to leave out.
+    const settled = await post('conversation-settled', 'Is the venue booked?');
+    await answer('conversation-settled-answer', 'Yes, since Monday.', { reply_to: settled });
+    await until(async () => (await tags(p, settled))?.tags[0] === 'Answered', 'the settled card');
     const fresh = await post('conversation-only-new', 'One more thing: the press kit.');
     await until(async () => (await tags(p, fresh))?.tags[0] === 'New', 'the new card');
     const count = (await view('conversation', { workspace_id: 'w1' })).conversation.new_items;
