@@ -36,8 +36,16 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   };
+  // A tap aims at the target once it is where it was when last looked at: a
+  // row drawn late above it (on a phone, the outcome's conversation in the
+  // rail) moves it first.
   const tapOn = async (p, selector) => {
-    const b = await p.box(selector); assert.ok(b && b.width > 0 && b.height > 0, `visible ${selector}`);
+    let last;
+    const b = await until(async () => {
+      const now = await p.box(selector), same = Boolean(last) && ['x', 'y', 'width', 'height'].every(key => now?.[key] === last[key]);
+      last = now; return same && now;
+    }, `${selector} holds its place`);
+    assert.ok(b && b.width > 0 && b.height > 0, `visible ${selector}`);
     await tap(p, b.x + b.width / 2, b.y + b.height / 2);
   };
   const openByPointer = async p => {
@@ -277,7 +285,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
-  await check('header the note and your part save on Return or on leaving the line; Escape puts back and a second Escape closes; a tap right after typing saves both in order', async () => {
+  await check('header the note and your part save on Return or on leaving the line; Escape puts back and a second Escape closes; a tap right after typing saves both, neither waiting on the other', async () => {
     await setState('header-lines-active', { state: 'active', note: '' });
     const p = await page('header-lines', null, true);
     await openByPointer(p);
@@ -299,16 +307,17 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await p.key('Escape');
     await until(async () => !await isOpen(p), 'with nothing to put back, Escape closes Topic settings');
     assert.equal(await focused(p), 'settings-open');
-    // Typed, then a chip tapped straight away: the note goes first, then the state, each at the version before it made.
+    // Typed, then a chip tapped straight away: leaving the line saves the note as the tap saves the state, side by side
+    // (fields are independent, docs/topic-settings.md), so either may reach Core first.
     await openByPointer(p);
     await p.point('#topic-state-note'); await p.key('a', 4); await p.send('Input.insertText', { text: 'Typed then tapped' });
     const before = p.calls.length;
     await p.point('#topic-state [data-state=review]');
     await until(async () => { const t = await held(); return t.state === 'review' && t.state_note === 'Typed then tapped'; }, 'both saved');
     await until(async () => (await notice(p))?.[0] === 'Saved', 'no refusal');
-    const sent = updates(p, before);
+    const sent = updates(p, before).sort((a, b) => ('note' in b.args) - ('note' in a.args));
     assert.deepEqual(sent.map(u => [u.expected.topic_fields, u.args]), [[{ note: 'Saved on Return' }, { note: 'Typed then tapped' }], [{ state: 'active', waiting_on: [] }, { state: 'review', keep_note: true }]],
-      'leaving the line saves the note first; the tap sends only the state');
+      'leaving the line saves the note; the tap sends only the state');
     await shot(p, 'header-lines');
     assert.deepEqual(p.errors, []);
   });

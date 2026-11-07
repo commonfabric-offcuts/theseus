@@ -153,7 +153,7 @@ export async function liveChecks({ check, page, until, control, observations, or
   // Where it stands, in Topic settings, keeps what the person typed, and
   // their focus, while messages from others repaint the topic; a chip tapped
   // straight after typing saves the typed note first, then the state, in order.
-  await check('live Topic settings keeps typing and focus while messages arrive, and a tap straight after typing saves both in order', async () => {
+  await check('live Topic settings keeps typing and focus while messages arrive, and a tap straight after typing saves both, neither waiting on the other', async () => {
     const p = await page('live-state-form', null, true);
     await settled(p);
     const value = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
@@ -185,8 +185,11 @@ export async function liveChecks({ check, page, until, control, observations, or
     const before = updates().length;
     await p.point('#topic-state [data-state=review]');
     await until(async () => (await lit())[0] === 'Ready for review' && (await view('topic', { topic_id: 't1' })).topic.state === 'review', 'the tap commits');
-    const sent = updates().slice(before);
-    assert.deepEqual(sent.map(u => u.args), [{ note: 'Pick a name!' }, { state: 'review', keep_note: true }], 'the typed note first, then the state alone, keeping it');
+    // Leaving the note saves it as the tap saves the state; fields are
+    // independent (docs/topic-settings.md), so the two go out side by side
+    // and either may reach Core first.
+    const sent = updates().slice(before).sort((a, b) => ('note' in b.args) - ('note' in a.args));
+    assert.deepEqual(sent.map(u => u.args), [{ note: 'Pick a name!' }, { state: 'review', keep_note: true }], 'the typed note, and the state alone, keeping it, each once');
     assert.deepEqual(sent.map(u => u.expected.topic_fields), [{ note: '' }, { state: 'waiting', waiting_on: [facts.actor] }], 'each fenced on what it changes');
     const held = (await view('topic', { topic_id: 't1' })).topic;
     assert.deepEqual([held.state, held.state_note], ['review', 'Pick a name!']);
