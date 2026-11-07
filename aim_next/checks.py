@@ -25,6 +25,7 @@ from .contract import Refusal, _identifier, _json, _prefix
 from .delivery import _now_ms
 from . import check_reading, outcome_rules
 from .outcome_asks import release_held
+from .whispers import private_source_refused
 from .work import work_by_topic
 
 
@@ -627,6 +628,8 @@ class Checks:
                     raise Refusal("FORBIDDEN", "No readable source")
                 message = row[0]
             row = self._message_access(db, actor, message)
+            # The whole outcome reads its problems, who found each and when, so a whisper is never where one was found.
+            private_source_refused(db, row["id"])
             found_by = row["author_id"]
             found_ms = db.execute("SELECT sent_ms FROM messages WHERE id=?", (row["id"],)).fetchone()[0]
             message = row["id"]
@@ -937,8 +940,9 @@ class Checks:
             candidate["likely_cause"] = outcome_rules.likely_cause(stopped_ids, trials) if open_worse else None
             fix_topics = sorted({item["fix_topic"]["id"] for item in worse if item.get("fix_topic")})
             if fix_topics:
+                # The whole outcome reads the account, so it is a message on the record, never a whisper.
                 account = db.execute("SELECT m.id,m.topic_id,m.author_id,m.sent_ms,substr(m.body,1,400) AS excerpt FROM message_subjects s "
-                                     "JOIN messages m ON m.id=s.message_id WHERE s.workspace_id=? AND s.kind='check' AND m.topic_id IN "
+                                     "JOIN messages m ON m.id=s.message_id WHERE s.workspace_id=? AND s.kind='check' AND m.private_to IS NULL AND m.topic_id IN "
                                      "(SELECT value FROM json_each(?)) ORDER BY m.seq DESC LIMIT 1", (workspace["id"], _json(fix_topics))).fetchone()
                 if account is not None:
                     candidate["account"] = {"message_id": account["id"], "topic_id": account["topic_id"], "by": account["author_id"],
@@ -1181,6 +1185,7 @@ def import_checks(store, db, seed, actor, now_ms):
             row = db.execute("SELECT id,author_id,sent_ms FROM messages WHERE seq=?", (problem["seq"],)).fetchone()
             if row is None:
                 raise Refusal("SEED_SOURCE", "Problem %r names message #%s, which is not here" % (problem["what"], problem["seq"]))
+            private_source_refused(db, row["id"])
             message = row
         problem_id = "fp-" + hashlib.sha256(problem["what"].encode("utf-8")).hexdigest()[:24]
         db.execute("INSERT INTO found_problems(id,workspace_id,what,kind,found_by,message_id,note,found_ms,cover_item,cover_words,version) "

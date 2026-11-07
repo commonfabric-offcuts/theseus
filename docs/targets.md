@@ -25,7 +25,9 @@ the outcome and when.
 **Reached** is final. Only the owner says it, only of an outcome to reach, in a
 sentence or two of his own. It opens in place on the page, and Return marks it.
 When a check is not met, or nothing checks the outcome at all, he confirms that
-first (`NOT_MET` otherwise). Every topic of the outcome then closes, and any
+first (`NOT_MET` otherwise). Every topic of the outcome then closes, its
+conversation too, every wait and ask in them clears (the count says the topics
+listed, not the conversation), and any
 later change to it is refused `OUTCOME_REACHED`, while a reader's own state
 there still saves. Reached outcomes leave the list and fold into one line,
 "Reached (N)", which reads them only when it is opened.
@@ -124,5 +126,9 @@ check whose cases grew from the release before to the live one: a release that
 is not stopped as worse ships and leaves its new checks behind), which items
 likely caused a check to stop (from trial runs that leave items out), and the
 problems found before a check caught them, counted by kind per release
-(defects and design misses), each with what now covers it. Tolerances are said
+(defects and design misses), each with what now covers it. The whole outcome
+reads them, so a problem is found in a message on the record or in a note, never
+in a whisper (`WHISPER_STAYS_PRIVATE`, from `problem.file` and the import alike),
+and the account the loop shows beside a stopped check is the newest message on
+the record about it in its fix topic. Tolerances are said
 as fractions ("a quarter"), never percentages.

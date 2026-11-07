@@ -160,6 +160,8 @@ class TopicState:
     def _set_topic_state(self, db, topic, actor, args):
         """The body of topic.update after its permission check: the one server path that changes a
         topic's title, archive, state, note and waits, used by topic.update and by outcome.reach (D42)."""
+        old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? AND said=1 ORDER BY actor_id", (topic["id"],))]
+        keep = "keep_note" in args
         if "title" in args:
             title = _body(args["title"])
             if not title.strip():

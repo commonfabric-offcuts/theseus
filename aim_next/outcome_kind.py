@@ -132,7 +132,10 @@ class OutcomeKind:
             for (member,) in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=?", (topic["id"],)).fetchall():
                 db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (topic["id"], member))
                 self._change(db, "actor", member, "waiting", topic["id"], now_version)
-            closed += 1
+            # The conversation keeps each of its open asks on its own (standing_conversation.py); they clear too.
+            db.execute("DELETE FROM conversation_waits WHERE ask_id IN (SELECT id FROM messages WHERE topic_id=?)", (topic["id"],))
+            # The count says the topics the owner sees listed; the conversation, which has its own row, closes beside them.
+            closed += topic["kind"] == "topic"
         version = self._bump_workspace(db, workspace["id"])
         return {"workspace_id": workspace["id"], "reached_ms": ms, "topics_closed": closed, "workspace_revision": version}, [
             {"kind": "workspace", "id": workspace["id"], "version": version}]

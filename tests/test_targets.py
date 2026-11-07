@@ -9,6 +9,7 @@ import sqlite3
 import unittest
 
 from aim_next import outcome_rules
+from aim_next.contract import Refusal
 from aim_next.outcome_rules import check_status, reach_offered, streak, target_failing, target_word
 import reader_fixture
 
@@ -356,6 +357,20 @@ class WorseAndAcceptedCase(TargetCase):
         return self.command("check.accept_worse", {"run_id": self.run_id, "why": why}, {"workspace_id": "w1", "check_id": check},
                             {"checks_revision": self.revision()}, actor=actor)
 
+    def test_the_account_of_a_worse_check_is_a_message_on_the_record_never_a_whisper(self):
+        # The loop shows the newest message about the check in its fix topic to the whole outcome (docs/whispers.md).
+        base = {"commit": SHA_19, "started_at": "2026-11-04T04:00:00-08:00", "finished_at": "2026-11-04T04:00:00-08:00", "tools": TOOLS,
+                "steps": [], "note": "rerun", "readings": [passed(), measured("duration", 17), measured("replay", 3)]}
+        self.store.record_checks({"outcome": "w1", "commit": "4" * 40, "started_at": "2026-11-04T05:00:00-08:00", "finished_at": "2026-11-04T05:00:00-08:00",
+                                  "tools": TOOLS, "steps": [], "note": "", "base": base,
+                                  "readings": [passed(), dict(measured("duration", 25), fix_topic_id="t1"), measured("replay", 3)]}, "agent-a")
+        said = self.post("The wake path now waits on a second read.", subjects=[{"kind": "check", "ref": "duration"}])
+        self.post("Between us: I think it is the new index.", actor="owner", addressees=["agent-a"], whisper=True,
+                  subjects=[{"kind": "check", "ref": "duration"}])
+        for reader in ("agent-b", "owner"):
+            account = self.checks_view(reader)["loop"]["candidate"]["account"]
+            self.assertEqual((account or {}).get("message_id"), said, reader)
+
     def test_the_candidate_stops_on_a_worse_measure_until_the_owner_accepts_it(self):
         candidate = self.checks_view()["loop"]["candidate"]
         self.assertEqual((candidate["state"], [item["check_id"] for item in candidate["worse"]]), ("stopped", ["duration"]))
@@ -391,6 +406,23 @@ class ProblemsCase(TargetCase):
         self.assertEqual(self.sql("SELECT found_by,found_ms,message_id FROM found_problems WHERE id=?", (problem,)), [("agent-b", sent[0], message)])
         self.rejected(self.file(), "SOURCE_REQUIRED")
         self.rejected(self.file(message_id=message, note="both"), "SOURCE_REQUIRED")
+
+    def test_a_whisper_is_never_where_a_problem_was_found(self):
+        # The whole outcome reads its problems, with who found each and when (docs/whispers.md), so a whisper is refused
+        # by its id and by its number, even to the agent in it; nothing is filed.
+        whisper = self.post("Between us: the New line jumped", actor="owner", addressees=["agent-a"], whisper=True)
+        seq, = self.sql("SELECT seq FROM messages WHERE id=?", (whisper,))[0]
+        for source in (whisper, seq):
+            self.rejected(self.file(message_id=source), "WHISPER_STAYS_PRIVATE")
+        self.assertEqual(self.sql("SELECT count(*) FROM found_problems"), [(0,)])
+        # The operator's import of problems found refuses a whisper by its number too, and imports nothing.
+        said, = self.sql("SELECT seq FROM messages WHERE id=?", (self.post("The New line jumped on the record"),))[0]
+        seed = lambda number: {"workspace_id": "w1", "problems": [{"what": "The New line jumped", "kind": "defect", "seq": number}]}
+        with self.assertRaises(Refusal) as refused:
+            self.store.import_checks(seed(seq), "agent-a")
+        self.assertEqual((refused.exception.code, self.sql("SELECT count(*) FROM found_problems")), ("WHISPER_STAYS_PRIVATE", [(0,)]))
+        self.assertTrue(self.store.import_checks(seed(said), "agent-a")["checks_imported"])
+        self.assertEqual(self.sql("SELECT count(*) FROM found_problems"), [(1,)])
 
     def test_a_cover_closes_only_with_a_proof_naming_its_test(self):
         problem = self.committed(self.file(note="seen on the phone"))["problem_id"]

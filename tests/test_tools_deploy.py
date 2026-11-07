@@ -1386,7 +1386,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.write_summary(failed=("native-live",))
         topics = self.sql("SELECT count(*) FROM topics")[0][0]
         self.assertEqual(self.deploy(), "Browser checks got worse: a passing check now fails")
-        [(topic, title, creator)] = self.sql("SELECT id,title,creator_id FROM topics WHERE id NOT IN ('t1')")
+        [(topic, title, creator)] = self.sql("SELECT id,title,creator_id FROM topics WHERE kind='topic' AND id NOT IN ('t1')")
         self.assertEqual((title, creator), ("“%s” fails at the release 23 candidate" % CASE, "agent-b"))
         self.assertEqual(self.sql("SELECT actor_id FROM topic_participants WHERE topic_id=? ORDER BY actor_id", (topic,)), [("agent-a",), ("agent-b",)])
         candidate = self.candidate()
@@ -1457,7 +1457,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual(self.deploy(), "Wake time got worse: aim-ux got worse in every run")
         candidate = self.candidate()
         self.assertEqual((candidate["state"], candidate["you_accept"], candidate["tools_same_as_base"]), ("stopped", True, True))
-        [(title,)] = self.sql("SELECT title FROM topics WHERE id NOT IN ('t1')")
+        [(title,)] = self.sql("SELECT title FROM topics WHERE kind='topic' AND id NOT IN ('t1')")
         self.assertEqual(title, "Wake time got worse at the release 23 candidate")
         # D31: only on the owner's own word.
         self.committed(self.command("check.accept_worse", {"run_id": candidate["run_id"], "why": "Worth it for the faster wakes"},
@@ -1752,7 +1752,7 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.rejected(self.command("pipeline.piece_start", {"numbers": [3], "topic_id": "t-two", "stage_id": "build", "from_release": True},
                                    {"workspace_id": "w1"}), "RELEASE_NOT_HELD")
         self.assertEqual(self.open_entry(waiting), [("wait",)])
-        [(topic,)] = self.sql("SELECT id FROM topics WHERE id NOT IN ('t1','t-two')")
+        [(topic,)] = self.sql("SELECT id FROM topics WHERE kind='topic' AND id NOT IN ('t1','t-two')")
         self.committed(self.command("pipeline.piece_start", {"numbers": [1], "topic_id": topic, "stage_id": "build", "from_release": True},
                                     {"workspace_id": "w1"}))
 

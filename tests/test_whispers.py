@@ -562,6 +562,10 @@ VIEW_PATHS = {
     "pipeline": "items, stages and asks about items, and a whisper is never an ask or an item's source",
     "pipeline_item": "each source and what it is still gathering through _message_access; a whisper is refused as either",
     "pipeline_row": "asks about items and work in Now pieces' topics, which a whisper never writes",
+    "outcome_checks": "held asks, which a whisper never is; each problem's message through _message_access, and a whisper is refused as "
+                      "one; the loop's account is a message on the record",
+    "check_readings": "readings and their fix topics; no message",
+    "outcome_live": "checks, readings, fix topics and the release; no message",
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
@@ -572,7 +576,12 @@ MESSAGE_READS = {
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
-    "aim_next/topic_state.py": ("asks, the conversation asks to someone who can no longer read it, and the latest message on the record", 5),
+    "aim_next/topic_state.py": ("asks, an ask an open record still holds, the conversation asks to someone who can no longer read it, "
+                                "and the latest message on the record", 6),
+    "aim_next/checks.py": ("held asks and the owner's ask about the target, which a whisper never is; a problem's message, refused "
+                           "when it is a whisper, and shown through _message_access; the loop's account on the record only", 7),
+    "aim_next/outcome_asks.py": ("asks an open target or owner-gated stage still holds, which a whisper never is", 4),
+    "aim_next/outcome_kind.py": ("the conversation's asks, cleared when the outcome is reached", 1),
     "aim_next/sources.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/wake_health.py": ("on the record only (private_to IS NULL)", 1),
     "aim_next/whispers.py": ("the rule itself", 5),
