@@ -276,7 +276,7 @@
    "what": "Agents could not see a screenshot you sent: their read showed an empty message",
    "kind": "defect",
    "found_by": "fable",
-   "note": "fable, reading your screenshot",
+   "note": "reading your screenshot",
    "found_at": "2026-11-06T08:00:00-08:00",
    "cover_words": "Being built: agent reads list attachments and can save them"
   }

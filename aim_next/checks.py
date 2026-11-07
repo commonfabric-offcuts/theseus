@@ -820,7 +820,8 @@ class Checks:
         previous_readings = {}
         if previous is not None:
             for other in context["runs"]:
-                if other["commit_sha"] == previous["commit_sha"] and other["base_for_commit"] is None and other["trial_of"] is None:
+                if (other["commit_sha"] == previous["commit_sha"] and other["source"] == "release-check" and other["base_for_commit"] is None
+                        and other["trial_of"] is None):
                     previous_readings = context["readings_by_run"].get(other["id"], {})
                     break
         behind = outcome_rules.left_behind(context["checks"], live_readings, previous_readings) if live_release else None

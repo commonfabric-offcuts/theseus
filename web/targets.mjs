@@ -195,7 +195,7 @@ export class OutcomeTargets {
       el('p', { class: 'muted', text: 'Whatever ships becomes the bar the next change is compared with.' })];
     if (loop.candidate) parts.push(this.candidateCard(view, loop));
     else if (loop.live) parts.push(el('p', { text: `No change is being checked now. Release ${loop.live.release} is live.` }));
-    const charted = view.groups.flatMap(group => group.checks).filter(check => check.chart).slice(0, CHARTS_SHOWN);
+    const charted = view.groups.flatMap(group => group.checks).filter(check => check.chart && check.source !== 'found-problems').slice(0, CHARTS_SHOWN);
     if (charted.length || view.problems) {
       parts.push(el('h2', { class: 'tg-section', text: 'Measures by release' }),
         el('p', { class: 'muted', text: 'One chart per measure. Point at a mark, or open its numbers, to see which release and what produced each reading.' }),
@@ -257,7 +257,7 @@ export class OutcomeTargets {
       el('ul', { class: 'tg-problems' }, release.problems.map(problem => el('li', null,
         el('p', null, chip(PROBLEM_KIND[problem.kind]), ' ', el('strong', { text: problem.what })),
         el('p', { class: 'muted' }, `Found by ${problem.found_by === this.reader ? 'you' : problem.found_by}, `,
-          problem.source.kind === 'message' && problem.source.readable ? topicLink({ id: problem.source.topic_id, title: problem.source.topic_title }, problem.source.topic_title) : problem.source.kind === 'note' ? problem.source.text : 'in a message you cannot read',
+          problem.source.kind === 'message' && problem.source.readable ? topicLink({ id: problem.source.topic_id, title: problem.source.topic_title }, problem.source.topic_title) : problem.source.kind === 'note' ? `in a note: ${problem.source.text}` : 'in a message you cannot read',
           ', ', time(problem.found_ms)),
         el('p', { class: 'tg-cover' }, el('strong', { text: 'Check that now covers it: ' }), problem.cover ? problem.cover.words || (problem.cover.item ? `item ${problem.cover.item.number}` : '') : 'no check yet',
           problem.closed ? ` Closed: shown to fail without the fix.` : '. Closed once that check is shown to fail without the fix.'))))));

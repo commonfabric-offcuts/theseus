@@ -51,7 +51,9 @@ const dayOf = ms => (typeof ms === 'number' ? new Date(ms).toLocaleDateString(un
 
 function seriesOf(columns) {
   const parts = columns.find(reading => reading.detail?.parts)?.detail.parts;
-  return parts ? Object.keys(parts) : null;
+  // In the order the reading's own words give them ("1,106 server and 740 browser-side").
+  const words = columns.find(reading => reading.detail?.parts)?.words ?? '';
+  return parts ? Object.keys(parts).sort((a, b) => (words.indexOf(a) + 1 || 1e9) - (words.indexOf(b) + 1 || 1e9)) : null;
 }
 
 function legend(names, hollow) {

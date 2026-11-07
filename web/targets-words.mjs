@@ -115,20 +115,27 @@ export function loopSteps(loop) {
     { title: 'A change is proposed', now: candidate ? `${candidate.label}${candidate.items?.length ? ': ' + plural(candidate.items.length, 'pipeline item', 'pipeline items') : ''}` : 'Nothing is being checked now.' },
     { title: "It runs this outcome's checks", now: candidate ? `${plural(candidate.steps.filter(s => s.state === 'landed').length, 'step has', 'steps have')} results${candidate.steps_total ? ` of ${candidate.steps_total}` : ''}.` : '' },
     { title: `Each result lands here, beside ${liveName}'s`, now: candidate ? (candidate.worse.length ? plural(candidate.worse.length, 'result is worse', 'results are worse') : 'None worse so far.') : '' },
-    { title: 'Worse stops it. Otherwise it ships and leaves its checks behind', now: loop?.left_behind ? `Release ${loop.left_behind.release} left ${number(loop.left_behind.now - loop.left_behind.before)} more ${loop.left_behind.name.toLowerCase().includes('browser') ? 'browser cases' : 'cases'} behind than release ${loop.left_behind.from_release} (${number(loop.left_behind.now)}, from ${number(loop.left_behind.before)}).` : '' },
+    { title: 'Worse stops it. Otherwise it ships and leaves its checks behind', now: loop?.left_behind ? `Release ${loop.left_behind.release} left ${number(loop.left_behind.now - loop.left_behind.before)} more cases behind than release ${loop.left_behind.from_release} for “${loop.left_behind.name}”: ${number(loop.left_behind.now)}, from ${number(loop.left_behind.before)}.` : '' },
   ];
   return steps;
 }
 
-export function problemsHeadline(problems) {
-  const live = problems?.releases?.find(r => r.state === 'live');
-  if (!live) return problems?.counting_since_ms ? 'Counted from when the count began.' : '';
-  const total = live.counts.defect + live.counts.design_miss;
-  if (!total) return `Release ${live.release}: none found so far`;
+function releaseProblems(release) {
+  const total = release.counts.defect + release.counts.design_miss;
+  if (!total) return `Release ${release.release}: none found${release.state === 'live' ? ' so far' : ''}`;
   const kinds = [];
-  if (live.counts.design_miss) kinds.push(plural(live.counts.design_miss, 'design miss', 'design misses'));
-  if (live.counts.defect) kinds.push(plural(live.counts.defect, 'defect', 'defects'));
-  return `Release ${live.release}: ${total} found, ${list(kinds)}, ${live.closed} closed yet`;
+  if (release.counts.design_miss) kinds.push(plural(release.counts.design_miss, 'design miss', 'design misses'));
+  if (release.counts.defect) kinds.push(plural(release.counts.defect, 'defect', 'defects'));
+  return `Release ${release.release}: ${total} found, ${list(kinds)}, ${release.closed} closed yet`;
+}
+
+// The live release's count, and the newest earlier release that had any.
+export function problemsHeadline(problems) {
+  const counted = (problems?.releases ?? []).filter(r => r.counts);
+  const live = counted.find(r => r.state === 'live');
+  if (!live) return '';
+  const earlier = counted.find(r => r.state === 'shipped' && r.counts.defect + r.counts.design_miss > 0);
+  return [releaseProblems(live), earlier && !(live.counts.defect + live.counts.design_miss) ? releaseProblems(earlier) : null].filter(Boolean).join(' · ');
 }
 
 export const PROBLEM_KIND = { defect: 'Defect', design_miss: 'Design miss' };
