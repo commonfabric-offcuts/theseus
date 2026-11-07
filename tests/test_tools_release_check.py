@@ -395,6 +395,12 @@ class NativeCoverage(unittest.TestCase):
         self.assertEqual((steps["conversation"].harness, steps["conversation"].flags), (release_check.PERSISTENCE, ("--conversation",)))
         self.assertIn("native-conversation", release_check.REQUIRED)
 
+    def test_the_targets_mode_is_a_step(self):
+        # An outcome's target, its kind, its checks, Measurements and Reached (items 14, 104, 12).
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual((steps["targets"].harness, steps["targets"].flags), (release_check.PERSISTENCE, ("--targets",)))
+        self.assertIn("native-targets", release_check.REQUIRED)
+
     def test_the_pipeline_mode_is_a_step(self):
         # The pipeline's page, its rail row, its outcome line and Add to pipeline in the Reader (item 84).
         steps = {step.name: step for step in release_check.NATIVE_STEPS}

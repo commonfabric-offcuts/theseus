@@ -274,7 +274,8 @@ class WhatEachReaderSeesCase(PipelineCase):
     def test_a_subject_outside_the_pipeline_is_refused_and_no_message_is_written(self):
         count = self.sql("SELECT count(*) FROM messages")
         self.rejected(self.command("message.post", {"body": "About 99", "subjects": [{"kind": "item", "ref": 99}]}, {"topic_id": "t1"}, actor="agent-a"), "NOT_FOUND")
-        self.rejected(self.command("message.post", {"body": "About a check", "subjects": [{"kind": "check", "ref": "x"}]}, {"topic_id": "t1"}, actor="agent-a"), "INVALID_ARGUMENT")
+        self.rejected(self.command("message.post", {"body": "About a check", "subjects": [{"kind": "check", "ref": "x"}]}, {"topic_id": "t1"}, actor="agent-a"), "CHECK_UNKNOWN")
+        self.rejected(self.command("message.post", {"body": "About a page", "subjects": [{"kind": "page", "ref": "x"}]}, {"topic_id": "t1"}, actor="agent-a"), "INVALID_ARGUMENT")
         self.assertEqual(self.sql("SELECT count(*) FROM messages"), count)
         self.assertEqual(self.sql("SELECT count(*) FROM message_subjects"), [(0,)])
 

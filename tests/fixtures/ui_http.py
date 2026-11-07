@@ -730,6 +730,29 @@ def main():
                         else:
                             expected = {}
                         answer = command(kind, operation, args, target, expected, sender=sender, refusable=request.get("refusable", False))
+                    elif freshness and request["method"] == "targets":
+                        # Someone acts on an outcome's target, checks or kind as their CLI does
+                        # (docs/targets.md), as the person, w1's owner, fenced on the revision
+                        # they read now. "record_checks" writes a release check's run as the
+                        # deploy does, and "release" a release record.
+                        kind, operation, workspace = request["kind"], request["operation_id"], request.get("workspace_id", "w1")
+                        sender = actor
+                        if kind == "record_checks":
+                            answer = store().record_checks(dict(request["run"], outcome=workspace), sender)
+                        elif kind == "release":
+                            answer = store().record_release(request["record"])
+                        else:
+                            assert kind.split(".")[0] in ("target", "check", "outcome", "problem"), kind
+                            if kind.startswith("outcome."):
+                                expected = {"workspace_revision": store().view(sender, "workspace", {"workspace_id": workspace})["workspace"]["version"]}
+                            elif kind == "problem.file":
+                                # Filing a problem is fenced on nothing: it only adds one.
+                                expected = {}
+                            else:
+                                checks = store().view(sender, "outcome_checks", {"workspace_id": workspace})["relevant_versions"]["checks"]
+                                expected = {"target_revision" if kind.startswith("target.") else "checks_revision": checks}
+                            answer = command(kind, operation, request.get("args") or {}, dict({"workspace_id": workspace}, **(request.get("target") or {})),
+                                             expected, sender=sender, refusable=request.get("refusable", False))
                     elif freshness and request["method"] == "memory_revise":
                         answer = command("memory.revise", request["operation_id"], {
                             "title": request["title"], "body": request["body"], "attachments": [], "references": []},

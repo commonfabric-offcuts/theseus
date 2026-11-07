@@ -136,6 +136,8 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       document.querySelector('#topic-navigation').compareDocumentPosition(document.querySelector('#outcome-references'))===Node.DOCUMENT_POSITION_FOLLOWING`), true);
     await revise('Ship on Thursday.\nDan reviews the notes, and Warp signs off.\n');
     await until(() => light(p), 'the light comes on');
+    // The Target (item 14) and Where it stands sit above the topics and pages (D11), so the row may be below the fold.
+    await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);
     await p.point(row);
     await until(() => p.evaluate("!document.querySelector('#page-here').hidden && Boolean(document.querySelector('#page-here .source-changes'))"), 'the page opens in place with what changed');
     const here = await p.evaluate(`({title:document.querySelector('#page-here h2').textContent,focused:document.activeElement===document.querySelector('#page-here h2'),

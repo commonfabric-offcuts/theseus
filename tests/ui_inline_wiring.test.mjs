@@ -72,6 +72,11 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     if (name === 'workspace') return { instance_id: 'fixture', workspace: { title: 'Workspace' } };
     if (name === 'marks') return { instance_id: 'fixture', topic_id: args.topic_id, items: [], next_cursor: null };
     if (name === 'colors') return { instance_id: 'fixture', palette: [...AGENT_PALETTE], items: [], next_cursor: null };
+    // An outcome to keep with no target and no checks yet, as Core answers for one (docs/targets.md).
+    if (name === 'outcome_checks') return { instance_id: 'fixture', workspace_id: args.workspace_id, workspace_title: 'Workspace', owner: 'owner', coordinator: 'agent-a',
+      you_own: false, you_steer: false, target: null, kind: { kind: 'keep', started_by: 'owner', started_ms: null, you_change: false }, word: null, failing_check: null,
+      reached: null, reach: null, rounds: 'runs', counts: { passing: 0, failing: 0, measured: 0, holding: 0, not_run: 0, waiting: 0, total: 0 }, groups: [], loop: null,
+      problems: null, releases: [], relevant_versions: { checks: 0, workspace: 1 } };
     return { instance_id: 'fixture', items: [], next_cursor: null };
   }, command: async envelope => { calls.push({ kind: envelope.kind, envelope }); return { recorded: true }; } };
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
@@ -161,6 +166,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const pipelineSource = ['pipeline-words.mjs', 'pipeline.mjs'].map(name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8')
     .replace(/^import [^;]*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ')).join('\n');
   vm.runInContext('Object.assign(globalThis, (()=>{' + pipelineSource + '; return {PipelinePage,PipelineRow,paintPipelineLine,pipelineHref,titleLine,firstLine}; })())', context);
+  // The outcome's target, its checks and Measurements, with their words and charts (items 14, 104, 12).
+  const targetsSource = ['targets-words.mjs', 'charts.mjs', 'targets.mjs'].map(name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8')
+    .replace(/^import [^;]*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ')).join('\n');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + targetsSource + '; return {MeasurementsPage,OutcomeTargets,paintTopicTarget}; })())', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');

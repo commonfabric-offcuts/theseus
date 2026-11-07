@@ -50,6 +50,11 @@ SCHEMA_27 = (Path(__file__).parent / "fixtures" / "schema_27.sql").read_text().s
 # it is version 28's, read from a fresh instance of the conversation's code (32d5e0e).
 BEFORE_PIPELINE, PIPELINE_VERSION = "28", "29"
 SCHEMA_BEFORE_PIPELINE = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_PIPELINE)).read_text().splitlines()
+# The step of an outcome's target, checks, kind and Reached (items 14, 104, 12),
+# named the same way: the version it starts from (the pipeline's) and the one it
+# makes. A renumbering of the step changes only these two and the fixture's file name.
+BEFORE_CHECKS, CHECKS_VERSION = PIPELINE_VERSION, "30"
+SCHEMA_BEFORE_CHECKS = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_CHECKS)).read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -69,6 +74,14 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The checks' version keeps each outcome's target, its checks, their runs and
+        # readings, the owner's allowances, the problems found, and each outcome's kind and Reached.
+        for table in ("outcome_reached", "outcome_kinds", "found_problems", "check_allowances", "check_readings", "check_runs",
+                      "outcome_checks", "outcome_target_revisions", "outcome_targets"):
+            db.execute("DROP TABLE " + table)
+        if version == BEFORE_CHECKS:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The pipeline's version keeps each outcome's pipeline, its stages, items,
         # pieces and their entries, every event, message subjects and release notes.
         for table in ("release_notes", "pipeline_events", "pipeline_item_sources", "message_subjects", "pipeline_stage_entries",
@@ -1746,7 +1759,8 @@ def fresh_schema(directory):
 # every step in between, each with its own frozen layout.
 RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("20", SCHEMA_20),
                      ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23), ("24", SCHEMA_24),
-                     ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27), (BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE))
+                     ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27), (BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE),
+                     (BEFORE_CHECKS, SCHEMA_BEFORE_CHECKS))
 
 
 class Release19ChainCase(MigrationCase):
@@ -2013,7 +2027,7 @@ class LiveShapedChainCase(MigrationCase):
         self.assertEqual(migrate(self.path, "test-instance", self.binding, BEFORE_PIPELINE)["schema_version"], BEFORE_PIPELINE)
         before = everything(self.path)
         self.assertEqual(migrate(self.path, "test-instance", self.binding, PIPELINE_VERSION)["schema_version"], PIPELINE_VERSION)
-        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_CHECKS))
         self.assertEqual({k: v for k, v in everything(self.path).items() if k in before}, before)
         self.assertEqual(migrate(self.path, "test-instance", self.binding, BEFORE_PIPELINE)["schema_version"], BEFORE_PIPELINE)
         self.assertEqual(everything(self.path), before, "an empty pipeline step steps back to every row it had")
@@ -2031,6 +2045,31 @@ class LiveShapedChainCase(MigrationCase):
         stored = self.unchanged()
         with self.assertRaises(MigrationError) as refused:
             migrate(self.path, "test-instance", self.binding, BEFORE_PIPELINE)
+        self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), stored)
+
+
+    def test_a_live_shaped_copy_takes_the_checks_step_up_and_back_and_holds_once_a_target_is_kept(self):
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, BEFORE_CHECKS)["schema_version"], BEFORE_CHECKS)
+        before = everything(self.path)
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, CHECKS_VERSION)["schema_version"], CHECKS_VERSION)
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual({k: v for k, v in everything(self.path).items() if k in before}, before)
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, BEFORE_CHECKS)["schema_version"], BEFORE_CHECKS)
+        self.assertEqual(everything(self.path), before, "an empty checks step steps back to every row it had")
+        self.upgrade()
+        # Both live-shaped outcomes read to keep, with no target; the coordinator of the second writes its first words.
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        for workspace in ("w1", "w2"):
+            read = self.store.view("owner", "outcome_checks", {"workspace_id": workspace})
+            self.assertNotIn("error", read, read)
+            self.assertEqual((read["kind"]["kind"], read["target"], read["word"]), ("keep", None, None))
+        self.committed(self.command("target.propose", {"text": "Every topic keeps its place."}, {"workspace_id": "w2"},
+                                    expected={"target_revision": 0}, actor="agent-b"))
+        self.assertEqual(self.store.view("owner", "outcome_checks", {"workspace_id": "w2"})["target"]["text"], "Every topic keeps its place.")
+        stored = self.unchanged()
+        with self.assertRaises(MigrationError) as refused:
+            migrate(self.path, "test-instance", self.binding, BEFORE_CHECKS)
         self.assertEqual(refused.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), stored)
 
@@ -2346,30 +2385,34 @@ class PipelineStepCase(MigrationCase):
 
     VERSION, FIXTURE = BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE
 
+    def upgrade(self):
+        return migrate(self.path, "test-instance", self.binding, PIPELINE_VERSION)
+
     def step_back(self):
         return migrate(self.path, "test-instance", self.binding, BEFORE_PIPELINE)
 
     def at_head(self):
-        self.assertEqual(self.upgrade()["schema_version"], PIPELINE_VERSION)
+        # The pipeline's commands run at the head, which keeps every pipeline record the step made.
+        self.assertEqual(migrate(self.path, "test-instance", self.binding)["schema_version"], SCHEMA_VERSION)
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
 
     def committed(self, receipt):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
 
-    def test_the_step_is_the_pipelines_and_the_head_is_its_version(self):
+    def test_the_step_is_the_pipelines_and_the_checks_step_follows_it(self):
         self.assertIn((BEFORE_PIPELINE, PIPELINE_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, PIPELINE_VERSION)
+        self.assertIn((PIPELINE_VERSION, CHECKS_VERSION), [step[:2] for step in migrations.STEPS])
 
-    def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_the_pipeline_works(self):
+    def test_upgrade_keeps_every_row_matches_its_frozen_layout_and_the_pipeline_works(self):
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_PIPELINE,
                                           "schema_version": PIPELINE_VERSION, "migrated": True})
-        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_CHECKS))
         upgraded = everything(self.path)
         self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
         self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new tables start empty")
-        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.at_head()
         self.committed(self.command("pipeline.configure", {"enabled": True}, {"workspace_id": "w1"}))
         added = self.committed(self.command("pipeline.item_add", {"title": "First", "sources": [{"note": "a test"}]}, {"workspace_id": "w1"}))
         self.assertEqual(added["number"], 1)
@@ -2419,6 +2462,92 @@ class PipelineStepCase(MigrationCase):
         self.assertEqual(self.unchanged(), before)
 
 
+class ChecksStepCase(MigrationCase):
+    """An instance at the pipeline's version: the checks' step adds each outcome's target,
+    its checks and their readings, the owner's allowances, the problems found before a
+    check, and each outcome's kind and Reached; it steps back only while none is kept."""
+
+    VERSION, FIXTURE = BEFORE_CHECKS, SCHEMA_BEFORE_CHECKS
+
+    def upgrade(self):
+        return migrate(self.path, "test-instance", self.binding, CHECKS_VERSION)
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_CHECKS)
+
+    def committed(self, receipt):
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]
+
+    def test_the_step_follows_the_pipelines_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_CHECKS, CHECKS_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, CHECKS_VERSION)
+
+    def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_the_new_tables_start_empty(self):
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_CHECKS,
+                                          "schema_version": CHECKS_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        upgraded = everything(self.path)
+        self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
+        self.assertEqual({k: v for k, v in upgraded.items() if k not in stored and v}, {}, "and the new tables start empty")
+        # An outcome made before the step has no kind record and reads to keep, with no start time.
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        read = self.store.view("owner", "outcome_checks", {"workspace_id": "w1"})
+        self.assertNotIn("error", read, read)
+        self.assertEqual((read["kind"]["kind"], read["kind"]["started_ms"], read["word"]), ("keep", None, None))
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_nothing_is_kept(self):
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_CHECKS))
+        self.assertEqual(everything(self.path), stored)
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_while_any_record_of_the_step_is_kept_and_changes_nothing(self):
+        # Each kind of record the step keeps, alone, holds the instance at its version.
+        writes = {
+            "a target": ("INSERT INTO outcome_targets VALUES ('w1',0)",),
+            "a found problem": ("INSERT INTO found_problems(id,workspace_id,what,kind,found_by,note,found_ms,version) "
+                                "VALUES ('fp-1','w1','A slip','defect','owner','in a note',1,1)",),
+            "an allowance": ("INSERT INTO check_allowances VALUES ('w1','units','%s','fewer',3,NULL,'Fewer on purpose',NULL,'owner',1)" % ("a" * 40),),
+            "a kind": ("INSERT INTO outcome_kinds VALUES ('w1',1,'reach','change','owner',1)",),
+            "a Reached": ("INSERT INTO outcome_reached VALUES ('w1','Done','[]','owner',1)",),
+        }
+        tables = ("outcome_targets", "found_problems", "check_allowances", "outcome_kinds", "outcome_reached")
+        for name, statements in writes.items():
+            with self.subTest(kept=name):
+                self.upgrade()
+                with sqlite3.connect(str(self.path)) as db:
+                    db.execute("PRAGMA foreign_keys=OFF")
+                    for statement in statements:
+                        db.execute(statement)
+                before = self.unchanged()
+                with self.assertRaises(MigrationError) as raised:
+                    self.step_back()
+                self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+                self.assertEqual(self.unchanged(), before)
+                self.assertEqual(self.metadata()["schema_version"], CHECKS_VERSION)
+                # Cleared by hand (the records refuse a DELETE by trigger), the step back goes through.
+                with sqlite3.connect(str(self.path)) as db:
+                    for trigger in ("problems_stay", "kept_allowance_d", "kinds_stay_d", "reached_stays_d"):
+                        db.execute("DROP TRIGGER " + trigger)
+                    for table in tables:
+                        db.execute("DELETE FROM " + table)
+                self.assertTrue(self.step_back()["migrated"])
+
+    def test_step_back_refuses_once_an_outcome_is_started_or_given_a_target_through_its_commands(self):
+        self.upgrade()
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.committed(self.command("workspace.create", {"id": "w9", "title": "Started at the new version"}))
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST", "its start record is kept")
+        self.assertEqual(self.unchanged(), before)
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -2459,6 +2588,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema27Case, _name, None)
     if _name.startswith("test_") and _name not in PipelineStepCase.__dict__:
         setattr(PipelineStepCase, _name, None)
+    if _name.startswith("test_") and _name not in ChecksStepCase.__dict__:
+        setattr(ChecksStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

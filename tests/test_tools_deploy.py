@@ -720,7 +720,7 @@ signal.pause()
 """
 
 
-class FullDeploy(DeployCase):
+class Restarting(DeployCase):
     """The deploy past migrate: real stand-in server and runner processes on a free loopback port.
 
     ps, git, the backup, the migration and the CLI are still answered by FakeHost, and every
@@ -784,6 +784,8 @@ class FullDeploy(DeployCase):
     def first_line(self, run):
         return json.loads((self.instance / run / "stdout.log").read_text().splitlines()[0])
 
+
+class FullDeploy(Restarting):
     def test_a_deploy_restarts_both_from_the_config_and_verifies_the_new_server(self):
         host = FakeHost(self.config)
         try:
@@ -989,6 +991,170 @@ class ReleaseCheckGate(DeployCase):
             deploy.main(["--config", str(self.config_path), SHA, str(self.evidence)])
         self.assertEqual(caught.exception.code, 2)
 
+
+UNITS_CHECK = {"check_id": "units", "group_name": "Checks", "position": 1, "name": "Unit checks", "kind": "pass", "source": "release-check:units"}
+
+
+def counted(python=600, node=300, commit=SHA):
+    """A passed summary whose unit steps carry their counts, and its times, as the release check writes them."""
+    written = summary(commit)
+    for step in written["steps"]:
+        tests = {"python-units": python, "node-units": node}.get(step["name"])
+        if tests is not None:
+            step["counts"] = {"tests": tests, "pass": tests}
+    return dict(written, started_at="2026-11-07T05:00:00-08:00", finished_at="2026-11-07T05:20:00-08:00")
+
+
+def live_view(units=900, coordinator="agent-a", allowances=()):
+    return {"instance_id": "i-1", "workspace_id": "building-theseus", "coordinator": coordinator, "members": ["agent-a", "agent-b"],
+            "checks": [UNITS_CHECK], "live": {"run_id": "run-19", "commit": HEAD, "tools": {"release-check": "theseus-release-check"}},
+            "readings": {"units": {"result": "passed", "value": units, "detail": {}}} if units is not None else {},
+            "allowances": list(allowances), "fix_topics": {"units": None}}
+
+
+class ChecksHost(FakeHost):
+    """FakeHost that also answers whether the live code keeps outcome checks, the live CLI's checks read, and record-checks."""
+
+    def __init__(self, config, keeps_checks=True, checks=None, record_checks=0, **more):
+        super().__init__(config, **more)
+        # keeps_checks: whether the live checkout has aim_next/checks.py, None when git cannot say. checks: the
+        # CLI's (stdout, exit) for `checks OUTCOME --live SHA`, as a list answered in turn; record_checks: its exit.
+        self.keeps_checks, self.checks, self.record_checks, self.recorded_runs = keeps_checks, list(checks or []), record_checks, []
+
+    def __call__(self, argv, **kw):
+        if argv[0] == "git" and "ls-tree" in argv and argv[-1] == "aim_next/checks.py":
+            self.calls.append(argv)
+            out, code = ("aim_next/checks.py\n" if self.keeps_checks else "", 0) if self.keeps_checks is not None else ("", 128)
+            return subprocess.CompletedProcess(argv, code, out, "fatal: not a git repository" if code else "")
+        if "checks" in argv and "--live" in argv:
+            self.calls.append(argv)
+            out, code = self.checks.pop(0)
+            return subprocess.CompletedProcess(argv, code, out, "" if code == 0 else "Traceback: something broke")
+        if "record-checks" in argv:
+            self.calls.append(argv)
+            self.recorded_runs.append(json.loads(Path(argv[argv.index("--run") + 1]).read_text()))
+            return subprocess.CompletedProcess(argv, self.record_checks, "{}\n" if self.record_checks == 0 else "",
+                                               "" if self.record_checks == 0 else "NOT_FOUND")
+        return super().__call__(argv, **kw)
+
+
+class OutcomeChecksConfig(DeployCase):
+    def test_the_outcome_and_the_profile_that_reads_it_go_together(self):
+        for given in ({"outcome": "building-theseus"}, {"reporter_profile": "agent-b.profile.json"}):
+            with self.subTest(given=given):
+                self.config_path.write_text(json.dumps(dict(self.raw, **given)))
+                with self.assertRaises(deploy.Refused):
+                    deploy.load_config(self.config_path)
+        self.config_path.write_text(json.dumps(dict(self.raw, outcome="building-theseus", reporter_profile="agent-b.profile.json")))
+        config = deploy.load_config(self.config_path)
+        self.assertEqual((config.outcome, config.reporter_profile), ("building-theseus", self.instance / "agent-b.profile.json"))
+        self.assertIsNone(self.config.outcome, "without the keys the deploy measures no outcome")
+
+
+class OutcomeChecksBeforeAnythingStops(DeployCase):
+    """02-checks and 02-worse (items 12, 104): the candidate's readings beside the live release's, read through the live CLI."""
+
+    def setUp(self):
+        super().setUp()
+        self.config_path.write_text(json.dumps(dict(self.raw, outcome="building-theseus", reporter_profile="agent-b.profile.json")))
+        self.config = deploy.load_config(self.config_path)
+        self.summary.write_text(json.dumps(counted()))
+
+    def checks_read(self, host):
+        return [argv for argv in host.calls if "checks" in argv and "--live" in argv]
+
+    def planned(self, host, **release):
+        """A dry run that must go on; a refusal or a crash fails the test rather than erroring it."""
+        try:
+            self.deploy(host, dry=True, **release)
+        except Exception as error:  # the failure under test: anything but going on
+            self.fail("the deploy did not go on: %r" % error)
+
+    def test_a_live_release_that_keeps_no_checks_is_said_and_the_deploy_goes_on(self):
+        host = ChecksHost(self.config, keeps_checks=False)
+        self.planned(host)
+        self.assertEqual(json.loads((self.evidence / "02-checks.json").read_text())["live"], None)
+        self.assertEqual(self.checks_read(host), [], "nothing to read, known from the live code, not from a failed read")
+        self.assertNotIn("02-worse", self.records())
+
+    def test_a_checks_read_that_fails_stops_the_deploy_rather_than_counting_as_no_checks(self):
+        for host, reason in ((ChecksHost(self.config, keeps_checks=None), "whether the live code keeps outcome checks could not be read"),
+                             (ChecksHost(self.config, checks=[("", 1)]), "the live outcome's checks could not be read"),
+                             (ChecksHost(self.config, checks=[('{"error":{"code":"FORBIDDEN"}}\n', 2)]), "FORBIDDEN")):
+            with self.subTest(reason=reason):
+                self.kills = []
+                self.assertIn(reason, self.refused(host))
+                self.assertEqual(self.kills, [])
+                self.assertEqual(host.ran("merge") + host.ran("-c"), [])
+
+    def test_the_read_is_the_live_cli_as_the_reporter_for_this_commit(self):
+        host = ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0)])
+        self.planned(host)
+        self.assertEqual(self.checks_read(host), [[self.config.python, "-I", "-B", str(self.config.live / "bin/aim-next"), "--profile",
+                                                   str(self.instance / "agent-b.profile.json"), "--json", "checks", "building-theseus", "--live", SHA]])
+        self.assertEqual(json.loads((self.evidence / "02-worse.json").read_text())["worse"], [])
+
+    def test_a_check_made_worse_stops_the_deploy_before_anything_stops_unless_the_owner_allowed_it(self):
+        host = ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000)) + "\n", 0)])
+        reason = self.refused(host)
+        self.assertIn("the release check made Unit checks: 900 passing, 1000 at the live release worse", reason)
+        self.assertEqual(json.loads((self.evidence / "02-worse.json").read_text())["titles"], ["Unit checks: 900 passing, 1000 at the live release"])
+        self.assertEqual((self.kills, host.ran("merge"), host.ran("-c")), ([], [], []))
+        self.assertNotIn("02-release", self.records(), "nothing after the checks ran")
+        allowed = {"check_id": "units", "kind": "fewer", "allowed_count": 900, "allowed_by": "owner", "commit_sha": None}
+        self.planned(ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000, allowances=[allowed])) + "\n", 0)]))
+
+
+class OutcomeChecksAfterRelease(Restarting):
+    """12-checks: once the release is live and recorded, its readings are the coordinator's run of the outcome's checks."""
+
+    def setUp(self):
+        super().setUp()
+        self.config_path.write_text(json.dumps(dict(self.raw, outcome="building-theseus", reporter_profile="agent-b.profile.json")))
+        self.config = deploy.load_config(self.config_path)
+        self.summary.write_text(json.dumps(counted()))
+
+    def test_the_live_release_records_its_run_as_the_coordinator(self):
+        view = json.dumps(live_view()) + "\n"
+        host = ChecksHost(self.config, checks=[(view, 0), (view, 0)])
+        try:
+            self.run_deploy(host)
+        except Exception as error:  # a refusal or a crash here is the failure under test
+            self.fail("the deploy did not complete: %r" % error)
+        [argv] = host.ran("record-checks")
+        self.assertEqual(argv[3:5], [str(self.config.live / "bin/aim-next-admin"), "record-checks"])
+        self.assertEqual((argv[argv.index("--profile") + 1], argv[argv.index("--as") + 1]), (str(self.config.server_profile), "agent-a"))
+        [run] = host.recorded_runs
+        self.assertEqual((run["outcome"], run["commit"], [(r["check_id"], r["result"], r["value"]) for r in run["readings"]]),
+                         ("building-theseus", SHA, [("units", "passed", 900)]))
+        self.assertEqual(json.loads((self.evidence / "12-checks.json").read_text())["exit"], 0)
+        order = [index for index, call in enumerate(host.calls) if "record-release" in call or "record-checks" in call]
+        self.assertEqual(["record-checks" in host.calls[index] for index in order], [False, True], "the release is recorded first")
+
+    def not_written(self, host):
+        try:
+            self.run_deploy(host)
+        except deploy.Refused as refusal:
+            message = str(refusal)
+        except Exception as error:  # the failure under test: anything but a refusal
+            self.fail("the deploy did not refuse, it raised %r" % error)
+        else:
+            self.fail("the deploy was not refused")
+        self.assertIn("release 20 is live and recorded, but its run of the outcome's checks was not written", message)
+        self.assertEqual(len(host.written), 1, "the release record was written")
+        return message
+
+    def test_a_run_the_instance_refuses_says_the_release_is_live_and_how_to_write_it(self):
+        view = json.dumps(live_view()) + "\n"
+        host = ChecksHost(self.config, checks=[(view, 0), (view, 0)], record_checks=2)
+        message = self.not_written(host)
+        self.assertIn("NOT_FOUND", message)
+        self.assertIn("write it with: " + " ".join(host.ran("record-checks")[0]), message)
+
+    def test_a_checks_read_that_fails_once_live_says_the_release_is_live(self):
+        host = ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0), ("", 1)])
+        self.assertIn("the live outcome's checks could not be read", self.not_written(host))
+        self.assertEqual(host.ran("record-checks"), [])
 
 if __name__ == "__main__":
     unittest.main()
