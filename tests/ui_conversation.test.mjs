@@ -9,6 +9,7 @@ import { itemTags, paintItemTags, paintAbout, paintAsksYou, paintOnlyNew, paintE
   answererChoices, paintAnswerers, subtitle, CONVERSATION_NOTE, NOBODY_ANSWERS, carriedWriting, imagesStay } from '../web/outcome-conversation.mjs';
 import { parseRoute, routeHref, routeKey } from '../web/topic-navigation.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
+import { Editor, WRITING_FIELDS, noWriting, holdsWriting } from '../web/editor.mjs';
 
 const AT = Date.UTC(2026, 10, 6, 18, 0);
 const words = tags => tags.map(tag => [tag.tag, tag.parts.map(part => typeof part === 'string' ? part : part.link ?? (part.time !== undefined ? '<time>' : '')).join('')]);
@@ -160,23 +161,59 @@ test("the Reader's To is two chips, this topic and the conversation, with the ch
   assert.equal(CONVERSATION_NOTE(null), "Goes to the outcome's conversation with a link to this message; nobody in this topic is woken.");
 });
 
-test("switching the Reader's To moves the writing whole: what the destination holds is kept, and images never move", () => {
-  const draft = (body, quotes = [], caret = { start: body.length, end: body.length }) => ({ body, quotes, attachments: [], addressees: [], caret });
+test("switching the Reader's To moves every field of the writing: what the destination holds is kept, and images never move", () => {
+  const draft = (fields = {}) => ({ ...noWriting(), ...fields });
   const quote = { source_ref: { kind: 'message', id: 'm-1' }, excerpt: 'the launch' };
-  assert.equal(carriedWriting(draft(''), draft('kept')), null, 'nothing written, nothing carried');
-  assert.equal(carriedWriting(draft('   '), draft('')), null, 'spaces are not writing');
-  assert.deepEqual(carriedWriting(draft('abc plus more', [], { start: 3, end: 3 }), draft('')),
-    { body: 'abc plus more', quotes: [], caret: { start: 3, end: 3 } }, 'into an empty draft: every word, the caret where it was');
-  assert.deepEqual(carriedWriting(draft('', [quote]), draft(''))?.quotes, [quote], 'a quote alone is writing');
+  // One value for each field the editor takes as writing; a field added to the
+  // editor fails here until the switch has a rule for it.
+  const written = { body: 'Which build is it?', quotes: [quote], addressees: ['fixture-planning-agent'], intent: 'ask', whisper: true, attachments: [{ id: 'media-1' }] };
+  for (const field of WRITING_FIELDS.filter(field => field !== 'caret')) {
+    assert.ok(Object.hasOwn(written, field), `the switch carries ${field}`);
+    if (field === 'attachments') { assert.throws(() => carriedWriting(draft({ attachments: written.attachments }), draft()), /^Error: Images do not move/); continue; }
+    assert.deepEqual(carriedWriting(draft({ [field]: written[field] }), draft())?.[field], written[field], `${field} alone is writing, and it comes along`);
+  }
+  const asked = { body: 'Which build is it?', addressees: ['fixture-planning-agent'], intent: 'ask', caret: { start: 5, end: 5 } };
+  assert.deepEqual(carriedWriting(draft(asked), draft()), { ...draft(asked) },
+    'into an empty draft: the words, the name and the Ask, the caret where it was');
+  assert.equal(carriedWriting(draft(), draft({ body: 'kept', addressees: ['warp'] })), null, 'nothing written, nothing carried');
+  assert.equal(carriedWriting(draft({ body: '   ' }), draft())?.body, '   ', 'spaces move too, so the draft left holds nothing');
   // Writing the destination already holds: contained in what comes, or containing it, it is not repeated.
-  assert.equal(carriedWriting(draft('abc plus more'), draft('abc'))?.body, 'abc plus more');
-  assert.equal(carriedWriting(draft('abc'), draft('abc plus more'))?.body, 'abc plus more');
-  const both = carriedWriting(draft('new words', [quote]), draft('older words ', [quote, { ...quote, excerpt: 'other' }]));
-  assert.deepEqual(both, { body: 'older words\n\nnew words', quotes: [quote, { ...quote, excerpt: 'other' }], caret: { start: 22, end: 22 } },
-    'different words are both kept, the destination\'s first; each quote once');
-  assert.equal(carriedWriting(draft('a'), draft('   '))?.body, 'a', 'spaces held there are not kept');
-  assert.equal(imagesStay(draft('words')), null);
-  assert.match(imagesStay({ ...draft('words'), attachments: [{ id: 'media-1' }] }), /^Images go where they were chosen\./);
+  assert.equal(carriedWriting(draft({ body: 'abc plus more' }), draft({ body: 'abc' }))?.body, 'abc plus more');
+  assert.equal(carriedWriting(draft({ body: 'abc' }), draft({ body: 'abc plus more' }))?.body, 'abc plus more');
+  const both = carriedWriting(draft({ body: 'new words', quotes: [quote], addressees: ['fable', 'warp'], intent: 'tell' }),
+    draft({ body: 'older words ', quotes: [quote, { ...quote, excerpt: 'other' }], addressees: ['warp', 'tony'], intent: 'ask', whisper: false, attachments: [{ id: 'media-2' }] }));
+  assert.deepEqual(both, { body: 'older words\n\nnew words', quotes: [quote, { ...quote, excerpt: 'other' }], addressees: ['warp', 'tony', 'fable'],
+    intent: 'tell', whisper: false, attachments: [{ id: 'media-2' }], caret: { start: 22, end: 22 } },
+    "both kept, the destination's first, each quote and name once; a choice the writing made wins, one it left open keeps the destination's; images there stay");
+  assert.equal(carriedWriting(draft({ body: 'a' }), draft({ body: '   ' }))?.body, 'a', 'spaces held there are not kept');
+  // The draft left is emptied by the same list: nothing of the writing stays.
+  const context = { instanceId: 'i-1', actor: 'tony', sourceRef: { kind: 'message', id: 'm-1' }, topicId: 't1', kind: 'reply' };
+  const left = new Editor(context, null);
+  left.edit({ ...written, attachments: [] });
+  left.edit(noWriting());
+  assert.equal(holdsWriting(left.draft), false);
+  assert.deepEqual(Object.fromEntries(WRITING_FIELDS.map(field => [field, left.draft[field]])), noWriting());
+  // A name offered where the writing arrives is not added to it.
+  const there = new Editor({ ...context, topicId: 'w1-conversation' }, null);
+  there.offerAddressees(['fixture-agent']);
+  there.receive(carriedWriting(draft({ body: 'words' }), there.draft));
+  assert.deepEqual([there.draft.body, there.draft.addressees, there.offeredAddressees], ['words', [], []]);
+  const named = new Editor({ ...context, topicId: 'w1-conversation' }, null);
+  named.offerAddressees(['fixture-agent']);
+  named.receive(carriedWriting(draft({ body: 'words', addressees: ['fixture-agent'] }), named.draft));
+  assert.deepEqual(named.draft.addressees, ['fixture-agent'], 'and one the writing names is named once');
+});
+
+test('writing with images in any state stays where they were chosen: attached, uploading, failed, or an image action under way', () => {
+  const editor = (fields = {}) => ({ draft: { ...noWriting(), ...fields.draft }, ...fields });
+  const entry = (selected, kind) => ({ selected, owner: { kind, id: 'c-1' } });
+  const STAY = /^Images go where they were chosen\. Send or remove them before choosing another place\.$/;
+  assert.equal(imagesStay(editor()), null);
+  assert.match(imagesStay(editor({ draft: { attachments: [{ id: 'media-1' }] } })), STAY, 'attached');
+  assert.match(imagesStay(editor({ uploadState: { entries: [entry(true, 'cycle')] } })), STAY, 'chosen and not attached yet: uploading, failed or refused');
+  assert.equal(imagesStay(editor({ uploadState: { entries: [entry(false, 'cycle'), entry(true, 'submission')] } })), null, 'removed, or sent with an earlier message');
+  assert.match(imagesStay(editor({ uploadState: { entries: 'unreadable' } })), STAY, 'image state that cannot be read');
+  for (const busy of ['imageBusy', 'imageReservation', 'adopting', 'uploadOpaque']) assert.match(imagesStay(editor({ [busy]: 1 })), STAY, busy);
 });
 
 test('Answered by offers the coordinator first, then the team; with nobody named the coordinator is pressed and stays so', () => {

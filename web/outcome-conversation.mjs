@@ -7,6 +7,7 @@
 // (D5); only Waiting on you lights.
 import { timeNode } from './times.mjs';
 import { workNote } from './topic-state.mjs';
+import { WRITING_FIELDS, noWriting } from './editor.mjs';
 
 const element = (doc, tag, props = {}, ...children) => {
   const node = doc.createElement(tag);
@@ -183,26 +184,44 @@ export function conversationDestination(host, { topic, conversation, outcome, ch
 }
 
 // Switching the Reader's To moves the writing: it is carried into the other
-// destination's draft first, and the draft it leaves is emptied after, so the
-// writing lives in one place and every word goes with each switch. Returns
-// the writing for the destination's draft, or null when there is nothing to
-// carry. Writing the destination already holds is never lost: words it holds
-// that the carried writing does not already contain stay first, and the
-// quotes of both are kept once each.
-const holdsWords = draft => Boolean(draft?.body?.trim() || draft?.quotes?.length);
-// Images belong to the place they were chosen for, so writing with images
-// does not move: the switch is refused, saying why, and nothing changes.
-export const imagesStay = draft => draft?.attachments?.length
-  ? 'Images go where they were chosen. Send or remove them before choosing another place.' : null;
+// destination's draft first, and the draft it leaves is emptied after
+// (noWriting), so the writing lives in one place and goes whole with each
+// switch. What moves is every field the editor takes as writing
+// (WRITING_FIELDS), each by its own rule below; a field with no rule stops this
+// module loading, so it can never be left behind. Writing the destination already holds is
+// never lost: its words come first unless the carried words contain them,
+// quotes and names are kept once each, a choice of Ask, Tell or Whisper the
+// carried writing made wins and one it left open keeps the destination's, and
+// images there stay there. Images never move (imagesStay), so carried writing
+// holding one is refused.
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const once = (held, carried) => [...held, ...carried.filter(item => !held.some(kept => same(kept, item)))];
+const chosen = (held, carried) => carried ?? held;
+const MOVES = {
+  body: (held, carried) => !held.trim() ? carried : !carried.trim() ? held : carried.includes(held) ? carried : held.includes(carried) ? held : `${held.trimEnd()}\n\n${carried}`,
+  quotes: once, addressees: once, intent: chosen, whisper: chosen,
+  attachments: (held, carried) => { if (carried.length) throw Error('Images do not move between places.'); return held; },
+};
+const FIELDS = WRITING_FIELDS.filter(name => name !== 'caret');
+for (const name of FIELDS) if (!MOVES[name]) throw Error(`The writing's ${name} has no rule to move it between places.`);
+// Returns the destination's writing after the move, or null when there is
+// nothing to carry.
 export function carriedWriting(from, to) {
-  if (!holdsWords(from)) return null;
-  const kept = holdsWords(to) ? to : { body: '', quotes: [] };
-  const body = from.body.includes(kept.body) ? from.body : kept.body.includes(from.body) ? kept.body : `${kept.body.trimEnd()}\n\n${from.body}`;
-  const quotes = [...kept.quotes ?? []];
-  for (const quote of from.quotes ?? []) if (!quotes.some(held => JSON.stringify(held) === JSON.stringify(quote))) quotes.push(quote);
-  const caret = body === from.body && from.caret ? { ...from.caret } : { start: body.length, end: body.length };
-  return { body, quotes, caret };
+  const empty = noWriting(), field = (draft, name) => draft?.[name] ?? empty[name];
+  if (FIELDS.every(name => same(field(from, name), empty[name]))) return null;
+  const result = Object.fromEntries(FIELDS.map(name => [name, MOVES[name](field(to, name), field(from, name))]));
+  result.caret = result.body === field(from, 'body') && from.caret ? { ...from.caret } : { start: result.body.length, end: result.body.length };
+  return result;
 }
+// Images belong to the place they were chosen for, in every state: attached,
+// still uploading, failed or refused, kept on this device but never sent, or
+// an image action under way. Writing with any of them does not move: the
+// switch is refused, saying why, and nothing changes. An image sent with an
+// earlier message belongs to that message, and one removed to nobody.
+const chosenImage = entry => entry?.selected !== false && entry?.owner?.kind !== 'submission';
+export const imagesStay = editor => editor.draft.attachments?.length || editor.imageBusy || editor.imageReservation || editor.adopting ||
+  editor.uploadOpaque || editor.uploadState && !(Array.isArray(editor.uploadState.entries) && !editor.uploadState.entries.some(chosenImage))
+  ? 'Images go where they were chosen. Send or remove them before choosing another place.' : null;
 
 // "Answered by": the coordinator, then the rest of the team, each a name
 // tapped once. With nobody named the coordinator answers, so theirs is pressed

@@ -3,6 +3,13 @@ import { imageBarrier, freezeImages, readableUploads, refusedAtDraft } from './u
 // Private writing state. DOM, transport and persistence are separate owners.
 const copy = value => structuredClone(value);
 const emptyWriting = () => ({ body: '', attachments: [], quotes: [], addressees: [], caret: { start: 0, end: 0 } });
+// The writing: every field a person's input changes, each as it is when
+// nothing is written. edit takes exactly these, and moving or emptying the
+// writing (outcome-conversation.mjs) goes by the same list, so no field the
+// editor holds as writing can be left out of either.
+const NO_WRITING = { body: '', attachments: [], quotes: [], addressees: [], intent: null, whisper: null, caret: { start: 0, end: 0 } };
+export const WRITING_FIELDS = Object.freeze(Object.keys(NO_WRITING));
+export const noWriting = () => copy(NO_WRITING);
 
 // Whether a reply or note holds anything the person wrote or chose. Core keeps
 // the same rule: only writing holds on to the Notebook revision it is about.
@@ -99,10 +106,17 @@ export class Editor {
     return holdsWriting(this.draft) ? [] : (this.offered ?? []).filter(name => !this.draft.addressees.includes(name));
   }
 
+  // Writing moved here whole from another place reaches whoever it names:
+  // a name offered here that it does not name is declined, not added to it.
+  receive(writing) {
+    if (this.offered) this.offered = this.offered.filter(name => writing.addressees.includes(name));
+    this.edit(writing);
+  }
+
   edit(patch) {
     const offered = this.offeredAddressees;
     // Only writing fields may be changed by user input, never its identity.
-    for (const field of ['body', 'attachments', 'quotes', 'addressees', 'intent', 'whisper', 'caret']) {
+    for (const field of WRITING_FIELDS) {
       if (Object.hasOwn(patch, field)) this.draft[field] = copy(patch[field]);
     }
     if (offered.length && holdsWriting(this.draft)) {

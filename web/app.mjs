@@ -4,6 +4,7 @@ import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
 import { InlineComposer } from './inline-composer.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
+import { noWriting } from './editor.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
 import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
@@ -1474,26 +1475,29 @@ function paintReaderAudience(topicId, names = null) {
   if (reader?.sessions && (on || answering.size)) answeredBy(reader, $('reply-audience'), names ?? reader.names(), on);
 }
 // Switching the Reader between this topic and the conversation opens the same
-// message with the other destination and moves the writing there: carried into
-// its draft and kept on this device first, then the draft it left is emptied
-// (carriedWriting), so a switch back and forth loses no word and leaves nothing
-// behind. Writing with images stays where it is (imagesStay).
+// message with the other destination and moves the writing there, every field
+// of it (carriedWriting): carried into its draft and kept on this device
+// first, then the draft it left is emptied by the same list of fields, so a
+// switch back and forth loses nothing and leaves nothing behind. Writing with
+// images in any state stays where it is (imagesStay). Images cannot be chosen
+// while the other place opens (an open stops them), and words typed meanwhile
+// are read after it, so they move too.
 async function switchDestination(value) {
   const p = registry.current, ref = p?.source?.source_ref;
   if (!ref || ref.kind !== 'message' || value === p.editors.reply.context.topicId) return;
   if (![topic.id, here?.view?.topic_id].includes(value)) { reader.notice('Choose this topic or the outcome\'s conversation.'); return; }
   const left = p.editors.reply;
-  const refused = imagesStay(left.draft);
+  const refused = imagesStay(left);
   if (refused) { reader.notice(refused); return; }
   const next = await registry.open(ref, { topicId: value, opener: p.opener });
   if (!next) return;
   const editor = next.editors.reply, carried = carriedWriting(left.draft, editor.draft);
   if (!carried) return;
   if (editor.unavailable || editor.conflict || editor.authorityRecovery) { reader.notice('That place cannot take writing now; yours stays where it was.'); return; }
-  editor.edit(carried);
+  editor.receive(carried);
   if (reader.editor === editor) reader.drawEditor();
   await registry.edited(editor);
-  left.edit({ body: '', quotes: [], caret: { start: 0, end: 0 } });
+  left.edit(noWriting());
   await registry.edited(left);
 }
 // The Done and Archived lines under the topic list, where the person's choice
