@@ -150,51 +150,49 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
-  // The topic-state form, in Topic settings, keeps what the person typed, and
-  // their focus, while messages from others repaint the topic; a second change
-  // made straight after a first one commits. Choosing from a select's native
-  // popup is not what this checks, so the choice is set and its change event sent.
-  await check('live the topic state form keeps typing and focus while messages arrive, and saves twice in a row', async () => {
+  // Where it stands, in Topic settings, keeps what the person typed, and
+  // their focus, while messages from others repaint the topic; a chip tapped
+  // straight after typing saves the typed note first, then the state, in order.
+  await check('live Topic settings keeps typing and focus while messages arrive, and a tap straight after typing saves both in order', async () => {
     const p = await page('live-state-form', null, true);
     await settled(p);
     const value = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).value`);
-    const choose = state => p.evaluate(`(s=>{s.value=${JSON.stringify(state)};s.dispatchEvent(new Event('change'))})(document.querySelector('#topic-state-choice'))`);
-    const line = () => p.evaluate("document.querySelector('#topic-state .state-line').textContent");
-    const onSave = () => p.evaluate("document.activeElement === document.querySelector('#topic-state button.primary')");
+    const lit = () => p.evaluate("[...document.querySelectorAll('#topic-state .state-chips button[aria-pressed=true]')].map(b => b.textContent)");
+    const updates = () => p.calls.filter(call => call.payload?.kind === 'topic.update').map(call => call.payload);
     await p.evaluate('scrollTo(0, 0)');
     await p.point('#settings-open');
-    await until(() => p.evaluate("document.querySelector('#topic-settings').open"), 'Topic settings is open, with its form');
+    await until(() => p.evaluate("document.querySelector('#topic-settings').open"), 'Topic settings is open');
     // Measured once its opening animation has run, as the person sees it.
     await until(() => p.evaluate("document.getAnimations().every(a => a.playState !== 'running')"), 'Topic settings settled');
-    await choose('waiting');
-    await p.point('#topic-state-waiting'); await p.send('Input.insertText', { text: 'fixture-person' });
+    await p.point('#topic-state [data-state=waiting]');
+    await until(async () => (await lit())[0] === 'Waiting', 'Waiting is saved and lit');
+    await until(() => p.evaluate("Boolean(document.querySelector('#topic-state .people-chips button')?.offsetParent)"), 'the people show as chips');
+    await p.point('#topic-state .people-chips button:first-child');
+    await until(() => p.evaluate("document.querySelector('#topic-state .people-chips button:first-child').getAttribute('aria-pressed') === 'true'"), 'it waits on you');
     await p.point('#topic-state-note'); await p.send('Input.insertText', { text: 'Pick a name' });
     const top = selector => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect().top)`);
     const noteTop = await top('#topic-state-note');
-    const text = 'Arrives while the state is being chosen';
+    const text = 'Arrives while the note is being written';
     await message(text);
     await until(() => hasText(p, '#messages', text), 'the new message is shown, so the topic was read and painted again');
     await settled(p);
     assert.equal(await p.evaluate('document.activeElement.id'), 'topic-state-note', 'focus stays in the note');
     const noteNow = await top('#topic-state-note');
     assert.ok(Math.abs(noteNow - noteTop) <= 1, `the note stays where it was on the screen: ${noteTop} → ${noteNow}`);
-    assert.deepEqual([await value('#topic-state-choice'), await value('#topic-state-note'), await value('#topic-state-waiting')],
-      ['waiting', 'Pick a name', 'fixture-person'], 'what the person typed is kept');
+    assert.equal(await value('#topic-state-note'), 'Pick a name', 'what the person typed is kept');
     await p.send('Input.insertText', { text: '!' });
     assert.equal(await value('#topic-state-note'), 'Pick a name!', 'typing goes on where it was');
-    await p.point('#topic-state button.primary');
-    await until(async () => (await line()).startsWith('Waiting on you · Pick a name!'), 'the line shows the saved state');
-    assert.equal(await p.evaluate("document.querySelector('#topic-description').textContent"), 'Waiting on you Pick a name!', 'the subtitle follows the save at once');
-    assert.equal(await onSave(), true, 'focus stays on Save after the commit and the fresh read');
-    await choose('active');
-    assert.deepEqual([await value('#topic-state-note'), await value('#topic-state-waiting')], ['', ''], 'a new state starts with an empty note and nobody waited on');
-    await p.point('#topic-state button.primary');
-    await until(async () => (await line()).startsWith('Active'), 'the second change commits');
-    assert.equal(await p.evaluate("document.querySelector('#topic-state .notice').hidden"), true, 'no refusal');
-    assert.equal(await onSave(), true);
-    const updates = p.calls.filter(call => call.payload?.kind === 'topic.update').map(call => call.payload.expected.topic_revision);
-    assert.equal(updates.length, 2);
-    assert.ok(updates[1] > updates[0], 'the second change sends a newer version');
+    const before = updates().length;
+    await p.point('#topic-state [data-state=review]');
+    await until(async () => (await lit())[0] === 'Ready for review' && (await view('topic', { topic_id: 't1' })).topic.state === 'review', 'the tap commits');
+    const sent = updates().slice(before);
+    assert.deepEqual(sent.map(u => u.args), [{ note: 'Pick a name!' }, { state: 'review', keep_note: true }], 'the typed note first, then the state alone, keeping it');
+    assert.deepEqual(sent.map(u => u.expected.topic_fields), [{ note: '' }, { state: 'waiting', waiting_on: [facts.actor] }], 'each fenced on what it changes');
+    const held = (await view('topic', { topic_id: 't1' })).topic;
+    assert.deepEqual([held.state, held.state_note], ['review', 'Pick a name!']);
+    await until(() => p.evaluate("document.querySelector('#topic-description').textContent === 'Ready for review Pick a name!'"), 'the subtitle follows at once');
+    assert.equal(await p.evaluate("document.querySelector('#topic-state .notice').textContent"), 'Saved', 'no refusal');
+    assert.equal(await p.evaluate("document.activeElement === document.querySelector('#topic-state [data-state=review]')"), true, 'focus stays on the chip tapped after the commits and the fresh read');
     assert.deepEqual(p.errors, []);
     await p.close();
   });

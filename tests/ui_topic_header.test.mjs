@@ -1,7 +1,7 @@
 // The top of a topic, Topic settings and the people as pills, below the
 // browser: the subtitle's rules on a table of topics, the dialog's open,
-// close and Tab rules on a small DOM, the people panel's pills, the form's
-// frame inside the dialog, and the page's order in index.html.
+// close and Tab rules on a small DOM, the people panel's pills, where it stands
+// inside the dialog, and the page's order in index.html.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -12,12 +12,13 @@ import { TopicStatePanel } from '../web/topic-state.mjs';
 
 class Element {
   constructor(tag, fields = {}) { Object.assign(this, { tag, children: [], dataset: {}, attributes: {}, hidden: false, classes: new Set(), parent: null, handlers: {}, textContent: '' }, fields); }
-  get classList() { return { add: name => this.classes.add(name), contains: name => this.classes.has(name) }; }
+  get classList() { return { add: name => this.classes.add(name), contains: name => this.classes.has(name), toggle: (name, on = !this.classes.has(name)) => { if (on) this.classes.add(name); else this.classes.delete(name); return on; } }; }
   set className(value) { this.classes = new Set(String(value).split(' ').filter(Boolean)); }
   get className() { return [...this.classes].join(' '); }
   append(...nodes) { for (const node of nodes) { if (node instanceof Element) { node.parent?.drop(node); node.parent = this; } this.children.push(node); } }
   drop(node) { this.children = this.children.filter(child => child !== node); }
   replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  prepend(...nodes) { const rest = this.children; this.children = []; this.append(...nodes); this.children.push(...rest); }
   insertBefore(node, before) { this.append(node); this.drop(node); this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); }
   remove() { this.parent?.drop(this); this.parent = null; }
   setAttribute(key, value) { this.attributes[key] = String(value); }
@@ -216,32 +217,31 @@ test('each person is one pill in their colour, the reader\'s own black and not a
   assert.deepEqual(host.filter(node => node.classes.has('pill-remove')), [], 'a reader who may not manage gets no remove button');
 });
 
-// The form's frame inside Topic settings, and the hook that lets the subtitle follow it.
-test('in Topic settings the form is always open under its own heading, and each painted topic reaches the subtitle', t => {
+// Where it stands inside Topic settings, set in place, and the hook that lets the subtitle follow it.
+test('in Topic settings where it stands is chips and one line under its heading, with no form, and each painted topic reaches the subtitle', t => {
   dom(t);
   const host = new Element('section'), painted = [];
   const panel = new TopicStatePanel({ host, reader: 'fable', send: async () => ({}), painted: item => painted.push(item.version) });
   panel.paint(topic({ state: 'review', state_note: 'Look please' }), [{ actor_id: 'fable' }]);
-  assert.deepEqual(host.children.filter(node => node instanceof Element).map(node => node.tag), ['h3', 'p', 'ul', 'div', 'p'], 'Where it stands, its line, the notes, the form, the notice');
+  const shown = node => [node.tag, node.id || [...node.classes][0]];
+  assert.deepEqual(host.children.map(shown), [['h3', 'stand-heading'], ['div', 'state-chips'], ['div', 'waiting-on'], ['input', 'topic-state-note'], ['p', 'muted'],
+    ['div', 'settings-part'], ['p', 'notice'], ['div', 'settings-actions']], 'Where it stands, its chips, who it waits on, the note, who said it, the parts, the notice, the quiet actions');
   assert.equal(host.children[0].textContent, 'Where it stands');
-  const form = host.find(node => node.classes.has('state-form'));
-  assert.equal(form.tag, 'div', 'no disclosure: the form is open');
-  assert.equal(host.find(node => ['details', 'summary'].includes(node.tag)), undefined);
-  const [heading, fields] = form.children;
-  assert.deepEqual([heading.tag, heading.id, heading.textContent], ['h3', 'change-heading', 'Change where it stands']);
-  assert.deepEqual([fields.attributes.role, fields.attributes['aria-labelledby']], ['group', 'change-heading']);
-  assert.equal(form.find(node => node.id === 'topic-rename'), undefined, 'a participant who is neither owner nor creator cannot rename');
-  const waiting = form.find(node => node.id === 'topic-state-waiting');
-  assert.equal(waiting.parent.hidden, true, 'Waiting on shows only while Waiting is chosen');
+  assert.equal(host.filter(node => node.tag === 'h3').length, 1, 'one heading, not a second "Change where it stands"');
+  assert.equal(host.find(node => ['details', 'summary', 'select', 'textarea'].includes(node.tag)), undefined, 'no disclosure, no dropdown, no box');
+  assert.equal(host.find(node => node.tag === 'button' && /Save/.test(node.textContent)), undefined, 'no Save');
+  assert.equal(host.find(node => node.classes.has('topic-state')), undefined, 'no second state pill: the lit chip says it');
+  assert.equal(host.children[2].hidden, true, 'Waiting on shows only while it waits');
+  assert.equal(host.children[7].hidden, true, 'a participant who is neither owner nor creator gets no Rename or Archive');
   // A newer topic reaches the subtitle; an older read that lands late does not.
   panel.paint(topic({ version: 6, state: 'done' }), [{ actor_id: 'fable' }]);
   panel.paint(topic({ version: 5, state: 'active' }), [{ actor_id: 'fable' }]);
   assert.deepEqual(painted, [4, 6]);
   const owner = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
   owner.paint(topic(), []);
-  const ownerForm = owner.host.find(node => node.classes.has('state-form'));
-  assert.deepEqual(ownerForm.children.filter(node => node instanceof Element).map(node => node.tag), ['h3', 'div', 'div'], 'the owner\'s Title, Rename and Archive row follows Save in the same section');
-  assert.ok(ownerForm.children[2].find(node => node.id === 'topic-rename'));
+  const actions = owner.host.find(node => node.classes.has('settings-actions'));
+  assert.deepEqual([actions.hidden, actions.children.map(node => [node.tag, node.id ?? null, node.textContent, node.hidden])],
+    [false, [['input', 'topic-rename', '', true], ['button', null, 'Rename', false], ['button', null, 'Archive', false]]], 'the owner\'s quiet Rename and Archive, the title line hidden until Rename');
 });
 
 // The page's order, as index.html lays it out.

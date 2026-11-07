@@ -1,7 +1,7 @@
 // Topic settings: the dialog the gear beside a topic's title opens. It holds
-// where the topic stands (the state word, the note, who set it and when) and,
-// for those who may change it, the live form (topic-state.mjs
-// TopicStatePanel), always open. It follows the live dialog conventions: the
+// where the topic stands, set in place by those who may change it: chips that
+// save on a tap and lines that save on Return (topic-state.mjs
+// TopicStatePanel). It follows the live dialog conventions: the
 // title takes the focus on opening, Escape and ✕ close it, the focus goes back
 // to the gear, and Tab stays inside. A click outside it, on its backdrop,
 // closes it as every pop-up does (dismiss.mjs); on a phone the dialog fills
