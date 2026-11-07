@@ -354,3 +354,23 @@ class FieldFenceCase(TopicStateCase):
             with self.subTest(args=args):
                 self.rejected(self.fenced(args, {"state": "review"}, actor="agent-a"), "INVALID_ARGUMENT")
         self.assertEqual(self.topic(), before)
+
+    def test_an_answer_says_the_topic_as_it_stands_a_reopen_too(self):
+        """A committed topic.update answers what the topic says as it now stands,
+        whether a message's reopen still stands included, so a page paints it
+        from Core's answer and fences its next tap as Core will see it."""
+        self.committed(self.update({"state": "done"}, actor="agent-a"))
+        self.send("One more thing")
+        reopen = self.topic()["state_message_id"]
+        self.assertIsInstance(reopen, str)
+        # A rename leaves the reopen standing, and its answer says so.
+        result = self.committed(self.fenced({"title": "Renamed"}, {"title": self.topic()["title"]}))
+        topic = self.topic()
+        said = ("title", "archived", "state", "note", "waiting_on", "state_by", "state_ms", "state_message_id")
+        self.assertEqual({key: result.get(key) for key in said}, {"title": topic["title"], "archived": topic["archived"], "state": topic["state"],
+                         "note": topic["state_note"], "waiting_on": topic["waiting_on"], "state_by": topic["state_by"],
+                         "state_ms": topic["state_ms"], "state_message_id": reopen})
+        self.assertEqual(result["version"], topic["version"])
+        # A word on where it stands is said by someone, no longer by the message.
+        result = self.committed(self.fenced({"state": "review", "keep_note": True}, {"state": "active"}, actor="agent-a"))
+        self.assertEqual((result["state"], result.get("state_message_id", "absent"), self.topic()["state_message_id"]), ("review", None, None))

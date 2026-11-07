@@ -194,9 +194,11 @@ class TopicState:
         # Whoever the topic stopped or started waiting on learns of it in their own scope.
         for member in sorted(set(old_waiting) | set(waiting)):
             self._change(db, "actor", member, "waiting", topic["id"], version)
-        row = db.execute("SELECT title,archived,state,state_note,state_by,state_ms FROM topics WHERE id=?", (topic["id"],)).fetchone()
+        # The answer says the topic as it now stands, a message's reopen too, so a page paints it as Core holds it.
+        row = db.execute("SELECT title,archived,state,state_note,state_by,state_ms,state_message_id FROM topics WHERE id=?", (topic["id"],)).fetchone()
         return {"topic_id": topic["id"], "version": version, "title": row["title"], "archived": bool(row["archived"]), "state": row["state"],
-                "note": row["state_note"], "waiting_on": waiting, "state_by": row["state_by"], "state_ms": row["state_ms"]}, [
+                "note": row["state_note"], "waiting_on": waiting, "state_by": row["state_by"], "state_ms": row["state_ms"],
+                "state_message_id": row["state_message_id"]}, [
                     {"kind": "topic", "id": topic["id"], "version": version}]
 
     def _may_say(self, db, topic, actor):

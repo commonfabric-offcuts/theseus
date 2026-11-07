@@ -115,6 +115,11 @@ const known = state => STATES.includes(state) ? state : 'active';
 // What Core holds for each field of the topic itself, as last read.
 const HELD = { title: topic => topic.title, archived: topic => topic.archived === true, state: topic => known(topic.state),
   note: topic => topic.state_note ?? '', waiting_on: topic => Array.isArray(topic.waiting_on) ? topic.waiting_on : [] };
+// What Core's answer to a topic.update says of the topic, and what its answer
+// to Your part says of the reader's own row; everything else only a read says.
+const SAID = ['title', 'archived', 'state', 'state_note', 'waiting_on', 'state_by', 'state_ms', 'state_message_id'];
+const DUTY = ['responsibility', 'responsibility_truncated', 'responsibility_revision'];
+const pick = (record, keys) => Object.fromEntries(keys.map(key => [key, record[key]]));
 // Two values of a field alike; who a topic waits on compares as a set.
 const alike = (a, b) => Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every(id => b.includes(id)) : a === b;
 // A chip shows the topic as it now stands; a line keeps what was typed.
@@ -167,7 +172,7 @@ function lineField(props, { touch, save, cancel, leave = save }) {
 // Each control is a field (docs/topic-settings.md): the note, Your part, the
 // title, the state chips, the people chips and Archive. Its start is where
 // the person's change began, each key as Core held it and the topic version
-// it was read at; out is its one save, in flight or with its answer lost;
+// Core said it at; out is its one save, in flight or with its answer lost;
 // next says the person asked for another. A save sends only what the field
 // changed, fenced on its start. Core's answer decides: committed moves every
 // start read before it on the same value to what Core saved; refused shows
@@ -185,18 +190,31 @@ export class TopicStatePanel {
   constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {}, read = null, attention = () => {} }) {
     Object.assign(this, { host, reader, send, sendNote, refresh, painted, read, attention });
     // kept: the refusal said over a line's words, while they stay unsaved.
-    // running: each answer still awaited.
-    this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.running = new Set();
+    // running: each answer still awaited. at: the topic version Core said
+    // each part of what shows at: the last read, what a topic.update answers
+    // (SAID) and the reader's own part (DUTY). An answer says only its own
+    // part, so it moves only that part's version.
+    this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.running = new Set(); this.at = null;
     this.heading = element('h3', { id: 'stand-heading', textContent: 'Where it stands' });
     // One notice, kept in place, so a screen reader announces each new text.
     this.notice = element('p', { className: 'notice', hidden: true });
     this.notice.setAttribute('role', 'status');
   }
 
+  // A read of the topic and its participants.
   paint(topic, participants = this.participants ?? []) {
-    if (this.topic?.id !== topic.id) this.reset();
-    // A read that left before the version shown here cannot undo it.
-    else if (topic.version < this.topic.version) return;
+    if (this.topic?.id !== topic.id) { this.reset(); this.at = { read: -Infinity, said: -Infinity, duty: -Infinity }; }
+    // A read that left before the one shown cannot undo it.
+    else if (topic.version < this.at.read) return;
+    const version = topic.version, mine = this.mine();
+    // Nor what a later answer said: that part stays as answered.
+    if (version < this.at.said) topic = { ...topic, ...pick(this.topic, SAID) };
+    if (version < this.at.duty && mine) participants = participants.map(person => person.actor_id === this.reader ? { ...person, ...pick(mine, DUTY) } : person);
+    this.at = { read: version, said: Math.max(this.at.said, version), duty: Math.max(this.at.duty, version) };
+    this.draw(topic, participants);
+  }
+
+  draw(topic, participants = this.participants) {
     this.topic = topic; this.participants = participants;
     const reader = this.reader, manager = managesTopic(topic, reader);
     const participant = participants.some(person => person.actor_id === reader);
@@ -260,12 +278,12 @@ export class TopicStatePanel {
   }
 
   // Where a change of a field begins: each key it is fenced on as held now,
-  // with the topic's version it was read at. The keys are its own, and for a
+  // with the topic version Core said it at. The keys are its own, and for a
   // chip where the topic stands and who it waits on, which a state also sets,
   // and the note after a reopen, which Core then starts afresh.
   snapshot(name) {
     const keys = name === 'state' || name === 'people' ? ['state', 'waiting_on', ...(this.topic.state_message_id ? ['note'] : [])] : [name];
-    return Object.fromEntries(keys.map(key => [key, { ...this.held(key), version: this.topic.version }]));
+    return Object.fromEntries(keys.map(key => [key, { ...this.held(key), version: key === 'duty' ? this.at.duty : this.at.said }]));
   }
 
   // Renaming and archiving, for whoever organises the outcome and the
@@ -430,7 +448,7 @@ export class TopicStatePanel {
     if (receipt?.status === 'committed' && receipt.result?.topic_id === topic.id) {
       field.out = null;
       const version = Number.isSafeInteger(receipt.result.version) ? receipt.result.version : Infinity;
-      this.moved(out.fences, this.apply(field, receipt.result, out.args), version);
+      this.moved(out.fences, this.apply(field, receipt.result), version);
       if (this.kept?.name === field.name) this.kept = null;
       if (field.line ? field.start && this.same(field) : !field.next) this.stop(field);
     } else if (receipt?.error?.code === 'REVISION_CONFLICT') {
@@ -472,18 +490,20 @@ export class TopicStatePanel {
   }
 
   // Paint a committed answer; what Core saved, by key.
-  apply(field, result, args) {
+  apply(field, result) {
     if (field.name === 'duty') {
       if (result.actor_id !== this.reader) return {};
       const { note, responsibility_revision: revision, version } = result;
-      // An answer that comes after a newer part was read leaves that one showing.
-      if (revision >= this.held('duty').fence) {
-        this.paint(Number.isSafeInteger(version) && version > this.topic.version ? { ...this.topic, version } : this.topic, this.participants.map(person =>
+      // It says the reader's part as of its version, and nothing of the
+      // topic. One that comes after a newer part was read leaves that one showing.
+      if (Number.isSafeInteger(version) && version > this.at.duty) {
+        this.at.duty = version;
+        this.draw(this.topic, this.participants.map(person =>
           person.actor_id === this.reader ? { ...person, responsibility: note, responsibility_truncated: false, responsibility_revision: revision } : person));
       }
       return { duty: { value: note, fence: revision } };
     }
-    this.advance(result, args);
+    this.advance(result);
     const now = { title: result.title, archived: result.archived, state: result.state, state_note: result.note, waiting_on: result.waiting_on };
     return Object.fromEntries(Object.keys(HELD).map(key => { const value = HELD[key](now); return [key, { value, fence: value }]; }));
   }
@@ -578,19 +598,18 @@ export class TopicStatePanel {
       ...(topic.state_by ? [` — ${named(topic.state_by, this.reader)}`, ...at(', ', topic.state_ms)] : [])];
   }
 
-  // Core's answer to a committed change is the topic as it now stands: paint
-  // it, so the next change reads what this one made.
-  advance(result, args) {
-    if (!Number.isSafeInteger(result.version)) return;
-    const { version, title, archived, state, note, waiting_on, state_by, state_ms } = result;
-    // The answer says what was said; the open asks are as the page last read them.
-    // A state someone said is no longer a message's.
-    const said = ['state', 'note', 'waiting_on'].some(name => name in args) ? { state_message_id: null } : {};
-    this.paint({ ...this.topic, version, title, archived, state, state_note: note, waiting_on, state_by, state_ms, ...said });
+  // Core's answer to a committed change is what the topic says as it now
+  // stands (SAID), at its version: paint it, so the next change reads what
+  // this one made. The open asks are as the page last read them.
+  advance(result) {
+    const { version, title, archived, state, note, waiting_on, state_by, state_ms, state_message_id } = result;
+    if (!Number.isSafeInteger(version) || version <= this.at.said || !(state_message_id === null || typeof state_message_id === 'string')) return;
+    this.at.said = version;
+    this.draw({ ...this.topic, title, archived, state, state_note: note, waiting_on, state_by, state_ms, state_message_id });
   }
 
   hide() {
-    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.show(null);
+    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.at = null; this.show(null);
   }
 }
 

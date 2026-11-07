@@ -39,8 +39,9 @@ changes nothing. A message in a topic that is active, waiting or ready for
 review leaves its state as it was. The next `topic.update` that says where the
 topic stands replaces all of it and clears `state_message_id`, even one that
 keeps the state and gives no note: the note is then empty, since the reopen's
-note was the message's, not said. Topic reads and
-list items carry `state_message_id`, null for a state someone said.
+note was the message's, not said. Topic reads, list items and a committed
+`topic.update`'s answer carry `state_message_id`, null for a state someone
+said.
 
 ## `workspace_topics`
 

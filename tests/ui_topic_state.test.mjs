@@ -42,9 +42,13 @@ class Element {
   find(predicate) { return this.all().find(predicate); }
 }
 const focus = { on: null };
+// The version Core last committed in this test: each commit is one past it,
+// and past the version the page sent it from, as Core counts.
+const core = { version: -Infinity };
+const nextVersion = current => (core.version = Math.max(core.version, current.version) + 1);
 function dom(t) {
   const previous = globalThis.document;
-  focus.on = null;
+  focus.on = null; core.version = -Infinity;
   globalThis.document = { createElement: tag => new Element(tag), get activeElement() { return focus.on; } };
   t.after(() => { globalThis.document = previous; });
 }
@@ -79,11 +83,11 @@ const settled = async () => { for (let turn = 0; turn < 20; turn++) await new Pr
 // What Core answers to a committed topic.update, by Core's rules (aim_next/topic_state.py):
 // a new state, or any word after a reopen, starts with an empty note unless one is
 // given or kept, and a waiting topic keeps who it waits on unless told.
-const committed = (current, args, version = current.version + 1) => {
+const committed = (current, args, version = nextVersion(current)) => {
   const state = args.state ?? current.state, same = (state === current.state || 'keep_note' in args) && !current.state_message_id;
   return { status: 'committed', result: { topic_id: current.id, version, title: args.title ?? current.title, archived: args.archived ?? current.archived,
     state, note: args.note ?? (same ? current.state_note : ''), waiting_on: args.waiting_on ?? (state === 'waiting' ? current.waiting_on ?? [] : []),
-    state_by: 'tony', state_ms: null } };
+    state_by: 'tony', state_ms: null, state_message_id: ['state', 'note', 'waiting_on'].some(name => name in args) ? null : current.state_message_id ?? null } };
 };
 // A panel whose sends Core answers at once, and the list of what it sent:
 // each change as [what it is fenced on, what it changes].
@@ -579,7 +583,7 @@ test('work observed is a hollow ring, never the filled dot of presence or unread
 // What each participant is responsible for, under "Your part" in Topic settings.
 const people = (...notes) => notes.map(([actor_id, responsibility = '', responsibility_revision = 0]) => ({ actor_id, responsibility, responsibility_revision }));
 const duties = host => host.find(node => node.classes.has('responsibilities'));
-const committedPart = (current, note, revision) => ({ status: 'committed', result: { topic_id: current.id, actor_id: 'fable', note, responsibility_revision: revision + 1, changed: true, version: current.version + 1 } });
+const committedPart = (current, note, revision) => ({ status: 'committed', result: { topic_id: current.id, actor_id: 'fable', note, responsibility_revision: revision + 1, changed: true, version: nextVersion(current) } });
 
 test('every reader sees each participant\'s part, their own first as you, and nothing for those without one', t => {
   dom(t);
@@ -621,7 +625,8 @@ test('a participant writes their part on one line under Your part; Return or lea
   type(field, 'Drafts the release notes');
   assert.equal(key(field, 'Enter').prevented, true); await settled();
   assert.deepEqual(sent, [['t1', 'Drafts the release notes', 3]]);
-  assert.deepEqual([panel.topic.version, panel.mine().responsibility, panel.mine().responsibility_revision], [5, 'Drafts the release notes', 4], 'the answer\'s versions are kept, so the next change sends them');
+  assert.deepEqual([panel.mine().responsibility, panel.mine().responsibility_revision], ['Drafts the release notes', 4], 'the answer\'s revision is kept, so the next change sends it');
+  assert.equal(panel.topic.version, 4, 'the answer says nothing of the topic, which stays as read');
   assert.deepEqual([controls(host).notice.textContent, controls(host).notice.classes.has('quiet')], ['Saved', true]);
   type(field, 'Drafts and checks'); leave(field); await settled();
   assert.deepEqual(sent[1], ['t1', 'Drafts and checks', 4], 'leaving the line saves it');
@@ -781,7 +786,7 @@ class Core {
       }
       held.version += 1;
       return { topic_id: held.id, version: held.version, title: held.title, archived: held.archived, state: held.state, note: held.state_note,
-        waiting_on: held.waiting_on, state_by: held.state_by, state_ms: null };
+        waiting_on: held.waiting_on, state_by: held.state_by, state_ms: null, state_message_id: held.state_message_id ?? null };
     }, id);
   }
   duty(note, revision, id) {
@@ -1502,4 +1507,91 @@ test('a tap on a reopened topic waiting for the note goes from the note shown, w
     [['note', 'Reopened by a new message', 'committed'], ['state+keep_note', 'Reopened by a new message', 'committed']]);
   assert.equal(r.core.topic.state, 'done');
   assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), []);
+});
+
+// An answer says what Core holds for what it answers at its version, and
+// nothing more: Your part's answer says nothing of where the topic stands,
+// and a topic.update's says nothing of the open asks. Each is known at the
+// version Core answered it at, so the person's own commit moves every start
+// read before it (R3), whatever other answer came in between.
+test('rv C1: Done out, Your part saved and answered first: Ready for review goes from Done, nobody else blamed', async t => {
+  for (const early of [false, true]) {
+    const r = rig(t, { quiet: true });
+    r.core.next = { hold: true };
+    const done = chip(r.host, 'Done').onclick(); await settled();
+    const release = r.core.release;
+    type(r.part, 'My part'); key(r.part, 'Enter'); await settled();
+    // Ready for review tapped before or after Done's answer comes.
+    if (early) { const tap = chip(r.host, 'Ready for review').onclick(); release(); await tap; await done; }
+    else { release(); await done; await drain(r.panel); await chip(r.host, 'Ready for review').onclick(); }
+    await drain(r.panel);
+    assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], `${early}: ` + JSON.stringify(r.sends()));
+    assert.deepEqual([r.core.topic.state, r.core.held('duty')], ['review', 'My part'], JSON.stringify(r.sends()));
+  }
+});
+
+test('rv C2: Done lost with its read, Your part saved, then Ready for review: saved, nobody else blamed', async t => {
+  const r = rig(t, { quiet: true });
+  r.core.next = { lose: 'dropped' }; r.core.unread = 1;
+  await chip(r.host, 'Done').onclick(); await drain(r.panel);
+  type(r.part, 'My part'); key(r.part, 'Enter'); await drain(r.panel);
+  await chip(r.host, 'Ready for review').onclick(); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.equal(r.core.topic.state, 'review', JSON.stringify(r.sends()));
+});
+
+test('rv C3: note lost with its read, Escape, Your part saved, new words: saved over the person\'s own, nobody else blamed', async t => {
+  const r = rig(t, { quiet: true });
+  type(r.note, 'Mine'); r.core.next = { lose: 'dropped' }; r.core.unread = 1;
+  key(r.note, 'Enter'); await drain(r.panel);
+  key(r.note, 'Escape');
+  type(r.part, 'My part'); key(r.part, 'Enter'); await drain(r.panel);
+  type(r.note, 'New'); key(r.note, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.deepEqual([r.core.held('note'), r.core.held('duty')], ['New', 'My part'], JSON.stringify(r.sends()));
+});
+
+// A message reopened the topic and the page has not read it: the person's
+// rename is answered with the topic as it stands, the reopen too, so a tap
+// after it is fenced on the reopen note it clears, and the note's words then
+// go on from what the tap left.
+test('rv C4: reopened unread, renamed, words in the note, Ready for review, Return: the words save, nobody else blamed', async t => {
+  const r = rig(t, { quiet: true, setup: core => { core.topic.state = 'done'; } });
+  r.core.reopen();
+  controls(r.host).rename.onclick();
+  const title = controls(r.host).title; type(title, 'New title'); key(title, 'Enter'); await drain(r.panel);
+  assert.equal(r.note.value, 'Reopened by a new message', 'the rename\'s answer shows the reopen');
+  type(r.note, 'Mine');
+  await chip(r.host, 'Ready for review').onclick(); await drain(r.panel);
+  assert.deepEqual(r.core.log.at(-1).fields, { state: 'active', waiting_on: [], note: 'Reopened by a new message' }, 'the tap is fenced on the note it clears');
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.deepEqual([r.core.topic.state, r.core.held('note'), r.core.held('title')], ['review', 'Mine', 'New title'], JSON.stringify(r.sends()));
+});
+
+// A read that left before an answer cannot undo what the answer said, and
+// still shows the rest of what it read, newer than what showed.
+test('rv C5: a read that left before Your part was answered keeps the part saved and shows where the topic stands', async t => {
+  const r = rig(t, { quiet: true });
+  Object.assign(r.core.topic, { state: 'review', state_by: 'fable', version: r.core.topic.version + 1 });
+  const old = r.core.view();
+  type(r.part, 'My part'); key(r.part, 'Enter'); await drain(r.panel);
+  r.panel.paint(old.topic, old.participants);
+  assert.deepEqual([r.part.value, lit(r.host)], ['My part', ['Ready for review']]);
+  type(r.part, 'My part 2'); key(r.part, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.equal(r.core.held('duty'), 'My part 2', JSON.stringify(r.sends()));
+});
+
+test('rv C6: a read that left before a rename was answered keeps the new title and shows the ask it read', async t => {
+  const r = rig(t, { quiet: true });
+  Object.assign(r.core.topic, { asks: [{ actor_id: 'tony', message_id: 'm1', by: 'fable', since_ms: null }], version: r.core.topic.version + 1 });
+  const old = r.core.view();
+  controls(r.host).rename.onclick();
+  const title = controls(r.host).title; type(title, 'New title'); key(title, 'Enter'); await drain(r.panel);
+  r.panel.paint(old.topic, old.participants);
+  assert.deepEqual([title.value, r.panel.topic.title, controls(r.host).by.text], ['New title', 'New title', 'Set by fable · fable asked you']);
+  controls(r.host).rename.onclick(); type(title, 'Newer'); key(title, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.equal(r.core.held('title'), 'Newer', JSON.stringify(r.sends()));
 });

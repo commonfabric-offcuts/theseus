@@ -14,8 +14,18 @@ Each control is a field, and every field follows the same small model
 (`TopicStatePanel` in `web/topic-state.mjs`): the note, Your part, the
 title, the state chips, the people chips and Archive. A field holds where
 the person's change began (each key as Core held it, with the topic version
-it was read at), its one save that is out, and whether the person asked for
-another. A line's change begins at its first key; a chip's or Archive's at
+Core said it at), its one save that is out, and whether the person asked for
+another.
+
+What the panel shows comes in three parts, each known at the topic version
+Core said it at: a read says everything; a committed `topic.update`'s answer
+says what the topic itself says (its title, whether it is archived, where it
+stands, its note, who it waits on, who said it and when, and whether a
+message's reopen stands) and nothing of the open asks or anyone's part; an
+answer to Your part says the reader's own part and nothing of the topic. An
+answer moves only its own part to its version. A read that left before the
+last one shown changes nothing, and one that left before an answer keeps
+what that answer said and shows the rest of what it read. A line's change begins at its first key; a chip's or Archive's at
 the tap, and it means what the control showed when pressed.
 
 1. A save sends only what that field changed. A chip sends the state, or
@@ -30,11 +40,13 @@ the tap, and it means what the control showed when pressed.
    stays until those words are saved or put back (Escape). A save the
    person asked for while the refused one was out is dropped: it was made
    before they saw the newer words.
-3. When Core commits the person's save, every field's start that was read
+3. When Core commits the person's save, every field's start that Core said
    before that commit, on the value the save was fenced on, moves to what
    Core saved, so the person's next save is never refused as someone
-   else's. A start read at the commit's version or later already shows it,
-   or what came after it, and stays.
+   else's. A start said at the commit's version or later already shows it,
+   or what came after it, and stays. Another answer, to Your part or to
+   another field, says nothing newer of the keys it does not answer, so it
+   never makes a start look newer than it is.
 4. Words equal to where the change began, or to what is saved now, are no
    change: Return, leaving or a tap sends nothing for that field, and it
    follows fresh data again.
@@ -78,6 +90,10 @@ Besides `topic_revision`, a `topic.update` can be fenced on fields:
 now differs; `waiting_on` compares as a set. A change to a field it does
 not name never refuses it. `expected` names `topic_revision` or
 `topic_fields`, never both.
+
+A committed `topic.update` answers `{topic_id, version, title, archived,
+state, note, waiting_on, state_by, state_ms, state_message_id}`: the topic as
+it stands after it, at that version.
 
 `args.keep_note: true`, given with a state and without a note, keeps the
 note someone said across a new state. A note a message wrote when it

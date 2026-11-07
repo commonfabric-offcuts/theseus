@@ -638,6 +638,43 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     assert.deepEqual(p.errors, []);
   });
 
+  // Your part's answer says nothing of where the topic stands: a tap after it
+  // still goes from what the lost tap saved (round 5's case P1).
+  await check('header a tap with its answer and the panel read lost, then Your part saved, then another tap: it goes from the lost tap, nobody else blamed', async () => {
+    const DROPPED = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+    const mine = async () => (await view('topic', { topic_id: 't1' })).participants.find(row => row.actor_id === facts.actor)?.responsibility;
+    await setState('header-rv5-old', { state: 'active', note: 'Kept' });
+    const p = await page('header-rv5', null, true);
+    await openByPointer(p);
+    await watchNotices(p);
+    await p.evaluate(`document.querySelector('#topic-state [data-state=review]').scrollIntoView({block:'center'})`);
+    p.intercept(payload => payload?.name === 'topic' || payload?.kind === 'topic.update');
+    const before = p.calls.length;
+    await p.point('#topic-state [data-state=done]');
+    await lose(p, DROPPED);
+    assert.equal((await held()).state, 'done', 'Core saved Done');
+    // Reads of the topic keep failing; Your part's save and answer go through.
+    p.intercept(payload => payload?.name === 'topic');
+    await p.evaluate(`document.querySelector('#topic-responsibility').scrollIntoView({block:'center'})`);
+    await p.point('#topic-responsibility'); await p.key('a', 4); await p.send('Input.insertText', { text: 'Checks the release' }); await p.key('Enter');
+    await until(async () => { for (const entry of p.held.splice(0)) await p.fail(entry); return await mine() === 'Checks the release' && (await notice(p))?.join() === 'Saved,true'; },
+      'Core saved Your part, and its answer came');
+    await p.evaluate(`document.querySelector('#topic-state [data-state=review]').scrollIntoView({block:'center'})`);
+    await p.point('#topic-state [data-state=review]');
+    await until(async () => { for (const entry of p.held.splice(0)) await p.fail(entry); return (await held()).state === 'review' || (await p.evaluate('window.noticesSaid')).some(words => /Someone else/.test(words)); },
+      'the tap is answered');
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.fail(entry);
+    assert.deepEqual((await p.evaluate('window.noticesSaid')).filter(words => /first, so|Someone else/.test(words)), [], 'nothing of the person\'s is called someone else\'s');
+    await until(async () => (await held()).state === 'review' && (await lit(p))[0] === 'Ready for review', 'Core holds Ready for review, and the chip is lit');
+    const sent = updates(p, before);
+    assert.deepEqual(sent.map(u => [u.expected.topic_fields, u.args]),
+      [[{ state: 'active', waiting_on: [] }, { state: 'done', keep_note: true }], [{ state: 'active', waiting_on: [] }, { state: 'done', keep_note: true }],
+        [{ state: 'done', waiting_on: [] }, { state: 'review', keep_note: true }]]);
+    assert.equal(sent[1].operation_id, sent[0].operation_id, 'asked again as the same command');
+    assert.deepEqual(p.errors, []);
+  });
+
   // An act made before a refusal comes back never goes over the newer words.
   // The person's next act, made once the refusal shows, queues behind it, so
   // what Core then holds says whether it went.

@@ -730,8 +730,11 @@ const pickerApi = (f, { topic = {}, workspace = {} } = {}) => {
     if (envelope.kind === 'topic.update') {
       const { title = record.title, archived = record.archived ?? false, state: said = record.state ?? 'active', waiting_on = [] } = envelope.args;
       const note = envelope.args.note ?? (said === record.state || envelope.args.keep_note ? record.state_note ?? '' : '');
-      Object.assign(record, { title, archived, state: said, state_note: note, waiting_on, state_by: 'fixture-person', state_ms: null, version: record.version + 1 });
-      return { status: 'committed', result: { topic_id: record.id, version: record.version, title, archived, state: said, note, waiting_on, state_by: 'fixture-person', state_ms: null } };
+      // A word on where it stands is said by someone, no longer by a message's reopen.
+      const reopen = ['state', 'note', 'waiting_on'].some(name => name in envelope.args) ? null : record.state_message_id ?? null;
+      Object.assign(record, { title, archived, state: said, state_note: note, waiting_on, state_by: 'fixture-person', state_ms: null, state_message_id: reopen, version: record.version + 1 });
+      return { status: 'committed', result: { topic_id: record.id, version: record.version, title, archived, state: said, note, waiting_on, state_by: 'fixture-person', state_ms: null,
+        state_message_id: reopen } };
     }
     const { actor_id, present } = envelope.args;
     state[list] = state[list].filter(row => row.actor_id !== actor_id).concat(present ? [{ actor_id, kind: 'human', enabled: true }] : []);
