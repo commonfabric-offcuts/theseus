@@ -39,6 +39,7 @@ SCHEMA_21 = (Path(__file__).parent / "fixtures" / "schema_21.sql").read_text().s
 SCHEMA_22 = (Path(__file__).parent / "fixtures" / "schema_22.sql").read_text().splitlines()
 SCHEMA_23 = (Path(__file__).parent / "fixtures" / "schema_23.sql").read_text().splitlines()
 SCHEMA_24 = (Path(__file__).parent / "fixtures" / "schema_24.sql").read_text().splitlines()
+SCHEMA_25 = (Path(__file__).parent / "fixtures" / "schema_25.sql").read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -58,6 +59,10 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # Version 26 counts a hosted turn as activity in its topic; the layout is version 25's.
+        if version == "25":
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # Version 25 indexes the pending deliveries by group and topic instead of
         # by reader and topic, and refuses a delivery with no topic.
         db.execute("DROP TRIGGER delivery_topic_required")
@@ -1699,7 +1704,8 @@ def fresh_schema(directory):
 # Release 19 stores schema 17; release 20 takes it to SCHEMA_VERSION through
 # every step in between, each with its own frozen layout.
 RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("20", SCHEMA_20),
-                     ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23), ("24", SCHEMA_24))
+                     ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23), ("24", SCHEMA_24),
+                     ("25", SCHEMA_25))
 
 
 class Release19ChainCase(MigrationCase):
@@ -2023,6 +2029,58 @@ class Schema24Case(MigrationCase):
         self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
 
 
+class Schema25Case(MigrationCase):
+    """A schema-25 instance (release 20): version 26 counts a hosted turn as activity in its topic (item 86, D20)."""
+
+    VERSION, FIXTURE = "25", SCHEMA_25
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, "25")
+
+    def written_at_25(self, turn=500, other=100):
+        """t1's last post at base, and a hosted turn in it at base+turn, the latest by someone else at
+        base+other. Returns base."""
+        with sqlite3.connect(str(self.path)) as db:
+            base = db.execute("SELECT max(sent_ms) FROM messages WHERE topic_id='t1'").fetchone()[0]
+            # Version 25's rule, from messages and state changes only.
+            db.execute("UPDATE topics SET activity_ms=max(coalesce(state_ms,0),coalesce((SELECT m.sent_ms FROM topic_summaries s "
+                       "JOIN messages m ON m.id=s.latest_message_id WHERE s.topic_id=topics.id),0))")
+            db.execute("INSERT INTO topic_turns VALUES ('t1',?,'agent-a',?,'agent-b')", (base + turn, base + other))
+        return base
+
+    def activity(self):
+        return self.sql("SELECT activity_ms FROM topics WHERE id='t1'")[0][0]
+
+    def test_upgrade_from_25_matches_a_fresh_instance_and_raises_activity_to_the_latest_turn(self):
+        base = self.written_at_25()
+        before, rows = self.records(), everything(self.path)
+        self.assertEqual(self.activity(), base)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": "25", "schema_version": SCHEMA_VERSION, "migrated": True})
+        self.assertEqual({k: v for k, v in self.records().items() if k != "metadata"},
+                         {k: v for k, v in before.items() if k != "metadata"})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        # The turn is newer than the last post, so the turn orders the topic.
+        self.assertEqual(self.activity(), base + 500)
+        changed = everything(self.path)
+        self.assertEqual({k: v for k, v in changed.items() if k != "topics"}, {k: v for k, v in rows.items() if k != "topics"},
+                         "only the activity time moves")
+
+    def test_upgrade_keeps_a_post_newer_than_the_latest_turn(self):
+        base = self.written_at_25(turn=-300, other=-400)
+        self.upgrade()
+        self.assertEqual(self.activity(), base)
+
+    def test_step_back_to_25_works_activity_out_again_by_its_rule_with_turns_recorded(self):
+        base = self.written_at_25()
+        stored = everything(self.path)
+        self.upgrade()
+        self.assertEqual(self.activity(), base + 500)
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_25))
+        self.assertEqual(self.activity(), base)
+        self.assertEqual(everything(self.path), stored, "stepping back gives version 25 every row it had")
+
+
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
     if _name.startswith("test_") and _name not in MigrationCase.__dict__:
@@ -2055,6 +2113,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema18Case, _name, None)
     if _name.startswith("test_") and _name not in Schema19Case.__dict__:
         setattr(Schema19Case, _name, None)
+    if _name.startswith("test_") and _name not in Schema25Case.__dict__:
+        setattr(Schema25Case, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

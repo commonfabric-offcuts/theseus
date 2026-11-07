@@ -216,6 +216,22 @@ class AttentionCase(AgentLoopCase):
         attention = self.store.view("owner", "attention", {})
         self.assertEqual((attention["waiting_on_me"], [item["id"] for item in attention["latest_waiting"]]), (1, ["t1"]))
 
+    def test_each_topic_waiting_on_the_reader_names_its_outcome_as_the_outcome_list_does(self):
+        # Item 86: the Waiting on you list on the Outcomes home says which outcome each question is in.
+        version = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]["version"]
+        self.committed(self.command("topic.update", {"state": "waiting", "waiting_on": ["owner"]}, target={"topic_id": "t1"},
+                                    expected={"topic_revision": version}, actor="agent-a"))
+        listed = lambda: {item["id"]: item for item in self.store.view("owner", "workspaces", {})["items"]}["w1"]
+        waiting = lambda: self.store.view("owner", "attention", {})["latest_waiting"][0]["workspace"]
+        outcome = listed()
+        self.assertEqual(waiting(), {"id": "w1", "title": outcome["title"], "title_truncated": False})
+        # A new title shows on the next read, cut where the outcome list cuts it.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE workspaces SET title=? WHERE id='w1'", ("\u00e9" * 600,))
+        outcome = listed()
+        self.assertTrue(outcome["title_truncated"])
+        self.assertEqual(waiting(), {"id": "w1", "title": outcome["title"], "title_truncated": True})
+
     def test_a_page_starts_from_the_newest_message_by_name_already_waiting(self):
         # The page learns this number when it opens, so a delivery listed later
         # with a larger number arrived after it opened, whatever reads failed.

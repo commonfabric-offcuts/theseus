@@ -266,6 +266,33 @@ def _since(ms):
     return "since " + time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000.0)) if isinstance(ms, int) else "(time unknown)"
 
 
+def _light_words(light):
+    """Where an outcome stands, in the outcome light's words with absolute times (item 86)."""
+    if not isinstance(light, dict):
+        return ""
+    if light.get("light") is None:
+        return "couldn't check where it stands"
+    short = light.get("short") or {}
+    at = lambda ms: time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000.0)) if isinstance(ms, int) else None
+    kind = short.get("kind")
+    if kind == "asks":
+        count = short.get("count", 0)
+        return "waiting on you · %d question%s" % (count, "" if count == 1 else "s")
+    if kind == "seen":
+        return "worked on at " + at(short.get("ms")) if at(short.get("ms")) else "being worked on"
+    if kind == "checks_pass":
+        return "done · all checks pass"
+    if kind == "reached":
+        return "done · reached " + (at(short.get("ms")) or "")
+    if kind == "no_topics":
+        return "no topics yet"
+    if kind == "talk":
+        since = at(short.get("since_ms"))
+        return ("quiet since %s" % since if since else "quiet") + " · %s at %s" % (
+            "work" if short.get("how") == "turn" else "a post", at(short.get("ms")))
+    return "quiet since " + at(short.get("ms")) if at(short.get("ms")) else "quiet"
+
+
 def _size(size_bytes):
     """A size as a person says it: "622 bytes", "137 KB", "1.5 MB"."""
     if size_bytes < 1024:
@@ -513,7 +540,9 @@ class Agent:
     def do_outcomes(self):
         items = self.pages("workspaces", {})
         for item in items:
-            self.out.plain("%s  %s  (owner %s)" % (item["id"], _one_line(item["title"]), item["owner_id"]))
+            words = _light_words(item.get("light"))
+            self.out.plain("%s  %s  (owner %s)%s" % (item["id"], _one_line(item["title"]), item["owner_id"],
+                                                     "  " + words if words else ""))
         if not items:
             self.out.plain("no outcomes")
 

@@ -41,7 +41,7 @@ READER = "tests/reader_native.mjs"
 NATIVE_STEPS = tuple(
     [NativeStep(mode, PERSISTENCE, ("--" + mode,), "native.json")
      for mode in ("journal", "connected", "correction", "cleanup", "images", "freshness",
-                  "inline", "navigation", "live", "colors", "asks", "work", "list", "notebook", "duties", "sources", "wakes", "header")]
+                  "inline", "navigation", "live", "colors", "asks", "work", "light", "list", "notebook", "duties", "sources", "wakes", "header")]
     + [NativeStep("openings", "tests/reader_openings_native.mjs", (), "native.json"),
        NativeStep("reader", READER, (), "results.json")]
     + [NativeStep("reader-" + mode, READER, ("--" + mode,), "results.json")

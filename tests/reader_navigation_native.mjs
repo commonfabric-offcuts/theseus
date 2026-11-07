@@ -50,8 +50,10 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     assert.equal(await p.evaluate('document.querySelector("#topic-title").textContent'),'Outcomes','root provides discoverable outcomes rather than requiring a topic URL');
     await until(()=>p.evaluate('document.querySelectorAll("#workspaces a").length===20'),'first bounded outcome page');
     assert.equal(p.calls.some(c=>['topic','topic_messages','editor_state'].includes(c.payload?.name)),false,'root reads no fabricated topic/editor');
-    const labels=await p.evaluate('[...document.querySelectorAll("#workspaces a")].slice(0,2).map(a=>a.textContent)');
-    assert.notEqual(labels[0],labels[1]);assert.ok(labels.every(x=>x.includes('Same outcome')&&x.includes('outcome-')));
+    // Two outcomes with the same title stay two links to two pages; the grey line under each name
+    // says where it stands (item 86), and its id is at the top of its own page.
+    const labels=await p.evaluate('[...document.querySelectorAll("#workspaces a")].slice(0,2).map(a=>({text:a.textContent,href:a.getAttribute("href")}))');
+    assert.deepEqual(labels,[{text:'Same outcomeNo topics yet',href:'?workspace=outcome-00'},{text:'Same outcomeNo topics yet',href:'?workspace=outcome-01'}]);
     await shot(p,'outcomes-root');
     await control({method:'read_fault',name:'workspaces',status:503,body:{error:{code:'DATABASE_BUSY',message:'Outcomes temporarily unavailable',retryable:true}},count:1});
     await activate('#refresh');

@@ -13,6 +13,7 @@ import sqlite3
 import subprocess
 import sys
 import threading
+import time
 import types
 import unittest
 from unittest import mock
@@ -229,7 +230,10 @@ class ReadingVerbCase(AgentVerbCase):
         long_body = "Line one\n" + "x" * 2000
         long_id = self.post("owner", long_body)
         code, out, _ = self.run_cli("outcomes")
-        self.assertEqual((code, out), (0, "w1  Isolated test  (owner owner)\n"))
+        # Each outcome ends with where it stands (item 86): the owner's post is work on it, said at its time.
+        latest = self.sql("SELECT max(activity_ms) FROM topics WHERE workspace_id='w1'")[0][0]
+        at = time.strftime("%Y-%m-%d %H:%M", time.localtime(latest / 1000.0))
+        self.assertEqual((code, out), (0, "w1  Isolated test  (owner owner)  worked on at %s\n" % at))
         code, out, _ = self.run_cli("topics", "w1")
         self.assertEqual(code, 0)
         self.assertEqual([line.split("  ")[0] for line in out.splitlines()], ["t1", "t0"])

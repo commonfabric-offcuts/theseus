@@ -350,7 +350,8 @@ test('the waiting list names each topic, opens it, and hides when nothing waits'
   const host = new Element('section'), opened = [];
   paintWaiting(host, { waiting_on_me: 0, latest_waiting: [] }, () => {});
   assert.equal(host.hidden, true);
-  paintWaiting(host, { waiting_on_me: 7, latest_waiting: [{ id: 't9', title: 'Naming', title_truncated: false, note: 'Pick one', state_by: 'fable', state_ms: null }] },
+  paintWaiting(host, { waiting_on_me: 7, latest_waiting: [{ id: 't9', title: 'Naming', title_truncated: false, note: 'Pick one', state_by: 'fable', state_ms: null,
+    workspace: { id: 'w2', title: 'Pitch deck', title_truncated: false } }] },
     (id, title) => opened.push([id, title]));
   assert.equal(host.hidden, false);
   assert.equal(host.children[0].textContent, 'Waiting on you (7, newest 1 shown)');
@@ -361,7 +362,8 @@ test('the waiting list names each topic, opens it, and hides when nothing waits'
   link.onclick({ button: 0, metaKey: true, preventDefault: () => assert.fail('a modified click keeps the browser default') });
   assert.equal(prevented, true);
   assert.deepEqual(opened, [['t9', 'Naming']]);
-  assert.equal(host.find(node => node.tag === 'li').text, 'Naming Pick one — fable');
+  // Each row says which outcome it is in (item 86), then, muted after " — ", what the state says.
+  assert.equal(host.find(node => node.tag === 'li').text, 'Naming, in Pitch deck — Pick one — fable');
 });
 
 test('an open ask makes a topic wait on whoever it asks, whatever its state, and says since when', t => {
@@ -393,38 +395,47 @@ test('the waiting list says who asked and since when, and leaves out a state it 
   dom(t);
   const since = new Date(2026, 10, 5, 7, 41).getTime(), host = new Element('section');
   paintWaiting(host, { waiting_on_me: 2, latest_waiting: [
-    { id: 't1', title: 'Asked', title_truncated: false, note: 'Someone else\'s note', state_by: 'codex', state_ms: null, said: false,
-      ask: { message_id: 'm1', by: 'fable', since_ms: since } },
+    { id: 't1', title: 'Speaker notes', title_truncated: false, note: 'Someone else\'s note', state_by: 'codex', state_ms: null, said: false,
+      ask: { message_id: 'm1', by: 'fable', since_ms: new Date(2026, 10, 6, 6, 20).getTime() }, workspace: { id: 'w2', title: 'Pitch deck', title_truncated: false } },
     { id: 't2', title: 'Both', title_truncated: false, note: 'Pick one', state_by: 'codex', state_ms: new Date(2026, 10, 3, 16, 0).getTime(), said: true,
-      ask: { message_id: 'm2', by: 'fable', since_ms: since } }] }, () => {});
+      ask: { message_id: 'm2', by: 'fable', since_ms: since }, workspace: { id: 'w1', title: 'Building Theseus', title_truncated: true } }] }, () => {});
+  // Mockup 86's words: the outcome named, then when the ask was made, said out loud; a state
+  // that also says the topic waits keeps its words before the ask, joined by " · ".
   assert.deepEqual(host.all().filter(node => node.tag === 'li').map(node => node.text),
-    ['Asked fable asked you, since Yesterday 7:41 AM', 'Both Pick one — codex, 4:00 PM Tue Nov 3 · fable asked you, since Yesterday 7:41 AM']);
-  assert.deepEqual(host.all().filter(node => node.tag === 'time').map(node => node.title), ['7:41 AM Thu Nov 5', '4:00 PM Tue Nov 3', '7:41 AM Thu Nov 5'],
+    ['Speaker notes, in Pitch deck — fable asked at 6:20 AM', 'Both, in Building Theseus… — Pick one — codex, 4:00 PM Tue Nov 3 · fable asked yesterday at 7:41 AM']);
+  assert.deepEqual(host.all().filter(node => node.tag === 'time').map(node => node.title), ['6:20 AM Fri Nov 6', '4:00 PM Tue Nov 3', '7:41 AM Thu Nov 5'],
     'each time\'s title keeps its date');
 });
 
 test('a row with observed work carries a dot, and every row says when activity was last seen, never that nobody works', t => {
   dom(t);
   // Seen today: a title and screen-reader words still say the day.
-  const at = new Date(2026, 10, 6, 7, 41).getTime(), when = '7:41 AM Fri Nov 6';
+  // Said out loud (item 86, mockup 86's After column).
+  const at = new Date(2026, 10, 6, 7, 41).getTime(), when = '7:41 AM';
   const work = (observed, extra = {}) => ({ observed, seen_ms: at, by: 'fable', how: 'posted', waits: false, ...extra });
-  assert.equal(workNote(work(true), 'tony'), `Activity seen ${when} (fable posted)`);
-  assert.equal(workNote(work(true, { by: 'tony', how: 'turn' }), 'tony'), `Activity seen ${when} (you took a turn)`);
-  assert.equal(workNote(work(false), 'tony'), `No activity seen since ${when}`);
-  assert.equal(workNote(work(false, { seen_ms: null, by: null, how: null }), 'tony'), 'No activity seen');
-  assert.equal(workNote(work(true, { waits: true }), 'tony'), `Waiting on someone · last activity ${when} (fable posted)`);
+  assert.equal(workNote(work(true), 'tony'), `fable posted at ${when}`);
+  assert.equal(workNote(work(true, { by: 'warp', how: 'turn' }), 'tony'), `warp worked on it at ${when}`);
+  assert.equal(workNote(work(true, { by: 'tony', how: 'turn' }), 'tony'), `you worked on it at ${when}`);
+  assert.equal(workNote(work(true, { by: null }), 'tony'), `Worked on at ${when}`, 'no author known');
+  assert.equal(workNote(work(false), 'tony'), `Quiet since fable posted at ${when}`);
+  assert.equal(workNote(work(false, { seen_ms: new Date(2026, 10, 5, 23, 0).getTime() }), 'tony'), 'Quiet since fable posted yesterday at 11:00 PM');
+  assert.equal(workNote(work(false, { seen_ms: new Date(2026, 10, 3, 16, 10).getTime(), by: 'warp' }), 'tony'), 'Quiet since warp posted Tuesday at 4:10 PM');
+  assert.equal(workNote(work(false, { seen_ms: new Date(2026, 10, 5, 23, 2).getTime(), by: 'weft', how: 'turn' }), 'tony'), 'Quiet since weft worked on it yesterday at 11:02 PM');
+  assert.equal(workNote(work(false, { seen_ms: new Date(2026, 10, 3, 16, 5).getTime(), by: null }), 'tony'), 'Quiet since Tuesday at 4:05 PM');
+  assert.equal(workNote(work(false, { seen_ms: null, by: null, how: null }), 'tony'), 'Quiet');
+  assert.equal(workNote(work(true, { waits: true }), 'tony'), `Waiting on someone · fable posted at ${when}`);
   assert.equal(workNote(undefined, 'tony'), '', 'a server that does not say gets no words');
   for (const text of [workNote(work(false), 'tony'), workNote(work(false, { seen_ms: null }), 'tony')]) assert.doesNotMatch(text, /nobody|no one/i);
   const busy = new Element('a');
   paintWork(busy, { work: work(true) }, 'tony');
   assert.deepEqual(busy.children.map(node => [node.className, node.attributes['aria-hidden'] ?? null, node.textContent ?? null]),
-    [['topic-work', 'true', null], ['sr-only', null, ` · Activity seen ${when} (fable posted)`]]);
-  assert.equal(busy.attributes.title, `Activity seen ${when} (fable posted)`);
+    [['topic-work', 'true', null], ['sr-only', null, ` · fable posted at ${when}`]]);
+  assert.equal(busy.attributes.title, `fable posted at ${when}`);
   const quiet = new Element('a');
   quiet.setAttribute('title', 'stale');
   paintWork(quiet, { work: work(false) }, 'tony');
   assert.deepEqual(quiet.children.map(node => node.className), ['sr-only'], 'no dot without observed work');
-  assert.equal(quiet.attributes.title, `No activity seen since ${when}`);
+  assert.equal(quiet.attributes.title, `Quiet since fable posted at ${when}`);
   const unknown = new Element('a');
   unknown.setAttribute('title', 'stale');
   paintWork(unknown, {}, 'tony');
@@ -434,19 +445,21 @@ test('a row with observed work carries a dot, and every row says when activity w
 test('a waiting row\'s title and screen-reader words name whom it waits on as its pill does', t => {
   dom(t);
   // Seen today: a title and screen-reader words still say the day.
-  const at = new Date(2026, 10, 6, 7, 41).getTime(), when = '7:41 AM Fri Nov 6';
+  const at = new Date(2026, 10, 6, 7, 41).getTime(), when = 'at 7:41 AM';
   const work = { observed: true, seen_ms: at, by: 'aim-lead', how: 'posted', waits: true };
   const ask = (actor_id, by = 'aim-lead') => ({ actor_id, by, message_id: 'm-' + actor_id, since_ms: at });
-  for (const [item, pill] of [
-    [{ state: 'active', asks: [ask('tony')] }, 'Waiting on you'],
-    [{ state: 'waiting', waiting_on: ['riley'], asks: [ask('tony')] }, 'Waiting on you, riley'],
-    [{ state: 'review', asks: [ask('fable', 'tony')] }, 'Ready for review · waiting on fable'],
+  // Its newest activity is the open ask itself, so it says who asked; else what that activity was.
+  for (const [item, pill, said] of [
+    [{ state: 'active', asks: [ask('tony')] }, 'Waiting on you', `aim-lead asked ${when}`],
+    [{ state: 'waiting', waiting_on: ['riley'], asks: [ask('tony')] }, 'Waiting on you, riley', `aim-lead asked ${when}`],
+    [{ state: 'review', asks: [ask('fable', 'tony')] }, 'Ready for review · waiting on fable', `aim-lead posted ${when}`],
+    [{ state: 'active', asks: [{ ...ask('tony'), since_ms: at - 60000 }] }, 'Waiting on you', `aim-lead posted ${when}`],
   ]) {
     const row = new Element('a'), topic = { ...item, work };
     paintState(row, topic, 'tony'); paintWork(row, topic, 'tony');
     const mark = row.children.find(node => String(node.className).startsWith('topic-state'));
     assert.equal(mark.textContent, pill);
-    const note = `${pill} · last activity ${when} (aim-lead posted)`;
+    const note = `${pill} · ${said}`;
     assert.equal(row.attributes.title, note, 'the row\'s title says what its pill says');
     // A screen reader hears the pill, then the rest of the note, once.
     assert.equal(mark.textContent + row.children.find(node => node.className === 'sr-only').textContent, note);
@@ -455,8 +468,8 @@ test('a waiting row\'s title and screen-reader words name whom it waits on as it
   // A server that counts a wait the page cannot name still says there is one.
   const unnamed = new Element('a');
   paintState(unnamed, { state: 'active', work }, 'tony'); paintWork(unnamed, { state: 'active', work }, 'tony');
-  assert.equal(unnamed.attributes.title, `Waiting on someone · last activity ${when} (aim-lead posted)`);
-  assert.equal(unnamed.children.find(node => node.className === 'sr-only').textContent, ` · Waiting on someone · last activity ${when} (aim-lead posted)`);
+  assert.equal(unnamed.attributes.title, `Waiting on someone · aim-lead posted ${when}`);
+  assert.equal(unnamed.children.find(node => node.className === 'sr-only').textContent, ` · Waiting on someone · aim-lead posted ${when}`);
   // Without a time, a waiting row's words are its pill's alone, said once.
   const untimed = new Element('a'), quiet = { state: 'active', asks: [ask('tony')], work: { ...work, seen_ms: null } };
   paintState(untimed, quiet, 'tony'); paintWork(untimed, quiet, 'tony');

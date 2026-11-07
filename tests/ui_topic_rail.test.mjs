@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TopicPages, TopicRail, topicPosition } from '../web/topic-navigation.mjs';
+import { clock } from '../web/times.mjs';
+// Every time said out loud is read at noon on Friday 6 November 2026, whatever day the check runs.
+clock.now = () => new Date(2026, 10, 6, 12, 0).getTime();
 function fixture(t, { folds = false, storage = null, current = null } = {}) {
   const previous = globalThis.document;
   class Element {
@@ -156,9 +159,10 @@ test('a row shows the work dot only while the server observes work, and says whe
   f.queue.push({ instance_id: 'i1', items: [busy, quiet, f.item('z')], next_cursor: null }); await f.rail.load();
   const [a, b] = ['a', 'b'].map(id => f.host.children.find(x => x.dataset.topicId === id));
   assert.deepEqual(a.children.map(node => node.className), ['topic-work', 'sr-only']);
-  assert.equal(a.attributes.title, 'Activity seen 7:41 AM Thu Nov 5 (fable took a turn)');
+  // Said out loud (item 86): who did what, and when, never that nobody is working.
+  assert.equal(a.attributes.title, 'fable worked on it yesterday at 7:41 AM');
   assert.deepEqual(b.children.map(node => node.className), ['sr-only']);
-  assert.equal(b.attributes.title, 'No activity seen since 7:41 AM Thu Nov 5');
+  assert.equal(b.attributes.title, 'Quiet since fable posted yesterday at 7:41 AM');
 });
 // The key under the topics, which says what the work ring means, shows only
 // while a row wears the ring.

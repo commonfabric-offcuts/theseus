@@ -9,6 +9,7 @@ import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './
 import { TopicViews } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince, startFrom } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
+import { LightPeek, paintAlsoWaiting, paintStanding, paintStandingFailed } from './outcome-light.mjs';
 import { OutcomeReferences } from './outcome-references.mjs';
 import { openIntentJournal } from './intent-journal.mjs';
 import { OpeningDraft } from './opening.mjs';
@@ -1337,7 +1338,8 @@ async function openDestination(target, title) {
     notice.textContent=error.message;notice.hidden=false;notice.scrollIntoView({block:'nearest'});
   }
 }
-function initializeOutcomeNavigation(current=null) {
+// painted hears the outcome rows after each read (the outcome page's "Also waiting on you" line).
+function initializeOutcomeNavigation(current=null,painted=()=>{}) {
   const home=event=>{
     if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault();return openDestination({kind:'root'},'Outcomes');
@@ -1351,9 +1353,11 @@ function initializeOutcomeNavigation(current=null) {
     if(registry&&(registry.disposed||authorityReviewPending()))throw Error('The runtime changed. Review saved writing before reloading.');
     return answer;
   };
+  // What a row's light is made of, read when its peek opens (item 86).
+  const peek=new LightPeek({host:$('light-tip'),read:async id=>checkedView(await api.view('outcome_light',{workspace_id:id},{readClass:'foreground'}),bootstrap.instance_id)});
   outcomeRail=new OutcomeRail({instanceId:bootstrap.instance_id,current,host:$('workspaces'),more:$('more-workspaces'),
     retry:$('retry-workspaces'),message:$('outcomes-status'),empty:$('outcomes-empty'),read,open:openDestination,
-    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax()});
+    denied:error=>readFailure(error).kind==='forbidden',pageMax:pageMax(),peek,painted});
 }
 async function initializeOutcomePage(route) {
   // There is no topic, implicit composer or source in a selection-only view.
@@ -1366,10 +1370,11 @@ async function initializeOutcomePage(route) {
   topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
   sentHost=$('sent-to-you');
   if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:markSent,read:readSent,attachment:sentAttachment});
-  // What waits on the reader heads every outcome page.
-  waitingHost=$('waiting-on-you');
-  if(attention?.last)paintWaiting(waitingHost,attention.last,(id,title)=>openDestination({kind:'topic',id},title));
   if(route.kind==='root') {
+    // What waits on the reader, every outcome's, heads the Outcomes home only (item 86):
+    // an outcome's own page says its questions once, in "Where this outcome stands".
+    waitingHost=$('waiting-on-you');
+    if(attention?.last)paintWaiting(waitingHost,attention.last,(id,title)=>openDestination({kind:'topic',id},title));
     $('topic-title').textContent='Outcomes';$('topic-description').textContent='Choose an outcome to see its topics.';
     $('outcomes-heading').textContent='Your outcomes';
     $('outcome-page').append($('outcome-navigation'));document.querySelector('.rail').hidden=true;
@@ -1379,9 +1384,23 @@ async function initializeOutcomePage(route) {
     $('refresh').onclick=()=>run(reload);
     await reload();
   } else {
-    // The outcome's Notebook pages are listed after its topics, and one opens in place below them.
-    $('outcome-page').append($('topic-navigation'),$('outcome-references'),$('page-here'));
-    initializeOutcomeNavigation(route.id);
+    // Other outcomes' questions in one quiet line, then where this outcome stands,
+    // then its topics; its Notebook pages are listed after them, and one opens in place below them.
+    $('outcome-page').append($('also-waiting'),$('outcome-standing'),$('topic-navigation'),$('outcome-references'),$('page-here'));
+    initializeOutcomeNavigation(route.id,items=>paintAlsoWaiting($('also-waiting'),items,route.id,(id,title)=>openDestination({kind:'workspace',id},title)));
+    // Where this outcome stands, read with the page and again on every commit.
+    let standingSerial=0;
+    const stands=async workspace=>{
+      const serial=++standingSerial,retry=()=>run(reload);
+      try {
+        const answer=checkedView(await api.view('outcome_light',{workspace_id:route.id},{readClass:'foreground'}),bootstrap.instance_id);
+        if(serial===standingSerial)paintStanding($('outcome-standing'),answer,{retry,outcome:workspace.title,open:(id,title)=>openDestination({kind:'topic',id},title)});
+        return true;
+      } catch {
+        if(serial===standingSerial)paintStandingFailed($('outcome-standing'),retry);
+        return false;
+      }
+    };
     let refreshSerial=0;
     const refresh=async()=>{
       const serial=++refreshSerial;
@@ -1394,7 +1413,7 @@ async function initializeOutcomePage(route) {
           $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
-          $('outcome-references').hidden=true;$('page-here').hidden=true;
+          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;
         }
         throw error;
       }
@@ -1411,7 +1430,7 @@ async function initializeOutcomePage(route) {
         open:(id,title)=>openDestination({kind:'topic',id},title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      return (await Promise.all([topicRail.load(),outcomeReferences.load()])).every(read=>read!==false);
+      return (await Promise.all([stands(workspace),topicRail.load(),outcomeReferences.load()])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
     // topics, and the outcome rail beside them carries counts too.
