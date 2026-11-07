@@ -150,10 +150,10 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
-  // The topic-state form keeps what the person typed, and their focus, while
-  // messages from others repaint the topic; a second change made straight
-  // after a first one commits. Choosing from a select's native popup is not
-  // what this checks, so the choice is set and its change event sent.
+  // The topic-state form, in Topic settings, keeps what the person typed, and
+  // their focus, while messages from others repaint the topic; a second change
+  // made straight after a first one commits. Choosing from a select's native
+  // popup is not what this checks, so the choice is set and its change event sent.
   await check('live the topic state form keeps typing and focus while messages arrive, and saves twice in a row', async () => {
     const p = await page('live-state-form', null, true);
     await settled(p);
@@ -161,9 +161,11 @@ export async function liveChecks({ check, page, until, control, observations, or
     const choose = state => p.evaluate(`(s=>{s.value=${JSON.stringify(state)};s.dispatchEvent(new Event('change'))})(document.querySelector('#topic-state-choice'))`);
     const line = () => p.evaluate("document.querySelector('#topic-state .state-line').textContent");
     const onSave = () => p.evaluate("document.activeElement === document.querySelector('#topic-state button.primary')");
-    await p.evaluate("document.querySelector('#topic-state').scrollIntoView({block:'start'})");
-    await p.point('#topic-state summary');
-    await until(() => p.evaluate("document.querySelector('#topic-state details').open"), 'the form is open');
+    await p.evaluate('scrollTo(0, 0)');
+    await p.point('#settings-open');
+    await until(() => p.evaluate("document.querySelector('#topic-settings').open"), 'Topic settings is open, with its form');
+    // Measured once its opening animation has run, as the person sees it.
+    await until(() => p.evaluate("document.getAnimations().every(a => a.playState !== 'running')"), 'Topic settings settled');
     await choose('waiting');
     await p.point('#topic-state-waiting'); await p.send('Input.insertText', { text: 'fixture-person' });
     await p.point('#topic-state-note'); await p.send('Input.insertText', { text: 'Pick a name' });
@@ -174,13 +176,15 @@ export async function liveChecks({ check, page, until, control, observations, or
     await until(() => hasText(p, '#messages', text), 'the new message is shown, so the topic was read and painted again');
     await settled(p);
     assert.equal(await p.evaluate('document.activeElement.id'), 'topic-state-note', 'focus stays in the note');
-    assert.ok(Math.abs(await top('#topic-state-note') - noteTop) <= 1, 'the note stays where it was on the screen');
+    const noteNow = await top('#topic-state-note');
+    assert.ok(Math.abs(noteNow - noteTop) <= 1, `the note stays where it was on the screen: ${noteTop} → ${noteNow}`);
     assert.deepEqual([await value('#topic-state-choice'), await value('#topic-state-note'), await value('#topic-state-waiting')],
       ['waiting', 'Pick a name', 'fixture-person'], 'what the person typed is kept');
     await p.send('Input.insertText', { text: '!' });
     assert.equal(await value('#topic-state-note'), 'Pick a name!', 'typing goes on where it was');
     await p.point('#topic-state button.primary');
     await until(async () => (await line()).startsWith('Waiting on you · Pick a name!'), 'the line shows the saved state');
+    assert.equal(await p.evaluate("document.querySelector('#topic-description').textContent"), 'Waiting on you Pick a name!', 'the subtitle follows the save at once');
     assert.equal(await onSave(), true, 'focus stays on Save after the commit and the fresh read');
     await choose('active');
     assert.deepEqual([await value('#topic-state-note'), await value('#topic-state-waiting')], ['', ''], 'a new state starts with an empty note and nobody waited on');
@@ -214,20 +218,22 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.ok(before, 'a card is in view');
     await arrive('Arrives while a card is read');
     await stays(before, 'the card being read stays where it was');
-    await p.evaluate("(() => { document.querySelector('#topic-state details').open = true; document.querySelector('#topic-state-note').focus(); document.querySelector('#messages .message-card:last-child').scrollIntoView({block:'center'}); })()");
-    assert.equal(await p.evaluate("document.querySelector('#topic-state-note').getBoundingClientRect().bottom <= 0 && document.activeElement === document.querySelector('#topic-state-note')"), true,
-      'the field with the caret is above the screen');
+    // The page's own field is the people's add field, below the messages: with
+    // the caret in it, it is scrolled away below the screen, and a card is in view.
+    const add = "document.querySelector('#participants .people-add input')";
+    await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - innerHeight - 100); })(${add})`);
+    assert.equal(await p.evaluate(`${add}.getBoundingClientRect().top >= innerHeight && document.activeElement === ${add}`), true,
+      'the field with the caret is below the screen');
     const away = await reading();
     await arrive('Arrives while focus is scrolled away');
     await stays(away, 'the card in view stays where it was, not the field out of view');
 
-    // A select being chosen in holds still too; the cards below it move down.
-    await p.evaluate(`(() => { const choice = document.querySelector('#topic-state-choice'); choice.focus();
-      scrollBy(0, choice.getBoundingClientRect().top - 100); })()`);
-    const chosen = await p.evaluate("Math.round(document.querySelector('#topic-state-choice').getBoundingClientRect().top)");
-    await arrive('Arrives while a state is being chosen');
-    assert.ok(Math.abs(await p.evaluate("Math.round(document.querySelector('#topic-state-choice').getBoundingClientRect().top)") - chosen) <= 1,
-      'the select being chosen in stays where it was');
+    // A field on the screen being typed in holds still too; the cards above it move up.
+    await p.evaluate(`(field => { field.focus(); scrollBy(0, field.getBoundingClientRect().top - 300); })(${add})`);
+    const typing = await p.evaluate(`Math.round(${add}.getBoundingClientRect().top)`);
+    await arrive('Arrives while a name is being typed');
+    assert.ok(Math.abs(await p.evaluate(`Math.round(${add}.getBoundingClientRect().top)`) - typing) <= 1,
+      'the field being typed in stays where it was');
 
     // The browser's own scroll anchoring must not hold the page by the rail:
     // with a rail row and a card both in view, the rail growing moves no card.
@@ -244,13 +250,16 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
-  // On a phone at the top of a topic, with its state open and no card on the
-  // screen, a message arriving below moves nothing the person is reading.
+  // On a phone at the top of a topic whose note under its title fills the
+  // first screen, with no card on the screen, a message arriving below moves
+  // nothing the person is reading.
   await check('live with no card on the screen, a message arriving scrolls nothing', async () => {
+    const note = Array.from({ length: 16 }, (_, n) => `Step ${n + 1} of the plan is written out here in full words.`).join(' ');
+    await control({ method: 'topic_state', operation_id: 'live-no-card-note', topic_id: 't1', args: { state: 'active', note } });
     const p = await page('live-no-card', null, true);
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await settled(p);
-    await p.evaluate(`(() => { document.querySelector('#topic-state details').open = true; document.activeElement.blur(); scrollTo(0, 0);
+    await p.evaluate(`(() => { document.activeElement.blur(); scrollTo(0, 0);
       return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))); })()`);
     assert.equal(await p.evaluate("[...document.querySelectorAll('#messages .message-card')].some(card => { const b = card.getBoundingClientRect(); return b.bottom > 0 && b.top < innerHeight; })"), false,
       'no card is on the screen');
@@ -261,6 +270,7 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.equal(await p.evaluate('scrollY'), 0, 'the page did not scroll');
     assert.deepEqual(p.errors, []);
     await p.close();
+    await control({ method: 'topic_state', operation_id: 'live-no-card-note-cleared', topic_id: 't1', args: { state: 'active', note: '' } });
   });
 
   // A Reader attachment that is refused and then opens leaves no refusal on

@@ -1,5 +1,5 @@
-// Where a topic stands, as its participants say: a row mark in topic lists, a
-// line under the topic's title with a form to change it, and the topics that
+// Where a topic stands, as its participants say: a row mark in topic lists,
+// its line in Topic settings with a form to change it, and the topics that
 // wait on the reader. Core keeps every value; nothing here decides one.
 import { datedTime, timeNode } from './times.mjs';
 
@@ -119,7 +119,7 @@ export function responsibilities(participants, reader) {
 }
 const NOT_SENT = 'That was not sent: another change was still being saved. Press it again.';
 
-// The line under a topic's title, and a form for those who may change it:
+// Where the topic stands, in Topic settings, and a form for those who may change it:
 // participants, and whoever has written in it (Core's reader_may_say), say
 // where it stands; the outcome's owner and the topic's creator also rename and
 // archive it.
@@ -136,9 +136,12 @@ export class TopicStatePanel {
   // refresh asks the page for fresh topic data; it is called after every answer
   // to a change, so a refusal for a stale version is followed by the news.
   // sendNote(topic, note, revision) says what the reader is responsible for.
-  constructor({ host, reader, send, sendNote = null, refresh = () => {} }) {
-    Object.assign(this, { host, reader, send, sendNote, refresh });
+  // painted(topic) hears each topic the panel paints, the newest it has seen,
+  // so the page's subtitle shows a saved change at once.
+  constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {} }) {
+    Object.assign(this, { host, reader, send, sendNote, refresh, painted });
     this.topic = null; this.out = null; this.controls = null; this.touched = new Set();
+    this.heading = element('h3', { id: 'stand-heading', textContent: 'Where it stands' });
     this.line = element('p', { className: 'state-line' });
     this.duties = element('ul', { className: 'responsibilities', hidden: true });
     this.duties.setAttribute('aria-label', 'Who is responsible for what');
@@ -173,20 +176,22 @@ export class TopicStatePanel {
       this.manage(manager); this.duty(participant); this.follow();
     }
     this.host.hidden = false;
+    this.painted(topic);
   }
 
   reset() {
     this.controls = null; this.touched.clear(); this.show(null);
-    this.host.replaceChildren(this.line, this.duties, this.notice);
+    this.host.replaceChildren(this.heading, this.line, this.duties, this.notice);
   }
 
   drop() {
-    this.controls?.details.remove(); this.controls = null; this.touched.clear(); this.show(null);
+    this.controls?.form.remove(); this.controls = null; this.touched.clear(); this.show(null);
   }
 
   build() {
     const touch = name => () => { this.touched.add(name); };
-    const details = element('details', { className: 'state-form' }, element('summary', { textContent: 'Change where it stands' }));
+    // Always open, under its own heading: the dialog that holds it is opened on purpose.
+    const heading = element('h3', { id: 'change-heading', textContent: 'Change where it stands' });
     const state = element('select', { id: 'topic-state-choice' }, ...STATES.map(value => element('option', { value, textContent: LABELS[value] })));
     const note = element('input', { id: 'topic-state-note', maxLength: 1024, autocomplete: 'off' });
     const waiting = element('input', { id: 'topic-state-waiting', autocomplete: 'off', placeholder: 'Names, separated by commas' });
@@ -196,11 +201,13 @@ export class TopicStatePanel {
     const save = element('button', { type: 'button', className: 'primary', textContent: 'Save' });
     save.onclick = () => this.submit({ state: state.value, note: note.value, ...(state.value === 'waiting' ? { waiting_on: names(waiting.value) } : {}) },
       ['state', 'note', 'waiting']);
-    details.append(element('div', { className: 'state-fields' },
+    const fields = element('div', { className: 'state-fields' },
       element('label', { className: 'field-label' }, 'State ', state),
-      element('label', { className: 'field-label' }, 'Note ', note), waitingField, save));
-    this.controls = { details, state, note, waiting, waitingField, save, managed: null };
-    return details;
+      element('label', { className: 'field-label' }, 'Note ', note), waitingField, save);
+    fields.setAttribute('role', 'group'); fields.setAttribute('aria-labelledby', 'change-heading');
+    const form = element('div', { className: 'state-form' }, heading, fields);
+    this.controls = { form, state, note, waiting, waitingField, save, managed: null };
+    return form;
   }
 
   // Renaming and archiving, for the outcome's owner and the topic's creator.
@@ -214,7 +221,7 @@ export class TopicStatePanel {
       const archive = element('button', { type: 'button' });
       archive.onclick = () => this.submit({ archived: !this.topic.archived }, []);
       const row = element('div', { className: 'state-fields' }, element('label', { className: 'field-label' }, 'Title ', title), rename, archive);
-      controls.details.append(row);
+      controls.form.append(row);
       controls.managed = { row, title, rename, archive };
       this.mark();
     } else if (!manager && controls.managed) {
@@ -231,7 +238,7 @@ export class TopicStatePanel {
       const save = element('button', { type: 'button', id: 'topic-responsibility-save', textContent: 'Save my part' });
       save.onclick = () => this.submitNote();
       const row = element('div', { className: 'state-fields' }, element('label', { className: 'field-label' }, 'You are responsible for ', note), save);
-      controls.details.append(row);
+      controls.form.append(row);
       controls.duty = { row, note, save };
       this.mark();
     } else if (!(participant && this.sendNote) && controls.duty) {

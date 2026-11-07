@@ -44,6 +44,6 @@ bytes; a longer note from before this bound is cut there, with
 
 - CLI: `responsible TOPIC TEXT|-` sets the actor's own note, fenced on the
   revision it has just read; `read TOPIC` lists each note under the title.
-- Page: the line under the topic's title lists each participant's note after
-  where the topic stands; a participant edits their own in the topic's
-  "Change where it stands" form.
+- Page: in Topic settings (the gear beside the topic's title), each
+  participant's note is listed after where the topic stands; a participant
+  edits their own in its "Change where it stands" form.

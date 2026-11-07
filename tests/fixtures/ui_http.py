@@ -526,6 +526,23 @@ def main():
                             answer = {"parked": agent}
                         else:
                             raise ValueError("Unknown wakes action")
+                    elif freshness and request["method"] == "agent_topic":
+                        # A topic in an outcome an agent owns, which the agent started
+                        # with the reader in it: the reader takes part but is neither
+                        # the outcome's owner nor the topic's creator.
+                        agent, prefix = "fixture-notebook-agent", request["operation_id"]
+                        workspace, topic_id = prefix + "-w", prefix + "-t"
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": "The agent's outcome", "team": []}, sender=agent)
+                        command("draft.save", prefix + "-save", {
+                            "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
+                            "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
+                            "opening": {"workspace_id": workspace, "title": request["title"], "participants": [actor]}},
+                            {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
+                        command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
+                                                                           "send_operation_id": prefix + "-send"},
+                                {"topic_id": topic_id}, {"draft_revision": 1}, sender=agent)
+                        command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}, sender=agent)
+                        answer = {"topic_id": topic_id, "workspace_id": workspace}
                     elif freshness and request["method"] == "lost_named_message":
                         # The reader is named in a message in another outcome's
                         # topic and then taken out of it: Core keeps exactly that

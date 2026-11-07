@@ -50,19 +50,18 @@
       </section>
     </nav>
     <main id="main" tabindex="-1">
-      <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><h1 id="topic-title"></h1><p id="topic-description" class="muted"></p></div></header>
+      <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p></div></header>
       <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
-      <section id="topic-state" class="topic-state-panel" aria-label="Where this topic stands" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
       <section id="outcome-page" class="selection-page" hidden></section>
       <section id="outcome-team" class="outcome-team" aria-labelledby="team-heading" hidden><h2 id="team-heading">Team</h2><div id="team-people"></div></section>
       <section id="unfinished-work" class="selection-page" aria-label="Unfinished work" hidden></section>
       <section id="page-here" class="page-here" aria-label="Notebook page" hidden></section>
-      <div id="participants" class="participants" aria-label="Topic participants"></div>
       <section id="topic-pending" aria-label="Your pending replies"></section>
       <p id="topic-marks" class="topic-marks" hidden><span id="topic-marks-words"></span><span aria-hidden="true">·</span><button id="read-mark" type="button">Read it</button></p>
       <section id="messages" aria-label="Conversation"></section>
       <button id="more-messages" type="button" hidden>More messages</button>
+      <section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">People</h2><div id="participants" class="participants" aria-label="Topic participants"></div></section>
       <section id="notebook" aria-label="Notebook"><div class="section-heading"><h2>Notebook</h2><span class="muted">Shared grounding</span></div><div id="memory-items"></div><button id="more-memory" type="button" hidden>More Notebook items</button></section>
       <section id="inline-composer" class="inline-composer" aria-labelledby="inline-writing-title" hidden>
         <h2 id="inline-writing-title">New message</h2>
@@ -127,6 +126,12 @@
           <button id="send-reply" type="button" class="primary">Send <span aria-hidden="true">⌘↵</span></button>
         </footer>
       </section>
+    </div>
+  </dialog>
+  <dialog id="topic-settings" aria-labelledby="settings-title">
+    <div class="settings-body">
+      <header class="settings-header"><h2 id="settings-title" tabindex="-1">Topic settings</h2><button id="settings-close" type="button" aria-label="Close topic settings">✕</button></header>
+      <section id="topic-state" class="settings-section" aria-label="Where this topic stands" hidden></section>
     </div>
   </dialog>
   <dialog id="version-review" aria-labelledby="review-title">

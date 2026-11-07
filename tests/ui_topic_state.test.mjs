@@ -41,6 +41,10 @@ function dom(t) {
   globalThis.document = { createElement: tag => new Element(tag), get activeElement() { return focus.on; } };
   t.after(() => { globalThis.document = previous; });
 }
+// Where the topic stands is the line under the panel's "Where it stands"
+// heading; the form is its "Change where it stands" section, always open.
+const stateLine = host => host.find(node => node.classes.has('state-line'));
+const isForm = node => node.classes.has('state-form');
 const CHANGED = 'This topic changed while you were choosing. What you chose is kept here: check it against the line above and save again.';
 const NOT_SENT = 'That was not sent: another change was still being saved. Press it again.';
 const topic = (fields = {}) => ({ id: 't1', version: 4, title: 'Naming', owner_id: 'tony', creator_id: 'tony', state: 'active',
@@ -73,29 +77,29 @@ test('the panel line says who said it and when; only those who may change it get
   const said = topic({ state: 'waiting', waiting_on: ['tony'], state_note: 'Which name?', state_by: 'fable', state_ms: new Date(2026, 10, 6, 7, 41).getTime() });
   panel.paint(said, [{ actor_id: 'fable' }]);
   assert.equal(host.hidden, false);
-  assert.equal(host.children[0].text, 'Waiting on tony · Which name? — you, 7:41 AM', 'said today: the time alone');
-  assert.equal(host.children[0].find(node => node.tag === 'time').title, '7:41 AM Fri Nov 6', 'its title keeps the date');
+  assert.equal(stateLine(host).text, 'Waiting on tony · Which name? — you, 7:41 AM', 'said today: the time alone');
+  assert.equal(stateLine(host).find(node => node.tag === 'time').title, '7:41 AM Fri Nov 6', 'its title keeps the date');
   // At 390 the line wraps; a time never breaks inside itself (warp, item 91b).
-  assert.deepEqual(host.children[0].all().filter(node => node.classes.has('together')).map(node => node.text), ['7:41 AM'], 'the time is kept whole');
-  const mark = host.children[0].children[0];
+  assert.deepEqual(stateLine(host).all().filter(node => node.classes.has('together')).map(node => node.text), ['7:41 AM'], 'the time is kept whole');
+  const mark = stateLine(host).children[0];
   assert.equal(mark.title, 'Waiting on tony', 'its whole words are its title');
   assert.equal(mark.classes.has('mine'), false, 'it waits on someone else');
   const mine = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
   mine.paint(said, []);
-  assert.equal(mine.host.children[0].children[0].classes.has('mine'), true, 'the panel marks a state that waits on the reader');
-  const form = host.find(node => node.tag === 'details');
+  assert.equal(stateLine(mine.host).children[0].classes.has('mine'), true, 'the panel marks a state that waits on the reader');
+  const form = host.find(isForm);
   assert.ok(form, 'a participant may say where it stands');
   assert.equal(host.find(node => node.id === 'topic-rename'), undefined, 'a participant who is not its creator or owner cannot rename it');
   panel.paint(said, [{ actor_id: 'someone-else' }]);
-  assert.equal(host.find(node => node.tag === 'details'), undefined, 'a reader who does not work in it gets no form');
+  assert.equal(host.find(isForm), undefined, 'a reader who does not work in it gets no form');
   // Core says whether the reader may say where it stands: having written in a
   // topic, they may, without being one of its participants.
   const writer = new TopicStatePanel({ host: new Element('section'), reader: 'fable', send: async () => ({}) });
   writer.paint({ ...said, reader_may_say: true }, [{ actor_id: 'someone-else' }]);
-  assert.ok(writer.host.find(node => node.tag === 'details'), 'someone who has written in it may say where it stands');
+  assert.ok(writer.host.find(isForm), 'someone who has written in it may say where it stands');
   assert.equal(writer.host.find(node => node.id === 'topic-rename'), undefined, 'but cannot rename it');
   writer.paint({ ...said, version: 5, reader_may_say: false }, [{ actor_id: 'someone-else' }]);
-  assert.equal(writer.host.find(node => node.tag === 'details'), undefined, 'and when Core says they may not, the form goes');
+  assert.equal(writer.host.find(isForm), undefined, 'and when Core says they may not, the form goes');
   const owner = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async () => ({}) });
   owner.paint(said, []);
   assert.ok(owner.host.find(node => node.id === 'topic-rename'));
@@ -104,7 +108,7 @@ test('the panel line says who said it and when; only those who may change it get
 
 // The form's controls, found by what the person sees.
 const controls = host => ({
-  details: host.find(node => node.tag === 'details'),
+  form: host.find(isForm),
   choice: host.find(node => node.id === 'topic-state-choice'), note: host.find(node => node.id === 'topic-state-note'),
   waiting: host.find(node => node.id === 'topic-state-waiting'), title: host.find(node => node.id === 'topic-rename'),
   save: host.find(node => node.textContent === 'Save'), rename: host.find(node => node.textContent === 'Rename'),
@@ -138,7 +142,6 @@ test('a repaint from fresh data keeps what the person typed and their focus; unt
   const panel = new TopicStatePanel({ host, reader: 'tony', send: async () => assert.fail('nothing is sent') });
   panel.paint(topic(), [{ actor_id: 'tony' }]);
   const before = controls(host);
-  before.details.open = true;
   choose(before.choice, 'waiting'); type(before.note, 'Pick a name'); type(before.waiting, 'fable');
   before.note.focus();
   // Someone posts a message: the topic's version moves on and the page repaints it.
@@ -146,7 +149,7 @@ test('a repaint from fresh data keeps what the person typed and their focus; unt
   const after = controls(host);
   assert.equal(after.note, before.note, 'the same field, not a rebuilt one');
   assert.equal(document.activeElement, before.note, 'focus stays where the person left it');
-  assert.deepEqual([after.choice.value, after.note.value, after.waiting.value, after.details.open], ['waiting', 'Pick a name', 'fable', true]);
+  assert.deepEqual([after.choice.value, after.note.value, after.waiting.value, after.form, after.form.parent], ['waiting', 'Pick a name', 'fable', before.form, host]);
   assert.equal(after.waiting.parent.hidden, false, 'the waiting field stays shown while Waiting is chosen');
   assert.equal(after.title.value, 'Naming, again', 'an untouched title follows the data');
   type(after.title, 'My title');
@@ -154,10 +157,10 @@ test('a repaint from fresh data keeps what the person typed and their focus; unt
   // what they did not touch shows the news.
   panel.paint(topic({ version: 6, title: 'Theirs', state: 'review', state_note: 'Look please' }), [{ actor_id: 'tony' }]);
   assert.deepEqual([after.choice.value, after.note.value, after.waiting.value, after.title.value], ['waiting', 'Pick a name', 'fable', 'My title']);
-  assert.match(host.children[0].text, /^Ready for review · Look please/);
+  assert.match(stateLine(host).text, /^Ready for review · Look please/);
   // An older read that lands late changes nothing.
   panel.paint(topic({ version: 5, title: 'Stale', state: 'done' }), [{ actor_id: 'tony' }]);
-  assert.match(host.children[0].text, /^Ready for review/);
+  assert.match(stateLine(host).text, /^Ready for review/);
   assert.equal(panel.topic.version, 6);
 
   // A person who has typed nothing sees each repaint's data in the form.
@@ -217,7 +220,7 @@ test('a stale-revision refusal keeps the attempt, asks for fresh data, and its n
   assert.deepEqual([choice.value, note.value], ['done', 'Shipped'], 'the attempt survives the fresh data');
   await save.onclick();
   assert.deepEqual(sent, [[4, { state: 'done', note: 'Shipped' }], [5, { state: 'done', note: 'Shipped' }]], 'the retry sends the fresh version');
-  assert.match(host.children[0].text, /^Done · Shipped/);
+  assert.match(stateLine(host).text, /^Done · Shipped/);
   assert.deepEqual([notice.hidden, notice.textContent], [true, ''], 'the next attempt clears the notice');
 });
 
@@ -232,10 +235,10 @@ test('a stale-revision refusal is still said after the fresh read it asks for re
   const { choice, save, notice } = controls(host);
   choose(choice, 'review');
   await save.onclick();
-  assert.match(host.children[0].text, /^Done — fable/, 'the fresh read was painted');
+  assert.match(stateLine(host).text, /^Done — fable/, 'the fresh read was painted');
   assert.deepEqual([notice.hidden, notice.textContent, choice.value], [false, CHANGED, 'review'], 'the refused choice and its notice are both still shown');
   panel.paint(topic({ version: 6, owner_id: 'fable', creator_id: 'fable' }), [{ actor_id: 'fable' }]);
-  assert.deepEqual([host.find(node => node.tag === 'details'), notice.hidden], [undefined, true], 'a reader who may no longer change it loses the form and the notice about it');
+  assert.deepEqual([host.find(isForm), notice.hidden], [undefined, true], 'a reader who may no longer change it loses the form and the notice about it');
 });
 
 test('a commit answered after newer reads were painted leaves the fields showing the newest data', async t => {
@@ -253,7 +256,7 @@ test('a commit answered after newer reads were painted leaves the fields showing
   panel.paint(topic({ version: 6, state: 'done', state_note: 'Shipped', state_by: 'fable' }), []);
   release(committed(topic(), { state: 'review', note: 'look' }, 5));
   await out;
-  assert.match(host.children[0].text, /^Done · Shipped — fable/);
+  assert.match(stateLine(host).text, /^Done · Shipped — fable/);
   assert.deepEqual([choice.value, note.value], ['done', 'Shipped'], 'what was saved is the topic\'s, so the fields follow the newest data');
   type(note, 'Shipped, checked');
   await save.onclick();
@@ -303,7 +306,7 @@ test('after a committed change the next one sends the version it made, and focus
   choose(choice, 'review'); save.focus();
   await save.onclick();
   assert.equal(document.activeElement, save);
-  const line = host.children[0].text;
+  const line = stateLine(host).text;
   type(title, 'Named'); rename.focus();
   await rename.onclick();
   assert.deepEqual(sent, [4, 5], 'the second change sends the version the first one made');

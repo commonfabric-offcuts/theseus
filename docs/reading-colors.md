@@ -239,7 +239,7 @@ card's fill from screenshot pixels on both sides.
 
 Each agent's color above is its default. A person can choose another for any
 agent, for themselves alone: clicking the agent's name, on one of its cards or
-in the topic's participants, opens a small picker with the palette's colors
+on its pill among the topic's people, opens a small picker with the palette's colors
 and the agent's default. The choice is kept by Core, so it follows the person
 to every page and device; it changes nothing anyone else sees, and no
 message, delivery or wake. The person's own messages keep their black: there
@@ -294,7 +294,7 @@ Firefox before 128), where a screen reader may then also say it. Default is as w
 choice rather than a bar across the picker, so before any choice it does not
 read as a confirm button (warp, item 91b: every choice had worn the same heavy
 grey frame, so the current one showed only as a thicker frame). A tap on a phone paints no highlight over the picker, an
-agent's card or a participant's name; the focus ring still shows. The arrow
+agent's card or a person's pill; the focus ring still shows. The arrow
 keys, Home and End move between them, and Tab goes round them while it is
 open; Escape closes it and gives the focus back; a press outside closes it;
 pressing the name again closes it. It is placed once, fixed to the window, so when a scroll moves its name away it closes rather than float

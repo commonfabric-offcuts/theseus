@@ -172,7 +172,8 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
       await emptyHeader(mobile?'mobile pending':'desktop pending');
       p.intercept(null);await p.release(held);await ready(p,'t2');
       assert.equal((await header()).title,topics[0].title);
-      assert.equal((await header()).description,'Open a message to read, quote, reply, or keep a private note.');
+      // A plainly Active topic with no note has no subtitle, and the old hint is never written there.
+      assert.deepEqual([(await header()).description,await p.evaluate('document.querySelector("#topic-description").hidden')],['',true]);
       await shot(p,mobile?'placeholder-mobile-ready':'placeholder-desktop-ready');
     };
     await heldTransition();
