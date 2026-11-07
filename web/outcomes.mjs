@@ -6,7 +6,23 @@ export class OutcomeRail {
   // painted hears the rows after every read, so a line that counts them
   // agrees, and null when they could not be read, so it shows no stale rows.
   constructor({instanceId,current,host,more,retry,message,empty,read,open,denied,pageMax=PAGE,peek=null,painted=()=>{}}) {
-    Object.assign(this,{current,host,more,retry,message,empty,read,open,isDenied:denied,pageMax,peek,painted});
+    Object.assign(this,{current,host,more,retry,message,empty,open,isDenied:denied,pageMax,peek,painted});
+    // Reached outcomes fold into one "Reached (N)" line at the end of the list, which opens them (D42).
+    this.reachedCount=0;
+    this.read=async args=>{const answer=await read(args);this.reachedCount=Number.isSafeInteger(answer?.reached_count)?answer.reached_count:0;return answer;};
+    this.reached=document.createElement('details');this.reached.className='reached-outcomes';this.reached.hidden=true;
+    const summary=document.createElement('summary'),list=document.createElement('div');this.reached.append(summary,list);
+    this.reached.ontoggle=()=>{
+      if(!this.reached.open)return;
+      list.textContent='Reading…';
+      read({reached:true,limit:PAGE}).then(answer=>{list.replaceChildren(...answer.items.map(item=>{
+        const link=document.createElement('a');link.className='nav-item';link.href=routeHref({kind:'workspace',id:item.id});
+        const name=document.createElement('span'),when=document.createElement('small');name.textContent=item.title;
+        when.textContent=item.reached_ms?'Reached '+new Date(item.reached_ms).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'Reached';
+        link.append(name,when);if(item.id===this.current)link.setAttribute('aria-current','page');return link;}));
+      }).catch(error=>{list.textContent=error.message;});
+    };
+    more.after(this.reached);
     this.pages=new WorkspacePages(instanceId);this.loading=null;this.queued=null;this.failedMore=false;this.denied=false;
     more.onclick=()=>this.load(true);retry.onclick=()=>this.load(this.failedMore);
     host.addEventListener('touchend',event=>{
@@ -42,6 +58,7 @@ export class OutcomeRail {
       if(this.host.children[index]!==link)this.host.insertBefore(link,this.host.children[index]??null);
     });
     this.host.hidden=this.denied;this.more.hidden=this.denied||this.pages.next===null;
+    this.reached.hidden=this.denied||!this.reachedCount;this.reached.firstChild.textContent=`Reached (${this.reachedCount})`;
     this.empty.hidden=this.denied||!this.pages.started||items.length>0;
     this.peek?.refresh();
   }
