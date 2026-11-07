@@ -14,7 +14,7 @@ exactly one addressee, its other person, and no `intent`.
 | Code | When |
 | --- | --- |
 | `WHISPER_SHAPE` | Other than one addressee; a person whispering to a person; an agent whispering other than to answer a whisper sent to it, to the person who sent it; a whisper answering a whisper between a different pair; a whisper with an intent; a whisper on writing that opens a topic (`opening.save`, or `draft.save` with a new-topic source or an `opening`). |
-| `WHISPER_STAYS_PRIVATE` | A message on the record replying to a whisper; quoting a whisper other than into a Tell by the person in it, or into a whisper between the same two; a whisper as a topic's source or as Notebook evidence. |
+| `WHISPER_STAYS_PRIVATE` | A message on the record replying to a whisper; quoting a whisper other than into a Tell by the person in it, or into a whisper between the same two; a whisper as a topic's source, as Notebook evidence, or as where a pipeline item came from or what it is still gathering (`pipeline.item_add`, `pipeline.source_add`, `pipeline.item_edit`). |
 
 A reply, quote or source the writer cannot see is refused as one that does not
 exist, so no refusal names a whisper to anyone outside it. Writing in the

@@ -199,6 +199,30 @@ class WritingCase(WhisperCase):
         # Nothing starts from a whisper, so even its people are told so rather than shown a list.
         self.assertEqual(self.store.view("owner", "source_topics", {"message_id": asked})["error"]["code"], "WHISPER_STAYS_PRIVATE")
 
+    def test_a_whisper_is_never_where_a_pipeline_item_came_from_and_outside_it_is_absent(self):
+        # The pipeline page is read by the whole outcome: an item's sources, and what it is still gathering, are on the record.
+        asked, _, told = self.exchange()
+        seq = self.sql("SELECT seq FROM messages WHERE id=?", (asked,))[0][0]
+        self.committed(self.command("pipeline.configure", {"enabled": True}, {"workspace_id": "w1"}, {"pipeline_revision": 0}))
+        add = lambda actor, op, **args: self.command("pipeline.item_add", dict({"title": "From a message", "section": "candidates"}, **args),
+                                                     {"workspace_id": "w1"}, actor=actor, op=op)
+        before = self.sql("SELECT count(*) FROM pipeline_items")
+        for name, args in (("by id", {"sources": [{"message_id": asked}]}), ("by number", {"sources": [{"message_seq": seq}]}),
+                           ("as still gathering", {"sources": [{"note": "a test"}], "gathering": {"message_id": asked}})):
+            with self.subTest(source=name):
+                receipt = add("owner", "pipeline-whisper-" + name.replace(" ", "-"), **args)
+                self.rejected(receipt, "WHISPER_STAYS_PRIVATE")
+                self.assertEqual(receipt["error"]["message"], whispers.QUOTE_PRIVATE)
+        self.assertEqual(self.sql("SELECT count(*) FROM pipeline_items"), before, "no item was added")
+        number = self.committed(add("owner", "pipeline-record", sources=[{"message_id": told}]))["number"]
+        version = self.store.view("owner", "pipeline_item", {"workspace_id": "w1", "number": number})["item"]["version"]
+        self.rejected(self.command("pipeline.source_add", {"sources": [{"message_id": asked}]}, {"workspace_id": "w1", "number": number},
+                                   {"item_revision": version}), "WHISPER_STAYS_PRIVATE")
+        self.assertEqual(self.sql("SELECT message_id FROM pipeline_item_sources WHERE number=?", (number,)), [(told,)])
+        # Someone outside the whisper is told no more than for a message that does not exist.
+        self.assertEqual(self.refusal(add("agent-b", "pipeline-hidden", sources=[{"message_id": asked}])),
+                         self.refusal(add("agent-b", "pipeline-absent", sources=[{"message_id": UNKNOWN}])))
+
 
 class ReadPathCase(WhisperCase):
     def test_topic_pages_hold_a_whisper_for_its_two_people_alone_in_every_audience_and_direction(self):
@@ -531,6 +555,9 @@ VIEW_PATHS = {
     "opening": "the reader's own opening", "openings": "the reader's own openings", "workspace_members": "no message",
     "actors": "no message", "colors": "no message", "releases": "no message",
     "conversation": "counts items and lists asks, and a whisper is never an item or an ask; unread from the reader's own deliveries",
+    "pipeline": "items, stages and asks about items, and a whisper is never an ask or an item's source",
+    "pipeline_item": "each source and what it is still gathering through _message_access; a whisper is refused as either",
+    "pipeline_row": "asks about items and work in Now pieces' topics, which a whisper never writes",
 }
 # Each read of the messages table outside the visibility rule, and why it shows no whisper to anyone outside it.
 MESSAGE_READS = {
@@ -545,6 +572,9 @@ MESSAGE_READS = {
     "aim_next/wake_health.py": ("on the record only (private_to IS NULL)", 1),
     "aim_next/whispers.py": ("the rule itself", 5),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
+    "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
+                             "number then read through _message_access; sources and gathering shown through _message_access; "
+                             "the operator's import of the hand-kept page", 6),
 }
 
 

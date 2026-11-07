@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 // row and Undo puts it back; an item being built has its own ⋯, and its Drop…
 // asks first, where Keep it changes nothing; a stage entered elsewhere shows
 // with no reload and leaves what is being typed alone; the owner's word moves
-// a gated stage on; a message in the Reader becomes a Candidate in one line;
+// a gated stage on; a message in the Reader becomes a Candidate in one line,
+// and a whisper is never offered as one;
 // the rail's Pipeline row and the outcome page's line link the page; and the
 // page and an item's record fit 1280 and 390, light and dark, with no People
 // heading. Run by reader_persistence_native.mjs with --pipeline; screenshots
@@ -221,6 +222,8 @@ export async function pipelineChecks({ check, page, until, control, view, facts,
     // A whisper stays between its two people (docs/whispers.md): its words never
     // become an item's title on a page the whole outcome reads.
     const said = 'The page could say which release is live.', kept = 'Just between us: the release notes are late.';
+    // On when the checks before it ran; on its own, the person turns it on as their CLI does.
+    if (!(await view('pipeline', { workspace_id: 'w1', limit: 1 })).pipeline?.enabled) await pipeline('pipeline.configure', { workspace_id: 'w1' }, { enabled: true });
     const message = (await control({ method: 'agent_message', operation_id: 'pipeline-native-record', body: said })).result.message_id;
     const whisper = (await control({ method: 'agent_message', operation_id: 'pipeline-native-whisper', sender: 'person', body: kept,
       addressees: [facts.agent], whisper: true })).result.message_id;

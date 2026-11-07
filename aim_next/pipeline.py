@@ -29,6 +29,7 @@ from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _p
 from .delivery import _now_ms
 from . import outcome_rules
 from .work import work_by_topic
+from .whispers import private_source_refused
 
 
 PIPELINE_SCHEMA = [
@@ -263,6 +264,8 @@ class Pipeline:
                 source = {"message_id": row[0]}
             if "message_id" in source:
                 message = self._message_access(db, actor, source["message_id"])
+                # A whisper is never where an item came from: the whole outcome reads the pipeline.
+                private_source_refused(db, message["id"])
                 rows.append((message["id"], None, None, message["author_id"]))
             elif "memory_item_id" in source:
                 item = db.execute("SELECT * FROM memory_items WHERE id=?", (_identifier(source["memory_item_id"], "memory_item_id"),)).fetchone()

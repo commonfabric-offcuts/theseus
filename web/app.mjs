@@ -774,7 +774,7 @@ function openStartLine() {
 // Core records the message's author as who raised it. Escape closes the line.
 function openPipelineAdd() {
   const p = registry?.current, ref = p?.source?.source_ref, host = $('pipeline-add');
-  if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic) return;
+  if (!p || p.sourceUnavailable || ref?.kind !== 'message' || !topic || p.source.whisper) return;
   const author = p.source.author, raised = !author ? '' : author === bootstrap.actor ? ', raised by you' : `, raised by ${author}`;
   const workspace = topic.workspace_id;
   pipelineAddFor = ref.id;
@@ -815,8 +815,9 @@ function paintReaderMark() {
   $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && !p.source.whisper);
   // A title line started from another message goes when the Reader moves on.
   if (startLine && (startLine.message !== ref?.id || $('start-from-message').hidden)) closeStartLine();
-  // And, while the outcome's pipeline is on, become an item in it.
-  $('add-to-pipeline').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && pipelineRow?.on);
+  // And, while the outcome's pipeline is on, become an item in it; a whisper
+  // never does, since the whole outcome reads the pipeline (Core refuses it too).
+  $('add-to-pipeline').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && pipelineRow?.on && !p.source.whisper);
   if (pipelineAddFor !== null && pipelineAddFor !== ref?.id) closePipelineAdd(false);
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
   paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
