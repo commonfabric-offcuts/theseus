@@ -69,6 +69,8 @@ by itself when one of its checks fails or waits; otherwise it is closed. A run
 of the checks shows on the page live, with no reload. Measurements lists every
 reading of every check by release, with a chart per check: every mark is also
 in the table under it, with what produced it, and a candidate is drawn hollow.
+A line under each chart says the reading of the mark under the pointer, or of
+the mark Tab has reached, so a mouse and a keyboard both read it.
 
 ## What got worse
 

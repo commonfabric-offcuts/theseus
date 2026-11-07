@@ -1,6 +1,7 @@
 // Small charts of a check's readings by release (item 104, D37; docs/targets.md):
 // inline SVG with one axis, a numbers table under every chart naming what
-// produced each reading, a <title> and keyboard focus on every mark, colour
+// produced each reading, a <title> and keyboard focus on every mark, a line
+// under the chart saying the mark the pointer is on or the focus is in, colour
 // from the --chart-* tokens and never colour alone. A candidate's reading (not
 // shipped) is drawn hollow, and the legend says so; a reading with words and
 // no number stands as its words.
@@ -76,6 +77,22 @@ function table(columns, names, check) {
   const details = html('details', { class: 'chart-numbers' }, html('summary', { text: 'Numbers, and what produced each' }),
     html('div', { class: 'table-scroll' }, html('table', null, html('thead', null, head), body)));
   return details;
+}
+
+// The line under a chart: the reading of the mark under the pointer, else of the
+// mark holding the focus, in its <title>'s words, so a mouse and a keyboard both
+// read a mark without waiting on the browser's own tooltip. Screen readers have
+// the <title>, so the line is hidden from them.
+function readout(root) {
+  const line = html('p', { class: 'chart-readout', 'aria-hidden': 'true' });
+  const markOf = node => { for (let at = node; at && at !== root; at = at.parentElement) if (at.getAttribute?.('tabindex') !== null) return at; return null; };
+  let pointed = null, focused = null;
+  const say = () => { line.textContent = (pointed ?? focused)?.querySelector('title')?.textContent ?? ''; };
+  root.addEventListener('pointerover', event => { pointed = markOf(event.target); say(); });
+  root.addEventListener('pointerleave', () => { pointed = null; say(); });
+  root.addEventListener('focusin', event => { focused = markOf(event.target); say(); });
+  root.addEventListener('focusout', event => { focused = root.contains(event.relatedTarget) ? markOf(event.relatedTarget) : null; say(); });
+  return line;
 }
 
 // Columns by reading: grouped when a reading has parts (units: server and browser-side), one otherwise.
@@ -189,7 +206,7 @@ export function problemsChart(problems) {
     html('div', { class: 'table-scroll' }, html('table', null, html('thead', null, html('tr', null, ...['Release', 'Design misses', 'Defects', 'Note'].map(text => html('th', { scope: 'col', text })))), body)));
   return html('figure', { class: 'chart-card' }, html('figcaption', null, html('strong', { text: 'Problems found before a check' }),
     html('span', { class: 'muted', text: 'Found in the live app before any check caught them. Fewer per release is the aim.' })),
-  root, legend(['Design miss', 'Defect'], false), numbers);
+  root, readout(root), legend(['Design miss', 'Defect'], false), numbers);
 }
 
 // One check's chart card: its name, the chart, the legend and the numbers.
@@ -200,5 +217,5 @@ export function checkChart(check) {
   const hollow = columns.some(reading => reading.candidate);
   const names = drawn.byMember ? drawn.names : drawn.names;
   return html('figure', { class: 'chart-card' }, html('figcaption', null, html('strong', { text: check.name }), check.explain ? html('span', { class: 'muted', text: check.explain }) : null),
-    drawn.root, names && names.length > 1 ? legend(names, hollow) : hollow ? legend([], true) : null, table(columns, drawn.byMember ? null : drawn.names, check));
+    drawn.root, readout(drawn.root), names && names.length > 1 ? legend(names, hollow) : hollow ? legend([], true) : null, table(columns, drawn.byMember ? null : drawn.names, check));
 }
