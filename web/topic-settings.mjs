@@ -3,19 +3,10 @@
 // for those who may change it, the live form (topic-state.mjs
 // TopicStatePanel), always open. It follows the live dialog conventions: the
 // title takes the focus on opening, Escape and ✕ close it, the focus goes back
-// to the gear, and Tab stays inside. A press on the backdrop also closes it;
-// no other dialog closes that way.
-
-// Whether a click on the dialog was a press on its backdrop: its target is
-// the dialog element itself and its point lies outside the dialog's own box.
-// A press on the dialog's own empty space is inside the box, so it never
-// closes it; on a phone the dialog fills the screen, so nothing is outside.
-export function onBackdrop(dialog, event) {
-  if (event.target !== dialog) return false;
-  const box = dialog.getBoundingClientRect();
-  const { clientX: x, clientY: y } = event;
-  return x < box.left || x > box.right || y < box.top || y > box.bottom;
-}
+// to the gear, and Tab stays inside. A click outside it, on its backdrop,
+// closes it as every pop-up does (dismiss.mjs); on a phone the dialog fills
+// the screen, so nothing is outside.
+import { closeOnOutsideClick } from './dismiss.mjs';
 
 // The dialog's Tab stops: its visible, enabled buttons, selects and inputs, in
 // document order.
@@ -27,12 +18,12 @@ export function tabStops(dialog) {
 export class TopicSettings {
   // dialog: <dialog id="topic-settings">; gear: the button that opens it;
   // heading: its h2, which takes the focus when it opens.
-  constructor({ dialog, gear, heading, close }) {
+  constructor({ dialog, gear, heading, close, win = window }) {
     Object.assign(this, { dialog, gear, heading });
     gear.addEventListener('click', () => this.open());
     close.addEventListener('click', () => this.close());
     dialog.addEventListener('cancel', event => { event.preventDefault(); this.close(); });
-    dialog.addEventListener('click', event => { if (onBackdrop(dialog, event)) this.close(); });
+    closeOnOutsideClick(dialog, () => this.close(), win);
     dialog.addEventListener('keydown', event => this.keep(event));
   }
 

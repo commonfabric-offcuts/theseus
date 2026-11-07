@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { subtitleNote, paintSubtitle, paintTopicHeader } from '../web/topic-header.mjs';
-import { TopicSettings, onBackdrop } from '../web/topic-settings.mjs';
+import { TopicSettings } from '../web/topic-settings.mjs';
 import { PeoplePanel } from '../web/people.mjs';
 import { TopicStatePanel } from '../web/topic-state.mjs';
 
@@ -92,14 +92,22 @@ function settings(t, { box = { left: 448, right: 992, top: 200, bottom: 600 }, s
   const dialog = new Element('dialog', { open: false, modal: false });
   Object.assign(dialog, {
     showModal() { this.open = true; this.modal = true; }, show() { this.open = true; this.modal = false; }, close() { this.open = false; },
-    getBoundingClientRect: () => box, querySelectorAll: () => dialog.stops });
+    getBoundingClientRect: () => box, querySelectorAll: () => dialog.stops, querySelector: () => null });
   const control = name => Object.assign(new Element('button', { id: name, disabled: false, shown: true }), { getClientRects() { return this.shown ? [1] : []; } });
   dialog.stops = stops.map(control);
   const gear = new Element('button'), heading = new Element('h2'), close = dialog.stops[0];
-  const panel = new TopicSettings({ dialog, gear, heading, close });
+  const win = { handlers: {}, addEventListener(name, fn, capture) { this.handlers[name] = [fn, capture]; } };
+  const panel = new TopicSettings({ dialog, gear, heading, close, win });
+  // A press that starts at down and ends at up (on the same spot unless
+  // given), as the browser sends it: pointerdown on the window on its way
+  // down, then the click to what holds both ends.
+  const press = (down, up = down) => {
+    const at = ([x, y, target = dialog]) => ({ target, clientX: x, clientY: y, button: 0, isPrimary: true });
+    win.handlers.pointerdown[0](at(down)); dialog.handlers.click(at(up));
+  };
   const key = (shiftKey = false) => { const event = { key: 'Tab', shiftKey, prevented: false, preventDefault() { this.prevented = true; } }; dialog.handlers.keydown(event); return event; };
   const at = () => document.activeElement?.id ?? (document.activeElement === heading ? 'heading' : document.activeElement === gear ? 'gear' : null);
-  return { dialog, gear, heading, close, panel, key, at, stop: name => dialog.stops.find(node => node.id === name) };
+  return { dialog, gear, heading, close, panel, key, at, press, win, stop: name => dialog.stops.find(node => node.id === name) };
 }
 
 test('the gear opens Topic settings as a modal dialog with the focus on its title', t => {
@@ -118,29 +126,40 @@ test('Escape, ✕ and a press on the backdrop each close Topic settings and give
   s.close.handlers.click();
   assert.deepEqual([s.dialog.open, s.at()], [false, 'gear'], '✕');
   s.gear.handlers.click();
-  s.dialog.handlers.click({ target: s.dialog, clientX: 100, clientY: 400 });
+  s.press([100, 400]);
   assert.deepEqual([s.dialog.open, s.at()], [false, 'gear'], 'a press on the backdrop');
   // Closed with the gear hidden (the topic became unavailable), the focus stays off it.
   s.gear.handlers.click(); s.gear.hidden = true; s.panel.close();
   assert.deepEqual([s.dialog.open, s.at()], [false, 'heading']);
 });
 
-test('only a press whose target is the dialog and whose point lies outside its box is a press on the backdrop', t => {
+test('only a press that starts and ends on the backdrop closes Topic settings, as it does every pop-up', t => {
   const s = settings(t);
+  assert.equal(s.win.handlers.pointerdown[1], true, 'the press is seen on the window, on its way down');
   s.gear.handlers.click();
   // On the dialog's own empty space: the dialog is the target, the point inside its box.
-  s.dialog.handlers.click({ target: s.dialog, clientX: 980, clientY: 590 });
+  s.press([980, 590]);
   assert.equal(s.dialog.open, true, 'a press inside the box keeps it open');
-  s.dialog.handlers.click({ target: s.stop('note'), clientX: 100, clientY: 400 });
+  s.press([100, 400, s.stop('note')]);
   assert.equal(s.dialog.open, true, 'a press whose target is inside the dialog keeps it open');
-  for (const [x, y] of [[447, 400], [993, 400], [700, 199], [700, 601]]) assert.equal(onBackdrop(s.dialog, { target: s.dialog, clientX: x, clientY: y }), true, `${x},${y} is outside`);
-  for (const [x, y] of [[448, 200], [992, 600], [700, 400]]) assert.equal(onBackdrop(s.dialog, { target: s.dialog, clientX: x, clientY: y }), false, `${x},${y} is inside`);
+  // A selection dragged from the note and let go on the backdrop: the click
+  // goes to the dialog, which holds both ends, at a point outside its box.
+  s.press([600, 400, s.stop('note')], [100, 400]);
+  assert.equal(s.dialog.open, true, 'a drag out of the note keeps it open');
+  s.press([100, 400], [600, 400, s.stop('note')]);
+  assert.equal(s.dialog.open, true, 'a press from the backdrop let go inside keeps it open');
+  for (const [x, y] of [[448, 200], [991, 599], [700, 400]]) { s.press([x, y]); assert.equal(s.dialog.open, true, `${x},${y} is inside`); }
+  for (const [x, y] of [[447, 400], [992, 400], [700, 199], [700, 600]]) {
+    s.press([x, y]);
+    assert.equal(s.dialog.open, false, `${x},${y} is outside`);
+    s.gear.handlers.click();
+  }
 });
 
 test('on a phone the dialog fills the screen, so no tap closes it but ✕ and Escape', t => {
   const s = settings(t, { box: { left: 0, right: 390, top: 0, bottom: 844 } });
   s.gear.handlers.click();
-  s.dialog.handlers.click({ target: s.dialog, clientX: 195, clientY: 832 });
+  s.press([195, 832]);
   assert.equal(s.dialog.open, true);
 });
 

@@ -6,6 +6,8 @@ import { timeNode } from './times.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
+import { wordNodes, webLinks } from './links.mjs';
+import { closeOnOutsideClick } from './dismiss.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -46,6 +48,8 @@ export class Reader {
   bind() {
     this.$('reader-close').onclick = () => this.close();
     this.dialog.addEventListener('cancel', event => { event.preventDefault(); this.escape(); });
+    // A click outside closes as × does: the writing, quotes and images are kept.
+    closeOnOutsideClick(this.dialog, () => this.close(), window);
     this.$('reader-parent').onclick = () => this.close('parent');
     this.$('reader-layout').onclick = () => {
       this.layout.setMode(this.layout.mode === 'wide' ? 'stacked' : 'wide');
@@ -92,6 +96,8 @@ export class Reader {
     // selection when there is one, and the browser's own selection is kept
     // from growing beside it, so what lights is what quotes.
     this.sourceBody.addEventListener('pointerdown', event => {
+      // A link is only a link: pressing it lights no passage to quote.
+      if (event.target.closest?.('a')) return;
       this.sourceBody.focus({ preventScroll: true });
       if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey);
     });
@@ -252,8 +258,16 @@ export class Reader {
     const segments = typeof Intl.Segmenter === 'function'
       ? [...new Intl.Segmenter(undefined, { granularity: 'sentence' }).segment(body)]
       : [...body.matchAll(/[^\n]+(?:\n+|$)|\n+/g)].map(match => ({ segment: match[0], index: match.index }));
-    for (const part of segments) {
-      const span = node('span', part.segment);
+    // A link is never cut between passages: the passages one spans join.
+    const links = webLinks(body), parts = [];
+    for (const { segment, index } of segments) {
+      const last = parts.at(-1);
+      if (last && links.some(link => link.start < index && link.end > index)) last.segment += segment;
+      else parts.push({ segment, index });
+    }
+    for (const part of parts) {
+      const span = node('span');
+      span.append(...wordNodes(part.segment, { doc: document }));
       span.dataset.start = String(part.index);
       span.dataset.end = String(part.index + part.segment.length);
       this.sourceBody.append(span);
@@ -261,7 +275,7 @@ export class Reader {
   }
 
   point(event) {
-    if (event.pointerType === 'touch' || event.buttons || !this.source) return;
+    if (event.pointerType === 'touch' || event.buttons || !this.source || event.target.closest?.('a')) return;
     // Nothing lights to promise a quote that Return would not make.
     if (!this.returnQuotes()) return;
     const current = { x: event.clientX, y: event.clientY };
@@ -303,14 +317,16 @@ export class Reader {
     selection.removeAllRanges();
   }
 
-  // Where a selection boundary falls in the source text: in a passage's text,
-  // on a passage, or between passages; null outside the source.
+  // Where a selection boundary falls in the source text: in a passage's text
+  // (a link's among it), on a passage, or between passages; null outside the source.
   sourceOffset(container, offset) {
     if (container === this.sourceBody) return Number(this.sourceBody.children[offset]?.dataset.start ?? this.source.body.length);
-    const span = container.parentElement === this.sourceBody ? container : container.parentElement;
-    if (span?.parentElement !== this.sourceBody) return null;
-    if (span !== container) return Number(span.dataset.start) + offset;
-    return Number(offset ? span.dataset.end : span.dataset.start);
+    let span = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
+    while (span && span.parentElement !== this.sourceBody) span = span.parentElement;
+    if (!span) return null;
+    const before = document.createRange();
+    before.setStart(span, 0); before.setEnd(container, offset);
+    return Number(span.dataset.start) + before.toString().length;
   }
 
   disarm() {

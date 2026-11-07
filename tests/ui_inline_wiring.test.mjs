@@ -60,7 +60,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
-    createElement: () => new Element(), querySelectorAll: () => [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: () => [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
@@ -121,6 +121,11 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.WakeLights = (()=>{' + lightsSource + '; return WakeLights; })()', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,paintChanged,changedSince,reread,PAGE}; })())', context);
+  // Links in a message's words, and a click outside a pop-up, in the page's own scope (docs/links.md).
+  const linksSource = readFileSync(new URL('../web/links.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + linksSource + '; return {webLinks,wordNodes,linkWords,openLinksWith}; })())', context);
+  const dismissSource = readFileSync(new URL('../web/dismiss.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + dismissSource + '; return {closeOnOutsideClick}; })())', context);
   const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + marksSource + '; return {Marks,paintMarkButton,paintAuthor,marksWords}; })())', context);
   const foldSource = readFileSync(new URL('../web/fold.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -1035,7 +1040,8 @@ test('a reply card says quietly which message it answers, and a message answerin
     reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Ship the table' });
   f.paintViews('messages');
   const card = id => f.get('messages').children.find(node => node.dataset.id === id);
-  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.textContent);
+  // A line's words are its text and link nodes' (links.mjs).
+  const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.children.map(child => child.textContent).join(''));
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
   assert.deepEqual(card('m2').children.map(node => node.className), ['message-author', 'message-reply-to', 'message-preview'], 'between the author and the words');
@@ -2245,4 +2251,81 @@ test('on an outcome\'s own page the logo block heads the main column, then "← 
   assert.equal(f.get('rail').hidden, true);
   let opened = false; await f.get('outcomes-home').onclick({ button: 0, preventDefault() { opened = true; } });
   assert.equal(opened, true, '"← Outcomes" opens the Outcomes home');
+});
+
+// Links in a message's words, as the page paints them (docs/links.md).
+const linksIn = node => (node.children ?? []).flatMap(child => [...(child.tagName === 'A' ? [child] : []), ...linksIn(child)]);
+const clicked = (a, fields = {}) => {
+  const event = { button: 0, metaKey: false, ctrlKey: false, shiftKey: false, altKey: false, stopped: false, prevented: false,
+    stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; }, ...fields };
+  a.handlers.click(event); return event;
+};
+
+test('a message card, the line a reply quotes and a Notebook card show their web addresses as links that press nothing under them', async () => {
+  const f = fixture();
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'fable', body: 'Preview: https://preview.example:5211/ — try it.', topic_id: 't1', sent_ms: null, reply_to: null });
+  f.views.messages.set('m2', { id: 'm2', seq: 2, author_id: 'tony', body: 'See https://a.example/one and https://a.example/tw', preview: true, topic_id: 't1', sent_ms: null,
+    reply_to: 'm1', reply_to_author: 'fable', reply_to_excerpt: 'Preview: https://preview.example:5211/ — try it.' });
+  f.paintViews('messages');
+  const card = id => f.get('messages').children.find(node => node.dataset.id === id);
+  const part = (id, name) => card(id).children.find(node => node.className === name);
+  const shown = node => linksIn(node).map(a => [a.textContent, a.href, a.target, a.rel]);
+  assert.deepEqual(shown(part('m1', 'message-preview')), [['https://preview.example:5211/', 'https://preview.example:5211/', '_blank', 'noopener noreferrer']]);
+  assert.deepEqual(shown(part('m2', 'message-preview')), [['https://a.example/one', 'https://a.example/one', '_blank', 'noopener noreferrer']],
+    'an excerpt\'s last address may be cut, so it is words');
+  assert.deepEqual(shown(part('m2', 'message-reply-to')), [['https://preview.example:5211/', 'https://preview.example:5211/', '_blank', 'noopener noreferrer']]);
+  const press = clicked(linksIn(part('m1', 'message-preview'))[0]);
+  assert.deepEqual([press.stopped, press.prevented], [true, false], 'the browser follows it, and the card under it hears nothing');
+  f.views.memory.set('n1', { id: 'n1', seq: 1, title: 'Plan', body: 'Lives at https://docs.example/plan.', source_ref: { kind: 'memory', id: 'n1', revision: 1 } });
+  f.paintViews('memory');
+  const notebook = f.get('memory-items').children.find(node => node.dataset.id === 'n1');
+  assert.deepEqual(shown(notebook.children[1]), [['https://docs.example/plan', 'https://docs.example/plan', '_blank', 'noopener noreferrer']]);
+});
+
+test('a link to a place in this Theseus opens it as the rail does, keeping writing that is not yet saved', async () => {
+  const assigned = [];
+  const location = Object.assign(new URL('https://fixture/?topic=t1'), { assign: url => assigned.push(url), reload() {} });
+  const f = fixture('https://fixture/?topic=t1', { location });
+  // As the topic rows' check does: writing not yet confirmed saved holds the move.
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  f.registry.keepEditorsLocal = async () => {}; f.registry.unconfirmedSends = [];
+  Object.assign(f.editor, { localVersion: 1, ackVersion: 0 }); Object.defineProperty(f.editor, 'dirty', { get: () => f.editor.ackVersion < f.editor.localVersion });
+  f.registry.flush = async () => ({ recorded: false, status: 'unknown' });
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize(); await drain();
+  f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'fable', body: 'Carried on in https://fixture/?topic=t2 now.', topic_id: 't1', sent_ms: null, reply_to: null });
+  f.paintViews('messages');
+  const [a] = linksIn(f.get('messages').children.find(node => node.dataset.id === 'm1'));
+  assert.deepEqual([a.href, a.target ?? ''], ['?topic=t2', ''], 'it stays in this tab');
+  const press = clicked(a);
+  assert.deepEqual([press.stopped, press.prevented], [true, true], 'the page opens it, not the browser');
+  await drain();
+  assert.deepEqual(assigned, [], 'writing not confirmed saved holds the move');
+  assert.equal(f.editor.draft.body, 'kept');
+  assert.match(f.get('topic-navigation-status').textContent, /not confirmed saved/);
+  assert.equal(clicked(a, { metaKey: true }).prevented, false, 'a Cmd-click is the browser\'s own, to a new tab');
+  f.registry.flush = async () => { f.editor.ackVersion = 1; return { recorded: true, status: 'committed' }; };
+  clicked(a); await drain();
+  assert.deepEqual(assigned, ['?topic=t2'], 'saved, it goes to the topic');
+});
+
+test('the version review closes on a press outside it, as Keep both for now does, and not on one inside', async () => {
+  const f = fixture();
+  const review = f.get('version-review');
+  Object.assign(review, { showModal() { this.open = true; }, close() { this.open = false; },
+    getBoundingClientRect: () => ({ left: 300, right: 1100, top: 100, bottom: 700 }), querySelector: () => null });
+  f.registry.recoveryCandidates = async (editor, options, shown) => { const page = { items: [], nextCursor: null }; shown(page, false); return page; };
+  await f.showVersions(f.editor, f.get('opener'), f.p);
+  assert.equal(review.open, true);
+  const listened = f.events.find(e => e[0] === 'window-handler' && e[1] === 'pointerdown');
+  assert.ok(listened, 'the page listens for a press outside the version review');
+  const [, , down] = listened;
+  const press = (x, y) => { const event = { target: review, clientX: x, clientY: y, button: 0, isPrimary: true }; down(event); review.handlers.click(event); };
+  press(700, 400);
+  assert.equal(review.open, true, 'a press inside keeps it open');
+  press(50, 400);
+  assert.equal(review.open, false, 'a press on the backdrop closes it');
+  assert.equal(f.document.activeElement, f.get('opener'), 'the focus goes back to what opened it');
 });

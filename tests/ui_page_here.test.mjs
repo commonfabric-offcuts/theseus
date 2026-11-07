@@ -4,10 +4,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PageHere } from '../web/page-here.mjs';
 
-function fixture({ since = null, refuse = null } = {}) {
+function fixture({ since = null, refuse = null, words = null } = {}) {
   class Node {
     constructor(tag, text = '') { this.tagName = tag; this.children = []; this.text = text; this.className = ''; this.hidden = false; this.isConnected = true; this.attributes = {}; }
     append(...nodes) { this.children.push(...nodes); }
+    addEventListener(name, fn) { this.handlers = { ...this.handlers, [name]: fn }; }
     replaceChildren(...nodes) { this.children = [...nodes]; }
     insertBefore(node, before) { this.children.splice(this.children.indexOf(before), 0, node); }
     setAttribute(k, v) { this.attributes[k] = v; }
@@ -18,7 +19,7 @@ function fixture({ since = null, refuse = null } = {}) {
   const doc = { createElement: tag => new Node(tag), createTextNode: text => new Node('#text', text), activeElement: null };
   const host = new Node('section'); host.hidden = true;
   const reads = [], gates = [];
-  const bodies = { 1: 'Ship on Friday.', 2: 'Ship on Friday.', 3: 'Ship on Monday.' };
+  const bodies = { 1: 'Ship on Friday.', 2: 'Ship on Friday.', 3: words ?? 'Ship on Monday.' };
   const read = ref => { reads.push(ref.revision); const gate = gates.shift(); const answer = { source_ref: ref, title: 'Release plan', body: bodies[ref.revision] };
     return gate ? gate.then(() => answer) : Promise.resolve(answer); };
   const recorded = [];
@@ -84,4 +85,15 @@ test('a page opened while the one before still reads what changed in it shows on
   assert.equal(panels.length, 1, 'one panel: the page shown');
   assert.doesNotMatch(panels[0].textContent, /Monday/, 'and none of the first page\'s changes');
   assert.equal(f.host.children.find(child => child.className === 'page-here-body').textContent, 'Ship on Friday.');
+});
+
+test('a Notebook page shows its web addresses as links, and its other words are kept as they are', async () => {
+  const f = fixture({ words: 'Plan: https://docs.example/plan, then <ship>.' });
+  await f.here.open(ref, f.row);
+  const body = f.host.children.find(child => child.className === 'page-here-body');
+  assert.equal(body.textContent, 'Plan: https://docs.example/plan, then <ship>.');
+  assert.deepEqual(body.children.map(child => [child.tagName, child.textContent]),
+    [['#text', 'Plan: '], ['a', 'https://docs.example/plan'], ['#text', ', then <ship>.']]);
+  const link = body.children[1];
+  assert.deepEqual([link.href, link.target, link.rel], ['https://docs.example/plan', '_blank', 'noopener noreferrer']);
 });

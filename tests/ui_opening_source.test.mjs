@@ -139,7 +139,8 @@ test('the opening page says what it answers and links each topic already started
   await d.load();await d.loadSource();
   const texts=node=>[node.textContent,...node.children.flatMap(texts)];
   const shown=texts(view.answers);
-  assert.ok(shown.includes('warp: Where do we continue the naming question?'),shown.join('|'));
+  const quote=view.answers.children.find(x=>x.tagName==='blockquote');
+  assert.equal(quote.text,'warp: Where do we continue the naming question?',shown.join('|'));
   assert.ok(shown.includes('A topic was already started from this message'));
   const list=view.answers.children.find(x=>x.tagName==='ul');
   assert.equal(list?.children.length,1,'one topic started, one link to it');
@@ -150,4 +151,21 @@ test('the opening page says what it answers and links each topic already started
   assert.ok(view.host.children.indexOf(view.answers)<view.host.children.findIndex(x=>x.tagName==='label'),'it comes before the title');
   const none=harness(),plain=none.draft(),plainView=new OpeningView({host:document.createElement('main'),draft:plain,workspace:{id:'w1',title:'Outcome'},open:()=>{}});
   await plain.load();assert.equal(plainView.answers.hidden,true);
+});
+
+test('the message a new topic answers shows its web addresses as links, and one its excerpt cuts as words', async t => {
+  const previous=globalThis.document;globalThis.document=dom();t.after(()=>{globalThis.document=previous;});
+  const h=harness(),d=h.draft({source:'m-1'});
+  const view=new OpeningView({host:document.createElement('main'),draft:d,workspace:{id:'w1',title:'Outcome'},open:()=>{}});
+  await d.load();await d.loadSource();
+  const quote=()=>view.answers.children.find(x=>x.tagName==='blockquote');
+  const links=()=>quote().children.filter(x=>x.tagName==='a').map(a=>[a.textContent,a.href,a.target]);
+  d.sourceMessage={...d.sourceMessage,body:'The plan is at https://docs.example/plan. Read it.'};view.paintAnswers();
+  assert.equal(quote().text,'warp: The plan is at https://docs.example/plan. Read it.');
+  assert.deepEqual(links(),[['https://docs.example/plan','https://docs.example/plan','_blank']]);
+  // Cut at 239 characters inside the address: the address is left as words.
+  const long='w'.repeat(220)+' https://docs.example/a-very-long-path-that-runs-past-the-cut';
+  d.sourceMessage={...d.sourceMessage,body:long};view.paintAnswers();
+  assert.equal(quote().text,'warp: '+long.slice(0,239)+'…');
+  assert.deepEqual(links(),[],'a cut address is not a link to the wrong place');
 });
