@@ -2,56 +2,72 @@
 
 Topic settings (the gear beside a topic's title) has no form and no Save.
 Four chips say where the topic stands, and Waiting adds a chip for each of
-its people. The note, the reader's own part ("Your part") and, for the
-outcome's owner and the topic's creator, the title are one line each. A tap
+its people. The note, the reader's own part ("Your part") and, for whoever
+organises the outcome and the topic's creator, the title are one line each. A tap
 saves at once; a line saves on Return or when the person leaves it, by Tab,
 by a press elsewhere, by ✕ or by closing Topic settings. Escape in a line
 puts back what is saved.
 
-## The rule for a line
+## The rule for each field
 
-Each line is the same small model (`Line` in `web/topic-state.mjs`): what
-is saved now, and, while the person edits, the saved value they began from.
-Each Return, leaving, tap or press is an act, fenced field by field on what
-the person saw when they made it: for a line, the value its edit began from;
-for a chip or Archive, the topic as shown when pressed.
+Each control is a field, and every field follows the same small model
+(`TopicStatePanel` in `web/topic-state.mjs`): the note, Your part, the
+title, the state chips, the people chips and Archive. A field holds where
+the person's change began (each key as Core held it, with the topic version
+it was read at), its one save that is out, and whether the person asked for
+another. A line's change begins at its first key; a chip's or Archive's at
+the tap, and it means what the control showed when pressed.
 
-1. A save sends only what that control changed. A chip sends the state, or
+1. A save sends only what that field changed. A chip sends the state, or
    who the topic waits on, and never the note or another line's words.
-2. A save is fenced on the value the person began from. When someone else
-   changed that field since, Core refuses it; the line keeps the person's
-   words, and the notice shows the newer words beside them ("Someone else
-   changed the note first … It now reads “…”: press Return to save yours in
-   its place"). If Topic settings was closed, it opens again. The notice
-   stays until those words are saved or put back. Every act made before the
-   refusal was shown, fenced on the same value (a Tab or ✕ just after
-   Return, a second Return, a second tap), is not sent: it was made before
-   the person saw the newer words. Their next act, made once those words
-   show, saves theirs in place of them.
-3. A save of the person's own moves where the line begins, and every act of
-   theirs made from the same value, to what Core saved. When its answer is
-   lost, the panel keeps a record, for each field it changes, of what it
-   read there and what it would have left there; every such change is kept,
-   not only the last. Any read of the topic settles each record: while the
-   field still holds what the change read, it may yet land and the record
-   stays; when the field holds what the change would have left, the change
-   is found saved and moves the line and the acts as a confirmed save does;
-   otherwise someone else has changed the field since, and the record goes.
-   When a change is refused and the read after it finds one of the person's
-   own lost changes saved, with every field it was fenced on then as it
-   expects, the change is worked out again from what Core saved and sent if
-   anything is left to change; nothing is called someone else's.
-4. Words equal to what the line began from, or to what is saved now, are no
-   change: Return, leaving or a tap sends nothing for that line, and it
+2. A save is fenced on where the change began. When someone else changed
+   that field since, Core refuses it; the panel reads the topic once, the
+   line keeps the person's words, and the notice shows the newer words
+   beside them ("Someone else changed the note first … It now reads “…”:
+   press Return to save yours in its place"). The newer words become where
+   the change begins, so the next Return, made once they show, goes in
+   their place. If Topic settings was closed, it opens again. The notice
+   stays until those words are saved or put back (Escape). A save the
+   person asked for while the refused one was out is dropped: it was made
+   before they saw the newer words.
+3. When Core commits the person's save, every field's start that was read
+   before that commit, on the value the save was fenced on, moves to what
+   Core saved, so the person's next save is never refused as someone
+   else's. A start read at the commit's version or later already shows it,
+   or what came after it, and stays.
+4. Words equal to where the change began, or to what is saved now, are no
+   change: Return, leaving or a tap sends nothing for that field, and it
    follows fresh data again.
 5. Fresh data updates a line nobody is editing, and never the words in one
-   being edited.
+   being edited. The chips always show the topic as it stands.
 
-Acts go one at a time, in the order made. A tap means what the control
-showed when it was pressed: Archive archives, and a person chip shown unlit
-adds that person. One that is already so when its turn comes sends nothing.
-An edit ended before a line's act has its turn (Escape, or its words found
-saved) sends nothing.
+Each field has at most one save out. A Return, leaving or tap while it is
+out waits for its answer, and then only the latest words or tap go, fenced
+on the start that answer leaves. Fields are otherwise independent: a tap
+never waits for the note. A field whose save would be fenced on a key that
+another field's save changes waits for that save: a tap on a topic a
+message reopened clears the note, and the state and people chips both set
+the state.
+
+### A lost answer
+
+Nothing is guessed from later reads. Every save names its operation id, and
+Core runs an operation once and answers the same id again with what it
+stored, a refusal too (`view operation` reports the same). When an answer
+is lost (the connection failed, or Core answered without an outcome), the
+panel reads the topic once to show where it stands and keeps the save as it
+was sent. It goes again, as the same command, when the connection is back
+(the page's live feed returns, or the browser comes back online), at the
+person's next act on that field or on a field waiting for it, or straight
+away, once, when the person had already acted again while it was out. Core's
+answer to it is the answer: its stored outcome, or, when the first attempt
+never reached Core, the outcome of running it now. A first attempt that
+reaches Core late runs nothing.
+
+### Limits
+
+Fences compare values, so a change by someone else that puts a field back
+to the value a start holds is not seen as a change.
 
 ## Core: `topic.update`
 

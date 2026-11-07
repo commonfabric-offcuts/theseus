@@ -244,7 +244,7 @@ test('leaving the note is weighed when its turn comes: words typed back while a 
   assert.deepEqual([note.value, panel.topic.state_note], ['Old', 'Old']);
 });
 
-test('changes go one at a time, in the order made, each fenced on what the one before it made', async t => {
+test('each field saves on its own; within one, saves go one at a time and only the latest goes next, fenced on what the one before saved', async t => {
   dom(t);
   const host = new Element('section'), sent = [], answers = [];
   const panel = new TopicStatePanel({ host, reader: 'tony',
@@ -255,22 +255,16 @@ test('changes go one at a time, in the order made, each fenced on what the one b
   type(controls(host).note, 'Pick one'); key(controls(host).note, 'Enter');
   const tap = chip(host, 'Ready for review').onclick();
   await settled();
-  assert.deepEqual(sent, [[{ note: '' }, { note: 'Pick one' }]], 'the tap waits for the note');
-  answers.shift()();
-  await settled();
-  assert.deepEqual(sent[1], [{ state: 'waiting', waiting_on: ['fable'] }, { state: 'review', keep_note: true }], 'then goes, the note kept');
+  assert.deepEqual(sent, [[{ note: '' }, { note: 'Pick one' }], [{ state: 'waiting', waiting_on: ['fable'] }, { state: 'review', keep_note: true }]],
+    'the tap goes at once, beside the note; neither carries the other');
   await answerAll(); await tap;
   assert.deepEqual(lit(host), ['Ready for review']);
-  // A change worked out at its turn sends nothing when nothing is left to change.
-  const again = [chip(host, 'Done').onclick(), chip(host, 'Done').onclick()];
-  await answerAll(); await Promise.all(again);
-  assert.deepEqual(sent.slice(2), [[{ state: 'review', waiting_on: [] }, { state: 'done', keep_note: true }]], 'Done tapped twice is one change');
-  // One that fails outright never holds up the next.
-  const failing = new TopicStatePanel({ host: new Element('section'), reader: 'tony', send: async (current, args) => {
-    if (args.state === 'done') throw Error('offline'); sent.push(['next', args]); return committed(current, args); } });
-  failing.paint(topic(), [{ actor_id: 'tony' }]);
-  await Promise.all([chip(failing.host, 'Done').onclick(), chip(failing.host, 'Ready for review').onclick()]);
-  assert.deepEqual(sent.at(-1), ['next', { state: 'review', keep_note: true }]);
+  // Taps while the tap before is out wait for its answer; only the latest goes next.
+  const taps = [chip(host, 'Done').onclick(), chip(host, 'Done').onclick(), chip(host, 'Waiting').onclick(), chip(host, 'Active').onclick()];
+  await answerAll(); await Promise.all(taps);
+  assert.deepEqual(sent.slice(2), [[{ state: 'review', waiting_on: [] }, { state: 'done', keep_note: true }], [{ state: 'done', waiting_on: [] }, { state: 'active', keep_note: true }]],
+    'Done, then the last tap, fenced on the Done it saved');
+  assert.deepEqual(lit(host), ['Active']);
 });
 
 test('a repaint from fresh data keeps what the person typed and their focus; untouched fields and every chip follow the data', t => {
@@ -732,7 +726,9 @@ class Core {
   constructor() {
     this.topic = topic({ title: 'Old', state_note: 'Old', state_by: 'fable' });
     this.participants = [{ actor_id: 'tony', responsibility: 'Old', responsibility_revision: 1 }, { actor_id: 'fable', responsibility: '', responsibility_revision: 0 }, { actor_id: 'codex' }];
-    this.log = []; this.next = {};
+    // log: each command Core ran, once; done: its outcome by operation id;
+    // asked: each command sent again, answered from done.
+    this.log = []; this.next = {}; this.done = new Map(); this.asked = [];
   }
   view() { return structuredClone({ topic: this.topic, participants: this.participants }); }
   // The panel's own read of the topic; the next unread of them fail.
@@ -746,22 +742,30 @@ class Core {
   }
   reopen() { Object.assign(this.topic, { state: 'active', state_note: 'Reopened by a new message', state_message_id: 'm9', version: this.topic.version + 1 }); }
   // The next answer: held until released, and lost as unconfirmed or dropped
-  // after Core commits; 'late' drops it before Core commits, which it then does
-  // when land() is called, after whatever the panel reads in between.
-  async answer(entry, apply) {
+  // after Core runs it; 'late' drops it before Core runs it, which it then
+  // does when land() is called, after whatever the panel reads in between.
+  // Core runs each operation once, as aim_next/store.py does: the same id
+  // sent again is answered with the outcome it stored, a refusal too.
+  async answer(entry, apply, id) {
     const { hold, lose } = this.next; this.next = {};
-    this.log.push(entry);
-    const commit = () => { try { entry.result = apply(); entry.outcome = 'committed'; } catch (refusal) { entry.outcome = refusal.code; entry.receipt = { status: 'rejected', error: refusal }; } };
-    if (lose === 'late') { this.land = commit; if (hold) await new Promise(resolve => { this.release = resolve; }); throw Error('Connection interrupted. Confirmation is unknown; your writing is kept.'); }
-    commit();
+    const run = () => {
+      if (id !== undefined && this.done.has(id)) { this.asked.push(id); return this.done.get(id); }
+      this.log.push(entry);
+      try { entry.result = apply(); entry.outcome = 'committed'; } catch (refusal) { entry.outcome = refusal.code; entry.receipt = { status: 'rejected', error: refusal }; }
+      if (id !== undefined) this.done.set(id, entry);
+      return entry;
+    };
+    const lost = () => Error('Connection interrupted. Confirmation is unknown; your writing is kept.');
+    if (lose === 'late') { this.land = run; if (hold) await new Promise(resolve => { this.release = resolve; }); throw lost(); }
+    const done = run();
     if (hold) await new Promise(resolve => { this.release = resolve; });
     // 'gone' drops whatever Core answers, a refusal too.
-    if ((entry.outcome === 'committed' && lose === 'dropped') || lose === 'gone') throw Error('Connection interrupted. Confirmation is unknown; your writing is kept.');
-    if (entry.outcome === 'committed') return lose === 'unconfirmed' ? { status: 'pending' } : { status: 'committed', result: entry.result };
-    return entry.receipt;
+    if ((done.outcome === 'committed' && lose === 'dropped') || lose === 'gone') throw lost();
+    if (done.outcome === 'committed') return lose === 'unconfirmed' ? { status: 'pending' } : { status: 'committed', result: done.result };
+    return done.receipt;
   }
-  update(current, args, fields) {
-    return this.answer({ kind: 'topic.update', args, fields, version: current.version }, () => {
+  update(current, args, fields, id) {
+    return this.answer({ kind: 'topic.update', args, fields, version: current.version, id }, () => {
       const held = this.topic;
       const now = { title: held.title, archived: held.archived, state: held.state, note: held.state_note, waiting_on: [...held.waiting_on].sort() };
       const fenced = fields ? Object.entries(fields).every(([name, seen]) => JSON.stringify(name === 'waiting_on' ? [...seen].sort() : seen) === JSON.stringify(now[name]))
@@ -778,16 +782,16 @@ class Core {
       held.version += 1;
       return { topic_id: held.id, version: held.version, title: held.title, archived: held.archived, state: held.state, note: held.state_note,
         waiting_on: held.waiting_on, state_by: held.state_by, state_ms: null };
-    });
+    }, id);
   }
-  duty(note, revision) {
-    return this.answer({ kind: 'responsibility.set', args: { note }, version: revision }, () => {
+  duty(note, revision, id) {
+    return this.answer({ kind: 'responsibility.set', args: { note }, version: revision, id }, () => {
       const mine = this.participants[0];
       if (revision !== mine.responsibility_revision) throw { code: 'REVISION_CONFLICT', message: 'Your note changed' };
       if (note !== mine.responsibility) Object.assign(mine, { responsibility: note, responsibility_revision: mine.responsibility_revision + 1 });
       this.topic.version += 1;
       return { topic_id: 't1', actor_id: 'tony', note: mine.responsibility, responsibility_revision: mine.responsibility_revision, version: this.topic.version };
-    });
+    }, id);
   }
   held(name) { return name === 'duty' ? this.participants[0].responsibility : name === 'title' ? this.topic.title : this.topic.state_note; }
 }
@@ -835,6 +839,18 @@ const HISTORIES = {
     at.core.quiet = true; at.core.unread = 1; await own(at, 'dropped', () => {}, 'Mine');
   } },
   'my lost save, then theirs': { mine: 'Mine more', theirs: true, shown: 'Theirs', async before(at) { at.core.quiet = true; await own(at, 'dropped', () => at.core.other(at.name, 'Theirs')); } },
+  // Lost before it reached Core, which never runs it: it goes again, as itself, at the person's next act.
+  'my own save never reached Core': { mine: 'Mine more', shown: 'Old', async before(at) { at.core.quiet = true; await own(at, 'late'); } },
+  // The connection comes back before the person acts again: Core answers for the lost save then.
+  'my own save dropped, then the connection back': { mine: 'Mine more', landed: true, shown: 'Mine', async before(at) {
+    at.core.quiet = true; at.core.unread = 1; await own(at, 'dropped'); await at.panel.reconnected(); await settled();
+  } },
+  'my own save never reached Core, then the connection back': { mine: 'Mine more', landed: true, shown: 'Mine', async before(at) {
+    at.core.quiet = true; at.core.unread = 1; await own(at, 'late'); await at.panel.reconnected(); await settled();
+  } },
+  'my lost save, then theirs, then the connection back': { mine: 'Mine more', theirs: true, shown: 'Theirs', async before(at) {
+    at.core.quiet = true; await own(at, 'dropped', () => at.core.other(at.name, 'Theirs')); await at.panel.reconnected(); await settled();
+  } },
   // Their words arrive after the person's own save went; the person puts them back, sees theirs, and begins again from them.
   'my save, then theirs, begun again': { mine: 'Mine more', shown: 'Theirs', async before({ input, core, panel, name }) {
     type(input, 'Mine'); core.next = { hold: true };
@@ -871,8 +887,8 @@ for (const [name, line] of Object.entries(LINES)) for (const [how, trigger] of O
     if (history.reopened) core.reopen();
     const notices = [];
     let attended = 0;
-    const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields) => core.update(current, args, fields),
-      sendNote: (current, note, revision) => core.duty(note, revision), read: () => core.read(), attention: () => { attended++; },
+    const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields, id) => core.update(current, args, fields, id),
+      sendNote: (current, note, revision, id) => core.duty(note, revision, id), read: () => core.read(), attention: () => { attended++; },
       refresh: () => setImmediate(() => { if (!core.quiet) panel.paint(core.view().topic, core.view().participants); }) });
     // Every notice shown, even one replaced before an act settles.
     const said = [], show = panel.show.bind(panel);
@@ -944,16 +960,16 @@ for (const [name, line] of Object.entries(LINES)) for (const [how, trigger] of O
 const TAPS = {
   'a state chip': { first: host => chip(host, 'Done').onclick(), tap: host => chip(host, 'Ready for review').onclick(),
     other: core => Object.assign(core.topic, { state: 'done', waiting_on: [], state_by: 'fable' }), theirs: core => core.topic.state === 'done',
-    mine: core => [core.topic.state, core.topic.waiting_on], expect: ['review', []], sends: ['REVISION_CONFLICT', 'committed'] },
+    mine: core => [core.topic.state, core.topic.waiting_on], expect: ['review', []], sends: ['committed'] },
   // The person taps codex again while it still shows unlit: they meant to add codex, as the first did,
   // which Core saved in its own order.
   'a person chip': { first: host => chip(host, 'codex').onclick(), tap: host => chip(host, 'codex').onclick(),
     other: core => Object.assign(core.topic, { waiting_on: ['fable', 'zed'] }), theirs: core => core.topic.waiting_on.includes('zed'),
-    mine: core => [core.topic.state, core.topic.waiting_on], expect: ['waiting', ['codex', 'fable']], sends: ['REVISION_CONFLICT'] },
+    mine: core => [core.topic.state, core.topic.waiting_on], expect: ['waiting', ['codex', 'fable']], sends: [] },
   // Archive pressed again while it still says Archive.
   Archive: { first: host => controls(host).archive.onclick(), tap: host => controls(host).archive.onclick(),
     other: core => Object.assign(core.topic, { archived: true }), theirs: core => core.topic.archived,
-    mine: core => [core.topic.archived, controls(core.host).archive.textContent], expect: [true, 'Unarchive'], sends: ['REVISION_CONFLICT'] },
+    mine: core => [core.topic.archived, controls(core.host).archive.textContent], expect: [true, 'Unarchive'], sends: [] },
 };
 const TAP_HISTORIES = {
   'someone else changed it': { theirs: true, async before({ core, tap }) { tap.other(core); core.topic.version += 1; } },
@@ -966,8 +982,8 @@ for (const [how, tap] of Object.entries(TAPS)) for (const [story, history] of Ob
     const core = new Core(), host = new Element('section');
     Object.assign(core.topic, { state: 'waiting', waiting_on: ['fable'] });
     core.quiet = true; core.host = host;
-    const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields) => core.update(current, args, fields),
-      sendNote: (current, note, revision) => core.duty(note, revision), read: () => core.read(), refresh: () => {} });
+    const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields, id) => core.update(current, args, fields, id),
+      sendNote: (current, note, revision, id) => core.duty(note, revision, id), read: () => core.read(), refresh: () => {} });
     const said = [], show = panel.show.bind(panel);
     panel.show = (message, quiet) => { said.push(message); show(message, quiet); };
     panel.paint(core.view().topic, core.view().participants);
@@ -985,7 +1001,9 @@ for (const [how, tap] of Object.entries(TAPS)) for (const [story, history] of Ob
     // R3: the person's own lost tap is never someone else's change, and this one is saved.
     assert.deepEqual(refusals, [], 'nothing of the person\'s is called someone else\'s');
     assert.deepEqual(tap.mine(core), tap.expect);
-    // Refused over the person's own tap, then worked out again: what is already so is not sent (R4).
+    // Their lost tap is asked about once, as the same command, and Core's
+    // answer is where this tap begins: what is already so is not sent (R4).
+    assert.equal(core.asked.length, 1, 'the lost tap asked again once');
     assert.deepEqual(core.log.slice(before).map(entry => entry.outcome), tap.sends);
     assert.equal(controls(host).notice.textContent, 'Saved');
   });
@@ -998,7 +1016,7 @@ test('a tap after the person\'s own lost tap and someone else\'s change to who i
   dom(t);
   const core = new Core(), host = new Element('section');
   core.quiet = true;
-  const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields) => core.update(current, args, fields), read: () => core.read() });
+  const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields, id) => core.update(current, args, fields, id), read: () => core.read() });
   panel.paint(core.view().topic, core.view().participants);
   core.next = { lose: 'dropped' }; core.unread = 1;
   await chip(host, 'Waiting').onclick(); await settled();
@@ -1016,7 +1034,7 @@ const lined = (t, core = new Core()) => {
   dom(t);
   const host = new Element('section');
   core.quiet = true;
-  const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields) => core.update(current, args, fields), read: () => core.read() });
+  const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields, id) => core.update(current, args, fields, id), read: () => core.read() });
   const fresh = () => panel.paint(core.view().topic, core.view().participants);
   fresh();
   return { core, host, panel, fresh, input: controls(host).note, said: () => controls(host).notice.textContent };
@@ -1081,8 +1099,8 @@ for (const [name, line] of Object.entries(LINES)) for (const [how, second] of Ob
   test(`before a refusal comes back: ${name}, ${how}`, async t => {
     dom(t);
     const core = new Core(), host = new Element('section');
-    const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields) => core.update(current, args, fields),
-      sendNote: (current, note, revision) => core.duty(note, revision), read: () => core.read(),
+    const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields, id) => core.update(current, args, fields, id),
+      sendNote: (current, note, revision, id) => core.duty(note, revision, id), read: () => core.read(),
       refresh: () => setImmediate(() => panel.paint(core.view().topic, core.view().participants)) });
     const said = [], show = panel.show.bind(panel);
     panel.show = (message, quiet) => { said.push(message); show(message, quiet); };
@@ -1121,27 +1139,33 @@ test('a tap pressed while the refusal of the tap before it is out is not sent; t
   assert.deepEqual([core.log.at(-1).fields, core.topic.state], [{ state: 'done', waiting_on: [] }, 'review'], 'pressed again once Done shows, it goes over Done');
 });
 
-test('a tap waiting its turn while newer data arrives is fenced on the state shown when it was pressed', async t => {
-  const { core, host, panel, fresh, input } = lined(t);
-  type(input, 'Mine'); core.next = { hold: true };
-  key(input, 'Enter'); await settled();
-  const tap = chip(host, 'Ready for review').onclick();
-  Object.assign(core.topic, { state: 'done', state_by: 'fable', version: core.topic.version + 1 }); fresh();
-  core.release(); await tap; await panel.queue; await settled();
-  assert.deepEqual([core.log.map(entry => entry.outcome), core.topic.state, controls(host).notice.textContent], [['committed', 'REVISION_CONFLICT'], 'done', CHANGED]);
-  assert.deepEqual(core.log[1].fields, { state: 'active', waiting_on: [] });
+test('a tap waiting for the tap before it goes from what that one saved, and is refused over a change made after it', async t => {
+  const { core, host, panel, fresh } = lined(t);
+  core.next = { hold: true };
+  const first = chip(host, 'Done').onclick(); await settled();
+  const second = chip(host, 'Ready for review').onclick(); await settled();
+  // Core saved Done; someone else then makes it Waiting, and the page shows it.
+  Object.assign(core.topic, { state: 'waiting', state_by: 'fable', version: core.topic.version + 1 }); fresh();
+  core.release(); await first; await second; await panel.queue; await settled();
+  assert.deepEqual([core.log.map(entry => [entry.args.state, entry.outcome]), core.topic.state, controls(host).notice.textContent],
+    [[['done', 'committed'], ['review', 'REVISION_CONFLICT']], 'waiting', CHANGED]);
+  assert.deepEqual(core.log[1].fields, { state: 'done', waiting_on: [] }, 'fenced on the Done the first saved');
 });
 
-// Every lost change of the person's to a line is kept, not only the last:
-// the first may be the one Core saved.
-test('two lost saves from the same start, the first saved: the next words go on from it, called nobody else\'s', async t => {
+// A lost save is asked about again as the same command before any later
+// words go: the person's next act, here a Return, sends it again, and only
+// once Core has answered for it do the newest words go, from what it saved.
+test('a lost save is asked again as itself at the next Return; the newest words then go on from what it saved, called nobody else\'s', async t => {
   const { core, input, said } = lined(t);
   const shown = [];
   type(input, 'A'); core.next = { lose: 'dropped' }; core.unread = 1; await enter(input); shown.push(said());
+  // The next Return asks about A again; that answer is lost too.
   type(input, 'AB'); core.next = { lose: 'gone' }; await enter(input); shown.push(said());
   type(input, 'ABC'); await enter(input); shown.push(said());
-  assert.deepEqual(core.log.map(entry => [entry.fields, entry.args.note, entry.outcome]),
-    [[{ note: 'Old' }, 'A', 'committed'], [{ note: 'Old' }, 'AB', 'REVISION_CONFLICT'], [{ note: 'A' }, 'ABC', 'committed']]);
+  assert.deepEqual(core.log.map(entry => [entry.fields, entry.args.note, entry.outcome]), [[{ note: 'Old' }, 'A', 'committed'], [{ note: 'A' }, 'ABC', 'committed']],
+    'A ran once; AB, never the latest when its turn came, never went');
+  assert.deepEqual(core.asked.length, 2, 'A asked again at each Return');
+  assert.deepEqual(new Set(core.log.map(entry => entry.id)).size, 2);
   assert.deepEqual(shown.filter(words => /first, so|Someone else/.test(words)), [], 'nothing of the person\'s is called someone else\'s');
   assert.deepEqual([core.held('note'), said()], ['ABC', 'Saved']);
 });
@@ -1170,7 +1194,7 @@ for (const [how, tap] of Object.entries(TAPS)) {
     const core = new Core(), host = new Element('section');
     Object.assign(core.topic, { state: 'waiting', waiting_on: ['fable'] });
     core.quiet = true; core.host = host;
-    const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields) => core.update(current, args, fields), read: () => core.read() });
+    const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields, id) => core.update(current, args, fields, id), read: () => core.read() });
     panel.paint(core.view().topic, core.view().participants);
     tap.other(core); core.topic.version += 1;
     core.next = { hold: true };
@@ -1184,13 +1208,298 @@ for (const [how, tap] of Object.entries(TAPS)) {
 // A Return waiting its turn belongs to its edit: put back by Escape, it sends
 // nothing, even when the person has begun again from newer words.
 test('a Return put back by Escape before its turn sends nothing, though the person has begun again', async t => {
-  const { core, host, panel, fresh, input, said } = lined(t);
-  core.next = { hold: true };
-  const tap = chip(host, 'Ready for review').onclick(); await settled();
-  type(input, 'Mine'); key(input, 'Enter');
+  const { core, panel, fresh, input, said } = lined(t);
+  type(input, 'Mine'); core.next = { hold: true }; key(input, 'Enter'); await settled();
+  type(input, 'Mine 2'); key(input, 'Enter');
   key(input, 'Escape');
   core.other('note', 'Theirs'); fresh();
+  assert.equal(input.value, 'Theirs', 'put back, the line shows what is saved');
   type(input, 'Other');
-  core.release(); await tap; await panel.queue; await settled();
-  assert.deepEqual([core.log.map(entry => Object.keys(entry.args)), core.held('note'), input.value, said()], [[['state', 'keep_note']], 'Theirs', 'Other', 'Saved']);
+  core.release(); await panel.queue; await settled();
+  assert.deepEqual([core.log.map(entry => entry.args.note), core.held('note'), input.value, said()], [['Mine'], 'Theirs', 'Other', 'Saved']);
+});
+
+// A lost save is never sent again on a timer or because fresh data came: only
+// when the connection is back (the page's live feed, or the browser, says so)
+// or at the person's next act on that field, and always as the same command,
+// so Core runs it at most once.
+test('a lost save goes again only when the connection is back or at the next act, as the same command, never on fresh data', async t => {
+  const { core, panel, input, fresh, said } = lined(t);
+  type(input, 'Mine'); core.next = { lose: 'late' }; await enter(input);
+  fresh(); fresh(); await settled();
+  assert.deepEqual([core.log.length, core.asked.length, input.value], [0, 0, 'Mine'], 'fresh data sends nothing, and the words stay');
+  await panel.reconnected(); await settled();
+  assert.deepEqual([core.held('note'), core.log.length, said()], ['Mine', 1, 'Saved'], 'back online, it goes again and Core runs it');
+  // Its first attempt reaches Core after all: the same command, already run, changes nothing.
+  core.land();
+  assert.deepEqual([core.log.length, core.asked.length, core.held('note')], [1, 1, 'Mine']);
+  await panel.reconnected(); await settled();
+  assert.equal(core.asked.length, 1, 'nothing lost, nothing asked');
+  // Lost again with Core never told, and not recorded: Return sends it, as itself, once.
+  type(input, 'Mine 2'); core.next = { lose: 'late' }; await enter(input);
+  const first = core.land;
+  type(input, 'Mine 3'); await enter(input);
+  assert.deepEqual([core.log.map(entry => entry.args.note), core.held('note')], [['Mine', 'Mine 2', 'Mine 3'], 'Mine 3']);
+  first();
+  assert.deepEqual([core.log.length, core.held('note')], [3, 'Mine 3'], 'the late first attempt of Mine 2 runs nothing');
+});
+
+// The last review's probes (round 4), each a case a reviewer ran against the
+// model: kept here so the class stays closed. B1 failed on f903f51.
+const SOMEONE = /first, so|Someone else/;
+function rig(t, { reopened = false, quiet = false, setup = () => {} } = {}) {
+  dom(t);
+  const core = new Core(), host = new Element('section');
+  if (reopened) core.reopen();
+  setup(core);
+  core.quiet = quiet;
+  let attended = 0;
+  const panel = new TopicStatePanel({ host, reader: 'tony', send: (current, args, fields, id) => core.update(current, args, fields, id),
+    sendNote: (current, note, revision, id) => core.duty(note, revision, id), read: () => core.read(), attention: () => { attended++; },
+    refresh: () => setImmediate(() => { if (!core.quiet) panel.paint(core.view().topic, core.view().participants); }) });
+  const said = [], show = panel.show.bind(panel);
+  panel.show = (message, q) => { said.push(typeof message === 'string' ? message : '[parts]'); show(message, q); };
+  const fresh = () => panel.paint(core.view().topic, core.view().participants);
+  fresh();
+  const c = controls(host);
+  return { core, host, panel, fresh, said, attended: () => attended, note: c.note, part: c.part, notice: () => controls(host).notice.textContent,
+    sends: () => core.log.map(e => [e.kind === 'responsibility.set' ? 'duty' : Object.keys(e.args).join('+'), e.fields ?? e.version, e.args, e.outcome]) };
+}
+const drain = async panel => { await panel.queue; await settled(); };
+
+test('rv A1: note Return, type more, Return; first answer lost and lands after its read', async t => {
+  const r = rig(t, { quiet: true });
+  type(r.note, 'Mine'); r.core.next = { hold: true, lose: 'late' };
+  key(r.note, 'Enter'); await settled();
+  type(r.note, 'Mine more'); key(r.note, 'Enter'); await settled();
+  r.core.release(); await settled(); r.core.land(); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.equal(r.core.held('note'), 'Mine more', JSON.stringify(r.sends()));
+  assert.equal(r.notice(), 'Saved');
+});
+
+test('rv A2: unconfirmed then Return again; the first reaching Core late runs nothing; next words are not someone else\'s', async t => {
+  const r = rig(t, { quiet: true });
+  type(r.note, 'Mine'); r.core.next = { lose: 'late' };
+  key(r.note, 'Enter'); await drain(r.panel);
+  const land = r.core.land;
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.equal(r.core.held('note'), 'Mine');
+  land(); // the first attempt reaches Core now: the same command, already run
+  assert.deepEqual([r.core.log.length, r.core.held('note')], [1, 'Mine']);
+  type(r.note, 'Mine 2'); key(r.note, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.equal(r.core.held('note'), 'Mine 2', JSON.stringify(r.sends()));
+});
+
+test('rv A3: reopen while editing Your part and the title; both save', async t => {
+  const r = rig(t, { setup: core => { core.topic.state = 'done'; } });
+  type(r.part, 'Mine'); r.core.reopen(); r.fresh();
+  key(r.part, 'Enter'); await drain(r.panel);
+  controls(r.host).rename.onclick();
+  const title = controls(r.host).title; type(title, 'New title'); r.core.reopen(); r.fresh();
+  key(title, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.deepEqual([r.core.held('duty'), r.core.held('title')], ['Mine', 'New title']);
+});
+
+test('rv A4: reopen before the note save reaches Core: refused beside the reopen note, kept, then saved', async t => {
+  const r = rig(t, { setup: core => { core.topic.state = 'done'; } });
+  type(r.note, 'Mine'); r.core.reopen();
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.match(r.notice(), /Reopened by a new message/);
+  assert.deepEqual([r.note.value, r.core.held('note'), r.attended()], ['Mine', 'Reopened by a new message', 1]);
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.deepEqual([r.core.held('note'), r.notice()], ['Mine', 'Saved']);
+});
+
+test('rv A5: note refused while a Your part save goes beside it: the part saves, the note is kept', async t => {
+  const r = rig(t);
+  type(r.note, 'Mine'); r.core.other('note', 'Theirs'); r.core.next = { hold: true };
+  key(r.note, 'Enter'); await settled(); leave(r.note);
+  type(r.part, 'My part'); key(r.part, 'Enter'); await settled();
+  r.core.release(); await drain(r.panel);
+  assert.deepEqual([r.core.held('note'), r.core.held('duty'), r.note.value], ['Theirs', 'My part', 'Mine'], JSON.stringify(r.sends()));
+  assert.match(r.notice(), /Theirs/, 'the note refusal stays said');
+});
+
+test('rv A6: reopened topic, note Return + chip, someone else saved a note first: nothing of theirs is overwritten, and the tap is not dropped silently', async t => {
+  const r = rig(t, { reopened: true });
+  type(r.note, 'Mine'); r.core.other('note', 'Theirs'); r.core.next = { hold: true };
+  key(r.note, 'Enter'); await settled();
+  const tap = chip(r.host, 'Done').onclick(); await settled();
+  r.core.release(); await tap; await drain(r.panel);
+  assert.equal(r.core.held('note'), 'Theirs', JSON.stringify(r.sends()));
+  assert.equal(r.note.value, 'Mine');
+  // The tap, fenced on the reopen note it was pressed over, is refused and said.
+  assert.deepEqual([r.sends().map(e => e[3]), r.said.includes(CHANGED)], [['REVISION_CONFLICT', 'REVISION_CONFLICT'], true]);
+});
+
+test('rv A7: own commit painted by fresh data before its answer, with another field changed: next words save', async t => {
+  const r = rig(t, { quiet: true });
+  type(r.note, 'Mine'); r.core.next = { hold: true };
+  key(r.note, 'Enter'); await settled();
+  Object.assign(r.core.topic, { state: 'review', version: r.core.topic.version + 1 }); r.fresh();
+  type(r.note, 'Mine more');
+  r.core.release(); await drain(r.panel);
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.equal(r.core.held('note'), 'Mine more');
+});
+
+test('rv A8: Your part dropped and unread, left with the same words, then more words: saved, nobody else blamed', async t => {
+  const r = rig(t, { quiet: true });
+  type(r.part, 'Mine'); r.core.next = { lose: 'dropped' }; r.core.unread = 1;
+  key(r.part, 'Enter'); await drain(r.panel);
+  leave(r.part); await drain(r.panel);
+  type(r.part, 'Mine more'); key(r.part, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.equal(r.core.held('duty'), 'Mine more');
+});
+
+test('rv A9: title Return then Escape while in flight; renaming again later saves', async t => {
+  const r = rig(t, { quiet: true });
+  controls(r.host).rename.onclick();
+  let title = controls(r.host).title; type(title, 'New'); r.core.next = { hold: true };
+  key(title, 'Enter'); await settled(); key(title, 'Escape');
+  r.core.release(); await drain(r.panel);
+  controls(r.host).rename.onclick(); title = controls(r.host).title;
+  assert.equal(title.value, 'New', 'the saved title shows');
+  type(title, 'Newer'); key(title, 'Enter'); await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.equal(r.core.held('title'), 'Newer');
+});
+
+test('rv A10: Escape after a refusal puts back theirs, and the notice no longer says the words are kept', async t => {
+  const r = rig(t);
+  type(r.note, 'Mine'); r.core.other('note', 'Theirs');
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.match(r.notice(), /your words are kept/);
+  key(r.note, 'Escape');
+  assert.deepEqual([r.note.value, controls(r.host).notice.hidden], ['Theirs', true]);
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.equal(r.core.log.length, 1, 'Return sends nothing over the words put back');
+});
+
+test('rv A11: leaving saves; unconfirmed but the read finds it saved: no reopening, nothing blamed', async t => {
+  const r = rig(t, { quiet: true });
+  type(r.note, 'Mine'); r.core.next = { lose: 'unconfirmed' };
+  leave(r.note); await drain(r.panel);
+  assert.deepEqual([r.attended(), r.said.filter(m => SOMEONE.test(m))], [0, []]);
+  assert.equal(r.note.value, 'Mine');
+  type(r.note, 'Mine 2'); leave(r.note); await drain(r.panel);
+  assert.equal(r.core.held('note'), 'Mine 2', JSON.stringify(r.sends()));
+});
+
+test('rv A12: reopened; Waiting, note Return, Done all before any answer; all the person\'s, none refused', async t => {
+  const r = rig(t, { reopened: true });
+  r.core.next = { hold: true };
+  const a = chip(r.host, 'Waiting').onclick(); await settled();
+  type(r.note, 'Mine'); key(r.note, 'Enter');
+  const b = chip(r.host, 'Done').onclick();
+  r.core.release(); await a; await b; await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.deepEqual([r.core.topic.state, r.core.held('note')], ['done', 'Mine'], JSON.stringify(r.sends()));
+});
+
+test('rv A13: reopened; Waiting (dropped, unread), note Return, Done: the person\'s words and Done stand', async t => {
+  const r = rig(t, { reopened: true, quiet: true });
+  r.core.next = { hold: true, lose: 'dropped' }; r.core.unread = 1;
+  const a = chip(r.host, 'Waiting').onclick(); await settled();
+  type(r.note, 'Mine'); key(r.note, 'Enter');
+  const b = chip(r.host, 'Done').onclick();
+  r.core.release(); await a; await b; await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], JSON.stringify(r.sends()));
+  assert.deepEqual([r.core.topic.state, r.core.held('note')], ['done', 'Mine'], JSON.stringify(r.sends()));
+});
+
+test('rv A14: R1 every tap\'s args', async t => {
+  const r = rig(t, { setup: core => Object.assign(core.topic, { state: 'waiting', waiting_on: ['fable'] }) });
+  type(r.note, 'Typed'); await chip(r.host, 'codex').onclick(); await drain(r.panel);
+  await controls(r.host).archive.onclick(); await drain(r.panel);
+  for (const e of r.core.log) assert.ok(!('note' in e.args) && !('title' in e.args), JSON.stringify(e.args));
+  assert.equal(r.note.value, 'Typed');
+});
+
+test('rv A15: refused, then the read shows the note back at the start: the person\'s words are not silently sent', async t => {
+  const r = rig(t, { quiet: true });
+  type(r.note, 'Mine'); r.core.other('note', 'B');
+  const orig = r.core.read.bind(r.core);
+  r.core.read = async () => { r.core.other('note', 'Old'); r.core.read = orig; return orig(); };
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.deepEqual([r.core.log.length, r.core.held('note'), r.note.value], [1, 'Old', 'Mine']);
+  assert.match(r.notice(), /It now reads “Old”/);
+});
+
+test('rv A16: lost title save, then a note refused by someone else: the note refusal is not swallowed by the title', async t => {
+  const r = rig(t, { quiet: true });
+  controls(r.host).rename.onclick();
+  const title = controls(r.host).title; type(title, 'New'); r.core.next = { lose: 'dropped' }; r.core.unread = 1;
+  key(title, 'Enter'); await drain(r.panel);
+  type(r.note, 'Mine'); r.core.other('note', 'Theirs');
+  key(r.note, 'Enter'); await drain(r.panel);
+  assert.equal(r.core.held('note'), 'Theirs', JSON.stringify(r.sends()));
+  assert.match(r.notice(), /Theirs/);
+  assert.equal(r.note.value, 'Mine');
+});
+
+// B1: the person's lost save shows as saved in fresh data that arrives while
+// their next save is out (red on f903f51 for every field).
+for (const [name, open] of [['note', null], ['duty', null], ['title', host => controls(host).rename.onclick()]]) {
+  test(`rv B1 ${name}: lost save shown by fresh data while the next save is out: not called someone else's`, async t => {
+    const r = rig(t, { quiet: true });
+    open?.(r.host);
+    const input = name === 'note' ? r.note : name === 'duty' ? r.part : controls(r.host).title;
+    type(input, 'A'); r.core.next = { lose: 'dropped' }; r.core.unread = 1;
+    key(input, 'Enter'); await drain(r.panel);
+    type(input, 'AB'); r.core.next = { hold: true };
+    key(input, 'Enter'); await settled();
+    r.fresh(); // the page's live feed catches up and paints Core's 'A' while the Return is out
+    r.core.release(); await drain(r.panel);
+    assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], 'nothing of the person\'s is called someone else\'s: ' + JSON.stringify(r.sends()));
+    assert.equal(r.core.held(name), 'AB');
+  });
+}
+test('rv B1 chip: lost tap shown by fresh data while the next tap is out: not called someone else\'s', async t => {
+  const r = rig(t, { quiet: true });
+  r.core.next = { lose: 'dropped' }; r.core.unread = 1;
+  await chip(r.host, 'Done').onclick(); await drain(r.panel);
+  r.core.next = { hold: true };
+  const tap = chip(r.host, 'Ready for review').onclick(); await settled();
+  r.fresh();
+  r.core.release(); await tap; await drain(r.panel);
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), [], 'nothing of the person\'s is called someone else\'s: ' + JSON.stringify(r.sends()));
+  assert.equal(r.core.topic.state, 'review');
+});
+
+// A person tapped while the tap before is out goes from what that one saved,
+// not from a read that came in between: someone took fable away and put
+// them back, and the page read only the first of those.
+test('a person tapped while the tap before is out changes only that person, from what the one before saved', async t => {
+  const r = rig(t, { quiet: true, setup: core => Object.assign(core.topic, { state: 'waiting', waiting_on: ['fable'] }) });
+  r.core.next = { hold: true };
+  const first = chip(r.host, 'codex').onclick(); await settled();
+  const second = chip(r.host, 'you').onclick(); await settled();
+  Object.assign(r.core.topic, { waiting_on: ['codex'], version: r.core.topic.version + 1 }); r.fresh();
+  Object.assign(r.core.topic, { waiting_on: ['codex', 'fable'], version: r.core.topic.version + 1 });
+  r.core.release(); await first; await second; await drain(r.panel);
+  assert.deepEqual(r.sends().map(([, fields, args, outcome]) => [[...fields.waiting_on].sort(), [...args.waiting_on].sort(), outcome]),
+    [[['fable'], ['codex', 'fable'], 'committed'], [['codex', 'fable'], ['codex', 'fable', 'tony'], 'committed']]);
+  assert.deepEqual(r.core.topic.waiting_on, ['codex', 'fable', 'tony'], 'fable, put back by someone else, stays');
+});
+
+// The person's own commit moves a start only when the start is older than
+// it: a value that came back to what the save was fenced on after the save
+// ran is someone else's, and the tap fenced on it goes.
+test('a tap on a reopened topic waiting for the note goes from the note shown, when the note came back after the save', async t => {
+  const r = rig(t, { quiet: true, reopened: true });
+  type(r.note, 'A'); r.core.next = { hold: true };
+  const saving = (key(r.note, 'Enter'), settled()); await saving;
+  r.core.reopen(); r.fresh();
+  const tap = chip(r.host, 'Done').onclick(); await settled();
+  r.core.release(); await tap; await drain(r.panel);
+  assert.deepEqual(r.sends().map(([what, fields, , outcome]) => [what, fields.note, outcome]),
+    [['note', 'Reopened by a new message', 'committed'], ['state+keep_note', 'Reopened by a new message', 'committed']]);
+  assert.equal(r.core.topic.state, 'done');
+  assert.deepEqual(r.said.filter(m => SOMEONE.test(m)), []);
 });

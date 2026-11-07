@@ -117,8 +117,6 @@ const HELD = { title: topic => topic.title, archived: topic => topic.archived ==
   note: topic => topic.state_note ?? '', waiting_on: topic => Array.isArray(topic.waiting_on) ? topic.waiting_on : [] };
 // Two values of a field alike; who a topic waits on compares as a set.
 const alike = (a, b) => Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every(id => b.includes(id)) : a === b;
-// Answered for a change refused only because the person's own lost change came first.
-const AGAIN = Symbol('again');
 // A chip shows the topic as it now stands; a line keeps what was typed.
 const CHANGED = 'Someone else changed this topic first, so that was not saved. Here it is as it stands now; what you typed is kept. Try again.';
 // A line's words refused over newer ones: both show, and the person's are kept.
@@ -160,86 +158,35 @@ function lineField(props, { touch, save, cancel, leave = save }) {
   return input;
 }
 
-// One line set in place: the note, Your part or the title. read() is what
-// Core holds for it now, { value, fence }, where fence is what Core checks a
-// save against: the saved words themselves, or Your part's revision.
+// Where the topic stands, in Topic settings, set in place: four chips, the
+// topic's people as chips while it waits, the note and the reader's part as
+// one line each, and for whoever organises the outcome or created the topic,
+// a quiet Rename and Archive. The controls are built once per topic and kept
+// across repaints, so focus and typed words survive fresh data.
 //
-// While the person edits, start is what was saved when they began, and
-// session counts their edits: Escape, or words found saved, ends one. Their
-// words are a change only when they differ from where they began and from
-// what is saved now; otherwise a save sends nothing and the line follows the
-// data again. Each save is fenced on the start as it was when the person
-// made it (the panel's acts, below). Only the person's own change known
-// saved moves the start, to what Core saved; a refusal moves it to the newer
-// words once they show. Fresh data shows in a line nobody is editing, and
-// never over words being edited.
-class Line {
-  constructor(input, read) { Object.assign(this, { input, read, start: null, session: 0 }); }
-  // The first key: the line begins from what is saved.
-  begin() { this.start ??= this.read(); }
-  // Whether the words are no change: those it began from, or those saved now.
-  same(from = this.start) { return !from || this.input.value === from.value || this.input.value === this.read().value; }
-  stop() { this.start = null; this.session += 1; this.follow(); }
-  follow() { if (!this.start) this.input.value = this.read().value; }
-  // The person's own change, fenced on from, is known saved as to ({ value,
-  // fence }); words: what it sent from this line, if anything. Words already
-  // saved end the edit; any others go on from what Core saved.
-  landed(from, to, words) {
-    if (!this.start || !alike(this.start.fence, from)) return;
-    if (this.input.value === to.value || this.input.value === words) this.stop(); else this.start = to;
-  }
-  // Core refused a change fenced on fence over someone else's newer words,
-  // just read and now shown: the line begins from those, so the next Return,
-  // made once the person has seen them, goes in their place.
-  refused(fence) { if (this.start && alike(this.start.fence, fence)) this.start = this.read(); }
-}
-
-// Where the topic stands, in Topic settings, set in place. Those who may say
-// where it stands (participants, and whoever has written in it: Core's
-// reader_may_say) tap one of four chips; Waiting then shows the topic's people
-// as chips for who it waits on. The note is one line under the chips, and a
-// participant's own part one line after it; each saves on Return or on
-// leaving it. Whoever organises the outcome (its owner and coordinator) and
-// the topic's creator also rename and archive it, from quiet actions at the bottom. Every save is a Core command;
-// a quiet "Saved" or the refusal in plain words says what became of the last.
-//
-// The fields are built once per topic and kept across repaints, so focus and
-// whatever the person has typed survive fresh data (Line, above).
-//
-// Each press, key or leaving is an act. An act is fenced, field by field, on
-// what the person saw when they made it ({ value, fence }), and sends only
-// what its own control changed: a chip never sends the note, and keeps it
-// (keep_note); a change to a field it is not fenced on never refuses it.
-// Acts go one at a time, in the order made; one with nothing left to change
-// when its turn comes is not sent. Two things move an act's fences:
-//   - a change of the person's own known saved, confirmed or found by a read
-//     after its answer was lost, moves every act fenced on what that change
-//     read to what Core saved (landed);
-//   - a refusal over someone else's newer value ends every act made before
-//     it was shown that is fenced on the same value (overtaken): each would
-//     go over a value the person never saw. Their next act goes from what
-//     now shows.
+// Each control is a field (docs/topic-settings.md): the note, Your part, the
+// title, the state chips, the people chips and Archive. Its start is where
+// the person's change began, each key as Core held it and the topic version
+// it was read at; out is its one save, in flight or with its answer lost;
+// next says the person asked for another. A save sends only what the field
+// changed, fenced on its start. Core's answer decides: committed moves every
+// start read before it on the same value to what Core saved; refused shows
+// the newer value beside the person's kept words and starts from it; lost is
+// asked again, as the same command, when the connection is back or at the
+// person's next act. Only the latest change goes next. A field waits for
+// another's save that changes a key it is fenced on.
 export class TopicStatePanel {
-  // send(topic, args, fields) asks Core to change the topic, fenced on fields.
-  // sendNote(topic, note, revision) says what the reader is responsible for.
-  // refresh asks the page for fresh topic data; it is called after every answer.
-  // painted(topic) hears each topic the panel paints, the newest it has seen,
-  // so the page's subtitle shows a saved change at once.
-  // read, when given, answers the topic as the topic view gives it ({topic,
-  // participants}); it is read once after a refusal or a change whose answer
-  // was lost, so the notice says what it holds now.
-  // attention() is called when words the person sent from a line are not
-  // known to be saved, so the page can show Topic settings if it was closed.
+  // send(topic, args, fields, id) and sendNote(topic, note, revision, id) send
+  // operation id to Core, which answers the same id once and then as stored.
+  // refresh asks for fresh data after each answer; painted(topic) hears each
+  // topic painted; read() gives {topic, participants}, read once after a
+  // refusal or a lost answer to show what Core holds; attention() asks the
+  // page to show Topic settings when a line's words are refused.
   constructor({ host, reader, send, sendNote = null, refresh = () => {}, painted = () => {}, read = null, attention = () => {} }) {
     Object.assign(this, { host, reader, send, sendNote, refresh, painted, read, attention });
     // kept: the refusal said over a line's words, while they stay unsaved.
-    // lost: by field, a list of { fence, would }, one for each change of the
-    // person's own whose answer was lost: what it read of the field, and what
-    // it would have left there. Each stays only while the field holds what
-    // it read, since until then it may still land.
-    // pending: the acts not yet settled, in order. found: how many changes
-    // of the person's own reads have found saved.
-    this.topic = null; this.controls = null; this.lines = {}; this.kept = null; this.lost = {}; this.pending = []; this.found = 0; this.queue = Promise.resolve();
+    // running: each answer still awaited.
+    this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.running = new Set();
     this.heading = element('h3', { id: 'stand-heading', textContent: 'Where it stands' });
     // One notice, kept in place, so a screen reader announces each new text.
     this.notice = element('p', { className: 'notice', hidden: true });
@@ -260,9 +207,7 @@ export class TopicStatePanel {
     this.painted(topic);
   }
 
-  reset() {
-    this.controls = null; this.lines = {}; this.kept = null; this.lost = {}; this.pending = []; this.show(null);
-  }
+  reset() { this.controls = null; this.fields = {}; this.kept = null; this.show(null); }
 
   // The chips, the note and the quiet line of who said it: chips to tap for
   // those who may say where it stands, the state alone for everyone else.
@@ -275,12 +220,13 @@ export class TopicStatePanel {
     people.setAttribute('role', 'group'); people.setAttribute('aria-labelledby', 'waiting-label');
     const waiting = element('div', { className: 'waiting-on', hidden: true }, waitingLabel, people);
     let note;
-    this.lines = {};
+    this.fields = {};
     if (says) {
       for (const value of STATES) {
-        const button = chip(LABELS[value], () => this.choose(value));
+        const button = chip(LABELS[value], () => this.tap('state', () => value));
         button.dataset.state = value; states.set(value, button); chips.append(button);
       }
+      this.fields.state = { name: 'state' }; this.fields.people = { name: 'people' };
       note = this.line('note', { id: 'topic-state-note', maxLength: NOTE_BYTES, placeholder: 'Add a note…' });
       note.setAttribute('aria-label', 'Note');
     } else {
@@ -295,46 +241,56 @@ export class TopicStatePanel {
     this.controls = { says, chips, states, waiting, people, personChips: new Map(), note, by, part, duties, actions, duty: null, managed: null };
   }
 
-  // A line by name, saved on Return or leaving it; Escape puts back what is saved.
+  // A line by name: its first key begins a change, Return or leaving saves
+  // it, and Escape puts back what is saved.
   line(name, props, events = {}) {
-    const input = lineField(props, { touch: () => this.lines[name]?.begin(), save: () => this.saveLine(name), cancel: () => this.cancel(name), ...events });
-    this.lines[name] = new Line(input, () => this.field(name));
+    const input = lineField(props, { touch: () => { const field = this.fields[name]; if (field) field.start ??= this.snapshot(name); },
+      save: () => this.save(name), cancel: () => this.cancel(name), ...events });
+    this.fields[name] = { name, line: input };
     return input;
   }
 
-  // What Core holds for a field, { value, fence }, as this panel last read
-  // it: a field of the topic, fenced on its value, or the reader's part,
-  // fenced on its revision.
-  field(name) {
-    if (name !== 'duty') { const value = HELD[name](this.topic); return { value, fence: value }; }
+  // What Core holds for a key, { value, fence }, as this panel last read it:
+  // a field of the topic, fenced on its value, or the reader's part
+  // ('duty'), fenced on its revision.
+  held(key) {
+    if (key !== 'duty') { const value = HELD[key](this.topic); return { value, fence: value }; }
     const mine = this.mine(), revision = mine?.responsibility_revision;
     return { value: mine?.responsibility ?? '', fence: Number.isSafeInteger(revision) ? revision : 0 };
   }
 
-  // Renaming and archiving, for whoever organises the outcome and the topic's creator:
-  // two quiet actions. Rename puts a one-line title in their place.
+  // Where a change of a field begins: each key it is fenced on as held now,
+  // with the topic's version it was read at. The keys are its own, and for a
+  // chip where the topic stands and who it waits on, which a state also sets,
+  // and the note after a reopen, which Core then starts afresh.
+  snapshot(name) {
+    const keys = name === 'state' || name === 'people' ? ['state', 'waiting_on', ...(this.topic.state_message_id ? ['note'] : [])] : [name];
+    return Object.fromEntries(keys.map(key => [key, { ...this.held(key), version: this.topic.version }]));
+  }
+
+  // Renaming and archiving, for whoever organises the outcome and the
+  // topic's creator: two quiet actions. Rename puts a one-line title in their place.
   manage(manager) {
     const controls = this.controls;
     if (manager && !controls.managed) {
-      const unchanged = () => this.lines.title?.input.value === this.topic?.title;
+      const unchanged = () => this.fields.title?.line.value === this.topic?.title;
       const title = this.line('title', { id: 'topic-rename', className: 'rename-line', hidden: true },
-        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!unchanged()) this.saveLine('title'); } });
+        { cancel: () => { this.renaming(false); return true; }, leave: () => { if (!unchanged()) this.save('title'); } });
       title.setAttribute('aria-label', 'Title');
       // Leaving the title unchanged puts the actions back, where the focus went.
       title.addEventListener('blur', () => { if (unchanged() && !title.hidden) this.renaming(false, false); });
       const rename = element('button', { type: 'button', className: 'text-action', textContent: 'Rename' });
       rename.onclick = () => this.renaming(true);
+      // Archive means what it said when pressed.
       const archive = element('button', { type: 'button', className: 'text-action' });
-      // Archive says what it does when pressed; done already, there is nothing to send.
-      archive.onclick = () => {
-        const act = this.act(['archived']), archived = !act.fences.archived.value;
-        return this.after(act, () => act.fences.archived.value === archived || this.field('archived').value === archived ? undefined : this.submit(act, { archived }));
-      };
+      archive.onclick = () => this.tap('archived', () => !HELD.archived(this.topic));
+      this.fields.archived = { name: 'archived' };
       controls.actions.replaceChildren(title, rename, archive);
       controls.actions.hidden = false;
       controls.managed = { title, rename, archive };
     } else if (!manager && controls.managed) {
-      controls.actions.replaceChildren(); controls.actions.hidden = true; controls.managed = null; delete this.lines.title;
+      controls.actions.replaceChildren(); controls.actions.hidden = true; controls.managed = null;
+      delete this.fields.title; delete this.fields.archived;
     }
   }
 
@@ -344,18 +300,11 @@ export class TopicStatePanel {
     const managed = this.controls?.managed;
     if (!managed) return;
     const had = managed.title === document.activeElement;
-    if (!on) this.lines.title.stop();
+    if (!on) this.cancel('title');
     managed.title.hidden = !on; managed.rename.hidden = managed.archive.hidden = on;
     if (!focus) return;
     if (on) { managed.title.focus(); managed.title.select(); }
     else if (had || document.activeElement === document.body || !document.activeElement) managed.rename.focus();
-  }
-
-  // Escape in a line: what is saved comes back, if the line held anything else.
-  cancel(name) {
-    const line = this.lines[name], dirty = !!line && !line.same();
-    line?.stop();
-    return dirty;
   }
 
   // The reader's own part, for a participant: only they say what they do here.
@@ -368,207 +317,202 @@ export class TopicStatePanel {
       controls.part.prepend(heading, note);
       controls.duty = { heading, note };
     } else if (!participant && controls.duty) {
-      controls.duty.heading.remove(); controls.duty.note.remove(); controls.duty = null; delete this.lines.duty;
+      controls.duty.heading.remove(); controls.duty.note.remove(); controls.duty = null; delete this.fields.duty;
     }
   }
 
   mine() { return this.participants?.find(person => person.actor_id === this.reader) ?? null; }
 
-  // What a tap is fenced on: where the topic stands and who it waits on, and
-  // the note when Core will start it afresh after a reopen. A tap keeps any
-  // other note without sending it, so a change to the note never refuses one.
-  stands() {
-    return ['state', 'waiting_on', ...(this.topic.state_message_id ? ['note'] : [])];
+  // Whether a line's words are no change: those it began from, or those saved now (R4).
+  same(field) {
+    const words = field.line.value;
+    return words === field.start[field.name].value || words === this.held(field.name).value;
   }
 
-  // An act of the person's, made now: fenced on each named field as the
-  // panel shows it (a line: where its edit began). It waits in pending
-  // until it settles, so what settles before it can move or end it.
-  act(names, fences = Object.fromEntries(names.map(name => [name, this.field(name)]))) {
-    const act = { fences, dead: false };
-    this.pending.push(act);
-    return act;
+  // The person's change to a field ends: a line shows what is saved again.
+  stop(field) {
+    field.start = null; field.next = false; field.intent = null;
+    if (field.line) field.line.value = this.held(field.name).value;
+    if (this.kept?.name === field.name) this.kept = null;
   }
 
-  // A tap is a change of its own: lines whose words are no change follow the data again.
-  tapped() {
-    for (const line of Object.values(this.lines)) if (line.start && line.same()) line.stop();
+  // Return or leaving a line.
+  save(name) {
+    const field = this.fields[name];
+    if (!field) return this.queue;
+    if (field.start) field.next = true;
+    const turn = this.turn(field);
+    return name === 'title' ? turn.then(() => { if (!this.fields.title?.start) this.renaming(false); }) : turn;
   }
 
-  // A state chip means the state it names, over the state shown when pressed.
-  choose(state) {
-    this.tapped();
-    const act = this.act(this.stands());
-    return this.after(act, () => state === act.fences.state.value || state === HELD.state(this.topic) ? undefined : this.submit(act, { state, keep_note: true }));
+  // Escape in a line: what is saved comes back, if the line held anything else.
+  cancel(name) {
+    const field = this.fields[name];
+    if (!field?.start) return false;
+    const dirty = !this.same(field), refused = this.kept?.name === name;
+    this.stop(field);
+    if (refused) this.show(null);
+    return dirty;
   }
 
-  // A person chip adds or takes away one person the topic waits on, as the
-  // chip showed when tapped; one already so, on a waiting topic, sends nothing.
-  toggle(actor) {
-    this.tapped();
-    const act = this.act(this.stands()), on = !act.fences.waiting_on.value.includes(actor);
-    const so = (state, list) => state === 'waiting' && list.includes(actor) === on;
-    return this.after(act, () => {
-      const was = act.fences.waiting_on.value;
-      if (so(act.fences.state.value, was) || so(HELD.state(this.topic), HELD.waiting_on(this.topic))) return undefined;
-      return this.submit(act, { state: 'waiting', waiting_on: on ? [...was.filter(id => id !== actor), actor] : was.filter(id => id !== actor), keep_note: true });
-    });
+  // A tap on a chip or Archive: a change of its own, from the topic as it
+  // shows. change(intent) is what the person means now. Lines whose words are
+  // no change follow the data again.
+  tap(name, change) {
+    for (const field of Object.values(this.fields)) if (field.line && field.start && !field.out && !field.next && this.same(field)) this.stop(field);
+    const field = this.fields[name];
+    field.start = this.snapshot(name); field.intent = change(field.intent); field.next = true;
+    return this.turn(field);
   }
 
-  // A line's words, weighed when their turn comes, fenced on where the edit
-  // began when the person saved. An edit that ended meanwhile (Escape, or
-  // its words found saved) sends nothing.
-  saveLine(name) {
-    const line = this.lines[name], session = line?.session;
-    const act = this.act([], line?.start ? { [name]: line.start } : {});
-    const turn = this.after(act, () => {
-      const line = this.lines[name], from = act.fences[name];
-      if (!line || !from || !line.start || line.session !== session) return undefined;
-      if (line.same(from)) { line.stop(); return undefined; }
-      return name === 'duty' ? this.submitNote(act, line.input.value) : this.submit(act, { [name]: line.input.value }, name);
-    });
-    return name === 'title' ? turn.then(() => { if (!this.lines.title?.start) this.renaming(false); }) : turn;
-  }
-
-  // Each act waits for the one before it; one that fails outright never
-  // holds up the next, and one overtaken meanwhile sends nothing. Each
-  // returns its turn. An act refused only because the person's own lost
-  // change came first is worked out again, from what that one saved
-  // (answered); each time a read has found one more such change of theirs
-  // saved, and none is added meanwhile, so this ends.
-  after(act, run) {
-    const topic = this.topic, current = () => this.topic?.id === topic?.id;
-    const next = this.queue.then(async () => {
-      try { while (current() && !act.dead && await run() === AGAIN); } finally { this.pending = this.pending.filter(item => item !== act); }
-    });
-    this.queue = next.catch(error => { this.show(error?.message ?? String(error)); });
+  // The field's next save, when the person asked for one and nothing it
+  // waits on is out. At the person's act (ask), a save it waits on whose
+  // answer was lost is asked again first.
+  turn(field, ask = true) {
+    if (field.next) {
+      const busy = field.out ? field : this.blocker(field);
+      if (!busy) this.go(field);
+      else if (ask && busy.out.lost) this.post(busy, true);
+    }
     return this.queue;
   }
 
-  // The reader's part, fenced on its revision.
-  async submitNote(act, words) {
-    if (!this.topic || !this.mine()) return;
-    if (new TextEncoder().encode(words).length > NOTE_BYTES) { this.show(`Your part is at most ${NOTE_BYTES} bytes; shorten it and press Return again.`); return; }
-    const topic = this.topic, fence = act.fences.duty.fence;
-    return this.answered(act, topic, () => this.sendNote(topic, words, fence), { duty: fence }, 'duty', { duty: words }, result => {
-      if (result.actor_id !== this.reader) return null;
-      const participants = this.participants.map(person => person.actor_id === this.reader
-        ? { ...person, responsibility: result.note, responsibility_truncated: false, responsibility_revision: result.responsibility_revision } : person);
-      this.paint(Number.isSafeInteger(result.version) && result.version > this.topic.version ? { ...this.topic, version: result.version } : this.topic, participants);
-      return { duty: { value: result.note, fence: result.responsibility_revision } };
-    }, answer => {
-      const note = answer.participants?.find(person => person.actor_id === this.reader)?.responsibility;
-      return note ? `Your note was not confirmed. You are responsible for: ${note}.` : 'Your note was not confirmed. You have no note in this topic.';
-    }, 'Your note was not confirmed, and reading it again failed too.');
+  // Another field whose save is out and changes a key this field is fenced on.
+  blocker(field) {
+    const keys = Object.keys(field.start ?? {});
+    return Object.values(this.fields).find(other => other !== field && other.out && Object.keys(other.out.fences).some(key => keys.includes(key))) ?? null;
   }
 
-  // A change to the topic: args, fenced on the act's fields. sent: the line
-  // whose words it sends, if any.
-  submit(act, args, sent = null) {
-    if (!this.topic) return undefined;
-    const topic = this.topic, fields = Object.fromEntries(Object.entries(act.fences).map(([name, seen]) => [name, seen.fence]));
-    // What each field it changes would hold had it committed, by Core's
-    // rules: what it sends; the note, which a state starts afresh after a
-    // reopen; and who it waits on, which only a waiting topic keeps.
-    const left = { ...('state' in args && topic.state_message_id ? { note: '' } : {}), ...('state' in args && args.state !== 'waiting' ? { waiting_on: [] } : {}), ...args };
-    const would = Object.fromEntries(Object.keys(fields).filter(name => name in left && !alike(left[name], fields[name])).map(name => [name, left[name]]));
-    return this.answered(act, topic, () => this.send(topic, args, fields), fields, sent, would, result => {
-      this.advance(result, args);
-      const now = { title: result.title, archived: result.archived, state: result.state, state_note: result.note, waiting_on: result.waiting_on };
-      return Object.fromEntries(Object.keys(fields).map(name => { const value = HELD[name](now); return [name, { value, fence: value }]; }));
-    }, answer => ['The change was not confirmed. It stands as: ', ...this.standing(answer.topic), '.'],
-    'The change was not confirmed, and reading where the topic stands again failed too.');
+  // What the field's save changes, worked out from its start now; nothing
+  // when there is nothing to change (R4).
+  want(field) {
+    const { start, intent } = field, now = key => this.held(key).value;
+    if (field.line) return this.same(field) ? null : { [field.name === 'duty' ? 'note' : field.name]: field.line.value };
+    if (field.name === 'state') return intent === start.state.value || intent === now('state') ? null : { state: intent, keep_note: true };
+    if (field.name === 'archived') return intent === start.archived.value || intent === now('archived') ? null : { archived: intent };
+    const so = (state, list) => state === 'waiting' && [...intent].every(([id, on]) => list.includes(id) === on);
+    if (so(start.state.value, start.waiting_on.value) || so(now('state'), now('waiting_on'))) return null;
+    const list = [...start.waiting_on.value.filter(id => !intent.has(id)), ...[...intent].filter(([, on]) => on).map(([id]) => id)];
+    return { state: 'waiting', waiting_on: list, keep_note: true };
   }
 
-  // Core's answer to an act, settled on each field it was fenced on
-  // (fields: by name, what it read). sent: the line whose words went; would:
-  // what each field it changes would hold had it committed. apply(result)
-  // paints a committed answer and gives what Core saved, by field;
-  // unsure(answer) and unread word a change that was not confirmed, after
-  // one read of the topic. Answers AGAIN when the act is to be worked out
-  // again, after the person's own lost change that came first.
-  async answered(act, topic, go, fields, sent, would, apply, unsure, unread) {
-    let message = null, receipt = null, lost = false, again = false;
-    try {
-      receipt = await go();
-    } catch (error) {
-      message = error.message; lost = true;
+  go(field) {
+    field.next = false;
+    const args = field.start && this.want(field);
+    if (!args) { if (field.start) this.stop(field); return; }
+    if (field.name === 'duty' && new TextEncoder().encode(args.note).length > NOTE_BYTES) {
+      this.show(`Your part is at most ${NOTE_BYTES} bytes; shorten it and press Return again.`); return;
     }
-    if (this.topic?.id !== topic.id) return undefined;
-    const names = Object.keys(fields), refused = receipt?.error?.code === 'REVISION_CONFLICT';
-    const saved = receipt?.status === 'committed' && receipt.result?.topic_id === topic.id ? apply(receipt.result) : null;
-    if (saved) {
-      // Its paint has settled what the person's lost changes left (settle).
-      for (const name of names) if (saved[name]) this.landed(name, fields[name], saved[name], sent === name ? would[name] : undefined);
-    } else if (refused) {
-      // Read once, so whatever came first shows: the person's own lost
-      // change, found saved by this read, which this act then goes again
-      // from; or someone else's newer value, which shows beside the
-      // person's own words before anything of theirs goes over it.
-      const found = this.found, answer = await this.readAgain(topic);
-      const stale = answer ? names.filter(name => !alike(act.fences[name].fence, this.field(name).fence)) : names;
-      again = !!answer && this.found > found && !stale.length;
-      if (!again) {
-        this.overtaken(act, stale.length ? stale : names);
-        if (answer && sent) this.lines[sent]?.refused(act.fences[sent].fence);
-        message = sent ? kept(sent, answer ? this.field(sent).value : null) : CHANGED;
-      }
-    } else if (receipt?.error?.message) {
-      message = receipt.error.message;
-    } else {
-      // Read once, before the next act is weighed, so what this one saved is where its fields begin.
-      for (const name of Object.keys(would)) (this.lost[name] ??= []).push({ fence: fields[name], would: would[name] });
+    const fences = Object.fromEntries(Object.entries(field.start).map(([key, seen]) => [key, seen.fence]));
+    field.out = { id: crypto.randomUUID(), args, fences, again: false, lost: false };
+    this.post(field, false);
+  }
+
+  // Send the field's save; again: as the same command, to ask Core what became of it.
+  post(field, again) {
+    const out = field.out, topic = this.topic;
+    out.lost = false; out.again ||= again;
+    const run = (async () => {
+      let receipt = null, error = null;
+      try {
+        receipt = await (field.name === 'duty' ? this.sendNote(topic, out.args.note, out.fences.duty, out.id) : this.send(topic, out.args, out.fences, out.id));
+      } catch (caught) { error = caught ?? Error('The change was not confirmed.'); }
+      await this.answered(field, out, topic, receipt, error);
+    })().catch(error => this.show(error?.message ?? String(error)));
+    this.running.add(run);
+    run.then(() => this.running.delete(run));
+  }
+
+  // Core's answer to a field's save, or the attempt's error.
+  async answered(field, out, topic, receipt, error) {
+    if (this.topic?.id !== topic.id || this.fields[field.name] !== field || field.out !== out) return;
+    let message = null;
+    if (receipt?.status === 'committed' && receipt.result?.topic_id === topic.id) {
+      field.out = null;
+      const version = Number.isSafeInteger(receipt.result.version) ? receipt.result.version : Infinity;
+      this.moved(out.fences, this.apply(field, receipt.result, out.args), version);
+      if (this.kept?.name === field.name) this.kept = null;
+      if (field.line ? field.start && this.same(field) : !field.next) this.stop(field);
+    } else if (receipt?.error?.code === 'REVISION_CONFLICT') {
+      field.out = null; field.next = false;
       const answer = await this.readAgain(topic);
-      if (!lost) message = answer ? unsure(answer) : unread;
-    }
-    if (!again) {
-      if (!saved && this.lines[sent] && !this.lines[sent].same()) this.attention();
-      // A refusal over newer words stays said, past later changes, until that line's words are saved or put back.
-      if (sent && refused) this.kept = { name: sent, message };
-      else if (this.kept && (this.kept.name === sent || this.lines[this.kept.name]?.same() !== false)) this.kept = null;
+      if (field.line && field.start) {
+        if (answer) field.start = this.snapshot(field.name);
+        message = kept(field.name, answer ? this.held(field.name).value : null);
+        this.kept = { name: field.name, message };
+        this.attention();
+      } else {
+        message = field.line ? `${KEPT[field.name]}, so yours was not saved.` : CHANGED;
+        if (!field.line) this.stop(field);
+      }
+    } else if (receipt?.error?.message && receipt.status !== 'retryable') {
+      field.out = null; field.next = false; message = receipt.error.message;
+    } else {
+      out.lost = true;
+      // The person acted again while it was out: ask Core about it once now.
+      if (!out.again && (field.next || Object.values(this.fields).some(other => other.next && this.blocker(other) === field))) { this.post(field, true); return; }
+      const answer = await this.readAgain(topic);
+      message = error ? error.message : this.unconfirmed(field, answer);
     }
     this.show(message ?? this.kept?.message ?? 'Saved', !message && !this.kept);
     this.refresh();
-    return again ? AGAIN : undefined;
+    for (const other of Object.values(this.fields)) if (other.next) this.turn(other, false);
   }
 
-  // The person's own change to a field, fenced on from, is known saved as
-  // to ({ value, fence }): where its line's edit began, and every act made
-  // from that same value, go on from what Core saved. words: what it sent
-  // from that line, if anything.
-  landed(name, from, to, words) {
-    this.found += 1;
-    this.lines[name]?.landed(from, to, words);
-    for (const act of this.pending) if (act.fences[name] && alike(act.fences[name].fence, from)) act.fences[name] = to;
-  }
-
-  // A refusal of act, said now, over someone else's change to the stale
-  // fields: every act after it fenced on the same value of one of those was
-  // made before the person saw the newer value, so it is never sent.
-  overtaken(act, stale) {
-    for (const later of this.pending.slice(this.pending.indexOf(act) + 1)) {
-      if (stale.some(name => later.fences[name] && alike(later.fences[name].fence, act.fences[name].fence))) later.dead = true;
+  // The person's own save, committed as the topic's version, fenced on
+  // fences: every start read before it, on the same value, goes on from what
+  // Core saved (R3). A start read at that version or later already shows it,
+  // or what came after it.
+  moved(fences, saved, version) {
+    for (const field of Object.values(this.fields)) {
+      for (const [key, seen] of Object.entries(field.start ?? {})) {
+        if (key in fences && saved[key] && seen.version < version && alike(seen.fence, fences[key])) field.start[key] = { ...saved[key], version };
+      }
     }
   }
 
-  // What fresh data says of each change of the person's whose answer was
-  // lost: still unsaved while the field holds what it read; found saved when
-  // the field holds what it would have left; otherwise past, as someone
-  // else's change has come since. Either way the record goes.
-  settle() {
-    for (const [name, entries] of Object.entries(this.lost)) {
-      const now = this.field(name), waiting = entries.filter(entry => alike(now.fence, entry.fence));
-      const found = entries.find(entry => !alike(now.fence, entry.fence) && alike(now.value, entry.would));
-      if (waiting.length) this.lost[name] = waiting; else delete this.lost[name];
-      if (found) this.landed(name, found.fence, now, found.would);
+  // Paint a committed answer; what Core saved, by key.
+  apply(field, result, args) {
+    if (field.name === 'duty') {
+      if (result.actor_id !== this.reader) return {};
+      const { note, responsibility_revision: revision, version } = result;
+      // An answer that comes after a newer part was read leaves that one showing.
+      if (revision >= this.held('duty').fence) {
+        this.paint(Number.isSafeInteger(version) && version > this.topic.version ? { ...this.topic, version } : this.topic, this.participants.map(person =>
+          person.actor_id === this.reader ? { ...person, responsibility: note, responsibility_truncated: false, responsibility_revision: revision } : person));
+      }
+      return { duty: { value: note, fence: revision } };
     }
+    this.advance(result, args);
+    const now = { title: result.title, archived: result.archived, state: result.state, state_note: result.note, waiting_on: result.waiting_on };
+    return Object.fromEntries(Object.keys(HELD).map(key => { const value = HELD[key](now); return [key, { value, fence: value }]; }));
+  }
+
+  // A lost answer, said after one read (answer, or null when it failed).
+  unconfirmed(field, answer) {
+    if (field.name !== 'duty') return answer ? ['The change was not confirmed. It stands as: ', ...this.standing(answer.topic), '.']
+      : 'The change was not confirmed, and reading where the topic stands again failed too.';
+    const note = answer?.participants?.find(person => person.actor_id === this.reader)?.responsibility;
+    return !answer ? 'Your note was not confirmed, and reading it again failed too.'
+      : note ? `Your note was not confirmed. You are responsible for: ${note}.` : 'Your note was not confirmed. You have no note in this topic.';
+  }
+
+  // The connection is back: each save whose answer was lost goes again as
+  // the same command, once, and Core says what became of it.
+  reconnected() {
+    for (const field of Object.values(this.fields)) if (field.out?.lost) this.post(field, true);
+    return this.queue;
+  }
+
+  // Settles once no answer is awaited.
+  get queue() {
+    return (async () => { while (this.running.size) await Promise.all([...this.running]); })();
   }
 
   // Each line nobody is editing shows the topic as it stands; the chips always do.
   follow() {
     const controls = this.controls, topic = this.topic, reader = this.reader;
-    this.settle();
-    for (const line of Object.values(this.lines)) line.follow();
+    for (const field of Object.values(this.fields)) if (field.line && !field.start) field.line.value = this.held(field.name).value;
     const state = known(topic.state);
     if (controls.says) {
       for (const [value, button] of controls.states) lit(button, value === state);
@@ -600,7 +544,9 @@ export class TopicStatePanel {
     const ids = [...new Set([...this.participants.filter(person => typeof person?.actor_id === 'string' && person.active !== 0 && person.active !== false)
       .map(person => person.actor_id), ...said])];
     const order = [...ids.filter(id => id === reader), ...ids.filter(id => id !== reader)];
-    for (const id of order) if (!personChips.has(id)) personChips.set(id, chip(named(id, reader), () => this.toggle(id)));
+    // A tap adds or takes away that person, as the chip showed.
+    const toggle = id => () => this.tap('people', intent => new Map(intent ?? []).set(id, !HELD.waiting_on(this.topic).includes(id)));
+    for (const id of order) if (!personChips.has(id)) personChips.set(id, chip(named(id, reader), toggle(id)));
     for (const [id, button] of personChips) if (!order.includes(id)) { button.remove(); personChips.delete(id); }
     if (order.some((id, index) => people.children[index] !== personChips.get(id))) people.append(...order.map(id => personChips.get(id)));
     for (const id of order) lit(personChips.get(id), said.includes(id));
@@ -614,8 +560,8 @@ export class TopicStatePanel {
     this.notice.classList.toggle('quiet', quiet);
   }
 
-  // One read of the topic as it stands, never a second send. The panel keeps
-  // what it last showed when the read fails; the next commit repaints it.
+  // One read of the topic as it stands, to show it. The panel keeps what it
+  // last showed when the read fails; the next commit repaints it.
   async readAgain(topic) {
     if (!this.read) return null;
     try {
@@ -644,7 +590,7 @@ export class TopicStatePanel {
   }
 
   hide() {
-    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.lines = {}; this.kept = null; this.lost = {}; this.pending = []; this.show(null);
+    this.host.hidden = true; this.host.replaceChildren(); this.topic = null; this.controls = null; this.fields = {}; this.kept = null; this.show(null);
   }
 }
 

@@ -416,7 +416,10 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await p.send('Input.insertText', { text: ' more' }); await p.key('Enter');
     await until(async () => (await held()).state_note === 'Mine more', 'Core holds the next words');
     await until(async () => (await notice(p))?.join() === 'Saved,true', 'a quiet Saved, not a refusal');
-    assert.deepEqual(updates(p, before).map(u => u.args), [{ state: 'waiting', keep_note: true }, { note: 'My note' }, { note: 'Mine' }, { note: 'Mine more' }]);
+    // The lost save goes again as itself before the next words: Core answers it from what it stored.
+    const sent = updates(p, before);
+    assert.deepEqual(sent.map(u => u.args), [{ state: 'waiting', keep_note: true }, { note: 'My note' }, { note: 'Mine' }, { note: 'Mine' }, { note: 'Mine more' }]);
+    assert.equal(sent[3].operation_id, sent[2].operation_id, 'the same command');
     // The same for Your part.
     const mine = async () => (await view('topic', { topic_id: 't1' })).participants.find(item => item.actor_id === facts.actor)?.responsibility;
     const sets = () => p.calls.slice(before).filter(c => c.payload?.kind === 'responsibility.set').map(c => c.payload.args.note);
@@ -433,7 +436,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(() => p.evaluate(`[...document.querySelectorAll('#topic-state .responsibilities li')].some(li=>li.textContent.includes('Checks the lost answer'))`), 'the page read the parts again');
     await p.send('Input.insertText', { text: ' more' }); await p.key('Enter');
     await until(async () => (await notice(p))?.[0] !== DROPPED, 'the next Return is answered');
-    assert.deepEqual([await notice(p), await mine(), sets()], [['Saved', true], 'Mine more', ['Mine', 'Mine more']]);
+    assert.deepEqual([await notice(p), await mine(), sets()], [['Saved', true], 'Mine more', ['Mine', 'Mine', 'Mine more']]);
     assert.deepEqual(p.errors, []);
   });
 
@@ -551,15 +554,87 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await p.send('Input.insertText', { text: ' more' });
     const second = p.calls.length;
     await p.key('Enter');
-    await until(() => p.calls.slice(second).some(c => c.payload?.name === 'topic'), 'refused, the panel reads the topic once');
+    await until(() => p.calls.slice(second).some(c => c.payload?.kind === 'topic.update'), 'the lost save goes again, as itself');
     p.intercept(null);
     for (const entry of p.held.splice(0)) await p.release(entry);
     await until(async () => (await held()).state_note === 'Mine more', 'Core holds the next words');
     await until(async () => (await notice(p))?.join() === 'Saved,true', 'a quiet Saved');
-    assert.deepEqual(updates(p, before).map(u => [u.expected.topic_fields, u.args]),
-      [[{ note: 'Old' }, { note: 'Mine' }], [{ note: 'Old' }, { note: 'Mine more' }], [{ note: 'Mine' }, { note: 'Mine more' }]], 'refused over the person\'s own saved words, then sent again from them');
+    const sent = updates(p, before);
+    assert.deepEqual(sent.map(u => [u.expected.topic_fields, u.args]),
+      [[{ note: 'Old' }, { note: 'Mine' }], [{ note: 'Old' }, { note: 'Mine' }], [{ note: 'Mine' }, { note: 'Mine more' }]], 'the lost save asked again as itself, then the next words from what it saved');
+    assert.equal(sent[1].operation_id, sent[0].operation_id, 'the same command, which Core answers from what it stored');
     assert.deepEqual((await p.evaluate('window.noticesSaid')).filter(words => /first, so|Someone else/.test(words)), [], 'nothing of the person\'s is called someone else\'s');
     assert.equal(await p.evaluate(`document.querySelector('#topic-state-note').value`), 'Mine more');
+    assert.deepEqual(p.errors, []);
+  });
+
+  // The last review's worst paths (round 4), with real keys and taps: the
+  // person's lost save shows as saved in the page's live read while their
+  // next act is out. Nothing of theirs is called someone else's.
+  const watchNotices = p => p.evaluate(`(n=>{window.noticesSaid=[];new MutationObserver(()=>{if(!n.hidden)window.noticesSaid.push(n.textContent)}).observe(n,{childList:true,characterData:true,subtree:true,attributes:true})})(document.querySelector('#topic-state .notice'))`);
+  const lose = async (p, DROPPED) => {
+    await until(() => p.held.some(entry => entry.payload?.kind === 'topic.update'), 'the save reached Core; its answer is held');
+    await p.fail(p.held.splice(p.held.findIndex(entry => entry.payload?.kind === 'topic.update'), 1)[0]);
+    await until(async () => { for (const entry of p.held.splice(0)) await p.fail(entry); return (await notice(p))?.[0] === DROPPED; }, 'the lost answer said, after the panel read failed');
+  };
+  const liveRead = async (p, shown, label) => until(async () => {
+    for (const entry of p.held.filter(e => e.payload?.name === 'topic')) { p.held.splice(p.held.indexOf(entry), 1); await p.release(entry); }
+    return shown();
+  }, label);
+
+  await check('header the note saved with its answer and the panel read lost; more words on Return; the live read shows the first saved while the next is out', async () => {
+    const DROPPED = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+    await setState('header-rv1-old', { state: 'active', note: 'Old' });
+    const p = await page('header-rv1', null, true);
+    await openByPointer(p);
+    await watchNotices(p);
+    p.intercept(payload => payload?.name === 'topic' || payload?.kind === 'topic.update');
+    await p.point('#topic-state-note'); await p.key('a', 4); await p.send('Input.insertText', { text: 'A' });
+    const before = p.calls.length;
+    await p.key('Enter');
+    await lose(p, DROPPED);
+    assert.equal((await held()).state_note, 'A', 'Core saved the first words');
+    await p.send('Input.insertText', { text: ' more' });
+    await p.key('Enter');
+    await until(() => p.held.some(entry => entry.payload?.kind === 'topic.update'), 'the lost save goes again; its answer is held');
+    await liveRead(p, () => p.evaluate(`document.querySelector('#topic-description')?.textContent === 'A'`), 'the live read paints the first words');
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    await until(async () => (await held()).state_note === 'A more', 'Core holds the next words');
+    await until(async () => (await notice(p))?.join() === 'Saved,true', 'a quiet Saved');
+    const sent = updates(p, before);
+    assert.deepEqual(sent.map(u => [u.expected.topic_fields, u.args]), [[{ note: 'Old' }, { note: 'A' }], [{ note: 'Old' }, { note: 'A' }], [{ note: 'A' }, { note: 'A more' }]]);
+    assert.equal(sent[1].operation_id, sent[0].operation_id, 'asked again as the same command');
+    assert.deepEqual((await p.evaluate('window.noticesSaid')).filter(words => /first, so|Someone else/.test(words)), [], 'nothing of the person\'s is called someone else\'s');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header a tap with its answer and the panel read lost, then another tap; the live read shows the first while the next is out', async () => {
+    const DROPPED = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+    await setState('header-rv2-old', { state: 'active', note: 'Kept' });
+    const p = await page('header-rv2', null, true);
+    await openByPointer(p);
+    await watchNotices(p);
+    await p.evaluate(`document.querySelector('#topic-state [data-state=review]').scrollIntoView({block:'center'})`);
+    p.intercept(payload => payload?.name === 'topic' || payload?.kind === 'topic.update');
+    const before = p.calls.length;
+    await p.point('#topic-state [data-state=done]');
+    await lose(p, DROPPED);
+    assert.equal((await held()).state, 'done', 'Core saved Done');
+    await p.point('#topic-state [data-state=review]');
+    await until(() => p.held.some(entry => entry.payload?.kind === 'topic.update'), 'the lost tap goes again; its answer is held');
+    await liveRead(p, async () => (await lit(p))[0] === 'Done', 'the live read paints Done');
+    p.intercept(null);
+    for (const entry of p.held.splice(0)) await p.release(entry);
+    await until(async () => (await held()).state === 'review', 'Core holds Ready for review');
+    await until(async () => (await notice(p))?.join() === 'Saved,true' && (await lit(p))[0] === 'Ready for review', 'a quiet Saved, and the chip lit');
+    const sent = updates(p, before);
+    assert.deepEqual(sent.map(u => [u.expected.topic_fields, u.args]),
+      [[{ state: 'active', waiting_on: [] }, { state: 'done', keep_note: true }], [{ state: 'active', waiting_on: [] }, { state: 'done', keep_note: true }],
+        [{ state: 'done', waiting_on: [] }, { state: 'review', keep_note: true }]]);
+    assert.equal(sent[1].operation_id, sent[0].operation_id, 'asked again as the same command');
+    assert.equal((await held()).state_note, 'Kept', 'no tap sent the note');
+    assert.deepEqual((await p.evaluate('window.noticesSaid')).filter(words => /first, so|Someone else/.test(words)), [], 'nothing of the person\'s is called someone else\'s');
     assert.deepEqual(p.errors, []);
   });
 

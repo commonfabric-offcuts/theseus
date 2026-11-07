@@ -1127,6 +1127,31 @@ test('a topic page says where it stands, saves a tapped state or person fenced o
   assert.equal(people.parent.hidden, true, 'a done topic offers nobody to wait on');
 });
 
+// A tap whose answer was lost goes again when the browser is back online, as
+// the same command: the same operation id, so Core runs it at most once.
+for (const [how, back] of [['online', f => { for (const [, name, handler] of f.events.filter(([kind]) => kind === 'window-handler')) if (name === 'online') handler(); }],
+  ['on the live feed', f => f.live.emit({ kind: 'state', state: 'live' })]]) {
+  test(`a topic page sends a lost tap again when it is back ${how}, as the same operation`, async () => {
+    const f = fixture();
+    f.live = stream(); f.useLive(f.live);
+    pickerApi(f);
+    await f.initialize();
+    const panel = f.get('topic-state');
+    const chip = words => deep(panel).find(node => String(node.className ?? '').split(' ').includes('choice-chip') && node.textContent === words);
+    const core = f.api.command, envelopes = [];
+    let offline = true;
+    f.api.command = async envelope => { envelopes.push(JSON.parse(JSON.stringify(envelope))); if (offline && envelope.kind === 'topic.update') throw Error('Connection interrupted.'); return core(envelope); };
+    await chip('Done').onclick();
+    assert.deepEqual([envelopes.length, f.pickers.topic.state ?? 'active'], [1, 'active'], 'lost: Core never saw it');
+    offline = false;
+    back(f);
+    await new Promise(resolve => setImmediate(resolve)); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(envelopes.length, 2, 'sent again once');
+    assert.deepEqual(envelopes[1], envelopes[0], 'the same envelope, operation id and all');
+    assert.equal(f.pickers.topic.state, 'done');
+  });
+}
+
 // Item 86: every outcome's questions are listed on the Outcomes home only; an
 // outcome's own page says its questions once, in "Where it stands".
 const waitingPage = async (href, waiting) => {

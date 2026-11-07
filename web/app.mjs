@@ -989,12 +989,14 @@ function enableFreshness(checkpoint) {
     } });
   registry.cleanup.foregroundListeners.add(() => freshness.interrupt());
   // Each new commit asks for a pass; while the stream is down the timer resumes.
+  // Back live, Topic settings asks Core about a save whose answer was lost.
   live?.listen(event => {
+    if (event.state === 'live') topicState?.reconnected();
     if (event.kind === 'commit' || event.state === 'live') freshness.request();
     else if (event.state === 'down' || event.state === 'unavailable') freshness.schedule(freshness.delay ?? 500);
   });
   document.addEventListener('visibilitychange', () => freshness.setVisible(document.visibilityState === 'visible'));
-  window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); });
+  window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
   freshness.setVisible(document.visibilityState === 'visible');
 }
 let startup = null;
@@ -1070,14 +1072,15 @@ async function initialize() {
   topicState = new TopicStatePanel({ host: $('topic-state'), reader: bootstrap.actor, refresh: () => freshness?.request(), painted: paintHeader, read: readTopic,
     // Words not saved are shown, in Topic settings, even when leaving it was what saved them.
     attention: () => { if (!$('topic-settings').open) settings.open(); },
-    send: (current, args, fields) => {
+    // Each save names its operation: sent again, it is the same command, and Core answers what it holds for it.
+    send: (current, args, fields, operation_id) => {
       const { authority_id, authority_epoch } = bootstrap.authority;
-      return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'topic.update',
+      return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id, kind: 'topic.update',
         target: { topic_id: current.id }, expected: { topic_fields: fields, authority: { authority_id, authority_epoch } }, args });
     },
-    sendNote: (current, note, revision) => {
+    sendNote: (current, note, revision, operation_id) => {
       const { authority_id, authority_epoch } = bootstrap.authority;
-      return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'responsibility.set',
+      return api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id, kind: 'responsibility.set',
         target: { topic_id: current.id }, expected: { responsibility_revision: revision, authority: { authority_id, authority_epoch } }, args: { note } });
     } });
   topicState.paint(topic, result.participants);
