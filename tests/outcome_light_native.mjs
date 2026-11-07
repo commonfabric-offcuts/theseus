@@ -224,4 +224,44 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(small.errors, []);
     await small.close();
   });
+
+  await check('light a control on the card that holds keyboard focus keeps it when a commit repaints the card, and focus elsewhere stays where it is', async () => {
+    await ensure('light-keys', 'Keyboard outcome', { id: 'light-keys-topic', title: 'Keys topic' }, 'Which key first?');
+    const p = await page('light-keys', null, true, { url: facts.origin + '/?workspace=light-keys' });
+    await until(() => p.evaluate(`!document.querySelector('#outcome-standing').hidden && Boolean(document.querySelector('#outcome-standing .standing-last a'))`), 'the card with its Last line');
+    let posts = 0;
+    // An agent posts in the outcome's topic; the card is drawn anew from the commit.
+    const commit = async () => {
+      await p.evaluate(`window.lightKeysCard=document.querySelector('#outcome-standing .standing-info')`);
+      await control({ method: 'agent_message', operation_id: 'light-keys-post-' + (++posts), body: 'Post ' + posts, topic_id: 'light-keys-topic', source: 'topic' });
+      await until(() => p.evaluate(`document.querySelector('#outcome-standing .standing-info')!==window.lightKeysCard`), 'the commit repaints the card');
+    };
+    const held = () => p.evaluate(`(()=>{const a=document.activeElement,s=document.querySelector('#outcome-standing');
+      return {tag:a?.tagName??null,inCard:s.contains(a),info:a===s.querySelector('.standing-info'),last:a===s.querySelector('.standing-last a'),
+        fact:a===s.querySelector('#standing-more .standing-facts a'),expanded:s.querySelector('.standing-info').getAttribute('aria-expanded'),more:!s.querySelector('#standing-more').hidden}})()`);
+    await p.evaluate(`document.activeElement?.blur?.()`);
+    let reached = false;
+    for (let n = 0; n < 60 && !reached; n++) { await p.key('Tab'); reached = (await held()).info; }
+    assert.ok(reached, 'Tab reaches the ⓘ');
+    await p.key('Enter');
+    await until(async () => (await held()).more, 'Enter opens what the light is made of');
+    assert.deepEqual(await held(), { tag: 'BUTTON', inCard: true, info: true, last: false, fact: false, expanded: 'true', more: true });
+    await commit();
+    assert.deepEqual(await held(), { tag: 'BUTTON', inCard: true, info: true, last: false, fact: false, expanded: 'true', more: true }, 'the ⓘ keeps focus, still open, after the repaint');
+    // Tab on from the ⓘ: the Last line's link, then a fact's link, each keeps focus across a repaint.
+    await p.key('Tab');
+    assert.equal((await held()).last, true, 'Tab goes on to the Last line\'s link');
+    await commit();
+    assert.equal((await held()).last, true, 'the Last line\'s link keeps focus after the repaint');
+    await p.key('Tab');
+    assert.equal((await held()).fact, true, 'Tab goes on to a fact\'s link');
+    await commit();
+    assert.equal((await held()).fact, true, 'the fact\'s link keeps focus after the repaint');
+    // Focus outside the card is never taken by a repaint.
+    await p.evaluate(`document.activeElement.blur()`);
+    await commit();
+    assert.deepEqual(await held(), { tag: 'BODY', inCard: false, info: false, last: false, fact: false, expanded: 'true', more: true }, 'focus outside the card stays outside');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }

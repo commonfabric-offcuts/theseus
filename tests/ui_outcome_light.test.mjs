@@ -31,6 +31,7 @@ class Element {
   all() { return this.children.flatMap(node => node instanceof Element ? [node, ...node.all()] : []); }
   get text() { return (this.textContent ?? '') + this.children.map(node => node instanceof Element ? node.text : String(node)).join(''); }
   getBoundingClientRect() { return this.box; }
+  focus() { globalThis.document.activeElement = this; }
 }
 function dom(t, { hover = true, width = 1440, height = 900 } = {}) {
   const previous = { document: globalThis.document, window: globalThis.window };
@@ -292,6 +293,38 @@ test('a card that could not read says so with Try again, its reasons behind the 
     { outcome: 'Pitch deck' });
   assert.deepEqual(visible(), ['Where it standsi', 'Done · reached yesterday', 'tony said it was reached']);
   assert.equal(more().text, 'tony said Pitch deck was reached, yesterday at 4:10 PM:');
+});
+
+test('a control on the card that held focus keeps it when a commit repaints the card; focus anywhere else stays where it is', t => {
+  dom(t);
+  const host = new Element('section'), elsewhere = new Element('input');
+  const answer = { light: light('waiting', { kind: 'asks', count: 1 }), lead: { kind: 'asks', count: 1 },
+    facts: [{ kind: 'ask', topic_id: 't-notes', title: 'Speaker notes', title_truncated: false, by: 'fable', ms: at(6, 6, 20) }], also: [] };
+  const paint = () => paintStanding(host, answer, { open() {}, retry() {} });
+  const find = test => host.all().find(test);
+  const controls = {
+    'the ⓘ': () => find(node => node.className === 'standing-info'),
+    'the Last line\'s link': () => find(node => node.tag === 'a' && node.parent.className === 'standing-last'),
+    'a fact\'s link': () => find(node => node.tag === 'a' && node.parent.tag === 'li'),
+  };
+  paint();
+  for (const [name, control] of Object.entries(controls)) {
+    const before = control();
+    before.focus(); paint();
+    assert.notEqual(control(), before, `${name} is drawn anew`);
+    assert.equal(document.activeElement, control(), `${name} keeps focus across the repaint`);
+  }
+  // Try again, on a card that could not read, keeps it as well.
+  paintStandingFailed(host, () => {});
+  const retry = () => find(node => node.className === 'retry');
+  const was = retry(); was.focus(); paintStandingFailed(host, () => {});
+  assert.notEqual(retry(), was);
+  assert.equal(document.activeElement, retry(), 'Try again keeps focus across the repaint');
+  // Focus outside the card, or nowhere, is left alone.
+  elsewhere.focus(); paint();
+  assert.equal(document.activeElement, elsewhere, 'a repaint never takes focus from outside the card');
+  document.activeElement = null; paint();
+  assert.equal(document.activeElement, null, 'nor gives it when nothing held it');
 });
 
 test('"Also waiting on you" names other outcomes\' questions once, in the sidebar\'s order, as each row counts them', t => {

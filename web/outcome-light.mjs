@@ -41,23 +41,23 @@ const followed = (link, open) => event => {
   event.preventDefault(); open(link.topic, link.text);
 };
 // One fact as a list item: a topic is a link and its detail follows, muted, after " — ".
-function factItem(fact, open) {
+function factItem(fact, open, hold) {
   const parts = factParts(fact);
   if (!parts.link) return element('li', {}, ...partsNodes(parts.text));
   const name = parts.link.topic && open
-    ? element('a', { href: '?topic=' + encodeURIComponent(parts.link.topic), textContent: parts.link.text, onclick: followed(parts.link, open) })
+    ? hold('fact ' + parts.link.topic, element('a', { href: '?topic=' + encodeURIComponent(parts.link.topic), textContent: parts.link.text, onclick: followed(parts.link, open) }))
     : element('span', { textContent: parts.link.text });
   return element('li', {}, name, element('span', { className: 'muted' }, ' — ', ...partsNodes(parts.detail)));
 }
 // The Last line: "Last: fable in “No header bar, and the side rail…”", the
 // title one line long and cut with an ellipsis where it does not fit. A topic
 // is a link when open is given; plain words otherwise (the peek).
-function lastNode(answer, open, tag = 'p') {
+function lastNode(answer, open, tag = 'p', hold = (key, node) => node) {
   const line = lastLine(answer);
   if (!line) return null;
   if (!line.link) return element(tag, { className: 'standing-last' }, ...partsNodes(line.text));
   const name = line.link.topic && open
-    ? element('a', { href: '?topic=' + encodeURIComponent(line.link.topic), textContent: line.link.text, onclick: followed(line.link, open) })
+    ? hold('last', element('a', { href: '?topic=' + encodeURIComponent(line.link.topic), textContent: line.link.text, onclick: followed(line.link, open) }))
     : element('span', { textContent: line.link.text });
   name.className = 'title';
   return element(tag, { className: 'standing-last' },
@@ -68,19 +68,25 @@ function lastNode(answer, open, tag = 'p') {
 // and time, and the Last line. That is the whole card; what the light is made
 // of (the lead, the facts, the also-lines and where it comes from) opens in
 // place from the small ⓘ, and stays open across the repaint on each commit.
+// A control on the card that held focus (the ⓘ, a topic's link, Try again)
+// keeps it when it is drawn again; focus anywhere else is left alone.
 export function paintStanding(host, answer, { open, retry, outcome = '' } = {}) {
   const light = answer?.light ?? null, facts = Array.isArray(answer?.facts) ? answer.facts : [], also = Array.isArray(answer?.also) ? answer.also : [];
   const unreadable = !light || light.light === null;
+  const focused = globalThis.document.activeElement ?? null;
+  const held = focused && host.contains(focused) ? focused.dataset?.hold : undefined;
+  let refocus = null;
+  const hold = (key, node) => { node.dataset.hold = key; if (key === held) refocus ??= node; return node; };
   const more = [];
   const lead = leadWords(answer?.lead, facts, outcome);
   if (lead.length) more.push(element('p', { className: 'lead' }, ...partsNodes(lead)));
-  if (facts.length) more.push(element('ul', { className: 'standing-facts' }, ...facts.map(fact => factItem(fact, open))));
+  if (facts.length) more.push(element('ul', { className: 'standing-facts' }, ...facts.map(fact => factItem(fact, open, hold))));
   for (const line of also) more.push(element('p', { className: 'also' }, ...partsNodes(alsoWords(line))));
   // A reached outcome's topics are closed and readable: nothing more to say about them.
   if (!unreadable && answer?.lead?.kind !== 'reached') more.push(element('p', { className: 'muted source', textContent: SOURCE }));
   const shown = host.dataset.more === 'open';
   const details = element('div', { id: 'standing-more', className: 'standing-more', hidden: !shown }, ...more);
-  const info = element('button', { type: 'button', className: 'standing-info', textContent: 'i', title: 'What this is made of' });
+  const info = hold('info', element('button', { type: 'button', className: 'standing-info', textContent: 'i', title: 'What this is made of' }));
   info.setAttribute('aria-label', 'What this is made of'); info.setAttribute('aria-controls', 'standing-more');
   info.setAttribute('aria-expanded', String(shown));
   info.onclick = () => {
@@ -92,11 +98,12 @@ export function paintStanding(host, answer, { open, retry, outcome = '' } = {}) 
     element('div', { className: 'standing-head' }, element('h2', { id: 'standing-heading', textContent: 'Where it stands' }), info),
     element('p', { className: 'state-line' }, lightNode(light), element('span', {}, ...partsNodes(lightName(light)))),
   ];
-  const last = unreadable ? null : lastNode(answer, open);
+  const last = unreadable ? null : lastNode(answer, open, 'p', hold);
   if (last) children.push(last);
-  if (unreadable && retry) children.push(element('button', { type: 'button', className: 'retry', textContent: 'Try again', onclick: retry }));
+  if (unreadable && retry) children.push(hold('retry', element('button', { type: 'button', className: 'retry', textContent: 'Try again', onclick: retry })));
   host.replaceChildren(...children, details);
   host.hidden = false;
+  refocus?.focus();
 }
 
 // The panel when its read failed: no light, no guess, and a way to try again.
