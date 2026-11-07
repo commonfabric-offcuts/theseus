@@ -54,9 +54,3 @@ export function paintTopicHeader({ title, subtitle, gear }, topic, reader, { set
   paintSubtitle(subtitle, topic, reader, doc);
   gear.hidden = !settings;
 }
-
-// A page that is not a topic: its own description, and no gear.
-export function paintPageHeader({ subtitle, gear }, description) {
-  subtitle.replaceChildren(); subtitle.textContent = description; subtitle.hidden = false;
-  gear.hidden = true;
-}

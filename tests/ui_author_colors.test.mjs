@@ -225,12 +225,12 @@ test('each swatch shows its name tag\'s color on the picker\'s background, with 
 });
 
 // A tap on a phone leaves no blue wash over the picker, the agent's card whose
-// name opened it, or a participant's name; the focus ring still shows.
+// name opened it, or a person's pill; the focus ring still shows.
 test('the picker and the names that open it paint no tap highlight, and keep their focus ring', () => {
   const at = css.indexOf('-webkit-tap-highlight-color:transparent');
   assert.ok(at >= 0, 'aim.css turns the tap highlight off');
   const selectors = css.slice(css.lastIndexOf('}', at) + 1, css.lastIndexOf('{', at)).replace(/\/\*[\s\S]*?\*\//g, '').split(',').map(s => s.trim());
-  assert.deepEqual(selectors, ['.color-picker button', '.message-card.agent-card', '.chip .chip-name']);
+  assert.deepEqual(selectors, ['.color-picker button', '.message-card.agent-card', '.person-pill .pill-name']);
   assert.match(css, /button:focus-visible[^{]*\{outline:2px solid var\(--focus\)/, 'every button keeps its focus ring');
   assert.doesNotMatch(css, /\.color-picker[^{}]*:focus[^{}]*\{[^}]*outline:\s*(none|0)/, 'the picker never hides it');
 });

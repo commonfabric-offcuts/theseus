@@ -53,7 +53,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
   // person writes next to the whole topic wakes the participants, not it.
   await check('work a teammate who has written in a topic can say where it stands, and is not woken by later messages', async () => {
     const agent = 'fixture-planning-agent', participant = 'fixture-notebook-agent';
-    const chips = p => p.evaluate(`[...document.querySelectorAll('#participants .chip')].map(chip=>chip.textContent)`);
+    const chips = p => p.evaluate(`[...document.querySelectorAll('#participants .person-pill')].map(chip=>chip.textContent)`);
     const line = p => p.evaluate(`document.querySelector('#topic-state .state-line')?.textContent ?? ''`);
     const p = await page('work-writer-says', null, true);
     await until(async () => (await chips(p)).length > 0, 'participants drawn');
@@ -66,6 +66,8 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     assert.deepEqual([said.result.state, said.result.state_by], ['review', agent]);
     const shown = await until(async () => { const words = await line(p); return words.includes('Ready to read') && words; }, 'the page shows where it stands');
     assert.match(shown, /^Ready for review · Ready to read — fixture-planning-agent, /);
+    // The top of the topic says it too: the state word, then the note.
+    await until(() => p.evaluate(`document.querySelector('#topic-description').textContent === 'Ready for review Ready to read'`), 'the subtitle shows the state and the note');
     assert.equal((await chips(p)).some(words => words.includes(agent)), false, 'still not listed among the participants');
     assert.equal((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), false, 'nor in Core');
     const before = await control({ method: 'deliveries_to', actors: [agent, participant] });
@@ -73,7 +75,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${next.result.message_id}"]'))`), 'the next message lands');
     const after = await control({ method: 'deliveries_to', actors: [agent, participant] });
     assert.deepEqual([after[agent] - before[agent], after[participant] - before[participant]], [0, 1], 'the participant is woken; the writer is not');
-    await p.evaluate(`document.querySelector('#topic-state').scrollIntoView({block:'center'})`);
+    await p.evaluate(`scrollTo(0,0)`);
     await shot(p, 'work-writer-says');
     assert.deepEqual(p.errors, []);
     await p.close();

@@ -175,7 +175,8 @@ export class PeoplePanel {
       if (named) this.namers.set(person.actor_id, named);
       const className = this.pill ? ['person-pill', this.pill(person)].filter(Boolean).join(' ') : 'chip';
       const chip = named ? element('span', { className }, named)
-        : element('span', { className }, this.pill ? element('span', { className: 'pill-name', textContent: person.actor_id }) : person.actor_id);
+        : this.pill ? element('span', { className }, element('span', { className: 'pill-name', textContent: person.actor_id }))
+        : element('span', { className, textContent: person.actor_id });
       // Whether this agent's wakes are getting through, when they are not.
       const light = this.light(person);
       if (light) chip.append(element('span', { className: 'wake-light', textContent: ` · ${light}` }));

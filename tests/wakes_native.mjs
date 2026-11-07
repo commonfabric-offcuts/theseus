@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 // outcomes page as soon as the person goes back to it.
 export async function wakesChecks({ check, page, until, control, view, facts, shot }) {
   const agent = facts.agent;
-  const chip = `[...document.querySelectorAll('#participants .chip')].find(c=>c.textContent.startsWith(${JSON.stringify(agent)}))`;
+  const chip = `[...document.querySelectorAll('#participants .person-pill')].find(c=>c.textContent.startsWith(${JSON.stringify(agent)}))`;
   const readChip = p => p.evaluate(`(()=>{const c=${chip};const l=c?.querySelector('.wake-light');if(!c)return null;const s=l&&getComputedStyle(l),b=getComputedStyle(c);
     return {text:c.textContent,light:l?.textContent??null,color:s?.color??null,warn:getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(),
       ink:getComputedStyle(c).color,lightBorder:s?[s.borderLeftWidth,s.borderLeftStyle]:null,chipLeft:[b.borderLeftWidth,b.borderTopWidth]}})()`);

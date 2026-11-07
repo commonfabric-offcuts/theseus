@@ -1,15 +1,21 @@
 import assert from 'node:assert/strict';
 
 // What each participant is responsible for, in the real browser against the
-// real server: an agent's note appears beside where the topic stands without a
-// reload, and the reader says their own from the state form, by pointer and
-// typing, and sees it as "you".
+// real server: an agent's note appears beside where the topic stands, in
+// Topic settings, without a reload, and the reader says their own from the
+// form there, by pointer and typing, and sees it as "you".
 export async function dutiesChecks({ check, page, until, control, view, facts, shot }) {
-  const listed = p => p.evaluate(`[...document.querySelectorAll('#topic-state .responsibilities li')].filter(li=>!li.closest('[hidden]')).map(li=>li.textContent)`);
+  // Only what the person can see: the list inside the open Topic settings.
+  const listed = p => p.evaluate(`[...document.querySelectorAll('dialog#topic-settings[open] #topic-state .responsibilities li')].filter(li=>!li.closest('[hidden]')).map(li=>li.textContent)`);
+  const settings = async p => {
+    await p.point('#settings-open');
+    await until(() => p.evaluate(`document.querySelector('#topic-settings').open`), 'Topic settings open');
+  };
   const notes = async () => Object.fromEntries((await view('topic', { topic_id: 't1' })).participants.map(item => [item.actor_id, [item.responsibility, item.responsibility_revision]]));
 
   await check('duties an agent\'s note appears under the state line as it is set', async () => {
     const p = await page('duties-live', null, true);
+    await settings(p);
     assert.deepEqual(await listed(p), [], 'no notes, no list');
     await control({ method: 'responsibility', operation_id: 'duties-agent-note', note: 'Reviews the copy' });
     const shown = await until(async () => { const items = await listed(p); return items.length && items; }, 'the agent note arrives live');
@@ -22,9 +28,7 @@ export async function dutiesChecks({ check, page, until, control, view, facts, s
 
   await check('duties the reader says what they do from the state form and sees it as you', async () => {
     const p = await page('duties-own', null, true);
-    await p.evaluate(`document.querySelector('#topic-state details.state-form summary').scrollIntoView({block:'center'})`);
-    await p.point('#topic-state details.state-form summary');
-    await until(() => p.evaluate(`document.querySelector('#topic-state details.state-form').open`), 'state form open');
+    await settings(p);
     await p.evaluate(`document.querySelector('#topic-responsibility').scrollIntoView({block:'center'})`);
     await p.point('#topic-responsibility');
     assert.equal(await p.evaluate('document.activeElement?.id'), 'topic-responsibility');

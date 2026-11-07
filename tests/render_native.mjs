@@ -159,7 +159,8 @@ const legible = `(() => {
   const problems = [], pen = document.createElement('canvas').getContext('2d');
   for (const mark of document.querySelectorAll('.topic-state.mine')) {
     const box = mark.getBoundingClientRect(), style = getComputedStyle(mark), text = mark.firstChild;
-    if (mark.closest('[hidden]') || style.display === 'none') continue;
+    // A mark not drawn, such as one in Topic settings while it is shut, shows no words to cut.
+    if (mark.closest('[hidden]') || style.display === 'none' || !mark.getClientRects().length) continue;
     if (text?.nodeType !== Node.TEXT_NODE || !text.data.startsWith('Waiting on you')) { problems.push({ kind: 'a state waiting on the reader does not lead with you', at: mark.textContent.slice(0, 40) }); continue; }
     const range = document.createRange(), at = 'Waiting on '.length;
     range.setStart(text, at); range.setEnd(text, at + 3);
@@ -169,7 +170,7 @@ const legible = `(() => {
       (mark.scrollWidth > mark.clientWidth + 1 ? pen.measureText('\u2026').width : 0);
     if (range.getBoundingClientRect().right > end + 0.5) problems.push({ kind: 'you is cut from a state', at: text.data.slice(0, 40) });
   }
-  for (const mark of document.querySelectorAll('#topic-state .topic-state')) {
+  for (const mark of document.querySelectorAll('#topic-description .topic-state')) {
     if (mark.scrollWidth > mark.clientWidth + 1) problems.push({ kind: 'the topic page cuts its own state short', at: mark.textContent.slice(0, 40) });
   }
   return problems;
@@ -219,7 +220,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
     const topicRows = [...markedIds.map(id => `#messages [data-id="${id}"]`), '#topics [aria-current=page]', '#workspaces [aria-current=page]', '#topics [data-topic-id="render-other"]', '#topics [data-topic-id="render-crowd-0"]', '#topics [data-topic-id="render-crowd-1"]', '#done-topic-list [data-topic-id="render-crowd-2"]', '#topics [data-topic-id="render-url"]'];
     // A done topic is listed under the Done line, which the person opens.
     const listed = "(id => document.querySelector(':is(#topics, #done-topic-list) [data-topic-id=\"' + id + '\"] .unread-count'))";
-    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(${listed}) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-state .topic-state.mine')) && ${JSON.stringify(markedIds)}.every(id => document.querySelector('#messages [data-id="' + id + '"] .unread-mark'))`],
+    for (const [route, url, rows, ready] of [['topic', origin + '/?topic=t1', topicRows, `${JSON.stringify(counted)}.every(${listed}) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count')) && Boolean(document.querySelector('#topics [data-topic-id="render-crowd-0"] .topic-state')) && Boolean(document.querySelector('#topic-description .topic-state.mine')) && ${JSON.stringify(markedIds)}.every(id => document.querySelector('#messages [data-id="' + id + '"] .unread-mark'))`],
       // A plain state on the row shaded as the current topic.
       ['done', origin + '/?topic=render-crowd-2', ['#done-topic-list [aria-current=page]'], `${JSON.stringify(counted.filter(id => id !== 'render-crowd-2'))}.every(${listed}) && Boolean(document.querySelector('#done-topic-list [aria-current=page] .topic-state[data-state=done]')) && Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`],
       ['outcomes', origin + '/', ['#workspaces [data-workspace-id="w1"]'], `Boolean(document.querySelector('#workspaces [data-workspace-id="w1"] .unread-count'))`]]) {
@@ -251,7 +252,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             // Done line and the outcome's Notebook pages among them) fills the
             // first screen, and the person scrolls on to the topic's header.
             if (row === null) await p.evaluate(`scrollTo(${arrived[0]}, ${arrived[1]})`);
-            if (row === null && route === 'topic') await p.evaluate(`(state => state.getBoundingClientRect().bottom > innerHeight && state.scrollIntoView({ block: 'center' }))(document.querySelector('#topic-state'))`);
+            if (row === null && route === 'topic') await p.evaluate(`(state => state.getBoundingClientRect().bottom > innerHeight && state.scrollIntoView({ block: 'center' }))(document.querySelector('#topic-description'))`);
             if (row === null) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
             if (row !== null) assert.ok(await p.evaluate(`(() => { const row = document.querySelector(${JSON.stringify(row)}); row?.scrollIntoView({ block: 'center', inline: 'center' }); return Boolean(row); })()`), `${row} is drawn on the ${route} page`);
             const state = `${route}-${scheme}-${layout}-${row === null ? 'rest' : 'hover-' + row.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
@@ -281,7 +282,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             // The row under the pointer is in view, so the sweep judges its pills.
             if (box) assert.ok(answer.pills.some(pill => pill.left >= box.left - 1 && pill.top >= box.top - 1 && pill.left + pill.width <= box.right + 1 && pill.top + pill.height <= box.bottom + 1), `${state}: the sweep judged the hovered row's pills`);
             // The topic's own state is judged at rest, never skipped as out of view.
-            if (route === 'topic' && row === null) assert.ok(answer.pills.some(pill => pill.at.startsWith('#topic-state ')), `${state}: the sweep judged the topic's own state`);
+            if (route === 'topic' && row === null) assert.ok(answer.pills.some(pill => pill.at.startsWith('#topic-description ')), `${state}: the sweep judged the topic's own state`);
             keep(state, answer, image, await p.evaluate(legible));
           }
           // The Reader's Mark unread button, not pressed and then pressed, on a

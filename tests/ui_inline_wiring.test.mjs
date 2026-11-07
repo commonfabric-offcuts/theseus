@@ -98,7 +98,11 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(Object.assign(scope, overrides));
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,STATES,stateLabel,waitsOn}; })())', context);
+  const headerSource = readFileSync(new URL('../web/topic-header.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + headerSource + '; return {paintTopicHeader}; })())', context);
+  const settingsSource = readFileSync(new URL('../web/topic-settings.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + settingsSource + '; return {TopicSettings}; })())', context);
   const attentionSource = readFileSync(new URL('../web/attention.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + attentionSource + '; return {Attention,paintSent}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
@@ -663,6 +667,8 @@ test('a message sent by name opens where it can even when the page never started
 // The pickers: who may change a topic's participants or an outcome's team gets
 // a field fed by the directory, and the composer offers who can be sent to.
 const walk = node => node.children.flatMap(child => [child, ...walk(child)]);
+// A person in the topic's people: one pill, at the bottom of the page.
+const isPill = node => String(node.className ?? '').split(' ').includes('person-pill');
 // A small stand-in for Core: participation.set, workspace.member_set and
 // topic.update check the revision as Core does, apply the change and advance
 // it. A topic.update answers with the topic as it now stands, as Core does.
@@ -756,8 +762,8 @@ test('a topic\'s creator who does not own the outcome manages its participants; 
   await f.initialize();
   const nodes = walk(f.get('participants'));
   assert.deepEqual([nodes.find(node => node.className === 'people-add').hidden, nodes.some(node => node.textContent === '×')], [true, false]);
-  // A chip's words, as the DOM's textContent gives them: an agent's name is a button inside it.
-  assert.deepEqual(nodes.filter(node => node.className === 'chip').map(node => node.textContent + node.children.map(child => child.textContent ?? child).join('')), ['fixture-person', 'fable']);
+  // A pill's words, as the DOM's textContent gives them: the name is a span inside it, an agent's a button.
+  assert.deepEqual(nodes.filter(isPill).map(node => node.children.map(child => child.textContent ?? child).join('')), ['fixture-person', 'fable']);
 });
 
 test('the directory and the team behind the composer are read again when someone starts naming', async () => {
@@ -1403,19 +1409,21 @@ test('an agent in the participants is a button that opens its color picker, in i
   Object.assign(f.views, { topic: f.topic, participants: [{ actor_id: 'dan', kind: 'human' }, { actor_id: 'fable', kind: 'agent' }, { actor_id: 'fixture-person', kind: 'human' }] });
   f.paintViews('topic');
   const chips = f.get('participants').children[0].children;
-  const names = chips.map(chip => chip.children[0] ?? chip.textContent);
-  assert.deepEqual(names.map(n => typeof n === 'string' ? n : n.textContent), ['dan', 'fable', 'fixture-person']);
+  const names = chips.map(chip => chip.children[0]);
+  assert.deepEqual(names.map(n => n.textContent), ['dan', 'fable', 'fixture-person']);
   const agent = names[1];
-  assert.equal(typeof names[0], 'string', 'a person is a plain name');
+  assert.equal(names[0].type, undefined, 'a person is a plain name');
   assert.equal(agent.type, 'button');
-  assert.equal(agent.className, 'chip-name agent-green', 'in the agent\'s color');
+  // Each person is one pill in their colour: an agent's as the reader sees it,
+  // the reader's own black, another person's the plain one.
+  assert.deepEqual(chips.map(chip => chip.className), ['person-pill', 'person-pill agent-green', 'person-pill own-pill'], 'in the agent\'s color');
   assert.equal(agent['aria-haspopup'], 'dialog');
   await agent.onclick(); await settle();
   assert.deepEqual([opened.length, opened[0]?.anchor, opened[0]?.agent], [1, agent, 'fable']);
   f.api.command = async () => ({ status: 'committed', recorded: true, result: { actor_id: 'fable', color: 'olive', color_revision: 1 } });
   await opened[0].choose('olive');
   const now = f.get('participants').children[0].children[1].children[0];
-  assert.equal(now.className, 'chip-name agent-olive', 'the name takes the choice at once');
+  assert.equal(now.parent.className, 'person-pill agent-olive', 'the pill takes the choice at once');
   // The choice repainted the participants; the picker gives the focus back to
   // the name it opened from, so that name is still the one on the page.
   assert.equal(now, agent, 'the name that opened the picker is the one in the participants after the repaint');
@@ -1912,7 +1920,7 @@ const wakesApi = (f, quiet, more = () => ({ runner: { live: true } })) => {
     return { instance_id: 'fixture', quiet: quiet(), ...more() };
   };
 };
-const chipWords = host => walk(host).filter(node => node.className === 'chip').map(node => node.textContent + node.children.map(child => child.textContent ?? child).join(''));
+const chipWords = host => walk(host).filter(node => node.className === 'chip' || isPill(node)).map(node => node.textContent + node.children.map(child => child.textContent ?? child).join(''));
 
 test('a participant whose wakes stopped says so on its name until a commit shows it answering', async () => {
   const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
@@ -1975,4 +1983,41 @@ test('the outcomes page an owner lands on says so too, and reads the wakes again
   for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
   await drain();
   assert.equal(f.get('wakes-status').hidden, true);
+});
+
+// The top of a topic (r21 item 8): its note is the subtitle, the old hint is
+// never written there, the gear opens Topic settings, and a topic the reader
+// can no longer see shows neither gear nor open settings.
+test('a topic page shows its note under the title, never the old hint, and its gear goes with the topic', async () => {
+  const HINT = 'Open a message to read, quote, reply, or keep a private note.';
+  const f = fixture();
+  Object.assign(f.topic, { state: 'active', state_note: 'Ongoing: each release and what comes next', waiting_on: [], version: 1 });
+  const dialog = f.get('topic-settings');
+  Object.assign(dialog, { open: false, showModal() { this.open = true; }, close() { this.open = false; } });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
+  Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
+  await f.initialize();
+  const subtitle = f.get('topic-description'), gear = f.get('settings-open');
+  const words = () => subtitle.children.map(node => typeof node === 'string' ? node : node.textContent).join('');
+  assert.equal(f.get('topic-title').textContent, 'Fixture');
+  assert.deepEqual([words(), subtitle.hidden, gear.hidden], ['Each release and what comes next', false, false]);
+  assert.notEqual(subtitle.textContent, HINT, 'the hint is not written when the topic opens');
+  // A fresh view of the topic repaints the subtitle, and never writes the hint.
+  Object.assign(f.views, { topic: { ...f.topic, version: 2, state: 'done' }, participants: [] });
+  f.paintViews('topic');
+  assert.equal(words(), 'Done Ongoing: each release and what comes next');
+  assert.notEqual(subtitle.textContent, HINT, 'nor when the topic is painted again');
+  // A read that left before that version, landing late, does not take the subtitle back.
+  Object.assign(f.views, { topic: { ...f.topic, version: 1, state: 'active' }, participants: [] });
+  f.paintViews('topic');
+  assert.equal(words(), 'Done Ongoing: each release and what comes next', 'the subtitle keeps the newest topic seen');
+  // The gear opens Topic settings; a topic that becomes unavailable closes it and hides the gear.
+  gear.handlers.click();
+  assert.equal(dialog.open, true);
+  await f.checkAvailability(async name => name === 'topic' ? { instance_id: 'fixture', topic: f.topic } : f.state(), () => true);
+  assert.deepEqual([gear.hidden, dialog.open, f.get('topic-title').textContent], [true, false, 'Topic unavailable']);
+  // On a conversation, which refuses every change Topic settings makes, there is no gear.
+  Object.assign(f.views, { topic: { ...f.topic, version: 3, kind: 'conversation' }, participants: [] });
+  f.paintViews('topic');
+  assert.equal(gear.hidden, true);
 });

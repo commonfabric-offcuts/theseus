@@ -220,8 +220,8 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
         assert.deepEqual([swatch.tag, swatch.fill, swatch.words, swatch.shown], [rgbOf(tag), panel, swatch.name, true], `${width}: ${swatch.name} shows its name tag color on the picker, named`);
         assert.ok(swatch.tall >= 24, `${width}: ${swatch.name}'s color is ${swatch.tall}px tall`);
       }
-      // No tap highlight over the picker, the card or the participant's name.
-      const taps = await p.evaluate(`[${JSON.stringify(card)},'.color-picker .swatch','.color-picker .swatch-default','#participants .chip-name'].map(s=>getComputedStyle(document.querySelector(s)).getPropertyValue('-webkit-tap-highlight-color'))`);
+      // No tap highlight over the picker, the card or the participant's pill.
+      const taps = await p.evaluate(`[${JSON.stringify(card)},'.color-picker .swatch','.color-picker .swatch-default','#participants .pill-name'].map(s=>getComputedStyle(document.querySelector(s)).getPropertyValue('-webkit-tap-highlight-color'))`);
       assert.deepEqual(taps, Array(4).fill('rgba(0, 0, 0, 0)'), width + ': no tap highlight');
       await shot(p, 'agent-color-picker-' + width);
       // Keyboard: the arrows move round the swatches; Escape closes and the card has the focus.
@@ -269,10 +269,11 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
     const [roseDark] = await tokens(q, 'rose');
     assert.equal(await fill(q, card), rgbOf(roseDark), 'another page shows the choice, in dark too');
     // The participants' name, by keyboard: Tab-reachable, Return opens, End and Return choose Default.
-    const chip = '#participants .chip-name[title="Change aim-ux\'s color"]';
+    // The name fills its pill, and the pill wears the agent's colour.
+    const chip = '#participants .pill-name[title="Change aim-ux\'s color"]', pill = `#participants .person-pill:has(> ${chip.slice('#participants '.length)})`;
     await until(() => q.evaluate(`Boolean(document.querySelector(${JSON.stringify(chip)}))`), 'aim-ux in the participants');
     const [, roseTag] = await tokens(q, 'rose');
-    assert.equal(await fill(q, chip), rgbOf(roseTag), 'the participant name wears the chosen color');
+    assert.equal(await fill(q, pill), rgbOf(roseTag), 'the participant\'s pill wears the chosen color');
     await q.evaluate(`document.querySelector(${JSON.stringify(chip)}).focus()`);
     await q.key('Enter'); await until(() => picker(q), 'Return opens the picker from the participants');
     assert.deepEqual((await picker(q)).pressed, ['rose']);
