@@ -16,7 +16,7 @@ lives while either reason holds; its order time is the state's time while
 it is said, else the ask's.
 """
 
-from .contract import LIMITS, READABLE, Refusal, _body, _identifier, _prefix, _revision
+from .contract import LIMITS, READABLE, Refusal, organises, _body, _identifier, _prefix, _revision
 from .delivery import _now_ms
 
 
@@ -121,17 +121,17 @@ class TopicState:
         args = envelope.get("args", {})
         if not args or not set(args) <= {"title", "archived", "state", "note", "waiting_on"}:
             raise Refusal("INVALID_ARGUMENT", "A topic update changes its title, whether it is archived, its state, note or who it waits on")
-        manager = actor in (topic["owner_id"], topic["creator_id"])
+        manager = organises(topic, actor) or actor == topic["creator_id"]
         if "title" in args:
             if not manager:
-                raise Refusal("FORBIDDEN", "Only the outcome's owner or the topic's creator can rename it")
+                raise Refusal("FORBIDDEN", "Only the outcome's owner or coordinator, or the topic's creator, can rename it")
             title = _body(args["title"])
             if not title.strip():
                 raise Refusal("EMPTY_TITLE", "A topic needs a title")
             db.execute("UPDATE topics SET title=? WHERE id=?", (title, topic["id"]))
         if "archived" in args:
             if not manager:
-                raise Refusal("FORBIDDEN", "Only the outcome's owner or the topic's creator can archive it")
+                raise Refusal("FORBIDDEN", "Only the outcome's owner or coordinator, or the topic's creator, can archive it")
             if not isinstance(args["archived"], bool):
                 raise Refusal("INVALID_ARGUMENT", "Archived is true or false")
             db.execute("UPDATE topics SET archived=? WHERE id=?", (int(args["archived"]), topic["id"]))
@@ -139,7 +139,7 @@ class TopicState:
         old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? AND said=1 ORDER BY actor_id", (topic["id"],))]
         if args.keys() & {"state", "note", "waiting_on"}:
             if not self._may_say(db, topic, actor):
-                raise Refusal("FORBIDDEN", "Only the topic's participants, those who have written in it, its creator or the outcome's owner "
+                raise Refusal("FORBIDDEN", "Only the topic's participants, those who have written in it, its creator or the outcome's owner or coordinator "
                               "can say where it stands; you can say where a topic stands once you have written in it")
             state = args.get("state", topic["state"])
             if state not in STATES:
@@ -178,12 +178,12 @@ class TopicState:
 
     def _may_say(self, db, topic, actor):
         """Whether actor, who can read topic, may say where it stands: its creator,
-        the outcome's owner, its participants and whoever has written in it.
+        whoever organises the outcome, its participants and whoever has written in it.
         Having written grants no participation, so it wakes no one."""
         # Every message's author has a reply horizon in its topic: each publish
         # writes one, version 16 made one for every earlier author, version 18
         # keeps them, and nothing else writes them.
-        return actor in (topic["owner_id"], topic["creator_id"]) or bool(db.execute(
+        return organises(topic, actor) or actor == topic["creator_id"] or bool(db.execute(
             "SELECT 1 FROM topic_participants WHERE topic_id=?1 AND actor_id=?2 AND active=1 "
             "UNION ALL SELECT 1 FROM reply_horizons WHERE topic_id=?1 AND actor_id=?2", (topic["id"], actor)).fetchone())
 

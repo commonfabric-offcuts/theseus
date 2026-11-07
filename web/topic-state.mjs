@@ -4,6 +4,13 @@
 import { datedTime, spokenNode, spokenTime, timeNode } from './times.mjs';
 
 export const STATES = ['active', 'waiting', 'review', 'done'];
+// Who organises an outcome, read from its workspace or one of its topics: its
+// owner, and its coordinator while it has one. Organising is everything the owner
+// may do but hand the outcome on (docs/openings.md); Core decides the same way.
+export const organises = (record, actor) => actor != null && [record?.owner_id, record?.coordinator_id].includes(actor);
+// Who renames, archives and changes who takes part in a topic: whoever organises
+// its outcome, and its creator.
+export const managesTopic = (topic, actor) => organises(topic, actor) || (actor != null && topic?.creator_id === actor);
 const LABELS = { active: 'Active', waiting: 'Waiting', review: 'Ready for review', done: 'Done' };
 
 const named = (id, reader) => id === reader ? 'you' : id;
@@ -165,7 +172,7 @@ export class TopicStatePanel {
     // A read that left before the version shown here cannot undo it.
     else if (topic.version < this.topic.version) return;
     this.topic = topic; this.participants = participants;
-    const reader = this.reader, manager = [topic.owner_id, topic.creator_id].includes(reader);
+    const reader = this.reader, manager = managesTopic(topic, reader);
     const participant = participants.some(person => person.actor_id === reader);
     const says = topic.reader_may_say === true || participant;
     const mark = element('strong', { className: 'topic-state', textContent: stateLabel(topic, reader), title: stateLabel(topic, reader) });
@@ -220,7 +227,7 @@ export class TopicStatePanel {
     return form;
   }
 
-  // Renaming and archiving, for the outcome's owner and the topic's creator.
+  // Renaming and archiving, for whoever organises the outcome and the topic's creator.
   manage(manager) {
     const controls = this.controls;
     if (manager && !controls.managed) {

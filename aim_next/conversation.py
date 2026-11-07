@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 
-from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _prefix, _revision
+from .contract import LIMITS, Refusal, organises, _body, _identifier, _json, _page_size, _prefix, _revision
 from .delivery import _now_ms
 from .responsibility import responsibility_note
 from .work import OTHER_MESSAGE, work_by_topic
@@ -92,8 +92,11 @@ def _preview(value, size=1024):
 class Conversation:
     def _topic(self, db, actor, topic_id, manage=False):
         _identifier(topic_id, "topic_id")
-        row = db.execute("SELECT t.*,w.owner_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?", (topic_id,)).fetchone()
-        allowed = row and (row["owner_id"] == actor or row["creator_id"] == actor)
+        # With manage=True, only those who manage the topic: whoever organises its outcome,
+        # and its creator. Reading is as READABLE says; being coordinator grants none.
+        row = db.execute("SELECT t.*,w.owner_id,w.coordinator_id FROM topics t JOIN workspaces w ON w.id=t.workspace_id WHERE t.id=?",
+                         (topic_id,)).fetchone()
+        allowed = row and (row["owner_id"] == actor or row["creator_id"] == actor or (manage and organises(row, actor)))
         if row and not allowed and not manage:
             allowed = db.execute("SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (row["workspace_id"], actor)).fetchone() or db.execute(
                 "SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1", (topic_id, actor)).fetchone()

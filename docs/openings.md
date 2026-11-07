@@ -2,8 +2,8 @@
 
 Theseus keeps every durable product fact in Core. This document is the
 contract for three pieces that make several outcomes usable by a real team:
-private opening drafts that publish a new topic in one act, owner-managed
-outcome membership and ownership with operator actor registration, and versioned schema
+private opening drafts that publish a new topic in one act, outcome
+membership and ownership kept by the outcome's owner and coordinator, with operator actor registration, and versioned schema
 upgrades for an existing instance.
 
 The browser is a cache and an outbox. It may hold writing that Core has not
@@ -109,12 +109,31 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
   `OPENING_CLOSED`.
 - Result: `{opening_id, opening_revision, state: "discarded"}`.
 
+### Who organises an outcome
+
+An outcome has one owner (`owner_id`) and at most one coordinator
+(`coordinator_id`, chosen at creation from the team; removing them from the
+team clears it). Both organise the outcome: they change its team, and, beside
+each topic's creator, rename and archive any of its topics, say where any of
+them stands and change who takes part in them. Only the owner hands the
+outcome on (`workspace.owner_set`), and the owner can never be removed from the
+team, by the coordinator or anyone else. The `wakes` notice for agents whose
+work waits in the outcome while wakes are not going out goes to the owner
+alone. Reading is unchanged: the owner and every member read the outcome.
+With no coordinator, the owner alone organises it. A topic read carries
+its outcome's `owner_id` and `coordinator_id`, as the `workspace` view does,
+so a page decides as Core does. The web offers the same
+controls to both (the team panel's member controls, a topic's participant,
+rename and archive controls); the team panel's fixed chip, the one person it
+offers no remove for, is the owner.
+
 ### `workspace.member_set`
 
 - `target`: `{workspace_id}`. `expected`: `{workspace_revision}` (required).
 - `args`: `{actor_id, present}` with `present` a boolean.
-- Only the workspace owner may change membership (`FORBIDDEN` otherwise).
-  The owner cannot be removed (`OWNER_REQUIRED`). Adding requires an enabled actor and respects
+- Only the workspace's owner or coordinator may change membership
+  (`FORBIDDEN` otherwise). The owner cannot be removed (`OWNER_REQUIRED`),
+  whoever asks. Adding requires an enabled actor and respects
   `workspace_members`. A no-op still advances nothing and returns the
   current state.
 - A change bumps the workspace version and records
@@ -149,11 +168,10 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
   `("actor", new_owner, "workspace", W, version)` and
   `("actor", former_owner, "workspace", W, version)`. Topic versions do not
   change, though a topic's `owner_id` (read through its outcome) does.
-- What being the owner grants moves with it: changing the team and handing
-  the outcome on, and, beside each topic's creator, renaming and archiving
-  any of its topics, saying where any of them stands and changing who takes
-  part in them; and the `wakes` notice for agents whose work waits in the
-  outcome while wakes are not going out.
+- What being the owner grants moves with it: handing the outcome on, the
+  `wakes` notice, and organising the outcome beside its coordinator (see
+  [Who organises an outcome](#who-organises-an-outcome)). The former owner
+  keeps only what a member has, and what they have as a topic's creator.
 - Result: `{workspace_id, owner_id, previous_owner_id, version}`.
 
 ## Views

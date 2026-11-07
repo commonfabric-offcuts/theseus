@@ -26,7 +26,9 @@ paths, not deletion and blind repetition.
 For the initial configured workspace, aim-lead performs setup through its own
 profile and owns the workspace. Tony and the selected reply agent belong to its
 team; Tony is also explicitly included as a topic participant. The owner
-hands the workspace on with `workspace.owner_set`. Ordinary reading/replying uses team/topic access.
+hands the workspace on with `workspace.owner_set`; its coordinator keeps
+organising it (the team, its topics' names, archiving, where they stand and who
+takes part) beside the new owner. Ordinary reading/replying uses team/topic access.
 All introductory messages are actually lead-authored. Setup and pre-handoff
 probes do not perform acts through Tony's profile.
 

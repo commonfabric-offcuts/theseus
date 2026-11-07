@@ -18,6 +18,13 @@ READABLE = ("(w.owner_id=:actor OR t.creator_id=:actor "
             "OR EXISTS (SELECT 1 FROM topic_participants p WHERE p.topic_id=t.id AND p.actor_id=:actor AND p.active=1))")
 
 
+def organises(record, actor):
+    """Whether actor organises the outcome a workspace or topic row belongs to: its
+    owner, or its coordinator while it has one (a NULL coordinator matches no one).
+    Organising is everything the owner may do except hand the outcome on."""
+    return actor is not None and actor in (record["owner_id"], record["coordinator_id"])
+
+
 class StoreError(Exception):
     """An unusable store or a non-business storage failure."""
 

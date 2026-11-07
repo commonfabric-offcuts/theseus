@@ -9,7 +9,7 @@ import uuid
 from typing import Any
 
 
-from .contract import LIMITS, Refusal, StoreError, _json, _identifier, _body, _bounded_page, _page_size, _prefix, _revision
+from .contract import LIMITS, Refusal, StoreError, organises, _json, _identifier, _body, _bounded_page, _page_size, _prefix, _revision
 from .drafts import Drafts, DRAFT_SCHEMA
 from .openings import Openings, OPENING_SCHEMA
 from .conversation import Conversation, CONVERSATION_SCHEMA, MESSAGE_INTENT_SCHEMA, MESSAGE_TIME_SCHEMA, WRITTEN_SCHEMA
@@ -417,11 +417,16 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             if fence is not None:
                 fence.close()
 
-    def _workspace(self, db, actor, workspace_id, owner=False):
+    def _workspace(self, db, actor, workspace_id, organise=False):
+        """The workspace actor may read (its owner and members), or with organise=True
+        may organise (contract.organises). Being coordinator grants no reading."""
         _identifier(workspace_id, "workspace_id")
         row = db.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
-        allowed = row and (row["owner_id"] == actor or (not owner and db.execute(
-            "SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace_id, actor)).fetchone()))
+        if organise:
+            allowed = row and organises(row, actor)
+        else:
+            allowed = row and (row["owner_id"] == actor or db.execute(
+                "SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace_id, actor)).fetchone())
         if not allowed:
             raise Refusal("FORBIDDEN", "No permission for this workspace")
         return row
@@ -530,7 +535,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"workspace_id"} or set(args) != {"actor_id", "present"} or not isinstance(args["present"], bool):
             raise Refusal("INVALID_ARGUMENT", "Name one workspace, one actor and whether they are present")
-        workspace = self._workspace(db, actor, target["workspace_id"], owner=True)
+        workspace = self._workspace(db, actor, target["workspace_id"], organise=True)
         _revision(envelope["expected"], "workspace_revision", workspace["version"])
         present = args["present"]
         member = self._recipients(db, [args["actor_id"]], require_enabled=present)[0]
@@ -565,7 +570,9 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         target, args = envelope["target"], envelope["args"]
         if set(target) != {"workspace_id"} or set(args) != {"owner_id"}:
             raise Refusal("INVALID_ARGUMENT", "Name one workspace and its new owner")
-        workspace = self._workspace(db, actor, target["workspace_id"], owner=True)
+        workspace = self._workspace(db, actor, target["workspace_id"], organise=True)
+        if actor != workspace["owner_id"]:
+            raise Refusal("FORBIDDEN", "Only the outcome's owner can hand it on")
         _revision(envelope["expected"], "workspace_revision", workspace["version"])
         owner = self._recipients(db, [args["owner_id"]])[0]
         result = {"workspace_id": workspace["id"], "owner_id": owner, "previous_owner_id": workspace["owner_id"],

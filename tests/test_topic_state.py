@@ -82,9 +82,10 @@ class TopicStateCase(fixtures.ReaderCase):
         self.assertEqual(self.topic()["state"], "review")
 
     def test_renaming_and_archiving_stay_with_the_owner_and_creator(self):
+        # agent-b is a plain member; the coordinator's part is in test_coordinator_rights.
         for args in ({"title": "Renamed"}, {"archived": True}):
             with self.subTest(args=args):
-                self.rejected(self.update(args, actor="agent-a"), "FORBIDDEN")
+                self.rejected(self.update(args, actor="agent-b"), "FORBIDDEN")
         self.assertEqual(self.topic()["title"], "Topic")
         self.committed(self.update({"title": "Naming the release"}))
         self.assertEqual((self.topic()["title"], self.listed()["t1"]["title"]), ("Naming the release", "Naming the release"))

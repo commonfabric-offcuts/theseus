@@ -20,7 +20,7 @@ import { CreateOutcomeView, showUnfinished } from './creation-view.mjs';
 import { ReadThrough } from './read-through.mjs';
 import { Live, liveOffered, reloader } from './live.mjs';
 import { Attention, paintSent } from './attention.mjs';
-import { TopicStatePanel, paintWaiting } from './topic-state.mjs';
+import { TopicStatePanel, paintWaiting, managesTopic, organises } from './topic-state.mjs';
 import { paintTopicHeader } from './topic-header.mjs';
 import { TopicSettings } from './topic-settings.mjs';
 import { repaintTimes, watchDays } from './times.mjs';
@@ -1233,10 +1233,10 @@ async function acknowledgeSent(item) {
 }
 // A failed attempt says so where the page reports, like every other button.
 const markSent = item => run(() => acknowledgeSent(item));
-// The topic's participants, which its outcome's owner and its creator may
-// change, and the names the composer offers.
+// The topic's participants, which whoever organises its outcome and its creator
+// may change, and the names the composer offers.
 function paintParticipants(current, participants) {
-  participantsPanel?.paint(participants, [current.owner_id, current.creator_id].includes(bootstrap.actor));
+  participantsPanel?.paint(participants, managesTopic(current, bootstrap.actor));
   // The team's entries come first: they carry names, which participants do not.
   // A disabled person cannot be sent to, so they are not offered.
   fillNames($('addressable-names'), [...outcomeMembers ?? [], ...participants].filter(person => person.enabled !== false)
@@ -1249,7 +1249,7 @@ function paintParticipants(current, participants) {
 // topic. Unknown when the outcome's team could not be read.
 function recipientReach(name) {
   if (!topic || !views?.participants) return null;
-  const manage = [topic.owner_id, topic.creator_id].includes(bootstrap.actor);
+  const manage = managesTopic(topic, bootstrap.actor);
   const add = manage ? () => setParticipation(name, true) : null;
   const known = [...views.participants, ...outcomeMembers ?? []].find(person => person.actor_id === name);
   if (known?.enabled === false) return { reachable: false, disabled: true };
@@ -1458,7 +1458,8 @@ function outcomePages(workspace,recorded) {
     message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
     read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>here.open(ref,row))});
 }
-// An outcome's team, which its owner may change.
+// An outcome's team, which its owner and its coordinator may change. The owner
+// cannot be removed, so the owner's chip is fixed.
 let teamPanel=null;
 async function paintTeam(workspace,refresh) {
   const send=(id,present)=>setPresence('workspace.member_set',{workspace_id:workspace.id},'workspace_revision',workspace.version,{actor_id:id,present})
@@ -1473,7 +1474,7 @@ async function paintTeam(workspace,refresh) {
   await wakeLights.load();
   try { members=await readMembers(api,bootstrap.instance_id,workspace.id); }
   catch(error) { teamPanel.error=`The team could not be read: ${error.message}`;members=teamPanel.people; }
-  teamPanel.paint(members,workspace.owner_id===bootstrap.actor);teamPanel.error='';
+  teamPanel.paint(members,organises(workspace,bootstrap.actor));teamPanel.error='';
   $('outcome-team').hidden=false;
 }
 function enableNewTopic(workspace) {

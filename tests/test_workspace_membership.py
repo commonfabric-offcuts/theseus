@@ -81,9 +81,10 @@ class MembershipCase(fixtures.StoreCase):
         self.assertEqual((receipt["status"], receipt["result"]["version"]), ("committed", version), receipt)
 
     def test_only_the_owner_changes_membership_and_cannot_be_removed(self):
+        # agent-b is a plain member; what the coordinator agent-a may do is in test_coordinator_rights.
         before = self.state()
-        self.refused(self.member_set("outsider", True, actor="agent-a"), "FORBIDDEN")
-        self.refused(self.member_set("agent-b", False, actor="agent-a"), "FORBIDDEN")
+        self.refused(self.member_set("outsider", True, actor="agent-b"), "FORBIDDEN")
+        self.refused(self.member_set("agent-a", False, actor="agent-b"), "FORBIDDEN")
         self.refused(self.member_set("outsider", True, actor="outsider"), "FORBIDDEN")
         self.refused(self.member_set("owner", False), "OWNER_REQUIRED")
         self.refused(self.member_set("outsider", True, revision=self.base - 1), "REVISION_CONFLICT")

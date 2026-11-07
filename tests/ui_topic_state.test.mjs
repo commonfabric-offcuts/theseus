@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TopicStatePanel, paintState, paintWaiting, paintWork, stateLabel, workNote } from '../web/topic-state.mjs';
+import { TopicStatePanel, managesTopic, organises, paintState, paintWaiting, paintWork, stateLabel, workNote } from '../web/topic-state.mjs';
 import { clock } from '../web/times.mjs';
 
 // The page reads every time on Friday 6 November 2026 at noon, so a time on
@@ -107,6 +107,25 @@ test('the panel line says who said it and when; only those who may change it get
   owner.paint(said, []);
   assert.ok(owner.host.find(node => node.id === 'topic-rename'));
   assert.equal(owner.host.find(node => node.textContent === 'Archive')?.tag, 'button');
+});
+
+// "owner building-theseus tony": tony owns it, fable coordinates it, warp is on its team.
+test('whoever organises the outcome manages its topics beside their creator; a cleared coordinator organises nothing', t => {
+  dom(t);
+  const outcome = { owner_id: 'tony', coordinator_id: 'fable' };
+  assert.deepEqual(['tony', 'fable', 'warp'].map(actor => organises(outcome, actor)), [true, true, false]);
+  assert.equal(organises({ owner_id: 'tony', coordinator_id: null }, null), false, 'no coordinator is no one, not a reader without a name');
+  const handed = topic({ owner_id: 'tony', coordinator_id: 'fable', creator_id: 'warp' });
+  assert.deepEqual(['tony', 'fable', 'warp', 'og'].map(actor => managesTopic(handed, actor)), [true, true, true, false]);
+  const fable = new TopicStatePanel({ host: new Element('section'), reader: 'fable', send: async () => ({}) });
+  fable.paint(topic({ coordinator_id: 'fable' }), []);
+  assert.ok(fable.host.find(node => node.id === 'topic-rename'), 'the coordinator may rename it');
+  assert.equal(fable.host.find(node => node.textContent === 'Archive')?.tag, 'button', 'and archive it');
+  fable.paint(topic({ coordinator_id: null }), []);
+  assert.equal(fable.host.find(node => node.tag === 'details'), undefined, 'once no longer coordinator, the controls go');
+  const warp = new TopicStatePanel({ host: new Element('section'), reader: 'warp', send: async () => ({}) });
+  warp.paint(topic({ coordinator_id: 'fable' }), []);
+  assert.equal(warp.host.find(node => node.tag === 'details'), undefined, 'a plain member who does not work in it gets nothing');
 });
 
 // The form's controls, found by what the person sees.
