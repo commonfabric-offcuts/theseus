@@ -31,7 +31,12 @@ def release_held(store, db, message_id):
     """Clear the wait an ask kept once its record is settled, when nothing else holds it; the owner's change is written."""
     rows = db.execute("SELECT topic_id,actor_id,said FROM topic_waiting WHERE ask_message_id=?", (message_id,)).fetchall()
     for row in rows:
-        if row["said"]:
+        still = held_ask(db, row["topic_id"], row["actor_id"])
+        if still is not None:
+            # Another open record's ask in the same topic still needs this person: the wait moves to it.
+            db.execute("UPDATE topic_waiting SET ask_message_id=?,state_ms=(SELECT sent_ms FROM messages WHERE id=?) WHERE topic_id=? AND actor_id=?",
+                       (still, still, row["topic_id"], row["actor_id"]))
+        elif row["said"]:
             db.execute("UPDATE topic_waiting SET ask_message_id=NULL WHERE topic_id=? AND actor_id=?", (row["topic_id"], row["actor_id"]))
         else:
             db.execute("DELETE FROM topic_waiting WHERE topic_id=? AND actor_id=?", (row["topic_id"], row["actor_id"]))

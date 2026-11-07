@@ -8,6 +8,7 @@ import { checkChart, problemsChart } from './charts.mjs';
 import {
   CANDIDATE_STATE, PROBLEM_KIND, STATUS, STEP_GROUP, WORD, bylineWords, countCell, groupCounts, kindWords, loopSteps, number, plural,
   problemsHeadline, ruleWords, standingSentence, stepCompareWords, took,
+  NO_CHECKS, WRITE_KEYS, askWords, provesWords, writeButtonWords, writeHowWords,
 } from './targets-words.mjs';
 
 export const measurementsHref = workspace => '?' + new URLSearchParams({ measurements: workspace });
@@ -75,7 +76,8 @@ function checkBody(check, view, workspace) {
 function checkSummary(check) {
   const latest = check.latest;
   const words = latest ? [latest.words, ' · ', latest.label, latest.at_ms ? ', ' : '', time(latest.at_ms)] : [check.pending_words || ''];
-  return [el('span', { class: 'tg-check-name', text: check.name }), statusChip(check.status), el('span', { class: 'tg-check-latest muted' }, ...words)];
+  return [el('span', { class: 'tg-check-name', text: check.name }), statusChip(check.status),
+    check.proves ? el('span', { class: 'tg-proves', text: provesWords(check.proves) }) : null, el('span', { class: 'tg-check-latest muted' }, ...words)];
 }
 
 export class OutcomeTargets {
@@ -85,6 +87,7 @@ export class OutcomeTargets {
     this.folds = new Folds();
     this.notice = '';
     this.reaching = false;
+    this.writer = null;
   }
 
   async load() {
@@ -136,6 +139,9 @@ export class OutcomeTargets {
       }
       parts.push(box);
     }
+    if (view.you_steer && !view.reached) parts.push(this.writing(view));
+    else this.writer = null;
+    if (target?.text && !view.groups.length) parts.push(el('p', { class: 'muted tg-no-checks', text: NO_CHECKS }));
     if (view.reached) {
       parts.push(el('p', { class: 'tg-reached' }, el('strong', { text: 'Reached' }), ' ', time(view.reached.ms), ` by ${view.reached.by}: “${view.reached.words}”. Its topics are kept to read.`));
     } else {
@@ -152,7 +158,105 @@ export class OutcomeTargets {
         [el('span', { class: 'tg-group-name', text: group.name }), el('span', { class: 'muted', text: groupCounts(group.counts) })], ...checks));
     }
     if (view.groups.length) parts.push(el('p', { class: 'tg-links' }, el('a', { href: measurementsHref(view.workspace_id), text: 'Open Measurements: every reading by release' })));
+    // A repaint on every commit moves the open box into the new card; the writer keeps their place in it.
+    const field = this.writer?.field, typing = field && document.activeElement === field ? [field.selectionStart, field.selectionEnd] : null;
     host.replaceChildren(el('div', { class: 'tg-card' }, parts));
+    if (typing) { field.focus({ preventScroll: true }); field.setSelectionRange(...typing); }
+  }
+
+  // D8: "Write the target", for the owner and the coordinator; the box opens in place and keeps what is typed across repaints.
+  writing(view) {
+    const hasTarget = Boolean(view.target?.text), youOwn = view.you_own;
+    if (!this.writer) {
+      return el('div', { class: 'tg-write-open' }, el('button', { type: 'button', class: hasTarget ? '' : 'primary', text: writeButtonWords({ hasTarget, youOwn }),
+        onclick: () => this.openWriter(view) }));
+    }
+    const writer = this.writer;
+    writer.needsAsk = hasTarget && !youOwn;
+    writer.how.textContent = writeHowWords({ hasTarget, youOwn, owner: view.owner });
+    writer.topicsLine.hidden = !writer.needsAsk;
+    if (writer.needsAsk) this.paintTopics(view);
+    writer.error.hidden = !writer.error.textContent;
+    this.writerReady();
+    return writer.node;
+  }
+
+  openWriter(view) {
+    const field = el('textarea', { rows: '3', class: 'tg-write-text', 'aria-label': 'The target, in a few sentences',
+      placeholder: 'What done looks like, in a few sentences' });
+    field.value = view.target?.text ?? '';
+    const how = el('p', { class: 'muted tg-write-how' }), topicsLine = el('div', { class: 'tg-topics', role: 'group', 'aria-label': 'The topic the ask goes in' });
+    const error = el('p', { class: 'notice', role: 'status' });
+    const save = el('button', { type: 'button', class: 'primary', text: 'Save', onclick: () => this.saveWriter() });
+    const cancel = el('button', { type: 'button', text: 'Cancel', onclick: () => this.closeWriter() });
+    const node = el('div', { class: 'tg-write' }, field, how, topicsLine, error,
+      el('div', { class: 'tg-actions' }, save, cancel, el('span', { class: 'muted tg-write-keys', text: WRITE_KEYS })));
+    this.writer = { node, field, how, topicsLine, error, save, cancel, original: field.value, topics: null, topic: null, busy: false, needsAsk: false };
+    field.addEventListener('input', () => this.writerReady());
+    node.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { event.preventDefault(); this.closeWriter(); }
+      else if (event.key === 'Enter' && event.target === field && !event.shiftKey && !event.isComposing) { event.preventDefault(); if (!event.repeat) this.saveWriter(); }
+    });
+    this.paint();
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+  }
+
+  closeWriter() {
+    const had = this.writer;
+    this.writer = null;
+    this.paint();
+    if (had) this.hosts.target.querySelector('.tg-write-open button')?.focus();
+  }
+
+  writerReady() {
+    const writer = this.writer;
+    const text = writer.field.value.trim();
+    writer.save.disabled = writer.busy || !text || text === writer.original.trim() || (writer.needsAsk && !writer.topic);
+    writer.field.readOnly = writer.busy;
+    writer.save.textContent = writer.busy ? 'Saving…' : 'Save';
+  }
+
+  // The ask goes in a topic of this outcome: its newest few, as chips; the newest is chosen.
+  paintTopics(view) {
+    const writer = this.writer;
+    if (writer.topics === null) {
+      writer.topics = 'reading';
+      this.read('workspace_topics', { workspace_id: view.workspace_id, limit: 4 }).then(answer => {
+        if (this.writer !== writer) return;
+        writer.topics = answer.items.map(item => ({ id: item.id, title: item.title }));
+        writer.topic = writer.topics[0]?.id ?? null;
+        this.paint();
+      }).catch(failure => { if (this.writer === writer) { writer.topics = []; writer.error.textContent = `The topics could not be read: ${failure.message}`; this.paint(); } });
+    }
+    if (!Array.isArray(writer.topics)) { writer.topicsLine.replaceChildren(el('span', { class: 'muted', text: 'Reading its topics…' })); return; }
+    if (!writer.topics.length) {
+      writer.topicsLine.replaceChildren(el('span', { class: 'muted', text: `No topic in this outcome yet. Start one, then ask ${view.owner} there.` }));
+      return;
+    }
+    writer.topicsLine.replaceChildren(...writer.topics.map(topic => el('button', { type: 'button', class: 'tg-topic-chip', 'aria-pressed': String(topic.id === writer.topic),
+      text: topic.title, title: topic.title, onclick: () => { writer.topic = topic.id; this.paint(); } })));
+  }
+
+  async saveWriter() {
+    const writer = this.writer, view = this.view;
+    if (!writer || writer.busy) return;
+    this.writerReady();
+    if (writer.save.disabled) return;
+    const text = writer.field.value.trim();
+    const args = { text };
+    if (writer.needsAsk) args.ask = { topic_id: writer.topic, body: askWords(text) };
+    writer.busy = true; writer.error.textContent = ''; this.paint();
+    try {
+      await sent(this.send, 'target.propose', { workspace_id: view.workspace_id }, args, { target_revision: view.relevant_versions.checks });
+      if (this.writer === writer) this.writer = null;
+      await this.load();
+    } catch (failure) {
+      writer.busy = false;
+      writer.error.textContent = failure.message;
+      this.paint();
+      writer.field.focus();
+    }
   }
 
   kindLine(view) {
@@ -303,6 +407,7 @@ export class MeasurementsPage {
         const rows = check.readings.map(reading => el('tr', null, el('th', { scope: 'row' }, reading.label), el('td', null, time(reading.at_ms)),
           el('td', { text: reading.words }), el('td', { class: 'muted', text: reading.source === 'reported' ? `Reported${reading.note ? ': ' + reading.note : ''}` : reading.source === 'found-problems' ? 'Problems filed' : reading.note || 'The release check' })));
         parts.push(el('section', { class: 'tg-card tg-measure' }, el('div', { class: 'tg-head' }, el('h3', { text: check.name }), statusChip(check.status)),
+          check.proves ? el('p', { class: 'muted', text: provesWords(check.proves) }) : null,
           check.rule ? el('p', { class: 'muted', text: ruleWords(check.rule, view.loop?.live?.release) }) : null,
           check.chart ? checkChart(check) : null,
           rows.length ? el('div', { class: 'table-scroll' }, el('table', null, el('thead', null, el('tr', null, ['Reading', 'When', 'Result', 'What produced it'].map(text => el('th', { scope: 'col', text })))), el('tbody', null, rows)))

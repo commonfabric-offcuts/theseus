@@ -47,7 +47,7 @@ CHECKS_SCHEMA = [
     "repeats INTEGER NOT NULL DEFAULT 1 CHECK(repeats BETWEEN 1 AND 4), counted_since_ms INTEGER, explain TEXT NOT NULL DEFAULT '', "
     "pending_words TEXT NOT NULL DEFAULT '', record_memory_item_id TEXT REFERENCES memory_items(id), "
     "left_by_topic_id TEXT REFERENCES topics(id), retired_why TEXT, defined_by TEXT NOT NULL REFERENCES actors(id), "
-    "defined_ms INTEGER NOT NULL, PRIMARY KEY(workspace_id, check_id, revision))",
+    "defined_ms INTEGER NOT NULL, proves TEXT NOT NULL DEFAULT '', PRIMARY KEY(workspace_id, check_id, revision))",
     "CREATE TRIGGER definitions_stay_u BEFORE UPDATE ON outcome_checks BEGIN SELECT RAISE(ABORT, 'a definition keeps its words'); END",
     "CREATE TRIGGER definitions_stay_d BEFORE DELETE ON outcome_checks BEGIN SELECT RAISE(ABORT, 'a definition keeps its words'); END",
     "CREATE TABLE check_runs (id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES outcome_targets(workspace_id), commit_sha TEXT, "
@@ -99,7 +99,7 @@ SOURCES = ("release-check:units", "release-check:native", "release-check:deploy-
            "release-check:wake-replay", "found-problems", "reported")
 CHECK_FIELDS = ("check_id", "group_name", "position", "name", "kind", "source", "unit", "better", "target_value", "target_words",
                 "tolerance", "repeats", "counted_since_ms", "explain", "pending_words", "record_memory_item_id", "left_by_topic_id",
-                "retired_why")
+                "retired_why", "proves")
 RULE_FIELDS = ("tolerance", "repeats", "better", "target_value", "source")
 STEP_GROUPS = (("units", "Unit checks"), ("measures", "Measures"), ("browser", "Browser checks, one at a time"))
 
@@ -374,8 +374,10 @@ class Checks:
 
     def _command_target_propose(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
-        if set(target) != {"workspace_id"} or "text" not in args or set(args) - {"text", "origin_note", "ask_message_id"}:
+        if set(target) != {"workspace_id"} or "text" not in args or set(args) - {"text", "origin_note", "ask_message_id", "ask"}:
             raise Refusal("INVALID_ARGUMENT", "A target is its words, where they came from, and the ask to the owner")
+        if "ask" in args and "ask_message_id" in args:
+            raise Refusal("INVALID_ARGUMENT", "Name the ask already sent, or the ask to send with these words, not both")
         workspace = self._steering(db, actor, target["workspace_id"])
         self._check_revision(envelope, "target_revision", self._target_revision(db, workspace["id"]))
         text = _text(args["text"], "The target's words", limit=4096)
@@ -385,21 +387,42 @@ class Checks:
         ms = _now_ms()
         # D8: the first wording, and the owner's own, are current at once; anyone else's later wording asks the owner.
         at_once = current is None or actor == workspace["owner_id"]
-        ask = None
-        if not at_once:
+        ask, affected = None, []
+        if at_once and "ask" in args:
+            raise Refusal("INVALID_ARGUMENT", "No ask is needed: these words are the target at once")
+        if not at_once and "ask" in args:
+            # The ask sent with the words, in the same transaction, so a wording and its ask never come apart.
+            ask, affected = self._send_target_ask(db, actor, workspace, envelope["operation_id"], args["ask"])
+        elif not at_once:
             ask = args.get("ask_message_id")
             self._owner_ask_in_outcome(db, actor, workspace, ask)
+        db.execute("INSERT INTO outcome_target_revisions VALUES (?,?,?,?,?,?,?,?,?,?)",
+                   (workspace["id"], revision, text, _text(args.get("origin_note", ""), "origin_note", required=False, limit=500), actor, ms,
+                    ask, "accepted" if at_once else None, actor if at_once else None, ms if at_once else None))
+        # A newer wording by the same proposer declines the older one; written after the new one, so an
+        # older ask in the same topic hands the owner's wait to the new ask instead of clearing it.
         for (older, older_ask) in db.execute("SELECT revision,ask_message_id FROM outcome_target_revisions WHERE workspace_id=? AND "
-                                             "proposed_by=? AND outcome IS NULL", (workspace["id"], actor)).fetchall():
+                                             "proposed_by=? AND outcome IS NULL AND revision<>?", (workspace["id"], actor, revision)).fetchall():
             db.execute("UPDATE outcome_target_revisions SET outcome='declined',settled_by=?,settled_ms=? WHERE workspace_id=? AND revision=?",
                        (actor, ms, workspace["id"], older))
             if older_ask and older_ask != ask:
                 release_held(self, db, older_ask)
-        db.execute("INSERT INTO outcome_target_revisions VALUES (?,?,?,?,?,?,?,?,?,?)",
-                   (workspace["id"], revision, text, _text(args.get("origin_note", ""), "origin_note", required=False, limit=500), actor, ms,
-                    ask, "accepted" if at_once else None, actor if at_once else None, ms if at_once else None))
         version = self._bump_checks(db, workspace["id"], "target")
-        return {"workspace_id": workspace["id"], "revision": revision, "current": at_once, "target_revision": version}, []
+        result = {"workspace_id": workspace["id"], "revision": revision, "current": at_once, "target_revision": version}
+        if ask is not None:
+            result["ask_message_id"] = ask
+        return result, affected
+
+    def _send_target_ask(self, db, actor, workspace, operation_id, ask):
+        """D8: the ask to the owner that new words need, posted in a topic of this outcome; (message id, affected)."""
+        if not isinstance(ask, dict) or set(ask) != {"topic_id", "body"}:
+            raise Refusal("INVALID_ARGUMENT", "The ask is the topic it goes in and its words")
+        row = db.execute("SELECT workspace_id FROM topics WHERE id=?", (_identifier(ask["topic_id"], "topic_id"),)).fetchone()
+        if row is None or row["workspace_id"] != workspace["id"]:
+            raise Refusal("ASK_REQUIRED", "The ask goes in a topic of this outcome")
+        snapshot = self._writing({"body": ask["body"], "addressees": [workspace["owner_id"]], "intent": "ask"})
+        result, affected = self._publish(db, actor, operation_id, ask["topic_id"], snapshot)
+        return result["message_id"], affected
 
     def _command_target_settle(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
@@ -425,7 +448,7 @@ class Checks:
             raise Refusal("INVALID_ARGUMENT", "A check is %s" % ", ".join(CHECK_FIELDS))
         base = dict(current) if current else {"group_name": "", "position": 1, "unit": "", "better": None, "target_value": None,
                                                "target_words": "", "tolerance": None, "repeats": 1, "counted_since_ms": None, "explain": "",
-                                               "pending_words": "", "record_memory_item_id": None, "left_by_topic_id": None}
+                                               "pending_words": "", "record_memory_item_id": None, "left_by_topic_id": None, "proves": ""}
         base["retired_why"] = None
         base.update(check)
         if not isinstance(base.get("check_id"), str) or not base["check_id"] or len(base["check_id"]) > 64 or not all(
@@ -448,6 +471,8 @@ class Checks:
             _text(base.get(name), name, limit=500)
         for name in ("unit", "target_words", "explain", "pending_words"):
             _text(base.get(name) or "", name, required=False, limit=4096)
+        # Which words of the target this check proves, quoted or in short; shown under the check.
+        _text(base.get("proves") or "", "proves", required=False, limit=1000)
         if base["kind"] == "measure" and base["source"].startswith("release-check:") and base.get("tolerance") is None:
             raise Refusal("TOLERANCE_REQUIRED", "A machine-read measure needs its tolerance: how far it may move before it counts as worse")
         if "retired_why" in check and check["retired_why"] is not None:
@@ -474,12 +499,12 @@ class Checks:
             raise Refusal("OWNER_LOOSENS", "Only %s loosens a check (%s), sending it himself" % (workspace["owner_id"], ", ".join(loosened)))
         self._ensure_targets(db, workspace["id"])
         revision = (current["revision"] + 1) if current else 1
-        db.execute("INSERT INTO outcome_checks VALUES (%s)" % ",".join("?" * 22),
+        db.execute("INSERT INTO outcome_checks VALUES (%s)" % ",".join("?" * 23),
                    (workspace["id"], definition["check_id"], revision, definition["group_name"], definition["position"], definition["name"],
                     definition["kind"], definition["source"], definition["unit"] or "", definition["better"], definition["target_value"],
                     definition["target_words"] or "", definition["tolerance"], definition["repeats"], definition["counted_since_ms"],
                     definition["explain"] or "", definition["pending_words"] or "", definition["record_memory_item_id"],
-                    definition["left_by_topic_id"], definition.get("retired_why"), actor, _now_ms()))
+                    definition["left_by_topic_id"], definition.get("retired_why"), actor, _now_ms(), definition["proves"] or ""))
         version = self._bump_checks(db, workspace["id"], definition["check_id"])
         return {"workspace_id": workspace["id"], "check_id": definition["check_id"], "revision": revision, "checks_revision": version}, []
 
@@ -755,7 +780,7 @@ class Checks:
         return {"check_id": check["check_id"], "name": check["name"], "kind": check["kind"], "source": check["source"], "unit": check["unit"],
                 "status": status, "latest": items[0] if items else None, "live": live, "candidate": candidate,
                 "streak": outcome_rules.streak(check, context["rounds"][check["check_id"]]) if status in ("holding", "passing") else None,
-                "pending_words": check["pending_words"], "explain": check["explain"], "target_words": check["target_words"],
+                "pending_words": check["pending_words"], "explain": check["explain"], "target_words": check["target_words"], "proves": check["proves"],
                 "left_by_topic": self._topic_ref(db, actor, check["left_by_topic_id"], work=False),
                 "record_page": record_page, "fix_topic": self._topic_ref(db, actor, fix), "waiting": ask, "rule": rule,
                 "chart": chart, "readings": items[:shown], "more_readings": len(items) > shown}
@@ -1100,12 +1125,12 @@ def import_checks(store, db, seed, actor, now_ms):
         if "counted_since" in check:
             check["counted_since_ms"] = _ms(check.pop("counted_since"), "counted_since")
         definition = store._definition(db, workspace_id, check, None)
-        db.execute("INSERT INTO outcome_checks VALUES (%s)" % ",".join("?" * 22),
+        db.execute("INSERT INTO outcome_checks VALUES (%s)" % ",".join("?" * 23),
                    (workspace_id, definition["check_id"], 1, definition["group_name"], definition["position"], definition["name"],
                     definition["kind"], definition["source"], definition["unit"] or "", definition["better"], definition["target_value"],
                     definition["target_words"] or "", definition["tolerance"], definition["repeats"], definition["counted_since_ms"],
                     definition["explain"] or "", definition["pending_words"] or "", definition["record_memory_item_id"],
-                    definition["left_by_topic_id"], None, check.get("defined_by", actor), check.get("defined_ms", now_ms)))
+                    definition["left_by_topic_id"], None, check.get("defined_by", actor), check.get("defined_ms", now_ms), definition["proves"] or ""))
     for reading_run in seed.get("runs", []):
         run = {key: reading_run[key] for key in ("started_at", "finished_at", "note") if key in reading_run}
         if reading_run.get("release") is not None:

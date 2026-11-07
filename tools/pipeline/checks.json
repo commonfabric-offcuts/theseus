@@ -16,7 +16,8 @@
    "kind": "pass",
    "source": "release-check:units",
    "explain": "These include the integrity checks aim-core counted: one message for an exact retry, new writing kept through an older send, reading never counted as acknowledging, and Notebook history kept word for word.",
-   "record_memory_item_id": "building-theseus-measurements"
+   "record_memory_item_id": "building-theseus-measurements",
+   "proves": "nothing said or written is lost"
   },
   {
    "check_id": "browser-checks",
@@ -27,7 +28,8 @@
    "source": "release-check:native",
    "explain": "A red result counts only when it repeats on a quiet Mac.",
    "record_memory_item_id": "building-theseus-measurements",
-   "left_by_topic_id": "t-8dc335089dd046d79d1327a4763760b5"
+   "left_by_topic_id": "t-8dc335089dd046d79d1327a4763760b5",
+   "proves": "nothing said or written is lost"
   },
   {
    "check_id": "wake-time",
@@ -41,7 +43,8 @@
    "tolerance": 0.2,
    "repeats": 2,
    "explain": "One reading, so no target yet: numbers first, then a target.",
-   "record_memory_item_id": "evaluation-target-and-measures"
+   "record_memory_item_id": "evaluation-target-and-measures",
+   "proves": "every change shows whether it made that work better"
   },
   {
    "check_id": "next-post",
@@ -53,7 +56,8 @@
    "unit": "min",
    "better": "lower",
    "explain": "This is the agent's next post in the topic, not necessarily its answer. How long an answer takes is not measured yet.",
-   "record_memory_item_id": "evaluation-target-and-measures"
+   "record_memory_item_id": "evaluation-target-and-measures",
+   "proves": "every change shows whether it made that work better"
   },
   {
    "check_id": "empty-turns",
@@ -65,7 +69,8 @@
    "unit": "turns in 3 hours",
    "better": "lower",
    "explain": "Decided on 5 Nov: the 60-second re-wake stays, and these turns are counted, because both fixes on offer could leave work stranded.",
-   "record_memory_item_id": "evaluation-target-and-measures"
+   "record_memory_item_id": "evaluation-target-and-measures",
+   "proves": "every change shows whether it made that work better"
   },
   {
    "check_id": "topic-open-time",
@@ -76,7 +81,8 @@
    "source": "reported",
    "unit": "s",
    "better": "lower",
-   "pending_words": "No timing check yet: it comes with speed checks on every deploy (13)"
+   "pending_words": "No timing check yet: it comes with speed checks on every deploy (13)",
+   "proves": "every change shows whether it made that work better"
   },
   {
    "check_id": "message-appear-time",
@@ -87,7 +93,8 @@
    "source": "reported",
    "unit": "s",
    "better": "lower",
-   "pending_words": "No timing check yet: it comes with speed checks on every deploy (13)"
+   "pending_words": "No timing check yet: it comes with speed checks on every deploy (13)",
+   "proves": "every change shows whether it made that work better"
   },
   {
    "check_id": "ack-time",
@@ -98,7 +105,8 @@
    "source": "reported",
    "unit": "s",
    "better": "lower",
-   "pending_words": "Theseus does not record when a delivery is acknowledged yet"
+   "pending_words": "Theseus does not record when a delivery is acknowledged yet",
+   "proves": "every change shows whether it made that work better"
   },
   {
    "check_id": "shared-goal",
@@ -109,7 +117,8 @@
    "source": "reported",
    "pending_words": "No sample yet: it needs your own words and the agent's, written separately",
    "explain": "Three questions, answered separately by you and by the agent doing the work: What result are we after? What is the next useful step, and who takes it? What would show it's done? The answers are compared for meaning, not wording, and recorded as matching, different, or not yet compared.",
-   "record_memory_item_id": "evaluation-target-and-measures"
+   "record_memory_item_id": "evaluation-target-and-measures",
+   "proves": "with a goal both can state"
   },
   {
    "check_id": "deploy-refuses",
@@ -118,7 +127,8 @@
    "name": "A deploy refuses any commit that has not passed every check",
    "kind": "pass",
    "source": "release-check:deploy-refusals",
-   "explain": "Shipped in release 19 (3). The deploy itself checks that every step of the release check passed."
+   "explain": "Shipped in release 19 (3). The deploy itself checks that every step of the release check passed.",
+   "proves": "without breaking what already worked"
   },
   {
    "check_id": "found-problems",
@@ -130,7 +140,8 @@
    "better": "lower",
    "counted_since": "2026-11-06T00:00:00-08:00",
    "explain": "Each problem found in the live app before any check caught it, under the release it was found in. A defect: the code did not do what was decided. A design miss: it did what was decided, and that was wrong. Fewer per release is the aim.",
-   "record_memory_item_id": "building-theseus-measurements"
+   "record_memory_item_id": "building-theseus-measurements",
+   "proves": "without breaking what already worked"
   }
  ],
  "runs": [

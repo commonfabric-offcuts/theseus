@@ -303,5 +303,23 @@ are absolute local times.
 The import from the hand-written page is an operator act:
 `bin/aim-next-admin pipeline-import --profile P --seed S --as ACTOR`.
 
+## Targets and checks
+
+An outcome's target is a few sentences saying what done looks like; its checks
+prove it. The owner or the coordinator writes the words, and the agents add the
+checks.
+
+- `checks OUTCOME [--readings]` prints the target, its word and every check.
+- `target OUTCOME [--origin NOTE] [--ask MSG | --ask-in TOPIC] TEXT` writes the
+  target's words. The first wording, and the owner's own, are current at once.
+  Anyone else's later wording is an ask to the owner: `--ask` names an ask you
+  already posted to the owner in this outcome, and `--ask-in TOPIC` posts it
+  for you, with the words, in that topic of the outcome. The ask keeps the
+  owner's Waiting on you lit until he uses the words or keeps the old ones
+  (`target-settle OUTCOME REV accepted|declined`, the owner only).
+- `check-define OUTCOME FILE` writes a check's next definition from JSON. Its
+  optional `proves` names which words of the target the check proves, quoted
+  or in short; the outcome page shows it under the check.
+
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.

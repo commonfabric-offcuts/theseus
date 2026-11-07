@@ -139,3 +139,18 @@ export function problemsHeadline(problems) {
 }
 
 export const PROBLEM_KIND = { defect: 'Defect', design_miss: 'Design miss' };
+
+// D8: writing the target in place. The button, what Save does for this writer, and the ask it sends when needed.
+export function writeButtonWords({ hasTarget, youOwn }) {
+  if (!hasTarget) return 'Write the target';
+  return youOwn ? 'Change the words' : 'Propose new words';
+}
+export function writeHowWords({ hasTarget, youOwn, owner }) {
+  if (youOwn) return hasTarget ? 'Your words are the target as soon as you save. The earlier words are kept.' : 'Your words are the target as soon as you save.';
+  if (!hasTarget) return `Your words are the target as soon as you save; ${owner} can change them.`;
+  return `${owner} decides on new words. Saving asks ${owner} in:`;
+}
+export const WRITE_KEYS = 'Return saves · Shift+Return for a new line · Esc cancels';
+export const askWords = text => `New words for the target, for you to use or keep the current ones (on the outcome page):\n\n${text}`;
+export const provesWords = proves => `Proves: “${proves}”`;
+export const NO_CHECKS = 'No checks yet. The agents add them, and each one says which words of the target it proves.';

@@ -15,6 +15,8 @@ WORDS = {"on_target": "On target", "not_on_target": "Not on target yet", "not_th
 STATUS = {"passing": "passing", "failing": "FAILING", "measured": "measured", "holding": "holding", "not_run": "not run yet",
           "waiting": "waiting on the owner"}
 
+ASK_WORDS = "New words for the target, for you to use or keep the current ones (on the outcome page):\n\n%s"
+
 
 def _at(ms):
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000.0)) if isinstance(ms, int) else "(time unknown)"
@@ -28,7 +30,9 @@ def register(verb):
     target = verb("target")
     target.add_argument("outcome")
     target.add_argument("--origin", default="")
-    target.add_argument("--ask")
+    asking = target.add_mutually_exclusive_group()
+    asking.add_argument("--ask")
+    asking.add_argument("--ask-in", dest="ask_in", metavar="TOPIC")
     target.add_argument("text")
     settle = verb("target-settle")
     settle.add_argument("outcome")
@@ -120,6 +124,9 @@ class TargetVerbs:
         args = {"text": self.text(), "origin_note": options.origin}
         if options.ask:
             args["ask_message_id"] = options.ask
+        elif options.ask_in:
+            # The ask to the owner, sent with the words in one command (D8).
+            args["ask"] = {"topic_id": options.ask_in, "body": ASK_WORDS % args["text"]}
         result = self.command("target.propose", {"workspace_id": options.outcome}, args,
                               {"target_revision": current["relevant_versions"]["checks"]})
         self.out.plain("target revision %d %s" % (result["revision"], "is current" if result["current"] else "waits on the owner"))
