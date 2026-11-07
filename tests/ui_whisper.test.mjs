@@ -28,7 +28,7 @@ function painted(t) {
     onChoose: choice => chosenBy.push(choice), ...options });
   // Each choice is a chip tapped once: aria-pressed says which is on.
   const radios = () => Object.fromEntries(row.querySelectorAll('button[data-intent]').map(chip =>
-    [chip.dataset.intent, { checked: chip.getAttribute('aria-pressed') === 'true', disabled: chip.disabled, why: chip.title, said: chip.querySelector('.sr-only').textContent }]));
+    [chip.dataset.intent, { checked: chip.getAttribute('aria-pressed') === 'true', disabled: chip.disabled, why: chip.title, said: chip.getAttribute('aria-label') }]));
   const line = () => row.querySelector('.audience-line');
   return { document, row, field, send, word, paint, radios, line, chosenBy };
 }
@@ -51,9 +51,9 @@ test('Whisper greys out unless exactly one agent is named, and Ask while nobody 
   const f = painted(t);
   f.paint({}, []);
   assert.deepEqual(f.radios(), {
-    whisper: { checked: false, disabled: true, why: 'Name one agent to whisper to them.', said: ', Name one agent to whisper to them.' },
-    tell: { checked: true, disabled: false, why: '', said: '' },
-    ask: { checked: false, disabled: true, why: 'Name someone to ask them.', said: ', Name someone to ask them.' } });
+    whisper: { checked: false, disabled: true, why: 'Name one agent to whisper to them.', said: 'Whisper, Name one agent to whisper to them.' },
+    tell: { checked: true, disabled: false, why: '', said: null },
+    ask: { checked: false, disabled: true, why: 'Name someone to ask them.', said: 'Ask, Name someone to ask them.' } });
   assert.equal(f.row.querySelector('.intent-choice').attributes.role, 'group');
   assert.deepEqual(f.row.querySelectorAll('input').length, 0, 'chips, never round buttons');
   assert.ok(f.row.querySelectorAll('button[data-intent]').every(chip => chip.classList.contains('choice-chip') && chip.type === 'button'));

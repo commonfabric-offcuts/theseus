@@ -270,7 +270,8 @@ main>#outcomes-home{margin-bottom:.4rem}
 .intent-row{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem}.intent-row:empty{display:none}
 .intent-choice{display:inline-flex;gap:.3rem;flex-shrink:0}
 .intent-choice .choice-chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.82rem}
-.intent-choice .choice-chip:disabled{opacity:.45;cursor:default}
+/* A choice that cannot be taken now stays readable: muted words and a dashed edge, not faded. */
+.intent-choice .choice-chip:disabled{opacity:1;color:var(--muted);border-style:dashed;cursor:default}
 .audience-line{font-size:.8rem;color:var(--muted);margin:0;overflow-wrap:anywhere}
 .audience-line strong{color:var(--ink);font-weight:650}
 /* As you write a whisper, and as you read one, the same dashed line marks it. */

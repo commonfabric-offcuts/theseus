@@ -53,8 +53,8 @@ test('Whisper, Tell or Ask follows who the reply names, keeps the person\'s choi
   const f = reader(t, { admits: true, writes: true });
   const row = f.elements['intent-row'];
   const state = () => {
-    const inputs = row.querySelectorAll('input');
-    return { checked: inputs.find(input => input.checked)?.value, disabled: inputs.filter(input => input.disabled).map(input => input.value) };
+    const chips = row.querySelectorAll('button[data-intent]');
+    return { checked: chips.find(chip => chip.getAttribute('aria-pressed') === 'true')?.dataset.intent, disabled: chips.filter(chip => chip.disabled).map(chip => chip.dataset.intent) };
   };
   const remove = name => f.elements['recipient-chips'].children.find(chip => chip.dataset.name === name).querySelector('button').onclick();
   f.r.paintChoice();

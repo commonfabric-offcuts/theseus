@@ -135,7 +135,7 @@ test('a reply offered to an agent shows Whisper from the start, and typing that 
     callbacks: { edit() {}, admits: () => true, people: () => ({ kindOf: name => name === 'fable' ? 'agent' : undefined, everyone: ['fable'] }) }, paintStatus() {},
   });
   reader.bind();
-  const checked = () => element('intent-row').querySelectorAll('input').find(input => input.checked)?.value;
+  const checked = () => element('intent-row').querySelectorAll('button[data-intent]').find(chip => chip.getAttribute('aria-pressed') === 'true')?.dataset.intent;
   reader.paintChoice();
   assert.deepEqual([reply.draft.addressees, checked()], [[], 'whisper'], 'an empty reply only offers the author, and already shows how it would go');
   field.value = 'H'; field.selectionStart = field.selectionEnd = 1;

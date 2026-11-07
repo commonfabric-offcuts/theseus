@@ -16,6 +16,7 @@ const node = (tag, text, className) => {
 };
 
 const CHOICES = [['whisper', 'Whisper'], ['tell', 'Tell'], ['ask', 'Ask']];
+const WORDS = Object.fromEntries(CHOICES);
 const WHISPER_NEEDS_ONE = 'Name one agent to whisper to them.';
 const WHISPER_TO_ONE = 'A whisper goes to one agent. With more than one name, choose Tell or Ask.';
 const ASK_NEEDS_SOMEONE = 'Name someone to ask them.';
@@ -110,7 +111,7 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
     for (const [value, words] of CHOICES) {
       const chip = node('button', undefined, 'choice-chip'); chip.type = 'button'; chip.dataset.intent = value;
       chip.onclick = () => { if (chip.getAttribute('aria-pressed') !== 'true') row.choose?.(value); };
-      chip.append(words, node('span', '', 'sr-only'));
+      chip.append(words);
       group.append(chip);
     }
     group.addEventListener('keydown', event => {
@@ -133,8 +134,9 @@ export function paintChoice(row, { draft, names, kindOf, everyone, send, field, 
       : value === 'ask' && !names.length ? ASK_NEEDS_SOMEONE : '';
     chip.setAttribute('aria-pressed', value === state.choice ? 'true' : 'false');
     chip.disabled = readOnly || Boolean(why);
+    // Why a choice is greyed out is part of its name, as words a screen reader says after it.
     chip.title = why;
-    chip.querySelector('.sr-only').textContent = why ? `, ${why}` : '';
+    if (why) chip.setAttribute('aria-label', `${WORDS[value]}, ${why}`); else chip.removeAttribute('aria-label');
   }
   const [who, words, more] = audienceWords(state, names, everyone, { answeringWhisper });
   const line = row.querySelector('.audience-line');
