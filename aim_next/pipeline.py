@@ -11,8 +11,8 @@ from its newest added or moved event, when a piece started from its first
 stage entry.
 
 A release piece is closed by the events that end it, never read as ended: its
-last item going back or dropped, or the release record of its commit being
-written (_ship_release, which record-release calls).
+last item going back or dropped, or the record of its release, the next number,
+being written (_ship_release, which record-release calls).
 """
 
 import json
@@ -225,25 +225,47 @@ class Pipeline:
                          "ORDER BY p.rowid LIMIT 1", (workspace_id,)).fetchone()
         return dict(row, release_number=self._next_release(db)) if row else None
 
-    def _ship_release(self, db, release):
-        """7.2 step 11, in the transaction that writes a release record: the open release pieces it ships leave their entry
-        `shipped`: those checked or combined at its commit, combined as its number (which only release 23's combine stored),
-        or holding an item it names. An item such a piece holds that no record names has not shipped: it goes back to
-        building (`returned`). Only the write of a record ends a release, so a record made before a piece existed never
-        ends it, and only the outcome that ships in releases can have one open (configure)."""
-        pieces = db.execute("SELECT p.* FROM pipeline_stage_entries e INDEXED BY open_entries JOIN pipeline_pieces p ON p.id=e.piece_id "
-                            "WHERE e.left_ms IS NULL AND p.kind='release' AND (p.commit_sha=? OR p.release_number=? OR EXISTS ("
-                            "SELECT 1 FROM check_readings g INDEXED BY readings_by_piece JOIN check_runs u ON u.id=g.run_id "
-                            "WHERE g.piece_id=p.id AND u.commit_sha=?) OR EXISTS (SELECT 1 FROM pipeline_piece_members m WHERE m.piece_id=p.id "
-                            "AND m.left_ms IS NULL AND m.number IN (SELECT value FROM json_each(?))))",
-                            (release["commit"], release["release"], release["commit"], _json(release["items"]))).fetchall()
-        for piece in pieces:
-            ms = release["recorded_ms"]
-            db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND left_ms IS NULL "
-                       "AND number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j)", (ms, piece["id"]))
-            self._leave(db, None, self._open_entry(db, piece["id"]), "shipped", ms, "Shipped in release %d" % release["release"])
-            db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece["id"],))
-            self._bump(db, piece["workspace_id"], piece["id"])
+    def _ship_release(self, db, release, next_number):
+        """7.2 step 11, in the transaction that writes a release record; next_number is _next_release as it was before it.
+
+        A record ships an outcome's release (_the_release) only when it is that release: its number is the next one. The
+        release then leaves its entry `shipped`, "Shipped in release N", whatever stage it is in, and an item it holds that
+        no record names has not shipped: it goes back to building (`returned`). A record of any other number (an older
+        release recorded late) ends no release; an item it names that shipped there leaves the release. Then each piece an
+        item the record names was ever in, once every member has shipped or left it, is finished: its open entry is left
+        `shipped` and its topic is Done (D1). Only the outcome that ships in releases has its items named by records."""
+        ms, number = release["recorded_ms"], release["release"]
+        note = "Shipped in release %d" % number
+        named = _json(release["items"])
+        for (workspace_id,) in db.execute("SELECT workspace_id FROM pipelines WHERE ships_in_releases=1").fetchall():
+            piece = self._the_release(db, workspace_id)
+            if piece is not None:
+                if number == next_number:
+                    db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND left_ms IS NULL "
+                               "AND number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j)", (ms, piece["id"]))
+                    self._leave(db, None, self._open_entry(db, piece["id"]), "shipped", ms, note)
+                else:
+                    db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND left_ms IS NULL "
+                               "AND number IN (SELECT value FROM json_each(?))", (ms, piece["id"], named))
+                db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece["id"],))
+                self._bump(db, workspace_id, piece["id"])
+            finished = db.execute(
+                "SELECT p.* FROM pipeline_pieces p WHERE p.id IN (SELECT m.piece_id FROM pipeline_piece_members m INDEXED BY item_pieces "
+                "WHERE m.workspace_id=? AND m.number IN (SELECT value FROM json_each(?))) AND NOT EXISTS (SELECT 1 FROM pipeline_piece_members m "
+                "WHERE m.piece_id=p.id AND m.left_ms IS NULL AND m.number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j))",
+                (workspace_id, named)).fetchall()
+            for done in finished:
+                entry = self._open_entry(db, done["id"])
+                if entry is not None:
+                    self._leave(db, None, entry, "shipped", ms, note)
+                    db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (done["id"],))
+                    self._bump(db, workspace_id, done["id"])
+                topic = db.execute("SELECT * FROM topics WHERE id=?", (done["topic_id"],)).fetchone()
+                # D1: the topic doing the work stays open until its items ship, and no longer, unless it holds work under way;
+                # the outcome's conversation never ends (standing_conversation.py).
+                if topic["kind"] == "topic" and topic["state"] != "done" and not db.execute("SELECT 1 FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id "
+                                                               "AND e.left_ms IS NULL WHERE p.topic_id=?", (topic["id"],)).fetchone():
+                    self._set_topic_state(db, topic, None, {"state": "done", "note": note})
 
     def _open_piece_of(self, db, workspace_id, number):
         """The piece an item is in (3.4): its member row that has not left, open or closed. An item that shipped in a release,
@@ -697,6 +719,11 @@ class Pipeline:
         if not isinstance(numbers, list) or not numbers or len(numbers) > 64:
             raise Refusal("INVALID_ARGUMENT", "A piece holds from 1 to 64 items")
         items = [self._item_row(db, workspace["id"], number) for number in dict.fromkeys(numbers)]
+        shipped = self._shipped_numbers(db) if pipeline["ships_in_releases"] else {}
+        for item in items:
+            if item["number"] in shipped:
+                # The records alone say what shipped: an item a release shipped is never built again (3.4).
+                raise Refusal("ITEM_SHIPPED", "%d shipped in release %d; it is not built again" % (item["number"], shipped[item["number"]]["release"]))
         if args.get("from_release"):
             # D35: items of a held release go back to building; the rest is checked again as the next candidate.
             if actor not in (workspace["owner_id"], workspace["coordinator_id"]):

@@ -949,7 +949,9 @@ class Checks:
                                             "ms": account["sent_ms"], "excerpt": account["excerpt"]}
             if piece_id is not None:
                 returned = []
-                for (number,) in db.execute("SELECT number FROM pipeline_piece_members WHERE piece_id=? AND left_reason='returned'", (piece_id,)):
+                # An item that left because a record says it shipped did not go back to building.
+                for (number,) in db.execute("SELECT number FROM pipeline_piece_members WHERE piece_id=? AND left_reason='returned' "
+                                            "AND number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j)", (piece_id,)):
                     other = self._open_piece_of(db, workspace["id"], number)
                     returned.append({"number": number, "topic": self._topic_ref(db, actor, other["topic_id"]) if other else None})
                 rechecking = None

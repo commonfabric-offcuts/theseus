@@ -212,9 +212,10 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         found = {}
 
         def write(db):
+            next_number = self._next_release(db)
             found["release"], written = write_release(db, record, _now_ms())
             if written:
-                self._ship_release(db, found["release"])
+                self._ship_release(db, found["release"], next_number)
             return written
         written = self._operator_write(write, "recorded", "release record")
         return {"instance_id": self.instance_id, "release": found["release"], "recorded": written}
