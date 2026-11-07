@@ -294,6 +294,57 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual(p.errors, []); await p.close();
   });
 
+  await check('conversation a Whisper moved by To stays a Whisper, even onto a draft there that holds an Ask, and is sent to that agent alone', async () => {
+    const p = await open('conversation-reader-whisper', '/?topic=t1');
+    const source = facts.sources[0];
+    const draft = async topicId => {
+      const d = (await view('editor_state', { source_ref: source, topic_id: topicId })).draft;
+      return { body: d?.body ?? '', addressees: d?.addressees ?? [], intent: d?.intent ?? null, whisper: d?.whisper ?? null };
+    };
+    const reply = () => quiet(p, `({checked:[...document.querySelectorAll('#intent-row label[data-intent] input:checked')].map(i=>i.value),
+      send:document.querySelector('#send-reply .send-word').textContent,line:document.querySelector('#intent-row .audience-line').textContent,
+      to:[...document.querySelectorAll('#reply-destination button')].map(b=>b.getAttribute('aria-pressed'))})`);
+    const name = async () => {
+      await p.point('#recipient-input'); await p.send('Input.insertText', { text: other }); await p.key('Enter');
+      await until(() => quiet(p, `[...document.querySelectorAll('#recipient-chips .chip')].some(c=>c.dataset.name===${JSON.stringify(other)})`), 'the name is a chip');
+    };
+    const choose = async value => {
+      await p.point(`#intent-row label[data-intent="${value}"]`);
+      await until(async () => (await reply())?.checked[0] === value, `${value} is chosen`);
+    };
+    // An Ask left waiting in the conversation's draft of this message: the Reader opens on This topic again afterwards.
+    await p.open(0);
+    await until(() => quiet(p, `document.querySelectorAll('#reply-destination button').length===2`), 'two chips under To');
+    await name(); await choose('ask');
+    await replace(p, 'Old question.');
+    await until(async () => (await draft('t1')).body === 'Old question.', 'saved where it was written');
+    await p.point('#reply-destination button:nth-child(2)');
+    assert.deepEqual(await until(async () => { const d = await draft(conversation.topic_id); return d.body && d; }, 'the Ask waits in the conversation'),
+      { body: 'Old question.', addressees: [other], intent: 'ask', whisper: false });
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'closed reader');
+    // A Whisper to one agent, chosen in this topic.
+    await p.open(0);
+    await until(async () => (await reply())?.to.join() === 'true,false', 'the Reader opens on This topic');
+    await name(); await choose('tell'); await choose('whisper');
+    await replace(p, 'Private note.');
+    assert.deepEqual(await until(async () => { const d = await draft('t1'); return d.body === 'Private note.' && d; }, 'the whisper is saved here'),
+      { body: 'Private note.', addressees: [other], intent: null, whisper: true });
+    await p.point('#reply-destination button:nth-child(2)');
+    const moved = await until(async () => { const r = await reply(); return r?.to.join() === 'false,true' && r; }, 'Conversation is chosen');
+    assert.deepEqual([moved.checked, moved.send], [['whisper'], 'Whisper'], `the Whisper stayed a Whisper (${moved.line})`);
+    assert.match(moved.line, new RegExp(`^Only you and ${other} will see this\\.`));
+    assert.deepEqual(await until(async () => { const d = await draft(conversation.topic_id); return d.body.includes('Private note.') && d; }, 'saved in the conversation'),
+      { body: 'Old question.\n\nPrivate note.', addressees: [other], intent: null, whisper: true }, 'the Ask there did not come through');
+    // With Answered by, the whisper's line and an earlier reply's Review, Send sits below the Reply's fold at 900 tall: scrolled to, as a person would.
+    await p.evaluate(`document.querySelector('#send-reply').scrollIntoView({block:'nearest'})`);
+    const sentId = await sent(p, p.calls.length);
+    const message = await view('source', { source_ref: { kind: 'message', id: sentId } });
+    assert.deepEqual([message.topic_id, message.whisper ?? false, message.private_to ?? null, message.intent ?? null, message.body],
+      [conversation.topic_id, true, other, null, 'Old question.\n\nPrivate note.'], 'sent to that agent alone, never on the record');
+    assert.deepEqual(await draft('t1'), { body: '', addressees: [], intent: null, whisper: null }, 'nothing is left waiting in this topic');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
   await check('conversation a link to its topic opens as ?conversation=, and Only new leaves out what is settled', async () => {
     const p = await open('conversation-address', `/?topic=${conversation.topic_id}`);
     await until(() => quiet(p, `location.search==='?conversation=w1' && document.body.classList.contains('conversation-page')`), 'the address names the conversation');

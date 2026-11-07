@@ -73,8 +73,10 @@ the words, quotes, the names it goes to and the choice of Whisper, Tell or Ask.
 It is carried into the other place's draft and kept on the device first, then
 the draft it left is emptied, so switching back and forth loses nothing, leaves
 nothing behind, and Send sends all of it. Writing the other draft already held
-is kept: its words first, each quote and name once, and its choice where the
-moved writing made none. Writing with images does not move, whatever state the
+is kept: its words first, each quote and name once, and its choice of Whisper,
+Tell or Ask only where the moved writing made none. A choice the moved writing
+made comes whole, so a Whisper stays a Whisper and never takes the other
+draft's Ask. Writing with images does not move, whatever state the
 images are in (attached, still uploading, failed); To says why.
 
 ## Views

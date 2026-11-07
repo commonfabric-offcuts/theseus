@@ -10,6 +10,7 @@ import { itemTags, paintItemTags, paintAbout, paintAsksYou, paintOnlyNew, paintE
 import { parseRoute, routeHref, routeKey } from '../web/topic-navigation.mjs';
 import { miniDocument } from './fixtures/mini_dom.mjs';
 import { Editor, WRITING_FIELDS, noWriting, holdsWriting } from '../web/editor.mjs';
+import { choiceOf, chosen, naming, sending } from '../web/whisper-choice.mjs';
 
 const AT = Date.UTC(2026, 10, 6, 18, 0);
 const words = tags => tags.map(tag => [tag.tag, tag.parts.map(part => typeof part === 'string' ? part : part.link ?? (part.time !== undefined ? '<time>' : '')).join('')]);
@@ -183,8 +184,8 @@ test("switching the Reader's To moves every field of the writing: what the desti
   const both = carriedWriting(draft({ body: 'new words', quotes: [quote], addressees: ['fable', 'warp'], intent: 'tell' }),
     draft({ body: 'older words ', quotes: [quote, { ...quote, excerpt: 'other' }], addressees: ['warp', 'tony'], intent: 'ask', whisper: false, attachments: [{ id: 'media-2' }] }));
   assert.deepEqual(both, { body: 'older words\n\nnew words', quotes: [quote, { ...quote, excerpt: 'other' }], addressees: ['warp', 'tony', 'fable'],
-    intent: 'tell', whisper: false, attachments: [{ id: 'media-2' }], caret: { start: 22, end: 22 } },
-    "both kept, the destination's first, each quote and name once; a choice the writing made wins, one it left open keeps the destination's; images there stay");
+    intent: 'tell', whisper: null, attachments: [{ id: 'media-2' }], caret: { start: 22, end: 22 } },
+    "both kept, the destination's first, each quote and name once; the Tell the writing chose comes whole, none of the destination's Ask; images there stay");
   assert.equal(carriedWriting(draft({ body: 'a' }), draft({ body: '   ' }))?.body, 'a', 'spaces held there are not kept');
   // The draft left is emptied by the same list: nothing of the writing stays.
   const context = { instanceId: 'i-1', actor: 'tony', sourceRef: { kind: 'message', id: 'm-1' }, topicId: 't1', kind: 'reply' };
@@ -202,6 +203,34 @@ test("switching the Reader's To moves every field of the writing: what the desti
   named.offerAddressees(['fixture-agent']);
   named.receive(carriedWriting(draft({ body: 'words', addressees: ['fixture-agent'] }), named.draft));
   assert.deepEqual(named.draft.addressees, ['fixture-agent'], 'and one the writing names is named once');
+});
+
+test("switching To keeps Whisper, Tell or Ask as one choice: the moved writing's choice wins whole, and only writing that made none takes the other draft's", () => {
+  const draft = (fields = {}) => ({ ...noWriting(), ...fields });
+  const agent = 'fixture-planning-agent', kindOf = name => name.endsWith('-agent') ? 'agent' : 'person';
+  // Every way the writing holds a choice: a tap on each, the whisper a second
+  // name holds (naming), and none at all.
+  const one = [agent], two = [agent, 'fixture-agent'];
+  const held = { ...naming(draft({ addressees: one }), one, kindOf), addressees: two };
+  assert.deepEqual([held.whisper, held.intent ?? null], [true, null], 'a second name on a default whisper holds the whisper');
+  const states = { whisper: [chosen('whisper'), true], tell: [chosen('tell'), true], ask: [chosen('ask'), true],
+    'held by a second name': [{ whisper: true }, true], none: [{ whisper: null, intent: null }, false] };
+  for (const [fromName, [fromChoice, made]] of Object.entries(states)) {
+    for (const [toName, [toChoice]] of Object.entries(states)) {
+      for (const names of [one, two]) for (const conversation of [true, false]) {
+        const from = draft({ body: 'Private note.', addressees: names, ...fromChoice }), to = draft({ body: 'Old question.', addressees: names, ...toChoice });
+        const moved = carriedWriting(from, to), options = { conversation };
+        const want = made ? from : to;
+        assert.deepEqual([choiceOf(moved, names, kindOf, options), sending(moved, names, kindOf, options)],
+          [choiceOf(want, names, kindOf, options), sending(want, names, kindOf, options)],
+          `${fromName} moved onto ${toName}, ${names.length} named, ${conversation ? 'into' : 'out of'} the conversation`);
+      }
+    }
+  }
+  // The case found: a Whisper chosen and moved onto a draft holding an Ask is sent as a whisper, never on the record.
+  const moved = carriedWriting(draft({ body: 'Private note.', addressees: one, ...chosen('whisper') }), draft({ body: 'Old question.', addressees: one, ...chosen('ask') }));
+  assert.deepEqual([moved.whisper, moved.intent, choiceOf(moved, one, kindOf, { conversation: true }).choice, sending(moved, one, kindOf, { conversation: true })],
+    [true, null, 'whisper', { whisper: true, intent: null }]);
 });
 
 test('writing with images in any state stays where they were chosen: attached, uploading, failed, or an image action under way', () => {

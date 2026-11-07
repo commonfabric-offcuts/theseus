@@ -194,23 +194,32 @@ export function conversationDestination(host, { topic, conversation, outcome, ch
 // carried writing made wins and one it left open keeps the destination's, and
 // images there stay there. Images never move (imagesStay), so carried writing
 // holding one is refused.
+//
+// Ask, Tell or Whisper is one choice held in two fields (whisper-choice.mjs:
+// Whisper is {whisper: true, intent: null}), so it moves as one: when the
+// carried writing made any choice both fields come from it, and only when it
+// made none do both stay as the destination holds them. Each rule takes the
+// two drafts and the field's name.
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-const once = (held, carried) => [...held, ...carried.filter(item => !held.some(kept => same(kept, item)))];
-const chosen = (held, carried) => carried ?? held;
+const each = move => (held, carried, name) => move(held[name], carried[name]);
+const once = each((held, carried) => [...held, ...carried.filter(item => !held.some(kept => same(kept, item)))]);
+const CHOICE = ['intent', 'whisper'];
+const choice = (held, carried, name) => (CHOICE.some(field => carried[field] !== null) ? carried : held)[name];
 const MOVES = {
-  body: (held, carried) => !held.trim() ? carried : !carried.trim() ? held : carried.includes(held) ? carried : held.includes(carried) ? held : `${held.trimEnd()}\n\n${carried}`,
-  quotes: once, addressees: once, intent: chosen, whisper: chosen,
-  attachments: (held, carried) => { if (carried.length) throw Error('Images do not move between places.'); return held; },
+  body: each((held, carried) => !held.trim() ? carried : !carried.trim() ? held : carried.includes(held) ? carried : held.includes(carried) ? held : `${held.trimEnd()}\n\n${carried}`),
+  quotes: once, addressees: once, intent: choice, whisper: choice,
+  attachments: each((held, carried) => { if (carried.length) throw Error('Images do not move between places.'); return held; }),
 };
 const FIELDS = WRITING_FIELDS.filter(name => name !== 'caret');
 for (const name of FIELDS) if (!MOVES[name]) throw Error(`The writing's ${name} has no rule to move it between places.`);
 // Returns the destination's writing after the move, or null when there is
 // nothing to carry.
 export function carriedWriting(from, to) {
-  const empty = noWriting(), field = (draft, name) => draft?.[name] ?? empty[name];
-  if (FIELDS.every(name => same(field(from, name), empty[name]))) return null;
-  const result = Object.fromEntries(FIELDS.map(name => [name, MOVES[name](field(to, name), field(from, name))]));
-  result.caret = result.body === field(from, 'body') && from.caret ? { ...from.caret } : { start: result.body.length, end: result.body.length };
+  const empty = noWriting(), fill = draft => Object.fromEntries(FIELDS.map(name => [name, draft?.[name] ?? empty[name]]));
+  const held = fill(to), carried = fill(from);
+  if (FIELDS.every(name => same(carried[name], empty[name]))) return null;
+  const result = Object.fromEntries(FIELDS.map(name => [name, MOVES[name](held, carried, name)]));
+  result.caret = result.body === carried.body && from.caret ? { ...from.caret } : { start: result.body.length, end: result.body.length };
   return result;
 }
 // Images belong to the place they were chosen for, in every state: attached,
