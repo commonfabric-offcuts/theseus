@@ -16,14 +16,17 @@ export const EMPTY_WORDS = ['Nothing in this pipeline yet.',
 
 // A message's first line as an item's title: its first line with words, without
 // list or heading marks, emphasis, or the names it opens by addressing ("@Tony");
-// a long line is cut at a word near 140 characters.
+// only its first sentence or clause (to a full stop, question mark, colon or
+// semicolon); and a long one cut at a word near 100 characters.
 export function firstLine(text) {
-  const line = String(text ?? '').split('\n')
+  let line = String(text ?? '').split('\n')
     .map(part => part.replace(/\*\*|__|`/g, '').replace(/^\s*(?:[#>*\-•]+\s*|\d+[.)]\s+)*/, '').replace(/^(?:@[\w.-]+[,:]?\s+)+/, '').trim())
     .find(Boolean) ?? '';
-  if (line.length <= 140) return line;
-  const cut = line.slice(0, 140), space = cut.lastIndexOf(' ');
-  return `${(space > 80 ? cut.slice(0, space) : cut).replace(/[\s,;:.]+$/, '')}…`;
+  const end = line.slice(12).search(/[.!?:;](?:\s|$)/);
+  if (end >= 0) line = line.slice(0, end + 12 + (line[end + 12] === '?' ? 1 : 0));
+  if (line.length <= 100) return line;
+  const cut = line.slice(0, 100), space = cut.lastIndexOf(' ');
+  return `${(space > 60 ? cut.slice(0, space) : cut).replace(/[\s,;:.]+$/, '')}…`;
 }
 
 // A name that starts a sentence is capitalised: "Fable orders it".
