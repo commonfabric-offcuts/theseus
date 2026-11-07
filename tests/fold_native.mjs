@@ -91,30 +91,33 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
       await until(async () => !(await state()).cardShown, width + ': Enter folds it again');
 
       // Read on screen, everything for the person is read; the message between
-      // others never was unread. The line holds where it was placed for the
-      // visit, under the message to everyone; opening the topic again places it
-      // afresh, and with nothing unread there is none, so none under the fold either.
+      // others never was unread. The line fades where it was placed, under the
+      // message to everyone; opening the topic again places it afresh, and with
+      // nothing unread there is none, so none under the fold either.
       const drawn = () => p.evaluate(`(()=>{const l=document.querySelector('#messages .new-line');return l?l.previousElementSibling?.dataset?.id??'':null})()`);
+      const faded = () => p.evaluate(`document.querySelector('#messages .new-line')?.classList.contains('new-line-read')??null`);
       assert.equal(await drawn(), everyone, width + ': placed under the oldest unread, the message to everyone');
       for (let oldest; (oldest = await unread());) {
         assert.notEqual(oldest.id, between, width + ': the message between others is never the oldest unread');
         await p.evaluate(`document.querySelector('#messages > [data-id="${oldest.id}"]').scrollIntoView({block:'center'})`);
         await until(async () => (await unread())?.id !== oldest.id, width + ': read ' + oldest.id);
       }
-      assert.equal(await drawn(), everyone, width + ': read during the visit, the line holds where it was placed');
+      assert.equal(await drawn(), everyone, width + ': read during the visit, the line stays where it was placed');
+      await until(async () => await faded() === true, width + ': nothing above it unread, it fades');
       await p.send('Page.navigate', { url: facts.origin + '/?topic=' + topic });
       await until(async () => { try { return await p.evaluate(`document.body?.dataset.ready === 'true' && Boolean(document.querySelector('#messages [data-id="${between}"]'))`); } catch { return false; } }, width + ': the topic opened again');
       await until(async () => await drawn() === null, width + ': opened again with everything read, no New line, none under the fold');
 
       // Marked unread (from another tab), it holds the line with the pill on its line, still folded; cleared, it counts nowhere.
       await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [between], marked: true });
-      await until(async () => (await unread())?.id === between && await drawn() === between, width + ': marked unread, it holds the New line');
+      await until(async () => (await unread())?.id === between && await drawn() === between && await faded() === false, width + ': marked unread, it holds the New line');
       const marked = await p.evaluate(`(()=>{const l=document.querySelector(${JSON.stringify(line)});return {pill:Boolean(l.querySelector('.unread-mark')),expanded:l.getAttribute('aria-expanded')}})()`);
       assert.deepEqual(marked, { pill: true, expanded: 'false' }, width + ': the pill on the folded line');
       await shot(p, 'fold-' + width + '-marked');
       await control({ method: 'mark', operation_id: topic + '-clear', message_ids: [between], marked: false });
       await until(async () => await unread() === null && !(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(line)} + ' .unread-mark'))`)), width + ': cleared, unread nowhere');
-      assert.equal(await drawn(), between, width + ': cleared in another tab, the line holds for the visit');
+      assert.equal(await drawn(), between, width + ': cleared in another tab, the line stays where it is');
+      await until(async () => await faded() === true, width + ': and fades');
       observations.push({ name: 'between others folded', width, folded, open });
       assert.deepEqual(p.errors, []);
       await p.close();

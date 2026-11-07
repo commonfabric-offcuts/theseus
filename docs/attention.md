@@ -358,23 +358,38 @@ server's answer, the unread counts and the Unread pills never disagree, and
 they follow reading live.
 
 The line is placed from that answer when the topic opens and when the reader
-presses Mark read in this page. During the visit it stays put while they read, so it does not
-vanish a second after a short topic opens; it is a marker of where they were,
-not a count:
+presses Mark read in this page. During the visit it never jumps to a new
+place while they read; it is a marker of where they were, not a count. Once
+nothing at or above it is unread, it fades out where it is:
 
-- Reading on screen, here or in another tab, never moves the line up, even
-  when everything is read. Opening the topic again places it afresh: under
-  the oldest message still unread, or nowhere.
+- Reading on screen, here or in another tab, never moves the line up. As soon
+  as no message at or above the line is unread for the reader (read on
+  screen, opened in the Reader, replied to, or marked read, here or
+  anywhere), the line fades out in place, a short opacity transition (none
+  when the reader's system asks for reduced motion). It keeps its space, so
+  nothing below it shifts, and once faded it is inert: no pointer, Tab or
+  screen reader finds it. The same answer drives the counts, the Unread
+  pills and the fade, read after each announced commit; no timer is
+  involved. Opening the topic again places it afresh: under the oldest
+  message still unread, or nowhere.
+- A message that arrives during the visit lands above the line and is shown
+  as new there; the line stays where it is, holding it, so it does not fade.
+  A message marked unread at or above the line holds it the same way.
 - The line moves during the visit only to show more unread: a message marked
   unread further back than the line (here or anywhere) moves it down to just
-  below that message, and a message that arrives while there is no line
-  brings the line just below it. A message that arrives above the line is
-  already shown as new.
+  below that message, and a message that arrives, or is marked unread, while
+  there is no line or the line has faded brings the line just below it. A
+  faded line never fades back in where it was: its words, "New above", would
+  then claim messages the reader has read.
 - The reader's own Mark read in this page (pressing Marked unread in the
   Reader) places the line afresh at once, wherever the oldest unread message
-  now is. Their own Mark unread is a mark like any other: it moves the line
-  only when the message is further back. A mark cleared in another tab, or by
-  opening the message to read it, leaves the line where it is until Refresh.
+  now is; when nothing is left unread, the line fades where it is. Their own
+  Mark unread is a mark like any other: it moves the line only when the
+  message is further back. A mark cleared in another tab, or by opening the
+  message to read it, leaves the line where it is, faded once nothing at or
+  above it is unread.
+- "More new below" (below) fades the same way when the message it leads to is
+  read elsewhere, and More messages comes back in its place.
 - An ask to the reader that they have read is past the line once it is placed
   again. The topic still waits on them ("Waiting on you") until they answer;
   the line is only about reading.
@@ -419,8 +434,8 @@ index back.
 
 The page keeps the newest answer as said above, and reads `topic_unread` again
 after each announced commit (beside its rails and marks, in the same reload),
-on Refresh, and after the reader's own Mark read. Its first answer places the
-line, and so does the first answer to a read asked after Refresh or Mark read;
+and after the reader's own Mark read. Its first answer places the line, and
+so does the first answer to a read asked after Mark read;
 any other answer moves it only to show more, as above. When that read fails,
 it is owed like any read after a commit, and the next read asked after it
 places the line instead. When an answer read at a later commit has already

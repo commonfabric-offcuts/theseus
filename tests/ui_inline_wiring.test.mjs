@@ -31,7 +31,11 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   class Element {
     constructor(id = '') { this.id = id; this.children = []; this.dataset = {}; this.hidden = false; this.disabled = false; this.value = ''; this.textContent = ''; this.handlers = {}; this.isConnected = true; }
     addEventListener(name, fn) { this.handlers[name] = fn; }
-    get classList() { return { add: name => { this.className = this.className ? `${this.className} ${name}` : name; } }; }
+    get classList() {
+      const names = () => String(this.className ?? '').split(' ').filter(Boolean), set = list => { this.className = list.join(' '); };
+      return { add: name => { if (!names().includes(name)) set([...names(), name]); }, remove: name => set(names().filter(n => n !== name)),
+        contains: name => names().includes(name), toggle: (name, on = !names().includes(name)) => { set(on ? [...names().filter(n => n !== name), name] : names().filter(n => n !== name)); return on; } };
+    }
     append(...items) { for (const item of items) { if (typeof item === 'object') item.parent = this; this.children.push(item); } }
     replaceChildren(...items) { this.children = []; this.append(...items); }
     prepend(...items) { for (const item of items) item.remove(); this.children.unshift(...items); for (const item of items) item.parent = this; }
@@ -1697,6 +1701,27 @@ test('once the line is in its place, More messages loads what is older again', a
   assert.equal(f.get('more-messages').hidden, false, 'More messages is back, with older messages left to load');
 });
 
+// "More new below" promises unread messages further back. Once they are read
+// elsewhere it fades where it is, inert, and More messages comes back in its
+// place; marked unread again, the line holds once more and More is hidden.
+test('the older-below line fades once what it leads to is read elsewhere, and More messages comes back', async () => {
+  const { f } = await readingPage();
+  const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
+  f.inject({ api: f.api, bootstrap: f.bootstrap, registry: f.registry, reader: f.reader, inline: f.owners().inline, topic: f.topic, views, freshness: f.fresh });
+  views.messagesPage({ ...page(20, 29, 20), oldest_unread: { seq: 5, id: 'm5' }, commit_seq: 1 }, { initial: true }); await settle();
+  const marker = f.get('messages').children.at(-1);
+  assert.deepEqual([marker.dataset.line, marker.inert, f.get('more-messages').hidden], ['older', false, true], 'the line waits at the bottom, and More is hidden');
+  const unread = async (oldest, at) => { await views.readUnread(async () => ({ instance_id: 'fixture', topic_id: 't1', oldest_unread: oldest, commit_seq: at })); await settle(); };
+  await unread(null, 2);
+  assert.equal(f.get('messages').children.at(-1), marker, 'read elsewhere, the line stays in its place');
+  assert.deepEqual([marker.className, marker.inert], ['new-line new-line-older new-line-read', true], 'faded and inert');
+  assert.equal(f.get('more-messages').hidden, false, 'More messages is back in its place');
+  f.paintViews('memory');
+  assert.equal(f.get('more-messages').hidden, false, 'and painting the Notebook keeps it');
+  await unread({ seq: 5, id: 'm5' }, 3);
+  assert.deepEqual([marker.className, marker.inert, f.get('more-messages').hidden], ['new-line new-line-older', false, true], 'marked unread again: the line holds it, and More is hidden');
+});
+
 test('with nothing older left to load, no line promises older messages below', async () => {
   const { f } = await readingPage();
   const views = new TopicViews({ instanceId: 'fixture', topicId: 't1', paint: kind => f.paintViews(kind), invalidate() {} });
@@ -1720,7 +1745,7 @@ test('pressing the older-below line while the page may not read stops at once an
   assert.equal(f.get('messages').children.at(-1).dataset.line, 'older', 'the line still waits at the bottom');
 });
 
-test('during a visit the New line holds as the person reads, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {
+test('during a visit the New line holds as the person reads, fades once nothing above it is unread, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {
   const scrolls = [];
   const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
@@ -1772,33 +1797,50 @@ test('during a visit the New line holds as the person reads, moves to show more,
   await press(23, 1, 2);
   assert.equal(order(), '26 25 24 new 23 22 21 20', 'Mark read places the line afresh, under the oldest unread message');
   assert.deepEqual(scrolls.filter(Boolean), [-30, 30], 'the card being read still holds still');
-  // Read meanwhile, the line holds.
+  // The line as drawn: shown, or faded where it is and inert.
+  const line = () => list.children.find(child => child.dataset.line);
+  const faded = () => [line().className.split(' ').includes('new-line-read'), line().inert];
+  assert.deepEqual(faded(), [false, false], 'holding an unread message, it shows');
+  // Read meanwhile, nothing at or above the line is unread: it fades where it is, with no Refresh.
   answer = { oldest_unread: null, commit_seq: 10 };
   live.emit({ kind: 'commit', seq: 10 }); for (let n = 0; n < 5; n++) await settle();
-  assert.equal(order(), '26 25 24 new 23 22 21 20', 'everything read: the line still holds');
-  // Mark unread on a message newer than the line: it is already shown as new, so the line holds.
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'everything read: the line stays in its place');
+  assert.deepEqual(faded(), [true, true], 'and fades, inert');
+  // Faded, the line is gone for the person: Mark unread on a message newer
+  // than where it was brings it just below that message, shown again.
   answer = { oldest_unread: { seq: 26, id: 'm26' }, commit_seq: 11 };
   await press(26, 0, 1);
-  assert.equal(order(), '26 25 24 new 23 22 21 20', 'Mark unread on a message above the line leaves the line where it is');
-  answer = { oldest_unread: null, commit_seq: 12 };
-  await press(24, 1, 2);
-  assert.equal(order(), '26 25 24 23 22 21 20', 'an explicit Mark read places the line afresh: nothing is unread');
+  assert.equal(order(), '26 new 25 24 23 22 21 20', 'faded, a mark above where it was brings the line just below the message');
+  assert.deepEqual(faded(), [false, false], 'shown again');
+  // An arrival above a line that shows is shown as new there: the line holds it.
+  answer = { oldest_unread: { seq: 26, id: 'm26' }, commit_seq: 12 };
+  live.emit({ kind: 'commit', seq: 12 }); for (let n = 0; n < 5; n++) await settle();
+  assert.deepEqual([order(), faded()], ['26 new 25 24 23 22 21 20', [false, false]], 'still unread: it holds');
+  answer = { oldest_unread: null, commit_seq: 13 };
+  await press(26, 1, 2);
+  assert.equal(order(), '26 new 25 24 23 22 21 20', 'an explicit Mark read with nothing unread leaves the line where it is');
+  assert.deepEqual(faded(), [true, true], 'to fade');
   // Mark read whose read of the line fails: the stream's return reads it and places the line afresh.
-  answer = { oldest_unread: { seq: 20, id: 'm20' }, commit_seq: 13 };
-  live.emit({ kind: 'commit', seq: 13 }); for (let n = 0; n < 5; n++) await settle();
-  answer = { oldest_unread: null, commit_seq: 14 };
+  answer = { oldest_unread: { seq: 20, id: 'm20' }, commit_seq: 14 };
   live.emit({ kind: 'commit', seq: 14 }); for (let n = 0; n < 5; n++) await settle();
-  assert.equal(order(), '26 25 24 23 22 21 20 new', 'marked further back, then read: the line holds');
+  answer = { oldest_unread: null, commit_seq: 15 };
+  live.emit({ kind: 'commit', seq: 15 }); for (let n = 0; n < 5; n++) await settle();
+  assert.deepEqual([order(), faded()], ['26 25 24 23 22 21 20 new', [true, true]], 'marked further back, then read: the line fades where it is');
+  answer = { oldest_unread: { seq: 22, id: 'm22' }, commit_seq: 16 };
+  live.emit({ kind: 'commit', seq: 16 }); for (let n = 0; n < 5; n++) await settle();
+  answer = { oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 17 };
+  live.emit({ kind: 'commit', seq: 17 }); for (let n = 0; n < 5; n++) await settle();
+  assert.deepEqual([order(), faded()], ['26 25 24 23 22 new 21 20', [false, false]], 'faded, a mark brings it under that message; read on to #24, it holds there');
   f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
-  await press(20, 1, 2);
-  assert.equal(order(), '26 25 24 23 22 21 20 new', 'the read failed: the line is where it was');
-  f.api.view = async (name, args) => { if (name === 'topic_unread') return { instance_id: 'fixture', topic_id: 't1', oldest_unread: null, commit_seq: 15 }; return view(name, args); };
+  await press(22, 1, 2);
+  assert.equal(order(), '26 25 24 23 22 new 21 20', 'the read failed: the line is where it was');
+  f.api.view = async (name, args) => { if (name === 'topic_unread') return { instance_id: 'fixture', topic_id: 't1', oldest_unread: { seq: 24, id: 'm24' }, commit_seq: 18 }; return view(name, args); };
   live.emit({ kind: 'state', state: 'down' }); live.emit({ kind: 'state', state: 'live' }); for (let n = 0; n < 5; n++) await settle();
-  assert.equal(order(), '26 25 24 23 22 21 20', 'the stream returns: the read is made again and the line placed afresh');
+  assert.equal(order(), '26 25 24 new 23 22 21 20', 'the stream returns: the read is made again and the line placed afresh');
   // A read that fails leaves the line where it was, and the reload is owed.
   f.api.view = async (name, args) => { if (name === 'topic_unread') throw Error('offline'); return view(name, args); };
-  live.emit({ kind: 'commit', seq: 16 }); for (let n = 0; n < 5; n++) await settle();
-  assert.equal(order(), '26 25 24 23 22 21 20');
+  live.emit({ kind: 'commit', seq: 19 }); for (let n = 0; n < 5; n++) await settle();
+  assert.equal(order(), '26 25 24 new 23 22 21 20');
 });
 
 test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {

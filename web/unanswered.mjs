@@ -41,7 +41,12 @@ const TITLES = {
 // sent is when that message was sent, or null: the line then says it after
 // its label ("New above · 4:40 AM", docs/times.md), the label and the time each in
 // a span of their own, inside one span of words.
-export function placeNewLine(list, seq, doc = document, loadOlder, sent = null) {
+//
+// held is false once nothing at or above the line is unread: the line stays
+// in its place but fades out (.new-line-read, a CSS transition), and is inert
+// meanwhile, so neither a pointer, Tab nor a screen reader finds it; held
+// again, it fades back in wherever it is placed.
+export function placeNewLine(list, seq, doc = document, loadOlder, sent = null, held = true) {
   const children = [...list.children];
   const found = children.filter(child => ['new', 'older'].includes(child.dataset?.line));
   const cards = children.filter(child => !found.includes(child));
@@ -61,6 +66,7 @@ export function placeNewLine(list, seq, doc = document, loadOlder, sent = null) 
     line.type = 'button'; line.className = 'new-line new-line-older'; line.dataset.line = 'older';
   }
   paintWords(line, kind, Number.isSafeInteger(sent) ? sent : null, doc);
+  line.classList.toggle('new-line-read', !held); line.inert = !held;
   if (kind === 'older') line.onclick = () => loadOlder();
   const next = card ? cards[cards.indexOf(card) + 1] ?? null : null;
   const now = [...list.children];
