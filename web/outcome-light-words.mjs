@@ -68,7 +68,7 @@ export function leadWords(lead, facts = [], outcome = '') {
       return [`${lead.seen} of the ${lead.of} items in Now ${lead.seen === 1 ? 'was' : 'were'} worked on in the last hour:`];
     case 'topics_work': return ['It has no pipeline, so work in any of its open topics counts. Worked on in the last hour:'];
     case 'done': return [lead.pipeline ? 'Everything in its pipeline has shipped, and all its checks pass:' : 'All its checks pass:'];
-    case 'reached': return [`${lead.by} said ${outcome || 'it'} was reached`, ...whenAfter(lead.ms), ':'];
+    case 'reached': return [`${lead.by} said ${outcome || 'it'} was reached`, ...(known(lead.ms) ? [',', ...whenAfter(lead.ms)] : []), ':'];
     case 'topics_quiet': return ['Nothing has been posted or worked on in its open topics since then, and no one is waiting on an answer.'];
     case 'now_quiet':
       if (lead.of === 0) return ['Nothing is in Now, and no one is waiting on an answer.'];

@@ -102,7 +102,8 @@ export function paintAlsoWaiting(host, items, current, open) {
 // The peek: on a laptop, hovering an outcome row or focusing it by keyboard
 // opens what its light is made of. It touches its row, so the pointer can
 // move onto it; it stays open while the pointer is on either, and closes on
-// leaving both, on Escape, on scrolling, and when the row loses focus. It
+// leaving both, on Escape, on scrolling (unless the row is focused and still
+// in view), and when the row loses focus. It
 // reads outcome_light once when it opens, and again on each commit while it
 // is open (refresh). A phone has no peek: the row's words are always there,
 // and the outcome's page says the whole of it.
@@ -111,7 +112,17 @@ export class LightPeek {
     Object.assign(this, { host, read, hover, link: null, item: null, answer: null, serial: 0 });
     host.addEventListener('mouseleave', event => { if (!this.link?.contains(event.relatedTarget)) this.hide(); });
     document.addEventListener('keydown', event => { if (event.key === 'Escape') this.hide(); });
-    window.addEventListener('scroll', () => this.hide(), { passive: true, capture: true });
+    window.addEventListener('scroll', event => this.scrolled(event), { passive: true, capture: true });
+  }
+
+  // A scroll closes the peek, except the one that brings a row focused by
+  // keyboard into view as it takes focus: while its row has focus and is
+  // wholly inside what scrolled, the peek follows it there.
+  scrolled(event) {
+    const link = this.link;
+    if (!link || document.activeElement !== link) return this.hide();
+    const box = link.getBoundingClientRect(), frame = event.target?.getBoundingClientRect?.() ?? { top: 0, bottom: window.innerHeight };
+    if (box.top >= frame.top && box.bottom <= frame.bottom) this.place(); else this.hide();
   }
 
   attach(link, item) {
@@ -163,9 +174,14 @@ export class LightPeek {
 
   place() {
     const box = this.link.getBoundingClientRect(), width = this.host.offsetWidth, height = this.host.offsetHeight;
-    // Against the row's right edge, overlapping it by 2 px; under it where the window is too narrow.
+    // Against the row's right edge, overlapping it by 2 px; under it where the
+    // window is too narrow, or above it where there is no room below, so it
+    // never covers the row it is about.
     let left = box.right - 2, top = box.top;
-    if (left + width > window.innerWidth - 8) { left = Math.max(8, box.left); top = box.bottom - 2; }
+    if (left + width > window.innerWidth - 8) {
+      left = Math.max(8, box.left); top = box.bottom - 2;
+      if (top + height > window.innerHeight - 8 && box.top + 2 - height >= 8) top = box.top + 2 - height;
+    }
     if (top + height > window.innerHeight - 8) top = Math.max(8, window.innerHeight - 8 - height);
     this.host.style.left = `${left}px`; this.host.style.top = `${top}px`;
   }

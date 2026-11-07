@@ -104,6 +104,8 @@ const element = (tag, props = {}, ...children) => {
   const node = Object.assign(document.createElement(tag), props);
   node.append(...children); return node;
 };
+// A shown time after its lead-in (", 7:41 AM"), or nothing when there is no time.
+const at = (lead, ms) => Number.isSafeInteger(ms) ? [lead, timeNode(ms, document)] : [];
 // The non-empty groups of parts, with gap between each.
 const joined = (groups, gap) => groups.filter(parts => parts.length).flatMap((parts, index) => index ? [gap, ...parts] : parts);
 // The same, kept on one line so a narrow screen never breaks inside the time.
@@ -370,8 +372,8 @@ export function paintWaiting(host, answer, open) {
     const outcome = item.workspace && typeof item.workspace.title === 'string'
       ? [`, in ${item.workspace.title}${item.workspace.title_truncated ? '…' : ''}`] : [];
     const ask = item.ask && typeof item.ask.by === 'string' ? [`${item.ask.by} asked`, ...(Number.isSafeInteger(item.ask.since_ms) ? [' ', ...spoken(item.ask.since_ms)] : [])] : [];
-    // A topic whose state also says it waits keeps those words before the ask.
-    const said = item.said === false ? [] : joined([item.note ? [item.note] : [], item.state_by ? [item.state_by, ...(Number.isSafeInteger(item.state_ms) ? [' ', ...spoken(item.state_ms)] : [])] : []], ' — ');
+    // A topic whose state also says it waits keeps those words, as they were, before the ask.
+    const said = item.said === false ? [] : joined([item.note ? [item.note] : [], item.state_by ? [item.state_by, ...at(', ', item.state_ms)] : []], ' — ');
     const detail = joined([said, ask], ' · ');
     return element('li', {}, link, ...outcome, ...(detail.length ? [element('span', { className: 'muted' }, ' — ', ...detail)] : []));
   }));
