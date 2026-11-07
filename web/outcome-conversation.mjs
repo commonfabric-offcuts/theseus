@@ -132,8 +132,14 @@ export function paintEmpty(host, { view, doc = document }) {
     element(doc, 'p', { className: 'muted', textContent: coordinator
       ? `Write below to ask where things stand, or to raise a friction or a request. ${coordinator} answers each one here or takes it into a topic, and the card says which.`
       : `Write below to ask where things stand, or to raise a friction or a request. ${NOBODY_ANSWERS}` }),
-    ...(replaced.length ? [element(doc, 'p', { className: 'muted',
-      textContent: `${listed(replaced)}, ${replaced.length === 1 ? 'was' : 'were'} closed when this conversation started. ${replaced.length === 1 ? 'It stays' : 'Both stay'} readable under Archived topics.` })] : []));
+    ...(replaced.length ? [element(doc, 'p', { className: 'muted', textContent: replacedWords(replaced) })] : []));
+}
+// "Friction log was closed …", or "What's live and what's next, and Friction
+// log, were closed …": the commas keep titles that hold an "and" apart.
+function replacedWords(titles) {
+  if (titles.length === 1) return `${titles[0]} was closed when this conversation started. It stays readable under Archived topics.`;
+  return `${titles.slice(0, -1).join(', ')}, and ${titles.at(-1)}, were closed when this conversation started. ` +
+    `${titles.length === 2 ? 'Both stay' : 'They stay'} readable under Archived topics.`;
 }
 
 // The conversation's one row: the outcome's title, its unread count (in the

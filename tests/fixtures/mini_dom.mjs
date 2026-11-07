@@ -60,7 +60,12 @@ export class Element {
   focus() { if (this.document) this.document.activeElement = this; else if (globalThis.document) globalThis.document.activeElement = this; }
   setSelectionRange() {}
   *descendants() { for (const node of this.children) if (typeof node === 'object') { yield node; yield* node.descendants(); } }
-  querySelectorAll(selector) { return [...this.descendants()].filter(node => matches(node, selector)); }
+  prepend(...nodes) { const rest = this.children; this.children = []; this.append(...nodes); this.children.push(...rest.filter(node => !nodes.includes(node))); }
+  // ':scope > SELECTOR' matches only this element's own children.
+  querySelectorAll(selector) {
+    const own = /^:scope\s*>\s*(.+)$/.exec(selector.trim());
+    return own ? this.children.filter(node => matches(node, own[1])) : [...this.descendants()].filter(node => matches(node, selector));
+  }
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
   closest(selector) { for (let node = this; node; node = node.parent) if (matches(node, selector)) return node; return null; }
 }
