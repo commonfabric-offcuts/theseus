@@ -5,9 +5,11 @@ import assert from 'node:assert/strict';
 // "Write the target" opens in place, Escape leaves the words as they were, Return saves them, and there is no
 // Save button; a run of the checks shows with no reload, grouped, each group and check opened from the keyboard;
 // Measurements lists every reading; a topic opens with the target as one closed line; in the improvement loop a
-// chart says the reading of the mark under the pointer or reached by Tab, Ship it anyway opens by keyboard and
+// chart says the reading of the mark under the pointer or reached by Tab, Ship it anyway opens with a press and
 // accepts on Return only with words, and the problems line opens its topic; Reached opens in place,
-// asks him to confirm when nothing checks it, and folds the outcome into "Reached (1)". Each page fits 1280 and
+// asks him to confirm when nothing checks it, and folds the outcome into "Reached (1)". A press held down while a
+// commit lands and the page repaints still clicks what was pressed: the kind chip, Write the target, a group, Ship
+// it anyway and Say it is reached, across a commit elsewhere or one that changes the panel itself (web/repaint.mjs). Each page fits 1280 and
 // 390, light and dark, with no sideways scroll. Run by reader_persistence_native.mjs with --targets; screenshots
 // are kept as targets-*.png for review.
 const SIZES = { laptop: { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }, phone: { width: 390, height: 844, deviceScaleFactor: 2, mobile: true } };
@@ -27,20 +29,28 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
   const focusedKey = p => p.evaluate(`document.activeElement?.closest?.('[data-key]')?.dataset.key ?? document.activeElement?.tagName ?? null`);
   const sideways = p => p.evaluate('document.documentElement.scrollWidth - innerWidth');
   const checks = async (workspace = 'w1') => view('outcome_checks', { workspace_id: workspace });
-  // The page reads its panels again on every commit, its own included, and a repaint replaces their nodes: a
-  // step after a command waits for that read of the target to land and be painted, or a tap can fall on a node
-  // the repaint is about to replace. `before` is the page's network log length before the command was sent;
-  // `reads` is how many reads of the target follow it: the commit's, and the panel's own after a command it sent.
-  const reread = async (p, before, reads = 1) => {
-    const sent = (from, test) => p.network.slice(from).filter(e => e.method === 'Network.requestWillBeSent' && test(e.params.request));
-    const command = await until(() => sent(before, r => r.url.endsWith('/api/command'))[0], 'the command was sent');
-    const ids = await until(() => { const found = sent(p.network.indexOf(command), r => r.url.endsWith('/api/view') && (r.postData ?? '').includes('"outcome_checks"'));
-      return found.length >= reads && found.map(e => e.params.requestId); }, 'the page reads the target again after the commit');
-    await until(() => ids.every(id => p.network.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === id)), 'and those reads land');
-    await p.evaluate('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
-  };
   let serial = 0;
   const act = (kind, args, more = {}) => control({ method: 'targets', operation_id: `targets-native-${++serial}`, kind, args, ...more });
+  // A commit elsewhere: a message in t1, which changes nothing on an outcome page, but which the page reads again for.
+  const elsewhere = () => control({ method: 'agent_message', operation_id: `targets-elsewhere-${++serial}`, body: 'A commit while a button is held down.', read: true });
+  // A real press on what `selector` names, held down while `commit` lands and the outcome page has read its target
+  // again and painted it, then let go. `changes`, when set, is a panel the commit must visibly change first.
+  const pressAcross = async (p, selector, commit, { changes = null } = {}) => {
+    await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+    const box = await p.box(selector), x = box.x + box.width / 2, y = box.y + box.height / 2;
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${x}, ${y}))`), true, `${selector} is what is pressed`);
+    if (changes) await p.evaluate(`(()=>{window.panelChanged=0;new MutationObserver(records=>{window.panelChanged+=records.length;}).observe(document.querySelector(${JSON.stringify(changes)}),{subtree:true,childList:true,characterData:true,attributes:true});})()`);
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    const before = p.network.length;
+    await commit();
+    const sent = await until(() => p.network.slice(before).find(e => e.method === 'Network.requestWillBeSent' && e.params.request.url.endsWith('/api/view')
+      && (e.params.request.postData ?? '').includes('"outcome_checks"')), 'the page reads the target again after the commit');
+    await until(() => p.network.some(e => e.method === 'Network.loadingFinished' && e.params.requestId === sent.params.requestId), 'and that read lands');
+    await p.evaluate('new Promise(done => requestAnimationFrame(() => requestAnimationFrame(() => done(true))))');
+    if (changes) await until(() => p.evaluate('window.panelChanged > 0'), 'the commit repaints the panel while the button is down');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  };
   const panel = p => p.evaluate(`(()=>{const h=document.getElementById('target-panel');const shown=e=>Boolean(e)&&e.getClientRects().length>0;
     return {shown:shown(h),text:h?.textContent??'',chips:[...h.querySelectorAll('.kind-chip')].map(b=>[b.dataset.key,b.getAttribute('aria-pressed')]),
       buttons:[...h.querySelectorAll('button')].filter(shown).map(b=>b.textContent),groups:[...h.querySelectorAll('details.tg-group')].map(d=>[d.querySelector('.tg-group-name')?.textContent,d.open])}})()`);
@@ -54,10 +64,8 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     assert.equal(await p.evaluate(`document.querySelectorAll('#target-panel select, #target-panel input[type=radio]').length`), 0, 'chips, not a dropdown or radios');
     const widths = await p.evaluate(`[...document.querySelectorAll('.kind-chip')].map(b=>b.getBoundingClientRect().width)`);
     for (const width of widths) assert.ok(width <= 19.5 * 16 + 1, `a chip is no wider than its words allow (${width}px)`);
-    const choosing = p.network.length;
-    await tap(p, '[data-key="kind:reach"]');
-    await until(async () => (await checks()).kind.kind === 'reach', 'one tap makes it an outcome to reach');
-    await reread(p, choosing, 2);
+    await pressAcross(p, '[data-key="kind:reach"]', elsewhere);
+    await until(async () => (await checks()).kind.kind === 'reach', 'one tap, held across a commit elsewhere, makes it an outcome to reach');
     await until(async () => (await panel(p)).chips.map(([, pressed]) => pressed).join() === 'true,false', 'the chip pressed moves, live');
     assert.equal(await focusedKey(p), 'kind:reach', 'the chip keeps the focus across the repaint');
     assert.ok((await panel(p)).buttons.includes('Say it is reached'), 'an outcome to reach offers Say it is reached');
@@ -74,8 +82,8 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     const p = await open('targets-write', '/?workspace=w1');
     await ready(p);
     await until(async () => (await panel(p)).buttons.includes('Write the target'), 'the owner is offered Write the target');
-    await tap(p, '[data-key="write-open"]');
-    await until(async () => (await focusedKey(p)) === 'writer', 'the box opens in place with the caret in it');
+    await pressAcross(p, '[data-key="write-open"]', elsewhere);
+    await until(async () => (await focusedKey(p)) === 'writer', 'a press held across a commit elsewhere opens the box in place with the caret in it');
     assert.deepEqual((await panel(p)).buttons.filter(text => /save/i.test(text)), [], 'Return saves; there is no Save button');
     await p.send('Input.insertText', { text: 'Every topic keeps its place.' });
     await p.key('Escape');
@@ -104,6 +112,12 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     await until(async () => (await panel(p)).groups.length === 2, 'the checks show, live');
     assert.equal(await p.evaluate('performance.timeOrigin'), loaded, 'with no reload');
     assert.deepEqual((await panel(p)).groups, [['Checks', false], ['Measures', false]], 'every group closed while nothing fails or waits');
+    // A run that lands while the group is pressed changes what the panel shows, its group's line among it.
+    await pressAcross(p, '[data-fold="group:Checks"] > summary', () => act('record_checks', null, { run: { commit: COMMIT, started_at: '2026-11-06T06:00:00-08:00',
+      finished_at: '2026-11-06T06:18:00-08:00', tools: { 'release-check': 't-1' }, steps: [], note: '',
+      readings: [{ check_id: 'units', result: 'passed', value: 1846, words: '1,846 pass' }, { check_id: 'duration', result: 'measured', value: 18, words: '18 minutes' }] } }),
+    { changes: '#target-panel' });
+    await until(async () => (await panel(p)).groups[0][1] === true, 'a press on a group held across a commit that changes the panel opens it');
     await p.evaluate(`document.querySelector('[data-fold="group:Measures"] > summary').focus()`);
     await p.key('Enter');
     await until(async () => (await panel(p)).groups[1][1] === true, 'Return on a group opens it');
@@ -152,7 +166,7 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     }
   });
 
-  await check('targets the loop: a chart says the mark under the pointer and the one Tab reaches; Ship it anyway opens by keyboard, sends nothing without words and accepts on Return; the problems line opens its topic', async () => {
+  await check('targets the loop: a chart says the mark under the pointer and the one Tab reaches; Ship it anyway opens with a press held across a commit, sends nothing without words and accepts on Return; the problems line opens from the keyboard and opens its topic', async () => {
     const SHA_19 = '1'.repeat(40), SHA_NEW = '3'.repeat(40), tools = { 'release-check': 't-1', chrome: '142' };
     await control({ method: 'light_outcome', outcome: 'tg-speed', title: 'Speed', topic: { id: 'tg-speed-work', title: 'Speed work' } });
     const on = { workspace_id: 'tg-speed' };
@@ -191,9 +205,8 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     assert.match(await p.evaluate(`document.querySelectorAll(${JSON.stringify(chart + ' rect.chart-mark')})[1].getAttribute('class')`), /hollow/, 'the candidate is hollow');
 
     const accept = '[data-fold="accept:duration"]';
-    await p.evaluate(`(s=>{s.scrollIntoView({block:'center'});s.focus()})(document.querySelector('${accept} > summary'))`);
-    await p.key('Enter');
-    await until(() => p.evaluate(`document.querySelector('${accept}').open`), 'Return on Ship it anyway opens it');
+    await pressAcross(p, `${accept} > summary`, elsewhere);
+    await until(() => p.evaluate(`document.querySelector('${accept}').open`), 'a press on Ship it anyway held across a commit opens it');
     await p.key('Tab');
     await until(async () => (await focusedKey(p)) === 'accept-why:duration', 'Tab reaches the box for why');
     await p.key('Enter');
@@ -201,10 +214,8 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     assert.equal((await checks('tg-speed')).loop.candidate.state, 'stopped', 'and nothing was sent');
     assert.equal(await focusedKey(p), 'accept-why:duration', 'the caret stays in the box');
     await p.send('Input.insertText', { text: 'Worth it for the faster wakes.' });
-    const accepting = p.network.length;
     await p.key('Enter');
     await until(async () => (await checks('tg-speed')).loop.candidate.state === 'accepted', 'Return accepts it');
-    await reread(p, accepting, 2);
     await until(() => p.evaluate(`document.querySelector('#loop-panel .tg-accepted')?.textContent ?? ''`), 'the page shows who accepted it and why');
 
     const problems = '#problems-panel [data-fold="problems"]';
@@ -225,16 +236,13 @@ export async function targetsChecks({ check, page, until, control, view, facts, 
     await until(async () => (await panel(p)).chips.length === 2, 'the kind chips show');
     await tap(p, '[data-key="kind:reach"]');
     await until(async () => (await panel(p)).buttons.includes('Say it is reached'), 'an outcome to reach offers Say it is reached');
-    await tap(p, '[data-key="say-reached"]');
+    await pressAcross(p, '[data-key="say-reached"]', elsewhere);
     await until(async () => (await focusedKey(p)) === 'reach-words', 'the box opens in place with the caret in it');
     assert.match(await p.evaluate(`document.querySelector('.tg-reach').textContent`), /nothing checks it yet/);
     await p.send('Input.insertText', { text: 'We moved on Friday.' });
-    const before = p.network.length;
     await p.key('Enter');
     await until(() => p.evaluate(`document.querySelector('.tg-reach .notice')?.textContent ?? ''`), 'unconfirmed, Core refuses and the box says why');
     assert.equal((await checks('tg-office')).reached, null);
-    // The refusal is still a recorded act, so the page reads its panels again (see reread).
-    await reread(p, before);
     await tap(p, '[data-key="reach-anyway"]');
     await until(() => p.evaluate(`document.querySelector('[data-key="reach-anyway"]')?.checked === true`), 'the tap ticks Mark it reached anyway');
     await p.evaluate(`document.querySelector('[data-key="reach-words"]').focus()`);

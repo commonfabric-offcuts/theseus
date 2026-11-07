@@ -3,23 +3,36 @@
 export function installDocument(t) {
   const previous = { document: globalThis.document, CSS: globalThis.CSS };
   class Node {
-    constructor(tag, ns = null) { this.tagName = String(tag).toUpperCase(); this.namespaceURI = ns; this.children = []; this.attributes = {}; this.handlers = {}; this.text = ''; this.parent = null; this.style = {}; this.hidden = false; }
+    constructor(tag, ns = null) { this.tagName = String(tag).toUpperCase(); this.namespaceURI = ns; this.children = []; this.attributes = {}; this.handlers = {}; this.parent = null; this.style = {}; }
+    get nodeType() { return 1; }
+    // open, hidden and readOnly are attributes, as in a browser, so a repaint that carries attributes carries them.
+    get open() { return 'open' in this.attributes; }
+    set open(value) { this.reflect('open', value); }
+    get hidden() { return 'hidden' in this.attributes; }
+    set hidden(value) { this.reflect('hidden', value); }
+    get readOnly() { return 'readonly' in this.attributes; }
+    set readOnly(value) { this.reflect('readonly', value); }
+    reflect(name, value) { if (value) this.attributes[name] = ''; else delete this.attributes[name]; }
     get parentElement() { return this.parent; }
     get childNodes() { return this.children; }
     get firstChild() { return this.children[0] ?? null; }
+    get lastChild() { return this.children[this.children.length - 1] ?? null; }
     get dataset() { return Object.fromEntries(Object.entries(this.attributes).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5).replace(/-(.)/g, (_, c) => c.toUpperCase()), v])); }
-    get textContent() { return this.text + this.children.map(child => child.textContent).join(''); }
-    set textContent(value) { this.text = String(value); this.children = []; }
+    get textContent() { return this.children.map(child => child.textContent).join(''); }
+    set textContent(value) { for (const child of this.children) child.parent = null; this.children = []; if (String(value) !== '') this.append(String(value)); }
     get className() { return this.attributes.class ?? ''; }
     set className(value) { this.attributes.class = String(value); }
     setAttribute(name, value) { this.attributes[name] = String(value); }
     getAttribute(name) { return name in this.attributes ? this.attributes[name] : null; }
+    getAttributeNames() { return Object.keys(this.attributes); }
+    hasAttribute(name) { return name in this.attributes; }
     removeAttribute(name) { delete this.attributes[name]; }
     append(...kids) { for (const kid of kids) { const node = typeof kid === 'string' ? new Text(kid) : kid; node.remove?.(); node.parent = this; this.children.push(node); } }
-    replaceChildren(...kids) { for (const child of this.children) child.parent = null; this.children = []; this.text = ''; this.append(...kids); }
+    replaceChildren(...kids) { for (const child of this.children) child.parent = null; this.children = []; this.append(...kids); }
+    insertBefore(node, before) { node.remove?.(); node.parent = this; const at = before ? this.children.indexOf(before) : -1; if (at < 0) this.children.push(node); else this.children.splice(at, 0, node); return node; }
     remove() { if (this.parent) { this.parent.children = this.parent.children.filter(child => child !== this); this.parent = null; } }
     addEventListener(name, fn) { (this.handlers[name] ??= []).push(fn); }
-    dispatch(name, event = {}) { const full = { target: this, preventDefault() { this.prevented = true; }, ...event }; for (let at = this; at; at = at.parent) { for (const fn of at.handlers[name] ?? []) fn(full); const prop = at['on' + name]; if (typeof prop === 'function') prop(full); if (name !== 'keydown' && name !== 'input') break; } return full; }
+    dispatch(name, event = {}) { const full = { target: this, preventDefault() { this.prevented = true; }, ...event }; for (let at = this; at; at = at.parent) { full.currentTarget = at; for (const fn of at.handlers[name] ?? []) fn(full); const prop = at['on' + name]; if (typeof prop === 'function') prop(full); if (name !== 'keydown' && name !== 'input') break; } return full; }
     click() { return this.dispatch('click', { button: 0 }); }
     focus() { document.activeElement = this; }
     contains(node) { for (let at = node; at; at = at.parent) if (at === this) return true; return false; }
@@ -40,7 +53,7 @@ export function installDocument(t) {
     querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
     setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; }
   }
-  class Text { constructor(data) { this.data = String(data); this.parent = null; } get textContent() { return this.data; } remove() { if (this.parent) { this.parent.children = this.parent.children.filter(child => child !== this); this.parent = null; } } }
+  class Text { constructor(data) { this.data = String(data); this.parent = null; } get nodeType() { return 3; } get textContent() { return this.data; } remove() { if (this.parent) { this.parent.children = this.parent.children.filter(child => child !== this); this.parent = null; } } }
   const document = { activeElement: null, createElement: tag => new Node(tag), createElementNS: (ns, tag) => new Node(tag, ns), createTextNode: data => new Text(data) };
   globalThis.document = document;
   globalThis.CSS = { escape: value => String(value).replace(/"/g, '\\"'), supports: () => true };

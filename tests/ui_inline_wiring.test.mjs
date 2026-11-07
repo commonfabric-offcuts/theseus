@@ -46,6 +46,12 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get ownerDocument() { return this.owner ?? document; }
     set ownerDocument(value) { this.owner = value; }
     get firstElementChild() { return this.children[0]; }
+    // What a panel's in-place repaint (web/repaint.mjs) walks; this fixture keeps no attribute list to carry.
+    get nodeType() { return 1; }
+    get childNodes() { return this.children; }
+    get lastChild() { return this.children[this.children.length - 1] ?? null; }
+    getAttributeNames() { return []; }
+    hasAttribute(name) { return name in this; }
     querySelector(selector) { return get(selector.slice(1)); }
     // The rail's sideways strips are a phone layout this fixture does not draw.
     querySelectorAll(selector = '') { return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
@@ -167,7 +173,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     .replace(/^import [^;]*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ')).join('\n');
   vm.runInContext('Object.assign(globalThis, (()=>{' + pipelineSource + '; return {PipelinePage,PipelineRow,paintPipelineLine,pipelineHref,titleLine,firstLine}; })())', context);
   // The outcome's target, its checks and Measurements, with their words and charts (items 14, 104, 12).
-  const targetsSource = ['targets-words.mjs', 'charts.mjs', 'targets.mjs'].map(name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8')
+  const targetsSource = ['targets-words.mjs', 'charts.mjs', 'repaint.mjs', 'targets.mjs'].map(name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8')
     .replace(/^import [^;]*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ')).join('\n');
   vm.runInContext('Object.assign(globalThis, (()=>{' + targetsSource + '; return {MeasurementsPage,OutcomeTargets,paintTopicTarget}; })())', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');

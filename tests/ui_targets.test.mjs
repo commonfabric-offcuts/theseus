@@ -201,3 +201,93 @@ test('when Reached is offered, nothing needs confirming', async t => {
   named(f.hosts.target, 'say-reached').click();
   assert.equal(named(f.hosts.target, 'reach-anyway'), null);
 });
+
+// Every commit anywhere reads the panels again. A repaint that replaced their nodes would lose a press held across
+// it (a click needs its down and its up on the same node), so a repaint keeps every node it draws again, carries
+// what changed onto it, and replaces or removes only what did change.
+function busyView(more = {}) {
+  const reading = (words, at) => ({ run_id: 'r-' + at, release: 20, candidate: false, label: 'Release 20', at_ms: at, value: 18, words, detail: {}, source: 'release-check', note: '' });
+  const check = (words, at) => ({ check_id: 'duration', name: 'Release check time', status: 'measured', proves: '', source: 'release-check:duration', unit: 'min',
+    latest: reading(words, at), readings: [reading(words, at)], chart: true, rule: null, explain: '' });
+  const words = more.words ?? '18 minutes', at = more.at ?? 1000;
+  const worse = { check_id: 'duration', name: 'Release check time', kind: 'failed', why: 'moved the wrong way by more than its rule allows', now: 25, base: 18, unit: 'min', fix_topic: null, accepted: null };
+  return view({
+    kind: { kind: 'reach', started_by: 'tony', started_ms: null, you_change: true }, word: 'not_there', reach: { offered: false, unmet: [] },
+    counts: { passing: 0, failing: 0, measured: 1, holding: 0, not_run: 0, waiting: 0, total: 1 },
+    groups: [{ name: 'Measures', open: false, counts: { passing: 0, failing: 0, measured: 1, holding: 0, not_run: 0, waiting: 0, total: 1 }, checks: [check(words, at)] }],
+    loop: { live: { release: 19 }, left_behind: null, candidate: { label: 'Release 20 candidate', release: 20, state: 'stopped', started_ms: 1, steps: [], steps_total: 0,
+      commit: 'c'.repeat(40), worse: [worse], likely_cause: null, account: null, run_id: 'r-cand', you_accept: true } },
+    problems: { releases: [{ release: 20, counts: { defect: 1, design_miss: 0 }, closed: 0, problems: [] }] },
+    ...more,
+  });
+}
+
+test('a repaint after a commit leaves every control in place, carries what changed onto it, and keeps the newest handler', async t => {
+  const f = page(t, busyView());
+  await f.targets.load();
+  const controls = () => ({
+    write: named(f.hosts.target, 'write-open'), reach: named(f.hosts.target, 'kind:reach'), keep: named(f.hosts.target, 'kind:keep'),
+    reached: named(f.hosts.target, 'say-reached'), group: f.hosts.target.querySelector('[data-fold="group:Measures"] > summary'),
+    check: f.hosts.target.querySelector('[data-fold="check:duration"] > summary'), accept: f.hosts.loop.querySelector('[data-fold="accept:duration"] > summary'),
+    mark: f.hosts.loop.querySelector('rect'), problems: f.hosts.problems.querySelector('[data-fold="problems"] > summary'),
+  });
+  const before = controls();
+  for (const [name, node] of Object.entries(before)) assert.ok(node, `${name} is drawn`);
+  // A commit elsewhere: the same view again.
+  await f.targets.load();
+  for (const [name, node] of Object.entries(controls())) assert.equal(node, before[name], `${name} is the same node after a repaint that changes nothing`);
+  // A commit that changes what the panel shows: a new reading and a newer revision.
+  f.set(busyView({ words: '17 minutes', at: 2000, relevant_versions: { checks: 4, workspace: 8 } }));
+  await f.targets.load();
+  for (const [name, node] of Object.entries(controls())) assert.equal(node, before[name], `${name} is the same node after a repaint that changes the panel`);
+  assert.match(before.check.textContent, /17 minutes/, 'what changed is carried onto the shown node');
+  assert.doesNotMatch(f.hosts.target.textContent, /18 minutes/, 'and the old words are gone');
+  before.keep.click(); await drain();
+  assert.deepEqual(f.sent.map(sent => sent.expected), [{ workspace_revision: 8 }], 'the shown chip sends with the newest revision');
+});
+
+test('a repaint removes what is no longer drawn and moves the pressed chip, on the same nodes', async t => {
+  const f = page(t, busyView());
+  await f.targets.load();
+  const reach = named(f.hosts.target, 'kind:reach'), keep = named(f.hosts.target, 'kind:keep');
+  f.set(busyView({ kind: { kind: 'keep', started_by: 'tony', started_ms: null, you_change: true }, you_steer: false }));
+  await f.targets.load();
+  assert.equal(named(f.hosts.target, 'kind:reach'), reach);
+  assert.deepEqual([reach.getAttribute('aria-pressed'), keep.getAttribute('aria-pressed')], ['false', 'true']);
+  assert.equal(named(f.hosts.target, 'say-reached'), null, 'an outcome to keep is never said to be reached');
+  assert.equal(named(f.hosts.target, 'write-open'), null, 'nor written by someone who does not steer it');
+});
+
+test('the topic\'s target line keeps its summary across a repaint', t => {
+  const dom = installDocument(t), host = dom.host();
+  const target = { kind: 'keep', word: 'not_on_target', text: 'Releases are quick.', workspace_id: 'w1', workspace_title: 'Theseus',
+    counts: { passing: 3, failing: 1, measured: 0, holding: 0, not_run: 0, waiting: 0, total: 4 } };
+  paintTopicTarget(host, target, () => {});
+  const summary = host.querySelector('summary');
+  paintTopicTarget(host, target, () => {});
+  paintTopicTarget(host, { ...target, word: 'on_target' }, () => {});
+  assert.equal(host.querySelector('summary'), summary);
+  assert.match(summary.textContent, /On target/);
+});
+
+test('a fold the reader opened stays open across a repaint that lands before its toggle event, and one he never touched follows the page', async t => {
+  const f = page(t, busyView());
+  await f.targets.load();
+  const accept = f.hosts.loop.querySelector('[data-fold="accept:duration"]'), group = f.hosts.target.querySelector('[data-fold="group:Measures"]');
+  const numbers = f.hosts.loop.querySelector('.chart-numbers');
+  assert.deepEqual([accept.open, group.open, numbers.open], [false, false, false]);
+  // His click opens them; the browser's toggle event comes later, after the commit's repaint here.
+  accept.open = true; numbers.open = true;
+  await f.targets.load();
+  assert.equal(accept.open, true, 'Ship it anyway stays open');
+  assert.equal(f.hosts.loop.querySelector('.chart-numbers').open, true, 'a chart\'s numbers stay open');
+  assert.equal(group.open, false, 'a fold he did not touch is left as the page draws it');
+  // The page opens a group itself when one of its checks fails, and closes it again when none does.
+  const failing = busyView();
+  failing.groups[0].open = true;
+  f.set(failing); await f.targets.load();
+  assert.equal(group.open, true);
+  f.set(busyView()); await f.targets.load();
+  assert.equal(group.open, false);
+  assert.equal(accept.open, true, 'while his own choice stays');
+});
