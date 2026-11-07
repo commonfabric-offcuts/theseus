@@ -243,7 +243,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
     const chooser = await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'Reader native image chooser');
     await p.send('DOM.setFileInputFiles', { backendNodeId: chooser.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
-    await until(() => p.evaluate('document.querySelector("#writing-attachments").textContent.includes("Ready")'), 'Reader image ready');
+    // The row says Ready while its upload is still finishing, and is drawn again,
+    // with new buttons, once it has finished: Remove is pressed only after that.
+    await until(() => p.evaluate('(()=>{const r=document.querySelector("#writing-attachments .image-choice");if(!r?.dataset.view)return false;const v=JSON.parse(r.dataset.view);return v[0]==="Ready"&&v[4]===false})()'), 'Reader image ready, its upload finished');
     await p.evaluate('(()=>{const b=[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove");b.id="reader-remove-fixture-image"})()');
     await p.point('#reader-remove-fixture-image');
     await until(() => p.evaluate('document.querySelector("#writing-attachments").children.length===0'), 'native image-row removal');
