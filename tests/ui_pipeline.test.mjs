@@ -158,3 +158,27 @@ test('a refused act says why under its row and reads the page again, so what it 
   await page.act('item:8', async () => { throw Error('refused'); });
   assert.deepEqual([page.errors.get('item:8'), painted > 0], ['refused', true], 'a read that fails still shows the refusal');
 });
+
+test('Change stages offers the owner’s word only to the owner: the coordinator sees it on a stage and cannot take it off or remove that stage', () => {
+  globalThis.document = Object.assign(dom(), { addEventListener() {} });
+  const stages = [{ stage_id: 'build', name: 'Build', done_when: '', gate: { checks: [], owner: false, words: '' }, rounds: 'none', scope: 'piece' },
+    { stage_id: 'tony-reads', name: 'Tony reads it', done_when: '', gate: { checks: [], owner: true, words: '' }, rounds: 'none', scope: 'piece' }];
+  const walk = node => [node, ...(node.children ?? []).flatMap(walk)];
+  const lines = (reader, you_own) => {
+    const page = new PipelinePage({ host: { addEventListener() {} }, header: {}, reader, instanceId: 'i1', workspace: 'w1', read: async () => null, send: async () => null });
+    const list = page.stageLines({ owner: 'tony', you_own, you_steer: true, stages, version: 3 });
+    return Object.fromEntries(walk(list).filter(node => String(node['data-key'] ?? '').startsWith('stage:')).map(line => {
+      const roles = walk(line).filter(node => node['data-role']);
+      const word = roles.find(node => node['data-role'] === 'gate-owner');
+      return [line['data-key'], { word: word ? [word.tagName, word.text, word.title ?? ''] : null, remove: roles.some(node => node['data-role'] === 'stage-remove') }];
+    }));
+  };
+  const owner = lines('tony', true);
+  assert.deepEqual(Object.values(owner).map(line => [line.word[0], line.word[1], line.remove]), [['button', 'Your word', true], ['button', 'Your word', true]],
+    'the owner taps their word on or off on every stage, and removes any stage');
+  const coordinator = lines('fable', false);
+  assert.deepEqual(coordinator['stage:build'], { word: null, remove: true }, 'a stage without the owner’s word offers the coordinator no word to give');
+  assert.deepEqual(coordinator['stage:tony-reads'].word.slice(0, 2), ['span', 'Tony’s word'], 'the coordinator sees the owner’s word as a fact, not a chip to tap');
+  assert.doesNotMatch(coordinator['stage:tony-reads'].word[2], /tap/i);
+  assert.equal(coordinator['stage:tony-reads'].remove, false, 'nor removes the stage that waits on it');
+});

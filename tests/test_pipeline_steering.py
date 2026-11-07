@@ -295,6 +295,31 @@ class WhatEachReaderSeesCase(PipelineCase):
         # Nor can someone add a source they cannot open.
         self.rejected(self.command("pipeline.item_add", {"title": "Borrowed", "sources": [{"message_id": message}]}, {"workspace_id": "w1"}, actor="agent-a"), "FORBIDDEN")
 
+    def test_each_message_source_is_shown_by_whether_the_reader_can_open_that_message(self):
+        # Core grants reading per message: agent-b, taken out of a topic of
+        # another outcome, still opens the one message that named them there,
+        # and no other message in that topic, whichever comes first.
+        self.committed(self.command("workspace.create", {"id": "w2", "title": "Elsewhere", "team": []}))
+        source = {"kind": "new_topic", "id": "opening-tx", "workspace_id": "w2"}
+        self.committed(self.save_draft("tx-draft", source, "tx", "Opening tx", opening={"workspace_id": "w2", "title": "Topic tx", "participants": ["agent-b"]}))
+        self.committed(self.prepare("tx-draft", "tx", submission="tx-sub", send_op="open-tx"))
+        self.committed(self.command("topic.create_and_send", {"submission_id": "tx-sub"}, target={"topic_id": "tx"}, op="open-tx"))
+        named = self.post("@agent-b this one is for you", actor="owner", topic="tx", addressees=["agent-b"])
+        other = self.post("And this one is for nobody in particular", actor="owner", topic="tx")
+        self.committed(self.command("participation.set", {"actor_id": "agent-b", "present": False}, target={"topic_id": "tx"}))
+        self.assertEqual(self.store.view("agent-b", "source", {"source_ref": {"kind": "message", "id": named}})["source_ref"]["id"], named)
+        self.assertIn("error", self.store.view("agent-b", "source", {"source_ref": {"kind": "message", "id": other}}))
+        for order in ((named, other), (other, named)):
+            with self.subTest(first=order[0] == named and "named" or "other"):
+                number = self.add("From tx", sources=[{"message_id": message} for message in order])
+                shown = {entry.get("message_id"): entry for entry in self.item(number, actor="agent-b")["sources"]["shown"]}
+                self.assertEqual(shown.get(named, {}).get("readable"), True, "the message that named agent-b is shown to them")
+                self.assertEqual(set(shown), {named, None}, "the other is not, nor its id")
+                self.assertEqual(shown[None], {"kind": "message", "readable": False})
+        # And what the view shows is what Core lets agent-b take as a source.
+        self.add("Named to b", sources=[{"message_id": named}], actor="agent-b")
+        self.rejected(self.command("pipeline.item_add", {"title": "Not to b", "sources": [{"message_id": other}]}, {"workspace_id": "w1"}, actor="agent-b"), "FORBIDDEN")
+
     def test_the_outcome_light_reads_the_pipelines_now_items(self):
         lead = lambda: self.store.view("owner", "outcome_light", {"workspace_id": "w1"})["lead"]
         self.assertEqual(lead(), {"kind": "now_quiet", "of": 0, "ever": False}, "Next items alone are nothing under way")

@@ -356,7 +356,8 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 /* A choice of a few options: chips tapped once, the chosen one in ink. */
 .pl-picks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:.3rem}
 .pl-picks>.muted{font-size:.8rem;margin-right:.1rem}
-.pl-picks+.pl-pick{margin-left:.6rem}
+.pl-picks+.pl-pick,.pl-picks+.pl-word{margin-left:.6rem}
+.pl-word{align-self:center;font-size:.8rem;font-weight:550}
 .pl-pick{min-height:2.2rem;padding:0 .7rem;border-radius:1.1rem;background:var(--panel);color:var(--muted);font-size:.8rem;font-weight:550}
 .pl-pick:hover{color:var(--ink);border-color:var(--muted)}
 .pl-pick[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--panel)}

@@ -443,9 +443,11 @@ export class PipelinePage {
 
   // Change stages (the form rule): each stage is its own line, edited where it stands.
   // Its name and done-when save on Return or blur, Rounds is three chips and the
-  // owner's word one chip, each saved on its tap; a new stage is one line.
+  // owner's word one chip, each saved on its tap; a new stage is one line. The owner's
+  // word is the owner's (D24): the coordinator sees it on a stage, as a fact, and
+  // neither taps it nor removes a stage that waits on it.
   stageLines(pipeline) {
-    const stages = pipeline.stages, owner = sentenceName(pipeline.owner === this.reader ? 'you' : pipeline.owner);
+    const stages = pipeline.stages, owner = sentenceName(pipeline.owner === this.reader ? 'you' : pipeline.owner), mine = pipeline.you_own;
     const list = el('ol', { class: 'pl-stagedefs pl-stage-lines', 'aria-label': 'Change stages' }, ...stages.map((stage, index) => {
       const id = stage.stage_id, key = `stage:${id}`, name = stage.name || `stage ${index + 1}`;
       const chip = (role, words, pressed, title, change) => el('button', { type: 'button', class: 'pl-pick', 'data-role': role, 'aria-pressed': pressed ? 'true' : 'false', title, text: words,
@@ -464,14 +466,15 @@ export class PipelinePage {
             el('span', { class: 'pl-picks', role: 'group', 'aria-label': `Rounds in ${name}` }, el('span', { class: 'muted', 'aria-hidden': 'true', text: 'Rounds' }),
               ...ROUND_CHIPS.map(([value, words, title]) => chip(`rounds-${value}`, words, stage.rounds === value, title,
                 stage.rounds === value ? null : list => { stageIn(list, id).rounds = value; }))),
-            chip('gate-owner', `${owner === 'You' ? 'Your' : `${owner}’s`} word`, !!stage.gate?.owner,
+            mine ? chip('gate-owner', `${owner === 'You' ? 'Your' : `${owner}’s`} word`, !!stage.gate?.owner,
               stage.gate?.owner ? `Only ${owner === 'You' ? 'you move' : `${owner} moves`} an item past this stage. Tap to let it pass without.` : `Tap so that only ${owner === 'You' ? 'you move' : `${owner} moves`} an item past this stage.`,
-              list => { const gate = stageIn(list, id).gate; gate.owner = !gate.owner; }),
+              list => { const gate = stageIn(list, id).gate; gate.owner = !gate.owner; })
+              : stage.gate?.owner ? el('span', { class: 'pl-word muted', 'data-role': 'gate-owner', title: `Only ${owner} moves an item past this stage, and only ${owner} changes that.`, text: `${owner}’s word` }) : null,
             this.stageField(stage, 'checks', { 'aria-label': `Who or what checks ${name}`, placeholder: 'Checked by…', maxlength: '1000' }),
             el('span', { class: 'pl-stage-moves' },
               index ? move('stage-up', '↑', `Move ${name} up`, list => { list.splice(index - 1, 0, list.splice(index, 1)[0]); }) : null,
               index < stages.length - 1 ? move('stage-down', '↓', `Move ${name} down`, list => { list.splice(index + 1, 0, list.splice(index, 1)[0]); }) : null,
-              stages.length > 1 ? move('stage-remove', '×', `Remove ${name}`, list => {
+              stages.length > 1 && (mine || !stage.gate?.owner) ? move('stage-remove', '×', `Remove ${name}`, list => {
                 const at = list.findIndex(other => other.stage_id === id);
                 if (at < 0) throw Error(`${name} is no longer a stage. The stages are shown as they are now.`);
                 this.removed = { stage: list.splice(at, 1)[0], index: at };

@@ -368,7 +368,11 @@ class Pipeline:
         if not stages or len(stages) > outcome_rules.STAGES_MAX:
             raise Refusal("INVALID_ARGUMENT", "An outcome has from 1 to %d stages" % outcome_rules.STAGES_MAX)
         before = self._stages(db, workspace["id"])
-        seen = set()
+        # D24, as the owner agreed: a stage that waits on the owner's word stays the owner's.
+        # Only the owner gives a stage their word or takes it off, by its gate or by removing
+        # the stage; a stage kept from before (retired ones too) keeps the word it had.
+        waits = {stage["stage_id"]: bool(stage["gate"].get("owner")) for stage in self._stages(db, workspace["id"], current=False)}
+        seen, listed = set(), {}
         db.execute("UPDATE pipeline_stages SET position=NULL WHERE workspace_id=?", (workspace["id"],))
         for position, stage in enumerate(stages, 1):
             if not isinstance(stage, dict) or set(stage) - {"stage_id", "name", "done_when", "gate", "rounds", "scope", "added_note"}:
@@ -385,6 +389,7 @@ class Pipeline:
                 raise Refusal("INVALID_ARGUMENT", "A gate names at most 16 checks")
             gate = {"checks": [_slug(check, "a check") for check in checks], "owner": _flag(gate.get("owner", False), "gate.owner"),
                     "words": _text(gate.get("words", ""), "The gate's words", required=False, limit=1024)}
+            listed[stage_id] = gate["owner"]
             rounds, scope = stage.get("rounds", "none"), stage.get("scope", "piece")
             if rounds not in ROUNDS or scope not in ("piece", "release"):
                 raise Refusal("INVALID_ARGUMENT", "rounds is none, together or split; scope is piece or release")
@@ -396,6 +401,10 @@ class Pipeline:
                        (workspace["id"], stage_id, position, _text(stage.get("name"), "A stage's name", limit=200),
                         _text(stage.get("done_when", ""), "done when", required=False, limit=2048), _json(gate), rounds, scope,
                         _text(stage.get("added_note", ""), "added_note", required=False, limit=1024)))
+        if actor != workspace["owner_id"] and (any(owner != waits.get(stage_id, False) for stage_id, owner in listed.items())
+                                               or any(waits[stage["stage_id"]] and stage["stage_id"] not in listed for stage in before)):
+            raise Refusal("FORBIDDEN", "Only %s gives a stage their word or takes it off, or removes a stage that waits on it"
+                          % workspace["owner_id"])
         self._event(db, workspace["id"], None, "stages", actor, {"before": before, "after": self._stages(db, workspace["id"])})
         version = self._bump(db, workspace["id"], "stages")
         return {"workspace_id": workspace["id"], "pipeline_revision": version, "stages": len(stages)}, [
@@ -539,9 +548,13 @@ class Pipeline:
                            "candidate_group", required=False, limit=200) if section == "candidates" else "")
             above, below = args.get("above"), args.get("below")
         piece = self._open_piece_of(db, workspace["id"], number)
-        if section == "dropped" and piece is not None and undo_of is None:
-            entry = self._open_entry(db, piece["id"])
-            if entry is not None and args.get("underway_confirmed") is not True:
+        # An item being built stays in Now (D26), whether it is moved by section or by an Undo:
+        # it leaves only by being dropped, which stops work under way and so is confirmed (D3).
+        if section != item["section"] and piece is not None and self._open_entry(db, piece["id"]) is not None:
+            if section != "dropped":
+                raise Refusal("ITEM_IN_PIECE", "%d is being built now, so it stays in %s until it is dropped or its piece is done"
+                              % (number, item["section"].capitalize()))
+            if args.get("underway_confirmed") is not True:
                 raise Refusal("ITEM_UNDERWAY", "%d is being built now, so dropping it stops work under way. Confirm to drop it." % number)
         because = args.get("because_message_id")
         if because is not None:
@@ -857,18 +870,16 @@ class Pipeline:
                           "LEFT JOIN memory_items i ON i.id=s.memory_item_id LEFT JOIN memory_revisions r ON r.item_id=i.id AND r.revision=i.current_revision "
                           "WHERE s.workspace_id=? AND s.number=? ORDER BY s.position", (workspace_id, number)).fetchall()
         shown, topics, messages, notes, yours = [], [], 0, 0, 0
-        readable_topics = {}
         for row in rows:
             if row["message_id"] is not None:
                 messages += 1
-                readable = readable_topics.get(row["topic_id"])
-                if readable is None:
-                    try:
-                        self._message_access(db, actor, row["message_id"])
-                        readable = True
-                    except Refusal:
-                        readable = False
-                    readable_topics[row["topic_id"]] = readable
+                # Core grants reading per message (an addressed message stays readable
+                # to someone taken out of its topic), so each one is asked on its own.
+                try:
+                    self._message_access(db, actor, row["message_id"])
+                    readable = True
+                except Refusal:
+                    readable = False
                 if readable:
                     title, _ = _prefix(row["title_prefix"], 256)
                     yours += row["author_id"] == actor

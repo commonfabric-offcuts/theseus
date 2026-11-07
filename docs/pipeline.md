@@ -24,8 +24,9 @@ light (the glyph, stage names by round, typical times) are
   `dropped`) and place, its candidate group, the items it waits for, and, when
   it is still gathering context, the reply thread or Notebook page that holds it.
 - **Where an item came from** (`pipeline_item_sources`): messages, Notebook
-  pages or notes. A message is shown only to someone who can open it; others see
-  "a message you can't open".
+  pages or notes. A message is shown only to someone who can open that message,
+  each message asked on its own (someone a message named can open it after leaving
+  its topic, and no other message there); others see "a message you can't open".
 - **Pieces** (`pipeline_pieces`, `pipeline_piece_members`): the work on one or
   more items in one topic, and a release's piece combined from approved ones.
   Each stage a piece enters is a row in `pipeline_stage_entries`, with when it
@@ -60,11 +61,14 @@ where it gathers; only the owner and the coordinator change who raised it. The
 owner and the coordinator steer together: they move, drop and restore items,
 change the stages, and turn the pipeline on or off. Its title, units, sizing,
 releases and section words (the rest of `configure`) are the owner's alone. An item the
-owner placed is moved only by the owner (`OWNER_PLACED`). Dropping an item that
-is being built needs a confirmation (`ITEM_UNDERWAY`): on the page, each item on
-a piece card has its own ⋯ with Open its record and Drop…, and Drop… asks first.
-A stage gated on the
-owner's word is left only by the owner.
+owner placed is moved only by the owner (`OWNER_PLACED`). An item being built
+stays in Now (`ITEM_IN_PIECE`) until it is dropped or its piece is done, and
+dropping it needs a confirmation (`ITEM_UNDERWAY`), whether by a move or by an
+Undo: on the page, each item on a piece card has its own ⋯ with Open its record
+and Drop…, and Drop… asks first. A stage gated on the owner's word is left only
+by the owner, and only the owner gives a stage their word, takes it off, or
+removes a stage that waits on it (`FORBIDDEN`); a retired stage keeps the word it
+had.
 
 ## Turning it on and changing its stages
 
@@ -76,7 +80,8 @@ whether items are sized with one chip under it.
 Change stages turns each stage into its own line, edited in place: its name and
 what done means save on Return or when you click away, and Escape puts them
 back. Rounds is three chips (no rounds, rounds together, the first round apart)
-and the owner's word one chip, each saved on its tap; the arrows move a stage
+and the owner's word one chip, each saved on its tap (the coordinator sees the
+owner's word on a stage but has no chip for it, and no cross on that stage); the arrows move a stage
 and the cross removes it, with Undo. A new stage is one line, "Add a stage…".
 Every change sends the whole ordered list through `stages_set`.
 

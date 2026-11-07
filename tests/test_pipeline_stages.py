@@ -88,6 +88,70 @@ class StagesCase(PipelineCase):
         self.committed(self.enter(piece, "wait", actor="owner", left_outcome="passed"))
         self.assertEqual(self.entries(piece)[-2:], [("tony-reads", 1, "passed", 1), ("wait", 1, None, 0)])
 
+    def test_only_the_owner_gives_or_takes_off_their_word_on_a_stage(self):
+        # A stage that waits on the owner's word stays the owner's: the
+        # coordinator steers the stages with them but cannot take the word
+        # off a stage, remove such a stage, or give the owner's word to one.
+        set_by = lambda actor, stages: self.command("pipeline.stages_set", {"stages": list(stages)}, {"workspace_id": "w1"}, actor=actor)
+        piece = self.committed(self.start())["piece_id"]
+        ask = self.post("@owner would you read 1 and 2?", actor="agent-a", addressees=["owner"], intent="ask")
+        self.committed(self.enter(piece, "tony-reads", actor="agent-a", ask_message_id=ask))
+        self.rejected(self.enter(piece, "wait", actor="agent-a", left_outcome="passed"), "STAGE_GATED")
+        kept = lambda: self.sql("SELECT stage_id,position,gate FROM pipeline_stages ORDER BY stage_id")
+        before = kept()
+        without = dict(STAGES[3], gate={"owner": False, "words": "Tony says when"})
+        for name, stages in (("the word taken off", STAGES[:3] + (without,)),
+                             ("the stage removed", STAGES[:3]),
+                             ("the word given to another stage", (STAGES[0], STAGES[1], dict(STAGES[2], gate={"owner": True}), STAGES[3])),
+                             ("a new stage on the word", STAGES + ({"stage_id": "sign", "name": "Sign off", "gate": {"owner": True}},))):
+            with self.subTest(name):
+                refused = set_by("agent-a", stages)
+                self.rejected(refused, "FORBIDDEN")
+                self.assertIn("owner", refused["error"]["message"])
+        self.assertEqual(kept(), before, "nothing changed")
+        self.rejected(self.enter(piece, "wait", actor="agent-a", left_outcome="passed"), "STAGE_GATED")
+        self.assertEqual(self.entries(piece)[-1], ("tony-reads", 1, None, 0), "the piece waits on the owner still")
+        # The rest of the stages are the coordinator's to change: a name, the order, a new stage.
+        self.committed(set_by("agent-a", (dict(STAGES[3], name="Tony reads"),) + STAGES[:3] + ({"stage_id": "polish", "name": "Polish"},)))
+        # A stage the owner retired with a piece in it keeps the owner's word, and the coordinator cannot bring it back without.
+        self.stages(*STAGES[:3])
+        self.rejected(set_by("agent-a", STAGES[:3] + (without,)), "FORBIDDEN")
+        self.rejected(self.enter(piece, "wait", actor="agent-a", left_outcome="passed"), "STAGE_GATED")
+        # The owner gives and takes off their own word.
+        self.stages(*STAGES[:3], without)
+        self.committed(self.enter(piece, "wait", actor="agent-a", left_outcome="passed"))
+        self.stages(*STAGES)
+        self.assertEqual([stage["gate"].get("owner", False) for stage in self.store.view("owner", "pipeline", {"workspace_id": "w1"})["pipeline"]["stages"]],
+                         [False, False, False, True])
+
+    def test_undo_that_would_drop_an_item_being_built_asks_first_like_any_drop(self):
+        drop = self.committed(self.move(3, section="dropped"))["event"]
+        restore = self.committed(self.move(3, undo_of=drop))["event"]
+        self.assertEqual(self.item(3)["section"], "now")
+        piece = self.committed(self.start(numbers=(3,)))["piece_id"]
+        refused = self.move(3, undo_of=restore)
+        self.rejected(refused, "ITEM_UNDERWAY")
+        self.assertEqual((self.item(3)["section"], self.entries(piece)), ("now", [("build", 1, None, 0)]), "nothing changed")
+        self.committed(self.move(3, undo_of=restore, underway_confirmed=True))
+        self.assertEqual((self.item(3)["section"], self.entries(piece)), ("dropped", [("build", 1, "dropped", 1)]))
+
+    def test_an_item_being_built_stays_in_now_until_it_is_dropped(self):
+        # D26: Now always holds every piece's items, so the light's work in Now covers them.
+        to_now = self.committed(self.move(4, section="now"))["event"]
+        self.committed(self.start(numbers=(4,), size="small"))
+        for section in ("next", "later", "candidates"):
+            for confirmed in (False, True):
+                with self.subTest(section=section, confirmed=confirmed):
+                    refused = self.move(4, section=section, **({"underway_confirmed": True} if confirmed else {}))
+                    self.rejected(refused, "ITEM_IN_PIECE")
+                    self.assertIn("being built", refused["error"]["message"])
+        self.rejected(self.move(4, undo_of=to_now), "ITEM_IN_PIECE")
+        self.assertEqual((self.item(4)["section"], 4 in self.section("now"), self.section("next")), ("now", True, []))
+        # It is still ordered within Now, and an item not being built still moves out.
+        self.committed(self.move(4, above=1))
+        self.committed(self.move(3, section="later"))
+        self.assertEqual((self.section("now"), self.section("later")), ([4, 1, 2], [3]))
+
     def test_finishing_a_piece_marks_its_items_done_and_a_release_pipeline_finishes_by_its_record(self):
         piece = self.committed(self.start())["piece_id"]
         self.committed(self.command("pipeline.piece_finish", {"note": "done"}, {"piece_id": piece}))
