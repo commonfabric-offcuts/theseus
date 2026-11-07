@@ -365,7 +365,7 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 @media(hover:hover){.pl-row:not(:hover):not(:focus-within) .pl-edit[aria-expanded=false]{opacity:0}}
 .pl-details{display:flex;flex-wrap:wrap;align-items:flex-start;gap:.5rem .9rem;margin:.5rem 0 .2rem 1.9rem}
 .pl-item>.pl-details{margin-top:.7rem}
-textarea.pl-words-box{flex:0 1 40rem;width:100%;max-width:40rem;min-width:0;min-height:3.6rem;max-height:12rem;padding:.5rem .7rem;border-radius:.55rem;font-size:.88rem;line-height:1.5;resize:vertical;field-sizing:content}
+textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-height:3.6rem;max-height:12rem;padding:.5rem .7rem;border-radius:.55rem;font-size:.88rem;line-height:1.5;resize:vertical;field-sizing:content}
 .pl-sizes{display:flex;align-items:center;gap:.35rem}
 .pl-sizes>.muted{font-size:.8rem;margin-right:.1rem}
 .pl-size{min-height:2.4rem;min-width:2.4rem;padding:0;border-radius:1.2rem;font-size:.85rem;font-weight:650;color:var(--muted)}
