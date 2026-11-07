@@ -101,7 +101,10 @@ export class InlineComposer {
       };
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));
+    this.callbacks.recipientsPainted?.(editor.draft.addressees);
   }
+  // In an outcome's conversation a message starts as a Tell, even to one agent (I3).
+  get conversation() { return Boolean(this.callbacks.conversation?.()); }
   get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
   // Whisper, Tell or Ask (whisper-choice.mjs), and who will see it, above the writing.
   paintChoice(readOnly = this.state().readOnly) {
@@ -109,7 +112,7 @@ export class InlineComposer {
     if (!editor) return;
     paintChoice(this.$('intent-row'), { draft: editor.draft, names: editor.draft.addressees, kindOf: this.kindOf,
       everyone: this.callbacks.people?.().everyone ?? [], send: this.$('send'), field: this.field, readOnly,
-      onChoose: choice => this.choose(choice) });
+      conversation: this.conversation, onChoose: choice => this.choose(choice) });
   }
   choose(choice) {
     const p = this.presentation, editor = this.editor;
@@ -120,7 +123,7 @@ export class InlineComposer {
     const p = this.presentation, editor = this.editor, input = this.$('recipient-input'), name = input.value.trim().replace(/^@/, '');
     if (!name || !this.admits(p, editor) || this.state().readOnly) return;
     if (!editor.draft.addressees.includes(name)) {
-      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, editor.draft.addressees, this.kindOf) });
+      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, editor.draft.addressees, this.kindOf, { conversation: this.conversation }) });
       this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
     }
     input.value = ''; input.focus();
@@ -190,7 +193,7 @@ export class InlineComposer {
     const p = this.presentation, editor = this.editor;
     if (!this.admits(p, editor) || this.state().sendDisabled) return;
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
-    editor.edit(sending(editor.draft, editor.draft.addressees, this.kindOf));
+    editor.edit(sending(editor.draft, editor.draft.addressees, this.kindOf, { conversation: this.conversation }));
     const draft = editor.draft;
     try {
       const sent = this.callbacks.send(editor, p);

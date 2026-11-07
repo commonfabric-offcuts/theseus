@@ -160,6 +160,8 @@ export class Reader {
     const choose = node('option', 'Choose a topic'); choose.value = ''; destination.append(choose);
     for (const topic of topics) { const option = node('option', topic.title); option.value = topic.id; destination.append(option); }
     destination.value = sessions.reply.context.topicId ?? '';
+    // A message in an ordinary topic may go to the outcome's conversation instead (outcome-conversation.mjs).
+    this.offered = Boolean(this.callbacks.destinations?.(destination, source, sessions.reply.context.topicId));
     this.$('reader-parent').disabled = !source.topic_id;
     this.$('reader-stepping').hidden = source.source_ref.kind !== 'message';
     this.$('previous-message').disabled = !canPrevious;
@@ -387,7 +389,8 @@ export class Reader {
     this.$('writing-title').textContent = note ? 'Private note' : 'Reply';
     this.$('writing-label').textContent = note ? 'Private note' : 'Reply';
     this.$('toggle-note').textContent = note ? 'Back to reply' : 'Private note';
-    this.$('destination-label').hidden = note || this.source.source_ref.kind === 'message';
+    this.$('destination-label').hidden = note || (this.source.source_ref.kind === 'message' && !this.offered);
+    this.callbacks.audiencePainted?.(note ? null : this.sessions?.reply?.context?.topicId ?? null);
     this.$('reply-audience').hidden = note;
     this.$('pending-submissions').hidden = note;
     this.$('writing-hint').textContent = note ? 'Only you · ⌘ Return to save and close' : 'Return for a new line · ⌘ Return to send';
@@ -423,6 +426,7 @@ export class Reader {
       };
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));
+    this.callbacks.recipientsPainted?.(this.names(editor), editor.context.topicId);
   }
 
   addRecipient() {
@@ -432,7 +436,7 @@ export class Reader {
     const editor = this.sessions.reply;
     if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return;
     if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
-      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.names(editor), this.kindOf) });
+      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }) });
       this.callbacks.edit(editor); this.paintRecipients(); this.paintChoice();
     }
     input.value = '';
@@ -442,6 +446,8 @@ export class Reader {
   // Who the reply goes to: the author it is offered to, then whoever it names.
   names(editor = this.sessions?.reply) { return editor ? [...(editor.offeredAddressees ?? []), ...editor.draft.addressees] : []; }
   get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
+  // Writing that goes to an outcome's conversation starts as a Tell (I3).
+  toConversation(editor = this.sessions?.reply) { return Boolean(this.callbacks.toConversation?.(editor?.context?.topicId)); }
 
   // Whisper, Tell or Ask (whisper-choice.mjs), and who will see it, above Send.
   // A reply to one agent starts as a whisper; a private note has no choice.
@@ -450,7 +456,7 @@ export class Reader {
     if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply')); return; }
     paintChoice(row, { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf, everyone: this.callbacks.people?.().everyone ?? [],
       send: this.$('send-reply'), field: this.field, readOnly: Boolean(this.field?.readOnly), answeringWhisper: Boolean(this.source?.whisper),
-      onChoose: choice => this.choose(choice) });
+      conversation: this.toConversation(editor), onChoose: choice => this.choose(choice) });
   }
 
   choose(choice) {
@@ -609,7 +615,7 @@ export class Reader {
       this.notice(editor.authorityRecovery || editor.conflict ? 'Review the saved versions before sending.' : 'Write a reply before sending.'); return;
     }
     // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
-    editor.edit(sending(editor.draft, this.names(editor), this.kindOf));
+    editor.edit(sending(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }));
     const draft = editor.draft;
     try {
       // The controller freezes A synchronously. Reflect that deliberate act
