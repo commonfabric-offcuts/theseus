@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { holdRemoveThroughUpload } from './reader_images_native.mjs';
+import { holdRemoveThroughUpload, namedImages, LONG_NAME } from './reader_images_native.mjs';
 
 // One selected real HTTP/Store flow. No product controller is replaced. File
 // selection uses a native Add image click and a fixture file supplied through
@@ -406,17 +406,25 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'emptied topic draft saved');
     assert.deepEqual(p.errors, []);
   });
-  await check('inline Remove held down while its upload finishes removes the image', async () => {
-    const p = await page('inline-remove-held', null, true);
-    await p.evaluate('document.querySelector("#inline-add-image").scrollIntoView({block:"center"})');
-    p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
-    const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#inline-add-image');
-    const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'inline chooser');
-    await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
-    const held = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'held inline upload');
-    await holdRemoveThroughUpload(p, '#inline-attachments', held, until);
-    await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'the topic draft saved with no image');
-    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
-    assert.deepEqual(p.errors, []);
-  });
+  // The inline composer's image row, with the fixture's short name at the
+  // desktop width, and on the phone with a long name whose words wrap.
+  for (const [width, name] of [[1440, 'screen.png'], [390, LONG_NAME]]) {
+    await check(`inline Remove held down while its upload finishes removes the image at ${width} wide with the name ${name}`, async () => {
+      const names = await namedImages(root);
+      try {
+        const p = await page(`inline-remove-held-${width}`, null, true);
+        if (width === 390) await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+        await p.evaluate('document.querySelector("#inline-add-image").scrollIntoView({block:"center"})');
+        p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+        const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#inline-add-image');
+        const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'inline chooser');
+        await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [name === 'screen.png' ? path.join(root, 'tests/fixtures/media/screen.png') : names.file(name)] });
+        const held = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'held inline upload');
+        await holdRemoveThroughUpload(p, '#inline-attachments', held, until, { name });
+        await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'the topic draft saved with no image');
+        assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+        assert.deepEqual(p.errors, []);
+      } finally { await names.done(); }
+    });
+  }
 }

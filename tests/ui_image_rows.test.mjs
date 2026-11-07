@@ -8,23 +8,46 @@ import { paintImageRows } from '../web/image-rows.mjs';
 // taken out of its row, even to be put back at once, counts as a move, and a
 // press held on a moved or replaced button clicks nothing.
 class Node {
-  constructor(tag) { this.tagName = tag; this.children = []; this.parent = null; this.dataset = {}; this.textContent = ''; this.disabled = false; this.onclick = null; this.moves = 0; }
+  constructor(tag) { this.tagName = tag; this.children = []; this.parent = null; this.dataset = {}; this.textContent = ''; this.disabled = false; this.onclick = null; this.moves = 0; this.listeners = []; this.place = { left: 0, top: 0, right: 0, bottom: 0 }; }
+  addEventListener(type, listener) { this.listeners.push({ type, listener }); }
+  getBoundingClientRect() { return { ...this.place }; }
+  contains(node) { for (let n = node; n; n = n.parent) if (n === this) return true; return false; }
+  click() { if (!this.disabled) this.onclick?.(); }
   get firstElementChild() { return this.children[0] ?? null; }
   get nextElementSibling() { return this.parent ? this.parent.children[this.parent.children.indexOf(this) + 1] ?? null : null; }
-  get isConnected() { return Boolean(this.parent); }
+  // In the page: under the host, which stands for the document.
+  get isConnected() { for (let n = this; n; n = n.parent) if (n.page) return true; return false; }
   detach() { if (this.parent) { this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; this.moves++; } }
   append(...nodes) { for (const node of nodes) { node.detach(); node.parent = this; this.children.push(node); } }
   after(node) { node.detach(); this.parent.children.splice(this.parent.children.indexOf(this) + 1, 0, node); node.parent = this.parent; }
   remove() { this.detach(); }
 }
-globalThis.document = { createElement: tag => new Node(tag) };
+// The page's own listeners (capture, on the window) and what is under a point.
+const page = [];
+let under = null;
+globalThis.addEventListener = (type, listener) => page.push({ type, listener });
+globalThis.document = { createElement: tag => new Node(tag), elementFromPoint: () => under };
+// A pointer event as the browser dispatches it: the window sees it first, then
+// the element it is over (a press goes down on the button it is aimed at).
+const pointer = (type, target, { x = 10, y = 10, pointerId = 1, button = 0, isPrimary = true } = {}) => {
+  const event = { type, clientX: x, clientY: y, pointerId, button, isPrimary };
+  for (const l of page) if (l.type === type) l.listener(event);
+  for (const l of target?.listeners ?? []) if (l.type === type) l.listener(event);
+};
+// A click the browser sends after a pointer's release (detail 1) or for a key
+// (detail 0): whether the page let it through to its target.
+const browserClick = (detail = 1) => {
+  const event = { type: 'click', detail, stopped: false, prevented: false, stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; } };
+  for (const l of page) if (l.type === 'click') l.listener(event);
+  return !event.stopped && !event.prevented;
+};
 
 const REMOVE = { label: 'Remove', method: 'remove' }, RETRY = { label: 'Retry upload', method: 'retry' };
 const choice = (id, state, actions = [REMOVE]) => ({ id, text: `${id}.png · ${state}`, view: JSON.stringify([state, actions.map(a => a.label)]), actions });
 const buttons = row => row.children.slice(1);
 const labels = row => buttons(row).map(b => b.dataset.action);
 const rows = () => {
-  const host = new Node('div'), presses = [];
+  const host = new Node('div'), presses = []; host.page = true;
   const press = (action, pressed, button) => new Promise(resolve => presses.push({ action, choice: pressed, button, settle: resolve }));
   return { host, presses, paint: (choices, enabled = true) => paintImageRows(host, choices, enabled, press) };
 };
@@ -87,4 +110,70 @@ test('rows follow the chosen images: a removed image\'s row goes, an unchanged r
   paint([choice('b', 'Ready', [RETRY, REMOVE])], false);
   assert.deepEqual(buttons(b).map(x => x.disabled), [true, true]);
   assert.deepEqual(host.children.map(r => r.dataset.selection), ['b']);
+});
+
+// The page moved Remove from under a still pointer between the press going
+// down and coming up (its row's words wrapped, or a row above it grew): the
+// point it comes up at is over something else, but where Remove was.
+const pressedRemove = () => {
+  const { host, presses, paint } = rows();
+  paint([choice('a', 'Uploading')]);
+  const row = host.children[0], remove = buttons(row)[0], words = row.firstElementChild;
+  remove.place = { left: 100, top: 0, right: 160, bottom: 40 };
+  return { presses, paint, row, remove, words };
+};
+
+test('a press that went down on Remove and comes up where Remove was presses it once, though the page moved Remove from under it, and the click the browser sends after it reaches nothing', () => {
+  const { presses, remove, words } = pressedRemove();
+  pointer('pointerdown', remove, { x: 157, y: 3 });
+  remove.place = { left: 100, top: 38, right: 160, bottom: 78 }; under = words;
+  pointer('pointerup', words, { x: 157, y: 3 });
+  assert.equal(presses.length, 1, 'Remove is pressed, as the person pressed it');
+  assert.equal(presses[0].action, REMOVE);
+  assert.equal(browserClick(0), true, 'a key\'s click is never taken for it');
+  assert.equal(browserClick(), false, 'the click the browser sends to whatever is now under the pointer is this press\'s and is dropped');
+  assert.equal(browserClick(), true, 'and only that one');
+  presses[0].settle();
+});
+
+test('a press over Remove at both ends is left to the browser\'s own click, so it presses once', () => {
+  const { presses, remove } = pressedRemove();
+  pointer('pointerdown', remove, { x: 130, y: 20 }); under = remove;
+  pointer('pointerup', remove, { x: 130, y: 20 });
+  assert.equal(presses.length, 0, 'the release itself presses nothing');
+  assert.equal(browserClick(), true, 'the browser\'s click is let through');
+});
+
+test('a press dragged away from where Remove was, a cancelled press, another pointer, and a press on something else do not press Remove', () => {
+  const { presses, remove, words } = pressedRemove();
+  pointer('pointerdown', remove, { x: 130, y: 20 }); under = words;
+  pointer('pointerup', words, { x: 60, y: 20 });
+  assert.equal(presses.length, 0, 'released outside where Remove was: let go');
+  assert.equal(browserClick(), true, 'and the browser\'s click is not taken from anything');
+  pointer('pointerdown', remove, { x: 130, y: 20 }); pointer('pointercancel', null);
+  pointer('pointerup', words, { x: 130, y: 20 });
+  assert.equal(presses.length, 0, 'a cancelled press (a scroll took it) presses nothing');
+  pointer('pointerdown', remove, { x: 130, y: 20 });
+  pointer('pointerup', words, { x: 130, y: 20, pointerId: 2 });
+  assert.equal(presses.length, 0, 'a second finger lifting is not this press');
+  pointer('pointerdown', remove, { x: 130, y: 20, button: 2 });
+  pointer('pointerup', words, { x: 130, y: 20, button: 2 });
+  assert.equal(presses.length, 0, 'a right-button press presses nothing');
+  pointer('pointerdown', remove, { x: 130, y: 20 }); pointer('pointerdown', words, { x: 130, y: 20 });
+  pointer('pointerup', words, { x: 130, y: 20 });
+  assert.equal(presses.length, 0, 'a press whose release was lost is forgotten when the next press goes down elsewhere');
+});
+
+test('a press on Remove whose row went, or whose Remove was disabled meanwhile, presses nothing', () => {
+  const disabled = pressedRemove();
+  pointer('pointerdown', disabled.remove, { x: 130, y: 20 }); under = disabled.words;
+  disabled.paint([choice('a', 'Ready', [REMOVE])], false);
+  pointer('pointerup', disabled.words, { x: 130, y: 20 });
+  assert.equal(disabled.presses.length, 0, 'disabled: not pressed');
+  const gone = pressedRemove();
+  pointer('pointerdown', gone.remove, { x: 130, y: 20 }); under = gone.words;
+  gone.paint([]);
+  assert.equal(gone.remove.disabled, false, 'the button that went was not disabled');
+  pointer('pointerup', gone.words, { x: 130, y: 20 });
+  assert.equal(gone.presses.length, 0, 'its row is gone: not pressed');
 });

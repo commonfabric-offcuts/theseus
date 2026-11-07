@@ -14,6 +14,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { namedImages, LONG_NAME } from './reader_images_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, caseFilter] = process.argv.slice(2);
@@ -49,7 +50,7 @@ const control = data => new Promise((resolve, reject) => {
 });
 
 const hashes = {};
-for (const filename of ['web/app.mjs', 'web/opening.mjs', 'web/opening-view.mjs', 'web/opening-store.mjs', 'web/topic-navigation.mjs',
+for (const filename of ['web/app.mjs', 'web/opening.mjs', 'web/opening-view.mjs', 'web/image-rows.mjs', 'web/opening-store.mjs', 'web/topic-navigation.mjs',
   'web/index.html', 'web/aim.css', 'aim_next/openings.py', 'aim_next/server.py', 'tests/fixtures/ui_http.py', 'tests/reader_openings_native.mjs']) {
   hashes[filename] = createHash('sha256').update(await readFile(path.join(root, filename))).digest('hex');
 }
@@ -95,8 +96,10 @@ try {
     const { targetId } = await cdp('Target.createTarget', { url: 'about:blank', ...(browserContextId ? { browserContextId } : {}) }); pages.add(targetId);
     const { sessionId } = await cdp('Target.attachToTarget', { targetId, flatten: true });
     const send = (method, params) => cdp(method, params, sessionId);
-    const errors = [], dialogs = [], calls = [];
+    const errors = [], dialogs = [], calls = [], choosers = [], paused = [];
     listeners.set(sessionId, packet => {
+      if (packet.method === 'Page.fileChooserOpened') choosers.push(packet.params);
+      if (packet.method === 'Fetch.requestPaused') paused.push(packet.params);
       if (packet.method === 'Runtime.exceptionThrown') errors.push(packet.params.exceptionDetails);
       if (packet.method === 'Page.javascriptDialogOpening') { dialogs.push(packet.params); send('Page.handleJavaScriptDialog', { accept: false }).catch(error => errors.push({ message: error.message })); }
       if (packet.method === 'Network.requestWillBeSent' && packet.params.request.url.startsWith(facts.origin + '/api/')) {
@@ -166,6 +169,13 @@ try {
       }
     };
     const insert = text => send('Input.insertText', { text });
+    // Image uploads are held until a check lets each go or fails it.
+    const holdUploads = () => send('Fetch.enable', { patterns: [{ urlPattern: '*/api/media/upload*', requestStage: 'Request' }] });
+    const choose = async (selector, file) => {
+      const n = choosers.length; await send('Page.setInterceptFileChooserDialog', { enabled: true }); await click(selector);
+      const chooser = await until(() => choosers[n], 'file chooser from ' + selector);
+      await send('DOM.setFileInputFiles', { backendNodeId: chooser.backendNodeId, files: [file] });
+    };
     const shot = async name => {
       const image = await send('Page.captureScreenshot', { format: 'png' });
       await writeFile(path.join(evidencePath, name + '.png'), Buffer.from(image.data, 'base64'));
@@ -180,7 +190,7 @@ try {
       if (pages.delete(targetId)) await cdp('Target.closeTarget', { targetId }).catch(error => { if (!/No target with given id/.test(error.message)) throw error; });
       listeners.delete(sessionId);
     };
-    return { label, get lastPoint() { return lastPoint; }, targetId, send, evaluate, metrics, box, click, tap, key, typeKeys, insert, shot, goto, ready, close, errors, dialogs, calls };
+    return { label, get lastPoint() { return lastPoint; }, targetId, send, evaluate, metrics, box, click, tap, key, typeKeys, insert, holdUploads, choose, paused, shot, goto, ready, close, errors, dialogs, calls };
   };
 
   const check = async (name, action) => {
@@ -437,6 +447,53 @@ try {
     assert.equal(p.calls.filter(c => c.kind === 'opening.publish').length, 1);
     assert.equal((await view('opening', { opening_id: r.opening })).opening.state, 'published');
     await p.shot('touch-topic-reader');
+  });
+
+  // Two images on the opening page at the phone's width, pressed by mouse:
+  // Remove is held on the second while the first's upload fails. Retry upload
+  // coming in before the first row's Remove squeezes its long name onto more
+  // lines; that row grows with its own Remove still on its first line, and
+  // the row and the failure's notice above the rows push the second row's
+  // Remove from under the press, which still removes the second image and
+  // only that (item 116).
+  await check('openings images Remove held below a row whose upload fails removes its own image', async own => {
+    const workspace = await outcome('openings-images');
+    const p = await own('images');
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+    await p.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(p, workspace);
+    await newOpening(p, workspace);
+    const names = await namedImages(root);
+    try {
+      await p.holdUploads();
+      await p.choose('#opening-add-image', names.file(LONG_NAME));
+      const first = await until(() => p.paused[0], 'first upload held');
+      await p.choose('#opening-add-image', path.join(root, 'tests/fixtures/media/screen.png'));
+      const second = await until(() => p.paused[1], 'second upload held');
+      const rowOf = name => `[...document.querySelectorAll('#opening-attachments .image-choice')].find(r=>r.firstElementChild.textContent.startsWith(${JSON.stringify(name + ' · ')}))`;
+      const words = name => p.evaluate(`${rowOf(name)}?.firstElementChild.textContent??null`);
+      await p.send('Fetch.continueRequest', { requestId: second.requestId });
+      await until(async () => await words('screen.png') === 'screen.png · Ready', 'the second image ready');
+      await p.evaluate(`(()=>{const remove=r=>[...r.querySelectorAll('button')].find(b=>b.textContent==='Remove');remove(${rowOf('screen.png')}).dataset.held='';remove(${rowOf(LONG_NAME)}).dataset.above='';document.querySelector('[data-held]').scrollIntoView({block:'center'})})()`);
+      const place = selector => p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`);
+      // Where a row's Remove sits in its row: its offset from the row's top left, and its size.
+      const inRow = selector => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}),r=b.getBoundingClientRect(),w=b.parentElement.getBoundingClientRect();return {x:r.x-w.x,y:r.y-w.y,width:r.width,height:r.height,row:w.height}})()`);
+      const before = await place('[data-held]'), above = await inRow('[data-above]'), x = before.x + before.width - 3, y = before.y + 3;
+      const over = () => p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held]')`);
+      assert.equal(await over(), true, 'the press is aimed at the second image\'s Remove');
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      await p.send('Fetch.failRequest', { requestId: first.requestId, errorReason: 'ConnectionClosed' });
+      await until(() => p.evaluate(`(()=>{const r=${rowOf(LONG_NAME)};return Boolean(r&&!r.querySelector('button').hidden)})()`), 'the first upload failed and its row offers Retry upload');
+      const after = await place('[data-held]');
+      const aboveAfter = await inRow('[data-above]');
+      assert.ok(aboveAfter.row > above.row, `the first row grew as Retry upload came in and its words wrapped (${above.row} to ${aboveAfter.row})`);
+      assert.deepEqual({ ...aboveAfter, row: above.row }, above, 'the first row\'s own Remove stayed on its first line, where it was in its row');
+      assert.ok(Math.abs(after.y - before.y) > 3, `the first row grew and moved the held Remove from under the press (${before.y} to ${after.y})`);
+      assert.equal(await over(), false, 'the press comes up over something else, so the browser\'s own click cannot press Remove');
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+      await until(async () => await words('screen.png') === null, 'the held Remove removed the second image');
+      assert.match(await words(LONG_NAME), /Not uploaded/, 'the first image\'s row stays');
+    } finally { await names.done(); }
   });
 } finally {
   if (cdp && socket?.readyState === WebSocket.OPEN) { await cdp('Browser.close'); await chromeExit; socket.close(); }
