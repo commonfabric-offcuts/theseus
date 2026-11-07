@@ -645,14 +645,14 @@ test('failed navigation leaves the displayed reader usable and closable', async 
   assert.equal(await f.registry.close(x), true, 'a failed open must not strand the prior reader token');
 });
 
-test('explicit note close recognizes an already confirmed current autosave', async t => {
+test('Save note recognizes an already confirmed current autosave and keeps the Reader open', async t => {
   const f = await fixture(t), p = await f.open(1);
-  f.registry.setMode('note');
+  const notePresentation = f.registry.setMode('note');
   const note = p.editors.note; note.edit({ body: 'Already autosaved private note' });
   await f.registry.edited(note); const receipt = await f.registry.flush(note);
   assert.equal(receipt.status, 'committed');
   assert.equal(await f.registry.saveNote(note), true);
-  assert.equal(f.registry.current, null);
+  assert.equal(f.registry.current, notePresentation); assert.deepEqual(f.closed, []);
   assert.equal(f.calls.filter(call => call.type === 'command' && call.envelope.kind === 'message.send').length, 0);
 });
 

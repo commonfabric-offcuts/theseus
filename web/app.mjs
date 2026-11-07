@@ -1254,7 +1254,8 @@ async function initialize() {
       reader.presentation = registry.setMode(mode); changed(reader.editor); retainRevisionTargets();
       if (cancelled) reader.notice('Stayed on this message; opening the other message was cancelled.');
     },
-    saveNote: editor => run(() => registry.saveNote(editor)),
+    // A note that could not be saved says so in the Reader, beside its writing.
+    saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error.message); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
     close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error.message); return false; }),
     step: async direction => {

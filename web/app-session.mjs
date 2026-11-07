@@ -356,10 +356,8 @@ export class EditorRegistry {
     const receipt = await this.flush(editor);
     const confirmed = receipt?.status === 'committed' || (!receipt && editor.draft.revision > 0 &&
       !editor.authorityRecovery && !editor.conflict && !this.sessionFor(editor).unsettledSave());
-    if (confirmed && editor.ackVersion >= version && !editor.dirty && this.isCurrent(presentation)) {
-      return this.close(presentation);
-    }
-    return false;
+    // A saved note leaves its Reader open: the Reader goes back to the reply.
+    return Boolean(confirmed && editor.ackVersion >= version && !editor.dirty && this.isCurrent(presentation));
   }
 
   checkConfirmation(editor) { return this.sessionFor(editor).reconcile(); }

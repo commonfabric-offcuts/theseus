@@ -450,11 +450,14 @@ export class Reader {
   }
 
   // The note's button says what a press does: write one, see the one you
-  // have, or go back to the reply.
+  // have, or go back to the reply. Beside the reply it wears the note's
+  // yellow while the message has a note, and its plain look once it has none.
   paintNoteToggle() {
-    const toggle = this.$('toggle-note'), note = this.sessions?.note;
-    toggle.textContent = this.mode === 'note' ? 'Back to reply' : note?.draft.body.trim() ? 'Show note' : 'Add note';
-    toggle.title = this.mode === 'note' ? 'Back to your reply' : 'A private note on this message that only you can see';
+    const toggle = this.$('toggle-note'), writing = this.mode === 'note';
+    const has = !writing && Boolean(this.sessions?.note?.draft.body.trim());
+    toggle.textContent = writing ? 'Back to reply' : has ? 'Show note' : 'Add note';
+    toggle.title = writing ? 'Back to your reply' : has ? 'Your private note on this message, which only you can see' : 'A private note on this message that only you can see';
+    toggle.toggleAttribute('data-has-note', has);
   }
 
   paintRecipients() {
@@ -670,10 +673,19 @@ export class Reader {
 
   notice(text) { this.$('reader-notice').textContent = text; this.$('reader-notice').hidden = !text; }
 
-  // Save note, by its button or ⌘ Return, waits for a step as sending does.
-  saveNote() {
+  // Done, by its button or ⌘ Return, waits for a step as sending does. The
+  // note saves as it is written; Done confirms the save. A saved note leaves the Reader open and goes back to the reply as it was,
+  // where the note's button shows the note is there. A note not saved stays
+  // in front, its writing kept, and says so; a step or close that began
+  // meanwhile goes on undisturbed.
+  async saveNote() {
     if (!this.admits()) { if (this.writes()) this.notice(STEP_WAITS); return; }
-    this.callbacks.saveNote(this.editor);
+    const editor = this.editor, presentation = this.presentation;
+    const saved = await this.callbacks.saveNote(editor);
+    // true saved, false not saved; anything else has already said why.
+    if (typeof saved !== 'boolean' || this.mode !== 'note' || this.editor !== editor || this.presentation !== presentation || !this.dialog.open || !this.admits(editor, presentation)) return;
+    if (saved) { this.notice(''); this.switchMode('reply'); }
+    else this.notice('Not saved yet. Your note is kept here; press Done to try again.');
   }
 
   async send(stay) {
