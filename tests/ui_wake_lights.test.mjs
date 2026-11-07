@@ -6,8 +6,10 @@ import { datedTime } from '../web/times.mjs';
 
 class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, hidden: true, textContent: '' }); }
-  append(...nodes) { this.children.push(...nodes); }
+  append(...nodes) { for (const node of nodes) if (node instanceof Element) node.parentNode = this; this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+  insertBefore(node, before) { node.remove(); node.parentNode = this; this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); }
+  remove() { if (this.parentNode) this.parentNode.children = this.parentNode.children.filter(node => node !== this); this.parentNode = null; }
   setAttribute(key, value) { this.attributes[key] = value; }
   removeAttribute(key) { delete this.attributes[key]; }
   focus() {}
@@ -57,7 +59,7 @@ test('a failed read keeps what the names said, so a busy moment does not flicker
 test('a team or participant chip carries its light after the name, and none without one', t => {
   dom(t);
   const host = new Element('div');
-  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', light: person => person.actor_id === 'aim-core' ? 'wakes paused · 1 waiting' : null });
+  const panel = new PeoplePanel({ host, label: 'Add', light: person => person.actor_id === 'aim-core' ? 'wakes paused · 1 waiting' : null });
   panel.paint([{ actor_id: 'aim-core' }, { actor_id: 'aim-ux' }], false);
   const [core, ux] = panel.chips.children;
   assert.equal(core.text(), 'aim-core · wakes paused · 1 waiting');

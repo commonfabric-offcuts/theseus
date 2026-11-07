@@ -932,7 +932,9 @@ class WatchVerbCase(AgentVerbCase):
 
 class StartHintCase(AgentVerbCase):
     def test_a_refused_publish_never_suggests_publish(self):
-        for argv in (("--title", "   ", "words"), ("--title", "Blank body", "   ")):
+        # A blank title, and a participant switched off after the save (a title alone now starts a topic).
+        self.sql("UPDATE actors SET enabled=0 WHERE id='agent-b'")
+        for argv in (("--title", "   ", "words"), ("--title", "Switched off", "--with", "agent-b", "words")):
             with self.subTest(argv=argv):
                 code, _, err = self.run_cli("start", "w1", *argv)
                 self.assertEqual(code, 2)

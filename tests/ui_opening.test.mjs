@@ -37,7 +37,8 @@ function core() {
       if(o.participants.some(p=>disabled.has(p)))refuse('INVALID_RECIPIENT','A participant is not enabled');
       if(!o.title.trim())refuse('EMPTY_TITLE','A topic needs a title');
       if(o.attachments.some(ref=>media.get(ref.id).state!=='ready'))refuse('ATTACHMENT_NOT_READY','Every attachment must be ready');
-      const message='message-'+(topics.size+1);topics.set(o.topic_id,{title:o.title,body:o.body,participants:copy(o.participants),message});
+      // A title alone starts the topic with no message (docs/openings.md).
+      const message=o.body.trim()||o.attachments.length?'message-'+(topics.size+1):null;topics.set(o.topic_id,{title:o.title,body:o.body,participants:copy(o.participants),message});
       Object.assign(o,{state:'published',revision:o.revision+1,publish_operation_id:e.operation_id,message_id:message});
       return {opening_id:o.id,opening_revision:o.revision,topic:{id:o.topic_id,version:1},message_id:message,delivery:{queued:0,unavailable_subscribers:[]}};
     },
@@ -250,11 +251,14 @@ test('closed and changed openings are read again after a refused Send',async()=>
   assert.equal(await d.send(),'refused');assert.equal(d.phase,'published');assert.match(d.refusal,/published/);
 });
 
-test('Send refuses incomplete writing before any request',async()=>{
+test('Send refuses a blank title before any request, and a title alone starts the topic with no message',async()=>{
   const h=harness(),d=h.draft();await d.load();
   d.edit({title:'  ',body:'Words'});await assert.rejects(d.send(),/title/);
-  d.edit({title:'Title',body:'   '});await assert.rejects(d.send(),/message|image/);
   assert.equal(h.calls.filter(x=>x.kind==='opening.publish').length,0);
+  d.edit({title:'Title',body:'   '});
+  assert.equal(await d.send().catch(error=>error.message),'published','no words are needed to start a topic');
+  assert.equal(h.commands('opening.publish').length,1);
+  assert.equal(d.receipt.result.message_id,null,'Core started it with no message, and the page took that as confirmed');
 });
 
 test('participants come from outcome members and the limit includes the author',async()=>{
@@ -334,7 +338,25 @@ test('the opening page shows both versions in a conflict and Check and Send agai
   await d.load();d.edit({title:'Shared',body:'Original'});await d.save();
   const other=harness({core:h.core}).draft();await other.load();other.edit({body:'Phone words'});await other.save();
   d.edit({body:'Laptop words'});await d.save();await settled(d);
-  const texts=node=>[node.textContent,...node.children.flatMap(texts)];
+  test('the opening page offers you and the outcome\'s members as one row of names tapped once, with no checkboxes',async t=>{
+  const previous=globalThis.document;globalThis.document=dom();t.after(()=>{globalThis.document=previous;});
+  const h=harness(),d=h.draft(),host=document.createElement('main');
+  const view=new OpeningView({host,draft:d,workspace:{id:'w1',title:'Outcome'},open:()=>{}});
+  await d.load();await view.loadMembers();view.paint();
+  const row=()=>view.chips.children.map(chip=>[chip.dataset.key,chip.textContent,chip['aria-pressed']]);
+  assert.deepEqual(row(),[['person','person · you','true'],['agent','Agent','false'],['teammate','Teammate','false']],'you first and always in, then each member');
+  const all=node=>[node,...node.children.flatMap(all)];
+  assert.equal(all(host).some(node=>node.type==='checkbox'),false,'no checkbox stack');
+  const agent=view.chips.children[1];
+  await agent.onclick();
+  assert.deepEqual([d.writing.participants,row()[1][2]],[['agent'],'true'],'one tap puts them in');
+  assert.equal(view.chips.children[1],agent,'the same chip, so the focus stays on it');
+  await view.chips.children[2].onclick();await agent.onclick();
+  assert.deepEqual([d.writing.participants,row().map(([,,on])=>on)],[['teammate'],['true','false','true']],'a second tap takes them out');
+  assert.equal(view.chips.children[0].onclick,undefined,'you are not a button to take yourself out');
+});
+
+const texts=node=>[node.textContent,...node.children.flatMap(texts)];
   const shown=texts(view.conflict);
   assert.equal(view.conflict.hidden,false);assert.equal(view.sendButton.disabled,true);
   assert.ok(shown.some(x=>x.includes('Laptop words')),'your writing is shown');

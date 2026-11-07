@@ -8,9 +8,12 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
   const row = '#topics .nav-item[data-topic-id="t1"]';
   const mark = p => p.evaluate(`(()=>{const m=document.querySelector(${JSON.stringify(row + ' .topic-state')});return m?{text:m.textContent,title:m.title,state:m.dataset.state,mine:m.classList.contains('mine')}:null})()`);
   const asks = async () => (await view('topic', { topic_id: 't1' })).topic.asks ?? [];
+  // Someone in the topic is a name tapped once to address them; anyone else is typed.
   const addressTo = async (p, name) => {
-    await p.point('#recipient-input'); await p.send('Input.insertText', { text: name }); await p.key('Enter');
-    await until(() => p.evaluate(`[...document.querySelectorAll('#recipient-chips .chip')].some(c=>c.dataset.name===${JSON.stringify(name)})`), 'recipient chip');
+    const chip = `#recipient-chips .choice-chip[data-name=${JSON.stringify(name)}]`;
+    if (await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(chip)}))`)) await p.point(chip);
+    else { await p.point('#recipient-input'); await p.send('Input.insertText', { text: name }); await p.key('Enter'); }
+    await until(() => p.evaluate(`[...document.querySelectorAll('#recipient-chips [data-name]')].some(c=>c.dataset.name===${JSON.stringify(name)}&&(c.classList.contains('chip')||c.getAttribute('aria-pressed')==='true'))`), 'recipient named');
   };
   const sent = async (p, from) => {
     await p.point('#send-reply');
@@ -41,6 +44,28 @@ export async function asksChecks({ check, page, until, control, view, facts, rep
     assert.equal(source.intent, 'tell', 'an unticked reply is a tell');
     assert.deepEqual((await asks()).filter(a => a.actor_id === facts.actor), [], 'the reader answered, so nothing waits on them');
     await until(async () => (await mark(p)) === null, 'row mark gone once nothing waits');
+    assert.deepEqual(p.errors, []);
+  });
+
+  // The topic's people are painted again after every commit in it, and Address
+  // with them. A press held on a name while a commit lands still names them.
+  await check('asks a press on a name held down while a commit repaints the topic still names them', async () => {
+    const p = await page('asks-held', null, true); await p.open(1);
+    await replace(p, 'Holding the name down.');
+    const chip = `#recipient-chips .choice-chip[data-name=${JSON.stringify(facts.agent)}]`;
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)})?.getAttribute('aria-pressed') === 'false'`), 'the agent is a name to tap');
+    await p.evaluate(`document.querySelector(${JSON.stringify(chip)}).scrollIntoView({block:'center'})`);
+    const b = await p.box(chip), x = b.x + b.width / 2, y = b.y + b.height / 2;
+    assert.equal(await p.evaluate(`document.elementFromPoint(${x}, ${y}) === document.querySelector(${JSON.stringify(chip)})`), true, 'the agent\'s name is what is pressed');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    // The names a message can be to are filled again in the same turn that
+    // paints the topic's people and Address: a record of that is the repaint.
+    await p.evaluate(`(()=>{window.namesPainted=0;new MutationObserver(records=>{window.namesPainted+=records.length;}).observe(document.querySelector('#addressable-names'),{childList:true});})()`);
+    await control({ method: 'agent_message', operation_id: 'asks-held-commit', body: 'A commit while the name is held down.', topic_id: 't1', addressees: [] });
+    await until(() => p.evaluate('window.namesPainted > 0'), 'the commit repaints the topic\'s people while the name is down');
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(chip)})?.getAttribute('aria-pressed') === 'true'`), 'the held press named the agent');
     assert.deepEqual(p.errors, []);
   });
 

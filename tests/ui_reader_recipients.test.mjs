@@ -13,6 +13,8 @@ class Element {
   // What it says: its own text, then its children's, a string child as itself.
   get text() { return this.textContent + this.children.map(node => typeof node === 'string' ? node : node.text).join(''); }
   replaceChildren(...nodes) { for (const node of this.children) if (typeof node === 'object') node.parent = null; this.children = []; this.textContent = ''; this.append(...nodes); }
+  remove() { if (this.parent) { this.parent.children = this.parent.children.filter(node => node !== this); this.parent = null; } }
+  insertBefore(node, before) { node.remove(); this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); node.parent = this; }
   setAttribute(key, value) { this.attributes[key] = value; }
   removeAttribute(key) { delete this.attributes[key]; }
 }
@@ -54,8 +56,8 @@ test('a repaint of the reader\'s chips keeps keyboard focus in the writing and k
   assert.equal(said().textContent, ' · No permission for this topic');
   const refused = offer();
   reader.paintRecipients();
-  assert.notEqual(offer(), refused, 'the chips were rebuilt');
-  assert.equal(document.activeElement, offer(), 'focus moves to the same offer on the new chip');
+  assert.equal(offer(), refused, 'a repaint that changes nothing keeps the chip and its offer');
+  assert.equal(document.activeElement, refused, 'and the focus on it');
   assert.deepEqual([said().textContent, said().hidden], [' · No permission for this topic', false], 'the refusal is still said');
 
   answer = { status: 'committed' };

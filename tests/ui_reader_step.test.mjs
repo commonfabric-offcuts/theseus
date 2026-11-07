@@ -4,7 +4,7 @@ import { Editor } from '../web/editor.mjs';
 import { Reader } from '../web/reader.mjs';
 
 // While a step to another message waits, the Reader's own writing goes on:
-// recipients and quotes reach it like typing. Sending and Save note wait, and
+// recipients and quotes reach it like typing. Sending and a note's Done wait, and
 // say why. A Reader that no longer holds its writing takes none of these.
 class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, dataset: {}, className: '', textContent: '', value: '', hidden: true }); }
@@ -13,6 +13,8 @@ class Element {
   get isConnected() { return !!this.root || !!this.parent?.isConnected; }
   append(...nodes) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
   replaceChildren(...nodes) { for (const node of this.children) node.parent = null; this.children = []; this.append(...nodes); }
+  remove() { if (this.parent) { this.parent.children = this.parent.children.filter(node => node !== this); this.parent = null; } }
+  insertBefore(node, before) { node.remove(); this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); node.parent = this; }
   setAttribute(key, value) { this.attributes[key] = value; }
   removeAttribute(key) { delete this.attributes[key]; }
   setSelectionRange() {}
@@ -78,7 +80,7 @@ test('Ask shows once the reply names someone, marks the writing as asking, and g
   assert.equal(f.acts.filter(([act]) => act === 'edit').length, 7, 'each change is kept as it lands');
 });
 
-test('while a step waits, sending and Save note wait and say why', async t => {
+test('while a step waits, sending and a note\'s Done wait and say why', async t => {
   const f = reader(t, { admits: false, writes: true });
   await f.r.send(false);
   assert.match(f.notice(), STEP_WAITS, 'Send says the step is still opening');
@@ -90,7 +92,7 @@ test('while a step waits, sending and Save note wait and say why', async t => {
   assert.match(f.notice(), STEP_WAITS, '⌘ Return in a private note says so too');
   f.r.notice('');
   f.r.saveNote();
-  assert.match(f.notice(), STEP_WAITS, 'Save note says so too');
+  assert.match(f.notice(), STEP_WAITS, 'Done on a note says so too');
   assert.deepEqual(f.acts, [], 'nothing is sent or saved');
 });
 
@@ -101,7 +103,7 @@ test('a Reader that no longer holds its writing takes nothing and says nothing',
   assert.deepEqual([f.reply.draft.addressees, f.inserted, f.acts, f.notice()], [[], [], [], '']);
 });
 
-test('with no step waiting, ⌘ Return and Save note save the private note', t => {
+test('with no step waiting, ⌘ Return and Done save the private note', t => {
   const f = reader(t, { admits: true, writes: true });
   f.r.mode = 'note'; f.commandReturn(); f.r.saveNote();
   assert.deepEqual(f.acts, [['saveNote', 'note'], ['saveNote', 'note']]);

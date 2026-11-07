@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from .contract import LIMITS, Refusal, _body, _bounded_page, _identifier, _page_size, _prefix, _json, _revision
+from .delivery import _now_ms
 from .sources import NAMED, seen_topics
 
 
@@ -13,6 +14,20 @@ OPENING_SCHEMA = [
 SAVED_FIELDS = {"workspace_id", "topic_id", "title", "participants", "body", "attachments"}
 # The message a new topic answers: named on the first save, kept by every later one.
 SOURCE_FIELD = "source_message_id"
+
+
+def _quoted(words):
+    """(body, excerpt): words as a quote that fits one message, each line after "> ".
+    The excerpt is the part quoted, cut at its end when the whole would not fit;
+    both are empty when there are no words."""
+    excerpt, limit = words.strip(), LIMITS["body_utf8_bytes"]
+    while excerpt:
+        body = "\n".join("> " + line for line in excerpt.split("\n"))
+        size = len(body.encode("utf-8"))
+        if size <= limit:
+            return body, excerpt
+        excerpt = excerpt[:max(1, len(excerpt) * limit // size - 1)].rstrip()
+    return "", ""
 
 
 def _opening_id(envelope):
@@ -117,11 +132,32 @@ class Openings:
                          Refusal("EMPTY_TITLE", "A topic needs a title"))
         if source is not None:
             db.execute("UPDATE topics SET source_message_id=? WHERE id=?", (source, row["topic_id"]))
-        result, affected = self._publish(db, actor, envelope["operation_id"], row["topic_id"], {
-            "body": saved["body"], "attachments": saved["attachments"], "quotes": [], "addressees": []})
+        writing = {"body": saved["body"], "attachments": saved["attachments"], "quotes": [], "addressees": []}
+        if not saved["body"].strip() and not saved["attachments"] and source is not None:
+            # Started from a message with nothing written: its words open the topic, quoted.
+            writing["body"], excerpt = _quoted(self._source(db, actor, {"kind": "message", "id": source})["body"])
+            if excerpt:
+                writing["quotes"] = [{"source": {"kind": "message", "id": source}, "excerpt": excerpt}]
+        if writing["body"].strip() or writing["attachments"]:
+            result, affected = self._publish(db, actor, envelope["operation_id"], row["topic_id"], writing)
+        else:
+            # A title alone starts the topic; its first message comes later, in the topic.
+            result, affected = self._open_quietly(db, actor, row["topic_id"])
         revision = self._close_opening(db, actor, row, "published", envelope["operation_id"], result["message_id"])
         return dict(result, opening_id=row["id"], opening_revision=revision), affected + [
             {"kind": "opening", "id": row["id"], "version": revision}]
+
+    def _open_quietly(self, db, actor, topic_id):
+        """A topic opened with no message: it is the outcome's latest activity, and each
+        participant other than its author learns they are in it."""
+        topic = db.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone()
+        db.execute("UPDATE topics SET activity_ms=max(activity_ms,?) WHERE id=?", (_now_ms(), topic_id))
+        version = self._touch_topic(db, topic)
+        for (member,) in db.execute("SELECT actor_id FROM topic_participants WHERE topic_id=? AND active=1 AND actor_id<>?",
+                                    (topic_id, actor)).fetchall():
+            self._change(db, "actor", member, "participation", topic_id, version)
+        return {"message_id": None, "topic": {"id": topic_id, "version": version},
+                "delivery": {"queued": 0, "unavailable_subscribers": []}}, [{"kind": "topic", "id": topic_id, "version": version}]
 
     def _command_opening_discard(self, db, actor, envelope):
         row = self._open_opening(db, actor, envelope)

@@ -7,6 +7,7 @@ COMMANDS = {
     "workspace.create": "_command_workspace_create",
     "workspace.member_set": "_command_workspace_member_set",
     "workspace.owner_set": "_command_workspace_owner_set",
+    "workspace.update": "_command_workspace_update",
     "draft.save": "_command_draft_save",
     "note.save": "_command_note_save",
     "submission.prepare": "_command_submission_prepare",
@@ -33,7 +34,7 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "memory.create": {"item_revision"}, "memory.revise": {"item_revision"}, "memory.read": set(),
             "media.begin": {"media_revision"}, "media.publish": {"media_revision"},
             "workspace.member_set": {"workspace_revision"}, "workspace.owner_set": {"workspace_revision"},
-            "opening.save": {"opening_revision"},
+            "workspace.update": {"workspace_revision"}, "opening.save": {"opening_revision"},
             "opening.publish": {"opening_revision"}, "opening.discard": {"opening_revision"},
             "message.mark": {"mark_revision"}, "color.set": {"color_revision"},
             "responsibility.set": {"responsibility_revision"}}
@@ -42,7 +43,7 @@ REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision
                      "memory.create": "item_revision", "memory.revise": "item_revision",
                      "media.begin": "media_revision", "media.publish": "media_revision",
                      "workspace.member_set": "workspace_revision", "workspace.owner_set": "workspace_revision",
-                     "opening.save": "opening_revision",
+                     "workspace.update": "workspace_revision", "opening.save": "opening_revision",
                      "opening.publish": "opening_revision", "opening.discard": "opening_revision",
                      "message.mark": "mark_revision", "color.set": "color_revision",
                      "responsibility.set": "responsibility_revision"}

@@ -38,6 +38,15 @@ class TopicStateVerbCase(AgentVerbCase):
                 self.assertIn(word, err)
         self.assertEqual(self.sql("SELECT title,state,archived,state_by FROM topics WHERE id='t1'"), [("Topic", "active", 0, None)])
 
+    def test_a_topic_started_from_its_title_alone_says_it_has_no_message_yet(self):
+        code, out, err = self.run_cli("start", "w1", "--title", "Bare", "")
+        self.assertEqual((code, err), (0, ""))
+        topic = out.split()[1]
+        self.assertEqual(out, 'started %s "Bare" in w1 with no message yet\n' % topic)
+        self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE topic_id=?", (topic,)), [(0,)])
+        [(opening,)] = self.sql("SELECT id FROM openings WHERE topic_id=?", (topic,))
+        self.assertEqual(self.run_cli("publish", opening), (0, "already published %s as %s with no message yet\n" % (opening, topic), ""))
+
     def test_the_creator_renames_and_archives_and_topics_lists_archived_apart(self):
         code, out, err = self.run_cli("start", "w1", "--title", "Agent topic", "Opening words")
         self.assertEqual((code, err), (0, ""))

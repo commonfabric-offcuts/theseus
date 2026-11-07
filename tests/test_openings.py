@@ -240,8 +240,6 @@ class OpeningsCase(fixtures.StoreCase):
 
         resave(title=" \n")
         refuse("EMPTY_TITLE", "p-title")
-        resave(body=" ", attachments=[])
-        refuse("EMPTY_MESSAGE", "p-empty")
         resave(body="", attachments=[pending])
         refuse("ATTACHMENT_NOT_READY", "p-pending")
         resave(body="", attachments=[ready])
@@ -256,7 +254,7 @@ class OpeningsCase(fixtures.StoreCase):
         refuse("REVISION_CONFLICT", "p-raced")
         self.sql("DELETE FROM topics WHERE id='t-new'")
         self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])
-        self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE id LIKE 'p-%'"), [(6,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE id LIKE 'p-%'"), [(5,)])
         published = self.committed(self.act("opening.publish", revision=revision[0], op="p-final"))
         self.assertEqual(published["topic"]["id"], "t-new")
         self.assertEqual(self.sql("SELECT body FROM messages"), [("",)])

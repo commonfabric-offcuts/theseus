@@ -229,9 +229,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
   });
 
   await check('rail the opening page follows a save made elsewhere while it holds no unsaved writing, and keeps unsaved writing', async () => {
-    const p = await open('rail-opening', '/?workspace=w1');
-    await until(() => p.evaluate('!document.querySelector("#new-topic").disabled'), 'New topic offered');
-    await p.point('#new-topic');
+    // An opening's own page is where a topic started before is resumed (New topic is one title line).
+    const p = await open('rail-opening', '/?workspace=w1&opening=rail-opening&opening_topic=rail-opening-topic');
     await until(() => p.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.has("opening") && Boolean(document.querySelector("#opening-title-input"))').catch(() => false), 'the opening page');
     const opening = await p.evaluate('new URL(location.href).searchParams.get("opening")');
     const title = () => p.evaluate('document.querySelector("#opening-title-input").value');

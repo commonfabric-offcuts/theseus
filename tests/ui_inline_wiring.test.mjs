@@ -24,6 +24,7 @@ const TODAY = new Date(2026, 10, 5, 12, 0).getTime();
 times.clock.now = () => TODAY;
 import { PageReads } from '../web/page-reads.mjs';
 import { PageHere } from '../web/page-here.mjs';
+import { hasTitle } from '../web/creation.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -116,7 +117,13 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const attentionSource = readFileSync(new URL('../web/attention.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + attentionSource + '; return {Attention,paintSent}; })())', context);
   const peopleSource = readFileSync(new URL('../web/people.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach,replaceChips}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + peopleSource + '; return {PeoplePanel,fillNames,readDirectory,readMembers,markReach,replaceChips,paintAddress}; })())', context);
+  // The one-line creates and the purpose line, in the page's own scope.
+  context.hasTitle = hasTitle;
+  const quickSource = readFileSync(new URL('../web/quick-create.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + quickSource + '; return {OneLine,OutcomeStart,TopicStart,lineFromButton,firstSentence}; })())', context);
+  const purposeSource = readFileSync(new URL('../web/outcome-purpose.mjs', import.meta.url), 'utf8').replace('export class PurposeLine', 'class PurposeLine');
+  vm.runInContext('globalThis.PurposeLine = (()=>{' + purposeSource + '; return PurposeLine; })()', context);
   const lightsSource = readFileSync(new URL('../web/wake-lights.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class WakeLights', 'class WakeLights');
   vm.runInContext('globalThis.WakeLights = (()=>{' + lightsSource + '; return WakeLights; })()', context);
   const navigationSource = readFileSync(new URL('../web/topic-navigation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (class|function|const|async function) /gm, '$1 ');
@@ -742,11 +749,17 @@ const pickerApi = (f, { topic = {}, workspace = {} } = {}) => {
     return { status: 'committed', result: { version: record.version } };
   };
 };
+// "+ Add" opens the filter; Return in it adds the name typed (or the one name it still offers).
 const add = async (host, id) => {
-  const nodes = walk(host), input = nodes.find(node => node.list === 'directory-names');
+  const opener = walk(host).find(node => node.textContent === '+ Add');
+  if (opener['aria-expanded'] !== 'true') opener.onclick();
+  const input = walk(host).find(node => node.className === 'people-add').children.find(node => node.tagName === 'INPUT');
   input.value = id;
-  await nodes.find(node => node.textContent === 'Add').onclick();
+  input.onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {}, stopPropagation() {} });
+  await drain();
 };
+// Return in the composer's small field names someone else.
+const nameIn = (f, id, name) => { f.get(id).value = name; f.get(id).onkeydown({ key: 'Enter', isComposing: false, repeat: false, preventDefault() {}, stopPropagation() {} }); };
 const removeButton = (host, id) => walk(host).find(node => node['aria-label'] === `Remove ${id}`);
 // Envelopes come from the page's realm; compare them as data.
 const sentOf = (f, kind, field) => JSON.parse(JSON.stringify(f.calls.filter(call => call.kind === kind).map(call => [call.envelope.expected[field], call.envelope.args])));
@@ -790,14 +803,14 @@ test('a topic\'s creator who does not own the outcome manages its participants; 
   const creator = fixture();
   pickerApi(creator, { topic: { owner_id: 'tony', creator_id: 'fixture-person' } });
   await creator.initialize();
-  assert.equal(walk(creator.get('participants')).find(node => node.className === 'people-add').hidden, false);
+  assert.ok(walk(creator.get('participants')).find(node => node.textContent === '+ Add'), 'its manager is offered "+ Add"');
   assert.ok(removeButton(creator.get('participants'), 'fable'));
 
   const f = fixture();
   pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
   await f.initialize();
   const nodes = walk(f.get('participants'));
-  assert.deepEqual([nodes.find(node => node.className === 'people-add').hidden, nodes.some(node => node.textContent === '×')], [true, false]);
+  assert.deepEqual([nodes.find(node => node.className === 'people-add').hidden, nodes.some(node => node.textContent === '×'), nodes.some(node => node.textContent === '+ Add')], [true, false, false]);
   // A pill's words, as the DOM's textContent gives them: the name is a span inside it, an agent's a button.
   assert.deepEqual(nodes.filter(isPill).map(node => node.children.map(child => child.textContent ?? child).join('')), ['fixture-person', 'fable']);
 });
@@ -829,7 +842,7 @@ test('a team read on focus that fails keeps the team the page had; one refused f
   showComposer(f);
   const offered = () => f.get('addressable-names').children.map(option => option.value);
   const mark = name => {
-    f.get('inline-recipient-input').value = name; f.get('inline-add-recipient').onclick();
+    nameIn(f, 'inline-recipient-input', name);
     return f.get('inline-recipient-chips').children.find(node => node.textContent === name).className;
   };
   assert.deepEqual([offered(), mark('stranger')], [['fixture-person', 'ally', 'fable'], 'chip unreachable']);
@@ -889,6 +902,15 @@ test('an outcome\'s owner changes its team on the outcome page; the owner cannot
   pickerApi(other, { workspace: { owner_id: 'tony' } });
   await other.initialize();
   assert.equal(walk(other.get('team-people')).find(node => node.className === 'people-add').hidden, true);
+  assert.equal(walk(other.get('team-people')).some(node => node.textContent === '+ Add'), false);
+  assert.deepEqual([f.get('outcome-purpose').hidden, other.get('outcome-purpose').hidden], [false, true], 'its owner sets the purpose in place; a member reads it');
+
+  // Its coordinator organises it beside the owner, so they set the purpose too.
+  const coordinator = fixture('https://fixture/?workspace=w1');
+  coordinator.inject({ api: coordinator.api, bootstrap: coordinator.bootstrap });
+  pickerApi(coordinator, { workspace: { owner_id: 'tony', coordinator_id: 'fixture-person' } });
+  await coordinator.initialize();
+  assert.equal(coordinator.get('outcome-purpose').hidden, false, 'the coordinator sets the purpose in place');
   assert.equal(walk(other.get('team-people')).some(node => node.textContent === '×'), false, 'a member who is not the owner only sees the team');
 });
 
@@ -916,11 +938,12 @@ test('addressing someone outside the topic offers its manager to add them, and t
   pickerApi(f);
   await f.initialize();
   showComposer(f);
-  const address = name => { f.get('inline-recipient-input').value = name; f.get('inline-add-recipient').onclick(); };
+  const address = name => { nameIn(f, 'inline-recipient-input', name); };
   const chip = name => f.get('inline-recipient-chips').children.find(node => node.textContent === name);
   address('ally'); address('stranger'); address('fable');
   assert.equal(chip('ally').className, 'chip', 'an outcome member can be sent to');
-  assert.equal(chip('fable').className, 'chip', 'a participant can be sent to');
+  assert.deepEqual([chip('fable').className, chip('fable')['aria-pressed']], ['choice-chip', 'true'], 'a participant is a name tapped once, lit when named');
+  assert.equal(chip('ally').tagName, 'SPAN', 'someone outside the topic is named in the small field and shown with a ×');
   assert.equal(chip('stranger').className, 'chip unreachable');
   const offer = walk(chip('stranger')).find(node => node.textContent?.startsWith('Add to topic'));
   // The add commits; the next topic view lists the new participant.
@@ -931,7 +954,7 @@ test('addressing someone outside the topic offers its manager to add them, and t
   assert.deepEqual(sent, [{ actor_id: 'stranger', present: true }]);
   Object.assign(f.views, { topic: { ...f.topic, version: 4, owner_id: 'fixture-person', creator_id: 'other' }, participants, messages: new Map() });
   f.paintViews('topic');
-  assert.equal(chip('stranger').className, 'chip', 'once a participant, the mark goes');
+  assert.deepEqual([chip('stranger').className, chip('stranger')['aria-pressed']], ['choice-chip', 'true'], 'once a participant, the mark goes and the name is lit');
   assert.equal(f.document.activeElement, f.get('inline-recipient-input'), 'focus that was on the offer goes to the recipient field');
 });
 
@@ -942,7 +965,7 @@ test('a switched-off participant or teammate is marked so, with no add offer, an
   f.pickers.members.push({ actor_id: 'gone', kind: 'agent', name: 'Gone', enabled: false });
   await f.initialize();
   showComposer(f);
-  const address = name => { f.get('inline-recipient-input').value = name; f.get('inline-add-recipient').onclick(); };
+  const address = name => { nameIn(f, 'inline-recipient-input', name); };
   const chip = name => f.get('inline-recipient-chips').children.find(node => node.textContent === name);
   address('idle'); address('gone'); address('stranger');
   for (const name of ['idle', 'gone']) {
@@ -980,11 +1003,11 @@ test('a reader who cannot change the participants is told who could, and a team 
   pickerApi(f, { topic: { owner_id: 'tony', creator_id: 'tony' } });
   await f.initialize();
   showComposer(f);
-  f.get('inline-recipient-input').value = 'stranger'; f.get('inline-add-recipient').onclick();
+  nameIn(f, 'inline-recipient-input', 'stranger');
   const chip = f.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger');
   assert.equal(chip.className, 'chip unreachable');
   assert.equal(walk(chip).some(node => node.textContent?.startsWith('Add to topic')), false);
-  f.get('inline-recipient-input').value = 'tony'; f.get('inline-add-recipient').onclick();
+  nameIn(f, 'inline-recipient-input', 'tony');
   assert.equal(f.get('inline-recipient-chips').children.find(node => node.textContent === 'tony').className, 'chip',
     'the topic\'s owner can always be sent to, participant or not');
 
@@ -994,7 +1017,7 @@ test('a reader who cannot change the participants is told who could, and a team 
   hidden.api.view = async (name, args) => name === 'workspace_members' ? { error: { code: 'FORBIDDEN', message: 'No permission for this workspace' } } : view(name, args);
   await hidden.initialize();
   showComposer(hidden);
-  hidden.get('inline-recipient-input').value = 'stranger'; hidden.get('inline-add-recipient').onclick();
+  nameIn(hidden, 'inline-recipient-input', 'stranger');
   assert.equal(hidden.get('inline-recipient-chips').children.find(node => node.textContent === 'stranger').className, 'chip');
 });
 

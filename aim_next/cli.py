@@ -811,7 +811,7 @@ class Agent:
                 hint = self.publish_hint(opening, topic, recorded=True)
             _diagnostic(self.out.stderr, "start: " + hint)
             raise
-        self.out.plain('started %s "%s" in %s with %s' % (topic, _one_line(options.title, 60), options.outcome, result["message_id"]))
+        self.out.plain('started %s "%s" in %s with %s' % (topic, _one_line(options.title, 60), options.outcome, result["message_id"] or "no message yet"))
 
     @staticmethod
     def publish_hint(opening, topic, recorded=False):
@@ -821,13 +821,13 @@ class Agent:
     def do_publish(self):
         opening = self.view("opening", {"opening_id": self.options.opening})["opening"]
         if opening["state"] == "published":
-            self.out.plain("already published %s as %s with %s" % (opening["id"], opening["topic_id"], opening["message_id"]))
+            self.out.plain("already published %s as %s with %s" % (opening["id"], opening["topic_id"], opening["message_id"] or "no message yet"))
             return
         seen = self.seen()
         result = self.command("opening.publish", {"opening_id": opening["id"]}, {"seen": seen} if seen else {},
                               {"opening_revision": opening["revision"]})
         self.out.plain('started %s "%s" in %s with %s' % (opening["topic_id"], _one_line(opening.get("title", ""), 60),
-                                                          opening["workspace_id"], result["message_id"]))
+                                                          opening["workspace_id"], result["message_id"] or "no message yet"))
 
     def do_ack(self):
         for delivery in self.options.deliveries:

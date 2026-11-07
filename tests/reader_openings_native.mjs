@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { mkdtemp, readFile, writeFile, rm, mkdir } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -101,7 +101,7 @@ try {
       if (packet.method === 'Page.javascriptDialogOpening') { dialogs.push(packet.params); send('Page.handleJavaScriptDialog', { accept: false }).catch(error => errors.push({ message: error.message })); }
       if (packet.method === 'Network.requestWillBeSent' && packet.params.request.url.startsWith(facts.origin + '/api/')) {
         let payload = null; try { payload = JSON.parse(packet.params.request.postData); } catch {}
-        calls.push({ url: packet.params.request.url, kind: payload?.kind ?? null, name: payload?.name ?? null, operation_id: payload?.operation_id ?? null });
+        calls.push({ url: packet.params.request.url, kind: payload?.kind ?? null, name: payload?.name ?? null, operation_id: payload?.operation_id ?? null, payload });
       }
     });
     await send('Page.enable'); await send('Runtime.enable'); await send('Network.enable');
@@ -221,7 +221,7 @@ try {
   // Shared helpers over one page.
   const route = p => p.evaluate('Object.fromEntries(new URL(location.href).searchParams)');
   const status = p => p.evaluate('document.querySelector("#opening-save-state").textContent');
-  const fields = p => p.evaluate('({title:document.querySelector("#opening-title-input").value,body:document.querySelector("#opening-body").value,checked:[...document.querySelectorAll("#opening-members input[type=checkbox]")].filter(b=>b.checked).map(b=>b.closest("[data-key]").dataset.key),chips:[...document.querySelectorAll("#outcome-page .chips [data-key]")].map(c=>c.dataset.key)})');
+  const fields = p => p.evaluate('({title:document.querySelector("#opening-title-input").value,body:document.querySelector("#opening-body").value,checked:[...document.querySelectorAll("#opening-members button[data-key][aria-pressed=true]")].map(b=>b.dataset.key),chips:[...document.querySelectorAll("#opening-members [data-key][aria-pressed=true]")].map(c=>c.dataset.key)})');
   const deviceRows = p => p.evaluate(`(async()=>{
     if(!(await indexedDB.databases()).some(d=>d.name==='aim-next-openings'))return [];
     return await new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-openings');r.onerror=()=>reject(r.error);
@@ -229,7 +229,14 @@ try {
   })()`);
   const outcomeReady = (p, workspace) => until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("workspace")===${JSON.stringify(workspace)} && !new URL(location.href).searchParams.has("opening") && !document.querySelector("#new-topic").disabled`).catch(() => false), 'outcome page ' + workspace);
   const openingReady = p => until(() => p.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.has("opening") && Boolean(document.querySelector("#opening-title-input"))').catch(() => false), 'opening page');
-  const membersReady = (p, agent) => until(() => p.evaluate(`Boolean(document.querySelector('#opening-members [data-key=${JSON.stringify(agent)}] input'))`), 'outcome member choices');
+  const membersReady = (p, agent) => until(() => p.evaluate(`Boolean(document.querySelector('#opening-members button[data-key=${JSON.stringify(agent)}]'))`), 'outcome member choices');
+  // New topic is one title line now; the full opening page is where a topic
+  // started before is resumed, reached by its link, as Resume reaches it.
+  const newOpening = async (p, workspace) => {
+    const ids = { workspace, opening: randomUUID(), opening_topic: randomUUID() };
+    await p.goto(facts.origin + '/?' + new URLSearchParams(ids)); await openingReady(p);
+    return ids;
+  };
   const saved = p => until(async () => (await status(p)) === 'Saved', 'status reaches Saved', 10000);
   const topicOpened = async (p, topicId, title, body) => {
     await until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("topic")===${JSON.stringify(topicId)}`).catch(() => false), 'new topic page');
@@ -247,7 +254,44 @@ try {
     return id;
   };
 
-  await check('openings desktop New topic saves restores across reload and device, sends by shortcut, resumes, sends by button and discards', async own => {
+  await check('openings New topic is one title line: Return starts the topic once, with the reader in it and no message yet', async own => {
+    const workspace = await outcome('openings-line');
+    const a = await own('line-desktop');
+    await a.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(a, workspace);
+    await a.click('#new-topic');
+    await until(() => a.evaluate('document.activeElement?.id==="new-topic-title"'), 'one title line, focused');
+    assert.equal(await a.evaluate('new URL(location.href).searchParams.has("opening")'), false, 'no opening page');
+    assert.equal(await a.evaluate('document.querySelector("#new-topic").getAttribute("aria-expanded")'), 'true');
+    await a.key('Escape');
+    await until(() => a.evaluate('!document.querySelector("#new-topic-title") && document.activeElement?.id==="new-topic"'), 'Escape closes the line and gives the focus back');
+    await a.click('#new-topic');
+    await until(() => a.evaluate('document.activeElement?.id==="new-topic-title"'), 'the line again');
+    await a.typeKeys('Which weekend works'); await a.key('Enter');
+    await until(() => a.evaluate('document.body.dataset.ready==="true" && new URL(location.href).searchParams.has("topic")').catch(() => false), 'the new topic opens');
+    const topicId = await a.evaluate('new URL(location.href).searchParams.get("topic")');
+    assert.equal(await a.evaluate('document.querySelector("#topic-title").textContent'), 'Which weekend works');
+    assert.deepEqual([a.calls.filter(c => c.kind === 'opening.save').length, a.calls.filter(c => c.kind === 'opening.publish').length], [1, 1], 'one save, one publish');
+    const save = a.calls.find(c => c.kind === 'opening.save').payload;
+    assert.deepEqual([save.args.title, save.args.body, save.args.participants, save.args.attachments], ['Which weekend works', '', [], []]);
+    const topic = await view('topic', { topic_id: topicId });
+    assert.deepEqual(topic.participants.map(x => x.actor_id), [facts.actor], 'the reader is in it; people are added there');
+    const messages = await view('topic_messages', { topic_id: topicId, limit: 5 });
+    assert.deepEqual([messages.error ?? null, messages.items], [null, []], 'no message yet');
+    assert.equal(await a.evaluate('document.querySelector("#participants .add-chip") !== null'), true, 'its people are added on its page, with "+ Add"');
+    await a.shot('line-topic-started');
+
+    const p = await own('line-touch', { mobile: true }); p.touch = true;
+    await p.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(p, workspace);
+    await p.tap('#new-topic');
+    await until(() => p.evaluate('document.activeElement?.id==="new-topic-title"'), 'one title line on a phone, focused');
+    assert.equal(await p.evaluate('document.documentElement.scrollWidth<=innerWidth'), true, 'no sideways scroll');
+    await p.insert('Started on a phone'); await p.key('Enter');
+    await until(() => p.evaluate('document.body.dataset.ready==="true" && document.querySelector("#topic-title")?.textContent==="Started on a phone"').catch(() => false), 'the phone opens its new topic');
+    assert.equal(p.calls.filter(c => c.kind === 'opening.publish').length, 1);
+    await p.shot('line-touch-started');
+  });
+
+  await check('openings desktop an opening saves restores across reload and device, sends by shortcut, resumes, sends by button and discards', async own => {
     const workspace = await outcome('openings-desktop');
     const a = await own('device-a');
     await a.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(a, workspace);
@@ -255,9 +299,8 @@ try {
     await a.shot('desktop-outcome-before');
 
     // 1. New topic, typed title and body, one participant, Saved.
-    await a.click('#new-topic'); await openingReady(a);
-    const first = await route(a);
-    assert.ok(first.opening && first.opening_topic && first.workspace === workspace, 'New topic routes to a fresh opening link');
+    const first = await newOpening(a, workspace);
+    assert.deepEqual(await route(a), first, 'the opening link stays as it was opened');
     assert.equal(await a.evaluate('document.activeElement.id'), 'opening-title-input', 'the title has focus');
     assert.equal(await status(a), 'Not saved yet');
     const title1 = 'Shortcut topic';
@@ -317,8 +360,7 @@ try {
 
     // 5. A second opening left with Later appears in the unfinished list; Resume and Send by button.
     await a.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(a, workspace);
-    await a.click('#new-topic'); await openingReady(a);
-    const second = await route(a);
+    const second = await newOpening(a, workspace);
     assert.notEqual(second.opening, first.opening); assert.notEqual(second.opening_topic, first.opening_topic);
     const title2 = 'Button topic', body2 = 'Sent with the Send button';
     await a.typeKeys(title2); await a.click('#opening-body'); await a.insert(body2);
@@ -339,8 +381,7 @@ try {
 
     // 6. A third opening is discarded from the page Resume opens.
     await a.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(a, workspace);
-    await a.click('#new-topic'); await openingReady(a);
-    const third = await route(a);
+    const third = await newOpening(a, workspace);
     const title3 = 'Discarded topic';
     await a.typeKeys(title3); await a.click('#opening-body'); await a.insert('This will be discarded');
     await saved(a);
@@ -366,14 +407,13 @@ try {
     await a.shot('desktop-outcome-after-discard');
   });
 
-  await check('openings 390px touch New topic types adds a participant saves and sends by tap', async own => {
+  await check('openings 390px touch an opening types adds a participant saves and sends by tap', async own => {
     const workspace = await outcome('openings-touch');
     const p = await own('touch', { mobile: true }); p.touch = true;
     await p.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(p, workspace);
     assert.equal(await p.evaluate('innerWidth'), 390);
     await p.shot('touch-outcome');
-    await p.tap('#new-topic'); await openingReady(p);
-    const r = await route(p);
+    const r = await newOpening(p, workspace);
     assert.equal(await p.evaluate('document.documentElement.scrollWidth<=innerWidth'), true, 'no horizontal page scroll on the opening page');
     const title = 'Touch topic', body = 'Written on a phone';
     await p.tap('#opening-title-input');

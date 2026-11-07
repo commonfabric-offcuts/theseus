@@ -368,13 +368,41 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     observations.push({name:'actual shipped-code coexistence',revision,hashes,served,editorAndImageRows:before.map(r=>({id:r.id,bytes:r.bytes})),pendingVersionChanges:0});
   });
 
+  await check('navigation New outcome is one title line: Return creates it once, with its title alone, and opens its page',async()=>{
+    const p=await page('new-outcome-line',null,true,{url:facts.origin+'/'});
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'root ready');
+    assert.equal(await p.evaluate('document.querySelector("#new-outcome").disabled'),false,'New outcome must be discoverable and enabled');
+    await p.evaluate('document.querySelector("#new-outcome").scrollIntoView({block:"center"})');await p.point('#new-outcome');
+    await until(()=>p.evaluate('document.activeElement?.id==="new-outcome-title"'),'one title line, focused');
+    assert.equal(await p.evaluate('document.querySelector("#outcome-title-input")'),null,'no form page');
+    await p.key('Escape');
+    await until(()=>p.evaluate('!document.querySelector("#new-outcome-title") && document.activeElement?.id==="new-outcome"'),'Escape closes the line and gives the focus back');
+    await p.key('Enter');
+    await until(()=>p.evaluate('document.activeElement?.id==="new-outcome-title"'),'Return on New outcome opens the line again');
+    await p.key('Enter');
+    assert.equal(p.calls.some(c=>c.payload?.kind==='workspace.create'),false,'Return with no title creates nothing');
+    await until(()=>p.evaluate('document.querySelector(".rail-line .one-line-state")?.textContent.includes("title")'),'and says why');
+    await p.send('Input.insertText',{text:'One line outcome'});await p.key('Enter');
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#topic-title")?.textContent==="One line outcome" && new URL(location.href).searchParams.has("workspace")'),'the new outcome page opens');
+    const calls=p.calls.filter(c=>c.payload?.kind==='workspace.create');assert.equal(calls.length,1,'created once');
+    const command=calls[0].payload;
+    assert.deepEqual(Object.keys(command.args).sort(),['id','purpose','team','title'],'its title alone: no kind, no coordinator');
+    assert.deepEqual([command.args.title,command.args.purpose,command.args.team],['One line outcome','',[]]);
+    const workspace=await view('workspace',{workspace_id:command.args.id});
+    assert.deepEqual([workspace.workspace.title,workspace.workspace.owner_id],['One line outcome',facts.actor]);
+    assert.equal(await p.evaluate('new URL(location.href).searchParams.get("workspace")'),command.args.id);
+    assert.equal(await p.evaluate('[...document.querySelectorAll("#outcome-purpose button")].find(b=>!b.hidden)?.textContent'),'Add a purpose','its owner says what it is for afterwards, in place');
+    await shot(p,'new-outcome-line-created');assert.deepEqual(p.errors,[]);noPrompt(p);
+  });
+
   await check('navigation outcome creation saves a form resumes and creates once by keyboard',async()=>{
     const p=await page('create-outcome',null,true,{url:facts.origin+'/'});
     const click=async selector=>{await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);await p.point(selector);};
     await until(()=>p.evaluate('document.body?.dataset.ready==="true" && document.querySelector("#topic-title").textContent==="Outcomes"'),'root ready');
-    assert.equal(await p.evaluate('document.querySelector("#new-outcome").disabled'),false,'New outcome must be discoverable and enabled');
-    await click('#new-outcome');await until(()=>p.evaluate('Boolean(document.querySelector("#outcome-title-input"))'),'outcome form');
-    assert.equal(await p.evaluate('document.activeElement.id'),'outcome-title-input');
+    // New outcome is one title line now (the next check); the full form remains for an outcome started before, reached by its route.
+    await p.send('Page.navigate',{url:facts.origin+'/?new=outcome&intent=keyboard-outcome-intent'});
+    await until(()=>p.evaluate('document.body?.dataset.ready==="true" && Boolean(document.querySelector("#outcome-title-input"))'),'outcome form');
+    await click('#outcome-title-input');
     await p.send('Input.insertText',{text:'Keyboard outcome'});await p.key('Tab');await p.send('Input.insertText',{text:'A retained purpose'});
     await click('[aria-label="Add outcome team member"]');await p.send('Input.insertText',{text:'fixture-notebook-agent'});await p.key('Enter');
     assert.equal(p.calls.some(c=>c.payload?.kind==='workspace.create'),false,'Enter adds team metadata without creating');

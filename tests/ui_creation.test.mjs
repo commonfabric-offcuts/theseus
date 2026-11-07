@@ -45,6 +45,19 @@ test('creation view paints current refusal then clears success and preserves a l
   f.setAnswer(f.receipt);await v.run(()=>c.check());assert.equal(v.notice.hidden,true);assert.equal(v.notice.textContent,'');
   assert.equal(v.saveState.textContent,'Outcome created');
 });
+test('Return in a resumed outcome\'s title creates it once, and a composing Return or a read-only form creates nothing',async t=>{
+  const previous=globalThis.document;globalThis.document=dom();t.after(()=>{globalThis.document=previous;});
+  const f=fixture(),c=f.create();await c.load();await c.edit({title:'Resumed outcome'});
+  const v=new CreateOutcomeView({host:document.body,creation:c,open(){},confirmed(){}});
+  const enter=more=>{let prevented=0;v.title.onkeydown({key:'Enter',isComposing:false,keyCode:13,repeat:false,preventDefault(){prevented++;},...more});return prevented;};
+  assert.equal(enter({isComposing:true}),0);assert.equal(enter({keyCode:229}),0);
+  await new Promise(r=>setTimeout(r,0));assert.equal(f.calls.length,0,'Return while composing is part of the typing');
+  assert.equal(enter({key:'a'}),0);
+  assert.equal(enter(),1);await new Promise(r=>setTimeout(r,0));
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].args.title,'Resumed outcome');
+  enter();enter({repeat:true});await new Promise(r=>setTimeout(r,0));
+  assert.equal(f.calls.length,1,'once made, Return sends nothing more');
+});
 test('creation persists before dispatch, shares the pending promise and freezes owner and exact form',async()=>{
   const f=fixture(),c=f.create();await c.load();await c.edit({title:'Real outcome',purpose:'Its purpose',team:['agent']});
   const gate=defer();f.setAnswer(()=>gate.promise);

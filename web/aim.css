@@ -222,7 +222,7 @@ button.choice-chip[aria-pressed=true]:hover{background:var(--accent);filter:brig
 .rail>.notice,main>.notice{margin:0 0 1rem}
 main>.brand{margin-bottom:.6rem}
 main>#outcomes-home{margin-bottom:.4rem}
-@media(max-width:760px){.brand{flex-direction:row;flex-wrap:wrap;align-items:center;column-gap:.8rem;row-gap:.3rem;margin-bottom:.6rem}.brand #instance-label{flex:1 1 12rem;min-width:0}.brand #notify{flex-basis:100%}}
+@media(max-width:760px){.brand{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:.8rem;row-gap:.3rem;margin-bottom:.6rem}.brand #instance-label{min-width:0}.brand #notify{grid-column:1/-1;justify-self:start}}
 /* "← Outcomes" inside an outcome: the lit light, and its words, when another outcome waits on the reader. */
 #outcomes-home .outcome-light{display:inline-block;width:.62rem;height:.62rem;margin-left:.45rem;border-radius:50%;background:var(--accent);box-shadow:0 0 0 .17rem color-mix(in srgb,var(--accent) 30%,transparent);vertical-align:.02rem}
 #outcomes-home .outcome-light[hidden],#outcomes-home .elsewhere-words[hidden]{display:none}
@@ -231,3 +231,33 @@ main>#outcomes-home{margin-bottom:.4rem}
 
 /* A web address in a message's words: underlined in the words' own color, so it reads on every card and page; a long one wraps. */
 .words-link{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-word;cursor:pointer}.words-link:hover{text-decoration-thickness:2px}
+/* Choices tapped once (people, places, where it stands): chips, the one that holds filled. */
+.state-chips{display:flex;flex-wrap:wrap;gap:.35rem}
+.choice-chip{display:inline-flex;align-items:center;min-height:2.5rem;padding:.25rem .8rem;border:1px solid var(--line);border-radius:1.25rem;background:var(--panel);color:var(--ink);font-size:.875rem;line-height:1.2;white-space:normal}
+.choice-chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
+button.choice-chip[aria-pressed=true]:hover{background:var(--accent);filter:brightness(1.08)}
+.people-chips .choice-chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.85rem}
+/* A quiet word that acts, not a button. */
+.text-action{min-height:2.5rem;padding:0;border:0;border-radius:.25rem;background:none;color:var(--muted);font-size:.85rem;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:.2em}
+.text-action:hover{background:none;color:var(--ink);text-decoration-color:currentColor}
+/* One line gets something in (quick-create.mjs): a box about a sentence wide, then a quiet status, or the refusal in plain words. */
+.one-line{display:grid;gap:.3rem;margin:0 0 .75rem;min-width:0}
+.one-line input{width:100%;max-width:32rem;min-width:0;min-height:2.75rem;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);color:var(--ink);padding:.45rem .7rem}
+.one-line-state{margin:0;font-size:.85rem;color:var(--alert);overflow-wrap:anywhere}.one-line-state.quiet{color:var(--muted)}.one-line-state a{margin-left:.15rem}
+.source-actions .start-topic-line{flex-basis:100%;order:10;margin:.25rem 0 0}
+/* What an outcome is for, set in place by its owner: a box a few sentences wide. */
+.outcome-purpose{margin-top:.3rem}.outcome-purpose textarea{display:block;width:100%;max-width:40rem;min-height:3.2rem;resize:vertical;border:1px solid var(--line);border-radius:.5rem;background:var(--panel);color:var(--ink);padding:.45rem .7rem;font-size:.95rem}.outcome-purpose textarea[hidden]{display:none}
+/* Names tapped once, and a filter about one name wide beside them; nothing stretches to fill a row. */
+.audience input.name-filter{flex:0 1 12rem;width:12rem;max-width:12rem}
+.audience .choice-chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.85rem}
+.people-add{flex:1 1 100%;display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;margin-top:.25rem}
+.people-add input{flex:0 1 12rem;width:12rem;max-width:12rem;min-width:0;background:transparent;border:0;border-bottom:1px solid var(--line);padding:.25rem;font-size:.85rem}
+.people-add .state-chips .muted{font-size:.8rem}
+.add-chip{min-height:2rem;padding:.15rem .7rem;font-size:.82rem;color:var(--muted)}
+.destination-chips .choice-chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.85rem}
+/* The forms that remain, for resuming one started before: no box wider than its content needs, buttons as wide as their words. */
+.creation-form{max-width:40rem}
+.creation-form>label>input{max-width:32rem}
+.creation-form textarea{max-width:40rem}
+.creation-form .actor-choices input{flex:0 1 12rem;width:12rem;max-width:12rem;min-width:0}
+.creation-form>button{justify-self:start}

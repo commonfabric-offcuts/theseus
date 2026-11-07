@@ -64,7 +64,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     const top = await p.evaluate(`(()=>{const h=document.querySelector('main > header.topic-header > div'),row=document.querySelector('.title-row');
       const t=document.querySelector('#topic-title'),g=document.querySelector('#settings-open'),tb=t.getBoundingClientRect(),gb=g.getBoundingClientRect(),ts=getComputedStyle(t);
       const leaves=[...document.querySelectorAll('body *')];
-      return {parts:[...h.children].map(e=>e.id||e.className),row:[...row.children].map(e=>e.id),
+      return {parts:[...h.children].filter(e=>!e.hidden).map(e=>e.id||e.className),row:[...row.children].map(e=>e.id),
         gear:{name:g.getAttribute('aria-label'),title:g.title,popup:g.getAttribute('aria-haspopup'),hidden:g.hidden,size:[gb.width,gb.height],middle:gb.top+gb.height/2,left:gb.left},
         line:{top:tb.top+parseFloat(ts.paddingTop),height:parseFloat(ts.lineHeight),right:tb.right},
         hint:leaves.some(e=>e.textContent.trim()===${JSON.stringify(HINT)}),
@@ -174,8 +174,8 @@ export async function headerChecks({ check, page, until, control, view, facts, s
   // archives its topics and changes who takes part, beside each topic's
   // creator. The open page learns of a handover or a cleared coordinator from
   // the outcome's own change key: no topic version moves, and nothing reloads.
-  const managing = p => p.evaluate(`(()=>{const people=document.querySelector('#participants .people-add');
-    return {rename:Boolean(document.querySelector('#topic-settings #topic-rename')),add:Boolean(people&&!people.hidden),
+  const managing = p => p.evaluate(`(()=>{const people=document.querySelector('#participants .add-chip');
+    return {rename:Boolean(document.querySelector('#topic-settings #topic-rename')),add:Boolean(people&&people.isConnected&&!people.hidden),
       removes:[...document.querySelectorAll('#participants [aria-label^="Remove "]')].map(b=>b.getAttribute('aria-label'))}})()`);
   const openTopic = async (suffix, made, title) => {
     const p = await page(suffix, null, true, { url: `${facts.origin}/?topic=${made.topic_id}` });
@@ -186,7 +186,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
   await check('header the outcome\'s coordinator renames a topic they did not start and changes who takes part, until they no longer coordinate', async () => {
     const made = await control({ method: 'agent_topic', operation_id: 'header-coordinator', title: 'Coordinated by the reader', body: 'Tidy this one.', coordinator: true });
     const p = await openTopic('header-coordinator', made, 'Coordinated by the reader');
-    await until(async () => (await managing(p)).add, 'the add field shows for the coordinator');
+    await until(async () => (await managing(p)).add, '"+ Add" shows for the coordinator');
     const coordinating = await managing(p);
     assert.deepEqual([coordinating.rename, coordinating.add, coordinating.removes.includes(`Remove ${facts.actor}`)], [true, true, true],
       'the coordinator renames, archives and changes who takes part: ' + JSON.stringify(coordinating));
@@ -227,14 +227,15 @@ export async function headerChecks({ check, page, until, control, view, facts, s
   await check('header the outcome\'s coordinator adds to its team on the outcome page, and the owner\'s chip stays fixed', async () => {
     const made = await control({ method: 'agent_topic', operation_id: 'header-team', title: 'Team topic', body: 'Who is on it?', coordinator: true });
     const p = await page('header-team', null, true, { url: `${facts.origin}/?workspace=${made.workspace_id}` });
-    const team = () => p.evaluate(`(()=>{const add=document.querySelector('#team-people .people-add');
-      return {shown:!document.querySelector('#outcome-team').hidden,add:Boolean(add&&!add.hidden),chips:[...document.querySelectorAll('#team-people .chips > *')].map(c=>c.firstChild.textContent),
+    const team = () => p.evaluate(`(()=>{const add=document.querySelector('#team-people .add-chip');
+      return {shown:!document.querySelector('#outcome-team').hidden,add:Boolean(add&&add.isConnected&&!add.hidden),chips:[...document.querySelectorAll('#team-people .chips > :not(.add-chip)')].map(c=>c.firstChild.textContent),
         removes:[...document.querySelectorAll('#team-people [aria-label^="Remove "]')].map(b=>b.getAttribute('aria-label'))}})()`);
     await until(async () => (await team()).chips.length === 2, 'the team painted');
     const shown = await team();
-    assert.deepEqual([shown.shown, shown.add], [true, true], 'the coordinator gets the add field');
+    assert.deepEqual([shown.shown, shown.add], [true, true], 'the coordinator gets "+ Add"');
     assert.ok(!shown.removes.includes(`Remove ${facts.agent}`), 'the owner cannot be removed: ' + JSON.stringify(shown));
-    await p.point('#team-people .people-add input');
+    await p.point('#team-people .add-chip');
+    await until(() => p.evaluate(`document.activeElement?.matches('#team-people .people-add input')`), '"+ Add" opens the filter with the caret in it');
     await p.send('Input.insertText', { text: 'fixture-outside-agent' });
     await p.key('Enter');
     await until(async () => (await team()).chips.includes('fixture-outside-agent'), 'the coordinator\'s add shows on the team');
@@ -920,7 +921,7 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     await until(() => p.evaluate('window.wakesPainted > 0'), 'the commit repaints the people while the button is down');
     await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
     await until(async () => !(await people(p)).some(x => x.name === agent), 'its pill leaves');
-    assert.equal(await p.evaluate(`document.activeElement?.matches('#participants .people-add input')`), true, 'the focus is on the add field');
+    assert.equal(await p.evaluate(`document.activeElement?.matches('#participants .add-chip')`), true, 'the focus is on "+ Add"');
     assert.equal((await view('topic', { topic_id: 't1' })).participants.some(row => row.actor_id === agent), false, 'Core took it out');
     assert.deepEqual(p.errors, []);
   });

@@ -59,9 +59,9 @@ const element = (tag, props = {}, ...children) => {
 // A recipient who cannot see the topic would make the whole send refused.
 // reach(name) answers { reachable, add }: the chip says when they are not in
 // the topic, and add, given to a reader who may change its participants,
-// offers to make them one, which also sends them every later message.
-export function markReach(chip, name, reach) {
-  const answer = reach?.(name);
+// offers to make them one, which also sends them every later message. answer
+// is reach(name), when the caller has already asked.
+export function markReach(chip, name, reach, answer = reach?.(name)) {
   if (!answer || answer.reachable) return;
   chip.classList.add('unreachable');
   if (answer.disabled) {
@@ -129,12 +129,70 @@ export function replaceChips(host, field, chips) {
   ([...next?.children ?? []].find(node => node.textContent === at.textContent) ?? field).focus();
 }
 
-// The people in a team or a topic, with a field to add someone and a remove
-// button on each, for a reader who may change them. fixed names those no one
-// can remove here (an outcome's owner). add and remove return the command's
-// receipt; a refusal is shown beside the field. The field is built once and
-// never replaced or disabled, so a repaint from someone else's change leaves
-// the person typing in it where they were.
+// chips, in order, become host's children. A chip already there stays the same
+// node and is not moved unless the order changed, so a press held on it while
+// a repaint runs still clicks, and the focus it holds stays; those not wanted
+// leave the page.
+function placeChips(host, chips) {
+  for (const chip of [...host.children]) if (!chips.includes(chip)) { chip.leave?.(); chip.remove(); }
+  chips.forEach((chip, index) => { if (host.children[index] !== chip) host.insertBefore(chip, host.children[index] ?? null); });
+}
+
+// Who a message is to. The topic's people are names tapped once: aria-pressed
+// says who it is to, and a second tap takes them off. Anyone else it names
+// (typed in the small field beside them) follows with a × to take them off.
+// A repaint keeps each person's chip while what it shows is the same, so a
+// press held across a commit's repaint is not lost. A chip that held the focus
+// and was drawn afresh hands it to the same person's new chip, or to field
+// when there is none.
+export function paintAddress(host, field, { people, named, toggle, remove, reach }) {
+  const at = document.activeElement, holder = [...host.children].find(chip => chip === at || [...chip.children ?? []].includes(at));
+  const held = holder ? { name: holder.dataset.name, inner: holder !== at ? at.textContent : null } : null;
+  const was = new Map([...host.children].map(chip => [chip.dataset.name, chip]));
+  // The chip shown for name as key describes it, the one there if it shows the same.
+  const kept = (name, key, build) => {
+    const chip = was.get(name);
+    if (chip?.addressKey === key) return chip;
+    const fresh = build(); fresh.dataset.name = name; fresh.addressKey = key; return fresh;
+  };
+  const offered = people.filter((id, index) => people.indexOf(id) === index);
+  const chips = offered.map(id => {
+    const chip = kept(id, 'choice', () => element('button', { type: 'button', className: 'choice-chip', textContent: id }));
+    chip.setAttribute('aria-pressed', named.includes(id) ? 'true' : 'false');
+    chip.onclick = () => toggle(id, !named.includes(id));
+    return chip;
+  });
+  for (const name of named.filter(id => !offered.includes(id))) {
+    const answer = reach?.(name);
+    const key = JSON.stringify(['named', answer ? [answer.reachable === true, answer.disabled === true, Boolean(answer.add), answer.scope ?? null] : null]);
+    const chip = kept(name, key, () => {
+      const fresh = element('span', { className: 'chip', textContent: name }), out = element('button', { type: 'button', textContent: '×' });
+      out.setAttribute('aria-label', `Remove ${name}`); fresh.out = out;
+      fresh.append(out); markReach(fresh, name, reach, answer); return fresh;
+    });
+    chip.out.onclick = () => remove(name);
+    chips.push(chip);
+  }
+  placeChips(host, chips);
+  if (!held) return;
+  const next = chips.find(chip => chip.dataset.name === held.name);
+  // The same button on the new chip (its words say which), or the chip itself.
+  const inner = held.inner === null ? next : [...next?.children ?? []].find(node => node.textContent === held.inner);
+  (inner ?? field).focus();
+}
+
+// The people in a team or a topic, for a reader who may change them: each a
+// pill with a remove button, then "+ Add", which opens the people not yet in
+// (candidates()) as names tapped once to add, with a small filter that narrows
+// them; Return adds the person whose id was typed (any case, an @ before it
+// or not), or the words as typed, never someone else the filter happens to
+// leave, and an empty Return adds nobody. fixed names those no one can remove
+// here (an outcome's owner). add and remove return the command's receipt; a refusal is
+// shown in plain words beside them, and the filter keeps what was typed. The
+// filter is built once and never replaced or disabled, so a repaint from
+// someone else's change leaves the person typing in it where they were, and a
+// repaint keeps every chip whose person and look are the same, so a press held
+// across a commit's repaint still clicks.
 //
 // pill(person), when given, makes each person one pill filled with the class
 // it returns (their colour, or own-pill for the reader), holding the name and,
@@ -142,25 +200,75 @@ export function replaceChips(host, field, chips) {
 export class PeoplePanel {
   // read, when given, answers who is here now, read again once when a change
   // is not confirmed, so the panel says what it found.
-  constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null, light = () => null, pill = null, read = null }) {
-    Object.assign(this, { host, label, names, fixed, add, remove, named, light, pill, read });
-    this.busy = false; this.error = ''; this.people = []; this.manage = false; this.shown = null; this.removers = new Map(); this.namers = new Map();
+  constructor({ host, label, fixed = () => [] , add, remove, named = () => null, light = () => null, pill = null, read = null, candidates = () => [], opened = () => {} }) {
+    Object.assign(this, { host, label, fixed, add, remove, named, light, pill, read, candidates, opened });
+    this.busy = false; this.error = ''; this.people = []; this.manage = false; this.pills = new Map(); this.removers = new Map(); this.namers = new Map();
     this.chips = element('div', { className: 'chips' });
-    this.input = element('input', { autocomplete: 'off', placeholder: 'Add a name' });
-    this.input.setAttribute('list', names); this.input.setAttribute('aria-label', label);
-    this.button = element('button', { type: 'button', textContent: 'Add' });
+    this.opener = element('button', { type: 'button', className: 'choice-chip add-chip', textContent: '+ Add' });
+    this.opener.setAttribute('aria-expanded', 'false'); this.opener.title = label;
+    this.opener.onclick = () => this.toggle();
+    this.input = element('input', { type: 'text', autocomplete: 'off', placeholder: 'Find a name', enterKeyHint: 'done' });
+    this.input.setAttribute('aria-label', 'Find someone to add');
+    this.choices = element('div', { className: 'state-chips people-chips' });
+    this.choices.setAttribute('role', 'group'); this.choices.setAttribute('aria-label', 'People who can be added');
     // An added name leaves the field only if the field still holds it; a name
     // typed while the add was out is the person's next one.
     const go = () => {
-      const typed = this.input.value, id = typed.trim().replace(/^@/, '');
-      if (id) return this.submit(() => this.add(id), () => { if (this.input.value === typed) this.input.value = ''; });
+      const typed = this.input.value, words = typed.trim().replace(/^@/, '');
+      const id = this.candidates().find(person => person?.id?.toLowerCase() === words.toLowerCase())?.id ?? words;
+      if (id) return this.submit(() => this.add(id), () => { if (this.input.value === typed) this.input.value = ''; this.paintChoices(); });
     };
-    this.button.onclick = go;
-    this.input.onkeydown = event => { if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); if (!event.repeat) go(); } };
-    this.row = element('div', { className: 'people-add' }, this.input, this.button);
+    this.input.oninput = () => this.paintChoices();
+    this.input.onkeydown = event => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); if (!event.repeat) go(); }
+      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.toggle(false); }
+    };
+    this.row = element('div', { className: 'people-add', hidden: true }, this.choices, this.input);
     this.notice = element('p', { className: 'notice', hidden: true });
     this.notice.setAttribute('role', 'status');
     host.replaceChildren(this.chips, this.row, this.notice);
+  }
+
+  // open: show or hide the people who can be added; closing gives the focus back to "+ Add".
+  toggle(open = this.row.hidden) {
+    this.row.hidden = !open; this.opener.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { this.opened(); this.paintChoices(); this.input.focus(); } else this.opener.focus();
+  }
+
+  // The people not yet in, narrowed by what the filter holds.
+  addable() {
+    const here = new Set(this.people.map(person => person.actor_id)), typed = this.input.value.trim().replace(/^@/, '').toLowerCase();
+    return this.candidates().filter(person => person?.id && !here.has(person.id) &&
+      (!typed || person.id.toLowerCase().includes(typed) || String(person.name ?? '').toLowerCase().includes(typed)));
+  }
+
+  paintChoices() {
+    if (this.row.hidden) return;
+    const addable = this.addable(), typed = Boolean(this.input.value.trim());
+    const was = new Map([...this.choices.children].filter(chip => chip.dataset?.id !== undefined).map(chip => [chip.dataset.id, chip]));
+    const at = document.activeElement, held = this.choices.contains(at) ? at.dataset?.id : undefined;
+    // A name still offered keeps its button, so a press is never lost to a
+    // repaint between its down and up; only whether it can be pressed changes.
+    const chips = addable.map(person => {
+      let chip = was.get(person.id);
+      if (!chip) {
+        chip = element('button', { type: 'button', className: 'choice-chip', textContent: person.id });
+        chip.dataset.id = person.id; chip.setAttribute('aria-pressed', 'false');
+        chip.onclick = () => this.submit(() => this.add(person.id), () => this.paintChoices(), () => {
+          const next = [...this.choices.children][0]; (next ?? this.input).focus();
+        });
+      }
+      chip.title = person.name && person.name !== person.id ? person.name : ''; chip.disabled = this.busy;
+      return chip;
+    });
+    if (!addable.length) {
+      this.none ??= element('span', { className: 'muted' });
+      this.none.textContent = typed ? 'No one by that name yet. Return adds it as typed.' : 'Everyone is already here.';
+      chips.push(this.none);
+    }
+    placeChips(this.choices, chips);
+    if (held !== undefined) (chips.find(chip => chip.dataset?.id === held) ?? this.input).focus();
   }
 
   paint(people = this.people, manage = this.manage) {
@@ -171,44 +279,56 @@ export class PeoplePanel {
     // through, when they are not.
     const shown = people.map(person => ({ id: person.actor_id, named: this.named(person),
       className: this.pill ? ['person-pill', this.pill(person)].filter(Boolean).join(' ') : 'chip',
-      light: this.light(person), removable: manage && !fixed.has(person.actor_id), busy: this.busy }));
-    // A repaint that would show what is there already, as after a commit that
-    // changed no one here, leaves the chips alone: a press on a button that such
-    // a repaint replaced between its down and up would click nothing.
-    const same = this.shown?.length === shown.length && shown.every((chip, index) =>
-      Object.keys(chip).every(key => chip[key] === this.shown[index][key]));
-    this.shown = shown;
-    if (!same) this.paintChips(shown);
-    this.row.hidden = !manage;
-    this.button.disabled = this.busy;
+      light: this.light(person), removable: manage && !fixed.has(person.actor_id) }));
+    this.paintChips(shown);
+    // "+ Add" stays the same node after the pills, so a repaint never takes its focus.
+    if (manage) { if (this.opener.parentNode !== this.chips) this.chips.append(this.opener); }
+    else { this.opener.remove(); this.row.hidden = true; this.opener.setAttribute('aria-expanded', 'false'); }
+    this.paintChoices();
     this.notice.textContent = this.error; this.notice.hidden = !this.error;
     this.host.hidden = false;
   }
 
+  // A person whose chip would look the same keeps it, as after a commit that
+  // changed nothing it shows: a press on a button that a repaint replaced
+  // between its down and up would click nothing. Busy only disables the
+  // remove buttons. A chip drawn afresh whose remove button held focus hands it
+  // to the same person's new button, or to "+ Add" when they have gone.
   paintChips(shown) {
-    // A repaint replaces the remove buttons; one that held focus hands it to
-    // the same person's new button, or to the field when they have gone.
-    const held = [...this.removers].find(([, out]) => out === document.activeElement)?.[0];
-    const heldName = [...this.namers].find(([, name]) => name === document.activeElement)?.[0];
-    this.removers = new Map(); this.namers = new Map();
-    this.chips.replaceChildren(...shown.map(({ id, named, className, light, removable, busy }) => {
+    const at = document.activeElement;
+    const held = [...this.removers].find(([, out]) => out === at)?.[0];
+    const heldName = [...this.namers].find(([, name]) => name === at)?.[0];
+    const was = this.pills;
+    this.pills = new Map(); this.removers = new Map(); this.namers = new Map();
+    const pills = shown.map(({ id, named, className, light, removable }) => {
+      const key = JSON.stringify([className, light, removable]);
+      let pill = was.get(id);
+      if (pill?.key !== key || pill.named !== named) pill = { key, named, chip: this.drawPill(id, named, className, light, removable) };
+      pill.out = pill.chip.out;
+      if (pill.out) { pill.out.disabled = this.busy; this.removers.set(id, pill.out); }
       if (named) this.namers.set(id, named);
-      const chip = named ? element('span', { className }, named)
-        : this.pill ? element('span', { className }, element('span', { className: 'pill-name', textContent: id }))
-        : element('span', { className, textContent: id });
-      if (light) chip.append(element('span', { className: 'wake-light', textContent: ` · ${light}` }));
-      if (removable) {
-        const out = element('button', { type: 'button', textContent: '×', disabled: busy, ...(this.pill ? { className: 'pill-remove' } : {}) });
-        out.setAttribute('aria-label', `Remove ${id}`);
-        // The chip goes with its person; the field keeps the reader's place.
-        out.onclick = () => { this.input.focus(); return this.submit(() => this.remove(id), () => {}, () => this.input.focus()); };
-        this.removers.set(id, out);
-        chip.append(out);
-      }
-      return chip;
-    }));
-    if (held !== undefined && this.manage) (this.removers.get(held) ?? this.input).focus();
+      this.pills.set(id, pill);
+      return pill.chip;
+    });
+    // "+ Add", when shown, stays after the pills, the same node.
+    placeChips(this.chips, this.opener.parentNode === this.chips ? [...pills, this.opener] : pills);
+    if (held !== undefined && this.manage) (this.removers.get(held) ?? this.opener).focus();
     else if (heldName !== undefined) this.namers.get(heldName)?.focus();
+  }
+
+  drawPill(id, named, className, light, removable) {
+    const chip = named ? element('span', { className }, named)
+      : this.pill ? element('span', { className }, element('span', { className: 'pill-name', textContent: id }))
+      : element('span', { className, textContent: id });
+    if (light) chip.append(element('span', { className: 'wake-light', textContent: ` · ${light}` }));
+    if (removable) {
+      const out = element('button', { type: 'button', textContent: '×', ...(this.pill ? { className: 'pill-remove' } : {}) });
+      out.setAttribute('aria-label', `Remove ${id}`);
+      // The chip goes with its person; the focus goes to "+ Add".
+      out.onclick = () => { this.opener.focus(); return this.submit(() => this.remove(id), () => {}, () => this.opener.focus()); };
+      chip.out = out; chip.append(out);
+    }
+    return chip;
   }
 
   // One read of who is here, never a second send. A refusal keeps its own

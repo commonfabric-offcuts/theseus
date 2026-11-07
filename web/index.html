@@ -50,7 +50,7 @@
     </nav>
     <div id="light-tip" class="light-tip" role="tooltip" hidden></div>
     <main id="main" tabindex="-1">
-      <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p></div></header>
+      <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p><div id="outcome-purpose" class="outcome-purpose" hidden></div></div></header>
       <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
       <section id="outcome-page" class="selection-page" hidden></section>
@@ -68,7 +68,7 @@
       <section id="inline-composer" class="inline-composer" aria-labelledby="inline-writing-title" hidden>
         <h2 id="inline-writing-title">New message</h2>
         <p id="inline-destination" class="field-label"></p>
-        <div class="audience"><span class="muted">Address</span><div id="inline-recipient-chips" class="chips"></div><input id="inline-recipient-input" list="addressable-names" aria-label="Add recipient to new message" placeholder="Add a name" autocomplete="off"><button id="inline-add-recipient" type="button">Add</button></div>
+        <div class="audience"><span class="muted">Address</span><div id="inline-recipient-chips" class="chips"></div><input id="inline-recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the new message" placeholder="Someone else" autocomplete="off" enterkeyhint="done"></div>
         <div id="inline-notice" class="notice" role="status" hidden></div>
         <button id="inline-retry" type="button" hidden>Retry composer</button>
         <div id="inline-pending" class="pending-submissions" aria-label="Submitted writing"></div>
@@ -113,8 +113,8 @@
       <div id="reader-divider" role="separator" tabindex="0" aria-label="Resize reading and writing panes" aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-valuenow="48" title="Drag or use arrow keys to resize. Double-click to reset."><span aria-hidden="true"></span></div>
       <section class="writing-pane" aria-label="Your writing">
         <div class="writing-heading"><h3 id="writing-title">Reply</h3><button id="toggle-note" type="button">Private note</button></div>
-        <label id="destination-label" class="field-label">To topic <select id="reply-destination" aria-label="Reply destination"></select></label>
-        <div id="reply-audience" class="audience"><span class="muted">Address</span><div id="recipient-chips" class="chips"></div><input id="recipient-input" list="addressable-names" aria-label="Add recipient" placeholder="Add a name" autocomplete="off"><button id="add-recipient" type="button">Add</button><label id="ask-choice" class="ask-choice" title="Asking waits on them until they reply in the topic" hidden><input id="ask-toggle" type="checkbox"> Ask</label></div>
+        <div id="destination-label" class="field-label destination-chips"><span class="muted">To</span><div id="reply-destination" class="state-chips" role="group" aria-label="Reply destination"></div></div>
+        <div id="reply-audience" class="audience"><span class="muted">Address</span><div id="recipient-chips" class="chips"></div><input id="recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the reply" placeholder="Someone else" autocomplete="off" enterkeyhint="done"><label id="ask-choice" class="ask-choice" title="Asking waits on them until they reply in the topic" hidden><input id="ask-toggle" type="checkbox"> Ask</label></div>
         <div id="reader-notice" class="notice" role="status" hidden></div>
         <div id="pending-submissions" class="pending-submissions" aria-label="Submitted writing"></div>
         <label class="sr-only" id="writing-label" for="writing-body">Reply</label>
