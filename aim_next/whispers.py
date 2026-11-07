@@ -160,14 +160,18 @@ def on_record_wake_health(db, reader, quiet):
     An agent whose pending work is whispers alone is left out, and the time
     its wakes have gone unanswered is never earlier than its oldest pending
     delivery on the record, so a whisper's wake is never shown to anyone
-    outside it. The agent's own view, and its parking, still count its whispers."""
+    outside it. The agent's own view, and its parking, still count its whispers.
+    A delivery counts only in a live group, as the agent's own count does: one
+    left pending by a subscription that ended waits on nobody."""
     shown = []
     for item in quiet:
         if item["actor_id"] == reader:
             shown.append(item)
             continue
-        row = db.execute("SELECT count(*),min(m.sent_ms) FROM deliveries d INDEXED BY recipient_deliveries JOIN messages m ON m.id=d.message_id "
-                         "WHERE d.recipient_id=? AND d.state='pending' AND m.private_to IS NULL", (item["actor_id"],)).fetchone()
+        row = db.execute("SELECT count(*),min(m.sent_ms) FROM delivery_groups g INDEXED BY eligible_groups "
+                         "CROSS JOIN deliveries d INDEXED BY pending_group_deliveries ON d.group_id=g.id AND d.state='pending' "
+                         "JOIN messages m ON m.id=d.message_id WHERE g.recipient_id=? AND g.active=1 AND g.pending_count>0 AND m.private_to IS NULL",
+                         (item["actor_id"],)).fetchone()
         if not row[0]:
             continue
         item = dict(item, waiting=row[0])

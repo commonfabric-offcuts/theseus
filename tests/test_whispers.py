@@ -442,6 +442,29 @@ class WhisperWakeHealthCase(wake_tests.Fixture):
         self.assertEqual(self.wakes("owner")["quiet"], [{"actor_id": "agent-a", "waiting": 1, "since_ms": sent, "why": "not_answering"}])
         self.assertEqual(self.wakes("agent-a")["quiet"][0]["since_ms"], first)
 
+    def leave_and_come_back(self, back=True):
+        """agent-a leaves t1 with its delivery there unread; the subscription it had is over, so that delivery waits on nobody."""
+        for present in (False, True) if back else (False,):
+            receipt = self.command("participation.set", {"actor_id": "agent-a", "present": present}, target={"topic_id": "t1"})
+            self.assertEqual(receipt["status"], "committed", receipt)
+        self.assertEqual(self.sql("SELECT count(*) FROM deliveries WHERE recipient_id='agent-a' AND state='pending'"), [(1,)])
+
+    def test_a_delivery_left_unread_in_a_topic_the_agent_left_never_shows_its_whispers_wake(self):
+        self.leave_and_come_back(back=False)
+        self.now += 600000
+        self.whisper()
+        first = self.park()
+        self.assertEqual(self.wakes("agent-b")["quiet"], [])
+        self.assertEqual(self.wakes("owner")["quiet"], [])
+        self.assertEqual(self.wakes("agent-a")["quiet"], [{"actor_id": "agent-a", "waiting": 1, "since_ms": first, "why": "not_answering"}])
+
+    def test_everyone_counts_what_waits_on_the_record_as_the_agent_does_after_it_left_and_came_back(self):
+        self.leave_and_come_back()
+        self.command("message.post", {"body": "On the record, after it came back"}, target={"topic_id": "t1"})
+        first = self.park()
+        for reader in ("agent-a", "agent-b", "owner"):
+            self.assertEqual(self.wakes(reader)["quiet"], [{"actor_id": "agent-a", "waiting": 1, "since_ms": first, "why": "not_answering"}], reader)
+
 
 class WhisperCLICase(verbs.AgentVerbCase):
     def test_an_agent_reads_a_whisper_with_how_to_answer_and_answers_with_the_whisper_verb_and_others_see_nothing(self):
