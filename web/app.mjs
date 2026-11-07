@@ -1412,6 +1412,8 @@ function paintConversationPage() {
   const view = here.view;
   if (!view) return;
   paintOnlyNew($('conversation-show'), { view, onlyNew: here.onlyNew, show: value => { here.onlyNew = value; paintConversationPage(); } });
+  // The coordinator is known once the view is read: the writing box's "Answered by" row names them.
+  answeredBy($('inline-composer').querySelector('.audience'), $('inline-recipient-chips'), $('inline-recipient-input'), inline?.editor?.draft?.addressees ?? [], true);
   $('messages').classList.toggle('only-new', here.onlyNew);
   const empty = !views?.messages?.size;
   $('conversation-empty').hidden = !empty;
