@@ -54,11 +54,29 @@ records the message's author as who raised it.
 
 ## Who changes what
 
-The owner and the coordinator steer: they add, move, drop and restore items,
-change the stages and turn the pipeline on or off (configure is the owner's
-alone). An item the owner placed is moved only by the owner
-(`OWNER_PLACED`). Dropping an item that is being built needs a confirmation
-(`ITEM_UNDERWAY`). A stage gated on the owner's word is left only by the owner.
+Anyone on the outcome (its owner or a member) adds an item, adds a source to
+one, and changes an item's title, words, size, group, what it waits for and
+where it gathers; only the owner and the coordinator change who raised it. The
+owner and the coordinator steer: they move, drop and restore items and change
+the stages. Turning the pipeline on or off, and its title, units, sizing,
+releases and section words (`configure`), are the owner's alone. An item the
+owner placed is moved only by the owner (`OWNER_PLACED`). Dropping an item that
+is being built needs a confirmation (`ITEM_UNDERWAY`). A stage gated on the
+owner's word is left only by the owner.
+
+## Turning it on and changing its stages
+
+Turn on is one tap: the pipeline starts as "Pipeline", with items sized (or, if
+it was on before, as it was). The owner then changes the title where it stands
+in the page header (Return or clicking away saves it, Escape puts it back) and
+whether items are sized with one chip under it.
+
+Change stages turns each stage into its own line, edited in place: its name and
+what done means save on Return or when you click away, and Escape puts them
+back. Rounds is three chips (no rounds, rounds together, the first round apart)
+and the owner's word one chip, each saved on its tap; the arrows move a stage
+and the cross removes it, with Undo. A new stage is one line, "Add a stage…".
+Every change sends the whole ordered list through `stages_set`.
 
 ## Commands and views
 

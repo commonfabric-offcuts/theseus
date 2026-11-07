@@ -46,6 +46,11 @@ export class PipelinePage {
     // The one-line add's text per section, the words being written per item, the
     // item whose words and size are open, and what was just added.
     this.addDrafts = {}; this.wordDrafts = new Map(); this.details = null; this.added = null; this.savedWords = null;
+    // Change stages in place: what is being typed per stage line ("<stage>:<field>"),
+    // the new stage's line, the quiet note per stage, and the stage just removed (for Undo).
+    this.stageDrafts = new Map(); this.newStage = ''; this.stageNote = null; this.removed = null;
+    // The pipeline's own settings in place (the owner's): the title being typed, and the quiet note.
+    this.titleDraft = null; this.titleField = null; this.settingsNote = null;
     host.addEventListener('toggle', event => {
       const key = event.target?.dataset?.key; if (!key) return;
       if (event.target.open) { this.open.add(key); this.closed.delete(key); } else { this.open.delete(key); this.closed.add(key); }
@@ -103,8 +108,10 @@ export class PipelinePage {
     }
   }
 
-  paintHeader(eyebrow, title, description) {
-    this.header.eyebrow.textContent = eyebrow; this.header.title.textContent = title; this.header.description.textContent = description;
+  // With `inPlace` (the owner's pipeline), the title is a line edited where it stands.
+  paintHeader(eyebrow, title, description, inPlace = null) {
+    this.header.eyebrow.textContent = eyebrow; this.header.description.textContent = description;
+    if (inPlace) this.titleInPlace(inPlace); else this.header.title.textContent = title;
     document.title = `${title} · Theseus`;
   }
 
@@ -120,7 +127,8 @@ export class PipelinePage {
     const sized = pipeline.sized;
     this.paintHeader(answer.workspace_title, pipeline.title, sized
       ? `Every feature and fix by number. As of ${shownTime(now, now)}, from what Theseus has seen happen.`
-      : `Every ${pipeline.unit_one} being prepared, by stage. As of ${shownTime(now, now)}, from what Theseus has seen happen.`);
+      : `Every ${pipeline.unit_one} being prepared, by stage. As of ${shownTime(now, now)}, from what Theseus has seen happen.`, pipeline.you_own ? pipeline : null);
+    if (pipeline.you_own) page.push(this.settingsLine(pipeline));
     const sections = answer.sections, any = SECTION_ORDER.some(name => sections[name].length) || answer.groups.some(group => group.items.length);
     if (answer.waiting?.length) {
       page.push(el('section', { class: 'waiting-on-you', 'aria-label': 'Waiting on you' }, el('h2', { text: `Waiting on you (${answer.waiting.length})` }),
@@ -397,50 +405,134 @@ export class PipelinePage {
   }
 
   stagesSection(pipeline) {
-    const steer = pipeline.you_steer;
-    const list = el('ol', { class: 'pl-stagedefs' }, ...pipeline.stages.map((stage, index) => el('li', {},
+    const steer = pipeline.you_steer, editing = steer && this.editing;
+    const list = editing ? this.stageLines(pipeline) : el('ol', { class: 'pl-stagedefs' }, ...pipeline.stages.map((stage, index) => el('li', {},
       el('span', { class: 'pl-num', text: String(index + 1) }),
       el('div', {}, el('p', {}, el('strong', { text: stage.name }), stage.done_when ? `: ${stage.done_when}` : ''),
         el('p', { class: 'muted', text: [gateWords(stage, pipeline.owner), stage.added_note].filter(Boolean).join(' ') })))));
     const foot = el('p', { class: 'muted pl-stagedefs-foot' }, 'A change to the stages applies to items that enter a stage after it; past times stay with the stage they were measured in. ',
-      steer ? el('button', { type: 'button', 'data-role': 'edit-stages', text: this.editing ? 'Close' : 'Change stages', onclick: () => { this.editing = !this.editing; this.paint(); } }) : null);
+      steer ? el('button', { type: 'button', 'data-role': 'edit-stages', 'aria-expanded': editing ? 'true' : 'false', text: editing ? 'Done' : 'Change stages',
+        onclick: () => { this.editing = !this.editing; this.removed = null; this.stageNote = null; this.paint(); } }) : null);
     const key = 'stages';
-    const details = el('details', { class: 'pl-group pl-stages-group', 'data-key': key, open: this.open.has(key) || this.editing || (!pipeline.ships_in_releases && !this.closed.has(key)) },
+    const details = el('details', { class: 'pl-group pl-stages-group', 'data-key': key, open: this.open.has(key) || editing || (!pipeline.ships_in_releases && !this.closed.has(key)) },
       el('summary', {}, 'Stages', el('span', { class: 'muted', text: ` · ${pipeline.stages.length}` })),
-      el('p', { class: 'muted', text: 'This outcome’s own stages, in order. Every item passes through each one.' }), list, foot,
-      this.editing ? this.stageEditor(pipeline) : null);
+      el('p', { class: 'muted', text: editing ? 'Each change saves as you make it: a name or line on Return or when you click away, a chip when you tap it.' : 'This outcome’s own stages, in order. Every item passes through each one.' }),
+      list, foot);
     return el('section', { class: 'pl-section', 'aria-label': 'Stages' }, details);
   }
 
-  stageEditor(pipeline) {
-    this.draftStages ??= pipeline.stages.map(stage => ({ ...stage, gate: { ...stage.gate } }));
-    const stages = this.draftStages;
-    const form = el('form', { class: 'pl-stage-editor', 'aria-label': 'Change stages' });
-    const repaint = () => this.paint();
-    stages.forEach((stage, index) => {
-      const field = (label, value, set, attrs = {}) => el('label', {}, el('span', { text: label }), el('input', { value, ...attrs, oninput: event => set(event.target.value) }));
-      form.append(el('fieldset', {}, el('legend', { text: `Stage ${index + 1}` }),
-        field('Name', stage.name, value => { stage.name = value; }),
-        field('Done when', stage.done_when, value => { stage.done_when = value; }),
-        field('Checked by (words)', stage.gate.words ?? '', value => { stage.gate.words = value; }),
-        el('label', {}, el('input', { type: 'checkbox', checked: stage.gate.owner, onchange: event => { stage.gate.owner = event.target.checked; } }), ` ${pipeline.owner} leaves this stage`),
-        el('label', {}, el('span', { text: 'Rounds' }), el('select', { onchange: event => { stage.rounds = event.target.value; } },
-          ...[['none', 'None'], ['together', 'Each round together'], ['split', 'First round apart']].map(([value, words]) => el('option', { value, selected: stage.rounds === value, text: words })))),
-        el('div', { class: 'pl-stage-moves' },
-          index ? el('button', { type: 'button', text: 'Up', onclick: () => { stages.splice(index - 1, 0, stages.splice(index, 1)[0]); repaint(); } }) : null,
-          index < stages.length - 1 ? el('button', { type: 'button', text: 'Down', onclick: () => { stages.splice(index + 1, 0, stages.splice(index, 1)[0]); repaint(); } }) : null,
-          stages.length > 1 ? el('button', { type: 'button', text: 'Remove', onclick: () => { stages.splice(index, 1); repaint(); } }) : null)));
+  // Change stages (the form rule): each stage is its own line, edited where it stands.
+  // Its name and done-when save on Return or blur, Rounds is three chips and the
+  // owner's word one chip, each saved on its tap; a new stage is one line.
+  stageLines(pipeline) {
+    const stages = pipeline.stages, owner = sentenceName(pipeline.owner === this.reader ? 'you' : pipeline.owner);
+    const list = el('ol', { class: 'pl-stagedefs pl-stage-lines', 'aria-label': 'Change stages' }, ...stages.map((stage, index) => {
+      const id = stage.stage_id, key = `stage:${id}`, name = stage.name || `stage ${index + 1}`;
+      const chip = (role, words, pressed, title, change) => el('button', { type: 'button', class: 'pl-pick', 'data-role': role, 'aria-pressed': pressed ? 'true' : 'false', title, text: words,
+        onclick: () => { if (change) this.stageAct(id, change, role); } });
+      const move = (role, words, label, change) => el('button', { type: 'button', class: 'pl-stage-move', 'data-role': role, 'aria-label': label, title: label, text: words,
+        onclick: () => this.stageAct(id, change, role) });
+      const note = this.stageNote?.id === id ? el('p', { class: 'pl-stage-note muted', role: 'status', text: this.stageNote.text }) : null;
+      const error = this.errors.get(key);
+      return el('li', { 'data-key': key },
+        el('span', { class: 'pl-num', text: String(index + 1) }),
+        el('div', { class: 'pl-stage-edit' },
+          el('div', { class: 'pl-stage-line' },
+            this.stageField(stage, 'name', { 'aria-label': `Name of stage ${index + 1}`, placeholder: 'Stage name', maxlength: '200' }),
+            this.stageField(stage, 'done', { 'aria-label': `When ${name} is done`, placeholder: 'Done when…', maxlength: '2000' })),
+          el('div', { class: 'pl-stage-line' },
+            el('span', { class: 'pl-picks', role: 'group', 'aria-label': `Rounds in ${name}` },
+              ...ROUND_CHIPS.map(([value, words, title]) => chip(`rounds-${value}`, words, stage.rounds === value, title,
+                stage.rounds === value ? null : list => { stageIn(list, id).rounds = value; }))),
+            chip('gate-owner', `${owner === 'You' ? 'Your' : `${owner}’s`} word`, !!stage.gate?.owner,
+              stage.gate?.owner ? `Only ${owner === 'You' ? 'you move' : `${owner} moves`} an item past this stage. Tap to let it pass without.` : `Tap so that only ${owner === 'You' ? 'you move' : `${owner} moves`} an item past this stage.`,
+              list => { const gate = stageIn(list, id).gate; gate.owner = !gate.owner; }),
+            this.stageField(stage, 'checks', { 'aria-label': `Who or what checks ${name}`, placeholder: 'Checked by…', maxlength: '1000' }),
+            el('span', { class: 'pl-stage-moves' },
+              index ? move('stage-up', '↑', `Move ${name} up`, list => { list.splice(index - 1, 0, list.splice(index, 1)[0]); }) : null,
+              index < stages.length - 1 ? move('stage-down', '↓', `Move ${name} down`, list => { list.splice(index + 1, 0, list.splice(index, 1)[0]); }) : null,
+              stages.length > 1 ? move('stage-remove', '×', `Remove ${name}`, list => {
+                const at = list.findIndex(other => other.stage_id === id);
+                if (at < 0) throw Error(`${name} is no longer a stage. Refresh to see the stages.`);
+                this.removed = { stage: list.splice(at, 1)[0], index: at };
+              }) : null)),
+          note, error ? el('p', { class: 'pl-error', role: 'status', text: error }) : null));
+    }));
+    const add = titleLine({
+      key: 'add-stage', value: this.newStage, label: 'Add a stage', placeholder: 'Add a stage…', hint: 'Return adds it last · Escape clears',
+      input: value => { this.newStage = value; },
+      cancel: (had, input) => { if (!had) input.blur(); },
+      submit: title => {
+        this.newStage = ''; this.paint();
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'stage';
+        const stage = { stage_id: `${slug}-${Date.now().toString(36)}`, name: title, done_when: '', gate: { checks: [], owner: false, words: '' }, rounds: 'none', scope: 'piece', added_note: '' };
+        this.act('add-stage', async () => {
+          try { await this.setStages(list => { list.push(stage); }); this.removed = null; this.stageNote = { id: stage.stage_id, text: 'Added. Its done-when and chips are optional.' }; }
+          catch (error) { if (!this.newStage) this.newStage = title; throw error; }
+        }, false);
+      },
     });
-    form.append(el('p', {}, el('button', { type: 'button', text: 'Add a stage', onclick: () => {
-      stages.push({ stage_id: `stage-${Date.now().toString(36)}`, name: 'New stage', done_when: '', gate: { checks: [], owner: false, words: '' }, rounds: 'none', scope: 'piece', added_note: '' }); repaint();
-    } }), ' ', el('button', { type: 'submit', class: 'primary', text: 'Save' })));
-    const error = this.errors.get('stages');
-    if (error) form.append(el('p', { class: 'pl-error', role: 'status', text: error }));
-    form.onsubmit = event => { event.preventDefault(); this.act('stages', async () => {
-      await this.command('pipeline.stages_set', { workspace_id: this.workspace }, { stages: stages.map(({ you_leave_it, ...stage }) => stage) }, { pipeline_revision: pipeline.version });
-      this.editing = false; this.draftStages = null;
-    }); };
-    return form;
+    const error = this.errors.get('add-stage');
+    if (error) add.append(el('p', { class: 'pl-error pl-line-note', role: 'status', text: error }));
+    const removed = this.removed;
+    const undo = removed ? el('p', { class: 'pl-stage-removed muted', 'data-key': 'stage-undo', role: 'status' }, `Removed ${removed.stage.name}. `,
+      el('button', { type: 'button', 'data-role': 'undo', text: 'Undo', onclick: () => this.act('stage-undo', async () => {
+        await this.setStages(list => { if (!list.some(other => other.stage_id === removed.stage.stage_id)) list.splice(Math.min(removed.index, list.length), 0, removed.stage); });
+        this.removed = null; this.stageNote = { id: removed.stage.stage_id, text: 'Back.' };
+      }, false) }), this.errors.get('stage-undo') ? el('span', { class: 'pl-error', text: ` ${this.errors.get('stage-undo')}` }) : null) : null;
+    return el('div', { class: 'pl-stage-editing' }, list, undo, add);
+  }
+
+  // One line of a stage, saved on Return or blur; Escape puts back what was saved.
+  stageField(stage, field, attrs) {
+    const id = stage.stage_id, key = `${id}:${field}`;
+    const input = el('input', { type: 'text', class: `pl-stage-${field}`, 'data-role': `stage-${field}`, autocomplete: 'off', enterkeyhint: 'done', spellcheck: 'true', ...attrs });
+    input.value = this.stageDrafts.get(key) ?? stageText(stage, field);
+    input.oninput = () => { this.stageDrafts.set(key, input.value); if (this.stageNote?.id === id) this.stageNote = null; };
+    input.onblur = () => this.saveStageText(id, field);
+    input.onkeydown = event => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); this.saveStageText(id, field); }
+      else if (event.key === 'Escape') {
+        event.preventDefault(); event.stopPropagation();
+        this.stageDrafts.delete(key); input.value = stageText(this.stageOf(id) ?? stage, field); input.blur();
+      }
+    };
+    return input;
+  }
+
+  stageOf(id) { return this.answer?.pipeline?.stages?.find(stage => stage.stage_id === id) ?? null; }
+
+  saveStageText(id, field) {
+    const key = `${id}:${field}`, draft = this.stageDrafts.get(key), stage = this.stageOf(id);
+    if (draft === undefined || !stage) return this.chain;
+    if (draft.trim() === stageText(stage, field)) { this.stageDrafts.delete(key); return this.chain; }
+    return this.act(`stage:${id}`, async () => {
+      // Read again when its turn comes: an earlier save may already have sent these words.
+      const text = this.stageDrafts.get(key), now = this.stageOf(id);
+      if (text === undefined || !now) return;
+      if (text.trim() !== stageText(now, field)) {
+        if (field === 'name' && !text.trim()) throw Error('A stage needs a name. Escape puts the old one back.');
+        await this.setStages(list => { setStageText(stageIn(list, id), field, text.trim()); });
+        this.stageNote = { id, text: 'Saved.' };
+      }
+      if (this.stageDrafts.get(key) === text) this.stageDrafts.delete(key);
+    }, false);
+  }
+
+  // A tap on a stage's chip or move: the whole list as last read, with that one change.
+  stageAct(id, change, role) {
+    return this.act(`stage:${id}`, async () => { await this.setStages(change); this.stageNote = { id, text: 'Saved.' }; }, role);
+  }
+
+  // pipeline.stages_set takes the whole ordered list; each change is made to the list
+  // as the page last read it, at its turn, with the revision that read carried.
+  setStages(change) {
+    const pipeline = this.answer?.pipeline;
+    if (!pipeline) throw Error('This pipeline is no longer on this page. Refresh to see it.');
+    const list = pipeline.stages.map(({ you_leave_it, ...stage }) => ({ ...stage, gate: { ...stage.gate } }));
+    change(list);
+    return this.command('pipeline.stages_set', { workspace_id: this.workspace }, { stages: list }, { pipeline_revision: pipeline.version });
   }
 
   timesSection(answer, pipeline) {
@@ -557,23 +649,72 @@ export class PipelinePage {
     this.host.querySelector(`[data-key="item:${number}"] [data-role="details"]`)?.focus();
   }
 
+  // Turning a pipeline on is one tap with the defaults (the form rule); its title and
+  // whether items are sized are changed afterwards on the page, in place.
   turnOn(pipeline) {
     const answer = this.answer;
     const owner = answer.pipeline ? answer.pipeline.you_own : answer.you_own === true;
     const box = el('div', { class: 'pl-empty' }, el('p', {}, el('strong', { text: 'This outcome’s pipeline is off.' })),
       el('p', { class: 'muted', text: 'A pipeline numbers every piece of work this outcome delivers, from first mention to the release that shipped it. Turning it on keeps nothing hidden; turning it off keeps every item.' }));
     if (!owner) return box;
-    const draft = this.turnOnDraft ??= { title: pipeline?.title ?? 'Pipeline', sized: pipeline ? pipeline.sized : true, releases: false };
-    const form = el('form', { class: 'pl-add-form' },
-      el('label', {}, el('span', { text: 'Title' }), el('input', { value: draft.title, oninput: event => { draft.title = event.target.value; } })),
-      el('label', {}, el('input', { type: 'checkbox', checked: draft.sized, onchange: event => { draft.sized = event.target.checked; } }), ' Items are small, medium or large'),
-      el('button', { type: 'submit', class: 'primary', text: 'Turn on' }));
-    form.onsubmit = event => { event.preventDefault(); this.act('turn-on', () => this.command('pipeline.configure', { workspace_id: this.workspace },
-      { enabled: true, title: draft.title, sized: draft.sized }, { pipeline_revision: pipeline?.version ?? 0 })); };
+    box.append(el('p', { class: 'pl-turn-on' }, el('button', { type: 'button', class: 'primary', 'data-role': 'turn-on', text: 'Turn on',
+      onclick: () => this.act('turn-on', async () => {
+        await this.command('pipeline.configure', { workspace_id: this.workspace }, { enabled: true }, { pipeline_revision: pipeline?.version ?? 0 });
+        this.settingsNote = { text: 'On. Change its title above, or whether items are sized, right here.' };
+      }, false).then(() => { if (this.answer?.pipeline?.enabled) this.titleField?.focus({ preventScroll: true }); }) }),
+    el('span', { class: 'muted', text: pipeline ? `Comes back as ${pipeline.title}, with every item it kept.` : 'Starts as “Pipeline”, with items sized small, medium or large. Both change on the page after.' })));
     const error = this.errors.get('turn-on');
-    box.append(form);
     if (error) box.append(el('p', { class: 'pl-error', role: 'status', text: error }));
     return el('div', { 'data-key': 'turn-on' }, box);
+  }
+
+  // The owner's title, edited where it stands in the page header: Return or blur saves it,
+  // Escape puts it back. The same element stays across repaints, so typing is never lost.
+  titleInPlace(pipeline) {
+    const field = this.titleField ??= el('input', { type: 'text', class: 'pl-title-input', 'aria-label': 'Pipeline title', title: 'Return saves · Escape puts it back',
+      autocomplete: 'off', enterkeyhint: 'done', maxlength: '200', spellcheck: 'true' });
+    field.oninput = () => { this.titleDraft = field.value; this.settingsNote = null; };
+    field.onblur = () => this.saveTitle();
+    field.onkeydown = event => {
+      if (event.isComposing) return;
+      if (event.key === 'Enter') { event.preventDefault(); this.saveTitle(); }
+      else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.titleDraft = null; field.value = this.answer?.pipeline?.title ?? ''; field.blur(); }
+    };
+    if (document.activeElement !== field) field.value = this.titleDraft ?? pipeline.title;
+    const title = this.header.title;
+    if (title.childNodes.length !== 1 || title.firstChild !== field) title.replaceChildren(field);
+  }
+
+  saveTitle() {
+    const draft = this.titleDraft, pipeline = this.answer?.pipeline;
+    if (draft === null || !pipeline) return this.chain;
+    if (draft.trim() === pipeline.title) { this.titleDraft = null; return this.chain; }
+    return this.act('settings', async () => {
+      const text = this.titleDraft, now = this.answer?.pipeline;
+      if (text === null || !now) return;
+      if (text.trim() !== now.title) {
+        await this.command('pipeline.configure', { workspace_id: this.workspace }, { enabled: now.enabled, title: text.trim() }, { pipeline_revision: now.version });
+        this.settingsNote = { text: 'Title saved.' };
+      }
+      if (this.titleDraft === text) this.titleDraft = null;
+    }, false);
+  }
+
+  // The owner's settings line: whether items are sized, one chip, saved on its tap;
+  // the quiet note or the refusal for the title above shows here too.
+  settingsLine(pipeline) {
+    const error = this.errors.get('settings');
+    return el('div', { class: 'pl-settings', 'data-key': 'settings' },
+      el('button', { type: 'button', class: 'pl-pick', 'data-role': 'sized', 'aria-pressed': pipeline.sized ? 'true' : 'false',
+        title: pipeline.sized ? 'Items can be small, medium or large. Tap to stop sizing them.' : 'Tap so that items can be small, medium or large.',
+        text: 'Sized S · M · L',
+        onclick: () => this.act('settings', async () => {
+          const now = this.answer.pipeline;
+          await this.command('pipeline.configure', { workspace_id: this.workspace }, { enabled: now.enabled, sized: !now.sized }, { pipeline_revision: now.version });
+          this.settingsNote = { text: now.sized ? 'Items are no longer sized.' : 'Items can be sized now: S, M or L on each.' };
+        }, 'sized') }),
+      this.settingsNote ? el('span', { class: 'muted', role: 'status', text: this.settingsNote.text }) : null,
+      error ? el('span', { class: 'pl-error', role: 'status', text: error }) : null);
   }
 
   // ---- an item's record (9.1.5) ----------------------------------------------------
@@ -637,6 +778,24 @@ function glyph(kind) {
 
 function section(title, note, ...kids) {
   return el('section', { class: 'pl-section', 'aria-label': title }, el('h2', { text: title }), note ? el('span', { class: 'muted', text: note }) : null, ...kids);
+}
+
+const ROUND_CHIPS = [
+  ['none', 'No rounds', 'An item passes this stage once.'],
+  ['together', 'Rounds together', 'An item can come back for more rounds, each counted with the first.'],
+  ['split', 'First round apart', 'The first round is counted on its own; later rounds together.'],
+];
+const STAGE_TEXT = { name: stage => stage.name, done: stage => stage.done_when ?? '', checks: stage => stage.gate?.words ?? '' };
+const stageText = (stage, field) => STAGE_TEXT[field](stage);
+function setStageText(stage, field, text) {
+  if (field === 'name') stage.name = text;
+  else if (field === 'done') stage.done_when = text;
+  else stage.gate.words = text;
+}
+function stageIn(list, id) {
+  const stage = list.find(other => other.stage_id === id);
+  if (!stage) throw Error('That stage is no longer there. Refresh to see the stages.');
+  return stage;
 }
 
 function gateWords(stage, owner) {

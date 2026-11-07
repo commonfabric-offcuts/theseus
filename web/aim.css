@@ -333,12 +333,37 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 
 /* The page's forms, refusals and the outcome page's pipeline line. */
 .pipeline-line{margin:0 0 1.2rem;overflow-wrap:anywhere}
-.pl-add-form,.pl-stage-editor{display:grid;gap:.6rem;margin:.6rem 0 0;padding:.8rem 1rem;border:1px solid var(--line);border-radius:.75rem;background:var(--panel)}
-.pl-add-form label,.pl-stage-editor label{display:grid;gap:.2rem;font-size:.85rem}
-.pl-add-form label:has(input[type=checkbox]),.pl-stage-editor label:has(input[type=checkbox]){display:flex;align-items:center;gap:.4rem}
-.pl-add-form textarea{min-height:4.5rem}
-.pl-stage-editor fieldset{display:grid;gap:.5rem;border:1px solid var(--line);border-radius:.6rem;padding:.6rem .8rem}
-.pl-stage-moves{display:flex;flex-wrap:wrap;gap:.4rem}
+/* Change stages in place: each stage its own line, a name about 12rem, a done-when about a sentence. */
+.pl-stage-lines li{align-items:start}
+.pl-stage-lines li>.pl-num{padding-top:.45rem}
+.pl-stage-edit{display:grid;gap:.4rem;min-width:0}
+.pl-stage-line{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .5rem}
+.pl-stage-name,.pl-stage-done,.pl-stage-checks{min-width:0;min-height:2.4rem;padding:.35rem .6rem;border:1px solid var(--line);border-radius:.55rem;background:var(--panel);color:var(--ink);font-size:.88rem}
+.pl-stage-name{flex:0 1 12rem;width:12rem;font-weight:600}
+.pl-stage-done{flex:1 1 18rem;max-width:32rem}
+.pl-stage-checks{flex:1 1 11rem;max-width:16rem}
+.pl-stage-name::placeholder,.pl-stage-done::placeholder,.pl-stage-checks::placeholder{color:var(--muted);font-weight:400}
+.pl-stage-done:placeholder-shown,.pl-stage-checks:placeholder-shown{border-style:dashed}
+.pl-stage-name:focus,.pl-stage-done:focus,.pl-stage-checks:focus{border-style:solid;border-color:var(--focus)}
+.pl-stage-moves{display:inline-flex;gap:.15rem;margin-left:auto}
+.pl-stage-move{min-height:2.2rem;min-width:2.2rem;padding:0;border-color:transparent;background:transparent;color:var(--muted);font-size:.95rem}
+.pl-stage-move:hover{background:var(--soft);color:var(--ink)}
+.pl-stagedefs li .pl-stage-note{margin:0;font-size:.76rem}
+.pl-stage-editing>.pl-line{margin:.6rem 0 0}
+.pl-stage-removed{margin:.5rem 0 0;font-size:.8rem}
+.pl-stage-removed button{min-height:2rem;padding:0 .55rem;font-size:.8rem}
+/* A choice of a few options: chips tapped once, the chosen one in ink. */
+.pl-picks{display:inline-flex;flex-wrap:wrap;gap:.3rem}
+.pl-pick{min-height:2.2rem;padding:0 .7rem;border-radius:1.1rem;background:var(--panel);color:var(--muted);font-size:.8rem;font-weight:550}
+.pl-pick:hover{color:var(--ink);border-color:var(--muted)}
+.pl-pick[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--panel)}
+/* The owner's pipeline settings in place: the title in the header, sizing as one chip. */
+.pl-title-input{min-width:6rem;max-width:min(32rem,100%);margin:0 0 0 -.35rem;padding:0 .3rem;border:1px solid transparent;border-radius:.4rem;background:transparent;color:inherit;font:inherit;letter-spacing:inherit;field-sizing:content}
+.pl-title-input:hover{border-color:var(--line)}
+.pl-title-input:focus{border-color:var(--focus);background:var(--panel)}
+.pl-settings{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .8rem;margin:0 0 1rem}
+.pl-settings .pl-error{margin:0}
+.pl-turn-on{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .8rem;margin-top:.7rem}
 .pl-error{margin:.35rem 0 0;color:var(--alert);font-size:.82rem;overflow-wrap:anywhere}
 .pl-confirm{margin:.35rem 0 0 1.9rem;font-size:.82rem}
 .pl-confirm button{min-height:2rem;padding:0 .55rem;font-size:.8rem;margin-left:.3rem}
