@@ -30,7 +30,8 @@ light (the glyph, stage names by round, typical times) are
 - **Pieces** (`pipeline_pieces`, `pipeline_piece_members`): the work on one or
   more items in one topic, and a release's piece combined from approved ones.
   Each stage a piece enters is a row in `pipeline_stage_entries`, with when it
-  entered and left and how it left (approved, sent back, passed, held, done).
+  entered and left, who left it and how (approved, sent back, passed, held,
+  done, combined, dropped).
 - **Events** (`pipeline_events`): every change, with who made it and the place
   before and after. Undo is a new event naming the one it undoes.
 - **Message subjects** (`message_subjects`): `message.post` may name the items
@@ -65,10 +66,16 @@ owner placed is moved only by the owner (`OWNER_PLACED`). An item being built
 stays in Now (`ITEM_IN_PIECE`) until it is dropped or its piece is done, and
 dropping it needs a confirmation (`ITEM_UNDERWAY`), whether by a move or by an
 Undo: on the page, each item on a piece card has its own ⋯ with Open its record
-and Drop…, and Drop… asks first. A stage gated on the owner's word is left only
-by the owner, and only the owner gives a stage their word, takes it off, or
-removes a stage that waits on it (`FORBIDDEN`); a retired stage keeps the word it
-had.
+and Drop…, and Drop… asks first. Only the owner gives a stage their word, takes
+it off, or removes a stage that waits on it (`FORBIDDEN`); a retired stage keeps
+the word it had.
+
+A stage gated on the owner's word is entered only with an ask to the owner,
+written by whoever enters it, in the piece's topic (`ASK_REQUIRED`), and left
+only by the owner (`STAGE_GATED`), however it is left: to the next stage, as
+done, dropped with its last item, or combined into a release. The database
+keeps this rule where every stage entry is opened and closed, not each command,
+so no way of moving a piece steps around it.
 
 ## Turning it on and changing its stages
 
@@ -107,6 +114,10 @@ A source is `{message_id}`, `{message_seq}` (a message by its number,
 as people say it), `{memory_item_id}` or `{note}`. `item_move` takes `section`,
 `above` or `below` (a number in the same section), `undo_of` (an event), and
 `underway_confirmed`.
+
+`combine` takes the pieces waiting in the last stage a piece goes through (the
+approved ones; `PIECE_NOT_APPROVED` otherwise) into a new release piece in the
+first release stage, with `ask_message_id` when that stage waits on the owner.
 
 Views:
 

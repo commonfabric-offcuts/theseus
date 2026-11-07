@@ -95,6 +95,7 @@ def register(verb):
     combine.add_argument("--pieces", required=True)
     combine.add_argument("--topic", required=True)
     combine.add_argument("--commit")
+    combine.add_argument("--ask")
     verb("finish").add_argument("piece")
 
 
@@ -290,6 +291,8 @@ class PipelineVerbs:
         args = {"release_number": options.release, "piece_ids": [part for part in options.pieces.split(",") if part], "topic_id": options.topic}
         if options.commit:
             args["commit_sha"] = options.commit
+        if options.ask:
+            args["ask_message_id"] = options.ask
         result = self.command("pipeline.combine", {"workspace_id": options.outcome}, args)
         self.out.plain("release %d combined as %s with %s" % (result["release_number"], result["piece_id"], ", ".join(map(str, result["numbers"]))))
 

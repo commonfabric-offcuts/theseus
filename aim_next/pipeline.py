@@ -22,6 +22,7 @@ Seams until the rest of release 21 lands, each in one place:
 
 import json
 import re
+import sqlite3
 import uuid
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _prefix
@@ -61,7 +62,7 @@ PIPELINE_SCHEMA = [
     "entered_ms INTEGER NOT NULL, entered_by TEXT NOT NULL REFERENCES actors(id), ask_message_id TEXT REFERENCES messages(id), "
     "note TEXT NOT NULL DEFAULT '', progress TEXT, left_ms INTEGER, "
     "left_outcome TEXT CHECK(left_outcome IN ('approved','sent back','passed','held','shipped','done','combined','dropped')), "
-    "left_note TEXT NOT NULL DEFAULT '')",
+    "left_note TEXT NOT NULL DEFAULT '', left_by TEXT REFERENCES actors(id))",
     "CREATE UNIQUE INDEX one_open_entry ON pipeline_stage_entries(piece_id) WHERE left_ms IS NULL",
     "CREATE INDEX piece_entries ON pipeline_stage_entries(piece_id, seq)",
     "CREATE INDEX open_entries ON pipeline_stage_entries(workspace_id, piece_id) WHERE left_ms IS NULL",
@@ -72,6 +73,21 @@ PIPELINE_SCHEMA = [
     "OR NEW.round IS NOT OLD.round OR NEW.size IS NOT OLD.size OR NEW.entered_ms IS NOT OLD.entered_ms OR NEW.entered_by IS NOT OLD.entered_by "
     "OR NEW.ask_message_id IS NOT OLD.ask_message_id BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END",
     "CREATE TRIGGER entries_stay BEFORE DELETE ON pipeline_stage_entries BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END",
+    # D24: a stage that waits on the owner's word is entered only with an ask to the
+    # owner by whoever enters it, in the piece's topic, and left only by the owner.
+    # The rule is kept where every entry is opened and closed, so no command (a
+    # stage change, a finish, a drop, a combine, or one not written yet) steps around it.
+    "CREATE TRIGGER entries_enter_on_an_ask BEFORE INSERT ON pipeline_stage_entries "
+    "WHEN (SELECT json_extract(gate,'$.owner') FROM pipeline_stages WHERE workspace_id=NEW.workspace_id AND stage_id=NEW.stage_id) "
+    "AND NOT EXISTS (SELECT 1 FROM messages m, pipeline_pieces p, workspaces w WHERE m.id=NEW.ask_message_id AND p.id=NEW.piece_id "
+    "AND w.id=p.workspace_id AND m.topic_id=p.topic_id AND m.author_id=NEW.entered_by AND m.intent='ask' "
+    "AND EXISTS (SELECT 1 FROM json_each(m.addressees) a WHERE a.value=w.owner_id)) "
+    "BEGIN SELECT RAISE(ABORT, 'ASK_REQUIRED'); END",
+    "CREATE TRIGGER entries_leave_by_the_owner BEFORE UPDATE OF left_ms ON pipeline_stage_entries "
+    "WHEN NEW.left_ms IS NOT NULL "
+    "AND (SELECT json_extract(gate,'$.owner') FROM pipeline_stages WHERE workspace_id=OLD.workspace_id AND stage_id=OLD.stage_id) "
+    "AND NEW.left_by IS NOT (SELECT owner_id FROM workspaces WHERE id=OLD.workspace_id) "
+    "BEGIN SELECT RAISE(ABORT, 'STAGE_GATED'); END",
     "CREATE TABLE message_subjects (message_id TEXT NOT NULL REFERENCES messages(id), workspace_id TEXT NOT NULL, "
     "kind TEXT NOT NULL CHECK(kind IN ('item','check')), ref TEXT NOT NULL, PRIMARY KEY(message_id, kind, ref))",
     "CREATE INDEX subject_ref ON message_subjects(workspace_id, kind, ref, message_id)",
@@ -106,6 +122,9 @@ SECTIONS = ("now", "next", "later", "candidates")
 SECTION_WORDS = {"now": "Now", "next": "Next", "later": "Later", "candidates": "Candidates"}
 SIZES = ("small", "medium", "large")
 LEFT = ("approved", "sent back", "passed", "held")
+# What the database's D24 triggers refuse, in words naming the owner.
+_OWNERS_WORD = {"ASK_REQUIRED": "This stage waits on %s: ask them first, in a message of your own in this piece's topic",
+                "STAGE_GATED": "Only %s leaves this stage"}
 ROUNDS = ("none", "together", "split")
 _TEXT_MAX = 16384
 
@@ -567,9 +586,9 @@ class Pipeline:
             # D25: the item leaves its piece; the piece ends only when no item is left.
             db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='dropped' WHERE piece_id=? AND number=?",
                        (ms, piece["id"], number))
-            if not self._members(db, piece["id"]):
-                db.execute("UPDATE pipeline_stage_entries SET left_ms=?,left_outcome='dropped' WHERE piece_id=? AND left_ms IS NULL",
-                           (ms, piece["id"]))
+            entry = self._open_entry(db, piece["id"])
+            if entry is not None and not self._members(db, piece["id"]):
+                self._leave(db, actor, entry, "dropped", ms)
         moved = self._item_row(db, workspace["id"], number)
         after = self._neighbours(db, moved)
         relative = {"above": above} if above is not None else {"below": below} if below is not None else None
@@ -589,23 +608,31 @@ class Pipeline:
             raise Refusal("STAGE_UNKNOWN", "This outcome has no stage %s" % stage_id)
         return dict(row, gate=_loads(row["gate"], {}))
 
-    def _owner_ask(self, db, actor, workspace, topic_id, message_id):
-        """D24: entering an owner-gated stage needs an ask by the actor to the owner in the piece's topic."""
-        if message_id is None:
-            raise Refusal("ASK_REQUIRED", "Ask %s in this piece's topic first; this stage waits on them" % workspace["owner_id"])
-        row = db.execute("SELECT topic_id,author_id,intent,addressees FROM messages WHERE id=?", (_identifier(message_id, "ask_message_id"),)).fetchone()
-        if (row is None or row["topic_id"] != topic_id or row["author_id"] != actor or row["intent"] != "ask"
-                or workspace["owner_id"] not in json.loads(row["addressees"])):
-            raise Refusal("ASK_REQUIRED", "The ask must be yours, to %s, in this piece's topic" % workspace["owner_id"])
-        return row
-
     def _gate_open(self, db, piece, stage):
         """D18 for checks waits on item 14's check runs; until then a gate's checks are shown, not enforced."""
         return True
 
+    def _entry_write(self, db, workspace_id, sql, values):
+        """Every stage entry is opened and closed here; the database keeps the owner's word (D24)."""
+        try:
+            db.execute(sql, values)
+        except sqlite3.IntegrityError as error:
+            if str(error) not in _OWNERS_WORD:
+                raise
+            owner = db.execute("SELECT owner_id FROM workspaces WHERE id=?", (workspace_id,)).fetchone()[0]
+            raise Refusal(str(error), _OWNERS_WORD[str(error)] % owner)
+
     def _enter(self, db, actor, piece, stage, round_number, size, ms, ask=None, note=""):
-        db.execute("INSERT INTO pipeline_stage_entries(piece_id,workspace_id,stage_id,round,size,entered_ms,entered_by,ask_message_id,note) "
-                   "VALUES (?,?,?,?,?,?,?,?,?)", (piece["id"], piece["workspace_id"], stage["stage_id"], round_number, size, ms, actor, ask, note))
+        """Opens a piece's entry in a stage; one that waits on the owner keeps the ask that entered it."""
+        ask = _identifier(ask, "ask_message_id") if ask is not None and stage["gate"].get("owner") else None
+        self._entry_write(db, piece["workspace_id"],
+                          "INSERT INTO pipeline_stage_entries(piece_id,workspace_id,stage_id,round,size,entered_ms,entered_by,ask_message_id,note) "
+                          "VALUES (?,?,?,?,?,?,?,?,?)", (piece["id"], piece["workspace_id"], stage["stage_id"], round_number, size, ms, actor, ask, note))
+
+    def _leave(self, db, actor, entry, outcome, ms, note=""):
+        """Closes an open entry, saying who left it and how."""
+        self._entry_write(db, entry["workspace_id"], "UPDATE pipeline_stage_entries SET left_ms=?,left_outcome=?,left_note=?,left_by=? WHERE seq=?",
+                          (ms, outcome, note, actor, entry["seq"]))
 
     def _command_pipeline_piece_start(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
@@ -645,15 +672,11 @@ class Pipeline:
         round_number = args.get("round", 1)
         if isinstance(round_number, bool) or not isinstance(round_number, int) or round_number < 1:
             raise Refusal("INVALID_ARGUMENT", "round is a whole number from 1")
-        ask = None
-        if stage["gate"].get("owner"):
-            ask = self._owner_ask(db, actor, workspace, topic["id"], args.get("ask_message_id"))
-            ask = args["ask_message_id"]
         piece_id = "p-" + uuid.uuid4().hex[:24]
         ms = _now_ms()
         db.execute("INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)", (piece_id, workspace["id"], "piece", topic["id"]))
         db.executemany("INSERT INTO pipeline_piece_members VALUES (?,?,?,NULL,NULL)", [(piece_id, workspace["id"], item["number"]) for item in items])
-        self._enter(db, actor, {"id": piece_id, "workspace_id": workspace["id"]}, stage, round_number, size, ms, ask)
+        self._enter(db, actor, {"id": piece_id, "workspace_id": workspace["id"]}, stage, round_number, size, ms, args.get("ask_message_id"))
         version = self._bump(db, workspace["id"], piece_id)
         return {"piece_id": piece_id, "numbers": [item["number"] for item in items], "stage_id": stage["stage_id"], "pipeline_revision": version}, []
 
@@ -685,18 +708,12 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "round is a whole number from 1")
         if stage["stage_id"] == entry["stage_id"] and (stage["rounds"] == "none" or round_number != entry["round"] + 1):
             raise Refusal("INVALID_ARGUMENT", "Entering the same stage again is its next round, in a stage that has rounds")
-        if leaving["gate"].get("owner") and actor != workspace["owner_id"]:
-            raise Refusal("STAGE_GATED", "Only %s leaves this stage" % workspace["owner_id"])
         if not self._gate_open(db, piece, leaving):
             raise Refusal("STAGE_GATED", "This stage's checks have not passed")
-        ask = None
-        if stage["gate"].get("owner"):
-            self._owner_ask(db, actor, workspace, piece["topic_id"], args.get("ask_message_id"))
-            ask = args["ask_message_id"]
         ms = _now_ms()
-        db.execute("UPDATE pipeline_stage_entries SET left_ms=?,left_outcome=?,left_note=? WHERE seq=?",
-                   (ms, args["left_outcome"], _text(args.get("left_note", ""), "left_note", required=False, limit=1024), entry["seq"]))
-        self._enter(db, actor, piece, stage, round_number, entry["size"], ms, ask, _text(args.get("note", ""), "note", required=False, limit=2048))
+        self._leave(db, actor, entry, args["left_outcome"], ms, _text(args.get("left_note", ""), "left_note", required=False, limit=1024))
+        self._enter(db, actor, piece, stage, round_number, entry["size"], ms, args.get("ask_message_id"),
+                    _text(args.get("note", ""), "note", required=False, limit=2048))
         db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece["id"],))
         version = self._bump(db, workspace["id"], piece["id"])
         return {"piece_id": piece["id"], "stage_id": stage["stage_id"], "round": round_number, "pipeline_revision": version}, []
@@ -724,7 +741,7 @@ class Pipeline:
 
     def _command_pipeline_combine(self, db, actor, envelope):
         target, args = envelope["target"], envelope["args"]
-        if set(target) != {"workspace_id"} or set(args) - {"release_number", "commit_sha", "piece_ids", "topic_id"}:
+        if set(target) != {"workspace_id"} or set(args) - {"release_number", "commit_sha", "piece_ids", "topic_id", "ask_message_id"}:
             raise Refusal("INVALID_ARGUMENT", "Combining names the release, its pieces and its topic")
         workspace = self._workspace(db, actor, target["workspace_id"])
         pipeline = self._pipeline_on(db, workspace["id"])
@@ -736,9 +753,12 @@ class Pipeline:
         topic = self._topic(db, actor, args.get("topic_id"))
         if topic["workspace_id"] != workspace["id"]:
             raise Refusal("TOPIC_OUTSIDE_OUTCOME", "The release's topic belongs to this outcome")
-        first = next((stage for stage in self._stages(db, workspace["id"]) if stage["scope"] == "release"), None)
+        stages = self._stages(db, workspace["id"])
+        first = next((stage for stage in stages if stage["scope"] == "release"), None)
         if first is None:
             raise Refusal("STAGE_UNKNOWN", "This pipeline has no release stages")
+        # 3.4: a piece is combined once it is approved, waiting in the last stage a piece goes through.
+        waiting = [stage for stage in stages if stage["scope"] == "piece"][-1:]
         piece_ids = args.get("piece_ids")
         if not isinstance(piece_ids, list) or not piece_ids:
             raise Refusal("INVALID_ARGUMENT", "Name the approved pieces to combine")
@@ -752,12 +772,16 @@ class Pipeline:
             entry = self._open_entry(db, piece["id"])
             if piece["workspace_id"] != workspace["id"] or piece["kind"] != "piece" or entry is None:
                 raise Refusal("PIECE_CLOSED", "Piece %s is not open in this outcome" % piece_id)
-            db.execute("UPDATE pipeline_stage_entries SET left_ms=?,left_outcome='combined' WHERE seq=?", (ms, entry["seq"]))
+            if not waiting or entry["stage_id"] != waiting[0]["stage_id"]:
+                raise Refusal("PIECE_NOT_APPROVED", "Piece %s is in %s; a piece is combined once it waits in %s"
+                              % (piece_id, self._stage(db, workspace["id"], entry["stage_id"], current=False)["name"],
+                                 waiting[0]["name"] if waiting else "the last stage a piece goes through"))
+            self._leave(db, actor, entry, "combined", ms)
             for number in self._members(db, piece["id"]):
                 db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='combined' WHERE piece_id=? AND number=?", (ms, piece["id"], number))
                 db.execute("INSERT INTO pipeline_piece_members VALUES (?,?,?,NULL,NULL)", (release_id, workspace["id"], number))
                 numbers.append(number)
-        self._enter(db, actor, {"id": release_id, "workspace_id": workspace["id"]}, first, 1, None, ms)
+        self._enter(db, actor, {"id": release_id, "workspace_id": workspace["id"]}, first, 1, None, ms, args.get("ask_message_id"))
         version = self._bump(db, workspace["id"], release_id)
         return {"piece_id": release_id, "release_number": release, "numbers": numbers, "pipeline_revision": version}, []
 
@@ -773,11 +797,7 @@ class Pipeline:
         entry = self._open_entry(db, piece["id"])
         if entry is None:
             raise Refusal("PIECE_CLOSED", "This piece of work has finished")
-        leaving = self._stage(db, workspace["id"], entry["stage_id"], current=False)
-        if leaving["gate"].get("owner") and actor != workspace["owner_id"]:
-            raise Refusal("STAGE_GATED", "Only %s leaves this stage" % workspace["owner_id"])
-        db.execute("UPDATE pipeline_stage_entries SET left_ms=?,left_outcome='done',left_note=? WHERE seq=?",
-                   (_now_ms(), _text(args.get("note", ""), "note", required=False, limit=1024), entry["seq"]))
+        self._leave(db, actor, entry, "done", _now_ms(), _text(args.get("note", ""), "note", required=False, limit=1024))
         db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece["id"],))
         version = self._bump(db, workspace["id"], piece["id"])
         return {"piece_id": piece["id"], "pipeline_revision": version}, []

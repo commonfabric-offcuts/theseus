@@ -85,6 +85,22 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertEqual(self.ok("finish", piece), "%s finished\n" % piece)
         self.assertIn("1    Build me  [now · shipped]", self.ok("item", "w1", "1"))
 
+    def test_combining_into_a_release_stage_on_the_owners_word_takes_an_ask(self):
+        self.ok("pipeline-on", "w1", "--releases", actor="owner")
+        stages = Path(self.temp.name) / "stages.json"
+        stages.write_text(json.dumps([{"stage_id": "wait", "name": "Waits to combine"},
+                                      {"stage_id": "approve", "name": "Approve", "scope": "release", "gate": {"owner": True}}]))
+        self.ok("stages", "w1", "--set", str(stages), actor="owner")
+        self.ok("add", "w1", "--title", "Ship me", "--section", "now", "--size", "small", "--note", "n", "-")
+        piece = self.ok("piece", "w1", "1", "--topic", "t1", "--stage", "wait").split()[2]
+        code, out, err = self.run_cli("combine", "w1", "--release", "23", "--pieces", piece, "--topic", "t1")
+        self.assertEqual(code, 2)
+        self.assertIn("ASK_REQUIRED", err)
+        self.ok("post", "t1", "--asks", "owner", "May release 23 go out?")
+        ask = self.sql("SELECT id FROM messages WHERE intent='ask' ORDER BY seq DESC LIMIT 1")[0][0]
+        self.assertRegex(self.ok("combine", "w1", "--release", "23", "--pieces", piece, "--topic", "t1", "--ask", ask),
+                         r"^release 23 combined as p-\w+ with 1\n$")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -292,7 +292,7 @@ are absolute local times.
 - `move OUTCOME N --above M | --below M | --to SECTION | --undo EVENT [--underway] [--because MSG]`.
 - `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
   work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
-  `stage-note PIECE TEXT`, `combine OUTCOME --release N --pieces P,... --topic T [--commit SHA]`
+  `stage-note PIECE TEXT`, `combine OUTCOME --release N --pieces P,... --topic T [--commit SHA] [--ask MSG]`
   and `finish PIECE` move it along.
 - `post --subject item:92,item:93` names the items a message is about; an ask
   about an item puts it in the asked person's "Waiting on you".

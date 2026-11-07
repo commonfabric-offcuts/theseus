@@ -166,15 +166,14 @@ class StagesCase(PipelineCase):
         self.rejected(self.command("pipeline.piece_finish", {}, {"piece_id": other}), "RELEASE_PIPELINE_SHIPS_BY_RECORD")
 
     def test_combining_pieces_into_a_release_moves_their_items_and_keeps_their_topics_open(self):
-        self.committed(self.on(ships_in_releases=True))
-        self.stages(*STAGES, {"stage_id": "checks", "name": "Release checks", "scope": "release"})
+        self.release_stages(*STAGES[:3], self.CHECKS)
         self.topic("t2")
-        first = self.committed(self.start())["piece_id"]
-        second = self.committed(self.start(numbers=(3,), topic="t2"))["piece_id"]
+        first = self.committed(self.start(stage="wait"))["piece_id"]
+        second = self.committed(self.start(numbers=(3,), topic="t2", stage="wait"))["piece_id"]
         release = self.committed(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first, second], "topic_id": "t1"}, {"workspace_id": "w1"}))
         self.assertEqual(release["numbers"], [1, 2, 3])
-        self.assertEqual(self.entries(first), [("build", 1, "combined", 1)])
-        self.assertEqual(self.entries(second), [("build", 1, "combined", 1)])
+        self.assertEqual(self.entries(first), [("wait", 1, "combined", 1)])
+        self.assertEqual(self.entries(second), [("wait", 1, "combined", 1)])
         self.assertEqual(self.entries(release["piece_id"]), [("checks", 1, None, 0)])
         self.assertEqual(self.sql("SELECT state FROM topics WHERE id IN ('t1','t2') ORDER BY id"), [("active",), ("active",)])
         now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
@@ -185,6 +184,100 @@ class StagesCase(PipelineCase):
         now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
         self.assertEqual((now["facts"]["next_release"], now["banner"]["release"], now["items"]), (None, 23, []))
         self.rejected(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first], "topic_id": "t1"}, {"workspace_id": "w1"}), "RELEASE_EXISTS")
+
+    CHECKS = {"stage_id": "checks", "name": "Release checks", "scope": "release"}
+
+    def release_stages(self, *stages):
+        self.committed(self.on(ships_in_releases=True))
+        self.stages(*(stages or STAGES + (self.CHECKS,)))
+
+    def combine(self, pieces, actor="owner", release=23, topic="t1", **args):
+        return self.command("pipeline.combine", dict({"release_number": release, "piece_ids": list(pieces), "topic_id": topic}, **args),
+                            {"workspace_id": "w1"}, actor=actor)
+
+    def test_combining_leaves_a_stage_on_the_owners_word_only_by_the_owner(self):
+        # The blocker probe: agent-b (a member) combined a piece the owner was holding.
+        self.release_stages()
+        piece = self.committed(self.start())["piece_id"]
+        ask = self.post("@owner would you read 1 and 2?", actor="agent-a", addressees=["owner"], intent="ask")
+        self.committed(self.enter(piece, "tony-reads", actor="agent-a", ask_message_id=ask))
+        self.rejected(self.enter(piece, "wait", actor="agent-a", left_outcome="passed"), "STAGE_GATED")
+        held = self.entries(piece)
+        for actor in ("agent-b", "agent-a"):
+            with self.subTest(actor=actor):
+                refused = self.combine([piece], actor=actor)
+                self.rejected(refused, "STAGE_GATED")
+                self.assertIn("owner", refused["error"]["message"])
+        self.assertEqual((self.entries(piece), self.sql("SELECT count(*) FROM pipeline_pieces WHERE kind='release'")), (held, [(0,)]),
+                         "the owner's held ask is held still, and no release was made")
+        # The owner's word lets it go: the owner combines it.
+        self.committed(self.combine([piece]))
+        self.assertEqual(self.sql("SELECT stage_id,left_outcome,left_by FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq", (piece,))[-1],
+                         ("tony-reads", "combined", "owner"))
+
+    def test_combining_into_a_release_stage_on_the_owners_word_needs_an_ask_in_the_release_topic(self):
+        self.release_stages(*STAGES[:3], {"stage_id": "approve", "name": "Approve the release", "scope": "release", "gate": {"owner": True}})
+        piece = self.committed(self.start(stage="wait"))["piece_id"]
+        self.rejected(self.combine([piece], actor="agent-b"), "ASK_REQUIRED")
+        self.rejected(self.combine([piece]), "ASK_REQUIRED")
+        self.assertEqual((self.entries(piece), self.sql("SELECT count(*) FROM pipeline_pieces WHERE kind='release'")), ([("wait", 1, None, 0)], [(0,)]))
+        tell = self.post("Release 23 is ready", actor="agent-b", addressees=["owner"], intent="tell")
+        someone_elses = self.post("@owner may I release 23?", actor="agent-a", addressees=["owner"], intent="ask")
+        for ask in (tell, someone_elses):
+            self.rejected(self.combine([piece], actor="agent-b", ask_message_id=ask), "ASK_REQUIRED")
+        ask = self.post("@owner may I release 23?", actor="agent-b", addressees=["owner"], intent="ask")
+        release = self.committed(self.combine([piece], actor="agent-b", ask_message_id=ask))["piece_id"]
+        self.assertEqual(self.sql("SELECT stage_id,ask_message_id,left_ms FROM pipeline_stage_entries WHERE piece_id=?", (release,)),
+                         [("approve", ask, None)])
+        self.rejected(self.command("pipeline.stage_enter", {"stage_id": "approve", "left_outcome": "approved"}, {"piece_id": release}, actor="agent-b"),
+                      "INVALID_ARGUMENT")
+
+    def test_a_piece_is_combined_once_it_waits_in_the_last_piece_stage(self):
+        # Spec 3.4: combine takes the approved pieces, those waiting in the last stage a piece goes through.
+        self.release_stages(*STAGES[:3], self.CHECKS)
+        building = self.committed(self.start())["piece_id"]
+        refused = self.combine([building])
+        self.rejected(refused, "PIECE_NOT_APPROVED")
+        self.assertIn("Wait", refused["error"]["message"])
+        self.committed(self.enter(building, "review"))
+        self.committed(self.enter(building, "wait"))
+        self.committed(self.combine([building], actor="agent-b"))
+        self.assertEqual(self.entries(building)[-1], ("wait", 1, "combined", 1))
+
+    def test_dropping_the_last_item_of_a_piece_on_the_owners_word_is_the_owners(self):
+        # The coordinator placed this item, so the coordinator may drop it, except while the owner holds its piece.
+        number = self.add("Placed by the coordinator", section="now", actor="agent-a", size="small")
+        piece = self.committed(self.start(numbers=(number,)))["piece_id"]
+        ask = self.post("@owner would you read it?", actor="agent-a", addressees=["owner"], intent="ask")
+        self.committed(self.enter(piece, "tony-reads", actor="agent-a", ask_message_id=ask))
+        self.rejected(self.move(number, actor="agent-a", section="dropped", underway_confirmed=True), "STAGE_GATED")
+        self.assertEqual((self.item(number)["section"], self.entries(piece)[-1]), ("now", ("tony-reads", 1, None, 0)), "nothing changed")
+        self.committed(self.move(number, section="dropped", underway_confirmed=True))
+        self.assertEqual(self.entries(piece)[-1], ("tony-reads", 1, "dropped", 1))
+
+    def test_the_database_keeps_the_owners_word_whatever_writes_the_entry(self):
+        # The rule lives where entries are opened and closed, so no command can step around it.
+        import sqlite3
+        piece = self.committed(self.start())["piece_id"]
+        ask = self.post("@owner would you read 1 and 2?", actor="agent-a", addressees=["owner"], intent="ask")
+        self.topic("t2")
+        elsewhere = self.post("@owner would you read 1 and 2?", actor="agent-a", topic="t2", addressees=["owner"], intent="ask")
+        not_the_owner = self.post("@agent-b would you read 1 and 2?", actor="agent-a", addressees=["agent-b"], intent="ask")
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("PRAGMA foreign_keys=ON")
+            seq = db.execute("SELECT seq FROM pipeline_stage_entries WHERE piece_id=?", (piece,)).fetchone()[0]
+            db.execute("UPDATE pipeline_stage_entries SET left_ms=2,left_outcome='approved',left_by='agent-a' WHERE seq=?", (seq,))
+            insert = ("INSERT INTO pipeline_stage_entries(piece_id,workspace_id,stage_id,round,entered_ms,entered_by,ask_message_id) "
+                      "VALUES (?,'w1','tony-reads',1,3,?,?)")
+            for actor, message in (("agent-a", None), ("agent-b", ask), ("agent-a", elsewhere), ("agent-a", not_the_owner), ("agent-a", "m-none")):
+                with self.subTest(enter_as=actor, ask=message), self.assertRaisesRegex(sqlite3.IntegrityError, "ASK_REQUIRED|FOREIGN KEY"):
+                    db.execute(insert, (piece, actor, message))
+            db.execute(insert, (piece, "agent-a", ask))
+            for actor in ("agent-a", "agent-b", None):
+                with self.subTest(leave_as=actor), self.assertRaisesRegex(sqlite3.IntegrityError, "STAGE_GATED"):
+                    db.execute("UPDATE pipeline_stage_entries SET left_ms=4,left_outcome='combined',left_by=? WHERE piece_id=? AND left_ms IS NULL",
+                               (actor, piece))
+            db.execute("UPDATE pipeline_stage_entries SET left_ms=4,left_outcome='passed',left_by='owner' WHERE piece_id=? AND left_ms IS NULL", (piece,))
 
     def test_changing_the_stages_keeps_past_entries_with_the_stage_they_were_in(self):
         piece = self.committed(self.start())["piece_id"]
