@@ -12,7 +12,7 @@ stage entry.
 
 Seams until the rest of release 21 lands, each in one place:
 - the deploy does not yet close a release piece (7.2): a release piece whose
-  release has a record reads as shipped.
+  items a release record names has shipped, and _the_release reads it so.
 """
 
 import json
@@ -208,6 +208,24 @@ class Pipeline:
                           "WHERE m.workspace_id=? AND m.number=? AND e.left_outcome='done' ORDER BY e.seq DESC LIMIT 1",
                           (item["workspace_id"], item["number"])).fetchone()
         return {"done_ms": done[0]} if done else None
+
+    def _next_release(self, db):
+        """The number the next release ships as: one past the last a release record names (1 before any). A number is spent
+        only when a deploy records it, so a release piece that ended or was emptied never held one."""
+        return db.execute("SELECT coalesce(max(number),0)+1 FROM releases").fetchone()[0]
+
+    def _the_release(self, db, workspace_id):
+        """THE RELEASE (3.4): the outcome's open release piece that still holds an item no release record has shipped, in a
+        pipeline that is on and ships in releases; with its open entry, and as its release_number the number it ships as
+        (_next_release). None without one. combine makes one only while there is none, so every reader and writer of "the
+        release" (combine, back to building, the gate's candidates, the head, the deploy's read and move) asks here."""
+        row = db.execute("SELECT p.*,e.stage_id,e.round,e.progress,e.entered_ms FROM pipeline_stage_entries e INDEXED BY open_entries "
+                         "JOIN pipeline_pieces p ON p.id=e.piece_id JOIN pipelines l ON l.workspace_id=p.workspace_id "
+                         "WHERE e.workspace_id=? AND e.left_ms IS NULL AND p.kind='release' AND l.enabled=1 AND l.ships_in_releases=1 "
+                         "AND EXISTS (SELECT 1 FROM pipeline_piece_members m WHERE m.piece_id=p.id AND m.left_ms IS NULL "
+                         "AND m.number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j)) ORDER BY p.rowid LIMIT 1",
+                         (workspace_id,)).fetchone()
+        return dict(row, release_number=self._next_release(db)) if row else None
 
     def _open_piece_of(self, db, workspace_id, number):
         return db.execute("SELECT p.* FROM pipeline_piece_members m JOIN pipeline_pieces p ON p.id=m.piece_id "
@@ -652,14 +670,19 @@ class Pipeline:
             # D35: items of a held release go back to building; the rest is checked again as the next candidate.
             if actor not in (workspace["owner_id"], workspace["coordinator_id"]):
                 raise Refusal("FORBIDDEN", "Only the owner or the coordinator takes items back from a release")
+            release = self._the_release(db, workspace["id"])
+            held = release is not None and self._release_held(db, workspace["id"])
             ms = _now_ms()
             for item in items:
-                release = self._open_piece_of(db, workspace["id"], item["number"])
-                if release is None or release["kind"] != "release" or not self._release_held(db, workspace["id"], release):
+                piece = self._open_piece_of(db, workspace["id"], item["number"])
+                if not held or piece is None or piece["id"] != release["id"]:
                     raise Refusal("RELEASE_NOT_HELD", "%d is not in a release the checks stopped" % item["number"])
                 db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND number=?",
                            (ms, release["id"], item["number"]))
-                db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (release["id"],))
+            db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (release["id"],))
+            if not self._members(db, release["id"]):
+                # 3.4: a release whose every item went back to building has ended; the rebuilt work is combined anew.
+                self._leave(db, actor, self._open_entry(db, release["id"]), "held", ms, "Every item went back to building")
         for item in items:
             if item["section"] != "now":
                 raise Refusal("NOT_IN_NOW", "Move %d to Now before starting work on it" % item["number"])
@@ -760,14 +783,14 @@ class Pipeline:
         pipeline = self._pipeline_on(db, workspace["id"])
         if not pipeline["ships_in_releases"]:
             raise Refusal("NOT_A_RELEASE_PIPELINE", "This pipeline does not ship in releases")
-        release = _number(args.get("release_number"), "release_number")
-        if db.execute("SELECT 1 FROM releases WHERE number=?", (release,)).fetchone():
-            raise Refusal("RELEASE_EXISTS", "Release %d is already recorded" % release)
-        combined = db.execute("SELECT id FROM pipeline_pieces WHERE workspace_id=? AND kind='release' AND release_number=?",
-                              (workspace["id"], release)).fetchone()
-        if combined:
-            # 7.2 step 9: the deploy moves the release piece for its release number, so a release has one.
-            raise Refusal("RELEASE_PIECE_EXISTS", "Release %d is already combined, as %s" % (release, combined[0]))
+        open_release = self._the_release(db, workspace["id"])
+        if open_release is not None:
+            # 3.4: one release at a time, so "the release" is one piece; approved work waits until it ships or ends.
+            raise Refusal("RELEASE_OPEN", "Release %d is still being put together (%s); combine once it ships or every item has left it"
+                          % (open_release["release_number"], self._stage(db, workspace["id"], open_release["stage_id"], current=False)["name"]))
+        release = self._next_release(db)
+        if args.get("release_number") is not None and _number(args["release_number"], "release_number") != release:
+            raise Refusal("RELEASE_NUMBER", "The next release is %d, one past the last one shipped" % release)
         topic = self._topic(db, actor, args.get("topic_id"))
         if topic["workspace_id"] != workspace["id"]:
             raise Refusal("TOPIC_OUTSIDE_OUTCOME", "The release's topic belongs to this outcome")
@@ -782,8 +805,9 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "Name the approved pieces to combine")
         ms = _now_ms()
         release_id = "p-" + uuid.uuid4().hex[:24]
-        db.execute("INSERT INTO pipeline_pieces VALUES (?,?,'release',?,?,?,1)",
-                   (release_id, workspace["id"], topic["id"], release, args.get("commit_sha")))
+        # No number is stored: the release's number is _next_release's while it is the release (3.4).
+        db.execute("INSERT INTO pipeline_pieces VALUES (?,?,'release',?,NULL,?,1)",
+                   (release_id, workspace["id"], topic["id"], args.get("commit_sha")))
         numbers = []
         for piece_id in dict.fromkeys(piece_ids):
             piece, _ = self._piece(db, actor, piece_id)
@@ -1019,9 +1043,10 @@ class Pipeline:
         asks = self._asks_about(db, actor, workspace["id"]) if pipeline else {}
         open_rows = db.execute("SELECT p.* FROM pipeline_stage_entries e INDEXED BY open_entries JOIN pipeline_pieces p ON p.id=e.piece_id "
                                "WHERE e.workspace_id=? AND e.left_ms IS NULL ORDER BY e.entered_ms DESC", (workspace["id"],)).fetchall() if pipeline else []
-        recorded = {row[0] for row in db.execute("SELECT number FROM releases")} if pipeline and pipeline["ships_in_releases"] else set()
-        # Seam (7.2): a release piece whose release is recorded has shipped.
-        open_rows = [row for row in open_rows if not (row["kind"] == "release" and row["release_number"] in recorded)]
+        # Of the release pieces, only the release is open work (3.4); one whose items a record names has shipped (7.2 seam).
+        release = self._the_release(db, workspace["id"]) if pipeline else None
+        release_id = release["id"] if release else None
+        open_rows = [release if row["id"] == release_id else row for row in open_rows if row["kind"] == "piece" or row["id"] == release_id]
         topic_ids = sorted({row["topic_id"] for row in open_rows})
         work = work_by_topic(db, self._waits_by_topic(db, topic_ids), actor) if topic_ids else {}
         titles = {}
@@ -1039,8 +1064,7 @@ class Pipeline:
 
     def _pipeline_head(self, db, actor, workspace, pipeline, stages, releases, asks, pieces, cache):
         live = db.execute("SELECT number,deployed_ms,items FROM releases ORDER BY number DESC LIMIT 1").fetchone() if pipeline["ships_in_releases"] else None
-        # The next release is the lowest number not yet shipped, whichever release was combined last.
-        release_piece = min((piece for piece in pieces if piece["kind"] == "release"), key=lambda piece: piece["release_number"], default=None)
+        release_piece = next((piece for piece in pieces if piece["kind"] == "release"), None)
         work_pieces = [piece for piece in pieces if piece["kind"] == "piece"]
         last_piece_stage = None
         if pipeline["ships_in_releases"]:

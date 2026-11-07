@@ -186,34 +186,46 @@ class StagesCase(PipelineCase):
         live = datetime.datetime.fromtimestamp(entered / 1000 + 1, datetime.timezone.utc).isoformat(timespec="seconds")
         self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": live, "items": [1, 2, 3], "source": "deploy"})
         now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
-        self.assertEqual((now["facts"]["next_release"], (now["banner"] or {}).get("release"), now["items"]), (None, 23, []))
-        self.rejected(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first], "topic_id": "t1"}, {"workspace_id": "w1"}), "RELEASE_EXISTS")
+        self.assertEqual((now["facts"]["next_release"], (now["banner"] or {}).get("release"), now["items"]), (None, 23, []), "shipped, under its banner")
+        self.rejected(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first], "topic_id": "t1"}, {"workspace_id": "w1"}), "RELEASE_NUMBER")
 
-    def test_a_release_has_one_piece_and_the_next_release_is_the_lowest_number_still_open(self):
-        # 7.2 step 9 needs "the release piece for this release number": one, whichever piece was entered last.
+    def test_one_release_at_a_time_numbered_one_past_the_last_shipped(self):
+        # 3.4: the release is the outcome's one open release piece holding an unshipped item; its number is the last
+        # shipped + 1, so the deploy, the Reporter and the page can only mean one piece.
         self.release_stages(*STAGES[:3], self.CHECKS)
         self.topic("t2")
         first = self.committed(self.start(stage="wait"))["piece_id"]
         second = self.committed(self.start(numbers=(3,), topic="t2", stage="wait"))["piece_id"]
-        this = self.committed(self.combine([first]))["piece_id"]
-        self.rejected(self.combine([second]), "RELEASE_PIECE_EXISTS")
+        self.rejected(self.combine([first], release=24), "RELEASE_NUMBER")
+        this = self.committed(self.combine([first]))
+        self.assertEqual(this["release_number"], 23)
+        self.assertIsNone(self.sql("SELECT release_number FROM pipeline_pieces WHERE id=?", (this["piece_id"],))[0][0], "no number is stored")
+        refused = self.combine([second])
+        self.rejected(refused, "RELEASE_OPEN")
+        self.assertIn("Release 23 is still being put together (Release checks)", refused["error"]["message"])
         self.assertEqual(self.entries(second), [("wait", 1, None, 0)], "nothing was combined")
-        later = self.committed(self.combine([second], release=24))["piece_id"]
         now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
-        self.assertEqual((now["facts"]["next_release"]["release"], now["facts"]["next_release"]["piece_id"], now["release_piece"]["id"]),
-                         (23, this, this), "release 24 was combined last, but 23 ships first")
+        self.assertEqual((now["facts"]["next_release"]["release"], now["release_piece"]["id"], now["release_piece"]["release_number"]),
+                         (23, this["piece_id"], 23))
         self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": "2026-11-07T08:00:00-08:00", "items": [1, 2], "source": "deploy"})
-        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"]["piece_id"], later)
+        self.assertIsNone(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"], "its items shipped")
+        later = self.committed(self.combine([second]))
+        now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
+        self.assertEqual((later["release_number"], now["facts"]["next_release"]["piece_id"], now["facts"]["next_release"]["release"]),
+                         (24, later["piece_id"], 24))
 
     CHECKS = {"stage_id": "checks", "name": "Release checks", "scope": "release"}
 
     def release_stages(self, *stages):
+        """A pipeline that ships in releases, with release 22 live, so the next release is 23."""
+        self.store.record_release({"release": 22, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [], "source": "backfill"})
         self.committed(self.on(ships_in_releases=True))
         self.stages(*(stages or STAGES + (self.CHECKS,)))
 
-    def combine(self, pieces, actor="owner", release=23, topic="t1", **args):
-        return self.command("pipeline.combine", dict({"release_number": release, "piece_ids": list(pieces), "topic_id": topic}, **args),
-                            {"workspace_id": "w1"}, actor=actor)
+    def combine(self, pieces, actor="owner", release=None, topic="t1", **args):
+        if release is not None:
+            args["release_number"] = release
+        return self.command("pipeline.combine", dict({"piece_ids": list(pieces), "topic_id": topic}, **args), {"workspace_id": "w1"}, actor=actor)
 
     def test_combining_leaves_a_stage_on_the_owners_word_only_by_the_owner(self):
         # The blocker probe: agent-b (a member) combined a piece the owner was holding.

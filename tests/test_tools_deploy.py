@@ -1229,16 +1229,20 @@ class OutcomeChecksBeforeAnythingStops(DeployCase):
         with self.assertRaisesRegex(AssertionError, "must not start a process"):
             self.deploy(host)
 
-    def test_a_release_piece_for_another_release_or_stage_is_left_where_it_is(self):
-        for piece in (dict(PIECE, stage="deploy"), dict(PIECE, stage="combine"), dict(PIECE, release=21), None):
+    def test_the_release_moves_on_only_from_checks_whatever_number_it_was_read_as(self):
+        for piece in (dict(PIECE, stage="deploy"), dict(PIECE, stage="combine"), None):
             with self.subTest(piece=piece):
                 host = ChecksHost(self.config, checks=[(json.dumps(live_view(piece=piece)) + "\n", 0)])
                 self.restarted(host)
                 self.assertEqual(host.wrote("enter-stage"), [])
                 self.assertIsNone(json.loads((self.evidence / "03-stage.json").read_text())["entered"])
-        host = ChecksHost(self.config, checks=[(json.dumps(live_view()) + "\n", 0)])
-        self.restarted(host)
-        self.assertEqual(host.wrote("enter-stage"), [["enter-stage", "p-release-20", "deploy", "--left", "passed"]])
+        # Core named it the release; the number it was read as (here before the deploy writes a record the instance
+        # lacked) is words, not a second test of which piece it is.
+        for piece in (PIECE, dict(PIECE, release=21)):
+            with self.subTest(piece=piece):
+                host = ChecksHost(self.config, checks=[(json.dumps(live_view(piece=piece)) + "\n", 0)])
+                self.restarted(host)
+                self.assertEqual(host.wrote("enter-stage"), [["enter-stage", "p-release-20", "deploy", "--left", "passed"]])
 
     def test_a_run_or_a_write_that_is_refused_stops_the_deploy_before_anything_stops(self):
         for host, reason in ((ChecksHost(self.config, checks=[(json.dumps(live_view(units=1000)) + "\n", 0)], record_checks=2),
@@ -1403,6 +1407,9 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual(back["numbers"], [1])
         self.assertEqual(self.sql("SELECT number,left_reason FROM pipeline_piece_members WHERE piece_id=? ORDER BY number", (self.release,)),
                          [(1, "returned"), (2, None)])
+        # The candidate lists the items still in the release; the one taken back is named under "after".
+        candidate = self.candidate()
+        self.assertEqual((candidate["items"], [item["number"] for item in candidate["after"]["returned"]]), ([2], [1]))
 
     def test_the_release_checks_report_enters_the_next_round_of_checks_and_shows_its_running_steps(self):
         # 7.1 --report through the real agent CLI (D35, D36): already in checks, the piece enters round 2, held.
@@ -1510,47 +1517,127 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual(self.deploy(), "restarting")
         self.assertEqual((self.candidate()["commit"], self.candidate()["state"]), (SHA, "passed"))
         self.assertEqual(self.stage(), ("deploy", "agent-b"))
-
-    def combine_next(self):
-        """Release 24's piece, combined from a new topic while release 23 is still in checks."""
-        self.committed(self.command("opening.save", {"workspace_id": "w1", "topic_id": "t-two", "title": "Two", "participants": ["agent-a"],
-                                                     "body": "next", "attachments": []}, {"opening_id": "o-two"}, {"opening_revision": 0}))
-        self.committed(self.command("opening.publish", {}, {"opening_id": "o-two"}, {"opening_revision": 1}))
-        numbers = self.later_numbers = [self.add("Item 3", section="now", size="small")]
-        piece = self.committed(self.command("pipeline.piece_start", {"numbers": numbers, "topic_id": "t-two", "stage_id": "build"}, {"workspace_id": "w1"}))
-        self.committed(self.command("pipeline.stage_enter", {"stage_id": "wait", "left_outcome": "approved"}, {"piece_id": piece["piece_id"]}))
-        return self.committed(self.command("pipeline.combine", {"release_number": 24, "piece_ids": [piece["piece_id"]], "topic_id": "t1"},
-                                           {"workspace_id": "w1"}))["piece_id"]
-
-    def test_the_next_release_combined_during_checks_takes_none_of_this_releases_runs(self):
-        # 7.2 step 9: the deploy moves the release piece of THIS release, whichever piece was entered last.
-        later = self.combine_next()
+        # What shipped is the item still in it; the one taken back has not shipped, and is not what keeps the release open.
+        self.assertTrue(self.store.record_release({"release": 23, "commit": SHA, "deployed_at": "2026-11-07T09:00:00-08:00", "items": [2],
+                                                   "source": "deploy"})["recorded"])
         view = self.store.view("agent-b", "outcome_live", {"workspace_id": "w1", "commit": SHA})
-        self.assertEqual((view["candidate_release"], view["release_piece"]["id"]), (23, self.release), "what the deploy and the Reporter act on")
+        self.assertEqual((view["release_piece"], view["candidate_release"]), (None, 24))
+
+    def topic_of_w1(self, topic, workspace="w1"):
+        self.committed(self.command("opening.save", {"workspace_id": workspace, "topic_id": topic, "title": "Work " + topic, "participants": ["agent-a"],
+                                                     "body": "work", "attachments": []}, {"opening_id": "o-" + topic}, {"opening_revision": 0}))
+        self.committed(self.command("opening.publish", {}, {"opening_id": "o-" + topic}, {"opening_revision": 1}))
+        return topic
+
+    def approved(self, numbers, topic, workspace="w1", **args):
+        """A piece of these items started in topic and approved, waiting to be combined."""
+        piece = self.committed(self.command("pipeline.piece_start", dict({"numbers": list(numbers), "topic_id": topic, "stage_id": "build"}, **args),
+                                            {"workspace_id": workspace}, actor="agent-a"))["piece_id"]
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "wait", "left_outcome": "approved"}, {"piece_id": piece}))
+        return piece
+
+    def combine(self, pieces, workspace="w1", **args):
+        return self.command("pipeline.combine", dict({"piece_ids": list(pieces), "topic_id": "t1" if workspace == "w1" else "t-w2"}, **args),
+                            {"workspace_id": workspace})
+
+    def live_view(self, workspace="w1"):
+        return self.store.view("agent-b", "outcome_live", {"workspace_id": workspace, "commit": SHA})
+
+    def open_entry(self, piece):
+        return self.sql("SELECT stage_id FROM pipeline_stage_entries WHERE piece_id=? AND left_ms IS NULL", (piece,))
+
+    def test_a_stopped_release_whose_items_all_go_back_is_put_together_again_as_the_same_release(self):
+        # The emptied piece used to stay the release: the rebuilt work was refused as 23, combined as 24, and the deploy
+        # moved the empty piece into deploy. Every item going back ends the release, and a number is spent only by a record.
+        self.recorded("d" * 40, units="failed")
+        rebuilt = self.approved((1, 2), self.topic_of_w1("t-fix"), from_release=True)
+        self.assertEqual(self.sql("SELECT stage_id,left_outcome,left_note FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq", (self.release,))[-1],
+                         ("checks", "held", "Every item went back to building"))
+        self.assertEqual((self.live_view()["candidate_release"], self.live_view()["release_piece"]), (23, None))
+        self.assertIsNone(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"])
+        again = self.committed(self.combine([rebuilt], release_number=23))
+        self.assertEqual((again["release_number"], self.live_view()["release_piece"]["id"]), (23, again["piece_id"]))
+        # The ended release's stopped run is not the new release's candidate, so nothing holds the new release.
+        self.assertIsNone(self.candidate())
+        self.rejected(self.command("pipeline.piece_start", {"numbers": [1], "topic_id": "t-fix", "stage_id": "build", "from_release": True},
+                                   {"workspace_id": "w1"}, actor="agent-a"), "RELEASE_NOT_HELD")
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"]["piece_id"], again["piece_id"])
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "checks", "left_outcome": "passed"}, {"piece_id": again["piece_id"]}))
         self.write_summary()
         self.assertEqual(self.deploy(), "restarting")
-        self.assertEqual(json.loads((self.evidence / "03-stage.json").read_text())["entered"], "deploy")
-        self.assertEqual(self.stage(), ("deploy", "agent-b"))
-        self.assertEqual(self.sql("SELECT DISTINCT piece_id FROM check_readings WHERE piece_id IS NOT NULL"), [(self.release,)])
-        # Release 24 has no run of its own, so it cannot leave checks on release 23's readings.
-        self.committed(self.command("pipeline.stage_enter", {"stage_id": "checks", "left_outcome": "passed"}, {"piece_id": later}))
-        self.rejected(self.command("pipeline.stage_enter", {"stage_id": "deploy", "left_outcome": "passed"}, {"piece_id": later}, actor="agent-a"),
-                      "STAGE_GATED")
+        self.assertEqual(json.loads((self.evidence / "03-stage.json").read_text())["piece"]["id"], again["piece_id"])
+        self.assertEqual((self.open_entry(again["piece_id"]), self.open_entry(self.release)), ([("deploy",)], []))
+        self.assertEqual((self.candidate()["label"], self.candidate()["items"], self.candidate()["state"]), ("Release 23 candidate", [1, 2], "passed"))
 
-    def test_a_worse_check_holds_this_release_not_the_next_one_combined_during_checks(self):
-        later = self.combine_next()
+    def test_a_release_whose_items_are_all_dropped_ends_and_never_held_its_number(self):
+        for number in (1, 2):
+            version = self.sql("SELECT version FROM pipeline_items WHERE workspace_id='w1' AND number=?", (number,))[0][0]
+            self.committed(self.command("pipeline.item_move", {"section": "dropped", "underway_confirmed": True}, {"workspace_id": "w1", "number": number},
+                                        {"item_revision": version}, actor="owner"))
+        self.assertEqual((self.open_entry(self.release), self.live_view()["release_piece"]), ([], None))
+        new = self.approved([self.add("Item 3", section="now", size="small")], self.topic_of_w1("t-new"))
+        again = self.committed(self.combine([new], release_number=23))
+        view = self.live_view()
+        self.assertEqual((view["candidate_release"], view["release_piece"]["id"], view["release_piece"]["release"]), (23, again["piece_id"], 23))
+
+    def test_the_next_release_is_combined_once_this_one_has_shipped(self):
+        # One release at a time (3.4): work approved while release 23 is in checks waits, so the deploy, the Reporter
+        # and the readings can only ever mean release 23's piece.
+        waiting = self.approved([self.add("Item 3", section="now", size="small")], self.topic_of_w1("t-two"))
+        refused = self.combine([waiting], release_number=24)
+        self.rejected(refused, "RELEASE_OPEN")
+        self.assertIn("Release 23 is still being put together (Browser checks)", refused["error"]["message"])
+        self.assertEqual(self.open_entry(waiting), [("wait",)], "nothing was combined")
+        self.rejected(self.combine([waiting]), "RELEASE_OPEN")
+        self.write_summary()
+        self.assertEqual(self.deploy(), "restarting")
+        self.assertEqual((self.stage(), self.sql("SELECT DISTINCT piece_id FROM check_readings WHERE piece_id IS NOT NULL")),
+                         (("deploy", "agent-b"), [(self.release,)]))
+        self.assertTrue(self.store.record_release({"release": 23, "commit": SHA, "deployed_at": "2026-11-07T09:00:00-08:00", "items": [1, 2],
+                                                   "source": "deploy"})["recorded"])
+        self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 24), "release 23 shipped")
+        self.rejected(self.combine([waiting], release_number=23), "RELEASE_NUMBER")
+        later = self.committed(self.combine([waiting]))
+        self.assertEqual((later["release_number"], self.live_view()["release_piece"]["id"]), (24, later["piece_id"]))
+        # Release 24 has no run of its own, so it cannot leave checks on release 23's readings.
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "checks", "left_outcome": "passed"}, {"piece_id": later["piece_id"]}))
+        self.rejected(self.command("pipeline.stage_enter", {"stage_id": "deploy", "left_outcome": "passed"}, {"piece_id": later["piece_id"]},
+                                   actor="agent-a"), "STAGE_GATED")
+
+    def test_a_worse_check_holds_the_release_and_only_its_items_go_back(self):
+        waiting = self.approved([self.add("Item 3", section="now", size="small")], self.topic_of_w1("t-two"))
         self.write_summary(failed=("native-live",))
         self.assertEqual(self.deploy(), "Browser checks got worse: a passing check now fails")
-        self.assertEqual(self.sql("SELECT piece_id,stage_id,note FROM pipeline_stage_entries WHERE left_ms IS NULL AND piece_id IN (?,?) ORDER BY stage_id",
-                                  (self.release, later)), [(self.release, "checks", "Held: Browser checks got worse."), (later, "combine", "")])
+        self.assertEqual(self.sql("SELECT note FROM pipeline_stage_entries WHERE left_ms IS NULL AND piece_id=?", (self.release,)),
+                         [("Held: Browser checks got worse.",)])
         self.assertEqual(self.candidate()["label"], "Release 23 candidate")
-        # D35: only the held release's items go back to building; release 24 has no candidate of its own.
-        self.rejected(self.command("pipeline.piece_start", {"numbers": self.later_numbers, "topic_id": "t-two", "stage_id": "build", "from_release": True},
+        # D35: an item that is not in the release does not go back from it.
+        self.rejected(self.command("pipeline.piece_start", {"numbers": [3], "topic_id": "t-two", "stage_id": "build", "from_release": True},
                                    {"workspace_id": "w1"}), "RELEASE_NOT_HELD")
-        self.assertEqual(self.sql("SELECT left_reason FROM pipeline_piece_members WHERE piece_id=?", (later,)), [(None,)])
+        self.assertEqual(self.open_entry(waiting), [("wait",)])
         [(topic,)] = self.sql("SELECT id FROM topics WHERE id NOT IN ('t1','t-two')")
         self.committed(self.command("pipeline.piece_start", {"numbers": [1], "topic_id": topic, "stage_id": "build", "from_release": True},
                                     {"workspace_id": "w1"}))
+
+    def test_another_outcome_that_ships_in_releases_puts_its_own_release_together(self):
+        # Releases are an outcome's: once w1 stops shipping in releases (with release 23 open), w2 combines its own release 23,
+        # and neither outcome reads the other's.
+        self.committed(self.on(ships_in_releases=False))
+        self.assertIsNone(self.live_view()["release_piece"])
+        self.committed(self.command("workspace.create", {"id": "w2", "title": "Another", "purpose": "", "team": ["agent-a", "agent-b"]}))
+        self.committed(self.command("pipeline.configure", {"enabled": True, "ships_in_releases": True}, {"workspace_id": "w2"}, {"pipeline_revision": 0}))
+        version = self.store.view("owner", "pipeline", {"workspace_id": "w2", "limit": 1})["pipeline"]["version"]
+        self.committed(self.command("pipeline.stages_set", {"stages": [{"stage_id": "build", "name": "Build"}, {"stage_id": "wait", "name": "Wait"},
+                                                                       {"stage_id": "combine", "name": "Combine", "scope": "release"}]},
+                                    {"workspace_id": "w2"}, {"pipeline_revision": version}))
+        number = self.committed(self.command("pipeline.item_add", {"title": "Theirs", "section": "now", "size": "small", "sources": [{"note": "a test"}]},
+                                             {"workspace_id": "w2"}))["number"]
+        self.topic_of_w1("t-w2", workspace="w2")
+        theirs = self.committed(self.combine([self.approved([number], "t-w2", workspace="w2")], workspace="w2", release_number=23))
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w2"})["facts"]["next_release"]["piece_id"], theirs["piece_id"])
+        self.assertEqual((self.live_view()["release_piece"], self.open_entry(self.release)), (None, [("checks",)]), "w1 reads none, its piece untouched")
+        self.recorded("d" * 40)
+        self.assertEqual(self.sql("SELECT count(*) FROM check_readings WHERE piece_id IS NOT NULL"), [(0,)], "w1's run names no release")
 
     def test_a_trial_or_a_base_rerun_never_reads_for_a_release_piece(self):
         # D34: code with a suspect reverted is not the code being shipped, so its readings never gate the release.
@@ -1578,6 +1665,19 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.committed(self.command("check.report", {"run": dict(trial, base=dict(base, readings=unpieced)), "readings": unpieced},
                                     {"workspace_id": "w1"}, actor="agent-b"))
         self.rejected(self.move_on(), "STAGE_GATED")
+        # Nor does a member's report of a reported check, nor a release check run that names a piece itself: here, one of
+        # the live release's commit, which record_checks would never give the release's id.
+        self.define({"check_id": "said", "group_name": "Checks", "position": 3, "name": "Said", "kind": "pass", "source": "reported"})
+        report = {"commit_sha": "c" * 40, "started_at": "2026-11-07T07:00:00-08:00", "finished_at": "2026-11-07T07:00:00-08:00", "tools": {}, "steps": []}
+        refused = self.command("check.report", {"run": report, "readings": [{"check_id": "said", "result": "passed", "words": "said", "piece_id": self.release}]},
+                               {"workspace_id": "w1"}, actor="agent-b")
+        self.rejected(refused, "INVALID_ARGUMENT")
+        self.assertIn("belong to no release", refused["error"]["message"])
+        with self.assertRaisesRegex(Exception, "leave piece_id out"):
+            self.store.record_checks({"outcome": "w1", "commit": HEAD, "started_at": "2026-11-07T07:30:00-08:00", "finished_at": "2026-11-07T07:30:00-08:00",
+                                      "tools": {}, "steps": [], "note": "", "readings": [dict(reading, piece_id=self.release) for reading in unpieced]}, "agent-b")
+        self.rejected(self.move_on(), "STAGE_GATED")
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["release_piece"]["commit"], older)
 
 
 if __name__ == "__main__":

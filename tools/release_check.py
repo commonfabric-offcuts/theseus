@@ -274,7 +274,7 @@ def tools_of(root, chrome, python, node):
 
 
 class Reporter:
-    """--report (D13, D36): the outcome's open release piece enters checks (the next round when it is already there), and
+    """--report (D13, D36): the outcome's release (the one outcome_live names) enters checks (the next round when it is already there), and
     after every step a stage note carries the steps so far and the running one. A write that fails is printed and
     changes nothing: the report is never a gate."""
 
@@ -307,10 +307,10 @@ class Reporter:
         if latest:
             self.live = latest[0].get("release")
             self.total = ((latest[0].get("measurements") or {}).get("native") or {}).get("total")
-        # The view the deploy reads (7.2 step 3) names the open release piece, its stage and round.
+        # The view the deploy reads (7.2 step 3) names the release, its stage and round.
         piece = (self.call("checks", self.outcome, "--live", self.commit) or {}).get("release_piece") or None
         if not piece:
-            print("report: %s has no open release piece" % self.outcome, file=sys.stderr)
+            print("report: %s has no release being put together" % self.outcome, file=sys.stderr)
             return
         if piece.get("stage") == "checks":
             entered = self.call("enter-stage", piece["id"], "checks", "--round", str((piece.get("round") or 1) + 1), "--left", "held")

@@ -288,12 +288,16 @@ class ReadingsCase(TargetCase):
                             {"workspace_id": "w1"}, actor="agent-b")
 
     def test_a_reading_belongs_to_the_release_whose_record_names_its_commit(self):
+        stopped = "e" * 40
+        self.record_run(stopped, "2026-11-02T06:00:00-08:00", [passed()])
         self.record_run(SHA_NEW, "2026-11-03T05:00:00-08:00", [passed()])
         latest = self.check("units")["latest"]
         self.assertEqual((latest["label"], latest["release"], latest["candidate"]), ("Release 20 candidate", 20, True))
         self.release(20, SHA_NEW, "2026-11-04T05:00:00-08:00")
-        latest = self.check("units")["latest"]
-        self.assertEqual((latest["label"], latest["release"], latest["candidate"]), ("Release 20", 20, False))
+        readings = {item["commit"]: item for item in self.check("units")["readings"]}
+        self.assertEqual([(readings[commit]["label"], readings[commit]["release"], readings[commit]["candidate"]) for commit in (SHA_NEW, stopped)],
+                         [("Release 20", 20, False), ("Release 20 candidate", 20, True)],
+                         "a candidate that never shipped stays a candidate of the release after the one live when it ran")
 
     def test_a_reported_reading_is_kept_once_and_a_machine_read_check_is_never_reported(self):
         first = self.committed(self.report([measured("wake", 8)]))

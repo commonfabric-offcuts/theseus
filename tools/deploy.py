@@ -511,14 +511,12 @@ def record_run(config, evidence, view, measured, found, told):
 
 
 def enter_deploy(config, evidence, view, planned):
-    """03-stage: the release piece of this release leaves checks for deploy; its gate holds on the readings 02-run wrote."""
+    """03-stage: the outcome's release, as 02-checks read it (Core's one rule, docs/pipeline.md), leaves checks for deploy;
+    its gate holds on the readings 02-run wrote for it."""
     piece = view["release_piece"]
-    if not planned or not piece:
-        record(evidence, "03-stage", {"entered": None, "why": "no release piece for this release" if planned else "a restart ships nothing"})
-        return
-    if (piece["release"], piece["stage"]) != (planned["release"], "checks"):
-        record(evidence, "03-stage", {"entered": None, "piece": piece,
-                                      "why": "the release piece is not in checks for release %d" % planned["release"]})
+    if not planned or not piece or piece["stage"] != "checks":
+        record(evidence, "03-stage", {"entered": None, "piece": piece, "why": "a restart ships nothing" if not planned else
+                                      "no release is being put together" if not piece else "the release is in %s, not checks" % piece["stage"]})
         return
     result = as_reporter(config, "enter-stage", piece["id"], "deploy", "--left", "passed")
     record(evidence, "03-stage", {"entered": "deploy", "piece": piece, "result": result})

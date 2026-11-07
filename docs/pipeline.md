@@ -82,6 +82,31 @@ release piece, a reading at its commit (`STAGE_GATED` otherwise). The deploy
 writes those readings for the candidate before it moves the release piece from
 `checks` into `deploy` ([targets.md](targets.md#what-got-worse)).
 
+### The release
+
+An outcome whose pipeline is on and ships in releases has at most one release at
+a time: its open release piece that still holds an item no release record names.
+Everything that means "the release" asks that one rule (`_the_release`):
+`combine`, taking items back from a held release, which candidate run is the
+release's, the head's Next release, the deploy's read (`checks --live`) and its
+move into `deploy`, the release check's `--report`, and which piece a
+candidate's readings name.
+
+- Its number is not stored: it is the last release a record names, plus one, so a
+  number is spent only when a deploy records it.
+- `combine` makes a release only while there is none (`RELEASE_OPEN` names the
+  one being put together); approved pieces wait in their last stage. Its
+  optional `release_number` must be that number (`RELEASE_NUMBER`).
+- A release ends when every item has gone back to building (its entry is left
+  `held`, "Every item went back to building"), when every item is dropped (left
+  `dropped`), or when a release record names its items, which ships it. A piece
+  that ended never held a number, so the work combined next is that same release.
+- Only the release check's own run of a candidate reads for the release:
+  `record-checks` names the release on the run's readings and refuses a run that
+  names a piece itself, and a member's report, a trial or a base rerun names none.
+- A candidate run's release is the one after the release live when it ran, so a
+  candidate that never shipped keeps its number.
+
 ## Turning it on and changing its stages
 
 Turn on is one tap, for the owner or the coordinator: the pipeline starts as
@@ -127,15 +152,14 @@ and `part: true` keeps that item new. `item_move` takes `section`,
 `combine` takes the pieces waiting in the last stage a piece goes through (the
 approved ones; `PIECE_NOT_APPROVED` otherwise) into a new release piece in the
 first release stage, with `ask_message_id` when that stage waits on the owner.
-A release number is combined once (`RELEASE_PIECE_EXISTS` names its piece), so
-"the release piece for release N" is one piece.
+It makes the release, numbered as [the release](#the-release) says.
 
 Views:
 
 - `pipeline {workspace_id, section, cursor, limit}`: one section's items, in
   order, paged by an offset cursor. Section `now` also carries the head: the
   facts boxes, the banner for the live release until a stage is entered after its deploy, the release
-  being put together (the lowest number not yet shipped, whichever was combined last), what waits on the reader, the pieces in Now and the
+  being put together ([the release](#the-release)), what waits on the reader, the pieces in Now and the
   table of typical stage times. Section `shipped` gives groups, newest first.
 - `pipeline_item {workspace_id, number}`: one item with every source, piece and
   event.
@@ -160,7 +184,5 @@ carried: a question comes only from an open ask, a stage only from a tool.
 
 ## Not yet
 
-- A stage's checks are shown, not enforced: they become records with the
-  outcome's checks.
-- A piece cannot yet start from a release (`RELEASE_NOT_HELD`).
-- A release's piece is closed by its release record rather than by the deploy.
+- A release piece is not closed when it ships: the release record naming its
+  items is what ends it.
