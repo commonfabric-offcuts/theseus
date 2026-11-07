@@ -18,7 +18,8 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     const work = (await view('topic', { topic_id: 't1' })).topic.work;
     assert.equal(work.observed, true);
     assert.equal(shown.dot, true, 'observed work has the dot');
-    assert.match(shown.title, /^Activity seen .+ \(fixture-notebook-agent posted\)$/);
+    // Said out loud (item 86): who did what, and when.
+    assert.match(shown.title, /^fixture-notebook-agent posted at \d{1,2}:\d{2}\s[AP]M$/);
     // The row's other words for screen readers, its unread count (", 1 unread"),
     // come and go with what is read; the work's words are the title's.
     assert.deepEqual(shown.words.filter(words => !/^, \d+ unread/.test(words)), [' · ' + shown.title], 'screen readers hear the title');
@@ -86,7 +87,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     const first = await page('work-own', null, true);
     const mine = await until(async () => await read(first, own), 'row for a topic only the reader wrote in');
     assert.equal(mine.dot, false, 'the reader\'s own post lights no ring');
-    assert.equal(mine.title, 'No activity seen');
+    assert.equal(mine.title, 'Quiet', 'nothing by anyone else, so quiet, never that nobody works');
     const alone = (await view('topic', { topic_id: 'work-own' })).topic.work;
     assert.deepEqual([alone.observed, alone.seen_ms, alone.by, alone.how], [false, null, null, null]);
     await shot(first, 'work-own-no-dot');
@@ -96,7 +97,7 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     await control({ method: 'agent_message', operation_id: 'work-own-person', body: 'Thanks.', topic_id: 'work-own', sender: 'person', addressees: [] });
     const later = await page('work-own-later', null, true);
     const lit = await until(async () => { const r = await read(later, own); return r?.dot && r; }, 'the agent\'s post lights the row');
-    assert.match(lit.title, /^Activity seen .+ \(fixture-notebook-agent posted\)$/, 'the words name the agent, not the reader\'s later post');
+    assert.match(lit.title, /^fixture-notebook-agent posted at \d{1,2}:\d{2}\s[AP]M$/, 'the words name the agent, not the reader\'s later post');
     assert.doesNotMatch(lit.title, /you posted/);
     const work = (await view('topic', { topic_id: 'work-own' })).topic.work;
     assert.deepEqual([work.observed, work.by, work.how], [true, 'fixture-notebook-agent', 'posted']);

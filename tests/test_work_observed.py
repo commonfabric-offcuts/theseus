@@ -23,8 +23,9 @@ class WorkRuleCase(unittest.TestCase):
         # A wait is work however old the activity, or with none at all.
         self.assertTrue(work.observed(None, True, now))
         self.assertTrue(work.observed(0, True, now))
-        # The seam for the pipeline's NOW list.
-        self.assertTrue(work.observed(None, False, now, in_now=True))
+        # Being in the pipeline's Now is not work by itself (item 86, D4): the seam is gone.
+        with self.assertRaises(TypeError):
+            work.observed(None, False, now, in_now=True)
 
 
 class WorkKeyCase(unittest.TestCase):

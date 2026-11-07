@@ -83,8 +83,12 @@ test('the informed second choice is bound to destination kind as well as id', as
 function railFixture(t) {
   const previous=globalThis.document;
   class Element {
-    constructor(){this.children=[];this.dataset={};this.attributes={};this.handlers={};this.hidden=false;}
-    append(...nodes){for(const child of nodes){child.parent=this;this.children.push(child);}}
+    constructor(){this.children=[];this.dataset={};this.attributes={};this.handlers={};this.hidden=false;this.text='';}
+    // As the DOM's: text is the node's own words, then its children's, in order.
+    get textContent(){return this.text+this.children.map(child=>typeof child==='string'?child:child.textContent).join('');}
+    set textContent(value){this.text=String(value);this.children=[];}
+    append(...nodes){for(const child of nodes){if(typeof child==='object')child.parent=this;this.children.push(child);}}
+    replaceChildren(...nodes){this.children=[];this.text='';this.append(...nodes);}
     addEventListener(name,fn){this.handlers[name]=fn;}
     setAttribute(k,v){this.attributes[k]=v;}removeAttribute(k){delete this.attributes[k];}
     insertBefore(child,before){child.remove();const index=before?this.children.indexOf(before):this.children.length;this.children.splice(index,0,child);child.parent=this;}
@@ -94,17 +98,23 @@ function railFixture(t) {
   }
   globalThis.document={createElement:()=>new Element(),activeElement:null};t.after(()=>globalThis.document=previous);
   const nodes=Object.fromEntries(['host','more','retry','message','empty'].map(k=>[k,new Element()]));
-  const queue=[],calls=[],opened=[],row=id=>({id,owner_id:'owner',title:'Same',title_truncated:true,version:1});
+  // Each row says where its outcome stands (item 86): 'a' waits on the reader, any other is quiet.
+  const light=id=>id==='a'?{light:'waiting',label:'Waiting on you',short:{kind:'asks',count:1},unreadable:false}
+    :{light:'quiet',label:'Quiet',short:{kind:'since',ms:null},unreadable:false};
+  const queue=[],calls=[],opened=[],row=id=>({id,owner_id:'owner',title:'Same',title_truncated:true,version:1,light:light(id)});
   const answer=(ids,next_cursor=null)=>({instance_id:'instance',items:ids.map(row),next_cursor});
   const rail=new OutcomeRail({...nodes,instanceId:'instance',current:'a',read:args=>{calls.push(args);const next=queue.shift();return typeof next==='function'?next():Promise.resolve(next);},open:(...args)=>opened.push(args),denied:error=>error.status===403});
   return {...nodes,queue,calls,opened,answer,rail};
 }
 test('outcome links expose stable IDs and preserve native activation and More focus',async t=>{
   const f=railFixture(t);f.queue.push(f.answer(['a'],'a'));await f.rail.load();
-  const first=f.host.children[0];assert.equal(first.children[0].textContent,'Same…');assert.match(first.children[1].textContent,/a.*title shortened/);
+  const first=f.host.children[0];assert.equal(first.children[0].textContent,'Same…');
+  // The grey line under the name says where the outcome stands, not its id (item 86).
+  assert.equal(first.children[1].textContent,'Waiting on you · 1 question · title shortened');
+  assert.equal(first.children[1].dataset.light,'waiting');
   f.more.focus();f.queue.push(f.answer(['b']));await f.more.onclick();
   assert.equal(document.activeElement.dataset.workspaceId,'b');assert.equal(f.host.children[0],first);
-  assert.equal(f.host.children[1].children[1].textContent,'b · title shortened');
+  assert.equal(f.host.children[1].children[1].textContent,'Quiet · title shortened');
   let prevented=0;first.onclick({button:0,metaKey:true,preventDefault(){prevented++;}});
   assert.equal(prevented,0);assert.deepEqual(f.opened,[]);
   first.onclick({button:0,preventDefault(){prevented++;}});assert.equal(prevented,1);

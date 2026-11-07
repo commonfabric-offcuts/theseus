@@ -483,6 +483,28 @@ def main():
                     elif freshness and request["method"] == "navigation_workspaces":
                         answer = [command("workspace.create", "navigation-workspace-" + item["id"], item)
                                   for item in request["workspaces"]]
+                    elif freshness and request["method"] == "light_outcome":
+                        # Item 86's light: an outcome ("outcome", its id) of the person's with the fixture agent on
+                        # its team, made through real commands. With "topic", the agent opens a
+                        # topic in it with the person taking part, which is work the person sees.
+                        agent, workspace = "fixture-notebook-agent", request["outcome"]
+                        if not request.get("exists"):
+                            command("workspace.create", "light-workspace-" + workspace,
+                                    {"id": workspace, "title": request["title"], "purpose": "The outcome light", "team": [agent]})
+                        answer = None
+                        if request.get("topic"):
+                            topic_id = request["topic"]["id"]
+                            prefix = "light-" + topic_id
+                            command("draft.save", prefix + "-save", {
+                                "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
+                                "topic_id": topic_id, "generation": prefix + "-generation", "body": "Opening " + topic_id,
+                                "opening": {"workspace_id": workspace, "title": request["topic"]["title"], "participants": [actor]}},
+                                {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
+                            command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
+                                                                               "send_operation_id": prefix + "-send"},
+                                    {"topic_id": topic_id}, {"draft_revision": 1}, sender=agent)
+                            answer = command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"},
+                                             {"topic_id": topic_id}, sender=agent)
                     elif freshness and request["method"] == "agent_message":
                         answer = agent_message(request)
                     elif freshness and request["method"] == "agent_state":

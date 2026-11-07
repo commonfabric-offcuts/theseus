@@ -143,6 +143,8 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     assert.deepEqual(here, { title: 'Release plan', focused: true, body: 'Ship on Thursday.\nDan reviews the notes, and Warp signs off.\n', added: ['Thursday'] });
     await until(async () => (await light(p)) === null, 'the light goes out');
     await shot(p, 'notebook-outcome-page');
+    // Where the outcome stands sits above its topics (item 86), so Close may be below the fold: scroll to it as a reader would.
+    await p.evaluate(`document.querySelector('#page-here button').scrollIntoView({block:'center'})`);
     await p.point('#page-here button');
     assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(row)})`), true, 'Close gives the focus back to the row');
     assert.deepEqual(p.errors, []);

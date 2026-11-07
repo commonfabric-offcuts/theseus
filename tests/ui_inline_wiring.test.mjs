@@ -84,7 +84,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     observe(target) { this.targets.push(target); }
   }
   const scope = { ...writing, ...times, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
-    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); } }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
+    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },
@@ -111,6 +111,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('Object.assign(globalThis, (()=>{' + marksSource + '; return {Marks,paintMarkButton,paintAuthor,marksWords}; })())', context);
   const foldSource = readFileSync(new URL('../web/fold.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + foldSource + '; return {betweenOthers,foldCard,cardIn,paintFold,opened}; })())', context);
+  // The outcome light: its words, then the rows, the peek and the panel that say them (item 86).
+  const lightWordsSource = readFileSync(new URL('../web/outcome-light-words.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  const outcomeLightSource = readFileSync(new URL('../web/outcome-light.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + lightWordsSource + outcomeLightSource + '; return {LightPeek,paintAlsoWaiting,paintStanding,paintStandingFailed,paintRowLight}; })())', context);
   const outcomeSource = readFileSync(new URL('../web/outcomes.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeRail', 'class OutcomeRail');
   vm.runInContext('globalThis.OutcomeRail = (()=>{' + outcomeSource + '; return OutcomeRail; })()', context);
   const referencesSource = readFileSync(new URL('../web/outcome-references.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class OutcomeReferences', 'class OutcomeReferences');
@@ -1079,8 +1083,35 @@ test('a topic page says where it stands, sends its change at the current version
   assert.equal(find(node => node.className === 'state-note')?.textContent, 'Shipped');
 });
 
-test('an outcome page lists what waits on the reader, and follows each new attention answer', async () => {
-  const f = fixture('https://fixture/?workspace=w1');
+// Item 86: every outcome's questions are listed on the Outcomes home only; an
+// outcome's own page says its questions once, in "Where this outcome stands".
+const waitingPage = async (href, waiting) => {
+  const f = fixture(href);
+  f.inject({ api: f.api, bootstrap: f.bootstrap });
+  pickerApi(f);
+  const view = f.api.view;
+  f.api.view = async (name, args, options) => name === 'attention'
+    ? { instance_id: 'fixture', unread: 0, addressed: 0, latest_addressed: [], waiting_on_me: waiting().length, latest_waiting: waiting() }
+    : view(name, args, options);
+  const live = { listeners: [], listen(fn) { this.listeners.push(fn); } };
+  f.useLive(live);
+  await f.initialize();
+  return { f, live };
+};
+
+test('an outcome page does not list what waits on the reader, even as attention answers come', async () => {
+  const waiting = [{ id: 't7', title: 'First', title_truncated: false, note: '', state_by: 'fable', state_ms: null, workspace: { id: 'w2', title: 'Pitch deck', title_truncated: false } }];
+  const { f, live } = await waitingPage('https://fixture/?workspace=w1', () => waiting);
+  const settle = async () => { for (let n = 0; n < 4; n++) await new Promise(setImmediate); };
+  await settle();
+  for (const listener of live.listeners) listener({ kind: 'commit', seq: 9 });
+  await settle();
+  assert.equal(waiting.length, 1, 'something waits on the reader');
+  assert.deepEqual(f.get('waiting-on-you').children, [], 'the Waiting on you box is not painted on an outcome page');
+});
+
+test('the Outcomes home lists what waits on the reader, and follows each new attention answer', async () => {
+  const f = fixture('https://fixture/');
   f.inject({ api: f.api, bootstrap: f.bootstrap });
   pickerApi(f);
   let waiting = [{ id: 't7', title: 'First', title_truncated: false, note: '', state_by: 'fable', state_ms: null }];
@@ -1578,7 +1609,7 @@ test('pressing the older-below line while the page may not read stops at once an
 
 test('during a visit the New line holds as the person reads, moves to show more, and Refresh or Mark read place it afresh, the card being read held still', async () => {
   const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y) }, innerHeight: 800 });
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   const live = stream(); f.useLive(live);
@@ -1655,7 +1686,7 @@ test('during a visit the New line holds as the person reads, moves to show more,
 
 test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {
   const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y) }, innerHeight: 800 });
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   await f.initialize(); await settle();

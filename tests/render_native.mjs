@@ -43,6 +43,10 @@ export const audit = `(() => {
   // dialog itself: its pills keep their shape and place, judged as ever, but
   // their colours are judged where the person can see them, with no dialog open.
   const modal = document.querySelector('dialog:modal');
+  // The outcome light's peek (item 86) floats over the page while its row is
+  // hovered: the pills it covers keep their shape and place, judged as ever,
+  // and their colours are judged where the person sees them, with it closed.
+  const peek = document.querySelector('#light-tip:not([hidden])'), peekBox = peek?.getBoundingClientRect();
   const problems = [], pills = [];
   for (const element of document.querySelectorAll('body *')) {
     const box = element.getBoundingClientRect(), style = getComputedStyle(element);
@@ -81,7 +85,7 @@ export const audit = `(() => {
     const clips = clippers(element);
     const cut = clips.find(({ style: s, box: outer }) => [s.overflowX, s.overflowY].some(o => o === 'hidden' || o === 'clip') && meets(box, outer) && !inside(box, outer));
     if (cut) problems.push({ kind: 'cut off by its box', at: where(element), by: where(cut.at) });
-    if (inside(box, view) && clips.every(({ box: outer }) => inside(box, outer)) && !(modal && !modal.contains(element))) {
+    if (inside(box, view) && clips.every(({ box: outer }) => inside(box, outer)) && !(modal && !modal.contains(element)) && !(peek && !peek.contains(element) && meets(box, peekBox))) {
       pills.push({ at: where(element), left: box.left, top: box.top, width: box.width, height: box.height, border: parseFloat(style.borderTopWidth) });
     }
   }
@@ -229,6 +233,9 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             url, beforeNavigate: async q => {
               await q.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
               await q.send('Emulation.setDeviceMetricsOverride', metrics);
+              // A phone has touch, and so no hover (hover: none), as on every phone check:
+              // without it the page offers what only a mouse gets, such as the outcome light's peek.
+              if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
             } });
           // Every row named here carries its count, and its state where it has
           // one. Topics left by earlier checks may sort before these, past the
