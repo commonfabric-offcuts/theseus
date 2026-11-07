@@ -23,7 +23,8 @@ export class TopicViews {
     this.oldestUnread = null; this.unreadAt = -1;
     // The message the New line is drawn under. The first answer places it;
     // during the visit it moves only to show more unread, never up as the
-    // person reads. placeAfresh (an explicit Mark read) has the next
+    // person reads; once nothing at or above it is unread it fades where it
+    // is (held, below). placeAfresh (an explicit Mark read) has the next
     // topic_unread read asked after it place the line wherever the oldest
     // unread message is: asked is how many reads were asked, and afreshFrom
     // the count when the line was last asked to be placed afresh.
@@ -81,20 +82,32 @@ export class TopicViews {
     if (!live) this.olderCursor = answer.next_cursor;
     this.paint('messages'); return true;
   }
+  // Whether the line still holds something unread: the oldest unread message
+  // is its own or one above it (newer). The same answer that drives the counts
+  // and the Unread pills says so; when nothing at or above it is unread (read
+  // on screen, opened, replied to, marked read) the line fades where it is.
+  // A faded line is gone for the reader: a message that then arrives, or is
+  // marked unread, brings the line just below it, as when there was none.
+  get held() {
+    const value = this.oldestUnread;
+    return Boolean(this.line && value && value.seq >= this.line.seq);
+  }
   // Keeps what an answer says of the oldest unread message unless an answer
   // read at a later commit said otherwise, and moves the line: afresh, to the
   // oldest unread message the latest answer names, even when this answer is
-  // older; else only when that shows more unread (there was no line, or the
-  // message is further back). True when the line moves.
+  // older (with none, the line stays where it is to fade); else only when that
+  // shows more unread (there was no line or it had faded, or the message is
+  // further back). True when the line moves, fades or comes back.
   learnUnread(answer, afresh = false) {
     const said = oldestUnreadOf(answer);
     if (said === undefined || said.at < this.unreadAt && !afresh) return false;
+    const held = this.held;
     if (said.at >= this.unreadAt) { this.oldestUnread = said.value; this.unreadAt = said.at; }
-    const value = this.oldestUnread, more = value && (!this.line || value.seq < this.line.seq);
-    const line = afresh || more ? value : this.line;
+    const value = this.oldestUnread, more = value && (!held || value.seq < this.line.seq);
+    const line = afresh ? value ?? this.line : more ? value : this.line;
     const moved = this.line?.id !== line?.id;
     this.line = line;
-    return moved;
+    return moved || held !== this.held;
   }
   placeAfresh() { this.afreshFrom = this.asked; }
   // Reads where the oldest unread message is now, and moves the line when it

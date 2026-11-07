@@ -551,10 +551,19 @@ function keepListAnchor(paint) {
 }
 function inView(node) { const box = node.getBoundingClientRect(); return box.bottom > 0 && box.top < innerHeight; }
 // The New line, just below the oldest message the reader had not read when the
-// topic opened, or further back as more became unread (TopicViews.line).
+// topic opened, or further back as more became unread (TopicViews.line); faded
+// where it is once nothing at or above it is unread (TopicViews.held).
 function placeLine() {
   placeNewLine($('messages'), views.line?.seq ?? null, document,
-    views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null);
+    views.olderCursor === null ? null : () => run(loadToUnread), views.line?.sent_ms ?? null, views.held);
+  paintMoreMessages();
+}
+// While the New line says more new messages lie below, it is the one way to
+// load older messages; More messages, doing much the same, is hidden. A faded
+// line promises nothing, so More comes back.
+function paintMoreMessages() {
+  $('more-messages').hidden = views.olderCursor === null ||
+    [...$('messages').children].some(child => child.dataset?.line === 'older' && !child.classList.contains('new-line-read'));
 }
 function paintViews(kind) {
   if (kind === 'offer') { reader?.paintOffer(); return; }
@@ -618,9 +627,7 @@ function paintViews(kind) {
   }
   if (kind === 'messages') placeLine();
   });
-  // While the New line says more new messages lie below, it is the one way to
-  // load older messages; More messages, doing much the same, is hidden.
-  $('more-messages').hidden = views.olderCursor === null || [...$('messages').children].some(child => child.dataset?.line === 'older');
+  paintMoreMessages();
   $('more-memory').hidden = views.memoryCursor === null;
   if (kind === 'messages') noteRead();
 }
@@ -721,7 +728,8 @@ async function toggleMark() {
     return;
   }
   // An explicit Mark read places the New line afresh, wherever the oldest
-  // unread message now is; a read that fails is owed, as after any commit.
+  // unread message now is, or, with nothing left unread, lets it fade where it
+  // is; a read that fails is owed, as after any commit.
   if (receipt?.status === 'committed' && state.marked) { views.placeAfresh(); if (commitReload) run(commitReload); }
   if (!registry.isSourceCurrent(p)) return;
   if (receipt?.error?.code === 'REVISION_CONFLICT') {
