@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { holdRemoveThroughUpload } from './reader_images_native.mjs';
 
 // One selected real HTTP/Store flow. No product controller is replaced. File
 // selection uses a native Add image click and a fixture file supplied through
@@ -245,9 +246,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
     const chooser = await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'Reader native image chooser');
     await p.send('DOM.setFileInputFiles', { backendNodeId: chooser.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
-    // The row says Ready while its upload is still finishing, and is drawn again,
-    // with new buttons, once it has finished: Remove is pressed only after that.
-    await until(() => p.evaluate('(()=>{const r=document.querySelector("#writing-attachments .image-choice");if(!r?.dataset.view)return false;const v=JSON.parse(r.dataset.view);return v[0]==="Ready"&&v[4]===false})()'), 'Reader image ready, its upload finished');
+    // Remove is pressed once the row says Ready, as a person would. Its upload
+    // may still be finishing; the row's repaint then keeps the Remove pressed.
+    await until(() => p.evaluate('document.querySelector("#writing-attachments .image-choice span")?.textContent === "screen.png · Ready"'), 'Reader image ready');
     await p.evaluate('(()=>{const b=[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove");b.id="reader-remove-fixture-image"})()');
     await p.point('#reader-remove-fixture-image');
     await until(() => p.evaluate('document.querySelector("#writing-attachments").children.length===0'), 'native image-row removal');
@@ -403,6 +404,19 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await center('#inline-writing-body'); await p.point('#inline-writing-body'); await p.key('a', 4); await p.key('k', 2);
     assert.equal(await inlineBody(), '');
     await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'emptied topic draft saved');
+    assert.deepEqual(p.errors, []);
+  });
+  await check('inline Remove held down while its upload finishes removes the image', async () => {
+    const p = await page('inline-remove-held', null, true);
+    await p.evaluate('document.querySelector("#inline-add-image").scrollIntoView({block:"center"})');
+    p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+    const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#inline-add-image');
+    const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'inline chooser');
+    await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
+    const held = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'held inline upload');
+    await holdRemoveThroughUpload(p, '#inline-attachments', held, until);
+    await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'the topic draft saved with no image');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
     assert.deepEqual(p.errors, []);
   });
 }

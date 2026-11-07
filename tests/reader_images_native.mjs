@@ -9,6 +9,29 @@ export const imageInstrumentation = `(()=>{
   IDBObjectStore.prototype.put=function(value,...rest){if(this.name==='editors')imagePuts.push({kind:value.kind,bytes:bytes(value),id:value.id});return put.call(this,value,...rest)};
   window.imageRows=()=>new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors');t.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result.map(v=>({...v,blob:v.blob?{size:v.blob.size}:undefined})));t.oncomplete=()=>d.close()}});
 })()`;
+// Presses Remove on host's image row while its upload is held, keeps the
+// press down while the upload is let go and the row repaints as it finishes,
+// and releases it there (item 116). The press is aimed at Remove's far edge,
+// where a button replaced or moved under the pointer would be missed.
+export async function holdRemoveThroughUpload(p, host, held, until) {
+  const row = JSON.stringify(host + ' .image-choice'), running = `JSON.parse(document.querySelector(${row})?.dataset.view||'[]')[4]`;
+  await until(() => p.evaluate(`${running}===true&&[...document.querySelectorAll(${JSON.stringify(host + ' button')})].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'an uploading image with Remove');
+  await p.evaluate(`[...document.querySelectorAll(${JSON.stringify(host + ' button')})].find(b=>b.textContent==='Remove').dataset.heldRemove=''`);
+  await p.point('[data-held-remove]', 'move');
+  const place = () => p.evaluate(`(()=>{const b=document.querySelector('[data-held-remove]');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,words:b.parentElement.firstElementChild.textContent,removes:[...b.parentElement.querySelectorAll('button')].filter(x=>x.textContent==='Remove').length}})()`);
+  const before = await place(), x = before.x + before.width - 3, y = before.y + before.height / 2;
+  assert.equal(await p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held-remove]')`), true, 'the press is aimed at Remove');
+  await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+  await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+  p.intercept(null); await p.release(held);
+  await until(() => p.evaluate(`${running}===false`), 'the row repainted as its upload finished');
+  const after = await place();
+  assert.ok(after, 'the Remove held down is still in the row after it repainted');
+  assert.equal(after.removes, 1, 'the row repainted with the Remove held down as its only Remove');
+  assert.deepEqual({ ...after, words: before.words }, before, `Remove kept its place under the pointer as the row went from "${before.words}" to "${after.words}"`);
+  await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  await until(() => p.evaluate(`!document.querySelector(${JSON.stringify(host)}).textContent.includes('screen.png')`), 'the held Remove removed the image');
+}
 export async function imageChecks({ check: harnessCheck, page: harnessPage, until, root, facts, view, control, replace, field, shot, observations }) {
   // Every case owns its writing: the drafts an earlier case left (recovery
   // copies' text, retained attachments) are emptied before it starts, as a
@@ -551,6 +574,21 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await until(() => p.evaluate('!document.querySelector("#writing-attachments").textContent.includes("screen.png")'), 'second Remove finished');
     await until(() => p.evaluate('document.activeElement.id === "add-image"'), 'focus on Add image after an untouched Remove');
     assert.equal(await field(p), 'Typed after a late Remove');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('images Remove held down while its upload finishes removes the image', async () => {
+    const p = await page('remove-held', null, true); await p.open(1);
+    await replace(p, 'Writing kept through a held Remove');
+    p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+    const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
+    const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'reply chooser');
+    await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
+    const held = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'held upload');
+    await holdRemoveThroughUpload(p, '#writing-attachments', held, until);
+    await until(async () => { const draft = (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft; return draft?.body === 'Writing kept through a held Remove' && draft.attachments.length === 0; }, 'the saved reply keeps its writing and no image');
+    assert.equal(await field(p), 'Writing kept through a held Remove');
     assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
     assert.deepEqual(p.errors, []);
   });
