@@ -495,7 +495,11 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
 
     def _view_workspace(self, db, actor, args):
         workspace = self._workspace(db, actor, args.get("workspace_id"))
-        return {"instance_id": self.instance_id, "workspace": dict(workspace), "relevant_versions": {"workspace": workspace["version"]}}
+        # Whether the outcome has its conversation (null for one made before version 28 and not
+        # yet started), so a page keeps the conversation's row in its place before reading it.
+        conversation = self._conversation_of(db, workspace["id"])
+        return {"instance_id": self.instance_id, "workspace": dict(workspace, conversation_id=conversation["id"] if conversation else None),
+                "relevant_versions": {"workspace": workspace["version"]}}
 
     def _view_workspaces(self, db, actor, args):
         limit = _page_size(args)

@@ -1175,7 +1175,7 @@ async function initialize() {
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
-  here = { workspaceId: topic.workspace_id, title: topic.workspace_id, view: null, page: topic.kind === 'conversation', onlyNew: false, items: new Map() };
+  here = { workspaceId: topic.workspace_id, title: topic.workspace_id, view: null, page: topic.kind === 'conversation', has: topic.kind === 'conversation', onlyNew: false, items: new Map() };
   if (here.page) {
     // Every link to the conversation's topic opens it as the conversation, keeping any message anchor.
     route = { kind: 'conversation', id: topic.workspace_id };
@@ -1189,6 +1189,7 @@ async function initialize() {
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
+    here.has ||= hasConversation(workspace);
     if (here.page) $('inline-writing-body').placeholder = conversationPlaceholder(workspace.title);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   // Those who can be added: the outcome's team, or everyone when the team cannot be read.
@@ -1490,9 +1491,10 @@ function followCommits(load) {
 // what was painted and says so to the commit follower, which reads again.
 async function loadConversation() {
   if (!here) return true;
-  // Every outcome has its conversation: its row stands in its place from the
-  // start, so the topics and the page below it do not move when its read lands.
-  if (!here.read) paintConversationNav();
+  // An outcome that has its conversation (its workspace read says so) has its
+  // row stand in its place from the start, so the topics and the page below it
+  // do not move when its read lands; one that has none never draws it.
+  if (!here.read && here.has) paintConversationNav();
   try {
     const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
     here.view = answer.conversation; here.read = true;
@@ -1509,9 +1511,11 @@ async function loadConversation() {
     return false;
   }
 }
+// Whether an outcome has its conversation, as its workspace read says.
+const hasConversation = workspace => typeof workspace?.conversation_id === 'string';
 function paintConversationNav() {
   const target = { kind: 'conversation', id: here.workspaceId };
-  const shown = paintConversationRow($('conversation-row'), { view: here.view ?? (here.read ? null : {}), title: here.title, reader: bootstrap.actor, current: here.page,
+  const shown = paintConversationRow($('conversation-row'), { view: here.view ?? (here.read || !here.has ? null : {}), title: here.title, reader: bootstrap.actor, current: here.page,
     href: routeHref(target), open: () => openDestination(target, CONVERSATION_TITLE) });
   $('conversation-navigation').hidden = !shown;
 }
@@ -1720,7 +1724,7 @@ async function initializeOutcomePage(route) {
       purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
         save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
       purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
-      $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);here.title=workspace.title;
+      $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);here.title=workspace.title;here.has=hasConversation(workspace);
       await paintTeam(workspace,()=>reload());
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
@@ -1753,8 +1757,8 @@ function pipelineSection(workspace,current,loaded=()=>{}) {
   return {name:'pipeline',node:$('pipeline-navigation'),row,load:()=>row.load().then(read=>{loaded(read);return read;})};
 }
 // An outcome's pipeline, or one item's record in it: the rail shows this
-// outcome (its Pipeline row, topics and Notebook pages); the page and the
-// rail read again on every commit.
+// outcome as a topic page's does (its conversation, Pipeline row, topics and
+// Notebook pages); the page and the rail read again on every commit.
 async function initializePipelinePage(route) {
   status('');
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
@@ -1768,8 +1772,11 @@ async function initializePipelinePage(route) {
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
     open:(id,title)=>openDestination({kind:'topic',id},title)});
   outcomeReferences=outcomePages(route.id,()=>{});
+  // The outcome's title names its conversation's row, and whether it has one keeps the row's place.
+  here={workspaceId:route.id,title:route.id,view:null,page:false,has:false,onlyNew:false,items:new Map()};
+  try { const workspace=(await pipelineView('workspace',{workspace_id:route.id})).workspace;here.title=workspace.title;here.has=hasConversation(workspace); } catch {}
   outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'pipeline',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},
+    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},pipelineSection(route.id,route.kind==='pipeline'),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},
       {name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
@@ -1845,7 +1852,7 @@ async function initializeOpeningPage(route) {
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
     open:(id,title)=>openDestination({kind:'topic',id},title)});
   outcomeReferences=outcomePages(route.workspace,()=>{});
-  here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,onlyNew:false,items:new Map()};
+  here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,has:hasConversation(answer.workspace),onlyNew:false,items:new Map()};
   outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
     sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},{name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
   placeBrand(document.querySelector('.rail'));

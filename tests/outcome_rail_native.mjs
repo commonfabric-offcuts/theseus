@@ -110,6 +110,50 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(t.errors, []); await t.close();
   });
 
+  await check('rail an outcome with no conversation never draws its row: on a phone nothing stands there while the conversation\'s read is out, nor after it lands, and nothing moves', async () => {
+    // An outcome made before version 28, not yet given its conversation.
+    await control({ method: 'older_outcome', workspace_id: 'rail-older', title: 'Older outcome', topic_id: 'rail-older-topic', topic_title: 'Older topic' });
+    const t = await page('rail-conversation-none', null, true, { url: facts.origin + '/?topic=rail-older-topic', beforeNavigate: async q => {
+      await q.send('Emulation.setDeviceMetricsOverride', SIZES.phone);
+      await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
+      q.intercept(payload => payload?.name === 'conversation');
+    } });
+    await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=rail-older-topic]"))'), 'the topic rail is drawn');
+    await until(() => t.held.some(entry => entry.payload?.name === 'conversation'), 'the conversation\'s read is held');
+    const where = () => t.evaluate(`(()=>{const top=s=>Math.round(document.querySelector(s).getBoundingClientRect().top);
+      return {row:!document.querySelector('#conversation-navigation').hidden||Boolean(document.querySelector('#conversation-row a')),topics:top('#topic-navigation'),title:top('#topic-title')}})()`);
+    const before = await where();
+    assert.equal(before.row, false, 'no row stands for a conversation the outcome does not have');
+    t.intercept(null);
+    for (const entry of t.held.splice(0)) await t.release(entry);
+    await t.evaluate('new Promise(resolve=>setTimeout(resolve,0))');
+    assert.deepEqual(await where(), before, 'the read landing draws nothing and moves nothing');
+    assert.deepEqual(t.errors, []); await t.close();
+  });
+
+  await check('rail the pipeline page has a topic page\'s rail: ← Outcomes, the conversation, the Pipeline row, then the topics, at 1280 and 390, light and dark', async () => {
+    const pipeline = (operation, enabled) => control({ method: 'pipeline', kind: 'pipeline.configure', operation_id: operation, target: { workspace_id: 'w1' }, args: { enabled } });
+    await pipeline('rail-pipeline-on', true);
+    try {
+      for (const [size, theme] of COMBOS) {
+        const at = `${size} ${theme}`;
+        const p = await open(`rail-pipeline-${size}-${theme}`, '/?pipeline=w1', size, theme);
+        await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && Boolean(document.querySelector("#pipeline-links a"))'), at + ': the rail is drawn');
+        const seen = await top(p);
+        assert.deepEqual(seen.rail.slice(0, 5), ['brand', 'outcomes-home', 'conversation-navigation', 'pipeline-navigation', 'topic-navigation'],
+          at + ': the logo block, ← Outcomes, the outcome\'s conversation, its Pipeline row, then the topics');
+        const row = await p.evaluate(`(()=>{const a=document.querySelector('#conversation-row a.conversation-row');return a&&{name:a.querySelector('.conversation-name').firstChild.textContent,href:a.getAttribute('href'),current:a.getAttribute('aria-current')}})()`);
+        assert.deepEqual(row, { name: 'Isolated wiring', href: '?conversation=w1', current: null }, at + ': the row names the outcome and opens its conversation');
+        assert.ok(seen.scroll <= seen.width, at + `: no sideways scroll on the pipeline page (${seen.scroll} of ${seen.width})`);
+        await shot(p, `rail-pipeline-${size}-${theme}`);
+        assert.deepEqual(p.errors, []); await p.close();
+      }
+    } finally {
+      // The checks after this one expect the topic page's rail without a Pipeline row.
+      await pipeline('rail-pipeline-off', false);
+    }
+  });
+
   await check('rail Tab from ← Outcomes reaches the conversation, New topic, then the first topic', async () => {
     const p = await open('rail-tab', '/?topic=t1');
     await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), 'the rail is ready');

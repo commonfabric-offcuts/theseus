@@ -136,6 +136,8 @@ Views:
   the reader, the newest work seen in a Now piece's topic), `you_own`, and
   `you_steer` (the owner or the coordinator, who may turn it on). The
   `pipeline` view says `you_steer` too, also while there is no pipeline yet.
+  The pipeline page's rail is a topic page's: the conversation, the Pipeline
+  row, the topics and the Notebook pages.
 
 ## The import
 

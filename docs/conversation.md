@@ -98,4 +98,7 @@ topic_title, author_id}`, or `{hidden: true}`) and, in a conversation, `item`
 by one actor are one line). `items: "open"` lists only items not settled.
 
 `workspace_topics` leaves the conversation out; the `topic` view carries
-`kind`. Stepping back from version 28 is refused once a conversation exists.
+`kind`. The `workspace` view carries `conversation_id` (null for an older
+outcome not yet started), so a page that read it keeps the conversation's row
+in its place while the conversation's own read is out, and draws nothing there
+for an outcome that has none: the row never appears or goes under a finger. Stepping back from version 28 is refused once a conversation exists.

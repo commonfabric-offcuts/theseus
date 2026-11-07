@@ -482,6 +482,23 @@ def main():
                                 {"topic_id": topic_id}, {"draft_revision": 1})
                             created.append(command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}))
                         answer = created
+                    elif freshness and request["method"] == "older_outcome":
+                        # An outcome of the person's as version 27 left it, with no conversation
+                        # (workspace.create starts one now), and one topic made through real commands.
+                        workspace, topic_id = request["workspace_id"], request["topic_id"]
+                        with sqlite3.connect(str(path)) as db:
+                            db.execute("INSERT INTO workspaces VALUES (?,?,?,'',NULL,1)", (workspace, actor, request["title"]))
+                            db.execute("INSERT INTO workspace_members VALUES (?,?)", (workspace, actor))
+                        prefix = "older-" + topic_id
+                        command("draft.save", prefix + "-save", {
+                            "source_ref": {"kind": "new_topic", "id": prefix, "workspace_id": workspace},
+                            "topic_id": topic_id, "generation": prefix + "-generation", "body": "Opening " + topic_id,
+                            "opening": {"workspace_id": workspace, "title": request["topic_title"], "participants": []}},
+                            {"draft_id": prefix + "-draft"}, {"draft_revision": 0})
+                        command("submission.prepare", prefix + "-prepare", {
+                            "draft_id": prefix + "-draft", "submission_id": prefix + "-submission", "send_operation_id": prefix + "-send"},
+                            {"topic_id": topic_id}, {"draft_revision": 1})
+                        answer = command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id})
                     elif freshness and request["method"] == "navigation_workspaces":
                         answer = [command("workspace.create", "navigation-workspace-" + item["id"], item)
                                   for item in request["workspaces"]]
