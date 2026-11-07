@@ -487,7 +487,7 @@ export class PipelinePage {
         // The line clears at once, so the next title can be typed while this one is added.
         this.addDrafts[name] = ''; this.added = null; this.paint();
         this.act(key, async () => {
-          const args = { title, section: name, sources: [{ note: `added by ${this.reader} on the pipeline page` }] };
+          const args = { title, section: name, sources: [{ note: 'the pipeline page' }] }; // "From the pipeline page"; who added it is its `added` event
           if (name === 'candidates') args.candidate_group = '';
           try {
             const result = await this.command('pipeline.item_add', { workspace_id: this.workspace }, args);
