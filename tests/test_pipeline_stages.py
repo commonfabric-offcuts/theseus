@@ -171,7 +171,8 @@ class StagesCase(PipelineCase):
         self.topic("t2")
         first = self.committed(self.start(stage="wait"))["piece_id"]
         second = self.committed(self.start(numbers=(3,), topic="t2", stage="wait"))["piece_id"]
-        release = self.committed(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first, second], "topic_id": "t1"}, {"workspace_id": "w1"}))
+        release = self.committed(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first, second], "topic_id": "t1", "commit_sha": "5" * 40},
+                                              {"workspace_id": "w1"}))
         self.assertEqual(release["numbers"], [1, 2, 3])
         self.assertEqual(self.entries(first), [("wait", 1, "combined", 1)])
         self.assertEqual(self.entries(second), [("wait", 1, "combined", 1)])
@@ -180,7 +181,7 @@ class StagesCase(PipelineCase):
         now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
         self.assertEqual((now["facts"]["next_release"]["release"], now["facts"]["next_release"]["items"]), (23, [1, 2, 3]))
         self.assertEqual(now["pieces"], [], "the work pieces are in the release now")
-        # Once the release is recorded, its items have shipped and its piece is no longer open. It
+        # Once the release of its commit is recorded, its items have shipped and its piece is closed. It
         # goes live after the stages above were entered, whenever this check runs.
         entered = self.sql("SELECT max(entered_ms) FROM pipeline_stage_entries")[0][0]
         live = datetime.datetime.fromtimestamp(entered / 1000 + 1, datetime.timezone.utc).isoformat(timespec="seconds")
@@ -190,14 +191,14 @@ class StagesCase(PipelineCase):
         self.rejected(self.command("pipeline.combine", {"release_number": 23, "piece_ids": [first], "topic_id": "t1"}, {"workspace_id": "w1"}), "RELEASE_NUMBER")
 
     def test_one_release_at_a_time_numbered_one_past_the_last_shipped(self):
-        # 3.4: the release is the outcome's one open release piece holding an unshipped item; its number is the last
-        # shipped + 1, so the deploy, the Reporter and the page can only mean one piece.
+        # 3.4: the release is the outcome's one open release piece; its number is the last shipped + 1, so the deploy, the
+        # Reporter and the page can only mean one piece, until the record of its commit ships it.
         self.release_stages(*STAGES[:3], self.CHECKS)
         self.topic("t2")
         first = self.committed(self.start(stage="wait"))["piece_id"]
         second = self.committed(self.start(numbers=(3,), topic="t2", stage="wait"))["piece_id"]
         self.rejected(self.combine([first], release=24), "RELEASE_NUMBER")
-        this = self.committed(self.combine([first]))
+        this = self.committed(self.combine([first], commit_sha="5" * 40))
         self.assertEqual(this["release_number"], 23)
         self.assertIsNone(self.sql("SELECT release_number FROM pipeline_pieces WHERE id=?", (this["piece_id"],))[0][0], "no number is stored")
         refused = self.combine([second])
@@ -208,7 +209,8 @@ class StagesCase(PipelineCase):
         self.assertEqual((now["facts"]["next_release"]["release"], now["release_piece"]["id"], now["release_piece"]["release_number"]),
                          (23, this["piece_id"], 23))
         self.store.record_release({"release": 23, "commit": "5" * 40, "deployed_at": "2026-11-07T08:00:00-08:00", "items": [1, 2], "source": "deploy"})
-        self.assertIsNone(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"], "its items shipped")
+        self.assertIsNone(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"], "it shipped")
+        self.assertEqual(self.entries(this["piece_id"])[-1][2], "shipped")
         later = self.committed(self.combine([second]))
         now = self.store.view("owner", "pipeline", {"workspace_id": "w1"})
         self.assertEqual((later["release_number"], now["facts"]["next_release"]["piece_id"], now["facts"]["next_release"]["release"]),

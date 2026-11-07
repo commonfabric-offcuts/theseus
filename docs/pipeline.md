@@ -84,30 +84,35 @@ writes those readings for the candidate before it moves the release piece from
 
 ### The release
 
-An outcome whose pipeline is on and ships in releases has at most one release at
-a time: its open release piece that no release record names. A record names a
-release piece when it records a commit the piece was combined at or checked at,
-or one of the items still in it. Everything that means "the release" asks that
-one rule (`_the_release`): `combine`, taking items back from a held release,
-moving or noting a release piece (`stage_enter` and `stage_note` refuse
-`PIECE_CLOSED` for any other), the piece an item is being built in, which
-candidate run is the release's, the head's Next release, the deploy's read
-(`checks --live`) and its move into `deploy`, the release check's `--report`,
-and which piece a candidate's readings name.
+An outcome whose pipeline ships in releases has at most one release at a time:
+its open release piece. A release piece is open until an event ends it, and is
+never read as ended from other records. Everything that means "the release" asks
+that one rule (`_the_release`): `combine`, taking items back from a held release,
+the piece an item is in, which candidate run is the release's, the head's Next
+release, the deploy's read (`checks --live`) and its move into `deploy`, the
+release check's `--report`, and which piece a candidate's readings name.
 
 - Its number is not stored: it is the last release a record names, plus one, so a
   number is spent only when a deploy records it.
 - `combine` makes a release only while there is none (`RELEASE_OPEN` names the
   one being put together); approved pieces wait in their last stage. Its
   optional `release_number` must be that number (`RELEASE_NUMBER`).
-- A release ends when every item has gone back to building (its entry is left
-  `held`, "Every item went back to building"), when every item is dropped (left
-  `dropped`), or when a release record names it, which ships it, whatever items
-  the record names or leaves out (`deploy --no-items`, or a trailer that missed
-  one). A piece that ended never held a number, so the work combined next is that
-  same release. An item a shipped release's record left out has not shipped: it
-  is in no piece, and starting a piece for it leaves the shipped release
-  `returned`, as from a held one.
+- While it is open, the pipeline stays on and keeps shipping in releases:
+  `configure` refuses turning either off (`RELEASE_OPEN`), so the settings never
+  change what is in it.
+- It ends when every item has gone back to building (its entry is left `held`,
+  "Every item went back to building"), when every item is dropped (left
+  `dropped`), or when a release record that names it is written. A record names
+  it when it records a commit the piece was checked or combined at, or one of the
+  items still in it. `record-release` then leaves its entry `shipped` ("Shipped in
+  release N") in the transaction that writes the record, whatever stage it is in;
+  an item it holds that no record names has not shipped and goes back to building
+  (`returned`). A record written before the release existed, or written again,
+  ends nothing. A piece that ended never held a number, so the work combined next
+  is that same release.
+- An item stays in the piece it was in when that piece finished: what shipped in
+  a release stays in it, and `piece_start` refuses it (`ITEM_IN_PIECE`).
+  Dropping an item leaves only a piece under way (D25).
 - The gate (D18) reads a release piece's readings at its commit: the newest
   commit checked for it, else the one `combine` was given.
 - Only the release check's own run of a candidate reads for the release:
