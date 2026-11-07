@@ -483,7 +483,7 @@ class Checks:
         version = self._bump_checks(db, workspace["id"], definition["check_id"])
         return {"workspace_id": workspace["id"], "check_id": definition["check_id"], "revision": revision, "checks_revision": version}, []
 
-    def _write_run(self, db, actor, workspace_id, run, readings, source, base_for=None):
+    def _write_run(self, db, actor, workspace_id, run, readings, source, base_for=None, imported=False):
         """One run and its readings, immutable: the same run again is the stored one; a different one with its identity is refused."""
         commit = run.get("commit_sha", run.get("commit"))
         if commit is not None and (not isinstance(commit, str) or len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit)):
@@ -504,7 +504,7 @@ class Checks:
             check = definitions.get(reading.get("check_id"))
             if check is None:
                 raise Refusal("CHECK_UNKNOWN", "No check %s in this outcome" % reading.get("check_id"))
-            if source == "reported" and check["source"] != "reported":
+            if source == "reported" and check["source"] != "reported" and not imported:
                 raise Refusal("SOURCE_NOT_REPORTED", "%s is read by the release check, not reported" % check["check_id"])
             if reading.get("result") not in ("passed", "failed", "measured"):
                 raise Refusal("INVALID_ARGUMENT", "A reading passed, failed or measured")
@@ -1090,10 +1090,14 @@ def import_checks(store, db, seed, actor, now_ms):
     store._ensure_targets(db, workspace_id)
     target = seed.get("target")
     if target:
+        written = _ms(target["at"], "target at") if target.get("at") else now_ms
         db.execute("INSERT INTO outcome_target_revisions VALUES (?,1,?,?,?,?,NULL,'accepted',?,?)",
-                   (workspace_id, target["text"], target.get("origin_note", ""), target.get("by", actor), target.get("ms", now_ms),
-                    target.get("by", actor), target.get("ms", now_ms)))
+                   (workspace_id, target["text"], target.get("origin_note", ""), target.get("by", actor), written,
+                    target.get("by", actor), written))
     for check in seed.get("checks", []):
+        check = dict(check)
+        if "counted_since" in check:
+            check["counted_since_ms"] = _ms(check.pop("counted_since"), "counted_since")
         definition = store._definition(db, workspace_id, check, None)
         db.execute("INSERT INTO outcome_checks VALUES (%s)" % ",".join("?" * 22),
                    (workspace_id, definition["check_id"], 1, definition["group_name"], definition["position"], definition["name"],
@@ -1102,12 +1106,15 @@ def import_checks(store, db, seed, actor, now_ms):
                     definition["explain"] or "", definition["pending_words"] or "", definition["record_memory_item_id"],
                     definition["left_by_topic_id"], None, check.get("defined_by", actor), check.get("defined_ms", now_ms)))
     for reading_run in seed.get("runs", []):
-        commit = reading_run.get("commit")
-        if commit is None and reading_run.get("release") is not None:
-            row = db.execute("SELECT commit_sha FROM releases WHERE number=?", (reading_run["release"],)).fetchone()
-            commit = row[0] if row else None
-        store._write_run(db, actor, workspace_id, dict(reading_run, commit=commit), reading_run["readings"],
-                         reading_run.get("source", "reported"))
+        run = {key: reading_run[key] for key in ("started_at", "finished_at", "note") if key in reading_run}
+        if reading_run.get("release") is not None:
+            # A reading written by hand at a release's deploy: that release's commit, at its deploy time.
+            row = db.execute("SELECT commit_sha,deployed_ms FROM releases WHERE number=?", (reading_run["release"],)).fetchone()
+            if row is None:
+                raise Refusal("SEED_SOURCE", "A reading names release %s, which has no record here" % reading_run["release"])
+            run.update(commit=row[0], started_ms=row[1], finished_ms=row[1])
+        # Readings taken by hand before release 21 (the seed says where each came from) are reported runs of any check.
+        store._write_run(db, actor, workspace_id, run, reading_run["readings"], "reported", imported=True)
     runs = 0
     checks = store._current_checks(db, workspace_id)
     for release in db.execute("SELECT * FROM releases WHERE measurements IS NOT NULL ORDER BY number").fetchall():
@@ -1136,7 +1143,7 @@ def import_checks(store, db, seed, actor, now_ms):
                    "VALUES (?,?,?,?,?,?,?,?,?,?,1)",
                    (problem_id, workspace_id, problem["what"], problem["kind"], problem.get("found_by") or (message["author_id"] if message else actor),
                     message["id"] if message else None, None if message else problem["note"],
-                    message["sent_ms"] if message else problem["found_ms"], problem.get("cover_item"), problem.get("cover_words", "")))
+                    message["sent_ms"] if message else _ms(problem["found_at"], "found_at"), problem.get("cover_item"), problem.get("cover_words", "")))
         problems += 1
     store._bump_checks(db, workspace_id, "imported")
     return {"checks_imported": True, "checks": len(seed.get("checks", [])), "release_runs": runs, "problems": problems}

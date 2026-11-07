@@ -44,6 +44,14 @@ def _parser():
     pipeline.add_argument("--profile", required=True)
     pipeline.add_argument("--seed", required=True)
     pipeline.add_argument("--as", dest="actor", required=True)
+    checks = verbs.add_parser("checks-import", add_help=False)
+    checks.add_argument("--profile", required=True)
+    checks.add_argument("--seed", required=True)
+    checks.add_argument("--as", dest="actor", required=True)
+    run = verbs.add_parser("record-checks", add_help=False)
+    run.add_argument("--profile", required=True)
+    run.add_argument("--run", dest="seed", required=True)
+    run.add_argument("--as", dest="actor", required=True)
     return parser
 
 
@@ -69,6 +77,10 @@ def _run(options):
         return profile.store().start_conversation(options.outcome, options.coordinator, replaces)
     if options.verb == "pipeline-import":
         return profile.store().import_pipeline(_record(options.seed), options.actor)
+    if options.verb == "checks-import":
+        return profile.store().import_checks(_record(options.seed), options.actor)
+    if options.verb == "record-checks":
+        return profile.store().record_checks(_record(options.seed), options.actor)
     return profile.store().register_actor(options.id, options.kind, options.name)
 
 
@@ -86,7 +98,9 @@ def main(argv=None, *, stdout=None, stderr=None):
                      "       aim-next-admin add-actor --profile /abs/profile.json --id ID --kind human|agent --name NAME\n"
                      "       aim-next-admin record-release --profile /abs/profile.json --record /abs/release.json\n"
                      "       aim-next-admin conversation-start --profile /abs/profile.json --outcome W [--coordinator NAME] [--replaces T1,T2]\n"
-                     "       aim-next-admin pipeline-import --profile /abs/profile.json --seed /abs/seed.json --as ACTOR\n")
+                     "       aim-next-admin pipeline-import --profile /abs/profile.json --seed /abs/seed.json --as ACTOR\n"
+                     "       aim-next-admin checks-import --profile /abs/profile.json --seed /abs/checks.json --as ACTOR\n"
+                     "       aim-next-admin record-checks --profile /abs/profile.json --run /abs/run.json --as ACTOR\n")
         return 2
     try:
         result, code = dict(_run(options), ok=True), 0

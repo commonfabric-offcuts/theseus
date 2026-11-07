@@ -29,6 +29,7 @@ class UsageError(ValueError):
 
 
 from .cli_outcome import PipelineVerbs, register as register_pipeline
+from .cli_targets import WORDS as TARGET_WORDS, TargetVerbs, register as register_targets
 
 
 class Parser(argparse.ArgumentParser):
@@ -170,7 +171,8 @@ def _output(stdout, stderr, result, code):
 
 LEGACY_VERBS = ("binding", "view", "command")
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
-         "{binding | view FILE|- | command FILE|- | outcomes | new-outcome --title TITLE [--purpose TEXT] [--team A,B] | owner OUTCOME ACTOR "
+         "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
+         "| owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
          "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
@@ -181,7 +183,11 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION | --undo EVENT) "
          "| piece OUTCOME N,M --topic TOPIC --stage S | enter-stage PIECE STAGE [--round N] [--left approved|sent-back|passed|held] "
-         "| stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE}")
+         "| stage-note PIECE TEXT | combine OUTCOME --release N --pieces P,Q --topic TOPIC [--ask MSG] | finish PIECE "
+         "| checks OUTCOME [--readings] [--live COMMIT] | target OUTCOME [--origin NOTE] [--ask m-…] TEXT|- | target-settle OUTCOME REVISION accepted|declined "
+         "| check-define OUTCOME FILE | check-report OUTCOME FILE | accept-worse OUTCOME CHECK RUN TEXT|- "
+         "| problem OUTCOME --kind defect|design-miss (--from m-… | --note TEXT) TEXT|- | problem-cover OUTCOME PROBLEM [--item N] [--test T] TEXT|- "
+         "| outcome-kind OUTCOME reach|keep | reached OUTCOME [--unmet] TEXT|-}")
 SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
@@ -206,9 +212,10 @@ def _parser():
 
     for name in LEGACY_VERBS:
         verb(name).add_argument("request", nargs="?")
-    verb("outcomes")
+    verb("outcomes").add_argument("--reached", action="store_true")
     outcome = verb("new-outcome")
     outcome.add_argument("--title", required=True)
+    outcome.add_argument("--kind", choices=("reach", "keep"))
     outcome.add_argument("--purpose", default="")
     outcome.add_argument("--team", default="")
     owner = verb("owner")
@@ -282,6 +289,7 @@ def _parser():
     attachment.add_argument("--out", required=True)
     post.add_argument("--subject")
     register_pipeline(verb)
+    register_targets(verb)
     return parser
 
 
@@ -408,7 +416,7 @@ class Failed(Exception):
         self.code, self.recorded = code, recorded
 
 
-class Agent(PipelineVerbs):
+class Agent(PipelineVerbs, TargetVerbs):
     """The everyday verbs: each builds its envelopes, saves each request before dispatch."""
 
     def __init__(self, profile, options, stdin, lines):
@@ -566,19 +574,24 @@ class Agent(PipelineVerbs):
     # Verbs -----------------------------------------------------------------
 
     def do_outcomes(self):
-        items = self.pages("workspaces", {})
+        reached = bool(getattr(self.options, "reached", False))
+        items = self.pages("workspaces", {"reached": True} if reached else {})
         for item in items:
             words = _light_words(item.get("light"))
-            self.out.plain("%s  %s  (owner %s)%s" % (item["id"], _one_line(item["title"]), item["owner_id"],
-                                                     "  " + words if words else ""))
+            self.out.plain("%s  %s  (owner %s, to %s)%s" % (item["id"], _one_line(item["title"]), item["owner_id"], item.get("kind", "keep"),
+                                                            "  " + words if words else ""))
         if not items:
-            self.out.plain("no outcomes")
+            self.out.plain("no reached outcomes" if reached else "no outcomes")
+        count = (self.last_page or {}).get("reached_count") or 0
+        if count and not reached:
+            self.out.plain("reached (%d): outcomes --reached" % count)
 
     def do_new_outcome(self):
         options = self.options
         outcome = "w-" + uuid.uuid4().hex
         self.command("workspace.create", {}, {"id": outcome, "title": options.title, "purpose": options.purpose,
-                                              "team": _names(options.team)}, {"workspace_revision": 0})
+                                              "team": _names(options.team), **({"kind": options.kind} if options.kind else {})},
+                     {"workspace_revision": 0})
         self.out.plain('created outcome %s "%s"' % (outcome, _one_line(options.title, 60)))
 
     def do_owner(self):
@@ -750,6 +763,11 @@ class Agent(PipelineVerbs):
         topic = answer["topic"]
         page = self.view("topic_messages", {"topic_id": options.topic, "cursor": options.after, "limit": options.limit})
         self.out.plain("%s  %s" % (topic["id"], _one_line(topic["title"])))
+        # The outcome's target, closed, so an agent reads what done looks like with the conversation (D10).
+        target = answer.get("outcome_target")
+        if target:
+            self.out.plain("  target (%s, %s): %s" % (TARGET_WORDS.get(target["word"], target["word"]), "to " + target["kind"],
+                                                       _one_line(target["text"] or "no target written yet", 400)))
         # What each participant said they are responsible for, under the title.
         for item in answer["participants"]:
             if item.get("responsibility"):

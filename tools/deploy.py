@@ -34,13 +34,14 @@ if __package__ in (None, ""):
 
 from aim_next.contract import Refusal
 from aim_next.releases import release_row
-from tools import release_check, releases
+from tools import checks as outcome_checks, release_check, releases
 
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
-    "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes")
+    "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes outcome reporter_profile")
 REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile", "runner_id", "routes")
-OPTIONAL_KEYS = ("python", "tailnet_origin")
+# outcome: the outcome whose checks this deploy measures (docs/targets.md); reporter_profile: a member's profile that reads them.
+OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile")
 
 
 class Refused(Exception):
@@ -68,7 +69,9 @@ def load_config(path):
     for key in ("live", "instance") + (("python",) if "python" in raw else ()):
         require(os.path.isabs(raw[key]), "deploy config: %s must be an absolute path" % key)
     instance = Path(raw["instance"])
+    require(("outcome" in raw) == ("reporter_profile" in raw), "deploy config: outcome and reporter_profile go together")
     return Config(live=Path(raw["live"]), instance=instance, python=raw.get("python", PYTHON),
+                  outcome=raw.get("outcome"), reporter_profile=instance / raw["reporter_profile"] if "reporter_profile" in raw else None,
                   server_profile=instance / raw["server_profile"], port=raw["port"],
                   tailnet_origin=raw.get("tailnet_origin"), runner_profile=instance / raw["runner_profile"],
                   runner_id=raw["runner_id"], routes=instance / raw["routes"])
@@ -411,6 +414,21 @@ def record_commands(config, evidence, records):
     return commands
 
 
+def live_checks(config, sha):
+    """The outcome's checks, live baseline and allowances for SHA, read through the live CLI; None while the live release has none."""
+    answer = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.reporter_profile), "--json",
+                  "checks", config.outcome, "--live", sha])
+    lines = [line for line in answer.stdout.splitlines() if line.startswith("{")]
+    view = json.loads(lines[0]) if lines else {}
+    if answer.returncode != 0:
+        # A live release before targets has no such verb or view: nothing to compare against yet.
+        code = (view.get("error") or {}).get("code")
+        require(code in ("UNKNOWN_VIEW", "INVALID_ARGUMENT", None) and "checks" not in view,
+                "the live outcome's checks could not be read (%s): %s" % (code, (answer.stderr or answer.stdout).strip()[:300]))
+        return None
+    return view
+
+
 def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None):
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
     evidence.mkdir(parents=True, exist_ok=True)
@@ -453,6 +471,17 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     require(not dirty and ff, "the live checkout has tracked changes or %s is not a fast-forward of %s" % (sha, head))
     # A release check that did not pass has no counts to record; a dry run stops here and says why.
     require(not reasons, unchecked)
+    # The outcome's checks (12): the candidate's readings beside the live release's; anything worse the
+    # owner did not allow or accept refuses the deploy before anything stops.
+    if config.outcome:
+        live = live_checks(config, sha)
+        record(evidence, "02-checks", {"outcome": config.outcome, "live": live and live.get("live"), "checks": live and len(live["checks"])})
+        if live is not None:
+            candidate = outcome_checks.run_from_summary(json.loads(Path(summary).read_text()), live["checks"], config.outcome)
+            found = outcome_checks.worse(candidate, live)
+            record(evidence, "02-worse", {"worse": found, "titles": [outcome_checks.fix_title(item) for item in found]})
+            require(not found, "the release check made %s worse; the outcome page shows it, and its owner may accept a worse measure"
+                    % ", ".join(outcome_checks.fix_title(item) for item in found))
     planned, before, commits, latest = release_plan(config, head, sha, summary, number, no_items, live_since)
     # A restart (planned is None) is of the latest release, when one places the live commit.
     restart_of = latest["release"] if planned is None and latest else None
@@ -549,6 +578,16 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         if wrote.returncode != 0:
             break
     record(evidence, "11-release", {"records": records, "writes": writes})
+    # 9. The release check's readings, recorded as this commit's run of the outcome's checks, now that the release is live.
+    if config.outcome and not (writes and writes[-1]["exit"] != 0):
+        live = live_checks(config, sha)
+        if live is not None and live["coordinator"]:
+            measured = outcome_checks.run_from_summary(json.loads(Path(summary).read_text()), live["checks"], config.outcome)
+            path = (evidence / "checks-run.json").resolve()
+            path.write_text(json.dumps(measured, indent=1) + "\n")
+            wrote = run([config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "record-checks", "--profile",
+                         str(config.server_profile), "--run", str(path), "--as", live["coordinator"]])
+            record(evidence, "12-checks", {"run": str(path), "exit": wrote.returncode, "stdout": wrote.stdout, "stderr": wrote.stderr})
     if writes and writes[-1]["exit"] != 0:
         failed = writes[-1]
         raise Refused("%s is live but the record of release %d was not written (%s); write it, and those after it, "
