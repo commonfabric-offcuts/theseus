@@ -64,7 +64,9 @@ class TopicStateVerbCase(AgentVerbCase):
         self.assertEqual(self.run_cli("post", first, "Back to this one")[0], 0)
         code, out, err = self.run_cli("topics", "w1")
         self.assertEqual((code, err), (0, ""))
-        lines = out.splitlines()
+        # The outcome's conversation comes first, on its own line, then its topics.
+        conversation, *lines = out.splitlines()
+        self.assertTrue(conversation.startswith("conversation t-"), conversation)
         self.assertEqual([line.split("  ")[0] for line in lines], [first, "t1", "done (1):", second, "archived (1): topics w1 --archived"])
         self.assertIn("[done]", lines[3])
         _, archived, _ = self.run_cli("topics", "w1", "--archived")

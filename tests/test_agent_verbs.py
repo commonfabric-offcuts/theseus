@@ -236,7 +236,10 @@ class ReadingVerbCase(AgentVerbCase):
         self.assertEqual((code, out), (0, "w1  Isolated test  (owner owner)  worked on at %s\n" % at))
         code, out, _ = self.run_cli("topics", "w1")
         self.assertEqual(code, 0)
-        self.assertEqual([line.split("  ")[0] for line in out.splitlines()], ["t1", "t0"])
+        # The outcome's conversation comes first, on its own line, then its topics.
+        conversation, *topics = out.splitlines()
+        self.assertRegex(conversation, r"^conversation t-[0-9a-f]{32} \(agent-a answers; 0 new\)$")
+        self.assertEqual([line.split("  ")[0] for line in topics], ["t1", "t0"])
         code, out, _ = self.run_cli("read", "t1")
         self.assertEqual(code, 0)
         seq = self.sql("SELECT seq FROM messages WHERE id=?", (long_id,))[0][0]
