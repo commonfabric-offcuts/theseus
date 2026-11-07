@@ -68,7 +68,7 @@ test('rail coalesces repeated More and preserves native modified-link activation
   f.host.handlers.touchend(touch(75));assert.equal(prevented,1,'an actual tap inside the link keeps its native click');
 });
 
-test('topic Refresh during More queues exactly one reread of what is loaded',async t=>{
+test('a topic list reload during More queues exactly one reread of what is loaded',async t=>{
   const f=fixture(t);f.queue.push(f.page(['a'],'a'));await f.rail.load();let release;
   f.queue.push(()=>new Promise(resolve=>release=resolve));const more=f.rail.load(true);
   const first=f.rail.load(),second=f.rail.load();assert.equal(first,second);f.queue.push(f.page(['a','b'],'b'),f.page(['c']));

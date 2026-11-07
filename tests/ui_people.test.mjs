@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PeoplePanel, fillNames, markReach, readDirectory, readMembers } from '../web/people.mjs';
+import { PeoplePanel, fillNames, markReach, readDirectory, readMembers, listWords } from '../web/people.mjs';
 
 class Element {
   constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, hidden: true }); }
@@ -277,4 +277,29 @@ test('a recipient outside the topic is marked, with an offer to add them only fo
   markReach(refused, 'stranger', () => ({ reachable: false, add: null }));
   assert.equal(refused.find(node => node.tag === 'button'), undefined);
   assert.equal(refused.title, "A message to stranger is refused until they are in this topic. Its creator or the outcome's owner can add them.");
+});
+
+// With no Refresh button, a change whose answer never came reads who is here
+// once, at that moment, and says what it found. The change is never sent again.
+test('a change that is not confirmed reads who is here once and says so; a failed read says that too', async t => {
+  dom(t);
+  const host = new Element('div'), sent = [];
+  let reads = 0, read = async () => { reads++; return people(['tony', 'fable', 'aim-core']); };
+  const panel = new PeoplePanel({ host, label: 'Add', names: 'n', read: () => read(), add: async id => { sent.push(id); return { status: 'unknown' }; },
+    remove: async id => { sent.push(id); return { status: 'unknown' }; } });
+  panel.paint(people(['tony', 'ally']), true);
+  host.find(node => node.attributes['aria-label'] === 'Remove ally').onclick(); await new Promise(setImmediate);
+  assert.equal(notice(host), 'The change was not confirmed. Here now: tony, fable and aim-core.');
+  assert.deepEqual(chips(host), ['tony', 'fable', 'aim-core'], 'the panel shows who it read');
+  assert.deepEqual([sent, reads], [['ally'], 1], 'read once; the change is not sent again');
+  read = async () => { reads++; throw Error('offline'); };
+  host.find(node => node.attributes['aria-label'] === 'Remove fable').onclick(); await new Promise(setImmediate);
+  assert.equal(notice(host), 'The change was not confirmed, and reading who is here again failed too.');
+  assert.deepEqual(chips(host), ['tony', 'fable', 'aim-core'], 'it keeps what it last showed');
+  assert.deepEqual([sent.length, reads], [2, 2]);
+  const bare = new PeoplePanel({ host: new Element('div'), label: 'Add', names: 'n', add: async () => ({}), remove: async () => ({ status: 'unknown' }) });
+  bare.paint(people(['tony', 'ally']), true);
+  bare.host.find(node => node.attributes['aria-label'] === 'Remove ally').onclick(); await new Promise(setImmediate);
+  assert.equal(notice(bare.host), 'The change was not confirmed, and reading who is here again failed too.', 'a panel with no read never says Refresh');
+  assert.deepEqual([listWords(['tony']), listWords(['tony', 'fable']), listWords([])], ['tony', 'tony and fable', 'nobody']);
 });

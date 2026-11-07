@@ -146,7 +146,7 @@ test('outcome touch gaps do nothing and repeated More shares one read',async t=>
   let release;f.queue.push(()=>new Promise(resolve=>release=resolve));const one=f.more.onclick(),two=f.more.onclick();
   assert.equal(one,two);release(f.answer(['b']));await one;assert.equal(f.calls.length,2);
 });
-test('Refresh during More queues one first page rather than silently dropping Refresh',async t=>{
+test('a reload during More queues one first page rather than silently dropping the reload',async t=>{
   const f=railFixture(t);f.queue.push(f.answer(['a'],'a'));await f.rail.load();
   let release;f.queue.push(()=>new Promise(resolve=>release=resolve),f.answer(['new']));
   const more=f.rail.load(true),refresh=f.rail.load(),again=f.rail.load();assert.equal(refresh,again);

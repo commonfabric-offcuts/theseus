@@ -383,6 +383,12 @@ class NativeCoverage(unittest.TestCase):
             found |= {(harness, (flag,)) for flag in accepted}
         return found
 
+    def test_the_rail_mode_is_a_step(self):
+        # The side rail inside an outcome, and the page with no header bar.
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual((steps["rail"].harness, steps["rail"].flags), (release_check.PERSISTENCE, ("--rail",)))
+        self.assertIn("native-rail", release_check.REQUIRED)
+
     def test_every_harness_mode_is_a_step(self):
         steps = [(step.harness, tuple(step.flags)) for step in release_check.NATIVE_STEPS]
         self.assertEqual(len(steps), len(set(steps)), "a mode runs twice")

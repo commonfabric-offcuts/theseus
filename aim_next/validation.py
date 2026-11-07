@@ -57,7 +57,7 @@ VIEWS = {
     "deliveries": {"cursor", "limit"}, "delivery": {"delivery_id"},
     "opening": {"opening_id"}, "openings": {"workspace_id", "cursor", "limit"},
     "workspace_members": {"workspace_id", "cursor", "limit"},
-    "attention": set(), "actors": {"cursor", "limit", "kind"},
+    "attention": {"workspace_id"}, "actors": {"cursor", "limit", "kind"},
     "marks": {"topic_id", "cursor", "limit"}, "topic_unread": {"topic_id"},
     "colors": {"cursor", "limit"},
     "source_topics": {"message_id", "cursor", "limit"},

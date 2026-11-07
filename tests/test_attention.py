@@ -252,9 +252,57 @@ class AttentionCase(AgentLoopCase):
         self.committed(self.through(self.seq(self.counts()[3][0]["message_id"])))
         self.assertEqual((self.counts()[3], after()), ([], 0))
 
-    def test_attention_takes_no_arguments(self):
-        refused = self.store.view("owner", "attention", {"limit": 3})
-        self.assertEqual(refused["error"]["code"], "INVALID_ARGUMENT")
+    def test_attention_takes_only_the_outcome_a_page_is_inside(self):
+        for args in ({"limit": 3}, {"workspace_id": ""}, {"workspace_id": 7}, {"workspace_id": "w1", "limit": 3}):
+            with self.subTest(args=args):
+                refused = self.store.view("owner", "attention", args)
+                self.assertEqual(refused["error"]["code"], "INVALID_ARGUMENT")
+
+    def wait_on(self, reader, workspace, topic, actor="agent-a"):
+        """A topic in workspace (created when new) that waits on reader."""
+        if not self.sql("SELECT 1 FROM workspaces WHERE id=?", (workspace,)):
+            self.committed(self.command("workspace.create", {"id": workspace, "title": "Outcome " + workspace, "purpose": "",
+                                                             "team": ["agent-a", "agent-b"]}))
+        if not self.sql("SELECT 1 FROM topics WHERE id=?", (topic,)):
+            opening = "o-" + topic
+            self.committed(self.command("opening.save", {"workspace_id": workspace, "topic_id": topic, "title": "Topic " + topic,
+                                                         "participants": ["agent-a", "agent-b"], "body": "Opening", "attachments": []},
+                                        target={"opening_id": opening}, expected={"opening_revision": 0}))
+            self.committed(self.command("opening.publish", {}, target={"opening_id": opening}, expected={"opening_revision": 1}))
+        version = self.store.view(actor, "topic", {"topic_id": topic})["topic"]["version"]
+        self.committed(self.command("topic.update", {"state": "waiting", "waiting_on": [reader]}, target={"topic_id": topic},
+                                    expected={"topic_revision": version}, actor=actor))
+
+    def waiting_outcomes(self, actor="owner", **args):
+        answer = self.store.view(actor, "attention", args)
+        self.assertNotIn("error", answer, answer)
+        return answer["waiting_outcomes"]
+
+    def test_waiting_outcomes_counts_distinct_outcomes_and_says_whether_this_one_is_among_them(self):
+        self.assertEqual(self.waiting_outcomes(), {"count": 0, "here": False})
+        self.assertEqual(self.waiting_outcomes(workspace_id="w1"), {"count": 0, "here": False})
+        self.wait_on("owner", "w1", "t1")
+        self.wait_on("owner", "w1", "t2")
+        self.assertEqual(self.waiting_outcomes(), {"count": 1, "here": False}, "two topics in one outcome are one outcome")
+        self.assertEqual(self.waiting_outcomes(workspace_id="w1"), {"count": 1, "here": True})
+        self.wait_on("owner", "w2", "t3")
+        self.assertEqual(self.waiting_outcomes(workspace_id="w1"), {"count": 2, "here": True})
+        self.assertEqual(self.waiting_outcomes(workspace_id="w9"), {"count": 2, "here": False}, "an outcome with no wait on the reader")
+        # Another reader's waits are theirs.
+        self.wait_on("agent-b", "w3", "t4", actor="agent-a")
+        self.assertEqual(self.waiting_outcomes()["count"], 2)
+        self.assertEqual(self.waiting_outcomes("agent-b", workspace_id="w3"), {"count": 1, "here": True})
+        # An archived topic counts nowhere.
+        version = self.store.view("owner", "topic", {"topic_id": "t3"})["topic"]["version"]
+        self.committed(self.command("topic.update", {"archived": True}, target={"topic_id": "t3"}, expected={"topic_revision": version}))
+        self.assertEqual(self.waiting_outcomes(workspace_id="w2"), {"count": 1, "here": False})
+
+    def test_an_outcome_counts_however_old_its_wait_is(self):
+        # This outcome's wait is the oldest of six; the five newest are elsewhere.
+        self.wait_on("owner", "w1", "t1")
+        for n in range(2, 7):
+            self.wait_on("owner", "w%d" % n, "t%d" % n)
+        self.assertEqual(self.waiting_outcomes(workspace_id="w1"), {"count": 6, "here": True})
 
 
 if __name__ == "__main__":

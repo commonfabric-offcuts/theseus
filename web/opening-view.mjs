@@ -81,8 +81,13 @@ export class OpeningView {
     const d=this.draft,w=d.writing,editable=d.editable,focused=document.activeElement;
     this.state.textContent=[d.phase==='loading'?'Loading…':d.status,d.device].filter(Boolean).join(' · ');
     const message=this.error??d.refusal??d.notice;this.notice.textContent=message??'';this.notice.hidden=!message;
-    if(this.title.value!==w.title)this.title.value=w.title;
-    if(this.body.value!==w.body)this.body.value=w.body;
+    // Writing taken from another device keeps the focused field's caret where it was.
+    for(const [field,value] of [[this.title,w.title],[this.body,w.body]]){
+      if(field.value===value)continue;
+      const caret=focused===field?[field.selectionStart,field.selectionEnd]:null;
+      field.value=value;
+      if(caret)field.setSelectionRange(Math.min(caret[0],value.length),Math.min(caret[1],value.length));
+    }
     this.title.readOnly=this.body.readOnly=!editable;
     keyed(this.chips,[d.bootstrap.actor,...w.participants],id=>{
       const chip=el('span',undefined,'chip');chip.append(el('span'));

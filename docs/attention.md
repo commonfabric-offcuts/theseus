@@ -61,7 +61,9 @@ work it is woken for. So what it folds is exactly what is never unread.
   pending deliveries name the reader.
 - `workspaces` items carry the same two counts summed over the outcome's
   topics.
-- The `attention` view takes no arguments and returns the reader's totals,
+- The `attention` view takes one optional argument, `workspace_id` (the
+  outcome the page is inside; no membership is needed, since the answer is
+  about the reader's own waits), and returns the reader's totals,
   `unread` and `addressed`, and `latest_addressed`: up to five pending
   deliveries that name the reader, newest first, each with its message, its
   topic, and `topic_readable`. A topic the reader can reach only as a
@@ -75,6 +77,16 @@ work it is woken for. So what it folds is exactly what is never unread.
   since_ms}` for the oldest unanswered ask, or `null`). A topic waits only on
   someone who can read it; whoever loses the topic is taken off its waiting
   list.
+- `attention` also returns `waiting_outcomes`, `{count, here}`: how many
+  distinct outcomes hold an unarchived topic that waits on the reader, however
+  old the wait, and whether `workspace_id` is one of them (`false` when none is
+  given). Inside an outcome the page's "← Outcomes" link carries a lit light,
+  with "1 other outcome is waiting on you" (`count` less one when `here`), so
+  a rail that shows only one outcome never hides an ask elsewhere. On the
+  outcome's own page the light shows without the words, which screen readers
+  still hear. The link paints only an answer read with that outcome's
+  `workspace_id`: one read before the page knew its outcome says `here: false`
+  and would count this outcome as another.
 
 An archived topic is out of the outcome's list, and the browser lists archived
 topics only behind the list's closed "Archived (N)" line, so it counts nowhere
@@ -311,8 +323,8 @@ clear a mark.
   told it: every page of the `marks` view, an open's `editor_state`, a
   receipt, a refusal's `current_versions`. A mark the page knew before a
   `marks` read began and that read no longer lists has been cleared since.
-  It reads the marks at start, on Refresh, after each commit (beside the
-  rails), and after any recorded answer to a mark it sent.
+  It reads the marks at start, after each commit (beside the rails), and
+  after any recorded answer to a mark it sent.
 - Loaded cards show an Unread pill beside the author. When the person has
   marks in the topic, a line says how many ("1 message marked unread") and
   its Read it opens the oldest one in the Reader directly by its source,
@@ -346,13 +358,13 @@ server's answer, the unread counts and the Unread pills never disagree, and
 they follow reading live.
 
 The line is placed from that answer when the topic opens and when the reader
-presses Refresh. During the visit it stays put while they read, so it does not
+presses Mark read in this page. During the visit it stays put while they read, so it does not
 vanish a second after a short topic opens; it is a marker of where they were,
 not a count:
 
 - Reading on screen, here or in another tab, never moves the line up, even
-  when everything is read. Opening the topic again, or Refresh, places it
-  afresh: under the oldest message still unread, or nowhere.
+  when everything is read. Opening the topic again places it afresh: under
+  the oldest message still unread, or nowhere.
 - The line moves during the visit only to show more unread: a message marked
   unread further back than the line (here or anywhere) moves it down to just
   below that message, and a message that arrives while there is no line

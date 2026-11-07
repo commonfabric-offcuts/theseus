@@ -30,7 +30,7 @@ async function until(probe, description, timeout = 8000) {
 }
 
 // The fixture: actual Store and HTTP adapter; stdin is its private control channel.
-const fixture = spawn('/usr/bin/python3', ['-I', '-B', 'tests/fixtures/ui_http.py', '--freshness'], { cwd: root });
+const fixture = spawn('/usr/bin/python3', ['-I', '-B', 'tests/fixtures/ui_http.py', '--freshness', '--live'], { cwd: root });
 let fixtureSerial = 0, fixtureErrors = '';
 const requests = new Map();
 fixture.stderr.on('data', data => { fixtureErrors += data; });
@@ -308,8 +308,8 @@ try {
       assert.deepEqual(topic.participants.map(x => x.actor_id ?? x.id ?? x).sort(), [agent, facts.actor].sort(), 'the participant joined the topic');
       await a.shot('desktop-topic-after-shortcut');
 
-      // Device B learns the outcome on Refresh and links to the topic.
-      await b.click('#refresh');
+      // Device B learns the outcome from the send's commit, with nothing
+      // pressed there, and links to the topic.
       await until(() => b.evaluate('/Topic created/.test(document.querySelector("#opening-outcome").textContent) && !document.querySelector("#opening-outcome").hidden'), 'other device sees the topic was created');
       assert.equal(await b.evaluate('document.querySelector("#opening-send").hidden'), true);
       await b.close();

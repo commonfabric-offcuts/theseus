@@ -209,7 +209,7 @@ test('a page for a frontier that moved on is not kept, yet what it says of the l
 });
 
 // The line is placed from the server's answer when the topic opens, and again
-// on Refresh or an explicit Mark read; during the visit, reading never moves it
+// on an explicit Mark read; during the visit, reading never moves it
 // up, so it does not vanish a second after a short topic opens. It moves only
 // to show more unread: an arrival while nothing is unread, or a mark further back.
 test('the line is placed when the topic opens, holds while the person reads, and moves only to show more', async () => {
@@ -225,14 +225,14 @@ test('the line is placed when the topic opens, holds while the person reads, and
   assert.deepEqual(await step(13, null), [{ seq: 3, id: 'm3' }, []], 'reading everything leaves it too: it does not vanish');
   assert.deepEqual(await step(14, { seq: 6, id: 'm6' }), [{ seq: 3, id: 'm3' }, []], 'an arrival above the line is already shown as new');
   assert.deepEqual(await step(15, { seq: 2, id: 'm2' }), [{ seq: 2, id: 'm2' }, ['line']], 'a mark further back moves it down, to show more');
-  assert.deepEqual(await step(16, { seq: 6, id: 'm6' }, { afresh: true }), [{ seq: 6, id: 'm6' }, ['line']], 'Refresh or an explicit Mark read places it afresh');
+  assert.deepEqual(await step(16, { seq: 6, id: 'm6' }, { afresh: true }), [{ seq: 6, id: 'm6' }, ['line']], 'an explicit Mark read places it afresh');
   assert.deepEqual(await step(17, null, { afresh: true }), [null, ['line']], 'afresh with nothing unread: no line');
   assert.deepEqual(await step(18, { seq: 7, id: 'm7' }), [{ seq: 7, id: 'm7' }, ['line']], 'caught up, an arrival brings the line');
   assert.deepEqual(await step(17, null, { afresh: true }), [{ seq: 7, id: 'm7' }, []], 'an afresh answer read at an earlier commit places the line where the later answer says');
   assert.deepEqual(views.oldestUnread, { seq: 7, id: 'm7' });
 });
 
-// Refresh and an explicit Mark read place the line afresh from the newest
+// An explicit Mark read places the line afresh from the newest
 // answer known: one read meanwhile at a later commit (a read-through landing
 // between the two reads) wins over the afresh read's own; and when the afresh
 // read fails, the next read asked after it places the line instead.
@@ -261,7 +261,7 @@ test('placed afresh, the line goes where the newest answer says, even when the a
   const early = views.readUnread(() => new Promise(resolve => { release = resolve; }));
   views.placeAfresh();
   release({ instance_id: 'i', topic_id: 't1', oldest_unread: null, commit_seq: 19 }); await early;
-  assert.deepEqual(views.line, { seq: 7, id: 'm7' }, 'a read asked before Refresh does not place the line afresh');
+  assert.deepEqual(views.line, { seq: 7, id: 'm7' }, 'a read asked before the Mark read does not place the line afresh');
   await views.readUnread(answer(20, null));
   assert.equal(views.line, null, 'the read asked after it does');
 });

@@ -350,8 +350,8 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.evaluate(`(() => { const rail = document.querySelector('.rail'), grown = document.createElement('div'), end = document.createElement('div');
       grown.style.height = '1500px'; end.id = 'fixture-rail-end'; end.textContent = 'The end of the rail'; rail.append(grown, end); scrollTo(0, 0);
       return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))); })()`);
-    const room = await p.evaluate("JSON.stringify({ page: document.documentElement.scrollHeight - innerHeight, header: document.querySelector('.app-header').offsetHeight })");
-    assert.ok(JSON.parse(room).page <= JSON.parse(room).header, `the page has no more room to scroll than the header: ${room}`);
+    const room = await p.evaluate("JSON.stringify({ page: document.documentElement.scrollHeight - innerHeight, header: document.querySelectorAll('.app-header').length })");
+    assert.deepEqual(JSON.parse(room), { page: 0, header: 0 }, `with no header bar the page has no room to scroll: ${room}`);
     const rail = await p.evaluate("(() => { const b = document.querySelector('.rail').getBoundingClientRect(); return { x: b.x + b.width / 2, y: Math.max(b.y, 0) + 100 }; })()");
     await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...rail });
     const end = "(() => { const b = document.querySelector('#fixture-rail-end').getBoundingClientRect(); return b.bottom <= innerHeight; })()";
@@ -508,21 +508,50 @@ export async function liveChecks({ check, page, until, control, observations, or
   const pressed = (p, state) => until(async () => JSON.stringify(await button(p)) === JSON.stringify(state), `the Reader button is ${state}`);
   const marksRow = id => `#topics .nav-item[data-topic-id="${id}"]`;
 
+  // A topic the person may no longer read keeps its cards hidden as they
+  // were: the next commit's reload reads the rail again and never the topic.
+  await check('live a denied topic: a later commit never repaints cached content', async () => {
+    const p = await page('live-denied', null, true); await settled(p);
+    await control({ method: 'read_fault', name: 'changes', status: 200, count: 1,
+      body: { instance_id: facts.instance_id, error: { code: 'FORBIDDEN', message: 'Fixture FORBIDDEN', retryable: false } } });
+    await message('Commit that meets the refusal');
+    await until(() => p.evaluate('observedFreshness.stopped'), 'topic refused');
+    await until(() => hasText(p, '#updates-message', 'topic is unavailable'), 'the page says the topic is unavailable');
+    await until(() => p.evaluate('appReadState().loads===0'), 'reads settled');
+    assert.equal(await p.evaluate('document.querySelector("#messages").hidden'), true, 'the refusal hides the cards');
+    const oldCards = await p.evaluate('document.querySelector("#messages").innerHTML');
+    p.recordResponses(); const since = Date.now();
+    await message('Must not paint after topic denial');
+    await until(() => p.responses.some(r => r.payload?.name === 'workspace_topics' && r.at >= since), 'the commit reload ran');
+    await until(() => p.evaluate('appReadState().loads===0'), 'reads settled');
+    assert.equal(await p.evaluate('document.querySelector("#messages").hidden'), true);
+    assert.equal(await p.evaluate('document.querySelector("#messages").innerHTML'), oldCards);
+    assert.equal(await hasText(p, '#messages', 'Must not paint after topic denial'), false);
+    assert.equal(p.responses.some(r => r.payload?.name === 'topic_messages' && r.at >= since), false, 'the denied topic\'s messages are not read again');
+    assert.deepEqual(p.errors, []); await p.close();
+  });
+
+  // Inside an outcome the rail lists no outcomes, so the outcome row's count
+  // is read on the Outcomes home, open in a page of its own.
   await check('live Mark unread in the Reader raises the title, topic and outcome counts, survives a reload, and a second page catches up', async () => {
     const topic = await markTopic('Marks: counts');
     const second = await page('live-mark-second', null, true, { url: topic.url }); await settled(second);
+    const home = await page('live-mark-home', null, true, { url: origin + '/' });
+    await until(() => home.evaluate(`Boolean(document.querySelector(${JSON.stringify(outcomeRow)}))`), 'outcomes listed');
+    await until(async () => await titleCount(home) === (await view('attention', {})).unread, 'the home holds the first attention answer');
     const p = await page('live-mark-counts', null, true, { url: topic.url }); await settled(p);
-    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(marksRow(topic.id))}) && document.querySelector(${JSON.stringify(outcomeRow)}))`), 'the rails are drawn');
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(marksRow(topic.id))}))`), 'the rail is drawn');
+    assert.equal(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(outcomeRow)}))`), false, 'no outcome rows inside an outcome');
     await until(async () => await titleCount(p) === (await view('attention', {})).unread, 'the title holds the first attention answer');
-    const before = { title: await titleCount(p), topic: await rowCount(p, marksRow(topic.id)), outcome: await rowCount(p, outcomeRow), counts: await counts() };
+    const before = { title: await titleCount(p), topic: await rowCount(p, marksRow(topic.id)), outcome: await rowCount(home, outcomeRow), counts: await counts() };
     assert.equal(before.topic, 0, 'nothing waits in a topic of the person\'s own');
     await openCard(p, topic.message, 'Fixture conversation');
     assert.deepEqual(markCalls(p), [], 'opening what is not marked sends nothing');
     await pressed(p, ['Mark unread', 'false']);
     await p.point('#mark-unread');
     await pressed(p, ['Marked unread', 'true']);
-    await until(async () => await titleCount(p) === before.title + 1 && await rowCount(p, marksRow(topic.id)) === 1 && await rowCount(p, outcomeRow) === before.outcome + 1,
-      'the title, the topic row and the outcome row each count one more');
+    await until(async () => await titleCount(p) === before.title + 1 && await rowCount(p, marksRow(topic.id)) === 1,
+      'the title and the topic row each count one more');
     assert.equal(await pill(p, topic.message), true, 'the card behind the Reader shows Unread');
     const after = await counts();
     assert.deepEqual([after.marked - before.counts.marked, after.mark_operations - before.counts.mark_operations], [1, 1]);
@@ -530,12 +559,14 @@ export async function liveChecks({ check, page, until, control, observations, or
     await second.send('Page.bringToFront');
     await until(async () => await titleCount(second) === before.title + 1 && await rowCount(second, marksRow(topic.id)) === 1 && await pill(second, topic.message) &&
       await line(second) === '1 message marked unread', 'the second page catches up when shown');
+    await home.send('Page.bringToFront');
+    await until(async () => await titleCount(home) === before.title + 1 && await rowCount(home, outcomeRow) === before.outcome + 1, 'the outcome row on the home counts one more');
     await p.send('Page.bringToFront');
     await p.send('Page.navigate', { url: topic.url });
     await until(() => p.evaluate('document.body?.dataset.ready === "true"'), 'the page is read again');
     await until(async () => await pill(p, topic.message) && await line(p) === '1 message marked unread' && await titleCount(p) === before.title + 1, 'the mark survives a reload');
     assert.deepEqual(markCalls(p).length, 1, 'loading the topic clears nothing');
-    for (const each of [p, second]) { assert.deepEqual(each.errors, []); await each.close(); }
+    for (const each of [p, second, home]) { assert.deepEqual(each.errors, []); await each.close(); }
     await markAs([topic.message], false);
   });
 

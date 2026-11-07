@@ -140,8 +140,10 @@ export function replaceChips(host, field, chips) {
 // it returns (their colour, or own-pill for the reader), holding the name and,
 // for a reader who may manage, the remove button after it.
 export class PeoplePanel {
-  constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null, light = () => null, pill = null }) {
-    Object.assign(this, { host, label, names, fixed, add, remove, named, light, pill });
+  // read, when given, answers who is here now, read again once when a change
+  // is not confirmed, so the panel says what it found.
+  constructor({ host, label, names, fixed = () => [] , add, remove, named = () => null, light = () => null, pill = null, read = null }) {
+    Object.assign(this, { host, label, names, fixed, add, remove, named, light, pill, read });
     this.busy = false; this.error = ''; this.people = []; this.manage = false; this.removers = new Map(); this.namers = new Map();
     this.chips = element('div', { className: 'chips' });
     this.input = element('input', { autocomplete: 'off', placeholder: 'Add a name' });
@@ -198,17 +200,33 @@ export class PeoplePanel {
     this.host.hidden = false;
   }
 
+  // One read of who is here, never a second send. A refusal keeps its own
+  // words; an unconfirmed change says who is here now, or that the read failed.
+  async readAgain(refusal) {
+    let people = null;
+    try { people = this.read ? await this.read() : null; } catch { people = null; }
+    if (Array.isArray(people)) this.people = people;
+    if (refusal) return refusal;
+    return people ? `The change was not confirmed. Here now: ${listWords(people.map(person => person.actor_id))}.`
+      : 'The change was not confirmed, and reading who is here again failed too.';
+  }
+
   async submit(action, committed = () => {}, settled = () => {}) {
     if (this.busy) return;
     this.busy = true; this.error = ''; this.paint();
     try {
-      const receipt = await action();
+      let receipt;
+      try { receipt = await action(); } catch (error) { receipt = { error: { message: error.message } }; }
       if (receipt?.status === 'committed') committed();
-      else this.error = receipt?.error?.message ?? 'The change was not confirmed. Refresh to see who is here.';
-    } catch (error) {
-      this.error = error.message;
+      else this.error = await this.readAgain(receipt?.error?.message ?? null);
     } finally {
       this.busy = false; this.paint(); settled();
     }
   }
+}
+
+// "tony", "tony and fable", "tony, fable and aim-core".
+export function listWords(names) {
+  if (names.length < 2) return names.join('') || 'nobody';
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 }

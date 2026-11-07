@@ -15,7 +15,7 @@ export async function wakesChecks({ check, page, until, control, view, facts, sh
       ink:getComputedStyle(c).color,lightBorder:s?[s.borderLeftWidth,s.borderLeftStyle]:null,chipLeft:[b.borderLeftWidth,b.borderTopWidth]}})()`);
   const readNotice = p => p.evaluate(`(()=>{const n=document.getElementById('wakes-status');const s=getComputedStyle(n),b=n.getBoundingClientRect();
     return {hidden:n.hidden,text:n.textContent,role:n.getAttribute('role'),left:[s.borderLeftWidth,s.borderTopWidth],width:b.width,
-      viewport:document.documentElement.clientWidth,top:b.top,header:document.querySelector('.app-header').getBoundingClientRect().bottom}})()`);
+      viewport:document.documentElement.clientWidth,top:b.top,brand:document.querySelector('.brand').getBoundingClientRect().bottom}})()`);
   // The swatch of the warning colour, as the browser resolves it, to compare with the light's.
   const resolved = (p, value) => p.evaluate(`(()=>{const e=document.createElement('span');e.style.color=${JSON.stringify(value)};document.body.append(e);const c=getComputedStyle(e).color;e.remove();return c})()`);
 
@@ -46,7 +46,7 @@ export async function wakesChecks({ check, page, until, control, view, facts, sh
     assert.match(notice.text, /^Wakes are not going out: the agent runner was killed at \d+:\d\d [AP]M .+\. 1 agent has work waiting\.$/);
     assert.equal(notice.role, 'status');
     assert.equal(notice.left[0], notice.left[1], 'one border all round, no coloured left edge');
-    assert.ok(notice.top >= notice.header, 'below the header');
+    assert.ok(notice.top >= notice.brand, 'below the logo block, where the header bar was');
     assert.ok(notice.width <= notice.viewport, 'within the page');
     const shown = await until(async () => { const c = await readChip(p); return /wakes paused/.test(c?.light ?? '') && c; }, 'the name says wakes are paused');
     assert.match(shown.light, /^ · wakes paused · \d+ waiting$/);

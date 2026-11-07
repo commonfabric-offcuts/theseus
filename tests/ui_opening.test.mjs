@@ -356,14 +356,15 @@ test('the opening page shows both versions in a conflict and Check and Send agai
 const texts=node=>[node.textContent,...node.children.flatMap(texts)];
 const lostAnswer=async(_e,send)=>{send();throw Error('Answer lost');};
 
-test('a save whose answer was lost is kept on this device and re-sent first after a reload or Refresh',async()=>{
-  for(const way of ['reload','refresh']){
+test('a save whose answer was lost is kept on this device and re-sent first after a reload, and a commit\'s follow leaves it alone',async()=>{
+  for(const way of ['reload']){
     const h=harness(),d=h.draft();await d.load();d.edit({title:'T',body:'A'});await d.save();
     h.api.hooks['opening.save']=lostAnswer;d.edit({body:'B'});await d.save();await settled(d);
     delete h.api.hooks['opening.save'];
     d.edit({body:'C'});d.cancelSave();await settled(d);
     const lost=h.commands('opening.save')[1];assert.deepEqual(h.store.rows.get('o1').save.envelope,lost,way);
-    const again=way==='reload'?h.draft():d;assert.equal(await (way==='reload'?again.load():again.refresh()),'editing');
+    assert.equal(await d.follow(),false,'a commit never takes Core\'s revision over a save still owed');assert.equal(d.writing.body,'C');
+    const again=h.draft();assert.equal(await again.load(),'editing');
     assert.equal(again.conflict,null,`${way}: Core's revision 2 is this device's own save, not another device's`);
     assert.equal(again.writing.body,'C');assert.equal(again.status,'Not saved yet');
     await h.timers.fire();await settled(again);
@@ -521,4 +522,81 @@ test('the device store is its own database keyed by instance, actor and opening,
   await mine.remove('o1');assert.equal(await mine.get('o1'),null);
   const relaxed=await openOpeningStore({instanceId:'fixture',actor:'person',indexedDB:fakeIndexedDB({durability:'relaxed'})});
   await assert.rejects(relaxed.put(row),/Strict storage durability/);
+});
+
+// With no Refresh button the opening page follows commits: each one reads the
+// opening once, and the draft takes what another device or tab did only while
+// it holds nothing of its own still to save.
+test('a settled draft follows another device\'s save, send and discard; an unchanged opening changes nothing; follow never sends', async () => {
+  for (const act of ['save', 'send', 'discard']) {
+    const h = harness(); let paints = 0;
+    const d = h.draft({ changed: () => paints++ }); await d.load(); d.edit({ title: 'T', body: 'A' }); await d.save(); await settled(d);
+    const reads = () => h.calls.filter(x => x.view === 'opening').length, sends = () => h.calls.filter(x => x.kind).length;
+    let before = [reads(), sends(), paints];
+    assert.equal(await d.follow(), true);
+    assert.deepEqual([reads(), sends(), paints], [before[0] + 1, before[1], before[2]], 'the same revision: read once, nothing painted or sent');
+    const phone = harness({ core: h.core }).draft(); await phone.load();
+    if (act === 'save') { phone.edit({ body: 'From the phone' }); await phone.save(); }
+    else if (act === 'send') assert.equal(await phone.send(), 'published');
+    else assert.equal(await phone.discard(), 'discarded');
+    before = [reads(), sends(), paints];
+    assert.equal(await d.follow(), true);
+    assert.equal(reads(), before[0] + 1, `${act}: one read`); assert.equal(sends(), before[1], `${act}: nothing sent`);
+    assert.ok(paints > before[2], `${act}: the page repaints`);
+    const opening = h.core.openings.get('o1');
+    assert.equal(d.base, opening.revision, `${act}: the draft holds Core's revision`);
+    assert.equal(d.phase, act === 'save' ? 'editing' : act === 'send' ? 'published' : 'discarded');
+    if (act === 'save') assert.equal(d.writing.body, 'From the phone');
+  }
+});
+
+test('follow leaves writing that is not yet saved alone, and the next save meets the change as a conflict with the writing kept', async () => {
+  const cases = {
+    'unsaved writing': async d => { d.edit({ body: 'Mine' }); },
+    'a save under way': async (d, h) => { d.edit({ body: 'Mine' }); h.api.hooks['opening.save'] = async () => new Promise(() => {}); d.save(); await tick(); },
+    'a storage error': async (d, h) => { h.store.fail = 'Disk full'; d.edit({ body: 'Mine' }); await d.persisting.catch(() => {}); },
+    'an image uploading': async d => { d.media.set('m1', { state: 'uploading' }); },
+    'a discard under way': async d => { d.discarding = true; },
+    // Refused for a reason of its own, the writing waits for the person's next change, with no save pending.
+    'a refused save': async (d, h) => {
+      h.api.hooks['opening.save'] = async e => ({ instance_id: d.bootstrap.instance_id, operation_id: e.operation_id, kind: e.kind, recorded: true,
+        status: 'rejected', error: { code: 'TOO_MANY_PARTICIPANTS', message: 'Too many participants' } });
+      d.edit({ body: 'Mine' }); await d.save(); await settled(d); delete h.api.hooks['opening.save'];
+      assert.deepEqual([d.dirty, d.timer, d.pendingSave, d.saving], [true, null, null, false], 'nothing else holds the writing back');
+    },
+  };
+  for (const [why, setup] of Object.entries(cases)) {
+    const h = harness(), d = h.draft(); await d.load(); d.edit({ title: 'T', body: 'A' }); await d.save(); await settled(d);
+    const phone = harness({ core: h.core }).draft(); await phone.load();
+    await setup(d, h);
+    phone.edit({ body: 'From the phone' }); await phone.save();
+    const base = d.base, body = d.writing.body, sends = h.calls.filter(x => x.kind).length;
+    assert.equal(await d.follow(), false, why);
+    assert.deepEqual([d.base, d.writing.body], [base, body], `${why}: the writing and its base are untouched`);
+    assert.equal(h.calls.filter(x => x.kind).length, sends, `${why}: follow sends nothing`);
+  }
+  // The person's unsaved writing meets the phone's save as the conflict panel, with nothing lost.
+  const h = harness(), d = h.draft(); await d.load(); d.edit({ title: 'T', body: 'A' }); await d.save(); await settled(d);
+  const phone = harness({ core: h.core }).draft(); await phone.load();
+  d.edit({ body: 'Mine' }); phone.edit({ body: 'From the phone' }); await phone.save();
+  assert.equal(await d.follow(), false);
+  await h.timers.fire(); await settled(d);
+  assert.ok(d.conflict, 'Keep my writing / Use the saved version');
+  assert.equal(d.writing.body, 'Mine'); assert.equal(d.conflict.remote.body, 'From the phone');
+  assert.equal(await d.follow(), false, 'a draft in conflict is not settled either');
+  // A read that fails changes nothing; the next commit reads again.
+  const g = harness(), e = g.draft(); await e.load(); e.edit({ title: 'T', body: 'A' }); await e.save(); await settled(e);
+  g.api.hooks['view:opening'] = async () => { throw Error('offline'); };
+  assert.equal(await e.follow(), false); assert.equal(e.writing.body, 'A'); assert.equal(e.phase, 'editing');
+});
+
+test('a discard that is not confirmed reads the opening once and says how it now reads, or only that it is kept', async () => {
+  const h = harness(), d = h.draft(); await d.load(); d.edit({ title: 'T', body: 'A' }); await d.save(); await settled(d);
+  h.api.hooks['opening.discard'] = async () => ({ instance_id: 'fixture', status: 'unknown', recorded: false });
+  const reads = () => h.calls.filter(x => x.view === 'opening').length, before = reads();
+  await assert.rejects(d.discard(), error => error.message === 'Discarding is not confirmed. The opening is kept. It now reads: Saved.');
+  assert.equal(reads(), before + 1, 'read once');
+  assert.equal(h.commands('opening.discard').length, 1, 'the discard is not sent again');
+  d.discarding = false; h.api.hooks['view:opening'] = async () => { throw Error('offline'); };
+  await assert.rejects(d.discard(), error => error.message === 'Discarding is not confirmed. The opening is kept.');
 });

@@ -127,7 +127,8 @@ activity first, done topics apart ([topic-list.md](topic-list.md)).
   on screen (at least half of the card, or half of the viewport, which a card
   of any height covers exactly when it crosses the viewport's middle line).
   Loaded messages form contiguous runs: a page joins the run it continues or
-  overlaps, and a Refresh's newest page that does neither starts its own. Each
+  overlaps, and a newest page that does neither (as the first read after
+  a reload) starts its own. Each
   run's on-screen range is reported separately, so a range holds only messages
   on screen and never spans unloaded messages between runs; messages above or
   below it, and unloaded history, stay pending. What a closed modal covered is

@@ -595,6 +595,30 @@ def main():
                         revision = store().view(agent, "topic", {"topic_id": topic_id})["topic"]["version"]
                         command("participation.set", prefix + "-remove", {"actor_id": actor, "present": False},
                                 {"topic_id": topic_id}, {"topic_revision": revision}, sender=agent)
+                    elif freshness and request["method"] == "elsewhere_ask":
+                        # An agent, through its CLI, starts a topic in an outcome of
+                        # its own with the reader in it, and asks the reader there.
+                        agent, prefix = "fixture-notebook-agent", request["operation_id"]
+                        workspace, topic_id = prefix + "-w", prefix + "-t"
+                        command("workspace.create", prefix + "-workspace", {"id": workspace, "title": request.get("title", "Elsewhere"), "team": []}, sender=agent)
+                        command("draft.save", prefix + "-save", {
+                            "source_ref": {"kind": "new_topic", "id": prefix + "-opening", "workspace_id": workspace},
+                            "topic_id": topic_id, "generation": prefix + "-generation", "body": request["body"],
+                            "addressees": [actor], "intent": "ask", "opening": {"workspace_id": workspace, "title": "Asked elsewhere", "participants": [actor]}},
+                            {"draft_id": prefix + "-draft"}, {"draft_revision": 0}, sender=agent)
+                        command("submission.prepare", prefix + "-prepare", {"draft_id": prefix + "-draft", "submission_id": prefix + "-submission",
+                                                                           "send_operation_id": prefix + "-send"},
+                                {"topic_id": topic_id}, {"draft_revision": 1}, sender=agent)
+                        command("topic.create_and_send", prefix + "-send", {"submission_id": prefix + "-submission"}, {"topic_id": topic_id}, sender=agent)
+                        answer = {"workspace_id": workspace, "topic_id": topic_id}
+                    elif freshness and request["method"] == "opening_save":
+                        # The person saves an opening of theirs elsewhere, as their CLI
+                        # or another device would: the whole writing, at its revision.
+                        current = store().view(actor, "opening", {"opening_id": request["opening_id"]})["opening"]
+                        answer = command("opening.save", request["operation_id"], {
+                            "workspace_id": current["workspace_id"], "topic_id": current["topic_id"], "title": request["title"],
+                            "participants": current["participants"], "body": current["body"], "attachments": current["attachments"]},
+                            {"opening_id": request["opening_id"]}, {"opening_revision": current["revision"]})
                     elif freshness and request["method"] == "topic_state":
                         # The person sets where a topic stands, as the state form does,
                         # after adding any participants it is to wait on.

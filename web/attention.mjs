@@ -10,7 +10,9 @@ export class Attention {
   constructor({ api, instanceId, after = null, doc = globalThis.document, notifications = globalThis.Notification, open, focus = () => globalThis.focus?.() }) {
     Object.assign(this, { api, instanceId, doc, notifications, open, focus });
     // after: the newest delivery number already known; only a later one is news.
-    this.baseTitle = doc.title; this.after = Number.isSafeInteger(after) ? after : null; this.running = null; this.again = false; this.last = null;
+    this.baseTitle = doc.title; this.after = Number.isSafeInteger(after) ? after : null; this.running = null; this.again = false; this.last = null; this.here = null;
+    // lastHere: the outcome the last answer was read about, null when none.
+    this.lastHere = null;
     this.unread = 0; this.addressed = 0; this.listeners = new Set();
   }
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
@@ -26,7 +28,10 @@ export class Attention {
     let answer;
     // The foreground lane queues; the background lane sheds, for reads that
     // keep a retry timer of their own, and this read keeps none.
-    try { answer = checkedView(await this.api.view('attention', {}, { readClass: 'foreground' }), this.instanceId); }
+    // here: the outcome the page is inside, so the answer says whether it is
+    // one of the outcomes waiting on the reader.
+    const args = typeof this.here === 'string' ? { workspace_id: this.here } : {};
+    try { answer = checkedView(await this.api.view('attention', args, { readClass: 'foreground' }), this.instanceId); }
     catch { return; } // A failed read keeps what is shown; the next commit asks again.
     if (!Number.isSafeInteger(answer.unread) || !Number.isSafeInteger(answer.addressed) || !Array.isArray(answer.latest_addressed)) return;
     this.unread = answer.unread; this.addressed = answer.addressed;
@@ -37,7 +42,7 @@ export class Attention {
     const numbers = answer.latest_addressed.map(item => item.seq).filter(Number.isSafeInteger);
     const fresh = this.after === null ? [] : answer.latest_addressed.filter(item => Number.isSafeInteger(item.seq) && item.seq > this.after);
     this.after = Math.max(this.after ?? 0, ...numbers);
-    this.last = answer;
+    this.last = answer; this.lastHere = args.workspace_id ?? null;
     for (const listener of [...this.listeners]) listener(answer);
     if (this.notifications?.permission !== 'granted' || (!this.doc.hidden && this.doc.hasFocus?.())) return;
     for (const item of fresh.reverse()) this.notify(item);

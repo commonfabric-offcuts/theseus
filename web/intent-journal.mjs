@@ -15,9 +15,9 @@ const retiredOpening=row=>row?.kind==='opening';
 export async function openIntentJournal({instanceId,actor}) {
   if(!validActorId(instanceId)||!validActorId(actor))throw Error('Intent storage needs a confirmed instance and actor.');
   if(!navigator.locks?.request)throw Error('Private creation ownership is unavailable in this browser.');
-  const scope=JSON.stringify([instanceId,actor]),held=new Map(),claims=new Map(),queues=new Map();let closed=false;
+  const scope=JSON.stringify([instanceId,actor]),held=new Map(),claims=new Map(),queues=new Map(),waits=new Set();let closed=false;
   const rowKey=id=>JSON.stringify([scope,id]);
-  const release=()=>{closed=true;for(const end of held.values())end();held.clear();};
+  const release=()=>{closed=true;for(const end of held.values())end();held.clear();for(const wait of waits)wait.abort();waits.clear();};
   const database=await new Promise((resolve,reject)=>{
     let failed=false;const request=indexedDB.open('aim-next-intents',1);
     request.onupgradeneeded=()=>{
@@ -58,6 +58,22 @@ export async function openIntentJournal({instanceId,actor}) {
           const lifetime=new Promise(end=>held.set(id,end));resolve(true);return lifetime;
         }).catch(reject);
       });claims.set(id,pending);pending.then(()=>claims.delete(id),()=>claims.delete(id));return pending;
+    },
+    // The same lock as claim, asked for without ifAvailable: granted when the
+    // tab holding it closes or leaves the form, and kept for the page's life.
+    // Settles false when the journal closes first.
+    claimWhenFree(id){
+      if(!validActorId(id))return Promise.reject(Error('Invalid private intent identity.'));
+      if(closed)return Promise.resolve(false);
+      if(held.has(id))return Promise.resolve(true);
+      return new Promise((resolve,reject)=>{
+        const wait=new AbortController();waits.add(wait);
+        navigator.locks.request('aim-next-intent:'+rowKey(id),{mode:'exclusive',signal:wait.signal},()=>{
+          waits.delete(wait);
+          if(closed){resolve(false);return;}
+          const lifetime=new Promise(end=>held.set(id,end));resolve(true);return lifetime;
+        }).catch(error=>{waits.delete(wait);if(closed||error?.name==='AbortError')resolve(false);else reject(error);});
+      });
     },
     put(value){
       const row={...structuredClone(value),scope,key:rowKey(value.id)};

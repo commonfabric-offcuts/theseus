@@ -5,7 +5,7 @@
 // holds the line, with the pill on its line, until cleared. A message to the
 // person, and one answering theirs while naming only others, stay cards.
 // The line holds for the visit, as docs/attention.md says, so the check
-// presses Refresh before marking. At 390px wide nothing
+// opens the topic again before marking. At 390px wide nothing
 // scrolls sideways. Run by reader_persistence_native.mjs with --colors;
 // screenshots are kept as fold-*.png for review.
 import assert from 'node:assert/strict';
@@ -92,8 +92,8 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
 
       // Read on screen, everything for the person is read; the message between
       // others never was unread. The line holds where it was placed for the
-      // visit, under the message to everyone; Refresh places it afresh, and
-      // with nothing unread there is none, so none under the fold either.
+      // visit, under the message to everyone; opening the topic again places it
+      // afresh, and with nothing unread there is none, so none under the fold either.
       const drawn = () => p.evaluate(`(()=>{const l=document.querySelector('#messages .new-line');return l?l.previousElementSibling?.dataset?.id??'':null})()`);
       assert.equal(await drawn(), everyone, width + ': placed under the oldest unread, the message to everyone');
       for (let oldest; (oldest = await unread());) {
@@ -102,8 +102,9 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
         await until(async () => (await unread())?.id !== oldest.id, width + ': read ' + oldest.id);
       }
       assert.equal(await drawn(), everyone, width + ': read during the visit, the line holds where it was placed');
-      await p.evaluate("document.querySelector('#refresh').focus({preventScroll:true})"); await p.key('Enter');
-      await until(async () => await drawn() === null, width + ': refreshed with everything read, no New line, none under the fold');
+      await p.send('Page.navigate', { url: facts.origin + '/?topic=' + topic });
+      await until(async () => { try { return await p.evaluate(`document.body?.dataset.ready === 'true' && Boolean(document.querySelector('#messages [data-id="${between}"]'))`); } catch { return false; } }, width + ': the topic opened again');
+      await until(async () => await drawn() === null, width + ': opened again with everything read, no New line, none under the fold');
 
       // Marked unread (from another tab), it holds the line with the pill on its line, still folded; cleared, it counts nowhere.
       await control({ method: 'mark', operation_id: topic + '-mark', message_ids: [between], marked: true });
@@ -113,7 +114,7 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
       await shot(p, 'fold-' + width + '-marked');
       await control({ method: 'mark', operation_id: topic + '-clear', message_ids: [between], marked: false });
       await until(async () => await unread() === null && !(await p.evaluate(`Boolean(document.querySelector(${JSON.stringify(line)} + ' .unread-mark'))`)), width + ': cleared, unread nowhere');
-      assert.equal(await drawn(), between, width + ': cleared in another tab, the line holds until Refresh');
+      assert.equal(await drawn(), between, width + ': cleared in another tab, the line holds for the visit');
       observations.push({ name: 'between others folded', width, folded, open });
       assert.deepEqual(p.errors, []);
       await p.close();
