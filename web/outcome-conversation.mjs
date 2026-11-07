@@ -163,8 +163,44 @@ export function paintConversationRow(container, { view, title, reader, current =
 export const CONVERSATION_NOTE = coordinator => coordinator
   ? `Goes to the outcome's conversation with a link to this message. ${coordinator} answers there; nobody in this topic is woken.`
   : 'Goes to the outcome\'s conversation with a link to this message; nobody in this topic is woken.';
-export function conversationDestination(select, { topic, conversation, outcome, chosen }) {
-  select.replaceChildren(element(document, 'option', { value: topic.id, textContent: `This topic: ${topic.title}` }),
-    element(document, 'option', { value: conversation, textContent: `${outcome} conversation` }));
-  select.value = chosen === conversation ? conversation : topic.id;
+// Two chips tapped once, "This topic" and "Conversation", each naming its
+// place in full on hover; the one the reply goes to now is pressed. The Reader
+// follows a tap (reader.mjs).
+export function conversationDestination(host, { topic, conversation, outcome, chosen, doc = document }) {
+  const at = chosen === conversation ? conversation : topic.id;
+  const chip = (value, label, title) => {
+    const button = element(doc, 'button', { type: 'button', className: 'choice-chip', textContent: label, title, dataset: { destination: value } });
+    button.setAttribute('aria-pressed', String(value === at));
+    return button;
+  };
+  host.replaceChildren(chip(topic.id, 'This topic', `This topic: ${topic.title}`), chip(conversation, 'Conversation', `${outcome} conversation`));
+}
+
+// "Answered by": the coordinator, then the rest of the team, each a name
+// tapped once. With nobody named the coordinator answers, so theirs is pressed
+// and a tap on it changes nothing; a tap on anyone else names them, and a
+// second tap takes them off. The reader is not offered to themselves.
+export function answererChoices({ coordinator, members, names, reader }) {
+  const ids = [...new Set([coordinator, ...members])].filter(id => typeof id === 'string' && id && id !== reader);
+  return ids.map(id => {
+    const fallback = id === coordinator && names.length === 0;
+    return { id, pressed: fallback || names.includes(id), fallback };
+  });
+}
+// Paints those choices into host; toggle(id, on) names or unnames someone,
+// and refuses quietly when the writing cannot change now.
+// A chip that held focus hands it to the same person's new chip. Returns the
+// ids shown, whose plain recipient chips the row then leaves out.
+export function paintAnswerers(host, { coordinator, members, names, reader, toggle, doc = document }) {
+  const held = doc.activeElement?.parentElement === host ? doc.activeElement.dataset.answerer : undefined;
+  const choices = answererChoices({ coordinator, members, names, reader });
+  host.replaceChildren(...choices.map(({ id, pressed, fallback }) => {
+    const button = element(doc, 'button', { type: 'button', className: 'choice-chip', textContent: id, dataset: { answerer: id } });
+    button.setAttribute('aria-pressed', String(pressed));
+    if (fallback) button.title = `${id} answers when you name nobody`;
+    button.onclick = () => { if (!fallback) toggle(id, !pressed); };
+    return button;
+  }));
+  if (held !== undefined) [...host.children].find(button => button.dataset.answerer === held)?.focus();
+  return choices.map(choice => choice.id);
 }

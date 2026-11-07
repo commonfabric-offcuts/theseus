@@ -92,13 +92,7 @@ export class InlineComposer {
     replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices(editor.draft.addressees).map(({ name, removeLabel }) => {
       const chip = node('span', name, 'chip'), remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
       chip.dataset.name = name;
-      remove.onclick = () => {
-        if (!this.admits(p, editor) || this.state().readOnly) return;
-        const rest = editor.draft.addressees.filter(value => value !== name);
-        // A message to nobody neither asks, tells nor whispers.
-        editor.edit({ addressees: rest, ...(rest.length ? {} : unnamed) });
-        this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
-      };
+      remove.onclick = () => this.removeName(name, p, editor);
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));
     this.callbacks.recipientsPainted?.(editor.draft.addressees);
@@ -120,13 +114,27 @@ export class InlineComposer {
     editor.edit(chosen(choice)); this.callbacks.edit(editor, p); this.paintChoice();
   }
   addRecipient() {
-    const p = this.presentation, editor = this.editor, input = this.$('recipient-input'), name = input.value.trim().replace(/^@/, '');
-    if (!name || !this.admits(p, editor) || this.state().readOnly) return;
+    const input = this.$('recipient-input'), name = input.value.trim().replace(/^@/, '');
+    if (!name || !this.addName(name)) return;
+    input.value = ''; input.focus();
+  }
+  // Names someone in the message (the field's Return, or a name tapped once);
+  // false when the writing cannot change now.
+  addName(name) {
+    const p = this.presentation, editor = this.editor;
+    if (!this.admits(p, editor) || this.state().readOnly) return false;
     if (!editor.draft.addressees.includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, editor.draft.addressees, this.kindOf, { conversation: this.conversation }) });
       this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
     }
-    input.value = ''; input.focus();
+    return true;
+  }
+  removeName(name, p = this.presentation, editor = this.editor) {
+    if (!this.admits(p, editor) || this.state().readOnly) return;
+    const rest = editor.draft.addressees.filter(value => value !== name);
+    // A message to nobody neither asks, tells nor whispers.
+    editor.edit({ addressees: rest, ...(rest.length ? {} : unnamed) });
+    this.callbacks.edit(editor, p); this.paintRecipients(); this.paintChoice();
   }
   paintImages() {
     const p = this.presentation, editor = this.editor, uploads = this.callbacks.uploads(editor), host = this.$('attachments');

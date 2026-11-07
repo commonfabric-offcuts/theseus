@@ -86,7 +86,13 @@ export class Reader {
     this.$('recipient-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
-    this.$('reply-destination').onchange = event => this.callbacks.destination(event.target.value);
+    // A tap on the other destination's chip moves the reply there; the chips
+    // then show where it went, or stay put if it could not move.
+    this.$('reply-destination').onclick = event => {
+      const chip = event.target.closest?.('button[data-destination]');
+      if (!chip || chip.getAttribute('aria-pressed') === 'true') return;
+      Promise.resolve(this.callbacks.destination(chip.dataset.destination)).finally(() => this.paintDestination());
+    };
     // Writing can take the author a reply is offered to, so the choice is redrawn with it.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
       beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintChoice();}});
@@ -155,12 +161,11 @@ export class Reader {
     this.disarm();
     this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
     this.paintOrigin(source);
+    // Where the reply goes: the topic's name, or, for a message in an ordinary
+    // topic, a choice of this topic or the outcome's conversation (outcome-conversation.mjs).
     const destination = this.$('reply-destination');
-    destination.replaceChildren();
-    const choose = node('option', 'Choose a topic'); choose.value = ''; destination.append(choose);
-    for (const topic of topics) { const option = node('option', topic.title); option.value = topic.id; destination.append(option); }
-    destination.value = sessions.reply.context.topicId ?? '';
-    // A message in an ordinary topic may go to the outcome's conversation instead (outcome-conversation.mjs).
+    const here = topics.find(topic => topic.id === sessions.reply.context.topicId) ?? topics[0];
+    destination.replaceChildren(node('span', here?.title ?? '', 'destination-title'));
     this.offered = Boolean(this.callbacks.destinations?.(destination, source, sessions.reply.context.topicId));
     this.$('reader-parent').disabled = !source.topic_id;
     this.$('reader-stepping').hidden = source.source_ref.kind !== 'message';
@@ -384,6 +389,11 @@ export class Reader {
     this.field.setSelectionRange(caret.start, caret.end);
   }
 
+  paintDestination() {
+    const at = this.sessions?.reply?.context?.topicId;
+    for (const chip of this.$('reply-destination').querySelectorAll('button[data-destination]')) chip.setAttribute('aria-pressed', String(chip.dataset.destination === at));
+  }
+
   drawEditor() {
     const note = this.mode === 'note';
     this.$('writing-title').textContent = note ? 'Private note' : 'Reply';
@@ -413,17 +423,7 @@ export class Reader {
     replaceChips(this.$('recipient-chips'), this.$('recipient-input'), recipientChoices([...(editor.offeredAddressees ?? []), ...editor.draft.addressees]).map(({ name, removeLabel }) => {
       const chip = node('span', name, 'chip'); chip.dataset.name = name;
       const remove = node('button', '×'); remove.type = 'button'; remove.setAttribute('aria-label', removeLabel);
-      remove.onclick = () => {
-        if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
-        editor.declineAddressee(name);
-        if (editor.draft.addressees.includes(name)) {
-          const rest = editor.draft.addressees.filter(item => item !== name);
-          // A message to nobody neither asks, tells nor whispers.
-          editor.edit({ addressees: rest, ...(rest.length ? {} : unnamed) });
-          this.callbacks.edit(editor);
-        }
-        this.paintRecipients(); this.paintChoice();
-      };
+      remove.onclick = () => this.removeName(name, editor, presentation);
       chip.append(remove); markReach(chip, name, this.callbacks.reach); return chip;
     }));
     this.callbacks.recipientsPainted?.(this.names(editor), editor.context.topicId);
@@ -432,15 +432,35 @@ export class Reader {
   addRecipient() {
     const input = this.$('recipient-input');
     const name = input.value.trim().replace(/^@/, '');
-    if (!name || !this.sessions) return;
-    const editor = this.sessions.reply;
-    if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return;
+    if (!name || !this.addName(name)) return;
+    input.value = '';
+    input.focus();
+  }
+
+  // Names someone in the reply (the field's Return, or a name tapped once);
+  // false when the reply cannot change now.
+  addName(name) {
+    const editor = this.sessions?.reply;
+    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return false;
     if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
       editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }) });
       this.callbacks.edit(editor); this.paintRecipients(); this.paintChoice();
     }
-    input.value = '';
-    input.focus();
+    return true;
+  }
+
+  // Takes someone off the reply. Removing someone declines any offer of them,
+  // and writes only when the writing already names them.
+  removeName(name, editor = this.sessions?.reply, presentation = this.presentation) {
+    if (!editor || !this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
+    editor.declineAddressee(name);
+    if (editor.draft.addressees.includes(name)) {
+      const rest = editor.draft.addressees.filter(item => item !== name);
+      // A message to nobody neither asks, tells nor whispers.
+      editor.edit({ addressees: rest, ...(rest.length ? {} : unnamed) });
+      this.callbacks.edit(editor);
+    }
+    this.paintRecipients(); this.paintChoice();
   }
 
   // Who the reply goes to: the author it is offered to, then whoever it names.

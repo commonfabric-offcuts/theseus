@@ -36,7 +36,7 @@ import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
 import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout,
-  paintAsksYou, paintConversationRow, conversationDestination } from './outcome-conversation.mjs';
+  paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith } from './links.mjs';
@@ -1145,7 +1145,7 @@ async function initialize() {
     retry: () => run(retryInline),
     people: whisperPeople,
     conversation: () => Boolean(here?.page),
-    recipientsPainted: names => { if (here?.page) answeredBy($('inline-composer').querySelector('.audience'), $('inline-recipient-chips'), $('inline-recipient-input'), names, true); },
+    recipientsPainted: names => { if (here?.page || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.page)); },
   });
   reader = new Reader({
     admits: (p, editor) => registry?.isCurrent(p, editor),
@@ -1172,7 +1172,7 @@ async function initialize() {
       if (ref) await openSource(ref, presentation.opener);
     },
     destination: value => run(() => switchDestination(value)),
-    destinations: (select, source, topicId) => offerConversation(select, source, topicId),
+    destinations: (host, source, topicId) => offerConversation(host, source, topicId),
     toConversation: topicId => Boolean(here?.view && topicId === here.view.topic_id),
     audiencePainted: topicId => paintReaderAudience(topicId),
     recipientsPainted: (names, topicId) => paintReaderAudience(topicId, names),
@@ -1413,7 +1413,7 @@ function paintConversationPage() {
   if (!view) return;
   paintOnlyNew($('conversation-show'), { view, onlyNew: here.onlyNew, show: value => { here.onlyNew = value; paintConversationPage(); } });
   // The coordinator is known once the view is read: the writing box's "Answered by" row names them.
-  answeredBy($('inline-composer').querySelector('.audience'), $('inline-recipient-chips'), $('inline-recipient-input'), inline?.editor?.draft?.addressees ?? [], true);
+  if (inline?.editor) answeredBy(inline, $('inline-composer').querySelector('.audience'), inline.editor.draft.addressees, true);
   $('messages').classList.toggle('only-new', here.onlyNew);
   const empty = !views?.messages?.size;
   $('conversation-empty').hidden = !empty;
@@ -1428,23 +1428,39 @@ function paintConversationPage() {
     if (author) paintAsksYou(author, item, view.waits, bootstrap.actor);
   }
 }
-// "Answered by [fable] Name someone else [Add]": with nobody named the coordinator answers; naming
-// someone addresses the message to them, and the row then names them alone.
-function answeredBy(audience, chips, input, names, on) {
-  const label = audience.querySelector(':scope > span.muted');
-  let fallback = audience.querySelector(':scope > .default-answerer');
-  const coordinator = here?.view?.coordinator?.actor_id;
+// "Answered by [fable] [warp] [aim-ux] [Someone else]": the team's names tapped
+// once (outcome-conversation.mjs), and a narrow field that names anyone else
+// on Return. Naming someone addresses the message to them; with nobody named
+// the coordinator answers. Off, the row is the plain Address row again.
+const answering = new Set();
+function answeredBy(composer, audience, names, on) {
+  // Off, a row that was never turned on is already the plain Address row.
+  if (!on && !answering.delete(audience)) return;
+  if (on) answering.add(audience);
+  const label = audience.querySelector(':scope > span.muted'), input = audience.querySelector(':scope > input');
+  const chips = audience.querySelector(':scope > .chips');
   if (!label.dataset.words) label.dataset.words = label.textContent;
   label.textContent = on ? 'Answered by' : label.dataset.words;
-  input.placeholder = on ? 'Name someone else' : 'Add a name';
-  if (!fallback) { fallback = document.createElement('span'); fallback.className = 'chip default-answerer'; audience.insertBefore(fallback, chips); }
-  fallback.textContent = coordinator ?? '';
-  fallback.hidden = !on || !coordinator || names.length > 0;
+  input.placeholder = on ? 'Someone else' : 'Add a name';
+  audience.classList.toggle('answered-by', on);
+  let choices = audience.querySelector(':scope > .answerer-chips');
+  if (!choices) {
+    choices = document.createElement('span'); choices.className = 'answerer-chips'; choices.setAttribute('role', 'group');
+    choices.setAttribute('aria-label', 'Who answers'); audience.insertBefore(choices, chips);
+  }
+  choices.hidden = !on;
+  const team = (outcomeMembers ?? []).filter(person => person.enabled !== false).map(person => person.actor_id);
+  // The names wait for the conversation's view, which says who the coordinator is.
+  const shown = on && here?.view ? paintAnswerers(choices, { coordinator: here.view.coordinator?.actor_id, members: team, names, reader: bootstrap.actor,
+    toggle: (id, add) => add ? composer.addName(id) : composer.removeName(id) }) : [];
+  if (!shown.length) choices.replaceChildren();
+  // A team member named here shows as their pressed chip, not twice.
+  for (const chip of chips.children) chip.hidden = shown.includes(chip.dataset.name);
 }
 // The Reader's To row: a message in an ordinary topic of this outcome may go to its conversation.
-function offerConversation(select, source, topicId) {
+function offerConversation(host, source, topicId) {
   if (!here?.view || here.page || source.source_ref.kind !== 'message' || source.whisper || source.topic_id !== topic?.id) return false;
-  conversationDestination(select, { topic, conversation: here.view.topic_id, outcome: here.title, chosen: topicId });
+  conversationDestination(host, { topic, conversation: here.view.topic_id, outcome: here.title, chosen: topicId });
   return true;
 }
 function paintReaderAudience(topicId, names = null) {
@@ -1452,7 +1468,7 @@ function paintReaderAudience(topicId, names = null) {
   const note = $('destination-note');
   note.textContent = on ? CONVERSATION_NOTE(here.view.coordinator?.actor_id) : '';
   note.hidden = !on;
-  answeredBy($('reply-audience'), $('recipient-chips'), $('recipient-input'), names ?? reader?.names?.() ?? [], on);
+  if (reader?.sessions && (on || answering.size)) answeredBy(reader, $('reply-audience'), names ?? reader.names(), on);
 }
 // Switching the Reader between this topic and the conversation opens the same
 // message with the other destination, and carries the writing into its draft
