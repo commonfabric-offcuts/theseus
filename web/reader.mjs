@@ -107,7 +107,16 @@ export class Reader {
       if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey);
     });
     this.sourceBody.addEventListener('mousedown', event => { if (event.shiftKey && event.button === 0 && this.hover) event.preventDefault(); });
-    this.dialog.addEventListener('focusin', () => { if (!this.returnQuotes()) this.disarm(); });
+    // The message wears its focus ring only when a keyboard user Tabs onto it,
+    // not when the Reader puts focus there itself (see aim.css).
+    this.dialog.addEventListener('keydown', event => { if (event.key === 'Tab') this.tabbing = true; }, true);
+    this.dialog.addEventListener('pointerdown', () => { this.tabbing = false; }, true);
+    this.sourceBody.addEventListener('focusout', () => this.sourceBody.removeAttribute('data-tabbed'));
+    this.dialog.addEventListener('focusin', event => {
+      if (event.target === this.sourceBody) this.sourceBody.toggleAttribute('data-tabbed', Boolean(this.tabbing));
+      this.tabbing = false;
+      if (!this.returnQuotes()) this.disarm();
+    });
     this.sourceBody.addEventListener('pointermove', event => this.point(event));
     this.dialog.addEventListener('keydown', event => this.key(event));
   }
@@ -158,7 +167,7 @@ export class Reader {
     this.$('source-changes').hidden = true;
     this.opener = opener ?? this.opener ?? document.activeElement;
     this.disarm();
-    this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
+    this.paintTitle(source, topics);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
     // topic, a choice of this topic or the outcome's conversation (outcome-conversation.mjs).
@@ -397,9 +406,8 @@ export class Reader {
 
   drawEditor() {
     const note = this.mode === 'note';
-    this.$('writing-title').textContent = note ? 'Private note' : 'Reply';
     this.$('writing-label').textContent = note ? 'Private note' : 'Reply';
-    this.$('toggle-note').textContent = note ? 'Back to reply' : 'Private note';
+    this.paintNoteToggle();
     this.$('destination-label').hidden = note || (this.source.source_ref.kind === 'message' && !this.offered);
     this.callbacks.audiencePainted?.(note ? null : this.sessions?.reply?.context?.topicId ?? null);
     this.$('reply-audience').hidden = note;
@@ -409,12 +417,20 @@ export class Reader {
     if (note) this.$('send-reply').textContent = 'Done';
     else { const word = node('span', 'Send', 'send-word'), keys = node('span', '⌘↵'); keys.setAttribute('aria-hidden', 'true'); this.$('send-reply').replaceChildren(word, ' ', keys); }
     this.$('send-reply').classList.toggle('primary', !note);
-    this.field.placeholder = note ? 'Your private note…' : 'Write a reply…';
+    this.field.placeholder = note ? 'Write a private note only you can see…' : 'Write a reply…';
     this.field.value = this.editor.draft.body;
     this.paintImages();
     this.paintRecipients();
     this.paintChoice();
     this.paintStatus();
+  }
+
+  // The note's button says what a press does: write one, see the one you
+  // have, or go back to the reply.
+  paintNoteToggle() {
+    const toggle = this.$('toggle-note'), note = this.sessions?.note;
+    toggle.textContent = this.mode === 'note' ? 'Back to reply' : note?.draft.body.trim() ? 'Show note' : 'Add note';
+    toggle.title = this.mode === 'note' ? 'Back to your reply' : 'A private note on this message that only you can see';
   }
 
   paintRecipients() {
@@ -570,9 +586,20 @@ export class Reader {
     else control.onclick = null;
   }
 
+  // A message's heading is its topic's name, and a press on it goes back to
+  // that topic, as the arrow beside it does.
+  paintTitle(source, topics) {
+    const title = this.$('reader-title');
+    const topic = source.source_ref.kind === 'message' && source.topic_id ? topics.find(item => item.id === source.topic_id) : null;
+    if (!topic?.title) { title.textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message'); return; }
+    const open = node('button', topic.title, 'reader-topic'); open.type = 'button'; open.title = 'Open this topic';
+    open.onclick = () => this.close('parent');
+    title.replaceChildren(open);
+  }
+
   paintOrigin(source) {
     const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}`
-      : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : 'Message';
+      : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : '';
     this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
     this.$('reader-origin').replaceChildren([source.author, provenance].filter(Boolean).join(' · '), ...sent);
