@@ -121,7 +121,7 @@ test('a chip rebuilt while its add is out shows it still out, sends nothing more
   assert.deepEqual([said().textContent, offer().attributes['aria-disabled']], ['', undefined], 'an add that ended with no chip on the page is forgotten');
 });
 
-test('the origin line names the author, the kind and when it was sent, and leaves out a time it does not have', t => {
+test('the origin line names the author, a Notebook page and its revision, and when a message was sent, and leaves out a time it does not have', t => {
   const previous = globalThis.document, now = clock.now;
   globalThis.document = { createElement: tag => new Element(tag) };
   t.after(() => { globalThis.document = previous; clock.now = now; });
@@ -132,11 +132,11 @@ test('the origin line names the author, the kind and when it was sent, and leave
   const sent_ms = new Date(2026, 10, 5, 5, 44).getTime();
   clock.now = () => new Date(2026, 10, 6, 9, 0).getTime();
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm1' }, sent_ms });
-  assert.equal(origin.text, 'tony · Message · Yesterday 5:44 AM');
+  assert.equal(origin.text, 'tony · Yesterday 5:44 AM');
   assert.equal(origin.children.find(node => node.tag === 'time')?.title, '5:44 AM Thu Nov 5', 'its title keeps the date');
   clock.now = () => new Date(2026, 10, 9, 9, 0).getTime();
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm1' }, sent_ms });
-  assert.equal(origin.text, 'tony · Message · 5:44 AM Thu Nov 5', 'from before yesterday: dated');
+  assert.equal(origin.text, 'tony · 5:44 AM Thu Nov 5', 'from before yesterday: dated');
   reader.paintOrigin({ author: 'tony', source_ref: { kind: 'memory', id: 'n1', revision: 3 } });
   assert.equal(origin.text, 'tony · Notebook · revision 3');
   assert.ok(whispering.every(([name, on]) => name === 'whispering' && on === false), 'none of these is a whisper, so none wears its line');

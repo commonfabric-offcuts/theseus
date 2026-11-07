@@ -143,12 +143,33 @@ try {
     await writeFile(path.join(evidencePath, `${results.length}.png`), Buffer.from(shot.data, 'base64'));
   };
 
+  // What the page holds when the Return that quotes has finished: a listener
+  // on the window hears the keydown after the Reader's own. The writing field
+  // must be focused with a caret at the end of its text; a browser draws the
+  // caret from the document's selection, so a selection cleared after the
+  // field took focus leaves no caret until the window is focused again.
+  const watchReturn = () => evaluate(`window.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    const field = document.querySelector('#writing-body'), selection = getSelection();
+    window.returnEnd = { active: document.activeElement.id, selection: selection.type, start: field.selectionStart, end: field.selectionEnd, length: field.value.length };
+  }, { once: true })`);
+  const caretAfterQuote = async label => {
+    const end = await evaluate('window.returnEnd');
+    observations.push({ label, ...end });
+    assert.equal(end.active, 'writing-body', `${label}: the field is focused when Return has finished`);
+    assert.equal(end.selection, 'Caret', `${label}: the document's selection is the field's caret when Return has finished`);
+    assert.deepEqual([end.start, end.end], [end.length, end.length], `${label}: the caret is at the end of the writing`);
+    const after = await evaluate(`(()=>{const f=document.querySelector('#writing-body');return {active:document.activeElement.id,selection:getSelection().type,start:f.selectionStart,length:f.value.length}})()`);
+    assert.deepEqual(after, { active: 'writing-body', selection: 'Caret', start: end.length, length: end.length }, `${label}: nothing after Return moves focus or the caret`);
+  };
+
   await check('hover Return quotes exact words and composer Return stays a newline', async () => {
     await point('#source-body [data-start="0"]', 'move');
+    await watchReturn();
     await key('Enter');
     let state = await snapshot();
     assert.equal(state.reply.draft.body, '> The first passage is for an exact quote. \n\n');
-    assert.equal(await evaluate('document.activeElement.id'), 'writing-body');
+    await caretAfterQuote('hover Return');
     await send('Input.insertText', { text: 'My response' });
     await point('#source-body [data-start="0"]', 'move');
     await key('Enter');
@@ -157,6 +178,20 @@ try {
     assert.equal(state.events.filter(event => event.type === 'send').length, 0);
     await key('Enter', 4);
     assert.equal((await snapshot()).events.filter(event => event.type === 'send').length, 1);
+    // A passage dragged over, then Return: the caret waits after the quote.
+    const words = await box('#source-body [data-start="0"]'), y = words.y + words.height / 2;
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: words.x + 2, y });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: words.x + 2, y, button: 'left', buttons: 1, clickCount: 1 });
+    for (let step = 1; step <= 6; step++) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: words.x + 2 + step * 25, y, button: 'left', buttons: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: words.x + 152, y, button: 'left', buttons: 0, clickCount: 1 });
+    const dragged = await evaluate('getSelection().toString()');
+    assert.ok(dragged.length > 5 && await evaluate('document.activeElement.id') === 'source-body', 'a native drag selected words of the message');
+    await watchReturn();
+    await key('Enter');
+    assert.ok((await snapshot()).reply.draft.body.endsWith(`> ${dragged}\n\n`));
+    await caretAfterQuote('dragged Return');
+    await send('Input.insertText', { text: 'Typed after' });
+    assert.ok((await snapshot()).reply.draft.body.endsWith(`> ${dragged}\n\nTyped after`));
   });
 
   await check('note Cmd-Return saves only the note and restores opener focus', async () => {

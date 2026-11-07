@@ -374,10 +374,20 @@ export class Reader {
     // The quote is writing like any other, so it goes through the editor's
     // edit, which brings in the author a reply is offered to.
     editor.edit({ quotes: [...editor.draft.quotes, { source: structuredClone(this.source.source_ref), excerpt }] });
+    // The message's selection is let go before the field takes focus: once
+    // the field is focused the document's selection is its caret, and
+    // clearing it then leaves no caret drawn until the window is refocused.
+    window.getSelection()?.removeAllRanges();
     this.field.focus();
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
     this.insertText(addition);
-    window.getSelection()?.removeAllRanges();
+    // The cursor sits after the quote and its blank line, ready to type, and
+    // the field shows it however tall the writing has grown: an engine may
+    // leave the caret drawn before a trailing newline, or short of the
+    // field's bottom padding.
+    const end = this.field.value.length;
+    this.field.setSelectionRange(end, end);
+    this.field.scrollTop = this.field.scrollHeight;
     this.disarm();
   }
 
