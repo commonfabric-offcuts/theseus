@@ -560,6 +560,29 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         self._change(db, "actor", member, "workspace", workspace["id"], version)
         return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
 
+    def _command_workspace_owner_set(self, db, actor, envelope):
+        """The owner hands the outcome to another member, and stays on its team."""
+        target, args = envelope["target"], envelope["args"]
+        if set(target) != {"workspace_id"} or set(args) != {"owner_id"}:
+            raise Refusal("INVALID_ARGUMENT", "Name one workspace and its new owner")
+        workspace = self._workspace(db, actor, target["workspace_id"], owner=True)
+        _revision(envelope["expected"], "workspace_revision", workspace["version"])
+        owner = self._recipients(db, [args["owner_id"]])[0]
+        result = {"workspace_id": workspace["id"], "owner_id": owner, "previous_owner_id": workspace["owner_id"],
+                  "version": workspace["version"]}
+        if owner == workspace["owner_id"]:
+            return result, []
+        if not db.execute("SELECT 1 FROM workspace_members WHERE workspace_id=? AND actor_id=?", (workspace["id"], owner)).fetchone():
+            raise Refusal("NOT_A_MEMBER", "Add %s to the outcome's team before handing it to them" % owner)
+        # Creation and member_set keep the owner on the team, so this adds no one a command could reach.
+        db.execute("INSERT OR IGNORE INTO workspace_members VALUES (?,?)", (workspace["id"], workspace["owner_id"]))
+        db.execute("UPDATE workspaces SET version=version+1,owner_id=? WHERE id=?", (owner, workspace["id"]))
+        version = workspace["version"] + 1
+        self._change(db, "workspace", workspace["id"], "workspace", workspace["id"], version)
+        for member in (owner, workspace["owner_id"]):
+            self._change(db, "actor", member, "workspace", workspace["id"], version)
+        return dict(result, version=version), [{"kind": "workspace", "id": workspace["id"], "version": version}]
+
     def _view_workspace_topics(self, db, actor, args):
         """One page of an outcome's topics, latest activity first (docs/topic-list.md).
 

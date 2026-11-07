@@ -25,8 +25,8 @@ paths, not deletion and blind repetition.
 
 For the initial configured workspace, aim-lead performs setup through its own
 profile and owns the workspace. Tony and the selected reply agent belong to its
-team; Tony is also explicitly included as a topic participant. Workspace
-ownership transfer is staged. Ordinary reading/replying uses team/topic access.
+team; Tony is also explicitly included as a topic participant. The owner
+hands the workspace on with `workspace.owner_set`. Ordinary reading/replying uses team/topic access.
 All introductory messages are actually lead-authored. Setup and pre-handoff
 probes do not perform acts through Tony's profile.
 
@@ -168,7 +168,7 @@ The local handoff names the exact source and remote revision, instance binding,
 owned processes, entry URL, configured workspace/topic/team, initial backup and
 checks actually performed. It distinguishes implemented components from the
 usable path and names omissions. New topic UI, full management/navigation,
-workspace ownership transfer, remote/mobile access and unattended restart are
+remote/mobile access and unattended restart are
 staged. Basic attachments must be delivered and reviewed before this first-use
 handoff; these instructions alone do not satisfy that gate.
 

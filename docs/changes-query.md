@@ -56,10 +56,11 @@ Explicit resync captures a fresh baseline and rereads permitted dependent views;
 it must preserve writing and old operation identities through recovery.
 
 At this revision, topic keys are topic versions and scoped Notebook item
-versions. Workspace keys are workspace creation and membership, topic versions
+versions. Workspace keys are workspace creation, membership and ownership, topic versions
 and workspace Notebook items. Actor keys are private drafts, notes,
 submissions, media, openings, participation, deliveries, workspace membership
-(`workspace`, keyed by the workspace, when the actor is added or removed) and
+(`workspace`, keyed by the workspace, when the actor is added or removed,
+or gains or hands on its ownership) and
 `waiting` (keyed by the topic, at its new version, when a topic starts or
 stops waiting on the actor, including when they lose the topic), and `mark`
 (keyed by the message, at its new mark revision, when the actor marks a

@@ -3,7 +3,7 @@
 Theseus keeps every durable product fact in Core. This document is the
 contract for three pieces that make several outcomes usable by a real team:
 private opening drafts that publish a new topic in one act, owner-managed
-outcome membership with operator actor registration, and versioned schema
+outcome membership and ownership with operator actor registration, and versioned schema
 upgrades for an existing instance.
 
 The browser is a cache and an outbox. It may hold writing that Core has not
@@ -131,6 +131,30 @@ Refusals are recorded unless the code is `INVALID_ARGUMENT`.
   `("actor", member, "waiting", T, topic_version)`. The workspace version
   then advances once more, so it can rise by more than one.
 - Result: `{workspace_id, actor_id, present, version}`.
+
+### `workspace.owner_set`
+
+- `target`: `{workspace_id}`. `expected`: `{workspace_revision}` (required;
+  without it the command is refused before anything is looked up, unrecorded).
+- `args`: `{owner_id}`.
+- Only the current owner may hand the outcome on (`FORBIDDEN` otherwise,
+  the coordinator included). The new owner must be an enabled registered
+  actor (`INVALID_RECIPIENT`) who is already on the team (`NOT_A_MEMBER`);
+  add them with `workspace.member_set` first.
+- Naming the current owner advances nothing and returns the current state.
+- A change makes `owner_id` the new owner and keeps the former owner on the
+  team as an ordinary member, whom the new owner may later remove. The
+  coordinator is unchanged. The workspace version advances by one and the
+  change records `("workspace", W, "workspace", W, version)`,
+  `("actor", new_owner, "workspace", W, version)` and
+  `("actor", former_owner, "workspace", W, version)`. Topic versions do not
+  change, though a topic's `owner_id` (read through its outcome) does.
+- What being the owner grants moves with it: changing the team and handing
+  the outcome on, and, beside each topic's creator, renaming and archiving
+  any of its topics, saying where any of them stands and changing who takes
+  part in them; and the `wakes` notice for agents whose work waits in the
+  outcome while wakes are not going out.
+- Result: `{workspace_id, owner_id, previous_owner_id, version}`.
 
 ## Views
 
