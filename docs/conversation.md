@@ -1,10 +1,22 @@
 # An outcome's conversation
 
 Each outcome has one conversation that never ends: a topic of kind
-`conversation`, for asking where things stand and dropping in friction and
+`conversation`, for asking where things stand and raising friction and
 requests. One agent, the outcome's coordinator, answers there; any other agent
-answers only an item that names it. Each thing dropped in shows what became of
-it, and Theseus writes that line itself, in the act that did it.
+answers only an item that names it. Each thing posted there shows what became
+of it, as a small tag on its card, and Theseus writes that tag itself, in the
+act that did it.
+
+## The page
+
+`?conversation=OUTCOME` is a topic page like any other: the messages, newest
+first, with the same cards, New line and counts, and the writing box below
+them ("Write to OUTCOME…"). The heading is "Conversation", with what it is for
+and who answers under it. A card's tags say New, Answered (with the reply),
+Taken into a topic (with the topic), On the pipeline, or Waiting on someone
+(with the ask). One filter chip, "Only new (N)", leaves out every card but the
+items nothing has settled. Any link to the conversation's topic opens this
+page.
 
 ## Who is in it
 

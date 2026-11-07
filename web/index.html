@@ -55,7 +55,6 @@
     <div id="light-tip" class="light-tip" role="tooltip" hidden></div>
     <main id="main" tabindex="-1">
       <header class="topic-header"><div><p id="workspace-name" class="eyebrow"></p><div class="title-row"><h1 id="topic-title"></h1><button id="settings-open" type="button" class="settings-gear" aria-label="Topic settings" aria-haspopup="dialog" title="Topic settings" hidden><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M10.3 2.8h3.4l.5 2.6 1.6.9 2.5-.9 1.7 2.9-2 1.8v1.8l2 1.8-1.7 2.9-2.5-.9-1.6.9-.5 2.6h-3.4l-.5-2.6-1.6-.9-2.5.9-1.7-2.9 2-1.8v-1.8l-2-1.8 1.7-2.9 2.5.9 1.6-.9z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg></button></div><p id="topic-description" class="muted topic-subtitle"></p></div></header>
-      <section id="conversation-head" class="conversation-head" aria-label="Who answers here" hidden></section>
       <section id="sent-to-you" class="selection-page" aria-label="Sent to you by name" hidden></section>
       <section id="waiting-on-you" class="waiting-on-you" aria-label="Waiting on you" hidden></section>
       <section id="outcome-page" class="selection-page" hidden></section>
@@ -66,7 +65,7 @@
       <section id="page-here" class="page-here" aria-label="Notebook page" hidden></section>
       <section id="topic-pending" aria-label="Your pending replies"></section>
       <p id="topic-marks" class="topic-marks" hidden><span id="topic-marks-words"></span><span aria-hidden="true">·</span><button id="read-mark" type="button">Read it</button></p>
-      <div id="conversation-show" class="conversation-show" hidden></div>
+      <div id="conversation-show" class="conversation-show" role="group" aria-label="Show" hidden></div>
       <div id="conversation-empty" class="conversation-empty" hidden></div>
       <section id="messages" aria-label="Conversation"></section>
       <button id="more-messages" type="button" hidden>More messages</button>

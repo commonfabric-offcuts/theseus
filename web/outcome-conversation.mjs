@@ -1,8 +1,10 @@
 // An outcome's conversation (docs/conversation.md): the page at
-// ?conversation=OUTCOME, its row in the side rail and on the outcome's page,
-// and the lines under each item that say what became of it. Theseus writes
-// every one of those lines; nothing here decides one. New is a plain count
-// the coordinator clears, never a light (D5); only Waiting on you lights.
+// ?conversation=OUTCOME, which is a topic page like any other (messages
+// newest first, the writing box below them), its row in the side rail and on
+// the outcome's page, and the small tags on each card that say what became of
+// the thing posted. Theseus writes every one of those tags; nothing here
+// decides one. New is a plain count the coordinator clears, never a light
+// (D5); only Waiting on you lights.
 import { timeNode } from './times.mjs';
 import { workNote } from './topic-state.mjs';
 
@@ -18,65 +20,65 @@ const named = (id, reader) => id === reader ? 'you' : id;
 
 export const TITLE = 'Conversation';
 export const ROW_WORDS = 'Status, friction, requests';
-// The words under the heading. Without a pipeline nothing is put on one.
-export function lede(pipeline = false) {
-  return pipeline
-    ? 'Ask where things stand, or drop in a friction or a request. Each one is taken into a topic, put on the Release pipeline, or answered here, and says which.'
-    : 'Ask where things stand, or drop in a friction or a request. Each one is taken into a topic or answered here, and says which.';
+// The words under the heading: what it is for, and who answers.
+export function subtitle(coordinator) {
+  return coordinator
+    ? `Ask where things stand, or raise a friction or a request. ${coordinator} answers here; others answer only when you name them.`
+    : `Ask where things stand, or raise a friction or a request. ${NOBODY_ANSWERS}`;
 }
-export const PLACEHOLDER = 'A friction, a request, or ask where things stand…';
+// The writing box, as in any topic, says where the writing goes.
+export const placeholder = outcome => `Write to ${outcome}…`;
 export const NOBODY_ANSWERS = 'Nobody answers here yet. The outcome\'s owner chooses who does.';
 
 // "a", "a and b", "a, b and c".
 const listed = items => items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+// The ask's own words (I8), short enough to sit in a tag.
+const clipped = (text, max = 60) => typeof text === 'string' && text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text ?? '';
 
 // The waits on the reader, from the conversation view.
 export const waitsOnReader = (view, reader) => (view?.waits ?? []).filter(wait => wait.on === reader);
 
-// One line under an item: its outlined tag, then plain words and links.
-// Each part is a string, a {time} or a {link, to}, and lines() turns them into nodes.
-export function itemLines(message, waits, reader) {
-  const lines = [];
+// The small tags at the foot of a card: what became of the thing posted, one
+// tag each, with its link and time beside it. Each part is a string, a {time}
+// or a {link, topic|message}, and paintItemTags turns them into nodes.
+export function itemTags(message, waits, reader) {
+  const tags = [];
   const item = message?.item;
   if (item) {
     const takes = Array.isArray(item.takes) ? item.takes : [];
-    if (item.state === 'new' && !takes.length) lines.push({ tag: 'New', parts: ['Nothing taken from it yet'] });
-    else if (item.state === 'new') {
-      const who = [...new Set(takes.map(take => named(take.actor_id, reader)))];
-      lines.push({ tag: 'New', parts: [`${listed(who)} ${who.length === 1 && who[0] === 'you' ? 'have' : 'has'} taken parts of it so far:`] });
-    }
+    // Still New: nothing has settled it, though a take may have used part of it.
+    if (item.state === 'new') tags.push({ tag: 'New', parts: takes.length ? ['part taken so far'] : [] });
     for (const take of takes) {
       const by = named(take.actor_id, reader);
       if (take.kind === 'answer') {
-        lines.push({ tag: 'Answered', parts: [{ link: `${by === 'you' ? 'your' : `${by}'s`} reply`, message: take.ref }, ' · ', { time: take.at_ms }] });
+        tags.push({ tag: 'Answered', parts: [{ link: `${by === 'you' ? 'your' : `${by}'s`} reply`, message: take.ref }, ' · ', { time: take.at_ms }] });
       } else if (take.kind === 'topic') {
         const title = take.readable && typeof take.title === 'string' ? { link: take.title, topic: take.ref } : 'a topic you cannot open';
-        lines.push({ tag: 'Taken into a topic', parts: [title, ` · ${by}, `, { time: take.at_ms }] });
+        tags.push({ tag: 'Taken into a topic', parts: [title, ` · ${by}, `, { time: take.at_ms }] });
       } else if (take.kind === 'pipeline') {
         const numbers = (take.numbers ?? []).map(String);
-        lines.push({ tag: 'On the pipeline', parts: [`${take.added ? 'added to' : 'as'} ${listed(numbers)} · ${by}, `, { time: take.at_ms }] });
+        tags.push({ tag: 'On the pipeline', parts: [`${take.added ? 'added to' : 'as'} ${listed(numbers)} · ${by}, `, { time: take.at_ms }] });
       }
     }
   }
   // An item can be settled and waiting at once: each wait on it sits beside its takes.
   for (const wait of waits ?? []) {
     if (wait.item_id !== message?.id) continue;
-    const on = wait.on === reader ? 'you' : wait.on;
-    lines.push({ tag: wait.on === reader ? 'Waiting on you' : `Waiting on ${wait.on}`, mine: wait.on === reader,
-      parts: [`${named(wait.by, reader)} asked ${on}: `, { link: wait.excerpt, message: wait.ask_message_id }, ' · ', { time: wait.since_ms }] });
+    tags.push({ tag: wait.on === reader ? 'Waiting on you' : `Waiting on ${wait.on}`, mine: wait.on === reader,
+      parts: [`${named(wait.by, reader)} asked: `, { link: clipped(wait.excerpt), message: wait.ask_message_id }, ' · ', { time: wait.since_ms }] });
   }
-  return lines;
+  return tags;
 }
 
-// Paints the lines under one card into its .item-lines block; open(kind, id) follows a link.
-export function paintItemLines(card, message, waits, reader, open, doc = document) {
-  let host = card.querySelector(':scope > .item-lines');
-  const lines = itemLines(message, waits, reader);
-  if (!lines.length) { host?.remove(); return; }
-  if (!host) { host = element(doc, 'span', { className: 'item-lines' }); card.append(host); }
-  host.replaceChildren(...lines.map(line => element(doc, 'span', { className: 'item-line' },
-    element(doc, 'span', { className: line.mine ? 'item-tag mine' : 'item-tag', textContent: line.tag }), ' ',
-    ...line.parts.map(part => {
+// Paints the tags at the foot of one card into its .item-tags row; open(kind, id) follows a link.
+export function paintItemTags(card, message, waits, reader, open, doc = document) {
+  let host = card.querySelector(':scope > .item-tags');
+  const tags = itemTags(message, waits, reader);
+  if (!tags.length) { host?.remove(); return; }
+  if (!host) { host = element(doc, 'span', { className: 'item-tags' }); card.append(host); }
+  host.replaceChildren(...tags.map(tag => element(doc, 'span', { className: 'item-tag-group' },
+    element(doc, 'span', { className: tag.mine ? 'item-tag mine' : 'item-tag', textContent: tag.tag }),
+    ...(tag.parts.length ? [element(doc, 'span', { className: 'item-detail' }, ...tag.parts.map(part => {
       if (typeof part === 'string') return part;
       if (part.time !== undefined) return Number.isSafeInteger(part.time) ? timeNode(part.time, doc) : '';
       // A link inside a card is a span the card's own click passes over.
@@ -85,7 +87,7 @@ export function paintItemLines(card, message, waits, reader, open, doc = documen
       link.onclick = follow;
       link.onkeydown = event => { if (event.key === 'Enter') follow(event); };
       return link;
-    }))));
+    }))] : []))));
 }
 
 // "About fable's message in Agent loop and Codex hosting", above a message
@@ -109,50 +111,17 @@ export function paintAsksYou(author, message, waits, reader, doc = document) {
   author.insertBefore(label, author.querySelector(':scope > .message-time'));
 }
 
-// The top of the conversation page: who answers, the facts, what waits on the
-// reader, and the Show choice. view is the `conversation` view's object.
-export function paintConversationHead(host, { view, reader, outcome, openMessage, doc = document }) {
-  const coordinator = view?.coordinator?.actor_id;
-  const answers = coordinator
-    ? element(doc, 'p', { className: 'answers-here' }, element(doc, 'span', { className: 'muted', textContent: 'Answers here: ' }),
-      element(doc, 'span', { className: 'chip answerer' }, element(doc, 'strong', { textContent: coordinator }), ' coordinator'),
-      element(doc, 'span', { className: 'muted', textContent: ' Others answer only when you name them.' }))
-    : element(doc, 'p', { className: 'answers-here muted', textContent: NOBODY_ANSWERS });
-  const facts = element(doc, 'p', { className: 'conversation-facts' });
-  if (view?.live && Number.isSafeInteger(view.live.release)) {
-    facts.append(element(doc, 'strong', { textContent: 'Live:' }), ` release ${view.live.release}`);
-    if (Number.isSafeInteger(view.live.deployed_ms)) facts.append(', since ', timeNode(view.live.deployed_ms, doc));
-    facts.append(element(doc, 'span', { className: 'fact-gap' }));
-  }
-  facts.append(element(doc, 'strong', { textContent: 'New here:' }), ` ${view?.new_items ?? 0}`, element(doc, 'span', { className: 'fact-gap' }));
-  const mine = waitsOnReader(view, reader);
-  // The live topic's activity words, with the reader's waits as its asks.
-  const pill = mine.length ? 'Waiting on you' : '';
-  facts.append(workNote(view?.work ? { ...view.work, waits: view.work.waits || mine.length > 0 } : null, reader, pill));
-  const waiting = mine.length ? element(doc, 'section', { className: 'waiting-on-you', ariaLabel: 'Waiting on you' },
-    element(doc, 'h2', { textContent: `Waiting on you (${mine.length})` }),
-    element(doc, 'ul', { className: 'waiting-list' }, ...mine.map(wait => {
-      const link = element(doc, 'a', { href: '#' + wait.ask_message_id, textContent: `${outcome} conversation` });
-      link.onclick = event => { event.preventDefault(); openMessage(wait.ask_message_id); };
-      return element(doc, 'li', {}, link, element(doc, 'span', { className: 'muted' }, ` — ${named(wait.by, reader)} asked at `, timeNode(wait.since_ms, doc),
-        `: ${wait.excerpt}`));
-    }))) : null;
-  host.replaceChildren(answers, facts, ...(waiting ? [waiting] : []));
-  host.hidden = false;
-}
-
-// "Show [Everything] [Only new (N)]": only new hides every card but the items nothing has settled.
-export function paintShow(host, { view, onlyNew, show, doc = document }) {
-  const words = [[false, 'Everything'], [true, `Only new (${view?.new_items ?? 0})`]];
-  if (!host.querySelector('button')) {
-    host.replaceChildren(element(doc, 'span', { className: 'muted', textContent: 'Show' }),
-      ...words.map(([value]) => { const button = element(doc, 'button', { type: 'button' }); button.onclick = () => show(value); return button; }));
-    host.setAttribute('role', 'group'); host.setAttribute('aria-label', 'Show');
-  }
-  host.querySelectorAll('button').forEach((button, index) => {
-    button.textContent = words[index][1]; button.setAttribute('aria-pressed', String(onlyNew === words[index][0]));
-  });
-  host.hidden = false;
+// One filter chip above the messages, "Only new (N)": pressed, it leaves out
+// every card but the items nothing has settled. It shows only while there is
+// something new or it is pressed.
+export function paintOnlyNew(host, { view, onlyNew, show, doc = document }) {
+  const count = view?.new_items ?? 0;
+  let chip = host.querySelector('button');
+  if (!chip) { chip = element(doc, 'button', { type: 'button', className: 'filter-chip' }); host.replaceChildren(chip); }
+  chip.onclick = () => show(!onlyNew);
+  chip.textContent = `Only new (${count})`;
+  chip.setAttribute('aria-pressed', String(onlyNew));
+  host.hidden = !onlyNew && count === 0;
 }
 
 // The empty conversation: what it is for, and the topics it replaced.
@@ -161,8 +130,8 @@ export function paintEmpty(host, { view, doc = document }) {
   const replaced = (view?.replaced ?? []).map(topic => topic.title);
   host.replaceChildren(element(doc, 'p', { textContent: 'Nothing here yet.' }),
     element(doc, 'p', { className: 'muted', textContent: coordinator
-      ? `Ask where things stand, or drop in a friction or a request. ${coordinator} takes each one into a topic, or answers it here.`
-      : lede(false) }),
+      ? `Write below to ask where things stand, or to raise a friction or a request. ${coordinator} answers each one here or takes it into a topic, and the card says which.`
+      : `Write below to ask where things stand, or to raise a friction or a request. ${NOBODY_ANSWERS}` }),
     ...(replaced.length ? [element(doc, 'p', { className: 'muted',
       textContent: `${listed(replaced)}, ${replaced.length === 1 ? 'was' : 'were'} closed when this conversation started. ${replaced.length === 1 ? 'It stays' : 'Both stay'} readable under Archived topics.` })] : []));
 }

@@ -35,7 +35,7 @@ import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
-import { TITLE as CONVERSATION_TITLE, lede, PLACEHOLDER, CONVERSATION_NOTE, paintConversationHead, paintShow, paintEmpty, paintItemLines, paintAbout,
+import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout,
   paintAsksYou, paintConversationRow, conversationDestination } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
@@ -695,10 +695,10 @@ function participantPill(person) {
 function paintHeader(current) {
   paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
     { settings: current.kind !== 'conversation' });
-  // A conversation's heading says what it is for, not where it stands.
+  // A conversation's heading says what it is for and who answers, not where it stands.
   if (current.kind === 'conversation') {
     $('topic-title').textContent = CONVERSATION_TITLE;
-    $('topic-description').textContent = lede(Boolean(here?.view?.live)); $('topic-description').hidden = false;
+    $('topic-description').textContent = conversationSubtitle(here?.view?.coordinator?.actor_id); $('topic-description').hidden = false;
   }
 }
 // Messages sent before times were kept have none.
@@ -1095,15 +1095,15 @@ async function initialize() {
     route = { kind: 'conversation', id: topic.workspace_id };
     if (new URL(location.href).searchParams.has('topic')) history.replaceState(history.state, '', routeHref(route) + location.hash);
     document.body.classList.add('conversation-page');
-    $('main').insertBefore($('inline-composer'), $('conversation-show'));
-    $('inline-writing-title').textContent = 'Drop something in';
-    $('inline-writing-body').placeholder = PLACEHOLDER;
+    // The writing box stays below the messages, as in any topic, and says where the writing goes.
+    $('inline-writing-body').placeholder = conversationPlaceholder(here.title);
   }
   paintHeader(topic);
   settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close') });
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
     $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
+    if (here.page) $('inline-writing-body').placeholder = conversationPlaceholder(workspace.title);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add a participant to this topic', names: 'directory-names',
     add: id => setParticipation(id, true), remove: id => setParticipation(id, false), named: participantName, light: wakeLight, pill: participantPill,
@@ -1411,9 +1411,7 @@ const openLinked = (kind, id) => run(() => kind === 'topic' ? openDestination({ 
 function paintConversationPage() {
   const view = here.view;
   if (!view) return;
-  paintConversationHead($('conversation-head'), { view, reader: bootstrap.actor, outcome: here.title,
-    openMessage: id => openLinked('message', id) });
-  paintShow($('conversation-show'), { view, onlyNew: here.onlyNew, show: value => { here.onlyNew = value; paintConversationPage(); } });
+  paintOnlyNew($('conversation-show'), { view, onlyNew: here.onlyNew, show: value => { here.onlyNew = value; paintConversationPage(); } });
   $('messages').classList.toggle('only-new', here.onlyNew);
   const empty = !views?.messages?.size;
   $('conversation-empty').hidden = !empty;
@@ -1423,7 +1421,7 @@ function paintConversationPage() {
     if (!item) continue;
     entry.dataset.item = item.item?.state ?? 'none';
     paintAbout(card, item, bootstrap.actor, openLinked);
-    paintItemLines(card, item, view.waits, bootstrap.actor, openLinked);
+    paintItemTags(card, item, view.waits, bootstrap.actor, openLinked);
     const author = card.querySelector('.message-author');
     if (author) paintAsksYou(author, item, view.waits, bootstrap.actor);
   }

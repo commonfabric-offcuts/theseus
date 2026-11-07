@@ -3,12 +3,12 @@ from __future__ import annotations
 """An outcome's conversation: one topic of its own that never ends (docs/conversation.md).
 
 Each outcome has one topic of kind `conversation`, for asking where things
-stand and dropping in friction and requests. Its participants are exactly the
+stand and raising friction and requests. Its participants are exactly the
 outcome's people plus its coordinator (`workspaces.coordinator_id`), so the
 coordinator is woken by everything there, every person reads it, and any
 other agent is woken only when a message names it.
 
-Every message there that someone drops in is an item (`conversation_items`).
+Each thing someone posts there is an item (`conversation_items`).
 What became of an item is written by Theseus itself, in the same act that
 did it, as a take (`conversation_takes`): answered by its answerer's reply,
 taken into a topic started from it, or put on the pipeline. A take settles
