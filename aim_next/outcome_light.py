@@ -90,7 +90,8 @@ class OutcomeLight:
             nonlocal last
             work = topic["work"]
             if work.get("seen_ms") is not None and (last is None or work["seen_ms"] > last["ms"]):
-                last = {"by": work.get("by"), "how": work.get("how"), "topic_title": topic["title"], "ms": work["seen_ms"]}
+                last = {"by": work.get("by"), "how": work.get("how"), "topic_id": topic["topic_id"], "topic_title": topic["title"],
+                        "title_truncated": topic["title_truncated"], "ms": work["seen_ms"]}
 
         if not any(topic["work"]["observed"] for topic in talk + waits):
             for topic in talk + waits:

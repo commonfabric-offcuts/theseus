@@ -4,7 +4,9 @@
 // what comes next. Nothing here reads the page or the clock: a time is a part
 // {ms, form} that the painter says with spokenTime, so it follows the day.
 //
-// Every function returns parts: strings and times, joined in order.
+// Every function returns parts: strings and times, joined in order. The
+// page and the rows say a state and a time, and one Last line; what the
+// light is made of (the lead, the facts, the also-lines) waits behind the ⓘ.
 
 export const SOURCE = 'This comes from posts, agent work and questions in Theseus. Work done somewhere else won’t show here.';
 export const MAYBE = 'It might be stuck, or someone may be working on it outside Theseus.';
@@ -23,41 +25,58 @@ const whenAfter = ms => !known(ms) ? [] : [' ', { ms, form: 'commaSince' }];
 // The light's kind as the page names it on its lamp: the four, or unknown.
 export const lampKind = light => light?.light ?? 'unknown';
 
-// The rail row's line, in two pieces that each stay whole, so a narrow row
-// breaks only between them: [what, when].
+// The rail row's line: a state and a time, nothing more, in two pieces that
+// each stay whole, so a narrow row breaks only between them: [what, when].
 export function shortPieces(light) {
   const short = light?.short;
   if (!light?.light) return [['Couldn’t check'], ['where it stands']];
   switch (short?.kind) {
     case 'asks': return [['Waiting on you ·'], [plural(short.count, 'question', 'questions')]];
     case 'seen': return known(short.ms) ? [['Worked on'], time(short.ms, 'at')] : [['Being worked on'], []];
-    case 'checks_pass': return [['Done ·'], ['all checks pass']];
+    case 'checks_pass': return [['Done'], []];
     case 'reached': return [['Done ·'], ['reached ', ...time(short.ms, 'dayAt')]];
     case 'no_topics': return [['No topics yet'], []];
-    case 'talk': {
-      const what = known(short.since_ms) ? ['Quiet since ', ...time(short.since_ms, 'dayShort'), ' ·'] : ['Quiet ·'];
-      return [what, [short.how === 'turn' ? 'work ' : 'a post ', ...time(short.ms, 'at')]];
-    }
+    // Talk outside Now: quiet since the last work in Now; the talk is the outcome's Last line.
+    case 'talk': return known(short.since_ms) ? [['Quiet since'], time(short.since_ms, 'short')] : [['Quiet'], []];
     default: return known(short?.ms) ? [['Quiet since'], time(short.ms, 'short')] : [['Quiet'], []];
   }
 }
 
-// The light's name, at the top of the peek and of the outcome page.
+// The light's name with its time, at the top of the peek and of the outcome
+// page: "Quiet since 3:32 PM", "Worked on at 3:32 PM", "Waiting on you · 1 question".
 export function lightName(light) {
   if (!light?.light) return ['Couldn’t check where it stands'];
   const short = light.short ?? {};
-  if (light.light === 'waiting') return ['Waiting on you'];
-  if (light.light === 'built') return ['Being worked on'];
-  if (light.light === 'done') return ['Done'];
+  if (light.light === 'waiting') return short.kind === 'asks' ? [`Waiting on you · ${plural(short.count, 'question', 'questions')}`] : ['Waiting on you'];
+  if (light.light === 'built') return known(short.ms) ? ['Worked on ', ...time(short.ms, 'at')] : ['Being worked on'];
+  if (light.light === 'done') return short.kind === 'reached' ? ['Done · reached ', ...time(short.ms, 'dayAt')] : ['Done'];
   if (short.kind === 'no_topics') return ['No topics yet'];
-  if (short.kind === 'talk') {
-    const apart = [short.how === 'turn' ? 'apart from work ' : 'apart from a post ', ...time(short.ms, 'at')];
-    return known(short.since_ms) ? ['Quiet since ', ...time(short.since_ms, 'day'), ', ', ...apart] : ['Quiet, ', ...apart];
-  }
+  if (short.kind === 'talk') return known(short.since_ms) ? ['Quiet since ', ...time(short.since_ms, 'since')] : ['Quiet'];
   return known(short.ms) ? ['Quiet since ', ...time(short.ms, 'since')] : ['Quiet'];
 }
 
-// The sentence under the name that says why. facts tells "The latest:" apart.
+// The one line under the name: who did the newest thing, and where.
+// {label, by, link: {topic | item, text}} for "Last: fable in “No header bar…”"
+// (a question waiting on the reader: "Asked: fable in “Speaker notes”"), or
+// {text} for a line with nothing to link, or null when there is nothing to add.
+export function lastLine(answer) {
+  const facts = Array.isArray(answer?.facts) ? answer.facts : [];
+  if (answer?.lead?.kind === 'reached') return { text: [`${answer.lead.by} said it was reached`] };
+  for (const fact of facts) {
+    switch (fact?.kind) {
+      case 'ask': return { label: 'Asked:', by: fact.by, link: { topic: fact.topic_id, text: fact.title + (fact.title_truncated ? '…' : '') } };
+      case 'topic_work': return { label: 'Last:', by: fact.by, link: { topic: fact.topic_id, text: fact.title + (fact.title_truncated ? '…' : '') } };
+      case 'last_activity': return { label: 'Last:', by: fact.by, link: { topic: fact.topic_id, text: fact.topic_title + (fact.title_truncated ? '…' : '') } };
+      case 'item_work': case 'last_now_work': return { label: 'Last:', by: fact.by, link: { item: fact.item, text: `${fact.item}. ${fact.title}` } };
+      case 'created': return factParts(fact);
+      default: break;
+    }
+  }
+  return null;
+}
+
+// What the light is made of, behind the ⓘ on the outcome page: the
+// sentence that says why. facts tells "The latest:" apart.
 export function leadWords(lead, facts = [], outcome = '') {
   const more = facts.some(fact => fact?.kind === 'more_items'), lastNow = facts.some(fact => fact?.kind === 'last_now_work');
   switch (lead?.kind) {

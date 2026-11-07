@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 
 // Work observed in the real browser against the real server: a topic someone
-// just posted in carries the work ring, its row title says who did what and
-// when, and screen readers hear the same words; a key under the topics says
+// just posted in carries the work ring, its row title says who worked in it
+// and when, a state and a time, and screen readers hear the same words; a key under the topics says
 // what the ring means, on a phone too. No row ever says nobody works.
 // The reader's own posts are no news to them: they light no ring and are never
 // what the row's words name.
@@ -11,15 +11,15 @@ export async function workChecks({ check, page, until, control, view, shot }) {
   const row = rowOf('t1');
   const read = (p, selector = row) => p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)});return r?{title:r.title,dot:Boolean(r.querySelector('.topic-work')),words:[...r.querySelectorAll('.sr-only')].map(e=>e.textContent),size:(()=>{const d=r.querySelector('.topic-work');if(!d)return null;const b=d.getBoundingClientRect();return [b.width,b.height]})()}:null})()`);
 
-  await check('work a topic someone just posted in carries the dot, and its title says who and when', async () => {
+  await check('work a topic someone just posted in carries the dot, and its title says who and when, nothing more', async () => {
     await control({ method: 'agent_message', operation_id: 'work-agent-posts', body: 'Picked this up.', topic_id: 't1', addressees: [] });
     const p = await page('work-row', null, true);
-    const shown = await until(async () => { const r = await read(p); return r?.title.includes('fixture-notebook-agent posted') && r; }, 'row shows the agent post as activity');
+    const shown = await until(async () => { const r = await read(p); return r?.title.startsWith('fixture-notebook-agent · ') && r; }, 'row shows the agent post as activity');
     const work = (await view('topic', { topic_id: 't1' })).topic.work;
     assert.equal(work.observed, true);
     assert.equal(shown.dot, true, 'observed work has the dot');
-    // Said out loud (item 86): who did what, and when.
-    assert.match(shown.title, /^fixture-notebook-agent posted at \d{1,2}:\d{2}\s[AP]M$/);
+    // A state and a time (item 86): who worked in it, and when; never what they did.
+    assert.match(shown.title, /^fixture-notebook-agent · \d{1,2}:\d{2}\s[AP]M$/);
     // The row's other words for screen readers, its unread count (", 1 unread"),
     // come and go with what is read; the work's words are the title's.
     assert.deepEqual(shown.words.filter(words => !/^, \d+ unread/.test(words)), [' · ' + shown.title], 'screen readers hear the title');
@@ -99,8 +99,8 @@ export async function workChecks({ check, page, until, control, view, shot }) {
     await control({ method: 'agent_message', operation_id: 'work-own-person', body: 'Thanks.', topic_id: 'work-own', sender: 'person', addressees: [] });
     const later = await page('work-own-later', null, true);
     const lit = await until(async () => { const r = await read(later, own); return r?.dot && r; }, 'the agent\'s post lights the row');
-    assert.match(lit.title, /^fixture-notebook-agent posted at \d{1,2}:\d{2}\s[AP]M$/, 'the words name the agent, not the reader\'s later post');
-    assert.doesNotMatch(lit.title, /you posted/);
+    assert.match(lit.title, /^fixture-notebook-agent · \d{1,2}:\d{2}\s[AP]M$/, 'the words name the agent, not the reader\'s later post');
+    assert.doesNotMatch(lit.title, /you/);
     const work = (await view('topic', { topic_id: 'work-own' })).topic.work;
     assert.deepEqual([work.observed, work.by, work.how], [true, 'fixture-notebook-agent', 'posted']);
     await shot(later, 'work-own-others-dot');

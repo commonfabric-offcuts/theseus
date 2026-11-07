@@ -325,7 +325,14 @@ class LightReadsCase(fixtures.StoreCase):
         self.now = start + 5 * HOUR
         answer = self.stands()
         self.assertEqual(light(answer), ("quiet", {"kind": "since", "ms": start + 61 * MINUTE}))
-        self.assertEqual(answer["facts"], [{"kind": "last_activity", "by": "agent-b", "how": "posted", "topic_title": "B", "ms": start + 61 * MINUTE}])
+        # The last activity names its topic by id as well as title, so the page's Last line can link to it.
+        self.assertEqual(answer["facts"], [{"kind": "last_activity", "by": "agent-b", "how": "posted", "topic_id": "t-b", "topic_title": "B",
+                                            "title_truncated": False, "ms": start + 61 * MINUTE}])
+        # A title too long to carry whole is cut, and says so, so the line can end it with an ellipsis.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE topics SET title=? WHERE id='t-b'", ("B" * 1100,))
+        long = self.stands()["facts"][0]
+        self.assertEqual((long["topic_id"], long["title_truncated"], long["topic_title"]), ("t-b", True, "B" * 1024))
         with mock.patch.object(outcome_rules, "LAST_SCAN_MAX", 1):
             capped = self.stands()
         self.assertEqual(light(capped), ("quiet", {"kind": "since", "ms": None}), "a scan that stopped on its cap may have missed something newer")

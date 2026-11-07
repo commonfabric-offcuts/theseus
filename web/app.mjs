@@ -1369,7 +1369,7 @@ async function initializeOutcomePage(route) {
   if(attention?.last)paintSent(sentHost,attention.last,{open:openSent,acknowledge:markSent,read:readSent,attachment:sentAttachment});
   if(route.kind==='root') {
     // What waits on the reader, every outcome's, heads the Outcomes home only (item 86):
-    // an outcome's own page says its questions once, in "Where this outcome stands".
+    // an outcome's own page says its questions once, in "Where it stands".
     waitingHost=$('waiting-on-you');
     if(attention?.last)paintWaiting(waitingHost,attention.last,(id,title)=>openDestination({kind:'topic',id},title));
     $('topic-title').textContent='Outcomes';$('topic-description').textContent='Choose an outcome to see its topics.';
@@ -1394,7 +1394,7 @@ async function initializeOutcomePage(route) {
     // The list of outcomes is read, not shown, for the line naming other outcomes' questions;
     // "← Outcomes" says its words when that line names fewer outcomes than its light counts.
     initializeOutcomeNavigation(route.id,items=>scope.alsoNamed(paintAlsoWaiting($('also-waiting'),items,route.id,(id,title)=>openDestination({kind:'workspace',id},title))));
-    // Where this outcome stands, read with the page and again on every commit.
+    // Where it stands, read with the page and again on every commit.
     let standingSerial=0;
     const stands=async workspace=>{
       const serial=++standingSerial,retry=()=>run(reload);

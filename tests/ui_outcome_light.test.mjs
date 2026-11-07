@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { clock, spokenTime } from '../web/times.mjs';
-import { alsoWords, factParts, leadWords, lightName, shortPieces, SOURCE, MAYBE } from '../web/outcome-light-words.mjs';
+import { alsoWords, factParts, lastLine, leadWords, lightName, shortPieces, SOURCE, MAYBE } from '../web/outcome-light-words.mjs';
 import { LightPeek, paintAlsoWaiting, paintRowLight, paintStanding, paintStandingFailed, partsText } from '../web/outcome-light.mjs';
 
 const NOW = new Date(2026, 10, 6, 6, 47).getTime();
@@ -58,38 +58,66 @@ test('times said out loud, in each form, for today, yesterday, two to six days a
   assert.equal(spokenTime(at(5, 23, 50), 'part'), 'yesterday');
 });
 
-test('the rail row says each light in mockup 86\'s words, in two pieces', () => {
+test('the rail row says each light as a state and a time, in two pieces', () => {
   assert.deepEqual(pieces(light('waiting', { kind: 'asks', count: 1 })), ['Waiting on you ·', '1 question']);
   assert.deepEqual(pieces(light('waiting', { kind: 'asks', count: 2 })), ['Waiting on you ·', '2 questions']);
   assert.deepEqual(pieces(light('built', { kind: 'seen', ms: TODAY_640 })), ['Worked on', 'at 6:40 AM']);
-  assert.deepEqual(pieces(light('done', { kind: 'checks_pass' })), ['Done ·', 'all checks pass']);
+  assert.deepEqual(pieces(light('done', { kind: 'checks_pass' })), ['Done', ''], 'Done alone: what makes it done is behind the ⓘ');
   assert.deepEqual(pieces(light('done', { kind: 'reached', ms: YESTERDAY_315 })), ['Done ·', 'reached yesterday']);
   assert.deepEqual(pieces(light('quiet', { kind: 'since', ms: YESTERDAY_315 })), ['Quiet since', 'yesterday 3:15 PM']);
   assert.deepEqual(pieces(light('quiet', { kind: 'since', ms: TUESDAY_410 })), ['Quiet since', 'Tue 4:10 PM']);
-  assert.deepEqual(pieces(light('quiet', { kind: 'talk', ms: TODAY_615, how: 'posted', since_ms: TUESDAY_410 })), ['Quiet since Tue ·', 'a post at 6:15 AM']);
+  assert.deepEqual(pieces(light('quiet', { kind: 'talk', ms: TODAY_615, how: 'posted', since_ms: TUESDAY_410 })), ['Quiet since', 'Tue 4:10 PM']);
   assert.deepEqual(pieces(light('quiet', { kind: 'no_topics' })), ['No topics yet', '']);
   assert.deepEqual(pieces(light('quiet', { kind: 'since', ms: null })), ['Quiet', ''], 'no time known: Quiet alone');
   assert.deepEqual(pieces({ light: null, label: null, short: null, unreadable: true }), ['Couldn’t check', 'where it stands']);
 });
 
-test('a hosted turn as the newest talk says "work at", never "a post at"', () => {
-  const turn = light('quiet', { kind: 'talk', ms: TODAY_615, how: 'turn', since_ms: TUESDAY_410 });
-  assert.deepEqual(pieces(turn), ['Quiet since Tue ·', 'work at 6:15 AM']);
-  assert.equal(words(lightName(turn)), 'Quiet since Tuesday, apart from work at 6:15 AM');
-  for (const text of [...pieces(turn), words(lightName(turn))]) assert.doesNotMatch(text, /post/);
-  // The talk form's "since" is the last work in Now, never the talk's own time.
-  assert.deepEqual(pieces(light('quiet', { kind: 'talk', ms: TODAY_615, how: 'posted', since_ms: null })), ['Quiet ·', 'a post at 6:15 AM']);
+test('talk outside Now is quiet since the last work in Now: the row and the name say that state and time alone, never the talk', () => {
+  for (const how of ['turn', 'posted']) {
+    const talk = light('quiet', { kind: 'talk', ms: TODAY_615, how, since_ms: TUESDAY_410 });
+    assert.deepEqual(pieces(talk), ['Quiet since', 'Tue 4:10 PM']);
+    assert.equal(words(lightName(talk)), 'Quiet since Tuesday at 4:10 PM');
+    for (const text of [...pieces(talk), words(lightName(talk))]) assert.doesNotMatch(text, /post|work|apart|6:15/, 'the talk is the Last line\'s, not the light\'s');
+  }
+  // The talk form's "since" is the last work in Now, never the talk's own time: with none, Quiet alone.
+  const never = light('quiet', { kind: 'talk', ms: TODAY_615, how: 'posted', since_ms: null });
+  assert.deepEqual(pieces(never), ['Quiet', '']);
+  assert.equal(words(lightName(never)), 'Quiet');
 });
 
-test('the light\'s name at the top of the peek and the panel', () => {
-  assert.equal(words(lightName(light('waiting', { kind: 'asks', count: 2 }))), 'Waiting on you');
-  assert.equal(words(lightName(light('built', { kind: 'seen', ms: TODAY_640 }))), 'Being worked on');
+test('the light\'s name with its time, at the top of the peek and the card', () => {
+  assert.equal(words(lightName(light('waiting', { kind: 'asks', count: 1 }))), 'Waiting on you · 1 question');
+  assert.equal(words(lightName(light('waiting', { kind: 'asks', count: 2 }))), 'Waiting on you · 2 questions');
+  assert.equal(words(lightName(light('waiting', { kind: 'other' }))), 'Waiting on you', 'no count, no count said');
+  assert.equal(words(lightName(light('built', { kind: 'seen', ms: TODAY_640 }))), 'Worked on at 6:40 AM');
+  assert.equal(words(lightName(light('built', { kind: 'seen', ms: YESTERDAY_315 }))), 'Worked on yesterday at 3:15 PM');
+  assert.equal(words(lightName(light('built', { kind: 'seen', ms: null }))), 'Being worked on', 'no time known');
   assert.equal(words(lightName(light('done', { kind: 'checks_pass' }))), 'Done');
+  assert.equal(words(lightName(light('done', { kind: 'reached', ms: YESTERDAY_315 }))), 'Done · reached yesterday');
   assert.equal(words(lightName(light('quiet', { kind: 'since', ms: YESTERDAY_315 }))), 'Quiet since yesterday at 3:15 PM');
   assert.equal(words(lightName(light('quiet', { kind: 'since', ms: null }))), 'Quiet');
-  assert.equal(words(lightName(light('quiet', { kind: 'talk', ms: TODAY_615, how: 'posted', since_ms: TUESDAY_410 }))), 'Quiet since Tuesday, apart from a post at 6:15 AM');
   assert.equal(words(lightName(light('quiet', { kind: 'no_topics' }))), 'No topics yet');
   assert.equal(words(lightName({ light: null, short: null, unreadable: true })), 'Couldn’t check where it stands');
+});
+
+test('the Last line names who did the newest thing and where: a question first, then work, then the last activity, then who started it', () => {
+  const ask = { kind: 'ask', topic_id: 't-notes', title: 'Speaker notes', title_truncated: false, by: 'fable', ms: at(6, 6, 20) };
+  const topicWork = { kind: 'topic_work', topic_id: 't-rail', title: 'No header bar, and the side rail', title_truncated: true, by: 'fable', how: 'posted', ms: TODAY_640 };
+  const itemWork = { kind: 'item_work', item: 69, title: 'Notebook pages', by: 'warp', how: 'turn', ms: TODAY_640 };
+  const activity = { kind: 'last_activity', by: 'aim-spec', how: 'posted', topic_id: 't-who', topic_title: 'Who answers where', title_truncated: false, ms: YESTERDAY_315 };
+  assert.deepEqual(lastLine({ lead: { kind: 'asks', count: 1 }, facts: [ask] }), { label: 'Asked:', by: 'fable', link: { topic: 't-notes', text: 'Speaker notes' } });
+  assert.deepEqual(lastLine({ lead: { kind: 'topics_work' }, facts: [topicWork] }), { label: 'Last:', by: 'fable', link: { topic: 't-rail', text: 'No header bar, and the side rail…' } }, 'a cut title says so');
+  assert.deepEqual(lastLine({ lead: { kind: 'now_work' }, facts: [itemWork, { kind: 'more_items', numbers: [1] }] }), { label: 'Last:', by: 'warp', link: { item: 69, text: '69. Notebook pages' } });
+  assert.deepEqual(lastLine({ lead: { kind: 'now_quiet' }, facts: [{ ...itemWork, kind: 'last_now_work' }] }), { label: 'Last:', by: 'warp', link: { item: 69, text: '69. Notebook pages' } });
+  assert.deepEqual(lastLine({ lead: { kind: 'topics_quiet' }, facts: [activity] }), { label: 'Last:', by: 'aim-spec', link: { topic: 't-who', text: 'Who answers where' } });
+  assert.equal(lastLine({ lead: { kind: 'topics_quiet' }, facts: [{ ...activity, title_truncated: true }] }).link.text, 'Who answers where…');
+  // Facts that say nothing of who did what are passed over; the first that does is the line.
+  assert.equal(lastLine({ lead: { kind: 'done' }, facts: [{ kind: 'all_shipped', count: 12, last_release_ms: TUESDAY_410 }, { kind: 'checks_pass', count: 7, last_run_ms: YESTERDAY_315 }, activity] }).link.topic, 't-who');
+  assert.deepEqual(lastLine({ lead: { kind: 'no_topics' }, facts: [{ kind: 'created', by: 'tony', ms: null }] }), { text: ['Started by tony.'] });
+  assert.deepEqual(lastLine({ lead: { kind: 'reached', by: 'tony', ms: YESTERDAY_315, words: 'Done.' }, facts: [activity] }), { text: ['tony said it was reached'] }, 'a reached outcome says who said so');
+  assert.equal(lastLine({ lead: { kind: 'done' }, facts: [{ kind: 'checks_pass', count: 7, last_run_ms: YESTERDAY_315 }] }), null, 'nothing to add: no line');
+  assert.equal(lastLine({ lead: { kind: 'unreadable' }, facts: [] }), null);
+  assert.equal(lastLine(null), null);
 });
 
 test('each lead in mockup 86\'s words', () => {
@@ -180,55 +208,90 @@ test('a rail row keeps each piece whole, the light with the first, and breaks on
   assert.equal(small.text, 'Couldn’t check where it stands');
 });
 
-test('"Where this outcome stands" says the light, the lead, the facts as links and the small print', t => {
+test('"Where it stands" is two lines, the light with its name and time and the Last line as a link; what it is made of opens in place from the ⓘ', t => {
   dom(t);
   const host = new Element('section'), opened = [];
   host.hidden = true;
-  paintStanding(host, { light: light('waiting', { kind: 'asks', count: 1 }), lead: { kind: 'asks', count: 1 },
-    facts: [{ kind: 'ask', topic_id: 't-notes', title: 'Speaker notes', by: 'fable', ms: at(6, 6, 20) }], also: [{ kind: 'also_built', seen: 4, of: 15 }] },
-  { open: (id, title) => opened.push([id, title]), retry: () => {}, outcome: 'Pitch deck' });
+  const visible = () => host.children.filter(node => !node.hidden).map(node => node.text);
+  const more = () => host.children.find(node => node.id === 'standing-more');
+  const info = () => host.all().find(node => node.className === 'standing-info');
+  const waiting = { light: light('waiting', { kind: 'asks', count: 1 }), lead: { kind: 'asks', count: 1 },
+    facts: [{ kind: 'ask', topic_id: 't-notes', title: 'Speaker notes', title_truncated: false, by: 'fable', ms: at(6, 6, 20) }], also: [{ kind: 'also_built', seen: 4, of: 15 }] };
+  const paint = (answer, options = { open: (id, title) => opened.push([id, title]), retry: () => {}, outcome: 'Pitch deck' }) => paintStanding(host, answer, options);
+  paint(waiting);
   assert.equal(host.hidden, false);
-  const texts = host.children.map(node => node.text);
-  assert.deepEqual(texts, ['Where this outcome stands', 'Waiting on you', 'A question is waiting for your answer:', 'Speaker notes — fable asked at 6:20 AM',
-    'Work is going on too: 4 of the 15 items in Now were worked on in the last hour.', SOURCE]);
-  const link = host.all().find(node => node.tag === 'a');
-  assert.equal(link.href, '?topic=t-notes');
+  // The whole card: its heading with the ⓘ, the light and its name with the time, and one Last line.
+  assert.deepEqual(visible(), ['Where it standsi', 'Waiting on you · 1 question', 'Asked: fable in “Speaker notes”']);
+  assert.equal(host.children[1].children[0].dataset.light, 'waiting', 'the light leads its name');
+  // The Last line's topic is a link that opens it in place; a modified click keeps the browser default.
+  const last = host.children.find(node => node.className === 'standing-last');
+  const link = last.all().find(node => node.tag === 'a');
+  assert.ok(link, 'the Last line\'s topic is a link');
+  assert.deepEqual([link.href, link.className], ['?topic=t-notes', 'title'], 'the title is the link, cut to one line by the stylesheet');
   let prevented = false;
   link.onclick({ button: 0, preventDefault: () => { prevented = true; } });
   link.onclick({ button: 0, metaKey: true, preventDefault: () => assert.fail('a modified click keeps the browser default') });
   assert.equal(prevented, true);
   assert.deepEqual(opened, [['t-notes', 'Speaker notes']]);
-  assert.equal(host.all().some(node => node.tag === 'button'), false, 'nothing to try again');
-  // Quiet always adds that someone may be working on it outside Theseus.
-  paintStanding(host, { light: light('quiet', { kind: 'since', ms: YESTERDAY_315 }), lead: { kind: 'topics_quiet' },
-    facts: [{ kind: 'last_activity', by: 'fable', how: 'posted', topic_title: 'Who answers where', ms: YESTERDAY_315 }], also: [{ kind: 'may_be_stalled' }] }, {});
-  assert.deepEqual(host.children.map(node => node.text), ['Where this outcome stands', 'Quiet since yesterday at 3:15 PM',
-    'Nothing has been posted or worked on in its open topics since then, and no one is waiting on an answer.',
-    'The last thing that happened: fable posted in Who answers where, yesterday at 3:15 PM.', MAYBE, SOURCE]);
+  // What the light is made of waits, closed, behind the ⓘ.
+  assert.equal(more().hidden, true);
+  assert.deepEqual([info().tag, info().attributes['aria-label'], info().title, info().attributes['aria-controls'], info().attributes['aria-expanded']],
+    ['button', 'What this is made of', 'What this is made of', 'standing-more', 'false']);
+  assert.equal(more().text, 'A question is waiting for your answer:Speaker notes — fable asked at 6:20 AMWork is going on too: 4 of the 15 items in Now were worked on in the last hour.' + SOURCE);
+  assert.equal(host.all().some(node => node.className === 'retry'), false, 'nothing to try again');
+  // The ⓘ opens it in place, and it stays open across the repaint on each commit.
+  info().onclick();
+  assert.deepEqual([more().hidden, info().attributes['aria-expanded']], [false, 'true']);
+  paint(waiting);
+  assert.deepEqual([more().hidden, info().attributes['aria-expanded']], [false, 'true'], 'a commit repaints the card; what is open stays open');
+  assert.equal(more().all().filter(node => node.tag === 'a')[0].href, '?topic=t-notes', 'its facts link their topics');
+  // A second press closes it, and it stays closed across the next repaint.
+  info().onclick();
+  assert.equal(more().hidden, true);
+  paint(waiting);
+  assert.deepEqual([more().hidden, info().attributes['aria-expanded']], [true, 'false']);
+  // Quiet: the last activity names its topic as a link; behind the ⓘ, someone may be working outside Theseus.
+  paint({ light: light('quiet', { kind: 'since', ms: YESTERDAY_315 }), lead: { kind: 'topics_quiet' },
+    facts: [{ kind: 'last_activity', by: 'fable', how: 'posted', topic_id: 't-who', topic_title: 'No header bar, and the side rail', title_truncated: true, ms: YESTERDAY_315 }], also: [{ kind: 'may_be_stalled' }] });
+  assert.deepEqual(visible(), ['Where it standsi', 'Quiet since yesterday at 3:15 PM', 'Last: fable in “No header bar, and the side rail…”']);
+  assert.equal(host.all().find(node => node.tag === 'a').href, '?topic=t-who');
+  assert.equal(more().text, 'Nothing has been posted or worked on in its open topics since then, and no one is waiting on an answer.' +
+    'The last thing that happened: fable posted in No header bar, and the side rail, yesterday at 3:15 PM.' + MAYBE + SOURCE);
   // An item is named as plain text until it has a page of its own.
-  paintStanding(host, { light: light('built', { kind: 'seen', ms: TODAY_640 }), lead: { kind: 'now_work', seen: 1, of: 1 },
+  paint({ light: light('built', { kind: 'seen', ms: TODAY_640 }), lead: { kind: 'now_work', seen: 1, of: 1 },
     facts: [{ kind: 'item_work', item: 69, title: 'Notebook pages', by: 'fable', how: 'turn', ms: TODAY_640 }], also: [] }, { open: () => assert.fail('no link') });
+  assert.deepEqual(visible(), ['Where it standsi', 'Worked on at 6:40 AM', 'Last: fable in “69. Notebook pages”']);
   assert.equal(host.all().some(node => node.tag === 'a'), false);
+  // No topics yet: who started it, with nothing to link.
+  paint({ light: light('quiet', { kind: 'no_topics' }), lead: { kind: 'no_topics' }, facts: [{ kind: 'created', by: 'tony', ms: null }], also: [] });
+  assert.deepEqual(visible(), ['Where it standsi', 'No topics yet', 'Started by tony.']);
+  // Nothing to add: the light's line alone.
+  paint({ light: light('done', { kind: 'checks_pass' }), lead: { kind: 'done', pipeline: false }, facts: [{ kind: 'checks_pass', count: 7, last_run_ms: YESTERDAY_315 }], also: [] });
+  assert.deepEqual(visible(), ['Where it standsi', 'Done']);
 });
 
-test('a panel that could not read says so, offers Try again, and claims no source; a reached outcome adds no small print', t => {
+test('a card that could not read says so with Try again, its reasons behind the ⓘ, and claims no source; a reached outcome says who said so and adds no small print', t => {
   dom(t);
   const host = new Element('section');
+  const visible = () => host.children.filter(node => !node.hidden).map(node => node.text);
+  const more = () => host.children.find(node => node.id === 'standing-more');
   let retried = 0;
   paintStandingFailed(host, () => retried++);
-  assert.deepEqual(host.children.map(node => node.text), ['Where this outcome stands', 'Couldn’t check where it stands',
-    'Theseus couldn’t read this outcome’s pipeline just now, so it isn’t guessing. Questions for you are checked separately: if one were waiting, you’d still see it.', 'Try again']);
-  const button = host.all().find(node => node.tag === 'button');
+  assert.deepEqual(visible(), ['Where it standsi', 'Couldn’t check where it stands', 'Try again']);
+  assert.equal(more().text, 'Theseus couldn’t read this outcome’s pipeline just now, so it isn’t guessing. Questions for you are checked separately: if one were waiting, you’d still see it.',
+    'why, behind the ⓘ, with no claim of where it comes from');
+  const button = host.all().find(node => node.className === 'retry');
   button.onclick();
   assert.equal(retried, 1);
   assert.equal(host.children[1].children[0].dataset.light, 'unknown', 'no light at all');
   // The server's own unreadable answer, with a question still waiting, keeps the question.
   paintStanding(host, { light: light('waiting', { kind: 'asks', count: 1 }, { unreadable: true }), lead: { kind: 'asks', count: 1 }, facts: [], also: [] }, { retry: () => {} });
-  assert.equal(host.children[1].text, 'Waiting on you');
-  // Reached: his words are the one fact, with no footnote after them.
+  assert.equal(host.children[1].text, 'Waiting on you · 1 question');
+  // Reached: who said so is the Last line; his words wait behind the ⓘ, with no footnote after them.
   paintStanding(host, { light: light('done', { kind: 'reached', ms: at(5, 16, 10) }), lead: { kind: 'reached', by: 'tony', ms: at(5, 16, 10), words: 'Done.' }, facts: [], also: [] },
     { outcome: 'Pitch deck' });
-  assert.deepEqual(host.children.map(node => node.text), ['Where this outcome stands', 'Done', 'tony said Pitch deck was reached, yesterday at 4:10 PM:']);
+  assert.deepEqual(visible(), ['Where it standsi', 'Done · reached yesterday', 'tony said it was reached']);
+  assert.equal(more().text, 'tony said Pitch deck was reached, yesterday at 4:10 PM:');
 });
 
 test('"Also waiting on you" names other outcomes\' questions once, in the sidebar\'s order, as each row counts them', t => {
@@ -275,17 +338,20 @@ test('the peek reads when it opens, touches its row, stays while the pointer is 
   await new Promise(setImmediate);
   assert.deepEqual(reads, ['w1'], 'read once when it opens');
   assert.equal(host.children[0].text, 'Quiet since yesterday at 3:15 PM');
-  assert.equal(host.children.at(-1).text, SOURCE);
+  assert.equal(host.children.length, 1, 'the card\'s first line and nothing more, with no Last line to say');
   // From the row onto the peek, and back: still open.
   row.dispatch('mouseleave', { relatedTarget: host.children[0] });
   assert.equal(host.hidden, false);
   host.dispatch('mouseleave', { relatedTarget: row });
   assert.equal(host.hidden, false);
-  // A commit while it is open reads again.
-  answer = { ...answer, light: light('built', { kind: 'seen', ms: TODAY_640 }), lead: { kind: 'topics_work' } };
+  // A commit while it is open reads again; the peek says what the card says, the Last line in plain words.
+  answer = { ...answer, light: light('built', { kind: 'seen', ms: TODAY_640 }), lead: { kind: 'topics_work' },
+    facts: [{ kind: 'topic_work', topic_id: 't-rail', title: 'Side rail', title_truncated: true, by: 'fable', how: 'posted', ms: TODAY_640 }] };
   await peek.refresh();
   assert.deepEqual(reads, ['w1', 'w1']);
-  assert.equal(host.children[0].text, 'Being worked on');
+  assert.deepEqual(host.children.map(node => node.text), ['Worked on at 6:40 AM', 'Last: fable in “Side rail…”']);
+  assert.equal(host.all().some(node => node.tag === 'a'), false, 'no link in the peek: the row is the way in');
+  assert.doesNotMatch(host.text, /This comes from|worked on in the last hour/, 'what the light is made of stays on the outcome\'s page');
   // Leaving both closes it.
   host.dispatch('mouseleave', { relatedTarget: null });
   assert.equal(host.hidden, true);
