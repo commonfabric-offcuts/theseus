@@ -353,7 +353,9 @@ details.pl-origin>p strong{font-weight:600;color:var(--ink)}
 .pl-stage-removed{margin:.5rem 0 0;font-size:.8rem}
 .pl-stage-removed button{min-height:2rem;padding:0 .55rem;font-size:.8rem}
 /* A choice of a few options: chips tapped once, the chosen one in ink. */
-.pl-picks{display:inline-flex;flex-wrap:wrap;gap:.3rem}
+.pl-picks{display:inline-flex;flex-wrap:wrap;align-items:center;gap:.3rem}
+.pl-picks>.muted{font-size:.8rem;margin-right:.1rem}
+.pl-picks+.pl-pick{margin-left:.6rem}
 .pl-pick{min-height:2.2rem;padding:0 .7rem;border-radius:1.1rem;background:var(--panel);color:var(--muted);font-size:.8rem;font-weight:550}
 .pl-pick:hover{color:var(--ink);border-color:var(--muted)}
 .pl-pick[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--panel)}

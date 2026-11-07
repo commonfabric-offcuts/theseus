@@ -441,7 +441,7 @@ export class PipelinePage {
             this.stageField(stage, 'name', { 'aria-label': `Name of stage ${index + 1}`, placeholder: 'Stage name', maxlength: '200' }),
             this.stageField(stage, 'done', { 'aria-label': `When ${name} is done`, placeholder: 'Done when…', maxlength: '2000' })),
           el('div', { class: 'pl-stage-line' },
-            el('span', { class: 'pl-picks', role: 'group', 'aria-label': `Rounds in ${name}` },
+            el('span', { class: 'pl-picks', role: 'group', 'aria-label': `Rounds in ${name}` }, el('span', { class: 'muted', 'aria-hidden': 'true', text: 'Rounds' }),
               ...ROUND_CHIPS.map(([value, words, title]) => chip(`rounds-${value}`, words, stage.rounds === value, title,
                 stage.rounds === value ? null : list => { stageIn(list, id).rounds = value; }))),
             chip('gate-owner', `${owner === 'You' ? 'Your' : `${owner}’s`} word`, !!stage.gate?.owner,
@@ -781,9 +781,9 @@ function section(title, note, ...kids) {
 }
 
 const ROUND_CHIPS = [
-  ['none', 'No rounds', 'An item passes this stage once.'],
-  ['together', 'Rounds together', 'An item can come back for more rounds, each counted with the first.'],
-  ['split', 'First round apart', 'The first round is counted on its own; later rounds together.'],
+  ['none', 'None', 'No rounds: an item passes this stage once.'],
+  ['together', 'Together', 'Each round together: an item can come back for more rounds, each counted with the first.'],
+  ['split', 'First apart', 'First round apart: the first round is counted on its own, later rounds together.'],
 ];
 const STAGE_TEXT = { name: stage => stage.name, done: stage => stage.done_when ?? '', checks: stage => stage.gate?.words ?? '' };
 const stageText = (stage, field) => STAGE_TEXT[field](stage);
