@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { pngPixels } from './png-bands.mjs';
 
 // The top of a topic, Topic settings and the people at the bottom, in the real
 // browser against the real server: the title with its gear and the note under
@@ -202,6 +203,60 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       assert.deepEqual(p.errors, []);
     });
   }
+
+  // The keyboard ring drawn around each button in a pill, read from the
+  // screen: on every side of the button, just outside it, the ring's own
+  // colour is painted. Nothing may hide it, not the pill itself.
+  await check('header Tab through the people shows the whole focus ring around each button in a pill', async () => {
+    await setState('header-rings-active', { state: 'active', note: '' });
+    const p = await page('header-rings', null, true, { beforeNavigate: scheme('light') });
+    const buttons = `[...document.querySelectorAll('#topic-people .person-pill button')]`;
+    await until(() => p.evaluate(`${buttons}.length >= 3`), 'the people painted, with a pill button to open a colour and remove buttons');
+    await p.evaluate(`document.querySelector('#topic-people').scrollIntoView({block:'center'})`);
+    const rect = e => `(e=>{const b=e.getBoundingClientRect();return {left:b.left,top:b.top,right:b.right,bottom:b.bottom}})(${e})`;
+    const screen = async () => pngPixels(Buffer.from((await p.send('Page.captureScreenshot', { format: 'png' })).data, 'base64'));
+    // How much of each side's band, 1 to 6 px outside the button, holds the ring's colour.
+    const ringSides = (image, b, color) => {
+      const near = (x, y) => x >= 0 && y >= 0 && x < image.width && y < image.height && image.pixel(x, y).every((v, i) => Math.abs(v - color[i]) <= 30);
+      const xs = [], ys = [];
+      for (let x = Math.ceil(b.left); x < Math.floor(b.right); x++) xs.push(x);
+      for (let y = Math.ceil(b.top); y < Math.floor(b.bottom); y++) ys.push(y);
+      const band = (from, to) => { const out = []; for (let d = from; d <= to; d++) out.push(d); return out; };
+      const share = (along, hit) => along.filter(hit).length / along.length;
+      return {
+        top: share(xs, x => band(1, 6).some(d => near(x, Math.floor(b.top) - d))),
+        bottom: share(xs, x => band(0, 5).some(d => near(x, Math.ceil(b.bottom) + d))),
+        left: share(ys, y => band(1, 6).some(d => near(Math.floor(b.left) - d, y))),
+        right: share(ys, y => band(0, 5).some(d => near(Math.ceil(b.right) + d, y))),
+      };
+    };
+    const focusColor = (await p.evaluate(`getComputedStyle(document.documentElement).getPropertyValue('--focus').trim()`)).match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i).slice(1).map(h => parseInt(h, 16));
+    // With the focus away from the people, no button in a pill shows the ring's colour around it.
+    await p.evaluate(`document.querySelector('#more-messages').hidden ? document.querySelector('#messages [data-id]').focus({preventScroll:true}) : document.querySelector('#more-messages').focus({preventScroll:true})`);
+    const quiet = await screen();
+    for (const b of await p.evaluate(`${buttons}.map(e=>${rect('e')})`)) {
+      const sides = ringSides(quiet, b, focusColor);
+      assert.ok(Object.values(sides).every(s => s === 0), 'no ring around an unfocused pill button: ' + JSON.stringify(sides));
+    }
+    // From the control just before the people, Tab stops on each pill button in turn.
+    await p.evaluate(`(()=>{const people=document.querySelector('#topic-people'),all=[...document.querySelectorAll('button,input,a[href],[tabindex]:not([tabindex="-1"])')].filter(e=>!e.disabled&&e.getClientRects().length&&people.compareDocumentPosition(e)&Node.DOCUMENT_POSITION_PRECEDING);all.at(-1).focus({preventScroll:true})})()`);
+    const expected = await p.evaluate(`${buttons}.map(e=>e.getAttribute('aria-label')||e.title)`);
+    const seen = [];
+    for (;;) {
+      await p.key('Tab');
+      const at = await p.evaluate(`(a=>({pill:Boolean(a.closest('.person-pill')),name:a.getAttribute('aria-label')||a.title,visible:a.matches(':focus-visible'),style:getComputedStyle(a).outlineStyle,box:${rect('a')}}))(document.activeElement)`);
+      if (!at.pill) break;
+      seen.push(at.name);
+      assert.deepEqual([at.visible, at.style], [true, 'solid'], `${at.name}: the browser draws its keyboard ring`);
+      await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'settled');
+      const sides = ringSides(await screen(), at.box, focusColor);
+      if (seen.length === 1) await shot(p, 'header-ring-first-pill-button');
+      for (const [side, share] of Object.entries(sides)) assert.ok(share >= 0.5, `${at.name}: the ring shows along its ${side} side (${share.toFixed(2)} of it): ${JSON.stringify(sides)}`);
+    }
+    assert.deepEqual(seen, expected, 'Tab stops on every button in the pills, in order');
+    assert.ok(seen.some(name => name.startsWith('Change ')) && seen.some(name => name.startsWith('Remove ')), 'an agent\'s colour button and a remove button among them');
+    assert.deepEqual(p.errors, []);
+  });
 
   await check('header the people are one filled pill each after the last message, and a remove button sits in its pill', async () => {
     await setState('header-people-active', { state: 'active', note: '' });

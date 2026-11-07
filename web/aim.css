@@ -167,12 +167,14 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .topic-header .topic-subtitle{margin-top:.3rem;font-size:.95rem;overflow-wrap:anywhere}.topic-subtitle .topic-state{margin-right:.25rem;vertical-align:.08em}
 /* The people, at the very bottom after the messages: one pill each, filled with the person's colour; the reader's own is black, as their messages are. */
 .topic-people{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;margin-top:1.5rem;padding-top:1rem;border-top:1px solid var(--line)}.topic-people h2{font-size:.8rem;font-weight:600;color:var(--muted)}.topic-people .participants{flex:1 1 auto;margin:0;align-items:center}
-.person-pill{display:inline-flex;align-items:center;min-height:2rem;border-radius:1rem;background:var(--agent-tag,#eff0f0);color:var(--ink);font-size:.82rem;font-weight:600;line-height:1;overflow:hidden}
+.person-pill{display:inline-flex;align-items:center;min-height:2rem;border-radius:1rem;background:var(--agent-tag,#eff0f0);color:var(--ink);font-size:.82rem;font-weight:600;line-height:1}
 .person-pill .pill-name{display:inline-flex;align-items:center;min-height:2rem;padding:0 .8rem;border:0;border-radius:0;background:transparent;color:inherit;font:inherit}
 .person-pill button.pill-name:hover{background:transparent;text-decoration:underline}
 .person-pill .wake-light{color:var(--warn);padding-right:.8rem}.person-pill .pill-name+.wake-light{margin-left:-.6rem}
 /* The remove button sits inside its person's pill, after a hairline, in the pill's own letter colour. */
 .person-pill .pill-remove{position:relative;min-width:2rem;min-height:2rem;padding:0 .5rem;border:0;border-radius:0;background:transparent;color:inherit;font-weight:600}.person-pill .pill-remove::before{content:'';position:absolute;left:0;top:.45rem;bottom:.45rem;width:1px;background:currentColor;opacity:.25}.person-pill .pill-remove:hover{background:color-mix(in srgb,currentColor 12%,transparent)}
+/* The pill clips nothing, so the focus ring drawn outside each of its buttons shows whole; its first and last parts round its outer corners, and a hover fills only its own part. */
+.person-pill>:first-child{border-top-left-radius:1rem;border-bottom-left-radius:1rem}.person-pill>:last-child{border-top-right-radius:1rem;border-bottom-right-radius:1rem}
 .person-pill.own-pill{background:#000;color:#e0e8e5}
 /* In the dark theme a black pill needs a thin edge for its shape to show; it is the only pill with one. */
 @media(prefers-color-scheme:dark){.person-pill{background:var(--agent-tag,#252b2e)}.person-pill.own-pill{background:#000;box-shadow:0 0 0 1px var(--line)}}
