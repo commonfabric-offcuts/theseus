@@ -54,6 +54,8 @@ class Element {
   get isConnected() { return !!this.root || !!this.parent?.isConnected; }
   append(...nodes) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
   replaceChildren(...nodes) { for (const node of this.children) node.parent = null; this.children = []; this.append(...nodes); }
+  remove() { if (this.parent) { this.parent.children = this.parent.children.filter(node => node !== this); this.parent = null; } }
+  insertBefore(node, before) { node.remove(); this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); node.parent = this; }
   setAttribute(key, value) { this.attributes[key] = value; }
   removeAttribute(key) { delete this.attributes[key]; }
 }

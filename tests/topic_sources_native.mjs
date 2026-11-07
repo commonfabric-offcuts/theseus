@@ -41,12 +41,19 @@ export async function sourcesChecks({ check, page, until, control, view, facts, 
     assert.equal(shown.value, 'Which name do we ship for the release?', 'filled from its first sentence');
     assert.equal(await p.evaluate(`document.querySelector('#start-from-message').getAttribute('aria-expanded')`), 'true');
     await shot(p, 'sources-line');
+    // The line opens with its words selected, so typing replaces them.
+    await p.send('Input.insertText', { text: 'Release name' });
     await p.key('Escape');
     await until(() => quiet(p, `!document.querySelector('#start-topic-title') && document.activeElement?.id==='start-from-message'`), 'Escape closes the line and gives the focus back');
     assert.equal(await p.evaluate(`document.querySelector('#reader').open`), true, 'and leaves the Reader open');
-    await openLine(p);
-    // The line opens with its words selected, so typing replaces them.
-    const publish = await enter(p, 'Release name');
+    assert.equal((await openLine(p)).value, 'Release name', 'the line opens again with the title as it was left');
+    // The Reader steps to another message, which closes the line, and back.
+    await p.point('#previous-message');
+    await until(() => quiet(p, `!document.querySelector('#start-topic-title') && !document.querySelector('#source-body').textContent.includes(${JSON.stringify(body)})`), 'the Reader shows another message, without the line');
+    await p.point('#next-message');
+    await until(() => quiet(p, `document.querySelector('#source-body').textContent.includes(${JSON.stringify(body)})`), 'the Reader is back on the question');
+    assert.equal((await openLine(p)).value, 'Release name', 'stepping away and back keeps the title too');
+    const publish = await enter(p);
     assert.deepEqual(publish.args, { seen: [] });
     const topic = await until(() => quiet(p, `document.body.dataset.ready==='true' && new URLSearchParams(location.search).get('topic')`), 'the new topic opens');
     assert.equal(await p.evaluate(`document.querySelector('#topic-title').textContent`), 'Release name');

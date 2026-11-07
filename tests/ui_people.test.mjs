@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { PeoplePanel, fillNames, markReach, readDirectory, readMembers, listWords, paintAddress } from '../web/people.mjs';
 
 class Element {
-  constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, dataset: {}, hidden: true, parentNode: null }, tag === 'input' ? { value: '' } : {}); }
+  constructor(tag) {
+    Object.assign(this, { tag, children: [], attributes: {}, dataset: {}, hidden: true, parentNode: null }, tag === 'input' ? { value: '' } : {});
+    this.classList = { add: name => { this.className = [this.className, name].filter(Boolean).join(' '); } };
+  }
   // A node has one parent, as in a browser: putting it somewhere takes it from where it was.
   append(...nodes) { for (const node of nodes) { if (node instanceof Element) { node.detach(); node.parentNode = this; } this.children.push(node); } }
   detach() { if (this.parentNode) { const list = this.parentNode.children; list.splice(list.indexOf(this), 1); this.parentNode = null; } }
@@ -124,9 +127,10 @@ test('"+ Add" offers the people not yet in as names tapped once, narrowed by the
   assert.deepEqual([offer(host, 'fable').attributes['aria-pressed'], offer(host, 'fable').title], ['false', 'Fable']);
   field(host).value = 'core'; field(host).oninput();
   assert.deepEqual(offered(host), ['aim-core'], 'the filter matches a name as well as an id');
+  field(host).value = ' @AIM-core'; field(host).oninput();
   enter(host);
   await new Promise(setImmediate);
-  assert.deepEqual(sent, ['aim-core'], 'Return with one name left adds that person, not the words typed');
+  assert.deepEqual(sent, ['aim-core'], 'Return adds the person whose id was typed, in any case');
   assert.equal(field(host).value, '');
   panel.paint(people(['tony', 'aim-core']), true);
   offer(host, 'fable').focus();
@@ -161,10 +165,41 @@ test('a repaint that offers the same names keeps their buttons, so a tap across 
   assert.deepEqual([offer(host, 'fable'), pressed.disabled], [pressed, true], 'busy only disables it');
   panel.busy = false; panel.paint();
   assert.equal(pressed.disabled, false);
+  // A commit that changes who else can be added keeps the names still offered.
   candidates = [{ id: 'fable' }, { id: 'ally' }, { id: 'aim-core' }];
   panel.paint();
-  assert.notEqual(offer(host, 'fable'), pressed, 'a different list is drawn afresh');
-  assert.deepEqual(offered(host), ['fable', 'ally', 'aim-core']);
+  assert.deepEqual([offer(host, 'fable'), offered(host)], [pressed, ['fable', 'ally', 'aim-core']], 'a name still offered keeps its button');
+  candidates = [{ id: 'aim-core' }, { id: 'fable', name: 'Fable' }];
+  panel.paint();
+  assert.deepEqual([offer(host, 'fable'), pressed.title, offered(host)], [pressed, 'Fable', ['aim-core', 'fable']],
+    'in its new place, with its new name, and whoever is no longer offered is gone');
+  field(host).value = 'nobody'; field(host).oninput();
+  assert.deepEqual([offered(host), row(host).find(node => node.className === 'muted')?.textContent], [[], 'No one by that name yet. Return adds it as typed.']);
+  field(host).value = ''; field(host).oninput();
+  assert.deepEqual([offered(host), row(host).find(node => node.className === 'muted')], [['aim-core', 'fable'], undefined], 'the note goes when names are offered again');
+});
+
+// What Return adds is what the person typed: the person with that id, or the
+// words themselves, never someone else the filter happens to leave.
+test('Return in "+ Add" adds the typed id, never the one name the filter leaves, and an empty Return adds nobody', async t => {
+  dom(t);
+  const host = new Element('div'), sent = [];
+  const panel = new PeoplePanel({ host, label: 'Add', candidates: () => [{ id: 'jordan', name: 'Jordan' }, { id: 'tony', name: 'Tony' }],
+    add: async id => { sent.push(id); return { status: 'committed' }; } });
+  panel.paint(people(['tony']), true);
+  opener(host).onclick();
+  enter(host);
+  await new Promise(setImmediate);
+  assert.deepEqual(sent, [], 'nobody typed or tapped anyone');
+  field(host).value = 'dan'; field(host).oninput();
+  assert.deepEqual(offered(host), ['jordan'], 'Jordan is the one name the filter leaves');
+  enter(host);
+  await new Promise(setImmediate);
+  assert.deepEqual(sent, ['dan'], 'the id typed, not Jordan');
+  field(host).value = 'Jordan'; field(host).oninput();
+  enter(host);
+  await new Promise(setImmediate);
+  assert.deepEqual(sent, ['dan', 'jordan'], 'an id typed in another case is that person');
 });
 
 test('a repaint keeps the very field the person is typing in, with what they typed', t => {
@@ -220,13 +255,19 @@ test('a repaint that would show what is there already leaves the chips and their
   assert.ok(sameNodes(chips(), first), 'the same chips, not new ones');
   assert.equal(out('fable'), button, 'the very button a press went down on');
   // Each thing a chip shows repaints it when it changes.
-  const changes = [() => { color = 'agent-2'; }, () => { light = 'not woken'; }, () => { fixed = ['fable']; }, () => { panel.busy = true; }];
+  // Each thing a chip shows repaints that chip when it changes, and only that one.
+  const changes = [() => { color = 'agent-2'; }, () => { light = 'not woken'; }, () => { fixed = ['fable']; }];
   for (const change of changes) {
-    const before = chips();
+    const before = chips(), tony = out('tony');
     change(); panel.paint();
     assert.ok(!sameNodes(chips(), before), String(change));
+    assert.deepEqual([chips()[1], out('tony')], [before[1], tony], `tony's chip and button stay: ${change}`);
   }
-  assert.equal(out('tony').disabled, true, 'a busy panel disables its buttons');
+  const still = chips(), tony = out('tony');
+  panel.busy = true; panel.paint();
+  assert.deepEqual([sameNodes(chips(), still), out('tony'), tony.disabled], [true, tony, true], 'a busy panel disables its buttons in place');
+  panel.busy = false; panel.paint();
+  assert.equal(tony.disabled, false);
   assert.equal(out('fable'), undefined, 'a fixed person has no button');
   let before = chips(); panel.paint(people(['tony', 'fable']), true);
   assert.ok(!sameNodes(chips(), before), 'a new order repaints');
@@ -362,6 +403,37 @@ test('Address is the topic\'s people as names tapped once, lit while named; anyo
   assert.equal(document.activeElement, null, 'a repaint takes no focus it did not hold');
   named = []; paint([]);
   assert.deepEqual(host.children, [], 'nobody in the topic and nobody named: no chips');
+});
+
+// The Reader and the composer repaint Address after every commit in the topic.
+// A press held on a name while that runs must still click, so a name whose
+// chip would look the same keeps it.
+test('a repaint of Address keeps each person\'s chip, so a tap held across a commit\'s repaint still names them', t => {
+  dom(t);
+  const host = new Element('div'), field = new Element('input'), toggled = [], removed = [];
+  let named = ['stranger'], reach = { reachable: false, add: () => {}, scope: 't1' }, remove = name => removed.push(['first', name]);
+  const paint = (people = ['fable', 'tony']) => paintAddress(host, field, { people, named, reach: () => reach,
+    toggle: (name, on) => toggled.push([name, on]), remove: name => remove(name) });
+  paint();
+  const first = [...host.children];
+  paint();
+  assert.ok(sameNodes(host.children, first), 'same buttons after a repaint that changes nothing');
+  named = ['fable', 'stranger']; paint();
+  assert.ok(sameNodes(host.children, first), 'naming someone keeps every chip');
+  assert.deepEqual(host.children.map(node => node.attributes['aria-pressed'] ?? null), ['true', 'false', null]);
+  first[0].onclick(); first[1].onclick();
+  assert.deepEqual(toggled, [['fable', false], ['tony', true]], 'a kept chip acts on who is named now');
+  paint(['tony', 'fable']);
+  assert.ok(sameNodes(host.children, [first[1], first[0], first[2]]), 'a new order moves the same chips');
+  remove = name => removed.push(['now', name]);
+  paint(['tony', 'fable']);
+  first[2].find(node => node.attributes['aria-label'] === 'Remove stranger').onclick();
+  assert.deepEqual(removed, [['now', 'stranger']], 'a kept × removes through the newest callback');
+  first[2].find(node => node.tag === 'button' && node.textContent.startsWith('Add to topic')).focus();
+  reach = { reachable: true }; paint(['tony', 'fable']);
+  assert.notEqual(host.children[2], first[2], 'a chip whose reach changed is drawn afresh');
+  assert.equal(host.children[2].find(node => node.textContent.startsWith('Add to topic')), undefined, 'with no add offered now');
+  assert.equal(document.activeElement, field, 'the focus its offer held goes to the field');
 });
 
 test('a recipient outside the topic is marked, with an offer to add them only for a reader who may', async t => {

@@ -705,8 +705,12 @@ function paintMarks() {
 // "Start a topic from this": one title line right in the Reader, filled from the
 // message's first sentence. Return starts the topic with the message quoted as
 // its opening and its author in it; people and more words come afterwards, in
-// the topic. Escape, or a second press, closes it.
+// the topic. Escape, or a second press, closes it. Each message keeps its own
+// line, with what was typed in it and its start, until it starts a topic: a
+// line closed by Escape, or by the Reader moving to another message, opens
+// again as it was left.
 let startLine = null;
+const startLines = new Map();
 function closeStartLine(focus = false) {
   if (!startLine) return;
   startLine.line.root.remove(); startLine = null;
@@ -717,14 +721,21 @@ function openStartLine() {
   if (startLine) { closeStartLine(true); return; }
   const p = registry?.current, source = p?.source, ref = source?.source_ref;
   if (ref?.kind !== 'message' || !topic || p.sourceUnavailable) return;
-  const author = typeof source.author === 'string' && source.author !== bootstrap.actor ? source.author : null;
-  const starter = new TopicStart({ api, bootstrap, workspace: topic.workspace_id, source: ref.id, participants: author ? [author] : [] });
-  const line = new OneLine({ id: 'start-topic-title', label: 'Title of the topic to start from this message', value: firstSentence(source.body), className: 'start-topic-line',
-    submit: async title => { const id = await starter.start(title); closeStartLine(); await openDestination({ kind: 'topic', id }, title); },
-    cancel: () => closeStartLine(true), open: link => openDestination({ kind: 'topic', id: link.id }, link.title) });
+  let line = startLines.get(ref.id);
+  const left = Boolean(line);
+  if (!line) {
+    const author = typeof source.author === 'string' && source.author !== bootstrap.actor ? source.author : null;
+    const starter = new TopicStart({ api, bootstrap, workspace: topic.workspace_id, source: ref.id, participants: author ? [author] : [] });
+    line = new OneLine({ id: 'start-topic-title', label: 'Title of the topic to start from this message', value: firstSentence(source.body), className: 'start-topic-line',
+      submit: async title => { const id = await starter.start(title); startLines.delete(ref.id); closeStartLine(); await openDestination({ kind: 'topic', id }, title); },
+      cancel: () => closeStartLine(true), open: link => openDestination({ kind: 'topic', id: link.id }, link.title) });
+    startLines.set(ref.id, line);
+  }
   startLine = { line, message: ref.id };
   $('start-from-message').after(line.root); $('start-from-message').setAttribute('aria-expanded', 'true');
-  line.focus(true);
+  // A fresh line's words are selected, so typing replaces them; a line left
+  // earlier keeps where the person was in it.
+  line.focus(!left);
 }
 function paintReaderMark() {
   const p = registry?.current, ref = p?.source?.source_ref;

@@ -298,8 +298,10 @@ an upgrade is activated by the code of its own version and then migrated.
   participant) and one `opening.publish`; an outcome is one
   `workspace.create` with its title. An answer that never came keeps the
   exact request, and the next Return sends it again; a refusal is shown in
-  plain words and the typed title stays. A one-line create keeps no draft
-  on the device (`web/quick-create.mjs`).
+  plain words and the typed title stays. Escape closes a line and keeps what
+  was typed in it; the Reader keeps each message's line, closed by Escape or
+  by stepping to another message, until it starts a topic. A one-line create
+  keeps no draft on the device (`web/quick-create.mjs`).
 - A resumed opening (from an outcome's unfinished list) keeps the full page
   below. It preallocates opening and topic IDs and saves revision 1 on the
   first change, then saves on edits with the expected revision. The status
