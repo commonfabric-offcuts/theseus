@@ -592,7 +592,8 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     const schedule = []; let messageHeld = false, memoryHeld = false, incoming;
     const p = await page('freshness-initial', null, true, { beforeNavigate: async p => {
       p.intercept(async (payload, event) => {
-        if (payload?.name === 'changes' && !payload.args.cursor) schedule.push({ kind: 'baseline', at: Date.now(), body: await p.response(event) });
+        // The topic's baseline, and the reader's own for whispers (docs/whispers.md).
+        if (payload?.name === 'changes' && !payload.args.cursor) schedule.push({ kind: payload.args.scope?.kind === 'actor' ? 'own-baseline' : 'baseline', at: Date.now(), body: await p.response(event) });
         if (payload?.name === 'topic_messages' && !messageHeld) {
           messageHeld = true;
           const old = await p.response(event); assert.ok(!old.items.some(x => x.body === 'Incoming during captured old messages'));
@@ -611,6 +612,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     } });
     assert.equal(schedule[0].kind, 'baseline');
     assert.equal(schedule.filter(e => e.kind === 'baseline').length, 1, 'initial loading reads one baseline');
+    assert.deepEqual(schedule.slice(0, 3).map(e => e.kind), ['baseline', 'own-baseline', 'old-messages'], 'and one of the reader\'s own changes, both before the old messages');
     await until(() => hasText(p, '#messages', 'Incoming during captured old messages'), 'automatic incoming message after old body');
     await until(() => hasText(p, '#memory-items', 'Notebook revised during captured old list'), 'automatic Notebook summary after old body');
     assert.ok(messageHeld && memoryHeld);

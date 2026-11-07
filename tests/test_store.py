@@ -243,7 +243,7 @@ class StoreCase(unittest.TestCase):
                                    opening={"workspace_id": "w1", "title": "New", "participants": ["agent-a"]})
             self.assertEqual(saved["status"], "committed", saved)
             self.assertEqual(self.store.view("owner", "editor_state", {"source_ref": source, "topic_id": "t%s" % n})["draft"]["body"], "Draft %s" % n)
-        self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE kind='topic'"), [(0,)])
         self.assertEqual(self.sql("SELECT count(*) FROM deliveries"), [(0,)])
 
     def test_reserved_send_operation_cannot_be_consumed_by_another_command(self):

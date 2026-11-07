@@ -44,7 +44,7 @@ class OpeningWireCase(unittest.TestCase):
                              capture_output=True, text=True, timeout=120)
         self.assertEqual(run.returncode, 0, run.stderr)
         image = json.loads(run.stdout)["image"]
-        topics = self.sql("SELECT id,title,workspace_id,creator_id FROM topics ORDER BY id")
+        topics = self.sql("SELECT id,title,workspace_id,creator_id FROM topics WHERE kind='topic' ORDER BY id")
         self.assertEqual(topics, [("t-lost", "Lost answer", "w1", "owner"), ("t-stale", "Stale", "w1", "owner"),
                                   ("t-wire", "Wire topic", "w1", "owner")])
         self.assertEqual(self.sql("SELECT actor_id FROM topic_participants WHERE topic_id='t-wire' ORDER BY actor_id"),

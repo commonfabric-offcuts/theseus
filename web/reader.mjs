@@ -8,6 +8,7 @@ import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { wordNodes, webLinks } from './links.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
+import { paintChoice, clearChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -81,13 +82,19 @@ export class Reader {
     };
     this.$('previous-message').onclick = () => this.step(-1);
     this.$('next-message').onclick = () => this.step(1);
-    this.$('ask-toggle').onchange = event => this.setAsk(event.target.checked);
     this.$('recipient-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
-    // Writing can take the author a reply is offered to, so Ask is redrawn with it.
+    // A tap on the other destination's chip moves the reply there; the chips
+    // then show where it went, or stay put if it could not move.
+    this.$('reply-destination').onclick = event => {
+      const chip = event.target.closest?.('button[data-destination]');
+      if (!chip || chip.getAttribute('aria-pressed') === 'true') return;
+      Promise.resolve(this.callbacks.destination(chip.dataset.destination)).finally(() => this.paintDestination());
+    };
+    // Writing can take the author a reply is offered to, so the choice is redrawn with it.
     this.input=new WritingInput({field:this.field,editor:()=>this.editor,admits:()=>this.writes(),
-      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintAsk();}});
+      beforeEdit:()=>this.disarm(),changed:editor=>{this.callbacks.edit(editor);this.paintStatus();this.paintChoice();}});
     this.field.addEventListener('paste', event => this.paste(event));
     // Clicking a passage lights it for Return, as moving over it does while
     // Return would quote. Shift-click extends the light, from a dragged
@@ -153,14 +160,12 @@ export class Reader {
     this.disarm();
     this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
     this.paintOrigin(source);
-    // Where a reply goes: the topic it was opened from, lit; a few topics are chips tapped once.
+    // Where the reply goes: the topic's name, or, for a message in an ordinary
+    // topic, a choice of this topic or the outcome's conversation (outcome-conversation.mjs).
     const destination = this.$('reply-destination');
-    destination.replaceChildren(...topics.map(topic => {
-      const chip = node('button', topic.title || 'Untitled topic', 'choice-chip'); chip.type = 'button';
-      chip.setAttribute('aria-pressed', topic.id === sessions.reply.context.topicId ? 'true' : 'false');
-      chip.onclick = () => this.callbacks.destination(topic.id);
-      return chip;
-    }));
+    const here = topics.find(topic => topic.id === sessions.reply.context.topicId) ?? topics[0];
+    destination.replaceChildren(node('span', here?.title ?? '', 'destination-title'));
+    this.offered = Boolean(this.callbacks.destinations?.(destination, source, sessions.reply.context.topicId));
     this.$('reader-parent').disabled = !source.topic_id;
     this.$('reader-stepping').hidden = source.source_ref.kind !== 'message';
     this.$('previous-message').disabled = !canPrevious;
@@ -189,8 +194,10 @@ export class Reader {
     const place = this.captureVisiblePlace();
     const shape = this.layoutShape, share = this.layout.share(shape);
     this.dialog.dataset.layout = shape;
-    this.dialog.style.setProperty('--reading-share', `${1 - share}fr`);
-    this.dialog.style.setProperty('--writing-share', `${share}fr`);
+    // In hundredths of the room, so when one pane keeps a floor (aim.css) the other
+    // still takes all that is left: shares that sum to under 1fr would leave a gap.
+    this.dialog.style.setProperty('--reading-share', `${(1 - share) * 100}fr`);
+    this.dialog.style.setProperty('--writing-share', `${share * 100}fr`);
     this.$('reader-layout').textContent = shape === 'wide' ? 'Stacked' : 'Wide';
     this.$('reader-layout').setAttribute('aria-pressed', String(shape === 'wide'));
     this.$('reader-layout').setAttribute('aria-label', shape === 'wide' ? 'Use stacked reader layout' : 'Use wide reader layout');
@@ -383,23 +390,30 @@ export class Reader {
     this.field.setSelectionRange(caret.start, caret.end);
   }
 
+  paintDestination() {
+    const at = this.sessions?.reply?.context?.topicId;
+    for (const chip of this.$('reply-destination').querySelectorAll('button[data-destination]')) chip.setAttribute('aria-pressed', String(chip.dataset.destination === at));
+  }
+
   drawEditor() {
     const note = this.mode === 'note';
     this.$('writing-title').textContent = note ? 'Private note' : 'Reply';
     this.$('writing-label').textContent = note ? 'Private note' : 'Reply';
     this.$('toggle-note').textContent = note ? 'Back to reply' : 'Private note';
-    this.$('destination-label').hidden = note || this.source.source_ref.kind === 'message';
+    this.$('destination-label').hidden = note || (this.source.source_ref.kind === 'message' && !this.offered);
+    this.callbacks.audiencePainted?.(note ? null : this.sessions?.reply?.context?.topicId ?? null);
     this.$('reply-audience').hidden = note;
     this.$('pending-submissions').hidden = note;
     this.$('writing-hint').textContent = note ? 'Only you · saved as you write · ⌘ Return when done' : 'Return for a new line · ⌘ Return to send';
     // The note saves as it is written; Done only finishes, so it is not a second save.
-    this.$('send-reply').textContent = note ? 'Done' : 'Send ⌘↵';
+    if (note) this.$('send-reply').textContent = 'Done';
+    else { const word = node('span', 'Send', 'send-word'), keys = node('span', '⌘↵'); keys.setAttribute('aria-hidden', 'true'); this.$('send-reply').replaceChildren(word, ' ', keys); }
     this.$('send-reply').classList.toggle('primary', !note);
     this.field.placeholder = note ? 'Your private note…' : 'Write a reply…';
     this.field.value = this.editor.draft.body;
     this.paintImages();
     this.paintRecipients();
-    this.paintAsk();
+    this.paintChoice();
     this.paintStatus();
   }
 
@@ -409,57 +423,69 @@ export class Reader {
     // writing names. Taking someone off declines any offer of them, and writes
     // only when the writing already names them: typing takes the offer without
     // redrawing these chips, so the press, not the drawing, decides which.
-    const named = recipientChoices([...(editor.offeredAddressees ?? []), ...editor.draft.addressees]).map(({ name }) => name);
-    const off = name => {
-      if (!this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
-      editor.declineAddressee(name);
-      if (editor.draft.addressees.includes(name)) {
-        const rest = editor.draft.addressees.filter(item => item !== name);
-        // A message to nobody neither asks nor tells.
-        editor.edit({ addressees: rest, ...(rest.length ? {} : { intent: null }) });
-        this.callbacks.edit(editor);
-      }
-      this.paintRecipients(); this.paintAsk();
-    };
-    paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.people?.() ?? [], named: [...new Set(named)],
-      reach: this.callbacks.reach, remove: off, toggle: (name, on) => on ? this.address(name) : off(name) });
+    const named = recipientChoices(this.names(editor)).map(({ name }) => name);
+    const off = name => this.removeName(name, editor, presentation);
+    paintAddress(this.$('recipient-chips'), this.$('recipient-input'), { people: this.callbacks.addressable?.() ?? [], named: [...new Set(named)],
+      reach: this.callbacks.reach, remove: off, toggle: (name, on) => on ? this.addName(name) : off(name) });
+    this.callbacks.recipientsPainted?.(this.names(editor), editor.context.topicId);
   }
 
   // The small field beside the topic's people names anyone else; Return adds them.
   addRecipient() {
     const input = this.$('recipient-input');
     const name = input.value.trim().replace(/^@/, '');
-    if (!name || !this.address(name)) return;
+    if (!name || !this.addName(name)) return;
     input.value = '';
     input.focus();
   }
 
-  // Name someone in the reply; false when the writing cannot change now.
-  address(name) {
-    if (!this.sessions) return false;
-    const editor = this.sessions.reply;
-    if (!this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return false;
+  // Names someone in the reply (the field's Return, or a name tapped once);
+  // false when the reply cannot change now.
+  addName(name) {
+    const editor = this.sessions?.reply;
+    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) return false;
     if (!editor.draft.addressees.includes(name) && !(editor.offeredAddressees ?? []).includes(name)) {
-      editor.edit({ addressees: [...editor.draft.addressees, name] });
-      this.callbacks.edit(editor); this.paintRecipients(); this.paintAsk();
+      editor.edit({ addressees: [...editor.draft.addressees, name], ...naming(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }) });
+      this.callbacks.edit(editor); this.paintRecipients(); this.paintChoice();
     }
     return true;
   }
 
-  // Your reply to someone tells them unless you say it asks: Ask makes the topic
-  // wait on them until they write in it. It shows once the reply names someone.
-  paintAsk() {
-    const editor = this.sessions?.reply, choice = this.$('ask-choice'), toggle = this.$('ask-toggle');
-    choice.hidden = this.mode === 'note' || !editor?.draft.addressees?.length;
-    toggle.checked = editor?.draft.intent === 'ask';
-    toggle.disabled = Boolean(this.field?.readOnly);
+  // Takes someone off the reply. Removing someone declines any offer of them,
+  // and writes only when the writing already names them.
+  removeName(name, editor = this.sessions?.reply, presentation = this.presentation) {
+    if (!editor || !this.writes(editor, presentation) || editor.adopting || recoveryReadOnly(editor)) return;
+    editor.declineAddressee(name);
+    if (editor.draft.addressees.includes(name)) {
+      const rest = editor.draft.addressees.filter(item => item !== name);
+      // A message to nobody neither asks, tells nor whispers.
+      editor.edit({ addressees: rest, ...(rest.length ? {} : unnamed) });
+      this.callbacks.edit(editor);
+    }
+    this.paintRecipients(); this.paintChoice();
   }
 
-  setAsk(asking) {
+  // Who the reply goes to: the author it is offered to, then whoever it names.
+  names(editor = this.sessions?.reply) { return editor ? [...(editor.offeredAddressees ?? []), ...editor.draft.addressees] : []; }
+  get kindOf() { return name => this.callbacks.people?.().kindOf(name); }
+  // Writing that goes to an outcome's conversation starts as a Tell (I3).
+  toConversation(editor = this.sessions?.reply) { return Boolean(this.callbacks.toConversation?.(editor?.context?.topicId)); }
+
+  // Whisper, Tell or Ask (whisper-choice.mjs), and who will see it, above Send.
+  // A reply to one agent starts as a whisper; a private note has no choice.
+  paintChoice() {
+    const editor = this.sessions?.reply, row = this.$('intent-row');
+    if (!editor || this.mode === 'note') { clearChoice(row, this.field, this.$('send-reply')); return; }
+    paintChoice(row, { draft: editor.draft, names: this.names(editor), kindOf: this.kindOf, everyone: this.callbacks.people?.().everyone ?? [],
+      send: this.$('send-reply'), field: this.field, readOnly: Boolean(this.field?.readOnly), answeringWhisper: Boolean(this.source?.whisper),
+      conversation: this.toConversation(editor), onChoose: choice => this.choose(choice) });
+  }
+
+  choose(choice) {
     const editor = this.sessions?.reply;
-    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor) || !editor.draft.addressees?.length) { this.paintAsk(); return; }
-    editor.edit({ intent: asking ? 'ask' : null });
-    this.callbacks.edit(editor); this.paintAsk();
+    if (!editor || !this.writes(editor) || editor.adopting || recoveryReadOnly(editor)) { this.paintChoice(); return; }
+    editor.edit(chosen(choice));
+    this.callbacks.edit(editor); this.paintChoice();
   }
 
   drawAttachments(host, attachments = []) {
@@ -515,7 +541,7 @@ export class Reader {
     this.$('cancel-image').hidden = note || !editor.imageReservation;
     this.field.readOnly = state.readOnly;
     this.$('recipient-input').disabled = this.field.readOnly;
-    this.$('ask-toggle').disabled = this.field.readOnly;
+    this.paintChoice();
     this.$('quote-selection').disabled = Boolean(this.presentation?.sourceUnavailable || this.presentation?.availabilityUnconfirmed || this.sessions.reply.adopting || recoveryReadOnly(this.sessions.reply));
     this.paintImages();
     this.paintOffer();
@@ -545,7 +571,9 @@ export class Reader {
   }
 
   paintOrigin(source) {
-    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}` : 'Message';
+    const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}`
+      : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : 'Message';
+    this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
     this.$('reader-origin').replaceChildren([source.author, provenance].filter(Boolean).join(' · '), ...sent);
     this.paintTone(source);
@@ -559,7 +587,7 @@ export class Reader {
   }
   hideUnavailableSource() {
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
-    this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null);
+    this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null); this.sourceBody.classList.remove('whispering');
     this.paintStatus();
   }
 
@@ -607,6 +635,8 @@ export class Reader {
     if (editor.authorityRecovery || editor.conflict || (!editor.draft.body.trim() && !editor.draft.attachments.length)) {
       this.notice(editor.authorityRecovery || editor.conflict ? 'Review the saved versions before sending.' : 'Write a reply before sending.'); return;
     }
+    // The writing goes as the choice shows: a whisper, or a tell or ask that says so.
+    editor.edit(sending(editor.draft, this.names(editor), this.kindOf, { conversation: this.toConversation(editor) }));
     const draft = editor.draft;
     try {
       // The controller freezes A synchronously. Reflect that deliberate act

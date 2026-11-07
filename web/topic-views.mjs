@@ -195,6 +195,16 @@ export class TopicViews {
       if (!answer.items.length && !this.messages.has(this.messageTarget)) throw behind();
       return this.messages.has(this.messageTarget);
     }
+    if (key.startsWith('whisper:')) {
+      // A whisper moves nothing in the topic's own facts: its sequence is the target.
+      const seq = Number(key.slice(8));
+      if (this.newest >= seq) return true;
+      const cursor = this.newest;
+      const answer = await read('topic_messages', { topic_id: this.topicId, audience: 'all', direction: 'after', cursor, limit: 30 });
+      if (!current()) return false;
+      if (!this.messagesPage(answer, { live: true, cursor })) return false;
+      return this.newest >= seq || !answer.items.length;
+    }
     if (key === 'notebook') {
       if (this.memoryCursor !== null) { this.unloadedChanged = true; return true; }
       const cursor = this.memoryTail;

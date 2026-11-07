@@ -143,7 +143,7 @@ class BoundaryCase(StoreCase):
         stale = self.command("participation.set", {"actor_id": "agent-a", "present": False},
                              target={"topic_id": "t1"}, expected={"topic_revision": 0})
         self.assertEqual(stale["error"]["code"], "REVISION_CONFLICT")
-        self.assertEqual(self.sql("SELECT active FROM topic_participants WHERE actor_id='agent-a'"), [(1,)])
+        self.assertEqual(self.sql("SELECT active FROM topic_participants WHERE topic_id='t1' AND actor_id='agent-a'"), [(1,)])
 
     def test_expected_private_slot_collisions_are_recorded_business_refusals(self):
         source = self.create_topic()

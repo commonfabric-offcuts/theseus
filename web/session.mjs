@@ -2,7 +2,7 @@
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
 const copy = value => structuredClone(value);
-const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'intent', 'caret', 'reply_to', 'exchange_id'];
+const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'intent', 'whisper', 'caret', 'reply_to', 'exchange_id'];
 const authorityPair = value => value && typeof value.authority_id === 'string' && value.authority_id &&
   typeof value.authority_epoch === 'string' && value.authority_epoch
   ? { authority_id: value.authority_id, authority_epoch: value.authority_epoch } : null;

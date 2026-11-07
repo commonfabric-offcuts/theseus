@@ -11,14 +11,14 @@ const badRoute = () => { throw Error('This destination link is incomplete or amb
 // An opening may name the message its topic answers ('from').
 const OPTIONAL = {opening:['from']};
 export function routeKey(route) {
-  const fields = {root:[],topic:['id'],workspace:['id'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
+  const fields = {root:[],topic:['id'],workspace:['id'],conversation:['id'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
   if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>validId(route[key]))) badRoute();
   return JSON.stringify([route.kind,...fields.map(key=>route[key]),...optional.map(key=>[key,route[key]])]);
 }
 export function routeHref(route) {
   routeKey(route);
-  const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id} :
+  const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id} : route.kind === 'conversation' ? {conversation:route.id} :
     route.kind === 'workspace' ? {workspace:route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
   return params ? '?' + new URLSearchParams(params) : '/';
@@ -32,6 +32,7 @@ export function parseRoute(url) {
   if (!keys.length) route={kind:'root'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
   else if (keys.length===1 && p.has('workspace')) route={kind:'workspace',id:p.get('workspace')};
+  else if (keys.length===1 && p.has('conversation')) route={kind:'conversation',id:p.get('conversation')};
   else if (keys.length===2 && p.get('new')==='outcome' && p.has('intent')) route={kind:'create',intent:p.get('intent')};
   else if ([3,4].includes(keys.length) && ['workspace','opening','opening_topic'].every(k=>p.has(k)) && (keys.length===3 || p.has('opening_from'))) {
     route={kind:'opening',workspace:p.get('workspace'),opening:p.get('opening'),topic:p.get('opening_topic'),...(p.has('opening_from')?{from:p.get('opening_from')}:{})};

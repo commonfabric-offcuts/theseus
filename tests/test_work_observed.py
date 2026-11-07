@@ -245,6 +245,23 @@ class WorkObservedCase(hosted.HostedCase):
         self.assertEqual(self.seen("t1")[:4], (True, self.now, "agent-a", "turn"))
         self.assertEqual(self.seen("t2")[:4], (True, self.now, "agent-a", "turn"))
 
+    def test_a_turn_is_never_in_a_topic_the_agent_left_with_a_delivery_there_unread(self):
+        # agent-a leaves t2 with its opening unread: that delivery waits on
+        # nobody and is never handed, so the turn woken by t1 is in t1 alone.
+        self.topic_two()
+        self.assertEqual(self.command("participation.set", {"actor_id": "agent-a", "present": False}, {"topic_id": "t2"})["status"], "committed")
+        left = self.sql("SELECT count(*) FROM deliveries d JOIN messages m ON m.id=d.message_id WHERE d.recipient_id='agent-a' AND d.state='pending' AND m.topic_id='t2'")
+        self.assertEqual(left, [(1,)], "the delivery in t2 is still pending, in a subscription that is over")
+        before_two = self.seen("t2")
+        self.send_next("For the agent in t1")
+        self.now += WORK_WINDOW_MS + 1
+        claim = self.claim_now()
+        self.now += 10
+        self.hand(claim)
+        self.assertEqual(self.seen("t1"), (True, self.now, "agent-a", "turn", False))
+        self.assertEqual(self.sql("SELECT count(*) FROM topic_turns WHERE topic_id='t2'"), [(0,)])
+        self.assertEqual(self.seen("t2")[1:], before_two[1:], "nobody sees agent-a at work in a topic it left")
+
     def test_a_completed_turn_is_activity_when_it_ends_and_one_that_was_lost_is_not(self):
         self.now += 10
         self.hand(self.claim_now(), turn_id="turn-lost")

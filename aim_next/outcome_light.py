@@ -83,7 +83,8 @@ class OutcomeLight:
                                "WHERE w.workspace_id=? AND w.archived=0 AND w.state<>'done') ORDER BY t.activity_ms DESC,t.id DESC",
                                (workspace_id,)).fetchall()
         waits = self._light_topics(db, actor, wait_rows)
-        has_topics = db.execute("SELECT EXISTS (SELECT 1 FROM topics INDEXED BY workspace_topics WHERE workspace_id=?)",
+        # The outcome's conversation is not one of its topics: an outcome holding only that has none yet.
+        has_topics = db.execute("SELECT EXISTS (SELECT 1 FROM topics INDEXED BY workspace_topics WHERE workspace_id=? AND kind='topic')",
                                 (workspace_id,)).fetchone()[0] == 1
 
         def consider(topic):

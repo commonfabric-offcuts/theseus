@@ -30,6 +30,10 @@
       <button id="more-workspaces" type="button" hidden>More outcomes</button>
       <button id="retry-workspaces" type="button" hidden>Retry outcomes</button>
       </section>
+      <section id="conversation-navigation" aria-labelledby="conversation-heading" hidden>
+      <div class="rail-heading"><h2 id="conversation-heading">Conversation</h2></div>
+      <div id="conversation-row"></div>
+      </section>
       <section id="topic-navigation" aria-label="Topics">
       <div class="rail-heading"><h2 id="topics-heading">Topics</h2><button id="new-topic" type="button" disabled>New topic</button></div>
       <div id="topics-status" class="notice" role="status" hidden></div>
@@ -61,6 +65,8 @@
       <section id="page-here" class="page-here" aria-label="Notebook page" hidden></section>
       <section id="topic-pending" aria-label="Your pending replies"></section>
       <p id="topic-marks" class="topic-marks" hidden><span id="topic-marks-words"></span><span aria-hidden="true">·</span><button id="read-mark" type="button">Read it</button></p>
+      <div id="conversation-show" class="conversation-show" role="group" aria-label="Show" hidden></div>
+      <div id="conversation-empty" class="conversation-empty" hidden></div>
       <section id="messages" aria-label="Conversation"></section>
       <button id="more-messages" type="button" hidden>More messages</button>
       <section id="topic-people" class="topic-people" aria-labelledby="people-heading"><h2 id="people-heading">People</h2><div id="participants" class="participants" aria-label="Topic participants"></div></section>
@@ -69,6 +75,7 @@
         <h2 id="inline-writing-title">New message</h2>
         <p id="inline-destination" class="field-label"></p>
         <div class="audience"><span class="muted">Address</span><div id="inline-recipient-chips" class="chips"></div><input id="inline-recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the new message" placeholder="Someone else" autocomplete="off" enterkeyhint="done"></div>
+        <div id="inline-intent-row" class="intent-row"></div>
         <div id="inline-notice" class="notice" role="status" hidden></div>
         <button id="inline-retry" type="button" hidden>Retry composer</button>
         <div id="inline-pending" class="pending-submissions" aria-label="Submitted writing"></div>
@@ -80,7 +87,7 @@
           <button id="inline-add-image" type="button">Add image</button>
           <button id="inline-cancel-image" type="button" hidden>Cancel image selection</button>
           <div><div class="save-status"><span id="inline-save-state" role="status"></span><span class="save-reserve" aria-hidden="true">Saved on this device — not yet saved to Theseus</span></div><button id="inline-review-versions" type="button" hidden>Review versions</button><span id="inline-writing-hint" class="muted">Return for a new line · ⌘ Return to send</span></div>
-          <button id="inline-send" type="button" class="primary">Send <span aria-hidden="true">⌘↵</span></button>
+          <button id="inline-send" type="button" class="primary"><span class="send-word">Send</span> <span aria-hidden="true">⌘↵</span></button>
         </footer>
       </section>
     </main>
@@ -113,8 +120,10 @@
       <div id="reader-divider" role="separator" tabindex="0" aria-label="Resize reading and writing panes" aria-orientation="horizontal" aria-valuemin="20" aria-valuemax="80" aria-valuenow="48" title="Drag or use arrow keys to resize. Double-click to reset."><span aria-hidden="true"></span></div>
       <section class="writing-pane" aria-label="Your writing">
         <div class="writing-heading"><h3 id="writing-title">Reply</h3><button id="toggle-note" type="button">Private note</button></div>
-        <div id="destination-label" class="field-label destination-chips"><span class="muted">To</span><div id="reply-destination" class="state-chips" role="group" aria-label="Reply destination"></div></div>
-        <div id="reply-audience" class="audience"><span class="muted">Address</span><div id="recipient-chips" class="chips"></div><input id="recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the reply" placeholder="Someone else" autocomplete="off" enterkeyhint="done"><label id="ask-choice" class="ask-choice" title="Asking waits on them until they reply in the topic" hidden><input id="ask-toggle" type="checkbox"> Ask</label></div>
+        <div id="destination-label" class="field-label destination-row"><span id="destination-words">To</span><span id="reply-destination" class="destination-chips" role="group" aria-labelledby="destination-words"></span></div>
+        <p id="destination-note" class="muted destination-note" hidden></p>
+        <div id="reply-audience" class="audience"><span class="muted">Address</span><div id="recipient-chips" class="chips"></div><input id="recipient-input" class="name-filter" list="addressable-names" aria-label="Name someone else in the reply" placeholder="Someone else" autocomplete="off" enterkeyhint="done"></div>
+        <div id="intent-row" class="intent-row"></div>
         <div id="reader-notice" class="notice" role="status" hidden></div>
         <div id="pending-submissions" class="pending-submissions" aria-label="Submitted writing"></div>
         <label class="sr-only" id="writing-label" for="writing-body">Reply</label>

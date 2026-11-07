@@ -5,7 +5,7 @@ import { Reader } from './reader.mjs';
 import { InlineComposer } from './inline-composer.mjs';
 import { PRIOR_PUBLICATION_NOTICE } from './session.mjs';
 import { readableUploads, uploadWork, recoveryReadOnly, refusedCopyAtDraft, refusedAtDraft } from './upload-state.mjs';
-import { Freshness, initialViews, readFailure, checkedView, bindingOf } from './freshness.mjs';
+import { Freshness, initialViews, actorBaseline, readFailure, checkedView, bindingOf } from './freshness.mjs';
 import { TopicViews } from './topic-views.mjs';
 import { TopicPages, TopicNavigation, TopicRail, parseRoute, routeHref, paintChanged, changedSince } from './topic-navigation.mjs';
 import { OutcomeRail } from './outcomes.mjs';
@@ -32,10 +32,12 @@ import { replyLine } from './replies.mjs';
 import { placeNewLine } from './unanswered.mjs';
 import { betweenOthers, foldCard, cardIn, paintFold, opened } from './fold.mjs';
 import { cardClass, agentColor, paneClass } from './author-colors.mjs';
+import { paintWhisperAuthor } from './whisper-choice.mjs';
 import { AgentColors } from './colors.mjs';
 import { openColorPicker } from './color-picker.mjs';
 import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
+import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers, switchWriting } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith } from './links.mjs';
@@ -51,6 +53,9 @@ const status = message => { $('app-status').textContent = message; $('app-status
 const run = action => { try { return Promise.resolve(action()).catch(error => { status(error.message); return null; }); } catch (error) { status(error.message); return Promise.resolve(null); } };
 let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
+// The open page's outcome conversation: its view (the rail row reads it), and on the conversation page
+// itself the latest read of its items, which takes added later change (outcome-conversation.mjs).
+let here = null;
 let availabilitySerial = 0;
 let inlineAvailabilitySerial = 0;
 let topicUnavailable = false, listAccessEpoch = 0;
@@ -581,7 +586,7 @@ function paintViews(kind) {
     // The panel paints the header with the newest topic it has seen.
     if (topicState) topicState.paint(topic, views.participants); else paintHeader(topic);
     if (registry.inline) { registry.inline.topic = structuredClone(topic); inline.$('destination').textContent = `To ${topic.title}`; }
-    topicRail?.updateCurrent(topic);
+    if (!here?.page) topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
     for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = false;
     paintMarks(); noteRead(); return;
@@ -600,9 +605,10 @@ function paintViews(kind) {
         if (name && item.author_kind === 'agent' && item.author_id !== bootstrap.actor) return run(() => pickColor(item.author_id, name, card));
         return open(event);
       };
+      // On its card first, so a whisper's words name the card for a screen reader.
       const author = node('span', undefined, 'message-author');
-      paintCardAuthor(author, item);
       card.append(author);
+      paintCardAuthor(author, item);
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
       if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
@@ -614,6 +620,13 @@ function paintViews(kind) {
       const following = [...$('messages').children].find(child => Number(child.dataset.seq) < item.seq);
       $('messages').insertBefore(entry, following ?? null);
       cardObserver?.observe(entry); middleObserver?.observe(entry);
+    }
+    // A whispered answer arrived: the whisper it answers no longer waits for one.
+    const asked = item.whisper && item.reply_to ? views.messages.get(item.reply_to) : null;
+    if (asked?.no_answer && item.author_id === asked.private_to) {
+      asked.no_answer = false;
+      const entry = [...$('messages').children].find(child => cardIn(child)?.dataset.id === asked.id);
+      if (entry) paintCardAuthor(cardIn(entry).querySelector('.message-author'), asked);
     }
   }
   for (const item of kind === 'memory' ? [...views.memory.values()].sort((a, b) => a.seq - b.seq) : []) {
@@ -632,6 +645,7 @@ function paintViews(kind) {
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
   if (kind === 'messages') placeLine();
+  if (kind === 'messages' && here?.page) paintConversationPage();
   });
   paintMoreMessages();
   $('more-memory').hidden = views.memoryCursor === null;
@@ -682,10 +696,25 @@ function participantPill(person) {
 function paintHeader(current) {
   paintTopicHeader({ title: $('topic-title'), subtitle: $('topic-description'), gear: $('settings-open') }, current, bootstrap.actor,
     { settings: current.kind !== 'conversation' });
+  // A conversation's heading says what it is for and who answers, not where it stands.
+  if (current.kind === 'conversation') {
+    $('topic-title').textContent = CONVERSATION_TITLE;
+    $('topic-description').textContent = conversationSubtitle(here?.view?.coordinator?.actor_id); $('topic-description').hidden = false;
+  }
 }
 // Messages sent before times were kept have none.
 function paintCardAuthor(author, item) {
   paintAuthor(author, item.author_id, Number.isSafeInteger(item.sent_ms) ? item.sent_ms : null, marks?.state(item.id)?.marked === true);
+  if (item.whisper) paintWhisperAuthor(author, item, bootstrap.actor, document);
+  if (here?.page) paintAsksYou(author, item, here.view?.waits, bootstrap.actor);
+}
+// Who the composers may whisper to, and who everyone in this topic is: the
+// topic's participants and the outcome's team, by kind, never the reader.
+function whisperPeople() {
+  const kinds = new Map();
+  for (const person of [...outcomeMembers ?? [], ...views?.participants ?? []]) if (person.kind) kinds.set(person.actor_id, person.kind);
+  const everyone = (views?.participants ?? []).map(person => person.actor_id).filter(id => id !== bootstrap.actor).sort();
+  return { kindOf: name => kinds.get(name), everyone };
 }
 // What the page knows of the person's marks: the topic's line, each loaded
 // card's pill and the Reader's button.
@@ -739,8 +768,9 @@ function openStartLine() {
 }
 function paintReaderMark() {
   const p = registry?.current, ref = p?.source?.source_ref;
-  // Any readable message can start a topic of its own in this outcome.
-  $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
+  // Any readable message can start a topic of its own in this outcome, except
+  // a whisper, which stays between its two people (docs/whispers.md).
+  $('start-from-message').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic && !p.source.whisper);
   // A title line started from another message goes when the Reader moves on.
   if (startLine && (startLine.message !== ref?.id || $('start-from-message').hidden)) closeStartLine();
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
@@ -1008,9 +1038,9 @@ async function retrySource() {
     }
   }
 }
-function enableFreshness(checkpoint) {
+function enableFreshness(checkpoint, actorCheckpoint = null) {
   if (!checkpoint) { updateStatus({ kind: 'manual', message: 'Automatic updates need the updated server. Reload this page to see newer messages.' }); return; }
-  freshness = new Freshness({ api, bootstrap, topicId: topic.id, checkpoint,
+  freshness = new Freshness({ api, bootstrap, topicId: topic.id, checkpoint, actorCheckpoint,
     read: operation => registry.cleanup.read(operation), binding: () => ({ ...bootstrap, authority: registry.runtime.current }),
     keys: item => views.keys(item), refreshKeys: () => views.refreshKeys(), status: updateStatus, live,
     authorityLost: (binding, failure) => registry.parkAuthority(binding, failure.code), denied: checkAvailability,
@@ -1073,13 +1103,19 @@ async function initialize() {
     if (list === 'directory-names') refreshDirectory();
     if (list === 'addressable-names') refreshMembers();
   });
-  const route = parseRoute(new URL(location.href));
-  if (route.kind !== 'topic') {
+  let route = parseRoute(new URL(location.href));
+  if (!['topic', 'conversation'].includes(route.kind)) {
     await initializeOutcomePage(route);
     if(['root','workspace'].includes(route.kind))run(()=>initializeUnfinished(route));
     return;
   }
-  const topicId = route.id;
+  // An outcome's conversation is its one topic of kind conversation (outcome-conversation.mjs).
+  let topicId = route.id;
+  if (route.kind === 'conversation') {
+    const found = validate(await api.view('conversation', { workspace_id: route.id })).conversation;
+    if (!found) throw Error('This outcome has no conversation yet.');
+    topicId = found.topic_id;
+  }
   // The reader's agent colors, read alongside the topic so the first cards wear them.
   if (!colors) {
     colors = new AgentColors({ api, instanceId: bootstrap.instance_id, authority: () => registry?.runtime.current ?? bootstrap.authority });
@@ -1088,15 +1124,26 @@ async function initialize() {
   const colorsRead = colors.load('foreground').catch(() => {});
   // The saved feed position precedes topic, messages and Notebook startup reads.
   const checkpoint = await initialViews({ api, bootstrap, topicId, load: async () => {} });
+  const actorCheckpoint = await actorBaseline({ api, bootstrap });
   views = new TopicViews({ instanceId: bootstrap.instance_id, topicId, paint: paintViews, invalidate: (key, version) => freshness?.invalidate(key, version) });
   const result = validate(await api.view('topic', { topic_id: topicId })); topic = result.topic;
   views.topic = topic; views.participants = result.participants;
   if (topic.id !== topicId) throw Error('The topic identity could not be confirmed.');
+  here = { workspaceId: topic.workspace_id, title: topic.workspace_id, view: null, page: topic.kind === 'conversation', onlyNew: false, items: new Map() };
+  if (here.page) {
+    // Every link to the conversation's topic opens it as the conversation, keeping any message anchor.
+    route = { kind: 'conversation', id: topic.workspace_id };
+    if (new URL(location.href).searchParams.has('topic')) history.replaceState(history.state, '', routeHref(route) + location.hash);
+    document.body.classList.add('conversation-page');
+    // The writing box stays below the messages, as in any topic, and says where the writing goes.
+    $('inline-writing-body').placeholder = conversationPlaceholder(here.title);
+  }
   paintHeader(topic);
   settings ??= new TopicSettings({ dialog: $('topic-settings'), gear: $('settings-open'), heading: $('settings-title'), close: $('settings-close') });
   try {
     const workspace = validate(await api.view('workspace', { workspace_id: topic.workspace_id })).workspace;
-    $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);
+    $('workspace-name').textContent = workspace.title;enableNewTopic(workspace.id);here.title = workspace.title;
+    if (here.page) $('inline-writing-body').placeholder = conversationPlaceholder(workspace.title);
   } catch { $('workspace-name').textContent = topic.workspace_id; }
   // Those who can be added: the outcome's team, or everyone when the team cannot be read.
   participantsPanel = new PeoplePanel({ host: $('participants'), label: 'Add someone to this topic',
@@ -1134,7 +1181,7 @@ async function initialize() {
   journal = await openJournal({ instanceId: bootstrap.instance_id, actor: bootstrap.actor });
   inline = new InlineComposer({
     admits: (p, editor) => registry?.isCurrent(p, editor),
-    reach: recipientReach, people: addressPeople,
+    reach: recipientReach, addressable: addressPeople,
     uploads: editor => registry.sessionFor(editor).uploads,
     edit: (editor, p) => run(() => { if (registry.isCurrent(p, editor)) return registry.edited(editor); }),
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, needsReview,
@@ -1142,12 +1189,15 @@ async function initialize() {
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
     renderPending: (host, editor, p) => pendingButton(host, editor, p),
     retry: () => run(retryInline),
+    people: whisperPeople,
+    conversation: () => Boolean(here?.page),
+    recipientsPainted: names => { if (here?.page || answering.size) answeredBy(inline, $('inline-composer').querySelector('.audience'), names, Boolean(here?.page)); },
   });
   reader = new Reader({
     admits: (p, editor) => registry?.isCurrent(p, editor),
     writes: (p, editor) => registry?.isWritable(p, editor),
     closing: p => registry?.isClosing(p),
-    reach: recipientReach, people: addressPeople,
+    reach: recipientReach, addressable: addressPeople,
     revisionOffer,
     retrySource: () => run(retrySource),
     uploads: editor => registry?.sessionFor(editor).uploads,
@@ -1167,12 +1217,17 @@ async function initialize() {
       const ref = direction < 0 ? neighbors?.previous : neighbors?.next;
       if (ref) await openSource(ref, presentation.opener);
     },
-    destination: value => { if (value !== topic.id) reader.notice('Choose the open topic for this reply.'); },
+    destination: value => run(() => switchDestination(value)),
+    destinations: (host, source, topicId) => offerConversation(host, source, topicId),
+    toConversation: topicId => Boolean(here?.view && topicId === here.view.topic_id),
+    audiencePainted: topicId => paintReaderAudience(topicId),
+    recipientsPainted: (names, topicId) => paintReaderAudience(topicId, names),
     reconcile: editor => run(() => registry.checkConfirmation(editor)),
     renderPending: (host, editor) => pendingButton(host, editor, reader.presentation),
     recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
     error: error => reader.notice(error.message),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
+    people: whisperPeople, actor: () => bootstrap.actor,
   });
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
@@ -1210,10 +1265,11 @@ async function initialize() {
   window.addEventListener('focus', noteRead);
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
-  topicNavigation = new TopicNavigation({ registry, current:route,
+  topicNavigation = new TopicNavigation({ registry, current: route,
     navigateTarget: target => { marks.leave(); location.assign(routeHref(target)); } });
   await initializeInlineComposer();
-  topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, topic),
+  // The conversation has its own row, never one among the topics.
+  topicRail = new TopicRail({ reader: bootstrap.actor, pageMax: pageMax(), pages: new TopicPages(bootstrap.instance_id, topic.workspace_id, here.page ? null : topic),
     host: $('topics'), more: $('more-topics'), retry: $('retry-topics'), message: $('topics-status'), key: $('topics-key'), ...topicFolds(),
     denied: error => readFailure(error).kind === 'forbidden',
     read: async args => {
@@ -1238,7 +1294,8 @@ async function initialize() {
   });
   // The rail shows only this topic's outcome.
   outcomeScope = new OutcomeScope({ workspaceId: topic.workspace_id, kind: 'topic', rail: document.querySelector('.rail'), home: $('outcomes-home'),
-    attention, open: openDestination, sections: [{ name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
+    attention, open: openDestination, sections: [{ name: 'conversation', node: $('conversation-navigation'), load: loadConversation },
+      { name: 'topics', node: $('topic-navigation'), load: () => topicRail.load() },
       { name: 'notebook', node: $('outcome-references'), load: () => outcomeReferences.load() }] });
   placeBrand(document.querySelector('.rail'));
   outcomeScope.load();
@@ -1264,7 +1321,7 @@ async function initialize() {
   window.addEventListener('pagehide', () => { freshness?.dispose(); registry.dispose(); journal.close(); revokeMedia(); });
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   run(loadMarks);
-  document.body.dataset.ready = 'true'; enableFreshness(checkpoint);
+  document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
 }
 // A message sent by name opens its topic, or, where the reader has lost the
 // topic, the outcomes page that lists it to be marked read.
@@ -1379,6 +1436,113 @@ function followCommits(load) {
   }
   return reload;
 }
+// The outcome's conversation: read on every commit, as the rails are, so a
+// take, an answer or a wait shows without a reload. A read that fails keeps
+// what was painted and says so to the commit follower, which reads again.
+async function loadConversation() {
+  if (!here) return true;
+  try {
+    const answer = checkedView(await api.view('conversation', { workspace_id: here.workspaceId }, { readClass: 'background' }), bootstrap.instance_id);
+    here.view = answer.conversation;
+    paintConversationNav();
+    if (here.page && here.view) {
+      const page = checkedView(await api.view('topic_messages', { topic_id: here.view.topic_id, direction: 'before', limit: 100 }, { readClass: 'background' }),
+        bootstrap.instance_id);
+      for (const item of page.items) here.items.set(item.id, item);
+      if (topic) paintHeader(topic);
+      paintConversationPage();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+function paintConversationNav() {
+  const target = { kind: 'conversation', id: here.workspaceId };
+  const shown = paintConversationRow($('conversation-row'), { view: here.view, title: here.title, reader: bootstrap.actor, current: here.page,
+    href: routeHref(target), open: () => openDestination(target, CONVERSATION_TITLE) });
+  $('conversation-navigation').hidden = !shown;
+}
+const openLinked = (kind, id) => run(() => kind === 'topic' ? openDestination({ kind: 'topic', id }, 'Topic') : openSource({ kind: 'message', id }, document.activeElement));
+function paintConversationPage() {
+  const view = here.view;
+  if (!view) return;
+  paintOnlyNew($('conversation-show'), { view, onlyNew: here.onlyNew, show: value => { here.onlyNew = value; paintConversationPage(); } });
+  // The coordinator is known once the view is read: the writing box's "Answered by" row names them.
+  if (inline?.editor) answeredBy(inline, $('inline-composer').querySelector('.audience'), inline.editor.draft.addressees, true);
+  $('messages').classList.toggle('only-new', here.onlyNew);
+  const empty = !views?.messages?.size;
+  $('conversation-empty').hidden = !empty;
+  if (empty) paintEmpty($('conversation-empty'), { view });
+  for (const entry of $('messages').children) {
+    const card = cardIn(entry), id = card?.dataset?.id, item = id ? here.items.get(id) ?? views.messages.get(id) : null;
+    if (!item) continue;
+    entry.dataset.item = item.item?.state ?? 'none';
+    paintAbout(card, item, bootstrap.actor, openLinked);
+    paintItemTags(card, item, view.waits, bootstrap.actor, openLinked);
+    const author = card.querySelector('.message-author');
+    if (author) paintAsksYou(author, item, view.waits, bootstrap.actor);
+  }
+}
+// "Answered by [fable] [warp] [aim-ux] [Someone else]": the team's names tapped
+// once (outcome-conversation.mjs), and a narrow field that names anyone else
+// on Return. Naming someone addresses the message to them; with nobody named
+// the coordinator answers. Off, the row is the plain Address row again.
+const answering = new Set();
+function answeredBy(composer, audience, names, on) {
+  // Off, a row that was never turned on is already the plain Address row.
+  if (!on && !answering.delete(audience)) return;
+  if (on) answering.add(audience);
+  const label = audience.querySelector(':scope > span.muted'), input = audience.querySelector(':scope > input');
+  const chips = audience.querySelector(':scope > .chips');
+  if (!label.dataset.words) label.dataset.words = label.textContent;
+  label.textContent = on ? 'Answered by' : label.dataset.words;
+  input.placeholder = on ? 'Someone else' : 'Add a name';
+  audience.classList.toggle('answered-by', on);
+  let choices = audience.querySelector(':scope > .answerer-chips');
+  if (!choices) {
+    choices = document.createElement('span'); choices.className = 'answerer-chips'; choices.setAttribute('role', 'group');
+    choices.setAttribute('aria-label', 'Who answers'); audience.insertBefore(choices, chips);
+  }
+  choices.hidden = !on;
+  const team = (outcomeMembers ?? []).filter(person => person.enabled !== false).map(person => person.actor_id);
+  // The names wait for the conversation's view, which says who the coordinator is.
+  const shown = on && here?.view ? paintAnswerers(choices, { coordinator: here.view.coordinator?.actor_id, members: team, names, reader: bootstrap.actor,
+    toggle: (id, add) => add ? composer.addName(id) : composer.removeName(id) }) : [];
+  if (!shown.length) choices.replaceChildren();
+  // A team member named here shows as their pressed chip, not twice.
+  for (const chip of chips.children) chip.hidden = shown.includes(chip.dataset.name);
+}
+// The Reader's To row: a message in an ordinary topic of this outcome may go to its conversation.
+function offerConversation(host, source, topicId) {
+  if (!here?.view || here.page || source.source_ref.kind !== 'message' || source.whisper || source.topic_id !== topic?.id) return false;
+  conversationDestination(host, { topic, conversation: here.view.topic_id, outcome: here.title, chosen: topicId });
+  return true;
+}
+function paintReaderAudience(topicId, names = null) {
+  const on = Boolean(here?.view && !here.page && topicId === here.view.topic_id);
+  const note = $('destination-note');
+  note.textContent = on ? CONVERSATION_NOTE(here.view.coordinator?.actor_id) : '';
+  note.hidden = !on;
+  if (reader?.sessions && (on || answering.size)) answeredBy(reader, $('reply-audience'), names ?? reader.names(), on);
+}
+// Switching the Reader between this topic and the conversation opens the same
+// message with the other destination. The writing moves there only when that
+// draft is empty; two drafts are never merged, and writing that stays is said
+// in one line (switchWriting). Images cannot be chosen while the other place
+// opens (an open stops them), and words typed meanwhile are read after it, so
+// they move too.
+async function switchDestination(value) {
+  const p = registry.current, ref = p?.source?.source_ref;
+  if (!ref || ref.kind !== 'message' || value === p.editors.reply.context.topicId) return;
+  if (![topic.id, here?.view?.topic_id].includes(value)) { reader.notice('Choose this topic or the outcome\'s conversation.'); return; }
+  const left = p.editors.reply, place = left.context.topicId === topic.id ? 'This topic' : 'the conversation';
+  const shown = { kindOf: reader.kindOf, conversation: reader.toConversation(left) };
+  const next = await registry.open(ref, { topicId: value, opener: p.opener });
+  if (!next) return;
+  const keep = editor => { if (reader.editor === editor) reader.drawEditor(); return registry.edited(editor); };
+  if (await switchWriting(left, next.editors.reply, keep, shown)) reader.notice(`Your writing for ${place} is kept there.`);
+}
 // The Done and Archived lines under the topic list, where the person's choice
 // to keep each open is remembered, and the area the lists keep still under.
 function topicFolds() {
@@ -1455,11 +1619,12 @@ async function initializeOutcomePage(route) {
   } else {
     // Other outcomes' questions in one quiet line, or why the list they are read
     // from could not be read and Retry, then where this outcome stands, then its
-    // topics; its Notebook pages are listed after them, and one opens in place below them.
-    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('topic-navigation'),$('outcome-references'),$('page-here'));
+    // conversation's one row (outcome-conversation.mjs), then its topics; its Notebook pages are listed after them, and one opens in place below them.
+    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'));
     // The page lists the outcome's topics and pages itself, so it has no rail:
     // the logo block, then "← Outcomes", head the main column.
     const rail=document.querySelector('.rail');rail.hidden=true;
+    here={workspaceId:route.id,title:route.id,view:null,page:false,onlyNew:false,items:new Map()};
     $('main').prepend($('outcomes-home'));placeBrand($('main'));
     const scope=outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'workspace',rail,home:$('outcomes-home'),attention,open:openDestination});
     // The list of outcomes is read, not shown, for the line naming other outcomes' questions;
@@ -1490,7 +1655,7 @@ async function initializeOutcomePage(route) {
           $('topic-title').textContent='Outcome unavailable';$('topic-description').textContent='';$('outcome-team').hidden=true;
           $('topic-navigation').hidden=true;$('new-topic').disabled=true;
           // Its Notebook pages, and any open in place, go with it; a recovered read lists them again.
-          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;
+          $('outcome-references').hidden=true;$('page-here').hidden=true;$('outcome-standing').hidden=true;$('also-waiting').hidden=true;$('conversation-navigation').hidden=true;
         }
         throw error;
       }
@@ -1502,7 +1667,7 @@ async function initializeOutcomePage(route) {
       purposeLine??=new PurposeLine({host:$('outcome-purpose'),description:$('topic-description'),
         save:(purpose,current)=>setPresence('workspace.update',{workspace_id:current.id},'workspace_revision',current.version,{purpose}).then(receipt=>{run(reload);return receipt;})});
       purposeLine.paint(workspace,organises(workspace,bootstrap.actor));
-      $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);
+      $('workspace-name').textContent=workspace.id;enableNewTopic(workspace.id);here.title=workspace.title;
       await paintTeam(workspace,()=>reload());
       if(!topicRail)topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
         retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
@@ -1510,7 +1675,7 @@ async function initializeOutcomePage(route) {
         open:(id,title)=>openDestination({kind:'topic',id},title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      return (await Promise.all([stands(workspace),topicRail.load(),outcomeReferences.load()])).every(read=>read!==false);
+      return (await Promise.all([stands(workspace),topicRail.load(),outcomeReferences.load(),loadConversation()])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
     // topics, and other outcomes' questions in the line above them.
@@ -1589,8 +1754,9 @@ async function initializeOpeningPage(route) {
     read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
     open:(id,title)=>openDestination({kind:'topic',id},title)});
   outcomeReferences=outcomePages(route.workspace,()=>{});
+  here={workspaceId:route.workspace,title:answer.workspace.title,view:null,page:false,onlyNew:false,items:new Map()};
   outcomeScope=new OutcomeScope({workspaceId:route.workspace,kind:'opening',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
-    sections:[{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},{name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
+    sections:[{name:'conversation',node:$('conversation-navigation'),load:loadConversation},{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},{name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
   placeBrand(document.querySelector('.rail'));
   await followCommits(async()=>(await Promise.all([outcomeScope.load(),draft.follow().catch(()=>false)])).every(read=>read!==false))();
   document.body.dataset.ready='true';

@@ -356,7 +356,7 @@ class LightReadsCase(fixtures.StoreCase):
         self.now = 200 * HOUR
         # 300 topics: 150 active within the hour, then 150 older, all only the owner's.
         ids = self.plant(300, self.now - 10_000, 24_000, "owner")
-        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE ?-activity_ms<=?", (self.now, WORK_WINDOW_MS))[0][0], 150)
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE kind='topic' AND ?-activity_ms<=?", (self.now, WORK_WINDOW_MS))[0][0], 150)
         self.assertEqual(light(self.stands()), ("quiet", {"kind": "since", "ms": None}))
         # The 120th newest has agent-a's post as well, inside the window: the light sees it.
         seen_ms = self.now - 119 * 24_000 - 10_000

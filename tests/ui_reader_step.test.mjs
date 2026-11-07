@@ -2,43 +2,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Editor } from '../web/editor.mjs';
 import { Reader } from '../web/reader.mjs';
+import { miniDocument } from './fixtures/mini_dom.mjs';
 
 // While a step to another message waits, the Reader's own writing goes on:
 // recipients and quotes reach it like typing. Sending and a note's Done wait, and
 // say why. A Reader that no longer holds its writing takes none of these.
-class Element {
-  constructor(tag) { Object.assign(this, { tag, children: [], attributes: {}, dataset: {}, className: '', textContent: '', value: '', hidden: true }); }
-  focus() { globalThis.document.activeElement = this; }
-  get classList() { return { add: name => { this.className = this.className ? `${this.className} ${name}` : name; } }; }
-  get isConnected() { return !!this.root || !!this.parent?.isConnected; }
-  append(...nodes) { for (const node of nodes) node.parent = this; this.children.push(...nodes); }
-  replaceChildren(...nodes) { for (const node of this.children) node.parent = null; this.children = []; this.append(...nodes); }
-  remove() { if (this.parent) { this.parent.children = this.parent.children.filter(node => node !== this); this.parent = null; } }
-  insertBefore(node, before) { node.remove(); this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, node); node.parent = this; }
-  setAttribute(key, value) { this.attributes[key] = value; }
-  removeAttribute(key) { delete this.attributes[key]; }
-  setSelectionRange() {}
-}
-
 const STEP_WAITS = /Another message is still opening\. Your writing is kept; images and sending wait until it opens\./;
 
 function reader(t, { admits, writes }) {
   const previous = { document: globalThis.document, window: globalThis.window };
-  globalThis.document = { createElement: tag => new Element(tag), activeElement: null };
+  const document = miniDocument();
+  globalThis.document = document;
   globalThis.window = { getSelection: () => null };
   t.after(() => Object.assign(globalThis, previous));
   const context = { instanceId: 'reader-step', actor: 'fixture-person', sourceRef: { kind: 'message', id: 'm1' }, topicId: 't1' };
   const reply = new Editor({ ...context, kind: 'reply' }, { id: 'reply', revision: 1, generation: 'g1', body: '' });
   const note = new Editor({ ...context, kind: 'note' }, { id: 'note', revision: 1, body: 'A private note' });
-  const elements = { 'reader-notice': new Element('p'), 'recipient-input': new Element('input'), 'recipient-chips': Object.assign(new Element('div'), { root: true }),
-    'ask-choice': new Element('label'), 'ask-toggle': new Element('input') };
+  const elements = { 'reader-notice': Object.assign(document.createElement('p'), { hidden: true }), 'recipient-input': document.createElement('input'),
+    'recipient-chips': Object.assign(document.createElement('div'), { root: true }), 'intent-row': Object.assign(document.createElement('div'), { id: 'intent-row' }),
+    'send-reply': document.createElement('button') };
+  const kinds = { fable: 'agent', warp: 'agent', tony: 'human' };
   const acts = [], inserted = [];
   const r = Object.assign(Object.create(Reader.prototype), {
     sessions: { reply, note }, mode: 'reply', presentation: {}, source: { source_ref: context.sourceRef, body: 'Quoted passage' },
-    field: new Element('textarea'), $: id => elements[id],
+    field: document.createElement('textarea'), $: id => elements[id],
     selectedPassage: () => 'Quoted passage', insertText: text => inserted.push(text), disarm() {},
     callbacks: { admits: () => admits, writes: () => writes, reach: () => ({ reachable: true }),
-      edit: editor => acts.push(['edit', editor.context.kind]), send: () => acts.push(['send']), saveNote: editor => acts.push(['saveNote', editor.context.kind]) },
+      edit: editor => acts.push(['edit', editor.context.kind]), send: () => acts.push(['send']), saveNote: editor => acts.push(['saveNote', editor.context.kind]),
+      people: () => ({ kindOf: name => kinds[name], everyone: ['fable', 'warp'] }) },
   });
   const notice = () => elements['reader-notice'].hidden ? '' : elements['reader-notice'].textContent;
   const commandReturn = () => r.key({ key: 'Enter', metaKey: true, shiftKey: false, altKey: false, keyCode: 13, isComposing: false, repeat: false,
@@ -58,26 +49,34 @@ test('while a step waits, recipients and quotes reach the Reader\'s writing', t 
   assert.equal(f.notice(), '');
 });
 
-test('Ask shows once the reply names someone, marks the writing as asking, and goes with the last name', t => {
+test('Whisper, Tell or Ask follows who the reply names, keeps the person\'s choice, and goes with the last name', t => {
   const f = reader(t, { admits: true, writes: true });
-  const choice = f.elements['ask-choice'], toggle = f.elements['ask-toggle'];
-  f.r.paintAsk();
-  assert.equal(choice.hidden, true, 'a reply to nobody offers no Ask');
-  f.r.setAsk(true);
-  assert.equal(Object.hasOwn(f.reply.draft, 'intent'), false, 'and cannot ask');
-  f.elements['recipient-input'].value = 'fable'; f.r.addRecipient();
-  assert.deepEqual([choice.hidden, toggle.checked], [false, false], 'a reply to someone tells unless Ask is on');
-  f.r.setAsk(true);
-  assert.deepEqual([f.reply.draft.intent, toggle.checked], ['ask', true]);
+  const row = f.elements['intent-row'];
+  const state = () => {
+    const inputs = row.querySelectorAll('input');
+    return { checked: inputs.find(input => input.checked)?.value, disabled: inputs.filter(input => input.disabled).map(input => input.value) };
+  };
+  const remove = name => f.elements['recipient-chips'].children.find(chip => chip.dataset.name === name).querySelector('button').onclick();
+  f.r.paintChoice();
+  assert.deepEqual(state(), { checked: 'tell', disabled: ['whisper', 'ask'] }, 'a reply to nobody can neither whisper nor ask');
+  f.r.choose('ask');
+  assert.equal(f.reply.draft.intent, 'ask', 'a choice made before naming anyone is still the person\'s');
+  f.r.paintChoice();
+  assert.equal(state().checked, 'tell', 'but a reply to nobody goes as neither');
   f.elements['recipient-input'].value = 'tony'; f.r.addRecipient();
-  f.elements['recipient-chips'].children[0].children.find(node => node.tag === 'button').onclick();
-  assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, toggle.checked], [['tony'], 'ask', true], 'Ask stays while someone is named');
-  f.r.setAsk(false);
-  assert.equal(f.reply.draft.intent, null, 'Ask off tells');
-  f.r.setAsk(true);
-  f.elements['recipient-chips'].children[0].children.find(node => node.tag === 'button').onclick();
-  assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, choice.hidden], [[], null, true], 'the last name taken away takes the ask with it');
-  assert.equal(f.acts.filter(([act]) => act === 'edit').length, 7, 'each change is kept as it lands');
+  assert.deepEqual(state(), { checked: 'ask', disabled: ['whisper'] }, 'named, the Ask chosen earlier holds; a person is never whispered to');
+  remove('tony');
+  assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, f.reply.draft.whisper], [[], null, null], 'the last name taken away takes the choice with it');
+  f.elements['recipient-input'].value = 'fable'; f.r.addRecipient();
+  assert.deepEqual(state(), { checked: 'whisper', disabled: [] }, 'one agent named: a whisper');
+  f.r.choose('ask');
+  assert.deepEqual([f.reply.draft.intent, f.reply.draft.whisper, state().checked], ['ask', false, 'ask']);
+  f.elements['recipient-input'].value = 'warp'; f.r.addRecipient();
+  remove('fable');
+  assert.deepEqual([f.reply.draft.addressees, f.reply.draft.intent, state().checked], [['warp'], 'ask', 'ask'], 'Ask stays while someone is named');
+  f.r.choose('tell');
+  assert.deepEqual([f.reply.draft.intent, state().checked], ['tell', 'tell'], 'a Tell chosen with one agent is not made a whisper');
+  assert.equal(f.acts.filter(([act]) => act === 'edit').length, 8, 'each change is kept as it lands');
 });
 
 test('while a step waits, sending and a note\'s Done wait and say why', async t => {

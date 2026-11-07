@@ -16,6 +16,7 @@ but counts nowhere: not in the counts, the marks view, the Reader's mark, or
 the New line.
 """
 
+from .whispers import visible
 from .contract import READABLE, Refusal, _bounded_page, _identifier, _page_size
 
 
@@ -46,8 +47,8 @@ class Marks:
 
     def _mark_state(self, db, actor, message_id):
         """{marked, mark_revision} for someone else's message whose topic the actor can read, else None."""
-        row = db.execute("SELECT topic_id,author_id FROM messages WHERE id=?", (message_id,)).fetchone()
-        if row is None or row["author_id"] == actor:
+        row = db.execute("SELECT topic_id,author_id,private_to FROM messages WHERE id=?", (message_id,)).fetchone()
+        if row is None or row["author_id"] == actor or not visible(row, actor):
             return None
         try:
             self._topic(db, actor, row["topic_id"])
@@ -63,8 +64,9 @@ class Marks:
         if set(target) != {"message_id"} or set(args) != {"marked"} or not isinstance(args["marked"], bool):
             raise Refusal("INVALID_ARGUMENT", "Name one message and whether it is marked unread")
         message_id = _identifier(target["message_id"], "message_id")
-        message = db.execute("SELECT id,topic_id,seq FROM messages WHERE id=?", (message_id,)).fetchone()
-        if message is None:
+        message = db.execute("SELECT id,topic_id,seq,author_id,private_to FROM messages WHERE id=?", (message_id,)).fetchone()
+        # A whisper someone is not in is refused as an unknown message.
+        if message is None or not visible(message, actor):
             raise Refusal("FORBIDDEN", "No permission for this message")
         # A mark lives in a topic the person can open; a message read only
         # because it was sent to them by name cannot be marked.

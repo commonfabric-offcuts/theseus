@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 // with its presence dot, the workspace name and Turn on notifications) first
 // in its rail, or first in its main column where it has no rail, and no header
 // bar or Refresh button. On a topic page the rail lists no outcomes: "←
-// Outcomes" comes first, then the outcome's own topics. The outcome's own page
+// Outcomes" comes first, then the outcome's conversation and its own topics. The outcome's own page
 // has no rail. An ask to the reader in another outcome lights "← Outcomes"
 // live, with its words on a topic page; on the outcome page too when that
 // outcome is one the reader is not on the team of, so its "Also waiting on
@@ -56,7 +56,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       const topic = await until(async () => { const seen = await top(t); return seen.rail[0] === 'brand' && seen.rail[1] === 'outcomes-home' && seen; }, at + ': the logo block, then ← Outcomes');
       assert.deepEqual([topic.headers, topic.refresh, topic.buttons], [0, false, 0], at + ': no header bar and no Refresh on the topic page');
       assert.equal(topic.brandIn, 'rail', at + ': the logo block is in the rail');
-      assert.deepEqual(topic.rail.slice(0, 3), ['brand', 'outcomes-home', 'topic-navigation'], at + ': the logo block, ← Outcomes, then the topics');
+      assert.deepEqual(topic.rail.slice(0, 4), ['brand', 'outcomes-home', 'conversation-navigation', 'topic-navigation'],
+        at + ': the logo block, ← Outcomes, the outcome\'s conversation, then the topics');
       assert.deepEqual(topic.brand, ['wordmark', 'instance-label', 'notify'], at + ': the wordmark, then the workspace name and Turn on notifications under it');
       assert.equal(topic.dot, true, at + ': the wordmark carries its presence dot');
       assert.match(topic.name, new RegExp('^' + facts.actor + ' · '), at + ': the workspace name is filled in');
@@ -89,18 +90,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
-  await check('rail Tab from ← Outcomes reaches New topic, then the first topic', async () => {
+  await check('rail Tab from ← Outcomes reaches the conversation, New topic, then the first topic', async () => {
     const p = await open('rail-tab', '/?topic=t1');
     await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), 'the rail is ready');
     // A press on the workspace name starts Tab there, as it would for a person.
     await p.point('#instance-label');
-    const focused = () => p.evaluate('document.activeElement.id || (document.activeElement.dataset.topicId ? "topic:" + document.activeElement.dataset.topicId : document.activeElement.tagName)');
+    const focused = () => p.evaluate('document.activeElement.id || (document.activeElement.dataset.topicId ? "topic:" + document.activeElement.dataset.topicId : document.activeElement.classList.contains("conversation-row") ? "conversation" : document.activeElement.tagName)');
     for (let n = 0; n < 6 && await focused() !== 'outcomes-home'; ++n) await p.key('Tab');
     assert.equal(await focused(), 'outcomes-home', 'Tab reaches ← Outcomes from the logo block');
     const order = [];
-    for (let n = 0; n < 2; ++n) { await p.key('Tab'); order.push(await focused()); }
+    for (let n = 0; n < 3; ++n) { await p.key('Tab'); order.push(await focused()); }
     const first = await p.evaluate('"topic:" + document.querySelector("#topics a").dataset.topicId');
-    assert.deepEqual(order, ['new-topic', first], 'then New topic, then the first topic');
+    assert.deepEqual(order, ['conversation', 'new-topic', first], 'then the outcome\'s conversation, New topic, then the first topic');
     assert.deepEqual(p.errors, []);
   });
 

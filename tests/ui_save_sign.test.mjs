@@ -15,6 +15,8 @@ function reader(editor, sign) {
   const r = Object.assign(Object.create(Reader.prototype), {
     $, mode: 'reply', sessions: { reply: editor, note: editor }, source: { source_ref: editor.context.sourceRef }, presentation: {},
     field: { readOnly: false }, callbacks: { status: () => 'Saved to Theseus', sign: () => sign }, paintImages() {}, paintOffer() {}, paintAccess() {},
+    // How the reply is sent has its own checks (ui_whisper.test.mjs).
+    paintChoice() {},
   });
   r.paintStatus();
   return $('save-state');
@@ -64,7 +66,7 @@ function composer(editor, sign, presentation) {
   const c = Object.assign(Object.create(InlineComposer.prototype), {
     presentation: { editors: { reply: editor }, ...presentation }, root: { inert: false }, field: { readOnly: false },
     callbacks: { admits: () => true, status: () => 'Saved to Theseus', sign: () => sign, needsReview: () => false, renderPending() {} },
-    paintImages() {},
+    paintImages() {}, paintChoice() {},
   });
   c.$ = name => { if (!nodes.has(name)) nodes.set(name, node()); return nodes.get(name); };
   c.paintStatus();

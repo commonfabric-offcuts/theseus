@@ -19,7 +19,8 @@ function reader() {
   const $ = id => { if (!nodes.has(id)) nodes.set(id, new Element('div')); return nodes.get(id); };
   const shown = [];
   const r = Object.assign(Object.create(Reader.prototype), {
-    $, mode: 'reply', positions: new Map(), layoutInstance: 'i1', viewToken: 0,
+    // A Reader always has its callbacks; these offer no other destination.
+    $, mode: 'reply', positions: new Map(), layoutInstance: 'i1', viewToken: 0, callbacks: {},
     dialog: { open: true }, sourceBody: { scrollTop: 0, focus() {} },
     notice() {}, disarm() {}, paintOrigin() {}, drawAttachments() {}, drawEditor() {}, paintPending() {}, applyLayout() {},
     drawSource: body => shown.push(body),

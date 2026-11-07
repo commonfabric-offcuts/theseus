@@ -5,6 +5,8 @@ import json
 from .contract import LIMITS, Refusal, _body, _bounded_page, _identifier, _page_size, _prefix, _json, _revision
 from .delivery import _now_ms
 from .sources import NAMED, seen_topics
+from . import whispers
+from .standing_conversation import partial
 
 
 OPENING_SCHEMA = [
@@ -67,7 +69,10 @@ class Openings:
 
     def _command_opening_save(self, db, actor, envelope):
         opening_id, args = _opening_id(envelope), envelope["args"]
-        if set(args) - {SOURCE_FIELD} != SAVED_FIELDS:
+        # A topic's first message is never a whisper: nobody else would see the topic begin.
+        if "whisper" in args:
+            whispers.refuse_opening(args)
+        if set(args) - {SOURCE_FIELD, "part"} != SAVED_FIELDS:
             raise Refusal("INVALID_ARGUMENT", "A save carries the whole writing, and optionally the message it answers, and nothing else")
         workspace_id = _identifier(args["workspace_id"], "workspace_id")
         topic_id = _identifier(args["topic_id"], "topic_id")
@@ -98,6 +103,11 @@ class Openings:
                    "attachments": self._attachment_refs(db, actor, args["attachments"])}
         if kept is not None:
             payload[SOURCE_FIELD] = kept
+        # Taking only part of a conversation item into this topic leaves the item New.
+        if partial(args):
+            if kept is None:
+                raise Refusal("INVALID_ARGUMENT", "part is only for a topic started from a message")
+            payload["part"] = True
         if row:
             db.execute("UPDATE openings SET revision=?,payload=? WHERE actor_id=? AND id=?",
                        (revision + 1, _json(payload), actor, opening_id))
@@ -132,6 +142,8 @@ class Openings:
                          Refusal("EMPTY_TITLE", "A topic needs a title"))
         if source is not None:
             db.execute("UPDATE topics SET source_message_id=? WHERE id=?", (source, row["topic_id"]))
+            # A topic started from a conversation item says so under that item.
+            self._take_from_topic(db, actor, source, row["topic_id"], saved.get("part", False))
         writing = {"body": saved["body"], "attachments": saved["attachments"], "quotes": [], "addressees": []}
         if not saved["body"].strip() and not saved["attachments"] and source is not None:
             # Started from a message with nothing written: its words open the topic, quoted.

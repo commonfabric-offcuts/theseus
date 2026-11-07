@@ -107,7 +107,7 @@ class OpeningsCase(fixtures.StoreCase):
         self.refused(self.act("opening.publish", revision=1), "REVISION_CONFLICT")
         self.refused(self.act("opening.discard", revision=3), "REVISION_CONFLICT")
         self.assertEqual(self.stored_openings(), before)
-        self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE kind='topic'"), [(0,)])
 
     def test_workspace_and_topic_are_fixed_by_the_first_save(self):
         self.committed(self.command("workspace.create", {"id": "w2", "title": "Second"}))
@@ -173,7 +173,7 @@ class OpeningsCase(fixtures.StoreCase):
                 self.refused(self.act("opening.discard", actor=actor), "FORBIDDEN")
         self.assertEqual(self.view("openings", "agent-a", workspace_id="w1")["items"], [])
         self.assertEqual(self.stored_openings(), before)
-        self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE kind='topic'"), [(0,)])
         self.assertEqual([item["id"] for item in self.view("openings")["items"]], ["o1"])
 
     def test_publish_creates_the_topic_as_an_ordinary_publication_once(self):
@@ -188,11 +188,11 @@ class OpeningsCase(fixtures.StoreCase):
         self.assertEqual(receipt["affected"], [{"kind": "topic", "id": "t-new", "version": 1},
                                                {"kind": "message", "id": message_id, "version": 1},
                                                {"kind": "opening", "id": "o1", "version": 2}])
-        self.assertEqual(self.sql("SELECT id,workspace_id,title,creator_id,version FROM topics"),
+        self.assertEqual(self.sql("SELECT id,workspace_id,title,creator_id,version FROM topics WHERE kind='topic'"),
                          [("t-new", "w1", "A new topic", "owner", 1)])
-        self.assertEqual(self.sql("SELECT actor_id,active,epoch FROM topic_participants ORDER BY actor_id"),
+        self.assertEqual(self.sql("SELECT actor_id,active,epoch FROM topic_participants WHERE topic_id='t-new' ORDER BY actor_id"),
                          [("agent-a", 1, 1), ("owner", 1, 1)])
-        self.assertEqual(self.sql("SELECT message_count,latest_message_id FROM topic_summaries"), [(1, message_id)])
+        self.assertEqual(self.sql("SELECT message_count,latest_message_id FROM topic_summaries WHERE topic_id='t-new'"), [(1, message_id)])
         stored = self.sql("SELECT topic_id,author_id,body,attachments,quotes,addressees,operation_id FROM messages")
         self.assertEqual(stored[0][:3], ("t-new", "owner", "The opening words"))
         self.assertEqual(stored[0][4:], ("[]", "[]", "publish-o1"))
@@ -253,7 +253,7 @@ class OpeningsCase(fixtures.StoreCase):
         self.sql("INSERT INTO topics(id,workspace_id,title,creator_id,version) VALUES ('t-new','w1','Raced','agent-b',1)")
         refuse("REVISION_CONFLICT", "p-raced")
         self.sql("DELETE FROM topics WHERE id='t-new'")
-        self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE kind='topic'"), [(0,)])
         self.assertEqual(self.sql("SELECT count(*) FROM operations WHERE id LIKE 'p-%'"), [(5,)])
         published = self.committed(self.act("opening.publish", revision=revision[0], op="p-final"))
         self.assertEqual(published["topic"]["id"], "t-new")
@@ -266,7 +266,7 @@ class OpeningsCase(fixtures.StoreCase):
                                     {"workspace_id": "w1"}, {"workspace_revision": version}))
         self.refused(self.act("opening.publish", actor="agent-a"), "FORBIDDEN")
         self.assertEqual(self.sql("SELECT state FROM openings"), [("open",)])
-        self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE kind='topic'"), [(0,)])
 
     def test_publish_and_discard_take_no_writing(self):
         self.committed(self.save())
@@ -294,7 +294,7 @@ class OpeningsCase(fixtures.StoreCase):
         self.assert_closed(2)
         self.assertEqual(self.act("opening.discard", op="discard-o1"), discarded)
         self.assertEqual(self.stored_openings(), before)
-        self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE kind='topic'"), [(0,)])
 
     def test_unfinished_list_pages_by_id_and_scopes_by_workspace(self):
         self.committed(self.command("workspace.create", {"id": "w2", "title": "Second", "team": ["agent-a"]}))
@@ -373,7 +373,7 @@ class OpeningsCase(fixtures.StoreCase):
         refused = self.refused(self.command("topic.create_and_send", {"submission_id": "legacy"}, {"topic_id": "t-legacy"},
                                             op="legacy-send"), "INVALID_RECIPIENT")
         self.assertEqual(self.store.view("owner", "operation", {"operation_id": "legacy-send"}), refused)
-        self.assertEqual(self.sql("SELECT count(*) FROM topics"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM topics WHERE kind='topic'"), [(0,)])
 
 
 # Do not rerun the inherited StoreCase tests during module discovery.

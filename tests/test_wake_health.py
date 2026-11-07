@@ -23,6 +23,13 @@ from test_wake_contract import HostedFixture, own_cases
 @own_cases
 class Fixture(runner_tests.RunnerCase):
     def setUp(self):
+        # Messages are sent on the runner's clock: what the page shows of an
+        # agent's wakes is never earlier than its oldest pending message on the
+        # record (docs/whispers.md), so the two times are compared.
+        self.now = 1000
+        patch = mock.patch("aim_next.conversation._now_ms", side_effect=lambda: self.now)
+        patch.start()
+        self.addCleanup(patch.stop)
         super().setUp()
         self.runner_guard = self.guard()
         self.runner = self.token(self.runner_guard)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Local operator program: schema upgrades, actor registration and release records. Never exposed over HTTP."""
+"""Local operator program: schema upgrades, actor registration, release records and starting an older outcome's conversation. Never exposed over HTTP."""
 
 import argparse
 import json
@@ -35,6 +35,11 @@ def _parser():
     release = verbs.add_parser("record-release", add_help=False)
     release.add_argument("--profile", required=True)
     release.add_argument("--record", required=True)
+    conversation = verbs.add_parser("conversation-start", add_help=False)
+    conversation.add_argument("--profile", required=True)
+    conversation.add_argument("--outcome", required=True)
+    conversation.add_argument("--coordinator")
+    conversation.add_argument("--replaces")
     return parser
 
 
@@ -55,6 +60,9 @@ def _run(options):
     profile = load_profile(options.profile)
     if options.verb == "record-release":
         return profile.store().record_release(_record(options.record))
+    if options.verb == "conversation-start":
+        replaces = [topic for topic in (options.replaces or "").split(",") if topic]
+        return profile.store().start_conversation(options.outcome, options.coordinator, replaces)
     return profile.store().register_actor(options.id, options.kind, options.name)
 
 
@@ -70,7 +78,8 @@ def main(argv=None, *, stdout=None, stderr=None):
     except ValueError:
         stderr.write("usage: aim-next-admin migrate --db /abs/db --instance ID --binding /abs/profile.json [--to VERSION]\n"
                      "       aim-next-admin add-actor --profile /abs/profile.json --id ID --kind human|agent --name NAME\n"
-                     "       aim-next-admin record-release --profile /abs/profile.json --record /abs/release.json\n")
+                     "       aim-next-admin record-release --profile /abs/profile.json --record /abs/release.json\n"
+                     "       aim-next-admin conversation-start --profile /abs/profile.json --outcome W [--coordinator NAME] [--replaces T1,T2]\n")
         return 2
     try:
         result, code = dict(_run(options), ok=True), 0

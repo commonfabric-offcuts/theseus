@@ -411,8 +411,10 @@ def main():
                 "source_ref": source, "topic_id": topic_id, "generation": draft["generation"],
                 "body": request["body"], "addressees": request.get("addressees", [])}, **({"attachments": attached} if attached else {}),
                 # An agent's message to someone says ask or tell; a case that names
-                # no intent tells.
-                **({"intent": request.get("intent") or "tell"} if request.get("addressees") or request.get("intent") else {})),
+                # no intent tells. With "whisper": true it answers a whisper instead,
+                # which says neither.
+                **({"whisper": True} if request.get("whisper") else
+                   {"intent": request.get("intent") or "tell"} if request.get("addressees") or request.get("intent") else {})),
                 {"draft_id": draft["id"]}, {"draft_revision": draft["revision"]}, sender=sender)
             command("submission.prepare", operation + "-prepare", {
                 "draft_id": draft["id"], "submission_id": operation + "-submission",
@@ -581,6 +583,17 @@ def main():
                         else:
                             answer = command("workspace.member_set", request["operation_id"], {"actor_id": request["member"], "present": request["present"]},
                                              {"workspace_id": workspace}, {"workspace_revision": version}, sender=sender)
+                    elif freshness and request["method"] == "coordinator":
+                        # The owner chooses who answers in w1's conversation, bringing
+                        # {"coordinator": id} and each of {"team": [...]} onto the team first.
+                        for member in [request["coordinator"]] + request.get("team", []):
+                            version = store().view(actor, "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+                            command("workspace.member_set", "%s-member-%s" % (request["operation_id"], member), {"actor_id": member, "present": True},
+                                    {"workspace_id": "w1"}, {"workspace_revision": version})
+                        version = store().view(actor, "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+                        command("workspace.coordinator_set", request["operation_id"], {"actor_id": request["coordinator"]},
+                                {"workspace_id": "w1"}, {"workspace_revision": version})
+                        answer = store().view(actor, "conversation", {"workspace_id": "w1"})["conversation"]
                     elif freshness and request["method"] == "lost_named_message":
                         # The reader is named in a message in another outcome's
                         # topic and then taken out of it: Core keeps exactly that

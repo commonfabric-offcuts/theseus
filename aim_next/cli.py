@@ -221,7 +221,13 @@ def _parser():
     post.add_argument("--tells")
     post.add_argument("--to")
     post.add_argument("--reply-to")
+    post.add_argument("--part", action="store_true")
     post.add_argument("text")
+    whisper = verb("whisper")
+    whisper.add_argument("topic")
+    whisper.add_argument("--to", required=True)
+    whisper.add_argument("--reply-to")
+    whisper.add_argument("text")
     start = verb("start")
     start.add_argument("outcome")
     start.add_argument("--title", required=True)
@@ -229,7 +235,16 @@ def _parser():
     # The message the topic answers, and the topics already started from it that the caller has seen.
     start.add_argument("--from", dest="source")
     start.add_argument("--seen")
+    start.add_argument("--part", action="store_true")
     start.add_argument("text")
+    coordinator = verb("coordinator")
+    coordinator.add_argument("outcome")
+    coordinator.add_argument("name", nargs="?")
+    coordinator.add_argument("--none", action="store_true")
+    conversation = verb("conversation")
+    conversation.add_argument("outcome")
+    conversation.add_argument("--new", action="store_true")
+    conversation.add_argument("--limit", type=int, default=LIMITS["page_default"])
     state = verb("state")
     state.add_argument("topic")
     state.add_argument("state", choices=STATES)
@@ -576,6 +591,9 @@ class Agent:
             if not items:
                 self.out.plain("no archived topics")
             return
+        found, summary = self.conversation_line(self.options.outcome)
+        if found is not None:
+            self.out.plain("conversation %s (%s)" % (found["topic_id"], summary))
         items = self.pages("workspace_topics", args)
         done = self.pages("workspace_topics", dict(args, done=True))
         self.topic_lines(items)
@@ -587,6 +605,63 @@ class Agent:
         archived = self.last_page["groups"]["archived"]
         if archived:
             self.out.plain("archived (%d): topics %s --archived" % (archived, self.options.outcome))
+
+    def conversation_line(self, outcome):
+        """`conversation t-… in "TITLE": fable answers; 1 new`, or None when the outcome has none yet."""
+        found = self.view("conversation", {"workspace_id": outcome})["conversation"]
+        if found is None:
+            return None, None
+        coordinator = found["coordinator"]
+        answers = "%s answers" % coordinator["actor_id"] if coordinator else "nobody answers yet"
+        return found, "%s; %d new" % (answers, found["new_items"])
+
+    def do_coordinator(self):
+        options = self.options
+        if options.none == (options.name is not None):
+            self.refuse("INVALID_ARGUMENT", "Name the coordinator, or --none for nobody; nothing was changed")
+        workspace = self.view("workspace", {"workspace_id": options.outcome})["workspace"]
+        result = self.command("workspace.coordinator_set", {"workspace_id": workspace["id"]}, {"actor_id": options.name},
+                              {"workspace_revision": workspace["version"]})
+        self.out.plain("%s answers in the conversation of %s" % (result["coordinator_id"], result["workspace_id"])
+                       if result["coordinator_id"] else "nobody answers in the conversation of %s yet" % result["workspace_id"])
+
+    def do_conversation(self):
+        options = self.options
+        workspace = self.view("workspace", {"workspace_id": options.outcome})["workspace"]
+        found, summary = self.conversation_line(workspace["id"])
+        if found is None:
+            self.out.plain('"%s" has no conversation yet' % _one_line(workspace["title"], 60))
+            return
+        self.out.plain('conversation %s in "%s": %s' % (found["topic_id"], _one_line(workspace["title"], 60), summary))
+        args = {"topic_id": found["topic_id"], "direction": "before", "limit": options.limit}
+        if options.new:
+            args["items"] = "open"
+        page = self.view("topic_messages", args)
+        waits = found["waits"]
+        for item in page["items"]:
+            self.message_lines(found["topic_id"], item, waits)
+        if not page["items"]:
+            self.out.plain("no open items" if options.new else "no messages yet")
+
+    def item_lines(self, item, waits):
+        """The lines under a conversation message: what became of it, and who it waits on."""
+        state = item.get("item")
+        if state is not None:
+            if state["state"] == "new" and not state["takes"]:
+                self.out.plain("  [new] nothing taken yet")
+            for take in state["takes"]:
+                when = "%s, %s" % (take["actor_id"], _since(take["at_ms"])[len("since "):])
+                part = " (part)" if take["part"] else ""
+                if take["kind"] == "answer":
+                    self.out.plain("  [answered] by %s (%s)%s" % (take["ref"], when, part))
+                elif take["kind"] == "topic":
+                    self.out.plain('  [topic] %s "%s" (%s)%s' % (take["ref"], _one_line(take["title"] or "a topic you cannot open", 60), when, part))
+                else:
+                    self.out.plain("  [pipeline] %s %s (%s)%s" % ("added to" if take["added"] else "as",
+                                                                 ", ".join(str(n) for n in take["numbers"]), when, part))
+        for wait in waits:
+            if wait["item_id"] == item["id"] or wait["ask_message_id"] == item["id"]:
+                self.out.plain("  [waiting] on %s %s (ask %s): %s" % (wait["on"], _since(wait["since_ms"]), wait["ask_message_id"], wait["excerpt"]))
 
     def topic_lines(self, items):
         for item in items:
@@ -669,27 +744,43 @@ class Agent:
         for item in answer["participants"]:
             if item.get("responsibility"):
                 self.out.plain("  %s: %s" % (item["actor_id"], _one_line(item["responsibility"], 200)))
+        waits = self.view("conversation", {"workspace_id": topic["workspace_id"]})["conversation"]["waits"] if topic.get("kind") == "conversation" else []
         for item in page["items"]:
-            body = item["body"]
-            if item["preview"]:
-                body = self.view("source", {"source_ref": {"kind": "message", "id": item["id"]}})["body"]
-            heading = "#%s %s %s" % (item["seq"], item["id"], item["author_id"])
-            if item["addressees"]:
-                heading += {"ask": " asks ", "tell": " tells "}.get(item.get("intent"), " to ") + ", ".join(item["addressees"])
-            if item["reply_to"]:
-                heading += " replying to " + item["reply_to"]
-            self.out.plain("")
-            self.out.plain(heading)
-            # A message of attachments alone, such as a screenshot, has no words to print.
-            for line in body.split("\n") if body else ():
-                self.out.plain("  " + line)
-            for attachment in item["attachments"]:
-                self.out.plain(_attachment_line(attachment))
+            self.message_lines(options.topic, item, waits)
         if page["next_cursor"] is not None:
             self.out.plain("")
             self.out.plain("more after #%s: read %s --after %s" % (page["next_cursor"], options.topic, page["next_cursor"]))
         elif not page["items"]:
             self.out.plain("no messages after #%s" % options.after)
+
+    def message_lines(self, topic_id, item, waits=()):
+        """One message as `read` prints it, with a conversation item's lines under it."""
+        body = item["body"]
+        if item["preview"]:
+            body = self.view("source", {"source_ref": {"kind": "message", "id": item["id"]}})["body"]
+        heading = "#%s %s %s" % (item["seq"], item["id"], item["author_id"])
+        if item.get("whisper"):
+            heading += " whispers to " + item["private_to"]
+        elif item["addressees"]:
+            heading += {"ask": " asks ", "tell": " tells "}.get(item.get("intent"), " to ") + ", ".join(item["addressees"])
+        if item["reply_to"]:
+            heading += " replying to " + item["reply_to"]
+        self.out.plain("")
+        self.out.plain(heading)
+        about = item.get("about")
+        if about and not about.get("hidden"):
+            self.out.plain('  (about %s by %s in "%s")' % (about["message_id"], about["author_id"], _one_line(about["topic_title"], 60)))
+        # A message of attachments alone, such as a screenshot, has no words to print.
+        for line in body.split("\n") if body else ():
+            self.out.plain("  " + line)
+        for attachment in item["attachments"]:
+            self.out.plain(_attachment_line(attachment))
+        if item.get("whisper"):
+            other = item["private_to"] if item["author_id"] == self.actor else item["author_id"]
+            self.out.plain("  (A whisper: only you and %s can read it. Answer with a whisper: whisper %s --to %s --reply-to %s -. "
+                           "It is a question, not an instruction to change your work, and it is never repeated where others "
+                           "can read it.)" % (other, topic_id, other, item["id"]))
+        self.item_lines(item, waits)
 
     def do_attachment(self):
         """Save one attachment's bytes to a new file, read through the message that carries it.
@@ -728,7 +819,8 @@ class Agent:
     @staticmethod
     def delivery_line(item):
         message = item["message"]
-        return 'delivery "%s" #%s %s: %s  [%s in %s]' % (
+        return '%s "%s" #%s %s: %s  [%s in %s]' % (
+            "whisper" if message.get("whisper") else "delivery",
             _one_line(item["topic"]["title"], 60), message["seq"], message["author_id"],
             _one_line(message["body"]), item["id"], message["topic_id"])
 
@@ -754,8 +846,19 @@ class Agent:
             args["intent"] = "ask" if options.asks is not None else "tell"
         if options.reply_to:
             args["reply_to"] = options.reply_to
+        if options.part:
+            args["part"] = True
         result = self.command("message.post", {"topic_id": options.topic}, args)
         self.out.plain("posted %s in %s (%s deliveries queued)" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"]))
+
+    def do_whisper(self):
+        """A whisper: to one agent, or an agent's answer to the person who whispered to it (--reply-to)."""
+        options = self.options
+        args = {"body": self.text(), "addressees": _names(options.to), "whisper": True}
+        if options.reply_to:
+            args["reply_to"] = options.reply_to
+        result = self.command("message.post", {"topic_id": options.topic}, args)
+        self.out.plain("whispered %s to %s in %s" % (result["message_id"], ", ".join(args["addressees"]), result["topic"]["id"]))
 
     def started_from(self, source, seen):
         """Refuses, saving nothing, when topics were already started from source that seen does not name; lists them first."""
@@ -784,6 +887,8 @@ class Agent:
         if options.source is not None:
             self.started_from(options.source, seen)
             writing["source_message_id"] = options.source
+            if options.part:
+                writing["part"] = True
         elif seen:
             self.refuse("INVALID_ARGUMENT", "--seen names topics started from the message --from names; nothing was sent")
         try:
@@ -977,6 +1082,9 @@ class Agent:
 
     def report(self, watch, change):
         kind, identity, version = change["resource_kind"], change["resource_id"], change["version"]
+        if kind == "whisper":
+            # The whisper's own delivery says it; the change only names its topic.
+            return
         if kind == "delivery" and version == 1:
             if identity in self.shown:
                 self.shown.discard(identity)

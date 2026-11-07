@@ -18,10 +18,12 @@ export function agentColor(id) {
 // the plain card. color(id) is the color the reader sees an agent in: their
 // own choice for it (docs/reading-colors.md, "Choosing an agent's color"), or
 // by default the agent's own.
+// A whisper keeps its author's card and adds its dashed line (whisper).
 export function cardClass(item, actor, color = agentColor) {
-  if (item.author_id === actor) return 'message-card own-message';
-  if (item.author_kind === 'agent') return `message-card agent-card agent-${color(item.author_id)}`;
-  return 'message-card';
+  const whisper = item.whisper ? ' whisper' : '';
+  if (item.author_id === actor) return 'message-card own-message' + whisper;
+  if (item.author_kind === 'agent') return `message-card agent-card agent-${color(item.author_id)}` + whisper;
+  return 'message-card' + whisper;
 }
 
 // The Reader's page for a source: an agent's message on its card's color

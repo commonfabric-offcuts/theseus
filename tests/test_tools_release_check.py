@@ -389,6 +389,12 @@ class NativeCoverage(unittest.TestCase):
         self.assertEqual((steps["rail"].harness, steps["rail"].flags), (release_check.PERSISTENCE, ("--rail",)))
         self.assertIn("native-rail", release_check.REQUIRED)
 
+    def test_the_conversation_mode_is_a_step(self):
+        # An outcome's conversation: its page, its tags, the Reader's To and Answered by.
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual((steps["conversation"].harness, steps["conversation"].flags), (release_check.PERSISTENCE, ("--conversation",)))
+        self.assertIn("native-conversation", release_check.REQUIRED)
+
     def test_every_harness_mode_is_a_step(self):
         steps = [(step.harness, tuple(step.flags)) for step in release_check.NATIVE_STEPS]
         self.assertEqual(len(steps), len(set(steps)), "a mode runs twice")

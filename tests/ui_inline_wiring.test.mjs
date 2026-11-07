@@ -7,6 +7,7 @@ import vm from 'node:vm';
 import * as writing from '../web/writing-helpers.mjs';
 import { readFailure, checkedView, bindingOf, Freshness } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
+import { WRITING_FIELDS, noWriting } from '../web/editor.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
 import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
@@ -94,13 +95,13 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, ...times, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, ...times, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },
     TopicViews: class { constructor() { return views; } }, Freshness: class { constructor() { return fresh; } },
-    initialViews: async () => ({}), readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
+    initialViews: async () => ({}), actorBaseline: async () => null, readableUploads() {}, uploadWork() {}, recoveryReadOnly: () => false, refusedCopyAtDraft() {}, refusedAtDraft() {}, PRIOR_PUBLICATION_NOTICE: '',
     openIntentJournal: async () => { events.push(['intent-journal']); throw Error('No browser intent storage in this fixture'); },
     openOpeningStore: async () => { events.push(['opening-store']); return { close() {} }; },
     OpeningDraft: class { constructor(o) { events.push(['opening-draft', { workspace: o.workspace, opening: o.opening, topic: o.topic }]); this.editable = false; }
@@ -109,7 +110,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     UnfinishedOpenings: class { constructor(o) { events.push(['unfinished', o.workspace]); this.o = o; } load() { return this.o.read({ workspace_id: this.o.workspace, limit: 20 }); } } };
   const context = vm.createContext(Object.assign(scope, overrides));
   const stateSource = readFileSync(new URL('../web/topic-state.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,STATES,stateLabel,waitsOn,managesTopic,organises}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + stateSource + '; return {TopicStatePanel,paintWaiting,paintState,paintWork,workNote,STATES,stateLabel,waitsOn,managesTopic,organises}; })())', context);
   const headerSource = readFileSync(new URL('../web/topic-header.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + headerSource + '; return {paintTopicHeader}; })())', context);
   const settingsSource = readFileSync(new URL('../web/topic-settings.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -147,6 +148,12 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.OutcomeReferences = (()=>{' + referencesSource + '; return OutcomeReferences; })()', context);
   const scopeSource = readFileSync(new URL('../web/outcome-scope.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + scopeSource + '; return {OutcomeScope,placeBrand}; })())', context);
+  // Whisper, Tell or Ask, and whispers on cards, in the composers' and the page's own scope (docs/whispers.md).
+  const choiceSource = readFileSync(new URL('../web/whisper-choice.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + choiceSource + '; return {paintChoice,clearChoice,chosen,naming,unnamed,sending,paintWhisperAuthor}; })())', context);
+  // An outcome's conversation: its page, its row and the Reader's To, in the page's own scope (docs/conversation.md).
+  const conversationSource = readFileSync(new URL('../web/outcome-conversation.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + conversationSource + '; return {CONVERSATION_TITLE:TITLE,conversationSubtitle:subtitle,conversationPlaceholder:placeholder,CONVERSATION_NOTE,paintOnlyNew,paintEmpty,paintItemTags,paintAbout,paintAsksYou,paintConversationRow,conversationDestination,paintAnswerers}; })())', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');

@@ -3,7 +3,7 @@
 main:focus{outline:none}
 button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,article:focus-visible,[role=separator]:focus-visible{outline:2px solid var(--focus);outline-offset:3px}a{color:var(--accent);text-underline-offset:3px}h1,h2,h3,p{margin:0}h1{font-size:1.5rem;font-weight:650;letter-spacing:-.025em}h2{font-size:1.05rem}h3{font-size:1rem}button[hidden],[hidden]{display:none!important}.muted{color:var(--muted);font-size:.85rem}.eyebrow{color:var(--muted);font-size:.8rem;margin-bottom:.3rem}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .brand{display:flex;flex-direction:column;align-items:flex-start;gap:.35rem;margin-bottom:1.1rem;min-width:0}.brand #instance-label{overflow-wrap:anywhere;max-width:100%}.wordmark{display:flex;align-items:center;gap:.5rem;color:var(--ink);font-size:1.3rem;font-weight:750;text-decoration:none;letter-spacing:-.06em}.presence-dot{width:.5rem;height:.5rem;border-radius:100%;background:var(--accent)}#instance-label{font-size:.85rem;color:var(--muted)}.workspace-layout{display:grid;grid-template-columns:17rem minmax(0,1fr);min-height:100dvh}.rail{border-right:1px solid var(--line);padding:1.3rem 1rem}.rail-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem;gap:.6rem}.rail-heading h1,.rail-heading h2{font-size:.8rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}.rail-heading:not(:first-child){margin-top:2rem}.rail button{font-size:.85rem}/* A row holds what it places, such as its words for screen readers, inside the rail that scrolls it. */.nav-item{position:relative;display:block;width:100%;text-align:left;margin:.3rem 0;border-color:transparent;white-space:normal}.nav-item[aria-current=true]{background:var(--soft);color:var(--accent);font-weight:600}main{padding:2rem clamp(1rem,4vw,4rem);max-width:75rem;width:100%}.topic-header{margin-bottom:1rem}.participants{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:1.5rem}.chip{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--line);border-radius:1.2rem;padding:.18rem .6rem;font-size:.8rem;background:var(--panel)}.chip button{min-height:2rem;border:0;padding:0 .35rem;background:transparent}.message-card{display:block;text-align:left;width:100%;white-space:normal;padding:1rem 1.15rem;margin-bottom:.75rem;border-radius:.75rem}.message-card .message-author{display:block;font-size:.8rem;font-weight:650;margin-bottom:.4rem}.message-preview{white-space:pre-wrap;font-weight:400;overflow-wrap:anywhere}.section-heading{display:flex;justify-content:space-between;align-items:center;margin:2rem 0 .8rem}#memory-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(15rem,100%),1fr));gap:.7rem}.memory-card{display:flex;flex-direction:column;justify-content:flex-start;padding:1rem;text-align:left;white-space:normal}.memory-card strong{display:block;margin-bottom:.4rem}.notice{padding:.6rem .8rem;background:var(--warn-bg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 25%,transparent);border-radius:.5rem;font-size:.88rem;overflow-wrap:anywhere}#app-status,#wakes-status{margin:1rem 1.5rem}.empty{color:var(--muted);font-size:.9rem;padding:1rem 0}
-dialog{--reading-share:.52fr;--writing-share:.48fr;width:min(54rem,calc(100vw - 3rem));height:min(54rem,calc(100dvh - 3rem));max-height:calc(100dvh - 3rem);padding:0;border:1px solid var(--line);border-radius:1rem;background:var(--panel);color:var(--ink);box-shadow:0 24px 80px #10202030;overflow:hidden}
+dialog{--reading-share:52fr;--writing-share:48fr;width:min(54rem,calc(100vw - 3rem));height:min(54rem,calc(100dvh - 3rem));max-height:calc(100dvh - 3rem);padding:0;border:1px solid var(--line);border-radius:1rem;background:var(--panel);color:var(--ink);box-shadow:0 24px 80px #10202030;overflow:hidden}
 dialog[data-layout=wide]{width:min(74rem,calc(100vw - 3rem))}
 dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 .reader-header{grid-area:header;display:flex;align-items:center;gap:.7rem;padding:.65rem 1rem;border-bottom:1px solid var(--line);min-height:4.7rem}
@@ -113,7 +113,6 @@ dialog::backdrop{background:#17252666;backdrop-filter:blur(2px)}
 /* The saving sign: a small mark before the save status. A ring while the writing is being saved, a dot once this device holds it, the accent once Theseus does, the warning colour when it needs attention. The hidden reserve carries the same mark, so the footer never moves. */
 .save-status>span::before{content:'';display:inline-block;width:.5em;height:.5em;margin-right:.4em;border:1px solid transparent;border-radius:50%;vertical-align:.05em}.save-status>[data-save=saving]::before{border-color:var(--muted)}.save-status>[data-save=device]::before{background:var(--muted);border-color:var(--muted)}.save-status>[data-save=saved]::before{background:var(--accent);border-color:var(--accent)}.save-status>[data-save=attention]::before{background:var(--warn);border-color:var(--warn)}
 /* Ask beside a reply's names: an asking reply waits on them until they write in the topic. */
-.ask-choice{display:inline-flex;align-items:center;gap:.3rem;font-size:.8rem;color:var(--muted)}.ask-choice[hidden]{display:none}
 /* Work observed on a topic: a small hollow ring in the quiet text color, never the filled accent dot of presence and unread; its words in the row title and for screen readers, and in the key under the topics. */.topic-work{display:inline-block;width:.5rem;height:.5rem;margin-left:.45rem;border:1.5px solid var(--muted);border-radius:50%;background:transparent;vertical-align:middle}@media (forced-colors:active){.topic-work{border-color:CanvasText}}
 .topics-key{display:flex;align-items:center;gap:.35rem;margin:.35rem 0 0;font-size:.78rem}.topics-key .topic-work{margin-left:0}
 /* A reply card says, quietly and on one line, which message it answers. */
@@ -189,7 +188,7 @@ dialog#topic-settings{width:min(34rem,calc(100vw - 3rem));height:fit-content;max
 .settings-section .notice{margin:.75rem 0 0}.settings-section .notice.quiet{padding:0;background:none;border:0;color:var(--muted);font-size:.8rem}
 /* On the topic's own page its state is never cut short: in the subtitle its words wrap in a box. */
 .topic-subtitle .topic-state{margin-left:0;max-width:none;overflow:visible;white-space:normal;border-radius:.5rem}
-/* Where it stands: chips tapped once, the one that holds filled. */
+/* Choices tapped once (people, places, where it stands): chips, the one that holds filled. */
 .state-chips{display:flex;flex-wrap:wrap;gap:.35rem}
 .choice-chip{display:inline-flex;align-items:center;min-height:2.5rem;padding:.25rem .8rem;border:1px solid var(--line);border-radius:1.25rem;background:var(--panel);color:var(--ink);font-size:.875rem;line-height:1.2;white-space:normal}
 .choice-chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
@@ -231,12 +230,6 @@ main>#outcomes-home{margin-bottom:.4rem}
 
 /* A web address in a message's words: underlined in the words' own color, so it reads on every card and page; a long one wraps. */
 .words-link{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-word;cursor:pointer}.words-link:hover{text-decoration-thickness:2px}
-/* Choices tapped once (people, places, where it stands): chips, the one that holds filled. */
-.state-chips{display:flex;flex-wrap:wrap;gap:.35rem}
-.choice-chip{display:inline-flex;align-items:center;min-height:2.5rem;padding:.25rem .8rem;border:1px solid var(--line);border-radius:1.25rem;background:var(--panel);color:var(--ink);font-size:.875rem;line-height:1.2;white-space:normal}
-.choice-chip[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-weight:600}
-button.choice-chip[aria-pressed=true]:hover{background:var(--accent);filter:brightness(1.08)}
-.people-chips .choice-chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.85rem}
 /* A quiet word that acts, not a button. */
 .text-action{min-height:2.5rem;padding:0;border:0;border-radius:.25rem;background:none;color:var(--muted);font-size:.85rem;text-decoration:underline;text-decoration-color:transparent;text-underline-offset:.2em}
 .text-action:hover{background:none;color:var(--ink);text-decoration-color:currentColor}
@@ -261,3 +254,65 @@ button.choice-chip[aria-pressed=true]:hover{background:var(--accent);filter:brig
 .creation-form textarea{max-width:40rem}
 .creation-form .actor-choices input{flex:0 1 12rem;width:12rem;max-width:12rem;min-width:0}
 .creation-form>button{justify-self:start}
+/* A whisper (docs/whispers.md): the author's own card with a dashed 1px line all the way round, never italics or a coloured edge.
+   The line is dark on light cards and near-white on dark cards and on your own black card in both themes. */
+:root{--whisper-line:#222a30}
+@media(prefers-color-scheme:dark){:root{--whisper-line:#eef3f1}}
+.message-card.own-message{--whisper-line:#eef3f1}
+.message-card.whisper,.message-card.whisper:hover{border:1px dashed var(--whisper-line);border-radius:.75rem}
+/* Your black card keeps a thin black rim outside its line, so the near-white dashes always sit on black, even on the light page. */
+.message-card.own-message.whisper{box-shadow:0 0 0 2px #000}
+.whisper-label{font-weight:500}
+.message-card .whisper-label,.whisper-wait{color:var(--muted)}
+.whisper-wait{font-weight:400}
+/* How a message is sent: one choice of three, then who will see it, in words. */
+.intent-row{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .6rem}.intent-row:empty{display:none}
+.intent-choice{display:inline-flex;border:1px solid var(--line);border-radius:.5rem;overflow:hidden;background:var(--panel);flex-shrink:0}
+.intent-choice label{position:relative;display:inline-flex;align-items:center;min-height:2.2rem;padding:0 .75rem;font-size:.82rem;cursor:pointer;border-left:1px solid var(--line)}
+.intent-choice label:first-child{border-left:0}
+.intent-choice input{position:absolute;opacity:0;width:1px;height:1px}
+.intent-choice label:has(input:checked){background:var(--soft);color:var(--accent);font-weight:650}
+.intent-choice label:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:-2px}
+.intent-choice label:has(input:disabled){opacity:.45;cursor:default}
+.audience-line{font-size:.8rem;color:var(--muted);margin:0;overflow-wrap:anywhere}
+.audience-line strong{color:var(--ink);font-weight:650}
+/* As you write a whisper, and as you read one, the same dashed line marks it. */
+textarea.whispering,textarea.whispering:focus{border:1px dashed var(--whisper-line)}
+#source-body.whispering{border:1px dashed var(--whisper-line);border-radius:.6rem;padding:.6rem .8rem}
+/* When a second agent is added to a whisper, the line above Send takes its own row and says what changed. */
+.audience-line.switched{flex-basis:100%}.audience-line.switched .switch-words{color:var(--ink)}
+/* At phone width the line keeps who will see it and drops the rest, so the Reader's Send stays in view. */
+@media(max-width:760px){.intent-choice label{padding:0 .55rem}.intent-row{flex-wrap:nowrap}.intent-row:has(.switched){flex-wrap:wrap}.audience-line{font-size:.75rem;min-width:0}.audience-more{display:none}}
+/* An outcome's conversation (docs/conversation.md): a topic page with one filter chip above the messages and small tags at the foot of each card. */
+.conversation-page #inline-destination{display:none}
+.conversation-page #topic-people,.conversation-page #notebook{display:none!important}
+/* The Reader's To: the topic's name, or This topic and Conversation as two chips. */
+.destination-chips{display:flex;flex-wrap:wrap;gap:.35rem}.destination-title{color:var(--ink)}
+.destination-chips .choice-chip,.audience .choice-chip{min-height:2.25rem;padding:.2rem .75rem;font-size:.85rem}
+/* Answered by: the team's names in the row, then a field a name wide that adds on Return. */
+.audience .answerer-chips{display:contents}.audience.answered-by input{flex:0 1 12rem;width:12rem;max-width:100%}.audience.answered-by>button{display:none}
+.conversation-show{display:flex;justify-content:flex-end;margin:0 0 .6rem}
+.filter-chip{min-height:2.2rem;padding:.15rem .75rem;border-radius:1.2rem;font-size:.8rem;color:var(--muted)}
+.filter-chip[aria-pressed=true]{background:var(--soft);border-color:var(--accent);color:var(--ink);font-weight:650}
+.conversation-empty{padding:.5rem 0 1rem;display:flex;flex-direction:column;gap:.4rem;max-width:40rem}.conversation-empty p{margin:0}
+/* Only new: every card but an item nothing has settled is left out, the New line with them. */
+#messages.only-new>:not([data-item=new]){display:none}
+.message-card .about-line{display:block;font-size:.78rem;opacity:.85;margin-bottom:.3rem}
+.message-card .item-tags{display:flex;flex-wrap:wrap;align-items:center;gap:.35rem .9rem;margin-top:.55rem;font-size:.76rem}
+.message-card .item-tag-group{display:inline-flex;align-items:center;gap:.35rem;min-width:0;max-width:100%}
+.message-card .item-detail{opacity:.85;overflow-wrap:anywhere;min-width:0}
+.message-card .item-tag{flex-shrink:0;padding:0 .45rem;border:1px solid currentColor;border-radius:1rem;font-size:.7rem;font-weight:650;line-height:1.3rem;white-space:nowrap}
+.message-card .item-tag.mine{border-width:2px;font-weight:750}
+.message-card .item-link{text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.message-card .asks-you{margin:0 .35rem 0 .4rem}
+.conversation-row{min-height:44px;padding:.6rem;border:1px solid transparent;border-radius:.5rem;text-decoration:none;overflow-wrap:anywhere;font-size:.9rem}
+.conversation-row:hover,.conversation-row[aria-current=page]{background:var(--soft)}.conversation-row[aria-current=page]{border-color:var(--line);font-weight:600}
+.conversation-row>span,.conversation-row>small{display:block}.conversation-row small{font-size:.72rem;color:var(--muted);margin-top:.2rem;font-weight:400}
+.conversation-row .topic-state{margin:.25rem 0 0}
+#conversation-navigation{margin-bottom:1.3rem}
+.selection-page #conversation-navigation .conversation-row{background:var(--panel);border-color:var(--line);padding:.85rem}
+.destination-note{font-size:.78rem;margin:-.2rem 0 0}
+/* The Reader's one-line notices, "Your writing for This topic is kept there." among them, are as wide as their words. */
+#reader-notice{width:fit-content;max-width:100%}
+/* At a phone's width the reply keeps room for every row it shows, the To chips among them: the passage being read gives way, so Send never falls below the screen. */
+@media(max-width:760px){.reader-main{grid-template-rows:auto minmax(0,var(--reading-share)) 16px minmax(min-content,var(--writing-share))}}
