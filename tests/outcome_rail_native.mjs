@@ -53,7 +53,9 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // A topic page: the logo block, then "← Outcomes", then the outcome's topics.
       const t = await open(`rail-topic-${size}-${theme}`, '/?topic=t1', size, theme);
       await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), at + ': the topic rail is drawn');
-      const topic = await until(async () => { const seen = await top(t); return seen.rail[0] === 'brand' && seen.rail[1] === 'outcomes-home' && seen; }, at + ': the logo block, then ← Outcomes');
+      // The conversation's row is drawn when its own read lands, which can be after the topics'.
+      const topic = await until(async () => { const seen = await top(t); return seen.rail[0] === 'brand' && seen.rail[1] === 'outcomes-home' && seen.rail.includes('conversation-navigation') && seen; },
+        at + ': the logo block, then ← Outcomes, and the conversation\'s row');
       assert.deepEqual([topic.headers, topic.refresh, topic.buttons], [0, false, 0], at + ': no header bar and no Refresh on the topic page');
       assert.equal(topic.brandIn, 'rail', at + ': the logo block is in the rail');
       assert.deepEqual(topic.rail.slice(0, 4), ['brand', 'outcomes-home', 'conversation-navigation', 'topic-navigation'],
