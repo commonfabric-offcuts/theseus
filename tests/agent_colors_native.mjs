@@ -244,11 +244,13 @@ export async function agentColorChoiceCheck({ check, page, until, control, shot,
       const lower = `#messages [data-id="${await p.evaluate("[...document.querySelectorAll('#messages .message-card.agent-card')][4].dataset.id")}"]`;
       await p.evaluate(`scrollTo(0, document.querySelector(${JSON.stringify(lower)}).getBoundingClientRect().top + scrollY - 200)`);
       await p.point(`${lower} .author-name`); await until(() => picker(p), width + ': opened lower down');
-      const nameAt = () => p.evaluate(`Math.round(document.querySelector(${JSON.stringify(lower + ' .author-name')}).getBoundingClientRect().top)`);
+      // The page scrolls by whole pixels, so a card of fractional height arriving above leaves the name within a pixel.
+      const nameAt = () => p.evaluate(`document.querySelector(${JSON.stringify(lower + ' .author-name')}).getBoundingClientRect().top`);
       const heldAt = await nameAt();
       const above = (await control({ method: 'agent_message', operation_id: 'agent-color-picker-arrival-' + width, body: 'Arriving above the open picker.' })).result.message_id;
       await until(() => p.evaluate(`Boolean(document.querySelector('#messages [data-id="${above}"]'))`), width + ': the arrival is drawn above');
-      assert.equal(await nameAt(), heldAt, width + ': the page held the name in place');
+      const movedBy = Math.abs(await nameAt() - heldAt);
+      assert.ok(movedBy < 1, width + `: the page held the name in place (it moved ${movedBy}px)`);
       assert.notEqual(await picker(p), null, width + ': the picker stays open when its name does not move');
       await p.evaluate('scrollBy(0, 120)');
       await until(async () => !(await picker(p)), width + ': scrolling the name away closes the picker');

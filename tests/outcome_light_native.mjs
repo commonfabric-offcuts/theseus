@@ -72,7 +72,8 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
   await check('light the peek opens by real pointer, touches its row, holds from the row onto it and back, and closes on leaving both or Escape', async () => {
     await ensure('light-peek', 'Peek outcome', { id: 'light-peek-topic', title: 'Peek topic' });
     await ensure('light-later', 'Later outcome');
-    const p = await page('light-peek', null, true);
+    // A page inside an outcome lists no outcomes; the new outcome page keeps them in its rail.
+    const p = await page('light-peek', null, true, { url: facts.origin + '/?new=outcome&intent=light-peek' });
     const row = rowOf('light-peek');
     await until(async () => (await standing(p, 'light-peek'))?.light === 'built', 'the sidebar lists the outcome with its light');
     await p.evaluate(`document.querySelector(${JSON.stringify(row)}).scrollIntoView({block:'center'})`);

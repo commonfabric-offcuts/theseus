@@ -197,9 +197,10 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     await until(() => p.evaluate(`document.querySelector('#messages').textContent.includes(${JSON.stringify(text)})`), 'the write shows');
     assert.equal(await loaded(p), before, 'with no reload');
     // A state change whose answer is lost: Core took it, the page was not told.
-    await p.evaluate("document.querySelector('#topic-state').scrollIntoView({block:'start'})");
-    await p.point('#topic-state summary');
-    await until(() => p.evaluate("document.querySelector('#topic-state details').open"), 'the state form is open');
+    // The state form is in Topic settings, which the gear beside the title opens.
+    await p.evaluate('scrollTo(0,0)');
+    await p.point('#settings-open');
+    await until(() => p.evaluate("document.querySelector('#topic-settings').open"), 'Topic settings is open');
     await p.evaluate("(s=>{s.value='review';s.dispatchEvent(new Event('change'))})(document.querySelector('#topic-state-choice'))");
     await p.point('#topic-state-note'); await p.send('Input.insertText', { text: 'Ready for a read' });
     p.intercept(payload => payload?.kind === 'topic.update');
