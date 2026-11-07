@@ -26,7 +26,7 @@ import threading
 import unittest
 from unittest import mock
 
-from aim_next import authority, supervisor
+from aim_next import authority, supervisor, wake_adapter
 from aim_next.profile import load_profile, write_profile
 import test_store as core_fixture
 import test_delivery
@@ -107,8 +107,8 @@ class SupervisorCase(unittest.TestCase):
 
             def wait_group_gone(pgid):
                 self.order.append(("group_gone", pgid, len(script.runs())))
-                if gone is not None:
-                    gone()
+                # gone(): what the wait returns (None: the group has gone).
+                return gone() if gone is not None else None
             hooks = dict(cleanup_pause=cleanup_pause, wait_group_gone=wait_group_gone)
 
         def record(pid, code):
@@ -201,8 +201,36 @@ class SupervisorCase(unittest.TestCase):
         pause = {"version": 7, "child_pid": 22768, "child_started_at": "t"}
         code, runs = self.supervise(["2", "0"], pauses=[pause], gone=lambda: os.kill(os.getpid(), signal.SIGTERM))
         self.assertEqual((code, len(runs)), (0, 1))
-        self.assertEqual(self.events[-1], {"event": "stopped", "while": "waiting_for_guard"})
+        self.assertEqual(self.events[-1], {"event": "stopped", "while": "waiting_for_child_group"})
         self.assertNotIn("resuming", [e["event"] for e in self.events])
+        self.assertEqual(self.waits, [], "it went on to wait for the guard")
+
+    def test_a_failed_look_at_the_childs_group_stops_with_an_event_and_resumes_nothing(self):
+        # One ps that fails on a loaded Mac: the supervisor cannot confirm the
+        # group gone, so a person decides, and its last event says so.
+        pause = {"version": 7, "child_pid": 22768, "child_started_at": "t"}
+        code, runs = self.supervise(["2", "0"], pauses=[pause], gone=lambda: "process_observation_failed")
+        self.assertEqual((code, len(runs)), (2, 1))
+        self.assertEqual(self.events[-1], {"event": "not_restarting", "why": "child_group_unobserved",
+                                           "detail": "process_observation_failed", "version": 7,
+                                           "child_pid": 22768, "child_started_at": "t"})
+        self.assertNotIn("resuming", [e["event"] for e in self.events])
+        self.assertEqual(self.waits, [])
+
+    def test_the_group_wait_reports_a_failed_observation_as_a_value(self):
+        wait_group_gone = supervisor.resume_hooks("unused-profile")["wait_group_gone"]
+        with mock.patch.object(wake_adapter, "_process_group",
+                               side_effect=wake_adapter.AdapterFault("process_observation_failed")):
+            self.assertEqual(wait_group_gone(4242), "process_observation_failed")
+        with mock.patch.object(wake_adapter, "_process_group", return_value={}) as listing:
+            self.assertIsNone(wait_group_gone(4242))
+        self.assertEqual(listing.call_count, 2)
+        # No exit-event queue can be made (out of descriptors): gone is not known either.
+        with mock.patch.object(wake_adapter.select, "kqueue", side_effect=OSError(24, "fixture: too many open files")):
+            self.assertEqual(wait_group_gone(4242), "exit_observation_failed")
+        with mock.patch.object(wake_adapter, "_process_group", side_effect=ValueError("not an observation fault")):
+            with self.assertRaises(ValueError):
+                wait_group_gone(4242)
 
     def test_cleanup_pauses_that_end_at_once_stop_being_resumed(self):
         pause = {"version": 7, "child_pid": 22768, "child_started_at": "t"}

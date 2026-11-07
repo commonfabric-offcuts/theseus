@@ -69,7 +69,10 @@ one second): a busy machine that lists processes slowly, or a group that
 takes a while to go, delays the runner but does not pause it. A result
 confirmed after the claim's own lease is late, not a fault: the `settled`
 event says `stale: true`, Core records that attempt expired at the next claim,
-and the work is woken again. Unconfirmed child cleanup attempts a
+and the work is woken again. A broker that had already reported `accepted`
+before its result was confirmed late can therefore lead to a second notice
+to the agent for the same work; before this, the runner paused instead.
+Unconfirmed child cleanup attempts a
 cleanup_failed pause, even after lease expiry; the pause records the child it
 could not confirm (`child_pid`, `child_started_at`) and its `paused` event
 names the step that did not confirm it (`detail`, a fixed code such as
@@ -205,7 +208,15 @@ runner could not confirm gone. It logs `awaiting_child_group` with the pause
 `version`, `child_pid` and `child_started_at`, then waits, with no timer and
 without signalling anything, until two process listings in a row find no live
 process whose process group is that child's: it arms each live member's exit
-event and lists again only when one fires. Then it logs `resuming` (reason
+event and lists again when one fires. A member listed live whose exit event
+the kernel will not arm (it is part-way through exiting) has no event to wait
+on; it is listed again after a pause that starts at 10 ms and doubles up to
+one second, so one stuck in its exit costs at most a listing a second. A
+listing that fails (ps cannot be started, exits nonzero, or prints something
+it cannot read) means gone is not known: the supervisor logs `not_restarting`
+with why `child_group_unobserved`, the failed step as `detail`, and the pause
+`version`, `child_pid` and `child_started_at`, and exits 2 for a person to
+decide. Once the group is confirmed gone it logs `resuming` (reason
 `cleanup_confirmed`), waits for the guard, and starts the runner with
 `--resume-version` that exact version and `--resume-reason cleanup_confirmed`,
 so status reads `running` with that reason. A pause anyone changed in the
@@ -215,15 +226,29 @@ and three runs in a row that end within 30 seconds stop the resumes as they
 stop restarts. Why this is safe: a live member of the child's group always
 lists with that group's id, so finding none twice is the runner's own
 confirmation, taken after the runner has exited and with unbounded patience.
-PID reuse can only add an unrelated process with that id, which makes the
-supervisor wait longer, never resume early; that is why the start time is
-recorded and logged but not needed to decide. A member that left the group
-(setsid) is the broker-contract breach the adapter cannot see either; the
-inherited runner guard still fences it.
+PID reuse can only make the supervisor wait longer, never resume early: a new
+process is never given an id equal to an active process group's id (POSIX
+`fork`), so a later process can take the child's id, and lead a group of that
+id, only once the original group has gone. The start time is recorded and
+logged so a person can tell which process it was; it is not compared. The
+limit that follows: if the original group empties and, before the
+supervisor's next listing, the id is given to a new process that leads its
+own group, the supervisor waits on that unrelated group until it ends, with
+wakes paused and `awaiting_child_group` the last event. That listing comes as
+soon as the last member's exit event fires (within a second for one that
+could not be watched), and the id counter has only just passed that id, so
+landing on it again in that window needs a full wrap of the pid space. Taking
+a live leader of that id whose kernel start time is later than the runner's
+exit as proof the original group has gone would close it. A member that left
+the group (setsid) is the broker-contract breach the adapter cannot see
+either; the inherited runner guard still fences it.
 The runner's own output passes through, so its last stdout line is still its
 result; the supervisor's events (`runner_started`, `runner_exited`,
 `restarting`, `awaiting_child_group`, `resuming`, `not_restarting` with why,
-`stopped`) go to stderr. It keeps no timer and never polls. `tools/deploy.py` starts the runner this way and stops
+`stopped` with what it was waiting for: `starting`, `waiting_for_child_group`
+or `waiting_for_guard`) go to stderr. It keeps no timer and never polls; the
+one timed wake is the doubling pause above, only while a member it cannot
+watch is still listed live. `tools/deploy.py` starts the runner this way and stops
 it by stopping the supervisor; it finds the supervised runner as the
 supervisor's child, by parent rather than by command line, since the
 supervisor starts it by its own interpreter and resolved checkout path. Proof: `tests/test_supervisor.py`.

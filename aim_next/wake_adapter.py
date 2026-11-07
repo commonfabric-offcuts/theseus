@@ -74,6 +74,12 @@ _PS_LIMIT = 1048576
 # the lease ends. Escalation from TERM to KILL comes after ESCALATE_NS.
 CLEANUP_FLOOR_NS = 1000000000
 ESCALATE_NS = 400000000
+# A member ps lists live whose exit event the kernel will not arm (ESRCH: it is
+# part-way through exiting) has no event to say when it is gone. It is listed
+# again after a pause that starts at EXITING_FIRST_NS and doubles up to
+# EXITING_MOST_NS, so one stuck in its exit costs at most a listing a second.
+EXITING_FIRST_NS = 10000000
+EXITING_MOST_NS = 1000000000
 
 
 def _ticks():
@@ -159,9 +165,10 @@ class _GroupWatch:
     """The live members of one process group, each with its exit event armed.
 
     A process listing is the truth; the exit events only say when to look
-    again, so nothing here waits on a timer for a member to go. A member is
-    armed before the listing that is relied on, so its exit after that
-    listing always wakes the wait."""
+    again. Every member a listing shows live is armed before the wait that
+    follows it, so its exit, before or after arming, always ends that wait:
+    an armed member's exit fires its event, and one already gone cannot be
+    armed (ESRCH) and is looked at again after a short pause instead."""
 
     def __init__(self, pgid, *, leader):
         self.pgid, self.leader = pgid, leader
@@ -172,26 +179,31 @@ class _GroupWatch:
         self.queue.close()
 
     def live(self, deadline):
-        """(live members, whether every one of them was armed before this listing)."""
+        """(live members, those of them whose exit event the kernel would not arm)."""
         members = _process_group(self.pgid, deadline, leader=self.leader)
         live = {pid for pid, state in members.items() if not state.startswith("Z")}
-        fresh = live - self.armed
-        for pid in fresh:
+        unwatched = set()
+        for pid in live - self.armed:
             try:
                 self.queue.control([select.kevent(pid, filter=select.KQ_FILTER_PROC,
                     flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_ONESHOT,
                     fflags=select.KQ_NOTE_EXIT)], 0, 0)
             except OSError as error:
-                # Gone already: the next listing shows it so.
+                # Gone since the listing, or part-way through exiting: no event
+                # will come for it.
                 if error.errno != errno.ESRCH:
                     raise AdapterFault("exit_observation_failed") from error
+                unwatched.add(pid)
             else:
                 self.armed.add(pid)
-        return live, not fresh
+        return live, unwatched
 
-    def wait(self, deadline):
-        """Until an armed member exits or the deadline (None: for as long as it takes)."""
-        timeout = None if deadline is None else _remaining(deadline)
+    def wait(self, until):
+        """Until an armed member exits or until (None: for as long as that takes)."""
+        timeout = None if until is None else _remaining(until)
+        if timeout is None and not self.armed:
+            # Nothing could ever end this wait.
+            raise AdapterFault("exit_observation_failed")
         events = self.queue.control(None, max(1, len(self.armed)), timeout)
         for event in events:
             if event.flags & select.KQ_EV_ERROR:
@@ -203,11 +215,13 @@ class _GroupWatch:
 def _empty_twice(watch, deadline, on_live=None):
     """Return once two listings in a row find no live member.
 
-    Between listings it waits only on armed members' exits, or on on_live's
-    own deadline (its next escalation). Past deadline it is unconfirmed."""
+    Between listings it waits on armed members' exits, on on_live's own
+    deadline (its next escalation), and, while a live member cannot be
+    watched, on a pause that doubles. Past deadline it is unconfirmed."""
     empty = 0
+    pause = EXITING_FIRST_NS
     while True:
-        live, armed = watch.live(deadline)
+        live, unwatched = watch.live(deadline)
         if not live:
             empty += 1
             if empty >= 2:
@@ -215,8 +229,10 @@ def _empty_twice(watch, deadline, on_live=None):
             continue
         empty = 0
         until = on_live(live) if on_live is not None else deadline
-        if not armed:
-            continue
+        if unwatched:
+            again = _ticks() + pause
+            until = again if until is None else min(until, again)
+            pause = min(2 * pause, EXITING_MOST_NS)
         if not watch.wait(until) and deadline is not None and not _remaining(deadline):
             raise AdapterFault("cleanup_unconfirmed")
 
@@ -226,12 +242,20 @@ def wait_group_gone(pgid):
 
     For an observer that does not own the group: it never signals, and it
     never needs the group's leader, which may long since have been reaped.
-    It wakes on members' exit events and confirms with two listings in a row."""
-    watch = _GroupWatch(pgid, leader=False)
+    It wakes on members' exit events and confirms with two listings in a row.
+    Returns None once gone, or the fixed code of the observation that failed,
+    when gone is not known."""
+    try:
+        watch = _GroupWatch(pgid, leader=False)
+    except OSError:
+        return "exit_observation_failed"
     try:
         _empty_twice(watch, None)
+    except AdapterFault as fault:
+        return str(fault)
     finally:
         watch.close()
+    return None
 
 
 def _cleanup_child(child, deadline):

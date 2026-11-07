@@ -144,7 +144,13 @@ class WakeInvocationTests(unittest.TestCase):
                 # A live direct child cannot have its PID reused before wait.
                 if child.poll() is None:
                     if os.getpgid(child.pid) == child.pid:
-                        self.actual_killpg(child.pid, signal.SIGKILL)
+                        try:
+                            self.actual_killpg(child.pid, signal.SIGKILL)
+                        except PermissionError:
+                            # macOS: a group whose only member is a leader that
+                            # has just exited refuses the signal. It is ending;
+                            # wait reaps it and the group check below confirms.
+                            pass
                     else:
                         child.kill()  # only the actual child, never another group
                         errors.append("Fixture broker was not in its own group")
@@ -696,10 +702,12 @@ class WakeInvocationTests(unittest.TestCase):
             self.assertEqual(len(self.spawned), 1, "Fault must inhibit another broker")
             self.assertEqual(self.group_signals, [], "Ambiguous identity is not permission to signal")
         finally:
-            # Only the independently proven fixture cleanup may end these
-            # fixture children. This is not adapter cleanup success evidence.
-            self.cleanup_brokers()
+            # Restored first, so a failed fixture cleanup cannot leave this child
+            # refusing every later invocation. Only the independently proven
+            # fixture cleanup may end these fixture children; it is not adapter
+            # cleanup success evidence.
             wake_adapter._UNCONFIRMED_CHILDREN[:] = before
+            self.cleanup_brokers()
 
     def test_a_slow_process_list_is_waited_for_within_the_callers_deadline(self):
         # The real ps, but the clock says 300 ms passed while it started, as under
@@ -887,8 +895,10 @@ class WakeInvocationTests(unittest.TestCase):
             self.assertIsNone(child.returncode, "A leader with a live group was reaped")
             self.assertEqual(self.live_group_members({child.pid})[0][0], child.pid)
         finally:
-            self.cleanup_brokers()
+            # Restored first: a fixture cleanup that fails must not leave this
+            # child refusing every later invocation in the suite.
             wake_adapter._UNCONFIRMED_CHILDREN[:] = before
+            self.cleanup_brokers()
 
     def test_waiting_for_a_group_to_go_needs_no_leader_and_never_signals(self):
         # What the supervisor uses: the leader is long reaped, a member lives on
@@ -916,6 +926,115 @@ class WakeInvocationTests(unittest.TestCase):
         self.assertGreaterEqual(elapsed, 0.45)
         self.assertLessEqual(len(listings), 6, "it listed on a timer, not on the member's exit")
         self.assertEqual(set(listings), {False})
+
+    def ghost_pid(self):
+        """A pid that was in use a moment ago and is not now."""
+        gone = subprocess.Popen(["/usr/bin/true"])
+        gone.wait()
+        return gone.pid
+
+    def exited_leader(self):
+        """A leader of its own group that has exited and is not yet reaped."""
+        child = subprocess.Popen(["/usr/bin/true"], start_new_session=True)
+        queue = select.kqueue()
+        try:
+            try:
+                queue.control([select.kevent(child.pid, filter=select.KQ_FILTER_PROC,
+                    flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE | select.KQ_EV_ONESHOT,
+                    fflags=select.KQ_NOTE_EXIT)], 0, 0)
+                queue.control(None, 1, None)
+            except OSError as error:
+                self.assertEqual(error.errno, errno.ESRCH)
+        finally:
+            queue.close()
+        self.assertTrue(self.process_state(child.pid)[1].startswith("Z"))
+        return child
+
+    def listings_with_ghost(self, ghost, times):
+        """The real listing, with ghost shown live in the first `times` of them:
+        a member that ps lists but whose exit event cannot be armed (ESRCH)."""
+        actual = wake_adapter._process_group
+        calls = []
+
+        def observe(pid, deadline, **kw):
+            members = dict(actual(pid, deadline, **kw))
+            if len(calls) < times:
+                members[ghost] = "S"
+            calls.append(sorted(members))
+            return members
+        return observe, calls
+
+    def in_thread(self, call, bound=10):
+        """call() where a wait that never ends fails the test rather than hanging the suite."""
+        outcome = []
+
+        def run():
+            try:
+                outcome.append(("returned", call()))
+            except BaseException as error:
+                outcome.append(("raised", type(error).__name__ + ":" + str(error)))
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        thread.join(bound)
+        if thread.is_alive():
+            self.fail("still waiting after %ss with nothing left that could end the wait" % bound)
+        return outcome[0]
+
+    def test_a_member_that_exits_before_its_exit_event_is_armed_does_not_stall_the_wait(self):
+        # The listing shows a member live; by the time its exit event is armed
+        # it has gone (ESRCH), so no event will ever come for it, and the group
+        # is empty from then on. The supervisor's wait must look again rather
+        # than wait on an empty queue.
+        ghost = self.ghost_pid()
+        observe, calls = self.listings_with_ghost(ghost, 1)
+        with mock.patch.object(wake_adapter, "_process_group", side_effect=observe):
+            outcome = self.in_thread(lambda: wake_adapter.wait_group_gone(ghost))
+        self.assertEqual(outcome, ("returned", None))
+        self.assertEqual(calls, [[ghost], [], []])
+
+    def test_cleanup_does_not_wait_out_the_lease_for_a_member_that_exits_before_its_exit_event_is_armed(self):
+        # The runner's case: the leader has exited, and a member ps lists live
+        # three times cannot be watched. Waiting on its (never coming) exit
+        # event would hold the runner until its lease ends and then pause.
+        ghost = self.ghost_pid()
+        child = self.exited_leader()
+        observe, calls = self.listings_with_ghost(ghost, 3)
+        with mock.patch.object(wake_adapter, "_process_group", side_effect=observe):
+            outcome = self.in_thread(lambda: wake_adapter._cleanup_child(child, self.cleanup_deadline(5)))
+        self.assertEqual(outcome, ("returned", (0, True)))
+        self.assertEqual(len(calls), 5)
+        self.assertEqual(calls[-2:], [[child.pid], [child.pid]])
+        self.assert_reaped(child.pid)
+
+    def test_a_member_the_kernel_will_not_watch_is_listed_again_after_a_pause_that_doubles(self):
+        # ps lists it live but its exit event cannot be armed (it is part-way
+        # through exiting): nothing will say when it is gone. Listing again at
+        # once would run ps back to back for as long as it stays that way; the
+        # pause doubles from 10 ms up to a ceiling (80 ms here).
+        ghost = self.ghost_pid()
+        observe, calls = self.listings_with_ghost(ghost, 6)
+        pauses = []
+        actual_wait = wake_adapter._GroupWatch.wait
+
+        def wait(watch, until):
+            pauses.append(None if until is None else (until - wake_adapter._ticks()) / 1e6)
+            return actual_wait(watch, until)
+        with mock.patch.object(wake_adapter, "EXITING_MOST_NS", 80000000, create=True), \
+                mock.patch.object(wake_adapter, "_process_group", side_effect=observe), \
+                mock.patch.object(wake_adapter._GroupWatch, "wait", wait):
+            outcome = self.in_thread(lambda: wake_adapter.wait_group_gone(ghost))
+        self.assertEqual(outcome, ("returned", None))
+        self.assertEqual(len(calls), 8)
+        expected = [10, 20, 40, 80, 80, 80]
+        self.assertEqual(len(pauses), len(expected), "pauses asked for: %r" % pauses)
+        for asked, want in zip(pauses, expected):
+            self.assertTrue(asked is not None and want * 0.8 <= asked <= want, (pauses, expected))
+
+    def test_a_wait_with_nothing_that_could_end_it_fails_at_once(self):
+        watch = wake_adapter._GroupWatch(self.ghost_pid(), leader=False)
+        self.addCleanup(watch.close)
+        self.assertEqual(self.in_thread(lambda: watch.wait(None), bound=5),
+                         ("raised", "AdapterFault:exit_observation_failed"))
 
     def test_term_ignoring_broker_is_killed_within_cleanup_budget(self):
         self.configure("ignore-term")

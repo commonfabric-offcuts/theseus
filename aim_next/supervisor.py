@@ -26,9 +26,12 @@ One pause it resumes on its own: cleanup_failed, saved by the runner it
 started. That pause names the broker child whose process group the runner
 could not confirm gone. Once the runner has exited, the supervisor waits on
 that group's members' exit events until two process listings in a row find
-no live member of it, then starts the runner with the pause's exact version
-and the recorded reason cleanup_confirmed. It never signals that group. Any
-other pause, or a pause another process saved, still needs a person.
+no live member of it (re-listing after a short doubling pause only while a
+member it cannot watch is part-way through exiting), then starts the runner
+with the pause's exact version and the recorded reason cleanup_confirmed. It
+never signals that group. If a listing fails, gone is not known: it stops
+with not_restarting (child_group_unobserved) and a person decides. Any other
+pause, or a pause another process saved, still needs a person.
 """
 
 import argparse
@@ -48,7 +51,9 @@ STOPPED, REFUSED = 0, 2
 
 
 class _Stop(Exception):
-    """A stop arrived while no runner was running: start nothing more."""
+    """A stop arrived while no runner was running: start nothing more.
+
+    Its argument names what the supervisor was waiting for."""
 
 
 class Supervisor:
@@ -57,25 +62,27 @@ class Supervisor:
         self.child_argv = list(child_argv)
         self.record_exit, self.wait_for_guard, self.emit, self.clock = record_exit, wait_for_guard, emit, clock
         # cleanup_pause(pid): the cleanup pause that runner saved, or None.
-        # wait_group_gone(pgid): returns once no live process is in that group.
+        # wait_group_gone(pgid): None once no live process is in that group,
+        # or the code of the observation that failed.
         self.cleanup_pause, self.wait_group_gone = cleanup_pause, wait_group_gone
         self.child = None
         self.stopping = False
-        self.waiting = False
+        # What it waits for between runs (a stop then ends the wait), or None.
+        self.waiting = None
 
     def _signal(self, signum, frame):
         self.stopping = True
         if self.child is not None:
             os.kill(self.child, signum)
-        elif self.waiting:
-            raise _Stop()
+        elif self.waiting is not None:
+            raise _Stop(self.waiting)
 
     def run(self):
         previous = {number: signal.signal(number, self._signal) for number in STOP_SIGNALS}
         try:
             return self._run()
-        except _Stop:
-            self._event("stopped", **{"while": "waiting_for_guard"})
+        except _Stop as stop:
+            self._event("stopped", **{"while": stop.args[0]})
             return STOPPED
         finally:
             for number, handler in previous.items():
@@ -103,22 +110,30 @@ class Supervisor:
             if why is not None and pause is None:
                 self._event("not_restarting", why=why)
                 return code if code >= 0 else 128 - code
-            self.waiting = True
+            extra = []
             try:
-                if self.stopping:
-                    raise _Stop()
-                extra = []
                 if pause is not None:
-                    child = dict(child_pid=pause["child_pid"], child_started_at=pause["child_started_at"])
-                    self._event("awaiting_child_group", version=pause["version"], **child)
-                    self.wait_group_gone(pause["child_pid"])
-                    self._event("resuming", reason="cleanup_confirmed", version=pause["version"], **child)
+                    self.waiting = "waiting_for_child_group"
+                    if self.stopping:
+                        raise _Stop(self.waiting)
+                    child = dict(version=pause["version"], child_pid=pause["child_pid"],
+                                 child_started_at=pause["child_started_at"])
+                    self._event("awaiting_child_group", **child)
+                    failed = self.wait_group_gone(pause["child_pid"])
+                    if failed is not None:
+                        self.waiting = None
+                        self._event("not_restarting", why="child_group_unobserved", detail=failed, **child)
+                        return code
+                    self._event("resuming", reason="cleanup_confirmed", **child)
                     extra = ["--resume-version", str(pause["version"]), "--resume-reason", "cleanup_confirmed"]
-                else:
+                self.waiting = "waiting_for_guard"
+                if self.stopping:
+                    raise _Stop(self.waiting)
+                if pause is None:
                     self._event("restarting", after="guard_free")
                 self.wait_for_guard()
             finally:
-                self.waiting = False
+                self.waiting = None
 
     def _resumable(self, pid, why, at_start):
         """The cleanup pause this runner saved, if the supervisor may wait it out."""

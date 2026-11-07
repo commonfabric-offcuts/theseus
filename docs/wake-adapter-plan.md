@@ -301,11 +301,15 @@ zombie-only group. If descendants survive leader exit, terminate the owned group
 while the unreaped leader still reserves its identity, escalate to KILL 0.4 s
 after TERM, confirm two consecutive observations with no live group members,
 then reap the leader. Any observed live member resets that confirmation.
-Between observations cleanup waits on events, not a timer: each live member's
-NOTE_EXIT is armed before the observation that is relied on, so its exit
-always wakes the wait, and the only timed wake is the KILL escalation. A
-member seen live whose exit event cannot be armed (ESRCH) is already exiting;
-it is listed again at once. The only bound is the runner's lease, fixed as a
+Between observations cleanup waits on events, not a timer: each member an
+observation shows live has its NOTE_EXIT armed before the wait that follows,
+so its exit always wakes that wait, and the only timed wake besides the KILL
+escalation is this: a member seen live whose exit event cannot be armed
+(ESRCH) is gone since the listing or part-way through exiting, and no event
+will come for it, so it is listed again after a pause that starts at 10 ms
+and doubles up to one second. A process stuck in its exit therefore costs at
+most one ps a second, in the runner and in the supervisor's unbounded wait
+alike. The only bound is the runner's lease, fixed as a
 monotonic deadline at launch and never less than one second from the start
 of cleanup: past the lease the runner cannot renew and so cannot go on in any
 case, and a member that outlives TERM, KILL and the lease is stuck in a way a
@@ -337,7 +341,8 @@ arbitrary rapidly forking/exiting chain. The trusted broker must confirm its own
 children have exited before returning zero and must not daemonize or double-fork
 descendants. Inherited guard fencing remains independent of these observations.
 Invocation currently checks exit/lease at most every 25ms; that bounded
-polling cost remains a named limit. Cleanup no longer re-lists on a timer. A
+polling cost remains a named limit. Cleanup re-lists on a timer only while a
+member it cannot watch (above) is still listed live. A
 wall-clock jump can expire a lease immediately; owned cleanup then still has
 its one-second floor beyond that wall time.
 
