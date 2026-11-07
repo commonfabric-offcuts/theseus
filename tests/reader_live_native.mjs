@@ -1012,4 +1012,53 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  // A deploy restarts the server, and the restarted server refuses the page's
+  // session. An open page, at laptop and at phone width, comes back by itself:
+  // the same document (no Reload), the Reader still open with the writing in
+  // its box, writing typed while the server was down saved to Core, and a
+  // message sent afterwards shown live.
+  for (const [width, metrics] of [['laptop', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }],
+    ['phone', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }]]) {
+    await check(`live restart: an open page reconnects by itself after the server restarts, with nothing lost (${width})`, async () => {
+      const p = await page(`live-restart-${width}`, null, true, { beforeNavigate: q => q.send('Emulation.setDeviceMetricsOverride', metrics) });
+      await settled(p);
+      await p.open(1);
+      const field = () => p.evaluate("document.querySelector('#writing-body').value");
+      const draft = async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.body;
+      const write = async text => {
+        await p.point('#writing-body'); await p.key('a', 4);
+        await p.send('Input.insertText', { text }); assert.equal(await field(), text);
+      };
+      await write(`Saved before the restart (${width})`);
+      await until(async () => await draft() === `Saved before the restart (${width})`, 'the writing is saved before the restart', 15000);
+      await p.evaluate('(window.sameDocumentBeforeRestart = true)');
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      await control({ method: 'server_stop' });
+      await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+      // Typed while nothing answers: kept on the page, and saved once Theseus is back.
+      const typed = `Written while Theseus was restarting (${width})`;
+      await write(typed);
+      const restarted = await control({ method: 'server_start' });
+      assert.equal(restarted.origin, facts.origin, 'the server is back at the same address');
+      assert.notEqual(restarted.token, before, 'the restarted server has a new session');
+      facts.token = restarted.token;
+      await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.token === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`),
+        'the page took the new session and its live feed is connected again', 20000);
+      await until(async () => await draft() === typed, 'the writing typed while the server was down is saved to Core', 15000);
+      assert.equal(await p.evaluate('window.sameDocumentBeforeRestart === true'), true, 'the same document: nothing reloaded the page');
+      assert.equal(await field(), typed, 'the writing is still in its box');
+      assert.equal(await p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source 1 ')"), true, 'the Reader is still open on its source');
+      const text = `Arrives after the restart (${width})`;
+      await message(text);
+      await until(() => hasText(p, '#messages', text), 'a message sent after the restart is shown', 5000);
+      await settled(p);
+      assert.equal(await p.evaluate("document.querySelector('#updates-status').hidden"), true, 'no updates notice is left behind');
+      assert.equal(await p.evaluate("document.querySelector('#app-status').hidden || !document.querySelector('#app-status').textContent"), true,
+        await p.evaluate("document.querySelector('#app-status').textContent"));
+      observations.push({ name: 'restart under an open page', width, opened: await p.evaluate('observedFreshness.live.opened') });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
 }

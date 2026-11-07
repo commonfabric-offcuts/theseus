@@ -8,19 +8,19 @@
 // be reached or offers no session for this instance and person (so nothing
 // changed). Renewals asked for while one runs share it.
 const PLACEHOLDER = '__AIM_SESSION_TOKEN__';
+// The server writes the token HTML-escaped (Python's html.escape with quotes).
+const ESCAPED = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#x27;': "'" };
 
 export function sessionIn(html) {
   const found = /<meta name="aim-next-session" content="([^"]*)">/.exec(html);
-  if (!found) return null;
-  const area = typeof document === 'undefined' ? null : document.createElement('textarea');
-  // The server escapes the token as HTML; read it back the way the page's own meta did.
-  const token = area ? (area.innerHTML = found[1], area.value) : found[1];
+  const token = found?.[1].replace(/&(?:amp|lt|gt|quot|#x27);/g, entity => ESCAPED[entity]);
   return token && token !== PLACEHOLDER ? token : null;
 }
 
 export class SessionRenewal {
-  constructor({ api, live = () => null, bootstrap, makeApi, fetcher = (...args) => globalThis.fetch(...args) }) {
-    Object.assign(this, { api, live, bootstrap, makeApi, fetcher });
+  // adopted(token) is told each newer session the page takes, after api and live hold it.
+  constructor({ api, live = () => null, bootstrap, makeApi, adopted = () => {}, fetcher = (...args) => globalThis.fetch(...args) }) {
+    Object.assign(this, { api, live, bootstrap, makeApi, adopted, fetcher });
     this.running = null;
   }
   renew() {
@@ -44,8 +44,7 @@ export class SessionRenewal {
     this.api.token = token;
     const live = this.live();
     if (live) live.token = token;
-    const meta = document.querySelector('meta[name="aim-next-session"]');
-    if (meta) meta.content = token;
+    this.adopted(token);
     return 'renewed';
   }
 }

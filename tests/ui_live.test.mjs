@@ -153,6 +153,26 @@ test('wake reconnects at once only while down, and never opens a second socket',
   assert.equal(live.opened, 2);
 });
 
+// A restarted server refuses the page's old session: the socket ends before
+// its first number, and the page hears it so it can renew the session. A
+// socket that had numbers and then ended is a drop, not a refusal.
+test('a socket that ends before its first number is announced as refused; one that ends after a number is not', () => {
+  const { live, sockets, events, times } = fixture();
+  live.start();
+  sockets[0].refuse();
+  assert.deepEqual(events, [{ kind: 'state', state: 'down' }, { kind: 'refused' }]);
+  assert.equal(times.jobs.size, 1, 'it still tries again on its own');
+  live.wake();
+  assert.equal(sockets.length, 2, 'whoever renewed the session can try at once');
+  events.length = 0;
+  sockets[1].send({ seq: 3 }); sockets[1].drop();
+  assert.deepEqual(events, [{ kind: 'state', state: 'live' }, { kind: 'commit', seq: 3 }, { kind: 'state', state: 'down' }]);
+  live.stop();
+  events.length = 0;
+  sockets[1].refuse();
+  assert.deepEqual(events, [], 'a stopped feed announces nothing');
+});
+
 // Freshness with a live stream: no timer while it is up, a pass on each commit, the timer again when it drops.
 const authority = { authority_id: 'a1', authority_epoch: 'e1', continuity: 'initial' };
 const admission = { version: 1, header: 'X-AIM-Read-Class', foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 }, background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } };

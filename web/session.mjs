@@ -2,6 +2,11 @@
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
 const copy = value => structuredClone(value);
+// A refused session (a restarted server, before the page has its new session)
+// is refused before Core reads the request. It does not park the act: once the
+// page holds the new session, its outcome is looked up and, if unrecorded, it
+// goes again as the same operation.
+const sessionRefused = error => error?.status === 401 && error.details?.error?.code === 'SESSION_REQUIRED';
 const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'intent', 'whisper', 'caret', 'reply_to', 'exchange_id'];
 const authorityPair = value => value && typeof value.authority_id === 'string' && value.authority_id &&
   typeof value.authority_epoch === 'string' && value.authority_epoch
@@ -314,6 +319,7 @@ export class EditorSession {
       try { answer = await this.api.view('operation', { operation_id: entry.envelope.operation_id }); }
       catch (error) {
         entry.error = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
+        if (sessionRefused(error)) entry.error.retryable = true;
         await this.persist();
         return null;
       }
@@ -335,6 +341,7 @@ export class EditorSession {
     try { receipt = await this.api.command(copy(entry.envelope)); }
     catch (error) {
       entry.error = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
+      if (sessionRefused(error)) entry.error.retryable = true;
       await this.persist();
       await this.authorityChanged(entry);
       return retries > 0 ? this.dispatch(entry, { retries: retries - 1, resumePreparation }) : null;

@@ -1,4 +1,4 @@
-import { Api } from './api.mjs';
+import { Api, AttemptError } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -54,7 +54,15 @@ const node = (tag, text, className) => {
 };
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
 const status = message => { $('app-status').textContent = message; $('app-status').hidden = !message; };
-const run = action => { try { return Promise.resolve(action()).catch(error => { status(error.message); return null; }); } catch (error) { status(error.message); return Promise.resolve(null); } };
+// What a request said when the server did not answer, or refused this page's
+// session; reconnect() clears it once the page holds the server's session.
+let unreachable = null;
+const failed = error => {
+  status(error.message);
+  unreachable = error instanceof AttemptError && (!error.status || error.status === 401) ? error.message : null;
+  return null;
+};
+const run = action => { try { return Promise.resolve(action()).catch(failed); } catch (error) { return Promise.resolve(failed(error)); } };
 let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
 // The open page's outcome conversation: its view (the rail row reads it), and on the conversation page
@@ -1004,6 +1012,8 @@ function updateStatus(state) {
     : state.message + ' ';
   $('updates-retry').textContent = state.kind === 'reconnect' ? 'Reconnect' : state.kind === 'authority' ? 'Review saved writing' : 'Retry updates';
   $('updates-retry').hidden = state.kind === 'manual';
+  // Updates that ran again may be retried after a later refusal.
+  if (state.kind === 'current') reconnectRetried = null;
   if (state.kind === 'reconnect') run(reconnect);
 }
 async function checkAvailability(read, current, topicDenied = true) {
@@ -1201,7 +1211,8 @@ async function reconnect() {
   if (!result) return false;
   if (result === 'renewed') {
     live?.wake(); attention?.refresh();
-    if (/session/i.test($('app-status').textContent)) status('');
+    if (unreachable !== null && $('app-status').textContent === unreachable) status('');
+    unreachable = null;
     for (const { editor } of registry?.sessions.values() ?? []) {
       if (editor.dirty && !editor.authorityRecovery && !editor.conflict && !editor.unavailable) registry.schedule(editor);
     }
@@ -1224,7 +1235,8 @@ async function initialize() {
   api = new Api(token); bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
   shareLinksFrom(bootstrap.links?.origin);
-  renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh) });
+  renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),
+    adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });
   if (liveOffered(bootstrap) && !live) {
     live = new Live({ token });
     live.listen(event => { if (event.kind === 'refused') run(reconnect); });

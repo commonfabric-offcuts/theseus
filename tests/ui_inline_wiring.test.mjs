@@ -26,6 +26,8 @@ times.clock.now = () => TODAY;
 import { PageReads } from '../web/page-reads.mjs';
 import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
+import { SessionRenewal } from '../web/session-renewal.mjs';
+import { AttemptError } from '../web/api.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -88,14 +90,14 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
       list: action => action({ readClass: 'foreground' }) },
     runtime: { current: bootstrap.authority },
   };
-  const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
+  const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, ...times, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, ...times, SessionRenewal, AttemptError, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -165,7 +167,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
@@ -444,19 +446,186 @@ test('Reader Retry updates source access without touching inline flags/save, als
   }
 });
 
-test('a source that comes back on Retry gets its whole origin line again, time included', async () => {
+test('a source that comes back on Retry gets its whole origin line and its title again, time included', async () => {
   const f = fixture();
-  const source = { source_ref: { kind: 'message', id: 'm1' }, author: 'tony', body: '', sent_ms: 1762350240000 };
-  const modal = { source: { ...source }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+  const source = { source_ref: { kind: 'memory', id: 'n1', revision: 2 }, title: 'Release plan', author: 'tony', body: '', sent_ms: 1762350240000 };
+  const modal = { source: { ...source, title: 'Source unavailable' }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
   f.registry.current = modal;
   f.api.view = async (name, args) => name === 'source' ? { ...source, body: 'Back again', instance_id: 'fixture' } : f.state(args.source_ref);
   await f.retrySource();
   const painted = f.events.filter(e => e[0] === 'origin');
   assert.equal(painted.length, 1);
   assert.deepEqual([painted[0][1].author, painted[0][1].sent_ms, modal.sourceUnavailable], ['tony', 1762350240000, false]);
+  assert.deepEqual(f.events.filter(e => e[0] === 'title'), [['title', 'Release plan']], 'the Notebook title comes back with the text');
+  assert.equal(modal.source.title, 'Release plan');
   f.events.length = 0;
   await f.retrySource();
-  assert.equal(f.events.some(e => e[0] === 'origin'), false, 'a source that never went away keeps its line');
+  assert.equal(f.events.some(e => e[0] === 'origin' || e[0] === 'title'), false, 'a source that never went away keeps its line');
+});
+
+// A source check that ends while another open is under way is still over:
+// coming back to the source, Retry access works.
+test('a source check that ends while another source is open leaves Retry access usable on coming back', async () => {
+  const f = fixture(), gate = defer();
+  const source = { source_ref: { kind: 'message', id: 'm1' }, author: 'tony', body: '', attachments: [] };
+  const first = { source: { ...source }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+  const other = { source: { source_ref: { kind: 'message', id: 'm2' } }, editors: { reply: {}, note: {} } };
+  f.registry.current = first;
+  let reads = 0;
+  f.api.view = async (name, args) => { if (name === 'source') { reads++; await gate.promise; return { ...source, body: 'Back', instance_id: 'fixture' }; } return f.state(args.source_ref); };
+  const checking = f.retrySource();
+  assert.equal(first.availabilityChecking, true);
+  f.registry.current = other;
+  gate.resolve(); await checking;
+  assert.equal(first.availabilityChecking, false, 'the check is over');
+  f.registry.current = first;
+  await f.retrySource();
+  assert.equal(reads, 2, 'Retry access reads the source again');
+});
+
+// Writing begun while access was being checked keeps the focus; with nothing
+// else holding it, the focus goes to the source or to Retry access.
+test('a finished access check moves the focus only when nothing else holds it', async () => {
+  for (const [held, refused, expected] of [['writing-body', false, 'writing-body'], ['writing-body', true, 'writing-body'], [null, false, 'source-body'], [null, true, 'retry-source'], ['retry-source', false, 'source-body']]) {
+    const f = fixture();
+    const source = { source_ref: { kind: 'message', id: 'm1' }, author: 'tony', body: '', attachments: [] };
+    f.registry.current = { source: { ...source }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+    f.api.view = async (name, args) => {
+      if (name !== 'source') return f.state(args.source_ref);
+      f.document.activeElement = held === null ? null : f.get(held);
+      if (refused) throw Object.assign(Error('Forbidden'), { code: 'FORBIDDEN' });
+      return { ...source, body: 'Back', instance_id: 'fixture' };
+    };
+    await f.retrySource();
+    assert.equal(f.document.activeElement?.id, expected, JSON.stringify({ held, refused }));
+  }
+});
+
+// After access to the topic comes back, the Reader stops saying its updates
+// are paused, and More messages returns.
+test('a topic painted again after access returns clears the paused note and brings More messages back', async () => {
+  const f = fixture();
+  await f.initialize(); await drain();
+  const p = { source: { source_ref: { kind: 'message', id: 'm1' } }, topicUpdatesPaused: true, editors: { reply: {}, note: {} } };
+  f.registry.current = p;
+  let painted = 0; f.reader.paintStatus = () => { painted++; };
+  f.views.topic = { ...f.topic }; f.views.participants = []; f.views.olderCursor = 'older';
+  f.get('more-messages').hidden = true;
+  f.paintViews('topic');
+  assert.equal(p.topicUpdatesPaused, false);
+  assert.equal(painted, 1, 'the Reader repaints what it says');
+  assert.equal(f.get('more-messages').hidden, false);
+  // Nothing older to read: More stays away.
+  f.views.olderCursor = null; f.get('more-messages').hidden = true; p.topicUpdatesPaused = false;
+  f.paintViews('topic');
+  assert.equal(f.get('more-messages').hidden, true);
+  assert.equal(painted, 1, 'a Reader that was not paused is left alone');
+});
+
+// A restarted server refuses the page's session; the page takes the new one
+// in place and goes on (docs/scoped-updates.md).
+const restartable = renewals => {
+  const live = { ...stream(), wakes: 0, token: null, start() {}, wake() { this.wakes++; } };
+  const answers = [];
+  const f = fixture('https://fixture/?topic=t1', {
+    Live: class { constructor({ token }) { live.token = token; return live; } },
+    // 'renewed' gives the page's reads a new session, as the real renewal does.
+    SessionRenewal: class { constructor(options) { renewals.push(options); this.api = options.api; }
+      renew() { const answer = answers.shift() ?? null; if (answer === 'renewed') this.api.token = 'session-' + renewals.length + '-' + answers.length; return Promise.resolve(answer); } } });
+  f.bootstrap.transport = { ...f.bootstrap.transport, live: { version: 2, path: '/api/live', protocol: 'theseus-live.v1' } };
+  return { f, live, answers };
+};
+
+test('a live feed refused for its session renews it in place: the feed wakes, waiting saves go out, and the lost connection\'s message clears', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  assert.equal(renewals.length, 1);
+  assert.equal(live.token, 'fixture-session');
+  const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  await f.run(async () => { throw new AttemptError(lost); });
+  assert.equal(f.get('app-status').textContent, lost);
+  // The server is not back yet: nothing changes.
+  f.events.length = 0; live.emit({ kind: 'refused' }); await drain();
+  assert.deepEqual([live.wakes, f.events.filter(e => e[0] === 'schedule').length, f.get('app-status').textContent], [0, 0, lost]);
+  // Back, with a new session.
+  answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(live.wakes, 1, 'the feed tries again at once');
+  assert.deepEqual(f.events.filter(e => e[0] === 'schedule'), [['schedule', 'inline']], 'the waiting save goes out');
+  assert.equal(f.get('app-status').hidden, true);
+  // Back with the same session (it was not a restart): nothing to resume.
+  f.events.length = 0; answers.push('current'); live.emit({ kind: 'refused' }); await drain();
+  assert.deepEqual([live.wakes, f.events.filter(e => e[0] === 'schedule').length], [1, 0]);
+  // Access a check could not confirm while the session was refused is checked again.
+  f.registry.current = { source: { source_ref: { kind: 'message', id: 'm1' } }, availabilityUnconfirmed: true, editors: { reply: {}, note: {} } };
+  f.events.length = 0; answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.deepEqual(f.events.filter(e => e[0] === 'invalidate' && e[1] === 'availability').length, 1);
+  f.registry.current.availabilityUnconfirmed = false;
+  f.events.length = 0; answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(f.events.some(e => e[0] === 'invalidate' && e[1] === 'availability'), false, 'confirmed access is not checked again');
+});
+
+test('a renewed session leaves a message that was not about the connection, and writing that cannot be saved', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  await f.run(async () => { throw new AttemptError('This topic is closed.', 409, { error: { code: 'CONFLICT' } }); });
+  f.editor.unavailable = true;
+  f.events.length = 0; answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(f.get('app-status').textContent, 'This topic is closed.');
+  assert.equal(f.events.some(e => e[0] === 'schedule'), false, 'writing whose destination is unavailable is not saved');
+});
+
+test('updates refused for the session say so, reconnect by themselves, and retry once for each session', async () => {
+  const renewals = [], { f, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  const requests = () => f.events.filter(e => e[0] === 'request').length;
+  let before = requests();
+  answers.push('renewed');
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(f.get('updates-message').textContent, 'Reconnecting to Theseus. Your writing is kept. ');
+  assert.equal(f.get('updates-retry').textContent, 'Reconnect');
+  assert.equal(requests() - before, 1, 'the stopped updates are tried again');
+  // Refused again with the same session: not tried again by itself.
+  before = requests(); answers.push('current');
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(requests() - before, 0);
+  // The Reconnect button tries again on demand.
+  before = requests(); answers.push('current');
+  await f.get('updates-retry').onclick(); await drain();
+  assert.equal(requests() - before, 1);
+  // Once updates have run again, a later refusal of the same session is tried again once.
+  f.updateStatus({ kind: 'current' });
+  before = requests(); answers.push('current');
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(requests() - before, 1, 'tried again after updates ran');
+  before = requests(); answers.push('current');
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(requests() - before, 0, 'and only once');
+  // Not answering yet: the button says so, and nothing else runs.
+  before = requests();
+  await f.get('updates-retry').onclick(); await drain();
+  assert.equal(requests() - before, 0);
+  assert.match(f.get('app-status').textContent, /not answering yet/);
+});
+
+// A refused source hides its Notebook title with its text, so a page the
+// reader can no longer see does not keep saying what it was called.
+test('a source refused on Retry hides its title along with its text', async () => {
+  const f = fixture();
+  const source = { source_ref: { kind: 'memory', id: 'n1', revision: 2 }, title: 'Private plan', author: 'tony', body: 'Secret words', attachments: [] };
+  const modal = { source: { ...source }, sourceUnavailable: false, availabilityUnconfirmed: false, editors: { reply: { unavailable: false }, note: { unavailable: false } } };
+  f.registry.current = modal;
+  f.reader.hideUnavailableSource = () => f.events.push(['hidden']);
+  f.api.view = async (name, args) => { if (name === 'source') throw Object.assign(Error('Forbidden'), { code: 'FORBIDDEN' }); return f.state(args.source_ref); };
+  await f.retrySource();
+  assert.equal(modal.sourceUnavailable, true);
+  assert.deepEqual([modal.source.title, modal.source.body], ['Source unavailable', '']);
+  assert.equal(f.events.filter(e => e[0] === 'hidden').length, 1);
+  // Readable, but Core says this person may no longer see it: the same.
+  const g = fixture(), shown = { source: { ...source }, sourceUnavailable: false, availabilityUnconfirmed: false, editors: { reply: { unavailable: false }, note: { unavailable: false } } };
+  g.registry.current = shown;
+  g.api.view = async (name, args) => name === 'source' ? { ...source, instance_id: 'fixture' } : { ...g.state(args.source_ref), source_available: false };
+  await g.retrySource();
+  assert.deepEqual([shown.sourceUnavailable, shown.source.title, shown.source.body], [true, 'Source unavailable', '']);
 });
 
 test('confirmed inline access resumes dirty save only after confirmation; no send or recovery replay', async () => {

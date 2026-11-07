@@ -7,6 +7,7 @@ import { EditorSession, RuntimeAuthority, PRIOR_PUBLICATION_NOTICE } from '../we
 import { RecoveryJournal } from '../web/journal.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { TopicNavigation } from '../web/topic-navigation.mjs';
+import { AttemptError } from '../web/api.mjs';
 
 const copy = value => structuredClone(value);
 const deferred = () => {
@@ -213,6 +214,77 @@ test('an unknown lookup and a nonretryable attempt never cause automatic replay'
   assert.equal(f.editor.dirty, true);
   assert.equal(f.session.attempts[0].receipt, null);
   assert.equal(f.session.attempts[0].error.code, 'INTERNAL_ERROR');
+});
+
+// A restarted server refuses the page's session before Core reads anything,
+// so a save it refused was not recorded: once the page holds the new session,
+// the same save goes again under its own operation and is recorded once.
+test('a save refused for its session is sent again, as the same operation, once the session is renewed', async t => {
+  const f = await fixture(t);
+  let refused = true;
+  const refusal = () => new AttemptError('Open this instance to establish a session.', 401,
+    { error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.', retryable: false } });
+  const command = f.transport.command, view = f.transport.view;
+  f.transport.command = async envelope => { if (refused) { f.calls.push(copy(envelope)); throw refusal(); } return command(envelope); };
+  f.transport.view = async (name, args) => { if (refused) throw refusal(); return view(name, args); };
+  f.editor.edit({ body: 'Typed while the server restarted' });
+  await f.session.save();
+  assert.equal(f.calls.length, 1, 'a refused session is not tried again with the same session');
+  assert.equal(f.editor.dirty, true);
+  assert.equal(f.session.attempts[0].receipt, null);
+  refused = false;
+  await f.session.save();
+  assert.equal(f.editor.dirty, false, 'the writing is saved once the session is renewed');
+  assert.equal((await f.state()).draft.body, 'Typed while the server restarted');
+  assert.deepEqual(f.calls.map(c => c.operation_id), [f.calls[0].operation_id, f.calls[0].operation_id], 'the same operation, sent once more');
+  assert.equal(f.session.attempts.length, 1);
+  assert.equal(f.session.attempts[0].receipt.status, 'committed');
+});
+
+// The server went away mid-save (its answer unknown), and came back with a new
+// session: the look-up of what happened is refused too, and is made again once
+// the session is renewed, so the save is recorded once.
+test('a save whose answer was lost while the server restarted is looked up again once the session is renewed', async t => {
+  const f = await fixture(t);
+  let phase = 'down';
+  const command = f.transport.command, view = f.transport.view;
+  const refusal = () => new AttemptError('Open this instance to establish a session.', 401,
+    { error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.', retryable: false } });
+  f.transport.command = async envelope => {
+    if (phase === 'down') { f.calls.push(copy(envelope)); throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.'); }
+    if (phase === 'refused') { f.calls.push(copy(envelope)); throw refusal(); }
+    return command(envelope);
+  };
+  f.transport.view = async (name, args) => {
+    if (phase === 'down') throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+    if (phase === 'refused') throw refusal();
+    return view(name, args);
+  };
+  f.editor.edit({ body: 'Lost in the restart' });
+  await f.session.save();
+  phase = 'refused';
+  await f.session.save();
+  assert.equal(f.editor.dirty, true);
+  phase = 'renewed';
+  await f.session.save();
+  assert.equal(f.editor.dirty, false, 'saved once the session is renewed');
+  assert.equal((await f.state()).draft.body, 'Lost in the restart');
+  assert.equal(new Set(f.calls.map(c => c.operation_id)).size, 1, 'one operation throughout');
+  assert.equal(f.session.attempts.length, 1);
+});
+
+// Any other refusal Core did not explain stays parked, as before.
+test('a refusal from the server that is not about the session is not sent again by itself', async t => {
+  const f = await fixture(t);
+  f.transport.command = async envelope => {
+    f.calls.push(copy(envelope));
+    throw new AttemptError('This request is not from the instance.', 403, { error: { code: 'ORIGIN_REFUSED', retryable: false } });
+  };
+  f.editor.edit({ body: 'Refused for its origin' });
+  await f.session.save(); await f.session.save();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.editor.dirty, true);
+  assert.equal(f.session.attempts[0].error.code, 'ORIGIN_REFUSED');
 });
 
 test('private note save cannot send the reply beneath it', async t => {

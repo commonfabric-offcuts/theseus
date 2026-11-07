@@ -102,8 +102,16 @@ check for the same commit runs beside them rather than after them.
 
 - **Updates delayed** means a retryable read failed. Background checks back off;
   your writing is kept. **Retry updates** requests another check.
-- **Reload to reconnect** is an explicit reconnection after the HTTP session
-  becomes unavailable. The page does not reload itself or erase its journal.
+- **Reconnecting to Theseus** means the server refused the page's session, as
+  a restarted server does (every deploy restarts it). The page reads the
+  server's current session from its own address, as a Reload would, checks that
+  it speaks for the same instance and person, and goes on in place: the writing,
+  the lists and the Reader stay, saves the refusal held up go out under their
+  own operations, and the stopped updates are tried once more for that session.
+  A refused live stream starts the same renewal. **Reconnect** does it on
+  demand; while the server is not answering, the page says so and renews when
+  the stream or a read reaches it again. It never reloads itself or erases its
+  journal.
 - **Review saved writing** handles a changed runtime authority. Automatic
   updates pause; recovery proceeds through the existing review controls.
 - If a topic becomes unavailable, its lists are hidden and sending to it is
@@ -160,11 +168,10 @@ record. Preserve its database, authority, profiles, effects runner and browser
 journal. Do not repeat initialization, copy session tokens or clear writing.
 
 Coordinate the restart with Tony at a pause between sends, outside an in-flight
-Send. After the owned server restarts, the handoff asks Tony to reload the same
-URL once to receive its new in-memory session and reader files. A connected
-reader with automatic updates shows **Reload to reconnect** until he does.
-Locally saved unsent writing survives the reload; preserve the journal and honor
-the page's unload protection for writing not yet durable. The agent verifies
+Send. After the owned server restarts, an open page takes the new in-memory
+session by itself and carries on; it keeps the reader files it loaded until it
+is reloaded. Locally saved unsent writing survives either way; preserve the
+journal and honor the page's unload protection for writing not yet durable. The agent verifies
 process/log state and scoped views through its own profile, without fetching
 Tony's HTML or reloading his page as a probe. The handoff names the exact
 published revision, observed runtime and measured limits. Automatic process
