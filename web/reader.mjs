@@ -177,7 +177,8 @@ export class Reader {
     this.$('source-changes').hidden = true;
     this.opener = opener ?? this.opener ?? document.activeElement;
     this.disarm();
-    this.paintTitle(source, topics);
+    this.topics = topics;
+    this.paintTitle(source);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
     // topic, a choice of this topic or the outcome's conversation (outcome-conversation.mjs).
@@ -617,7 +618,7 @@ export class Reader {
     retry.onclick = () => this.callbacks.retrySource?.();
     status.textContent = p?.accessMessage || (p?.sourceUnavailable ? 'The source is unavailable. Your private writing is kept.'
       : p?.availabilityUnconfirmed ? 'Source access is unconfirmed. Your private writing is kept.' : '');
-    if (p?.topicUpdatesPaused) status.textContent += blocked ? ' Topic updates are paused. Retry access checks only this source.' : 'This source is available. Topic updates remain paused.';
+    if (p?.topicUpdatesPaused) status.textContent = [status.textContent, blocked ? 'Topic updates are paused. Retry access checks only this source.' : 'This source is available. Topic updates remain paused.'].filter(Boolean).join(' ');
     status.hidden = !status.textContent;
   }
 
@@ -632,7 +633,7 @@ export class Reader {
 
   // A message's heading is its topic's name, and a press on it goes back to
   // that topic, as the arrow beside it does.
-  paintTitle(source, topics) {
+  paintTitle(source, topics = this.topics ?? []) {
     const title = this.$('reader-title');
     const topic = source.source_ref.kind === 'message' && source.topic_id ? topics.find(item => item.id === source.topic_id) : null;
     if (!topic?.title) { title.textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message'); return; }
@@ -658,6 +659,7 @@ export class Reader {
   }
   hideUnavailableSource() {
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
+    this.$('reader-title').textContent = 'Source unavailable';
     this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null); this.sourceBody.classList.remove('whispering');
     this.paintStatus();
   }

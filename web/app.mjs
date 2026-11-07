@@ -45,6 +45,7 @@ import { openMessageMenu, sayOn, copyText } from './message-menu.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
+import { SessionRenewal } from './session-renewal.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -593,6 +594,8 @@ function paintViews(kind) {
     if (!here?.page) topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
     for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = false;
+    paintMoreMessages();
+    if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
   }
   keepListAnchor(() => {
@@ -997,9 +1000,11 @@ function updateStatus(state) {
   $('updates-message').textContent = state.kind === 'retry' ? 'Updates delayed. Your writing is kept. '
     : state.kind === 'authority' ? 'The runtime changed. Review your saved writing before reconnecting. '
     : state.kind === 'forbidden' ? 'This topic is unavailable. Your private writing is kept. '
+    : state.kind === 'reconnect' ? 'Reconnecting to Theseus. Your writing is kept. '
     : state.message + ' ';
-  $('updates-retry').textContent = state.kind === 'reconnect' ? 'Reload to reconnect' : state.kind === 'authority' ? 'Review saved writing' : 'Retry updates';
+  $('updates-retry').textContent = state.kind === 'reconnect' ? 'Reconnect' : state.kind === 'authority' ? 'Review saved writing' : 'Retry updates';
   $('updates-retry').hidden = state.kind === 'manual';
+  if (state.kind === 'reconnect') run(reconnect);
 }
 async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
@@ -1101,7 +1106,7 @@ async function checkSourceAvailability(read, current, topicDenied) {
     if (!owns()) return;
     p = registry.current;
     p.sourceUnavailable = true; p.availabilityUnconfirmed = false;
-    p.source.body = ''; p.source.attachments = []; p.editors.note.unavailable = true;
+    p.source.body = ''; p.source.attachments = []; p.source.title = 'Source unavailable'; p.editors.note.unavailable = true;
     revokeMedia(); reader.hideUnavailableSource(); return;
   }
   if (!owns()) return;
@@ -1114,18 +1119,24 @@ async function checkSourceAvailability(read, current, topicDenied) {
   registry.validateState(state, p.source.source_ref, topic.id);
   p.availabilityUnconfirmed = false;
   if (!state.source_available) {
-    p.sourceUnavailable = true; p.source.body = ''; p.source.attachments = []; revokeMedia(); reader.hideUnavailableSource();
+    p.sourceUnavailable = true; p.source.body = ''; p.source.attachments = []; p.source.title = 'Source unavailable'; revokeMedia(); reader.hideUnavailableSource();
   } else if (wasUnavailable) {
     Object.assign(p.source, source); p.sourceUnavailable = false;
     reader.drawSource(source.body); sourceAttachments(p);
-    reader.paintOrigin(source);
+    reader.paintTitle(source); reader.paintOrigin(source);
   }
   p.destinationAvailable = state.destination_available;
   p.editors.reply.unavailable = !state.source_available || !state.destination_available;
   p.editors.note.unavailable = !state.source_available;
   reader.paintStatus();
   } finally {
-    if (sameSource()) { registry.current.availabilityChecking = false; reader.paintStatus(); paintReaderMark(); }
+    // The check is over even when an open was under way as it ended, so Retry
+    // access is never left waiting on it.
+    if (serial === availabilitySerial) {
+      sourcePresentation.availabilityChecking = false;
+      if (registry.current?.source === sourcePresentation.source) registry.current.availabilityChecking = false;
+    }
+    if (sameSource()) { reader.paintStatus(); paintReaderMark(); }
   }
 }
 async function retrySource() {
@@ -1145,7 +1156,8 @@ async function retrySource() {
     if (current()) {
       reader.paintStatus();
       const failed = registry.current.sourceUnavailable || registry.current.availabilityUnconfirmed;
-      (failed ? $('retry-source') : $('source-body')).focus({ preventScroll: true });
+      // Writing begun while access was checked keeps the focus.
+      if ([null, document.body, $('retry-source')].includes(document.activeElement)) (failed ? $('retry-source') : $('source-body')).focus({ preventScroll: true });
     }
   }
 }
@@ -1179,6 +1191,28 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
   freshness.setVisible(document.visibilityState === 'visible');
 }
+// A restarted server (every deploy) refuses this page's session. The page
+// reads the server's new one (session-renewal.mjs) when the live feed is
+// refused, or a read is, and goes on in place: the writing, the lists and the
+// Reader stay, waiting saves go out, and stopped updates resume once.
+let renewal = null, reconnectRetried = null;
+async function reconnect() {
+  const result = await renewal?.renew();
+  if (!result) return false;
+  if (result === 'renewed') {
+    live?.wake(); attention?.refresh();
+    if (/session/i.test($('app-status').textContent)) status('');
+    for (const { editor } of registry?.sessions.values() ?? []) {
+      if (editor.dirty && !editor.authorityRecovery && !editor.conflict && !editor.unavailable) registry.schedule(editor);
+    }
+    // Access a check could not confirm while the session was refused is checked again.
+    if (registry?.current?.availabilityUnconfirmed || registry?.inline?.availabilityUnconfirmed) { freshness?.invalidate('availability', 0, true); freshness?.request(); }
+  }
+  if (updateState?.kind === 'reconnect' && reconnectRetried !== api.token) {
+    reconnectRetried = api.token; await freshness?.request({ refresh: true, retry: true });
+  }
+  return true;
+}
 let startup = null;
 function start() {
   if (!startup) startup = initialize().finally(() => { startup = null; });
@@ -1190,8 +1224,10 @@ async function initialize() {
   api = new Api(token); bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
   shareLinksFrom(bootstrap.links?.origin);
+  renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh) });
   if (liveOffered(bootstrap) && !live) {
     live = new Live({ token });
+    live.listen(event => { if (event.kind === 'refused') run(reconnect); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') live.wake(); });
     window.addEventListener('online', () => live.wake());
     live.start();
@@ -1436,7 +1472,11 @@ async function initialize() {
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('updates-retry').onclick = () => run(async () => {
-    if (updateState?.kind === 'reconnect') { location.reload(); return; }
+    if (updateState?.kind === 'reconnect') {
+      reconnectRetried = null;
+      if (!await reconnect()) status('Theseus is not answering yet. Your writing is kept; this page reconnects when it is back.');
+      return;
+    }
     if (updateState?.kind === 'authority') { const p = registry.interactive; if (p) await showVersions(p.editors[p.mode], $('updates-retry'), p); return; }
     if (registry.current?.sourceUnavailable || registry.current?.availabilityUnconfirmed || registry.inline?.editors.reply.unavailable || updateState?.kind === 'forbidden') freshness?.invalidate('availability', 0, true);
     await freshness?.request({ refresh: true, retry: true });

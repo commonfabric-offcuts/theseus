@@ -21,7 +21,8 @@ export class Live {
     this.failures = 0; this.timer = null; this.current = null; this.stopped = false; this.opened = 0;
   }
   // listener({ kind: 'commit', seq }) on each new number, and
-  // listener({ kind: 'state', state }) with 'live' or 'down'.
+  // listener({ kind: 'state', state }) with 'live' or 'down', and
+  // listener({ kind: 'refused' }) when a socket ends before its first number.
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   emit(event) { for (const listener of [...this.listeners]) listener(event); }
   setState(state) {
@@ -50,7 +51,12 @@ export class Live {
       socket.onmessage = socket.onclose = socket.onerror = null;
       // Leave nothing open behind a socket this page has stopped listening to.
       try { socket.close(); } catch { /* already closing */ }
-      if (!this.stopped) this.retry(attempt.clean);
+      if (this.stopped) return;
+      this.retry(attempt.clean);
+      // Ended before its first number: refused, or the server is not there.
+      // A restarted server refuses the page's old session, so whoever holds
+      // the session hears it and may renew it (then wake() tries at once).
+      if (!attempt.lines) this.emit({ kind: 'refused' });
     };
     socket.onmessage = event => {
       let message = null;
