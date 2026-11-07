@@ -21,6 +21,20 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     if (p.open) { const open = p.open; p.open = async index => { await p.evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`); await open(index); }; }
     return p;
   };
+  // A closed tab's recovery lock is let go by the browser a moment after the
+  // tab closes, so another tab can still find it held. A check that has
+  // another tab review or take over a closed tab's writing waits on that lock
+  // first, as a person who closed the tab finds it gone: closeWriter(a)
+  // closes the tab and gives released(p, meanwhile), which waits in tab p for
+  // the lock (taking it and letting it go at once) while meanwhile() runs.
+  const closeWriter = async a => {
+    const name = await a.evaluate(`(await navigator.locks.query()).held.map(lock=>lock.name).find(name=>name.startsWith('aim-next-recovery-writer:')&&name.includes(j.writerId))`);
+    assert.ok(name, 'the writing tab holds its recovery lock');
+    await a.close();
+    return Object.assign(async (p, meanwhile = async () => {}) => {
+      await Promise.all([p.evaluate(`navigator.locks.request(${JSON.stringify(name)},{mode:'exclusive'},()=>true)`), meanwhile()]);
+    }, { lock: name });
+  };
   // The narrow layout is applied by the Reader's media-query listener in the
   // next rendered frame. Until then its panes keep the wide columns, so wait
   // for the Reader's own layout before measuring a target. A Reader already
@@ -225,8 +239,16 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const refused = await a.evaluate("(async()=>{const command=api.command.bind(api);api.command=envelope=>command(envelope.kind==='submission.prepare'?{...envelope,args:{...envelope.args,body:'different echoed body'}}:envelope);const foreground=r.cleanup.foreground();try{const item=await r.send(e,{stay:true});r.cancelSave(e);return item}finally{foreground.release()}})()");
     assert.equal(refused.status, 'refused'); assert.equal(refused.receipt.recorded, true);
     assert.equal(refused.receipt.error.code, 'REVISION_CONFLICT');
-    await a.close();
+    // A's lock outlives A: a third tab, asking for it before A closes, holds it
+    // from A's close until B has asked for it too, as the browser's late
+    // release of a closed tab's lock does (a release check found it held).
+    const name = await a.evaluate(`(await navigator.locks.query()).held.map(lock=>lock.name).find(name=>name.startsWith('aim-next-recovery-writer:')&&name.includes(j.writerId))`);
+    const lingering = await page('lingering-a-lock');
+    await lingering.evaluate(`(()=>{window.granted=new Promise(held=>navigator.locks.request(${JSON.stringify(name)},{mode:'exclusive'},()=>{held();return new Promise(go=>{window.letGo=go})}))})()`);
+    const released = await closeWriter(a);
+    assert.equal(released.lock, name);
     await replace(b, 'Current B goes alone');
+    await released(b, () => lingering.evaluate('(async()=>{await granted;letGo()})()'));
     await b.point('#review-versions');
     await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Keep current writing")'), 'explicit keep-current choice');
     assert.equal(await b.evaluate('document.querySelector("#send-reply").disabled'), true);
@@ -243,7 +265,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const neverSent = await view('operation',{operation_id:refused.sendOperationId}); assert.equal(neverSent.recorded,false);
     assert.ok((await b.evaluate('imageRows()')).some(row=>row.snapshot?.submissions.some(item=>item.id===refused.id && item.status==='refused')), 'old refused snapshot stays recoverable');
     observations.push({name:'X2 schedule', setup:'real Store refusal via mismatching echoed body; own cleanup reserved during refusal; B autosave timer held to pin exact A revision', interaction:'native typing, Review versions, Keep current writing, Cmd-Shift-Return'});
-    await shot(b, 'current-writing-sent'); await b.close();
+    await shot(b, 'current-writing-sent'); await b.close(); await lingering.close();
   });
   await check('images X4 mid-read reload keeps unknown remote and explicit Review Retry', async () => {
     const a = await page('unknown-remote-writer'); await model(a, true);
@@ -252,8 +274,8 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     const stored = await a.evaluate('(await j.own(e.key)).snapshot');
     assert.equal(stored.conflict.attempted.body, 'Current B survives reload');
     assert.equal(Object.hasOwn(stored.conflict, 'remote'), false);
-    await a.close();
-    const b = await page('unknown-remote-reader', null, true); await b.open(1); await b.point('#review-versions');
+    const released = await closeWriter(a);
+    const b = await page('unknown-remote-reader', null, true); await b.open(1); await released(b); await b.point('#review-versions');
     await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version")'), 'unknown copy recovery');
     await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Recover this version").id="unknown-recover"');
     await b.point('#unknown-recover'); await until(() => b.evaluate('!document.querySelector("#version-review").open'), 'unknown comparison restored');
@@ -276,7 +298,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   await check('images X3 readonly recovery rejects native terminal edits and synthetic fallback input', async () => {
     const a = await page('readonly-writer'); await model(a, true);
     await a.evaluate("(async()=>{e.edit({body:'Saved writing stays intact'});await r.flush(e);await u.add(file,{start:false});r.cancelSave(e)})()");
-    await a.close();
+    const released = await closeWriter(a);
     const b = await page('readonly-reader', null, true); await b.open(1);
     assert.equal(await b.evaluate('document.querySelector("#writing-body").readOnly'), true);
     const original = await field(b);
@@ -288,7 +310,7 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await b.key('Tab'); assert.notEqual(await b.evaluate('document.activeElement.id'), 'writing-body');
     await b.point('#toggle-note'); await replace(b, 'Private note remains editable');
     await b.point('#toggle-note'); assert.equal(await field(b), original);
-    await b.point('#review-versions');
+    await released(b); await b.point('#review-versions');
     await until(() => b.evaluate('[...document.querySelectorAll("#review-content button")].some(b=>b.textContent==="Recover this version")'), 'recovery choice');
     assert.equal(await b.evaluate('[...document.querySelectorAll("#review-content button")].find(b=>b.textContent==="Recover this version").disabled'), false);
     observations.push({name:'X3 input boundary', native:'Ctrl-U/W/K, Tab, private-note typing', injected:'setRangeText + input exercises fallback boundary, not a native gesture'});
@@ -474,14 +496,14 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await a.evaluate(`(async()=>{e.edit({body:'Canonical image copy'});await u.add(file);await r.flush(e)})()`);
     const row = await a.evaluate('j.own(e.key)'), bytesId = row.snapshot.uploadState.entries[0].bytes_ref;
     assert.ok(bytesId); assert.ok(await a.evaluate(`readRow(${JSON.stringify(bytesId)})`));
-    await a.close();
+    const released = await closeWriter(a);
     const b = await page('image-abandoned-ready-b'); await b.evaluate(imageInstrumentation); await model(b, true);
     // Initial open gives foreground source reads priority. The existing
     // Review versions refresh performs the deferred canonical proof.
     assert.equal(await b.evaluate('e.recoveryDiscovery'), true);
     assert.equal(await b.evaluate('u.current().length'), 1, 'canonical ref is represented before retirement clears discovery');
     assert.equal(await b.evaluate('u.pending()'), true);
-    await b.evaluate('r.recoveryCandidates(e)');
+    await released(b); await b.evaluate('r.recoveryCandidates(e)');
     assert.equal(await b.evaluate(`readRow(${JSON.stringify(row.id)})`), null);
     assert.equal(await b.evaluate(`readRow(${JSON.stringify(bytesId)})`), null);
     assert.equal(await b.evaluate('e.recoveryDiscovery'), false);
@@ -496,8 +518,8 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
 
   await check('images adoption final transaction rejects a replaced registered session', async () => {
     const a = await page('image-adopt-inner-a'); await model(a, true); await a.evaluate('u.add(file,{start:false})');
-    const original = await a.evaluate('j.own(e.key)'); await a.close();
-    const b = await page('image-adopt-inner-b'); await model(b, true);
+    const original = await a.evaluate('j.own(e.key)'); const released = await closeWriter(a);
+    const b = await page('image-adopt-inner-b'); await model(b, true); await released(b);
     await b.evaluate(`(()=>{
       window.guardHit=false;const get=IDBObjectStore.prototype.get;
       IDBObjectStore.prototype.get=function(key){const request=get.call(this,key);

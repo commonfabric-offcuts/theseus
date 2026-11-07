@@ -40,7 +40,8 @@ export class EditorRegistry {
     this.current = null; this.inline = null; this.generation = 0; this.disposed = false; this.leaving = null; this.closing = null;
     this.neighborGeneration = 0;
     this.cleanup = new RecoveryCleanup({ api, bootstrap: this.bootstrap, journal, runtime: this.runtime,
-      changed: editor => this.changed(editor), stopped: () => this.disposed });
+      changed: editor => this.changed(editor), stopped: () => this.disposed,
+      paused: () => [...this.sessions.values()].some(session => session.recovery) });
   }
 
   sessionFor(editor) {

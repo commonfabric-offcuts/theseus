@@ -717,6 +717,33 @@ const fixtureImage = async () => new File([await readFile(new URL('./fixtures/me
 
 async function cleanupSettled(f, editor) { await f.registry.cleanup?.idle(editor.key); }
 
+test('a cleanup under way when the runtime parks reads nothing more, so a park never brings a bootstrap of its own', async t => {
+  const f = await fixture(t), p = await f.open(1), editor = p.editors.reply;
+  const entered = deferred(), release = deferred(), view = f.transport.view, boot = f.transport.bootstrap;
+  t.after(() => release.resolve());
+  let bootstraps = 0;
+  f.transport.bootstrap = options => { ++bootstraps; return boot(options); };
+  // The cleanup's check of a saved copy reads the bootstrap, the saved version
+  // (held here), each operation, and the bootstrap again.
+  f.transport.view = async (name, args, options) => {
+    if (name === 'editor_state' && args.limit === 1) { entered.resolve(); await release.promise; }
+    return view(name, args, options);
+  };
+  editor.edit({ body: 'Kept through the park' }); await f.registry.edited(editor); await f.registry.flush(editor);
+  await entered.promise;
+  await f.registry.parkAuthority({ instance_id: f.bootstrap.instance_id, actor_id: f.bootstrap.actor,
+    authority_id: f.bootstrap.authority.authority_id, authority_epoch: f.bootstrap.authority.authority_epoch }, 'INVALID_BINDING');
+  const parked = bootstraps;
+  release.resolve(); await cleanupSettled(f, editor);
+  assert.equal(bootstraps, parked, 'nothing reads the bootstrap after the park');
+  assert.equal(editor.authorityRecovery.phase, 'parked');
+  assert.equal((await f.journal.own(editor.key)).snapshot.draft.body, 'Kept through the park', 'the copy stays for the review');
+  // Without a park the same cleanup finishes its check and retires the copy.
+  const q = await fixture(t), r = await q.open(1), other = r.editors.reply;
+  other.edit({ body: 'Retired without a park' }); await q.registry.edited(other); await q.registry.flush(other); await cleanupSettled(q, other);
+  assert.equal(await q.journal.own(other.key), undefined);
+});
+
 test('cleanup retires exact real private acknowledgements without recreating on close or caret movement', async t => {
   const f = await fixture(t), p = await f.open(1);
   for (const editor of Object.values(p.editors)) {
