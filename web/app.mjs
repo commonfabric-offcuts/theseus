@@ -37,6 +37,7 @@ import { PageHere } from './page-here.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
 import { linkWords, openLinksWith } from './links.mjs';
+import { closeOnOutsideClick } from './dismiss.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -81,6 +82,7 @@ function closeReview() {
 }
 $('review-close').onclick = closeReview; $('review-keep').onclick = closeReview;
 review.addEventListener('cancel', event => { event.preventDefault(); closeReview(); });
+closeOnOutsideClick(review, closeReview);
 // The version review covers the page while open; what it hides is read once it closes.
 review.addEventListener('close', () => noteRead());
 function beginReview(title, opener) {

@@ -7,6 +7,7 @@ import { recipientChoices, writingState, pasteImageError, namedPastedImage, imag
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { wordNodes, webLinks } from './links.mjs';
+import { closeOnOutsideClick } from './dismiss.mjs';
 
 const STEP_WAITS = 'Another message is still opening. Your writing is kept; images and sending wait until it opens.';
 const CLOSING = 'This reply is closing, so the image was not added.';
@@ -47,6 +48,8 @@ export class Reader {
   bind() {
     this.$('reader-close').onclick = () => this.close();
     this.dialog.addEventListener('cancel', event => { event.preventDefault(); this.escape(); });
+    // A click outside closes as × does: the writing, quotes and images are kept.
+    closeOnOutsideClick(this.dialog, () => this.close());
     this.$('reader-parent').onclick = () => this.close('parent');
     this.$('reader-layout').onclick = () => {
       this.layout.setMode(this.layout.mode === 'wide' ? 'stacked' : 'wide');
