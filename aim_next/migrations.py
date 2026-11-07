@@ -30,6 +30,8 @@ from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
 from .standing_conversation import STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
 from .pipeline import PIPELINE_DOWN, PIPELINE_OCCUPIED, PIPELINE_SCHEMA
+from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
+from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 
 
 # Ordered steps between adjacent stored versions: the upgrade, the step back,
@@ -102,6 +104,11 @@ STEPS = (
     # placement and edit, the messages whose subject is an item, and the release
     # notes written by hand. Stepping back is refused once any of them exists.
     ("28", "29", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
+    # Version 30 keeps each outcome's target and its checks, every run of them
+    # and what it measured, the owner's allowances, the problems found before
+    # a check caught them, and the outcome's kind and Reached (docs/targets.md).
+    # Stepping back is refused once any of them exists.
+    ("29", "30", CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA, KINDS_DOWN + CHECKS_DOWN, CHECKS_OCCUPIED),
 )
 
 

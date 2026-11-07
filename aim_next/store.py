@@ -35,9 +35,12 @@ from .outcome_light import OutcomeLight
 from .whispers import WHISPER_SCHEMA
 from .standing_conversation import StandingConversation, STANDING_SCHEMA
 from .pipeline import Pipeline, PIPELINE_SCHEMA, import_seed
+from .checks import Checks, CHECKS_SCHEMA, PROBLEMS_SCHEMA, import_checks, record_checks
+from .outcome_kind import OutcomeKind, KINDS_SCHEMA
+from .outcome_rules import KIND_BEFORE_R21
 
 
-SCHEMA_VERSION = "29"
+SCHEMA_VERSION = "30"
 
 
 def commit_identity_intact(metadata):
@@ -111,7 +114,7 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
         db, _ = _connect(path)
         try:
             db.execute("BEGIN IMMEDIATE")
-            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA:
+            for statement in SCHEMA + DRAFT_SCHEMA + DELIVERY_SCHEMA + CONVERSATION_SCHEMA + RUNNER_SCHEMA + MEMORY_SCHEMA + MEDIA_SCHEMA + OPENING_SCHEMA + HOSTED_SCHEMA + TOPIC_STATE_SCHEMA + MESSAGE_TIME_SCHEMA + WAITING_ORDER_SCHEMA + MARK_SCHEMA + MESSAGE_INTENT_SCHEMA + ASK_WAIT_SCHEMA + WORK_SCHEMA + WRITTEN_SCHEMA + COLOR_SCHEMA + DELIVERY_TOPIC_FRESH + ACTIVITY_SCHEMA + MEMORY_READ_SCHEMA + RESPONSIBILITY_SCHEMA + SOURCE_SCHEMA + WAKE_HEALTH_SCHEMA + RELEASE_SCHEMA + OTHERS_SCHEMA + TURN_ACTIVITY_BACKFILL + WHISPER_SCHEMA + STANDING_SCHEMA + PIPELINE_SCHEMA + CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA:
                 db.execute(statement)
             db.execute("INSERT INTO metadata VALUES ('instance_id',?)", (instance_id,))
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
@@ -144,8 +147,8 @@ class StoreOpenError(StoreError):
         super().__init__(message)
 
 
-class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Releases, OutcomeLight,
-            StandingConversation, Pipeline):
+class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, RoutePins, Changes, TopicState, Marks, Colors, Responsibility, Sources, WakeHealth, Releases, Checks, OutcomeKind,
+            OutcomeLight, StandingConversation, Pipeline):
     def __init__(self, db_path, expected_instance_id, *, expected_binding):
         self.path = Path(db_path).resolve()
         self.instance_id = _identifier(expected_instance_id, "instance_id")
@@ -222,6 +225,26 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             found["report"] = import_seed(self, db, seed, actor, _now_ms())
             return found["report"]["imported"]
         self._operator_write(write, "imported", "pipeline import")
+        return dict(found["report"], instance_id=self.instance_id)
+
+    def record_checks(self, run, actor):
+        """Operator record of one release-check run and its base rerun (docs/targets.md); never a command or an HTTP route."""
+        found = {}
+
+        def write(db):
+            found["report"] = record_checks(self, db, run, actor)
+            return found["report"]["recorded"]
+        self._operator_write(write, "recorded", "check run")
+        return dict(found["report"], instance_id=self.instance_id)
+
+    def import_checks(self, seed, actor):
+        """Operator import of an outcome's target, checks and problems found (docs/targets.md); never a command or an HTTP route."""
+        found = {}
+
+        def write(db):
+            found["report"] = import_checks(self, db, seed, actor, _now_ms())
+            return found["report"]["checks_imported"]
+        self._operator_write(write, "imported", "checks import")
         return dict(found["report"], instance_id=self.instance_id)
 
     def _operator_write(self, write, done, noun):
@@ -355,7 +378,10 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                 handler = getattr(self, COMMANDS[kind]) if kind in COMMANDS else None
                 if handler is None:
                     raise Refusal("UNKNOWN_COMMAND", "Unsupported command kind")
+                since = db.execute("SELECT coalesce(max(seq),0) FROM changes").fetchone()[0]
                 result, affected = (effect if effect is not None else handler)(db, actor, envelope)
+                # A reached outcome is final: nothing a command writes may land in it (D42, 4.5).
+                self._refuse_reached(db, kind, since)
                 receipt = self._receipt(envelope, "committed", True, result, affected)
             except Refusal as exc:
                 db.execute("ROLLBACK TO effect")
@@ -488,6 +514,9 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
         db.executemany("INSERT INTO workspace_members VALUES (?,?)", [(workspace_id, member) for member in team])
         # Every outcome has its conversation from the moment it is made (standing_conversation.py).
         conversation_id = self._start_conversation(db, workspace_id, [], actor)
+        # The outcome's start record: its kind, who started it and when (D41, D22). The
+        # kind is chosen on the outcome's page; until then it is to keep.
+        self._write_start_kind(db, workspace_id, actor, args.get("kind", KIND_BEFORE_R21), _now_ms())
         self._outcome_change(db, workspace_id, 1)
         return {"workspace": {"id": workspace_id, "owner_id": actor, "title": title, "version": 1},
                 "conversation_id": conversation_id}, [
@@ -503,12 +532,19 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
 
     def _view_workspaces(self, db, actor, args):
         limit = _page_size(args)
+        reached = args.get("reached", False)
+        if not isinstance(reached, bool):
+            raise Refusal("INVALID_ARGUMENT", "reached is true or false")
         # Creation always includes the owner in this indexed membership set.
         # BLOB substr bounds bytes, including titles containing embedded NUL.
-        rows = db.execute("SELECT w.id,w.owner_id,substr(CAST(w.title AS BLOB),1,1025) AS title_prefix,w.version "
+        # Reached outcomes are left out, or listed alone with reached: true (D42).
+        rows = db.execute("SELECT w.id,w.owner_id,substr(CAST(w.title AS BLOB),1,1025) AS title_prefix,w.version,w.coordinator_id "
                           "FROM workspace_members AS m JOIN workspaces AS w ON w.id=m.workspace_id "
-                          "WHERE m.actor_id=? AND m.workspace_id>? ORDER BY m.workspace_id LIMIT ?",
+                          "WHERE m.actor_id=? AND m.workspace_id>? AND " + ("" if reached else "NOT ") +
+                          "EXISTS (SELECT 1 FROM outcome_reached r WHERE r.workspace_id=w.id) ORDER BY m.workspace_id LIMIT ?",
                           (actor, args.get("cursor", ""), limit + 1)).fetchall()
+        reached_count = db.execute("SELECT count(*) FROM workspace_members m JOIN outcome_reached r ON r.workspace_id=m.workspace_id "
+                                   "WHERE m.actor_id=?", (actor,)).fetchone()[0]
 
         totals = {}
         for unread, addressed, workspace_id in self._unread(db, actor, workspaces=[row["id"] for row in rows[:limit]]).values():
@@ -520,11 +556,13 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             title, truncated = _prefix(row["title_prefix"])
             unread, addressed = totals.get(row["id"], (0, 0))
             # Where the outcome stands for this reader (item 86, docs/outcome-light.md).
+            facts = self._kind_facts(db, row)
             return {"id": row["id"], "owner_id": row["owner_id"], "title": title,
                     "title_truncated": truncated, "version": row["version"],
-                    "unread": unread, "addressed": addressed,
+                    "unread": unread, "addressed": addressed, "kind": facts["kind"],
+                    "reached_ms": facts["reached"]["ms"] if facts["reached"] else None,
                     "light": self._outcome_stands(db, actor, row)["light"]}
-        return _bounded_page({"instance_id": self.instance_id}, rows, limit, item, "id")
+        return _bounded_page({"instance_id": self.instance_id, "reached_count": reached_count}, rows, limit, item, "id")
 
     def _view_actors(self, db, actor, args):
         """The instance's enabled people and agents, in id order: who can be added to a team or topic.

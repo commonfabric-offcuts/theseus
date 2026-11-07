@@ -10,11 +10,8 @@ while a wait holds), and, only when nothing is being worked on, a scan past
 the window for when Theseus last saw something, which stops as soon as no
 older topic can hold anything newer, or after LAST_SCAN_MAX topics.
 
-Seams until the rest of release 21 lands, each one place:
-- the kind (D41) is KIND_BEFORE_R21, nothing is Reached (D42) and no outcome
-  has checks (item 14), so Done never shows (_done_facts);
-- no outcome has a start record (D22), so "Started by" names the owner
-  without a time (_created).
+The kind, Reached and the target word come from checks.py (_done_facts), and
+who started the outcome from its start record (_created).
 """
 
 import sqlite3
@@ -122,14 +119,6 @@ class OutcomeLight:
     def _pipeline_facts(self, db, actor, workspace_id):
         """None while the outcome's pipeline is off; else its Now items with their work (pipeline.py)."""
         return self._pipeline_light_facts(db, actor, workspace_id)
-
-    def _done_facts(self, db, workspace_id):
-        """Until items 14 and D41/D42 land: every outcome is to keep, not reached, with no checks."""
-        return {"reached": None, "kind": outcome_rules.KIND_BEFORE_R21, "target_word": None, "checks": None}
-
-    def _created(self, db, workspace):
-        """Who started the outcome, and when: no start record yet, so the owner, with no time (D22)."""
-        return {"by": workspace["owner_id"], "ms": None}
 
     def _outcome_stands(self, db, actor, workspace):
         """The whole of where the outcome stands for this reader: light, lead, facts and also."""

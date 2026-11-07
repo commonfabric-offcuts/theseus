@@ -11,9 +11,6 @@ from its newest added or moved event, when a piece started from its first
 stage entry.
 
 Seams until the rest of release 21 lands, each in one place:
-- a stage's gate may name checks, but checks are not records yet (item 14), so
-  a gate's checks are kept and shown and not enforced (_gate_open);
-- `from_release` (D35) needs check runs, so it is refused RELEASE_NOT_HELD;
 - the deploy does not yet close a release piece (7.2): a release piece whose
   release has a record reads as shipped.
 """
@@ -619,10 +616,6 @@ class Pipeline:
             raise Refusal("STAGE_UNKNOWN", "This outcome has no stage %s" % stage_id)
         return dict(row, gate=_loads(row["gate"], {}))
 
-    def _gate_open(self, db, piece, stage):
-        """D18 for checks waits on item 14's check runs; until then a gate's checks are shown, not enforced."""
-        return True
-
     def _entry_write(self, db, workspace_id, sql, values):
         """Every stage entry is opened and closed here; the database keeps the owner's word (D24)."""
         try:
@@ -656,9 +649,17 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "A piece holds from 1 to 64 items")
         items = [self._item_row(db, workspace["id"], number) for number in dict.fromkeys(numbers)]
         if args.get("from_release"):
+            # D35: items of a held release go back to building; the rest is checked again as the next candidate.
             if actor not in (workspace["owner_id"], workspace["coordinator_id"]):
                 raise Refusal("FORBIDDEN", "Only the owner or the coordinator takes items back from a release")
-            raise Refusal("RELEASE_NOT_HELD", "No release is held: check runs come with the outcome's checks")
+            ms = _now_ms()
+            for item in items:
+                release = self._open_piece_of(db, workspace["id"], item["number"])
+                if release is None or release["kind"] != "release" or not self._release_held(db, workspace["id"], release):
+                    raise Refusal("RELEASE_NOT_HELD", "%d is not in a release the checks stopped" % item["number"])
+                db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND number=?",
+                           (ms, release["id"], item["number"]))
+                db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (release["id"],))
         for item in items:
             if item["section"] != "now":
                 raise Refusal("NOT_IN_NOW", "Move %d to Now before starting work on it" % item["number"])
@@ -814,12 +815,18 @@ class Pipeline:
         return {"piece_id": piece["id"], "pipeline_revision": version}, []
 
     def _record_subjects(self, db, workspace_id, message_id, subjects):
-        """A post's subjects (3.6), written with the post: items of its outcome's pipeline."""
+        """A post's subjects (3.6), written with the post: items of its outcome's pipeline, or its checks."""
         if not isinstance(subjects, list) or len(subjects) > 16:
             raise Refusal("INVALID_ARGUMENT", "subjects is a list of at most 16 {kind, ref}")
         for subject in subjects:
-            if not isinstance(subject, dict) or set(subject) != {"kind", "ref"} or subject["kind"] != "item":
-                raise Refusal("INVALID_ARGUMENT", "A subject is {kind: item, ref: number}; checks come with item 14")
+            if not isinstance(subject, dict) or set(subject) != {"kind", "ref"} or subject["kind"] not in ("item", "check"):
+                raise Refusal("INVALID_ARGUMENT", "A subject is {kind: item, ref: number} or {kind: check, ref: check id}")
+            if subject["kind"] == "check":
+                if not isinstance(subject["ref"], str) or not db.execute(
+                        "SELECT 1 FROM outcome_checks WHERE workspace_id=? AND check_id=?", (workspace_id, subject["ref"])).fetchone():
+                    raise Refusal("CHECK_UNKNOWN", "No check %s in this outcome" % subject["ref"])
+                db.execute("INSERT OR IGNORE INTO message_subjects VALUES (?,?,?,?)", (message_id, workspace_id, "check", subject["ref"]))
+                continue
             ref = _number(int(subject["ref"]) if isinstance(subject["ref"], str) and subject["ref"].isdigit() else subject["ref"], "subject")
             self._item_row(db, workspace_id, ref)
             db.execute("INSERT OR IGNORE INTO message_subjects VALUES (?,?,?,?)", (message_id, workspace_id, "item", str(ref)))
