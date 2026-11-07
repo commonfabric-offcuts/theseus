@@ -154,3 +154,11 @@ export const WRITE_KEYS = 'Return saves · Shift+Return for a new line · Esc ca
 export const askWords = text => `New words for the target, for you to use or keep the current ones (on the outcome page):\n\n${text}`;
 export const provesWords = proves => `Proves: “${proves}”`;
 export const NO_CHECKS = 'No checks yet. The agents add them, and each one says which words of the target it proves.';
+
+// No target words yet: who writes them, and (to keep, without checks) that nothing is said about being on target.
+export function noTargetWords({ hasChecks, kind, youSteer, coordinator, owner }) {
+  const who = youSteer ? 'You write' : coordinator ? `${coordinator}, this outcome's coordinator, writes` : `${owner}, this outcome's owner, writes`;
+  if (hasChecks) return `No target words yet. ${who} them.`;
+  const after = kind === 'keep' ? ' Until it has checks, Theseus says nothing about whether this outcome is on target.' : '';
+  return `No target yet. A target is a few sentences saying what done looks like, plus the checks that prove it. ${who} it.${after}`;
+}

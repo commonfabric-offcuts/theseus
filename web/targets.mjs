@@ -8,7 +8,7 @@ import { checkChart, problemsChart } from './charts.mjs';
 import {
   CANDIDATE_STATE, PROBLEM_KIND, STATUS, STEP_GROUP, WORD, bylineWords, countCell, groupCounts, kindWords, loopSteps, number, plural,
   problemsHeadline, ruleWords, standingSentence, stepCompareWords, took,
-  NO_CHECKS, WRITE_KEYS, askWords, provesWords, writeButtonWords, writeHowWords,
+  NO_CHECKS, WRITE_KEYS, askWords, noTargetWords, provesWords, writeButtonWords, writeHowWords,
 } from './targets-words.mjs';
 
 export const measurementsHref = workspace => '?' + new URLSearchParams({ measurements: workspace });
@@ -123,7 +123,7 @@ export class OutcomeTargets {
     const head = el('div', { class: 'tg-head' }, el('h2', { class: 'tg-eyebrow', text: 'Target' }), word ? chip(WORD[word], 'word-' + word) : null);
     const parts = [head];
     if (!target?.text) {
-      parts.push(el('p', { text: `No target yet. A target is a few sentences saying what done looks like, plus the checks that prove it. ${view.coordinator ? `${view.coordinator}, this outcome's coordinator, writes it.` : "This outcome's owner writes it."}${view.kind.kind === 'keep' ? ' Until it has checks, Theseus says nothing about whether this outcome is on target.' : ''}` }));
+      parts.push(el('p', { text: noTargetWords({ hasChecks: view.groups.length > 0, kind: view.kind.kind, youSteer: view.you_steer, coordinator: view.coordinator, owner: view.owner }) }));
     } else {
       parts.push(el('p', { class: 'tg-text', text: target.text }), el('p', { class: 'muted tg-byline', text: bylineWords(target, day(target.written_ms)) }));
     }
