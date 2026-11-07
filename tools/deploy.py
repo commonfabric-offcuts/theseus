@@ -415,17 +415,27 @@ def record_commands(config, evidence, records):
 
 
 def live_checks(config, sha):
-    """The outcome's checks, live baseline and allowances for SHA, read through the live CLI; None while the live release has none."""
+    """The outcome's checks, live baseline and allowances for SHA, read through the live CLI; None when the live code keeps none.
+
+    Code without outcome checks (aim_next/checks.py) keeps none, so there is
+    nothing to compare against yet. A read that fails stops the deploy: it is
+    not the same as no checks."""
+    # ls-tree lists a path HEAD has and nothing for one it lacks; only a failed read exits non-zero.
+    keeps = run(["git", "-C", str(config.live), "ls-tree", "--name-only", "HEAD", "aim_next/checks.py"])
+    require(keeps.returncode == 0, "whether the live code keeps outcome checks could not be read (exit %s): %s"
+            % (keeps.returncode, keeps.stderr.strip()[:300]))
+    if not keeps.stdout.strip():
+        return None
     answer = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.reporter_profile), "--json",
                   "checks", config.outcome, "--live", sha])
     lines = [line for line in answer.stdout.splitlines() if line.startswith("{")]
-    view = json.loads(lines[0]) if lines else {}
-    if answer.returncode != 0:
-        # A live release before targets has no such verb or view: nothing to compare against yet.
-        code = (view.get("error") or {}).get("code")
-        require(code in ("UNKNOWN_VIEW", "INVALID_ARGUMENT", None) and "checks" not in view,
-                "the live outcome's checks could not be read (%s): %s" % (code, (answer.stderr or answer.stdout).strip()[:300]))
-        return None
+    try:
+        view = json.loads(lines[0]) if lines else {}
+    except ValueError:
+        view = {}
+    require(answer.returncode == 0 and isinstance(view.get("checks"), list),
+            "the live outcome's checks could not be read (exit %s, %s): %s" % (
+                answer.returncode, (view.get("error") or {}).get("code"), (answer.stderr or answer.stdout).strip()[:300]))
     return view
 
 
@@ -474,11 +484,12 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     # The outcome's checks (12): the candidate's readings beside the live release's; anything worse the
     # owner did not allow or accept refuses the deploy before anything stops.
     if config.outcome:
-        live = live_checks(config, sha)
-        record(evidence, "02-checks", {"outcome": config.outcome, "live": live and live.get("live"), "checks": live and len(live["checks"])})
-        if live is not None:
-            candidate = outcome_checks.run_from_summary(json.loads(Path(summary).read_text()), live["checks"], config.outcome)
-            found = outcome_checks.worse(candidate, live)
+        measured_live = live_checks(config, sha)
+        record(evidence, "02-checks", {"outcome": config.outcome, "live": measured_live and measured_live.get("live"),
+                                       "checks": measured_live and len(measured_live["checks"])})
+        if measured_live is not None:
+            candidate = outcome_checks.run_from_summary(json.loads(Path(summary).read_text()), measured_live["checks"], config.outcome)
+            found = outcome_checks.worse(candidate, measured_live)
             record(evidence, "02-worse", {"worse": found, "titles": [outcome_checks.fix_title(item) for item in found]})
             require(not found, "the release check made %s worse; the outcome page shows it, and its owner may accept a worse measure"
                     % ", ".join(outcome_checks.fix_title(item) for item in found))
@@ -580,14 +591,21 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     record(evidence, "11-release", {"records": records, "writes": writes})
     # 9. The release check's readings, recorded as this commit's run of the outcome's checks, now that the release is live.
     if config.outcome and not (writes and writes[-1]["exit"] != 0):
-        live = live_checks(config, sha)
-        if live is not None and live["coordinator"]:
-            measured = outcome_checks.run_from_summary(json.loads(Path(summary).read_text()), live["checks"], config.outcome)
+        unwritten = "%s is live and recorded, but its run of the outcome's checks was not written" % this
+        try:
+            now_live = live_checks(config, sha)
+        except Refused as refusal:
+            record(evidence, "12-checks", {"read": str(refusal)})
+            raise Refused("%s: %s" % (unwritten, refusal))
+        if now_live is not None and now_live["coordinator"]:
+            measured = outcome_checks.run_from_summary(json.loads(Path(summary).read_text()), now_live["checks"], config.outcome)
             path = (evidence / "checks-run.json").resolve()
             path.write_text(json.dumps(measured, indent=1) + "\n")
-            wrote = run([config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "record-checks", "--profile",
-                         str(config.server_profile), "--run", str(path), "--as", live["coordinator"]])
+            argv = [config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "record-checks", "--profile",
+                    str(config.server_profile), "--run", str(path), "--as", now_live["coordinator"]]
+            wrote = run(argv)
             record(evidence, "12-checks", {"run": str(path), "exit": wrote.returncode, "stdout": wrote.stdout, "stderr": wrote.stderr})
+            require(wrote.returncode == 0, "%s (%s); write it with: %s" % (unwritten, (wrote.stdout or wrote.stderr).strip()[:300], " ".join(argv)))
     if writes and writes[-1]["exit"] != 0:
         failed = writes[-1]
         raise Refused("%s is live but the record of release %d was not written (%s); write it, and those after it, "

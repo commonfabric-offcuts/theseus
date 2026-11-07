@@ -137,8 +137,8 @@ above; `binding`, `view` and `command` are unchanged.
 
 | Verb | Does |
 | --- | --- |
-| `outcomes` | Lists the actor's outcomes. |
-| `new-outcome --title TITLE [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. |
+| `outcomes [--reached]` | Lists the actor's outcomes, each with its owner, its kind and where it stands, then how many are reached; `--reached` lists those. |
+| `new-outcome --title TITLE [--kind reach\|keep] [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. Without `--kind` it is an outcome to keep until its owner chooses on its page ([targets.md](targets.md#two-kinds-of-outcome)). |
 | `owner OUTCOME ACTOR` | Hands the outcome to ACTOR (`workspace.owner_set`, fenced on the outcome's version as read). Only its owner can, and only to someone already on its team; the former owner stays on the team, and the coordinator is unchanged. Prints `OUTCOME is now owned by ACTOR (was FORMER)`, or `OUTCOME is already owned by ACTOR` when nothing changed. The new owner and the coordinator, beside each topic's creator, change the team, rename and archive the outcome's topics, say where any of them stands and change who takes part; only the owner hands the outcome on, and the `wakes` notice goes to the owner ([openings.md](openings.md#workspaceowner_set)). |
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). Acknowledges nothing. |
@@ -320,6 +320,18 @@ checks.
 - `check-define OUTCOME FILE` writes a check's next definition from JSON. Its
   optional `proves` names which words of the target the check proves, quoted
   or in short; the outcome page shows it under the check.
+- `check-report OUTCOME FILE` records a run of the outcome's checks from JSON
+  (a `reported` run, by hand or by a member); `accept-worse OUTCOME CHECK RUN
+  TEXT` is the owner accepting that one measure got worse at that run.
+- `problem OUTCOME --kind defect|design-miss (--from m-… | --note TEXT) TEXT`
+  records a problem found before a check caught it; `problem-cover OUTCOME
+  PROBLEM [--item N] [--test T] TEXT` says what now covers it.
+- `outcome-kind OUTCOME reach|keep` changes the kind (the owner only), and
+  `reached OUTCOME [--unmet] TEXT` says an outcome to reach is reached, in his
+  words. Reached is final; `--unmet` confirms it while a check is not met, or
+  while nothing checks it.
+
+The rules behind every word these verbs print are in [targets.md](targets.md).
 
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.

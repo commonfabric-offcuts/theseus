@@ -11,7 +11,7 @@ export class OutcomeRail {
     this.reachedCount=0;
     this.read=async args=>{const answer=await read(args);this.reachedCount=Number.isSafeInteger(answer?.reached_count)?answer.reached_count:0;return answer;};
     this.reached=document.createElement('details');this.reached.className='reached-outcomes';this.reached.hidden=true;
-    const summary=document.createElement('summary'),list=document.createElement('div');this.reached.append(summary,list);
+    const summary=document.createElement('summary'),list=document.createElement('div');this.reached.append(summary,list);this.reachedLine=summary;
     this.reached.ontoggle=()=>{
       if(!this.reached.open)return;
       list.textContent='Reading…';
@@ -58,7 +58,7 @@ export class OutcomeRail {
       if(this.host.children[index]!==link)this.host.insertBefore(link,this.host.children[index]??null);
     });
     this.host.hidden=this.denied;this.more.hidden=this.denied||this.pages.next===null;
-    this.reached.hidden=this.denied||!this.reachedCount;this.reached.firstChild.textContent=`Reached (${this.reachedCount})`;
+    this.reached.hidden=this.denied||!this.reachedCount;this.reachedLine.textContent=`Reached (${this.reachedCount})`;
     this.empty.hidden=this.denied||!this.pages.started||items.length>0;
     this.peek?.refresh();
   }

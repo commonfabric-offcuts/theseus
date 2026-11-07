@@ -49,6 +49,13 @@ export function standingSentence({ word, kind, counts, failing, reachOffered, ti
   return `${first} ${then}`;
 }
 
+// D41: the outcome's kind, set on its page by its owner with one tap on a chip; each chip is a word and its one line.
+export const KIND_QUESTION = 'What kind of outcome is it?';
+export const KIND_CHIPS = [
+  ['reach', 'To reach', 'It ends, like an admission or an office move. You say when it is reached.'],
+  ['keep', 'To keep', 'It goes on, like a product kept working.'],
+];
+
 export function kindWords(kind) {
   return kind === 'reach' ? 'An outcome to reach: it ends when you say it is reached.' : 'An outcome to keep: it goes on, on target while its checks pass.';
 }

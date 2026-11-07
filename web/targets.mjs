@@ -8,7 +8,7 @@ import { checkChart, problemsChart } from './charts.mjs';
 import {
   CANDIDATE_STATE, PROBLEM_KIND, STATUS, STEP_GROUP, WORD, bylineWords, countCell, groupCounts, kindWords, loopSteps, number, plural,
   problemsHeadline, ruleWords, standingSentence, stepCompareWords, took,
-  NO_CHECKS, WRITE_KEYS, REACH_KEYS, ACCEPT_KEYS, REACH_WHY_FIRST, ACCEPT_WHY_FIRST, askWords, noTargetWords, provesWords, writeButtonWords, writeHowWords,
+  NO_CHECKS, KIND_CHIPS, KIND_QUESTION, WRITE_KEYS, REACH_KEYS, ACCEPT_KEYS, REACH_WHY_FIRST, ACCEPT_WHY_FIRST, askWords, noTargetWords, provesWords, writeButtonWords, writeHowWords,
 } from './targets-words.mjs';
 
 export const measurementsHref = workspace => '?' + new URLSearchParams({ measurements: workspace });
@@ -223,15 +223,15 @@ export class OutcomeTargets {
 
   openWriter(view) {
     const field = el('textarea', { rows: '3', class: 'tg-write-text', 'data-key': 'writer', 'aria-label': 'The target, in a few sentences',
-      placeholder: 'What done looks like, in a few sentences' });
+      placeholder: 'What done looks like, in a few sentences', enterkeyhint: 'done' });
     field.value = view.target?.text ?? '';
     const how = el('p', { class: 'muted tg-write-how' }), topicsLine = el('div', { class: 'tg-topics', role: 'group', 'aria-label': 'The topic the ask goes in' });
     const error = el('p', { class: 'notice', role: 'status' });
-    const save = el('button', { type: 'button', class: 'primary', 'data-key': 'writer-save', text: 'Save', onclick: () => this.saveWriter() });
-    const cancel = el('button', { type: 'button', 'data-key': 'writer-cancel', text: 'Cancel', onclick: () => this.closeWriter() });
-    const node = el('div', { class: 'tg-write' }, field, how, topicsLine, error,
-      el('div', { class: 'tg-actions' }, save, cancel, el('span', { class: 'muted tg-write-keys', text: WRITE_KEYS })));
-    this.writer = { node, field, how, topicsLine, error, save, cancel, original: field.value, topics: null, topic: null, busy: false, needsAsk: false };
+    // Return saves the words and Esc cancels, so the box has no Save button (the form rule); Cancel is a quiet word for a tap.
+    const keys = el('span', { class: 'tg-write-keys', text: WRITE_KEYS });
+    const cancel = el('button', { type: 'button', class: 'link-button', 'data-key': 'writer-cancel', text: 'Cancel', onclick: () => this.closeWriter() });
+    const node = el('div', { class: 'tg-write' }, field, how, topicsLine, error, el('p', { class: 'muted tg-reason-keys' }, keys, ' ', cancel));
+    this.writer = { node, field, how, topicsLine, error, keys, cancel, ready: false, original: field.value, topics: null, topic: null, busy: false, needsAsk: false };
     field.addEventListener('input', () => this.writerReady());
     node.addEventListener('keydown', event => {
       if (event.key === 'Escape') { event.preventDefault(); this.closeWriter(); }
@@ -252,9 +252,9 @@ export class OutcomeTargets {
   writerReady() {
     const writer = this.writer;
     const text = writer.field.value.trim();
-    writer.save.disabled = writer.busy || !text || text === writer.original.trim() || (writer.needsAsk && !writer.topic);
+    writer.ready = !writer.busy && Boolean(text) && text !== writer.original.trim() && !(writer.needsAsk && !writer.topic);
     writer.field.readOnly = writer.busy;
-    writer.save.textContent = writer.busy ? 'Saving…' : 'Save';
+    writer.keys.textContent = writer.busy ? 'Saving…' : WRITE_KEYS;
   }
 
   // The ask goes in a topic of this outcome: its newest few, as chips; the newest is chosen.
@@ -282,7 +282,7 @@ export class OutcomeTargets {
     const writer = this.writer, view = this.view;
     if (!writer || writer.busy) return;
     this.writerReady();
-    if (writer.save.disabled) return;
+    if (!writer.ready) return;
     const text = writer.field.value.trim();
     const args = { text };
     if (writer.needsAsk) args.ask = { topic_id: writer.topic, body: askWords(text) };
@@ -299,13 +299,17 @@ export class OutcomeTargets {
     }
   }
 
+  // D41: the kind is two chips for the owner, one tap each; everyone else reads it in words.
   kindLine(view) {
-    const line = el('div', { class: 'tg-kind' }, el('span', { class: 'muted', text: kindWords(view.kind.kind) }));
-    if (view.reached || !view.kind.you_change) return line;
-    const other = view.kind.kind === 'reach' ? 'keep' : 'reach';
-    line.append(el('button', { type: 'button', class: 'link-button', 'data-key': 'kind-switch', text: `Make it an outcome to ${other}`,
-      onclick: () => this.act(() => sent(this.send, 'outcome.kind_set', { workspace_id: view.workspace_id }, { kind: other }, { workspace_revision: view.relevant_versions.workspace })) }));
-    if (view.kind.kind !== 'reach') return line;
+    const kind = view.kind.kind;
+    if (view.reached || !view.kind.you_change) return el('div', { class: 'tg-kind' }, el('span', { class: 'muted', text: kindWords(kind) }));
+    const question = el('span', { class: 'muted kind-question', id: 'kind-question', text: KIND_QUESTION });
+    const chips = el('div', { class: 'kind-chips', role: 'group', 'aria-labelledby': 'kind-question' }, KIND_CHIPS.map(([value, label, hint]) =>
+      el('button', { type: 'button', class: 'kind-chip', 'data-key': 'kind:' + value, 'aria-pressed': String(value === kind),
+        onclick: () => { if (value !== kind) this.act(() => sent(this.send, 'outcome.kind_set', { workspace_id: view.workspace_id }, { kind: value }, { workspace_revision: view.relevant_versions.workspace })); } },
+      el('strong', { text: label }), el('span', { class: 'muted', text: hint }))));
+    const line = el('div', { class: 'tg-kind' }, question, chips);
+    if (kind !== 'reach') return line;
     if (!this.reaching) {
       line.append(el('button', { type: 'button', class: view.reach?.offered ? 'primary' : '', 'data-key': 'say-reached', text: 'Say it is reached', onclick: () => this.openReach() }));
       return line;
@@ -318,14 +322,16 @@ export class OutcomeTargets {
     const draft = this.reaching, unmet = view.reach?.unmet ?? [];
     const words = reasonBox(draft, { 'data-key': 'reach-words', maxlength: '500', 'aria-label': 'Why it is reached, in your own words', placeholder: 'Why it is reached, in a sentence or two' });
     words.addEventListener('keydown', reasonKeys(() => this.sendReach(), () => this.closeReach()));
+    // Not offered: something is not met, or nothing checks it yet; either way he confirms first (Core refuses NOT_MET without it).
     let anyway = null;
-    if (unmet.length) {
+    if (!view.reach?.offered) {
       anyway = el('input', { type: 'checkbox', 'data-key': 'reach-anyway', disabled: draft.busy });
       anyway.checked = draft.anyway;
       anyway.addEventListener('change', () => { draft.anyway = anyway.checked; });
     }
     return el('div', { class: 'tg-reach' }, el('p', null, 'Reached is final: every topic of this outcome closes and is kept to read, and nothing more changes in it.'),
-      anyway ? el('label', null, anyway, ` Mark it reached anyway: not met yet, ${unmet.map(item => `“${item.name}” (${item.why.replace('_', ' ')})`).join(', ')}`) : null,
+      anyway ? el('label', null, anyway, unmet.length ? ` Mark it reached anyway: not met yet, ${unmet.map(item => `“${item.name}” (${item.why.replace('_', ' ')})`).join(', ')}`
+        : ' Mark it reached anyway: nothing checks it yet') : null,
       words, reasonFoot(draft, REACH_KEYS, el('button', { type: 'button', class: 'link-button', 'data-key': 'reach-not-yet', text: 'Not yet', onclick: () => this.closeReach() })));
   }
 
@@ -347,7 +353,7 @@ export class OutcomeTargets {
     if (!draft || draft.busy) return;
     if (!draft.words.trim()) { draft.error = REACH_WHY_FIRST; this.paint(); return; }
     const args = { words: draft.words };
-    if (draft.anyway && view.reach?.unmet?.length) args.unmet_confirmed = true;
+    if (draft.anyway && !view.reach?.offered) args.unmet_confirmed = true;
     draft.busy = true; draft.error = ''; this.paint();
     try {
       await sent(this.send, 'outcome.reach', { workspace_id: view.workspace_id }, args, { workspace_revision: view.relevant_versions.workspace });
