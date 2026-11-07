@@ -2,7 +2,7 @@
 
 An outcome may keep a pipeline: every piece of work it delivers, numbered,
 from the message it grew out of to the release that shipped it. It is a record
-in Theseus (schema version 27), not a page anyone keeps by hand. The tables
+in Theseus (schema version 29), not a page anyone keeps by hand. The tables
 and commands are `aim_next/pipeline.py`; the rules it shares with the outcome
 light (the glyph, stage names by round, typical times) are
 `aim_next/outcome_rules.py`; the page is `web/pipeline.mjs`, with its words in

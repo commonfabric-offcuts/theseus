@@ -46,9 +46,9 @@ SCHEMA_26 = (Path(__file__).parent / "fixtures" / "schema_26.sql").read_text().s
 SCHEMA_27 = (Path(__file__).parent / "fixtures" / "schema_27.sql").read_text().splitlines()
 # The pipeline's step (item 84): the version it starts from and the one it makes,
 # named here once, so a renumbering of the step changes only these two and the
-# fixture's file name. The layout before it is version 25's, since version 26's
-# step only works activity out again.
-BEFORE_PIPELINE, PIPELINE_VERSION = "26", "27"
+# fixture's file name. It follows the conversation's step, so the layout before
+# it is version 28's, read from a fresh instance of the conversation's code (32d5e0e).
+BEFORE_PIPELINE, PIPELINE_VERSION = "28", "29"
 SCHEMA_BEFORE_PIPELINE = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_PIPELINE)).read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
@@ -2306,9 +2306,12 @@ class Schema27Case(MigrationCase):
         self.assertEqual(self.sql("SELECT count(*) FROM messages WHERE about_id IS NOT NULL"), [(0,)])
         widened = {"messages": 1, "topics": 2}
         self.assertEqual({table: [row[:-widened[table]] if table in widened else row for row in kept]
-                          for table, kept in everything(self.path).items()
-                          if table not in ("conversation_items", "conversation_takes", "conversation_waits")},
+                          for table, kept in everything(self.path).items() if table in rows},
                          rows, "only the new columns are added, to messages and topics")
+        # The tables this step and the later ones add (the pipeline's among them) start empty.
+        for table, kept in everything(self.path).items():
+            if table not in rows:
+                self.assertEqual(kept, [], table)
         for table in ("conversation_items", "conversation_takes", "conversation_waits"):
             self.assertEqual(self.sql("SELECT count(*) FROM " + table), [(0,)], table)
 

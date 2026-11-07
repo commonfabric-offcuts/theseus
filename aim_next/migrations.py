@@ -97,11 +97,11 @@ STEPS = (
     # conversation exists the step back is refused: release 22 would show it as
     # an ordinary topic and lose what became of its items.
     ("27", "28", STANDING_SCHEMA, STANDING_DOWN, STANDING_OCCUPIED),
-    # Version 27 keeps each outcome's pipeline: its stages and numbered items,
+    # Version 29 keeps each outcome's pipeline: its stages and numbered items,
     # where each came from, its pieces of work and their stage entries, every
     # placement and edit, the messages whose subject is an item, and the release
     # notes written by hand. Stepping back is refused once any of them exists.
-    ("26", "27", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
+    ("28", "29", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
 )
 
 
