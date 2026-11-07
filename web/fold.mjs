@@ -4,6 +4,7 @@
 // it folded into one quiet line, a button that opens its card below it and
 // folds it away again.
 import { paintAuthor } from './marks.mjs';
+import { linkWords } from './links.mjs';
 
 // A message that names no addressees is for everyone in the topic. Only a
 // person (kind 'human') has messages between others, as Core settles them only
@@ -29,7 +30,7 @@ export function foldCard(card, item, doc = document) {
   const fold = doc.createElement('div'), line = doc.createElement('button'), author = doc.createElement('span'), words = doc.createElement('span');
   fold.className = 'message-fold'; fold.dataset.id = item.id; fold.dataset.seq = item.seq;
   line.type = 'button'; line.className = 'fold-line';
-  author.className = 'fold-author'; words.className = 'fold-words'; words.textContent = foldWords(item);
+  author.className = 'fold-author'; words.className = 'fold-words'; linkWords(words, foldWords(item));
   line.append(author, words);
   card.id = `card-${item.id}`; line.setAttribute('aria-controls', card.id);
   line.onclick = () => show(fold, card.hidden);

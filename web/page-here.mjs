@@ -1,4 +1,5 @@
 import { paintChanges } from './page-changes.mjs';
+import { linkWords } from './links.mjs';
 
 // On an outcome's own page there is no Reader, so a Notebook page listed
 // beside its topics opens in place, below the list: its title, what changed
@@ -37,7 +38,7 @@ export class PageHere {
     heading.textContent = source.title || 'Notebook page';
     heading.tabIndex = -1;
     const origin = this.node('p', `Notebook · revision ${source.source_ref.revision}`, 'muted');
-    const body = this.node('div', source.body ?? '', 'page-here-body');
+    const body = linkWords(this.node('div', undefined, 'page-here-body'), source.body ?? '', { doc: this.doc });
     this.host.replaceChildren(heading, origin, status, body, close);
     heading.focus();
     let since;

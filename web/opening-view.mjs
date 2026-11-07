@@ -3,6 +3,7 @@ import { protectTouchBounds } from './creation-view.mjs';
 import { namedPastedImage } from './writing-helpers.mjs';
 import { OpeningPages } from './opening.mjs';
 import { routeHref } from './topic-navigation.mjs';
+import { wordNodes } from './links.mjs';
 
 const el=(tag,text,className)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(className)n.className=className;return n;};
 const button=(label,action,className)=>{const n=el('button',label,className);n.type='button';n.onclick=action;return n;};
@@ -139,7 +140,8 @@ export class OpeningView {
     const key=JSON.stringify([d.source,d.sourceMessage,d.started,d.startedRead,d.sourceError,d.phase]);
     if(host.dataset.key===key)return;host.dataset.key=key;
     const words=d.sourceMessage?d.sourceMessage.body.replace(/\s+/g,' ').trim():'';
-    const quote=el('blockquote',d.sourceMessage?`${d.sourceMessage.author}: ${words.length>240?words.slice(0,239)+'…':words}`:'The message is being read…');
+    const cut=words.length>240,quote=el('blockquote',d.sourceMessage?undefined:'The message is being read…');
+    if(d.sourceMessage)quote.append(`${d.sourceMessage.author}: `,...wordNodes(cut?words.slice(0,239):words,{partial:cut}),cut?'…':'');
     host.replaceChildren(el('h2','Answers a message'),quote);
     if(d.sourceError){
       host.append(el('p','The topics already started from this message could not be read. '+d.sourceError,'notice'),

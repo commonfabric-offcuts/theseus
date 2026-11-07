@@ -36,6 +36,7 @@ import { PageReads } from './page-reads.mjs';
 import { PageHere } from './page-here.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
+import { linkWords, openLinksWith } from './links.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -590,8 +591,9 @@ function paintViews(kind) {
       paintCardAuthor(author, item);
       card.append(author);
       const answers = replyLine(item);
-      if (answers) card.append(node('span', answers, 'message-reply-to'));
-      card.append(node('span', item.body, 'message-preview'));
+      // The line a reply quotes is cut, so an address at its end is left as words.
+      if (answers) card.append(linkWords(node('span', undefined, 'message-reply-to'), answers, { partial: true }));
+      card.append(linkWords(node('span', undefined, 'message-preview'), item.body, { partial: item.preview === true }));
       if (item.preview) card.append(node('span', 'Excerpt · Open to read the rest', 'message-preview-cue'));
       // A message between others is one quiet line that opens its card.
       const entry = betweenOthers(item, bootstrap.actor, bootstrap.actor_kind) ? foldCard(card, item, document) : card;
@@ -612,7 +614,7 @@ function paintViews(kind) {
     if (card.dataset.source !== identity || card.dataset.changed !== changed) {
       const [title, body] = card.children;
       card.dataset.source = identity; card.dataset.changed = changed;
-      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item); body.textContent = item.body;
+      title.replaceChildren(item.title || 'Notebook item'); paintChanged(title, item); linkWords(body, item.body, { partial: item.preview === true });
     }
     card.onclick = () => run(() => openSource(item.source_ref, card));
   }
@@ -1324,6 +1326,8 @@ function topicFolds() {
 }
 // Rows a reload may ask for at once, from the server's own limits.
 const pageMax = () => Number.isSafeInteger(bootstrap.limits?.page_max) ? bootstrap.limits.page_max : undefined;
+// A link in a message's words to one of this Theseus's places opens it here.
+openLinksWith((target, title) => openDestination(target, title));
 async function openDestination(target, title) {
   // A page whose start failed has no navigation; leave it for the destination.
   if (!topicNavigation) { location.assign(routeHref(target)); return; }

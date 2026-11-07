@@ -1,4 +1,5 @@
 import { checkedView } from './freshness.mjs';
+import { wordNodes } from './links.mjs';
 
 // What waits for the person. The tab title carries the unread count, and a
 // message sent to them by name raises a system notification while the page is
@@ -138,7 +139,8 @@ export function paintSent(host, answer, actions) {
   const list = element('ul', { className: 'sent-list' }, ...items.map(item => {
     const id = item.message.id;
     const place = item.topic.title + (item.topic.title_truncated ? '…' : '');
-    const words = element('span', { className: 'muted', textContent: ` ${item.message.author_id}: ${item.message.body}${item.message.preview ? '…' : ''}` });
+    const words = element('span', { className: 'muted' }, ` ${item.message.author_id}: `,
+      ...wordNodes(item.message.body, { partial: item.message.preview }), item.message.preview ? '…' : '');
     if (item.topic_readable) {
       const link = part(element('a', { href: '?topic=' + encodeURIComponent(item.topic.id), textContent: place }), id, 'open');
       link.onclick = event => {
@@ -162,7 +164,7 @@ export function paintSent(host, answer, actions) {
     said.setAttribute?.('role', 'status');
     if (entry?.source) {
       return element('li', { className: 'closed-topic' }, ...head,
-        element('p', { className: 'sent-whole', textContent: `${item.message.author_id}: ${entry.source.body}` }), ...entry.controls, mark, said);
+        element('p', { className: 'sent-whole' }, `${item.message.author_id}: `, ...wordNodes(entry.source.body)), ...entry.controls, mark, said);
     }
     const more = part(element('button', { type: 'button', textContent: entry?.pending ? 'Reading…' : 'Read it here' }), id, 'more');
     more.onclick = () => readWhole(item);

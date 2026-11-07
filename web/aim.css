@@ -211,3 +211,5 @@ main>#outcomes-home{margin-bottom:.4rem}
 #outcomes-home .elsewhere-words{display:block;font-size:.8rem;color:var(--muted);margin-top:.15rem}
 @media (forced-colors:active){#outcomes-home .outcome-light{background:CanvasText;box-shadow:none}}
 
+/* A web address in a message's words: underlined in the words' own color, so it reads on every card and page; a long one wraps. */
+.words-link{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px;overflow-wrap:anywhere;word-break:break-word;cursor:pointer}.words-link:hover{text-decoration-thickness:2px}
