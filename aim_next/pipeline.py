@@ -11,8 +11,9 @@ from its newest added or moved event, when a piece started from its first
 stage entry.
 
 Seams until the rest of release 21 lands, each in one place:
-- the deploy does not yet close a release piece (7.2): a release piece whose
-  items a release record names has shipped, and _the_release reads it so.
+- the deploy does not yet close a release piece (7.2): a release piece that a
+  release record names (a commit it was combined or checked at, or one of its
+  items) has shipped, and _the_release reads it so.
 """
 
 import json
@@ -215,21 +216,38 @@ class Pipeline:
         return db.execute("SELECT coalesce(max(number),0)+1 FROM releases").fetchone()[0]
 
     def _the_release(self, db, workspace_id):
-        """THE RELEASE (3.4): the outcome's open release piece that still holds an item no release record has shipped, in a
-        pipeline that is on and ships in releases; with its open entry, and as its release_number the number it ships as
-        (_next_release). None without one. combine makes one only while there is none, so every reader and writer of "the
-        release" (combine, back to building, the gate's candidates, the head, the deploy's read and move) asks here."""
+        """THE RELEASE (3.4): the outcome's open release piece that no release record names, in a pipeline that is on and
+        ships in releases; with its open entry, and as its release_number the number it ships as (_next_release). None
+        without one. A record names a release piece when it records a commit the piece was combined or checked at, or one of
+        the items still in it: either way that release shipped, whatever else the record names or leaves out. combine makes
+        one only while there is none, so every reader and writer of "the release" (combine, back to building, moving or
+        noting a release piece, the item a piece holds, the gate's candidates, the head, the deploy's read and move) asks here."""
         row = db.execute("SELECT p.*,e.stage_id,e.round,e.progress,e.entered_ms FROM pipeline_stage_entries e INDEXED BY open_entries "
                          "JOIN pipeline_pieces p ON p.id=e.piece_id JOIN pipelines l ON l.workspace_id=p.workspace_id "
                          "WHERE e.workspace_id=? AND e.left_ms IS NULL AND p.kind='release' AND l.enabled=1 AND l.ships_in_releases=1 "
-                         "AND EXISTS (SELECT 1 FROM pipeline_piece_members m WHERE m.piece_id=p.id AND m.left_ms IS NULL "
-                         "AND m.number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j)) ORDER BY p.rowid LIMIT 1",
+                         "AND NOT EXISTS (SELECT 1 FROM releases r WHERE r.commit_sha=p.commit_sha) "
+                         "AND NOT EXISTS (SELECT 1 FROM check_readings g INDEXED BY readings_by_piece JOIN check_runs u ON u.id=g.run_id "
+                         "JOIN releases r ON r.commit_sha=u.commit_sha WHERE g.piece_id=p.id) "
+                         "AND NOT EXISTS (SELECT 1 FROM pipeline_piece_members m, releases r, json_each(r.items) j "
+                         "WHERE m.piece_id=p.id AND m.left_ms IS NULL AND j.value=m.number) ORDER BY p.rowid LIMIT 1",
                          (workspace_id,)).fetchone()
         return dict(row, release_number=self._next_release(db)) if row else None
 
     def _open_piece_of(self, db, workspace_id, number):
-        return db.execute("SELECT p.* FROM pipeline_piece_members m JOIN pipeline_pieces p ON p.id=m.piece_id "
-                          "WHERE m.workspace_id=? AND m.number=? AND m.left_ms IS NULL", (workspace_id, number)).fetchone()
+        """The piece an item is being built in: a release piece only while it is the release (3.4), so an item a shipped
+        release's record left out is free to be built again."""
+        release = self._the_release(db, workspace_id)
+        return next((row for row in db.execute("SELECT p.* FROM pipeline_piece_members m JOIN pipeline_pieces p ON p.id=m.piece_id "
+                                               "WHERE m.workspace_id=? AND m.number=? AND m.left_ms IS NULL", (workspace_id, number))
+                     if row["kind"] == "piece" or (release is not None and row["id"] == release["id"])), None)
+
+    def _moving_entry(self, db, piece):
+        """The open entry a command may move on or note: a release piece's only while it is the release (3.4), so a release
+        that shipped is never moved back into its stages or read as the next one."""
+        entry = self._open_entry(db, piece["id"])
+        if entry is None or (piece["kind"] == "release" and (self._the_release(db, piece["workspace_id"]) or {}).get("id") != piece["id"]):
+            raise Refusal("PIECE_CLOSED", "This piece of work has finished")
+        return entry
 
     def _open_entry(self, db, piece_id):
         return db.execute("SELECT * FROM pipeline_stage_entries WHERE piece_id=? AND left_ms IS NULL", (piece_id,)).fetchone()
@@ -710,6 +728,10 @@ class Pipeline:
         piece_id = "p-" + uuid.uuid4().hex[:24]
         ms = _now_ms()
         db.execute("INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)", (piece_id, workspace["id"], "piece", topic["id"]))
+        # 3.4: none of these items is in an open piece, so one still held by a release piece is in a release that shipped
+        # and whose record left it out; it goes back to building from that release, as from a held one.
+        db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE workspace_id=? AND left_ms IS NULL "
+                   "AND number IN (SELECT value FROM json_each(?))", (ms, workspace["id"], _json([item["number"] for item in items])))
         db.executemany("INSERT INTO pipeline_piece_members VALUES (?,?,?,NULL,NULL)", [(piece_id, workspace["id"], item["number"]) for item in items])
         self._enter(db, actor, {"id": piece_id, "workspace_id": workspace["id"]}, stage, round_number, size, ms, args.get("ask_message_id"))
         version = self._bump(db, workspace["id"], piece_id)
@@ -729,9 +751,7 @@ class Pipeline:
         piece, workspace = self._piece(db, actor, target["piece_id"])
         self._pipeline_on(db, workspace["id"])
         self._check_revision(envelope, "piece_revision", piece["version"])
-        entry = self._open_entry(db, piece["id"])
-        if entry is None:
-            raise Refusal("PIECE_CLOSED", "This piece of work has finished")
+        entry = self._moving_entry(db, piece)
         leaving = self._stage(db, workspace["id"], entry["stage_id"], current=False)
         stage = self._stage(db, workspace["id"], args.get("stage_id"))
         if stage["scope"] != ("release" if piece["kind"] == "release" else "piece"):
@@ -760,9 +780,7 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "A stage note is its words, and a release stage's progress")
         piece, workspace = self._piece(db, actor, target["piece_id"])
         self._check_revision(envelope, "piece_revision", piece["version"])
-        entry = self._open_entry(db, piece["id"])
-        if entry is None:
-            raise Refusal("PIECE_CLOSED", "This piece of work has finished")
+        entry = self._moving_entry(db, piece)
         progress = args.get("progress")
         if progress is not None:
             stage = self._stage(db, workspace["id"], entry["stage_id"], current=False)
@@ -1043,7 +1061,7 @@ class Pipeline:
         asks = self._asks_about(db, actor, workspace["id"]) if pipeline else {}
         open_rows = db.execute("SELECT p.* FROM pipeline_stage_entries e INDEXED BY open_entries JOIN pipeline_pieces p ON p.id=e.piece_id "
                                "WHERE e.workspace_id=? AND e.left_ms IS NULL ORDER BY e.entered_ms DESC", (workspace["id"],)).fetchall() if pipeline else []
-        # Of the release pieces, only the release is open work (3.4); one whose items a record names has shipped (7.2 seam).
+        # Of the release pieces, only the release is open work (3.4); one a record names has shipped (7.2 seam).
         release = self._the_release(db, workspace["id"]) if pipeline else None
         release_id = release["id"] if release else None
         open_rows = [release if row["id"] == release_id else row for row in open_rows if row["kind"] == "piece" or row["id"] == release_id]

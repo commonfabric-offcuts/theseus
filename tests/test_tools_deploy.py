@@ -1604,6 +1604,74 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.rejected(self.command("pipeline.stage_enter", {"stage_id": "deploy", "left_outcome": "passed"}, {"piece_id": later["piece_id"]},
                                    actor="agent-a"), "STAGE_GATED")
 
+    def ship_naming(self, items):
+        """Release 23 (items 1 and 2) passes its checks, the deploy moves it into deploy, and its record names these items."""
+        self.write_summary()
+        self.assertEqual(self.deploy(), "restarting")
+        self.assertTrue(self.store.record_release({"release": 23, "commit": SHA, "deployed_at": "2026-11-07T09:00:00-08:00", "items": list(items),
+                                                   "source": "deploy"})["recorded"])
+
+    def assert_release_23_shipped(self):
+        """Nothing reads release 23's piece as release 24, and the shipped piece moves no more."""
+        view = self.live_view()
+        self.assertEqual((view["release_piece"], view["candidate_release"]), (None, 24))
+        self.assertIsNone(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"])
+        self.assertIsNone(self.candidate())
+        self.rejected(self.command("pipeline.stage_enter", {"stage_id": "checks", "left_outcome": "passed"}, {"piece_id": self.release}), "PIECE_CLOSED")
+        self.rejected(self.command("pipeline.stage_note", {"note": "Release 24 starts"}, {"piece_id": self.release}), "PIECE_CLOSED")
+        self.assertEqual(self.open_entry(self.release), [("deploy",)], "the refusals changed nothing")
+
+    def combined_as_24_and_gated(self, numbers):
+        """The items the record left out are free to be built again, leaving release 23 as from a held release, and release
+        24 is checked on its own run."""
+        later = self.committed(self.combine([self.approved(numbers, self.topic_of_w1("t-again"))]))
+        self.assertEqual(self.sql("SELECT number,left_reason FROM pipeline_piece_members WHERE piece_id=? ORDER BY number", (self.release,)),
+                         [(number, "returned" if number in numbers else None) for number in (1, 2)])
+        self.assertEqual((later["release_number"], later["numbers"], self.live_view()["release_piece"]["id"]), (24, list(numbers), later["piece_id"]))
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "checks", "left_outcome": "passed"}, {"piece_id": later["piece_id"]}))
+        self.rejected(self.command("pipeline.stage_enter", {"stage_id": "deploy", "left_outcome": "passed"}, {"piece_id": later["piece_id"]},
+                                   actor="agent-a"), "STAGE_GATED")
+
+    def test_a_release_whose_record_names_only_some_of_its_items_has_shipped(self):
+        # A trailer that missed item 2: the deploy shipped release 23's commit, so release 23 has shipped. Its piece used to
+        # stay "the release", read as release 24 with items 1 and 2, release 23's commit and readings, and could be moved
+        # back into checks and on into deploy with no run of release 24.
+        self.ship_naming([1])
+        self.assert_release_23_shipped()
+        self.combined_as_24_and_gated([2])
+
+    def test_a_release_recorded_with_no_items_has_shipped(self):
+        # deploy --no-items records release 23's commit and names no item.
+        self.ship_naming([])
+        self.assert_release_23_shipped()
+        self.combined_as_24_and_gated([1, 2])
+
+    def test_a_record_ends_the_release_only_when_it_names_the_release(self):
+        # A record of a commit the release was never checked at, naming none of its items, is another release.
+        self.assertTrue(self.store.record_release({"release": 23, "commit": "e" * 40, "deployed_at": "2026-11-07T09:00:00-08:00", "items": [],
+                                                   "source": "deploy"})["recorded"])
+        self.assertEqual(self.live_view()["release_piece"], {"id": self.release, "release": 24, "stage": "checks", "round": 1})
+        # A record naming one of its items ships it, whatever commit it names (a backfill, before any candidate was checked).
+        self.assertTrue(self.store.record_release({"release": 24, "commit": "f" * 40, "deployed_at": "2026-11-07T10:00:00-08:00", "items": [1],
+                                                   "source": "backfill"})["recorded"])
+        self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 25))
+        # A record of the commit a release was combined at ships it, before any candidate was checked and naming no item.
+        later = self.committed(self.combine([self.approved([2], self.topic_of_w1("t-again"))], commit_sha="a" * 40))
+        self.assertEqual(self.live_view()["release_piece"]["id"], later["piece_id"])
+        self.assertTrue(self.store.record_release({"release": 25, "commit": "a" * 40, "deployed_at": "2026-11-07T11:00:00-08:00", "items": [],
+                                                   "source": "deploy"})["recorded"])
+        self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 26))
+
+    def test_the_gate_reads_the_release_at_its_own_commit(self):
+        # D18: a check the newest candidate did not read is not passed by an older candidate's reading at another commit.
+        self.recorded("d" * 40)
+        self.store.record_checks({"outcome": "w1", "commit": "e" * 40, "started_at": "2026-11-07T05:00:00-08:00",
+                                  "finished_at": "2026-11-07T05:00:00-08:00", "tools": {"release-check": release_check.TOOL}, "steps": [], "note": "",
+                                  "readings": [{"check_id": "units", "result": "passed", "value": 900, "words": "900"}]}, "agent-b")
+        self.rejected(self.move_on(), "STAGE_GATED")
+        self.recorded("f" * 40, at="2026-11-07T06:00:00-08:00")
+        self.committed(self.move_on())
+
     def test_a_worse_check_holds_the_release_and_only_its_items_go_back(self):
         waiting = self.approved([self.add("Item 3", section="now", size="small")], self.topic_of_w1("t-two"))
         self.write_summary(failed=("native-live",))

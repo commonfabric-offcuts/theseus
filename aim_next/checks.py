@@ -330,10 +330,14 @@ class Checks:
 
     def _gate_open(self, db, piece, stage):
         """Leaving a stage whose gate names checks needs each one's latest reading for the piece to pass: a release piece's
-        readings are its candidates' (record_checks), so the commit is whichever was checked last."""
+        readings are its candidates' (record_checks), and D18 reads them at the release's commit (_release_commit, whichever
+        was checked last), so a check the newest candidate did not read is not passed by an older commit's reading."""
+        release = piece["kind"] == "release"
+        commit = self._release_commit(db, piece) if release else None
         for check_id in stage["gate"].get("checks") or []:
             row = db.execute("SELECT r.result FROM check_readings r INDEXED BY readings_by_piece JOIN check_runs u ON u.id=r.run_id "
-                             "WHERE r.piece_id=? AND r.check_id=? ORDER BY u.started_ms DESC LIMIT 1", (piece["id"], check_id)).fetchone()
+                             "WHERE r.piece_id=? AND r.check_id=? AND (NOT ? OR u.commit_sha IS ?) ORDER BY u.started_ms DESC LIMIT 1",
+                             (piece["id"], check_id, release, commit)).fetchone()
             if row is None or row[0] != "passed":
                 return False
         return True

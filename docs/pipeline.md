@@ -85,12 +85,15 @@ writes those readings for the candidate before it moves the release piece from
 ### The release
 
 An outcome whose pipeline is on and ships in releases has at most one release at
-a time: its open release piece that still holds an item no release record names.
-Everything that means "the release" asks that one rule (`_the_release`):
-`combine`, taking items back from a held release, which candidate run is the
-release's, the head's Next release, the deploy's read (`checks --live`) and its
-move into `deploy`, the release check's `--report`, and which piece a
-candidate's readings name.
+a time: its open release piece that no release record names. A record names a
+release piece when it records a commit the piece was combined at or checked at,
+or one of the items still in it. Everything that means "the release" asks that
+one rule (`_the_release`): `combine`, taking items back from a held release,
+moving or noting a release piece (`stage_enter` and `stage_note` refuse
+`PIECE_CLOSED` for any other), the piece an item is being built in, which
+candidate run is the release's, the head's Next release, the deploy's read
+(`checks --live`) and its move into `deploy`, the release check's `--report`,
+and which piece a candidate's readings name.
 
 - Its number is not stored: it is the last release a record names, plus one, so a
   number is spent only when a deploy records it.
@@ -99,8 +102,14 @@ candidate's readings name.
   optional `release_number` must be that number (`RELEASE_NUMBER`).
 - A release ends when every item has gone back to building (its entry is left
   `held`, "Every item went back to building"), when every item is dropped (left
-  `dropped`), or when a release record names its items, which ships it. A piece
-  that ended never held a number, so the work combined next is that same release.
+  `dropped`), or when a release record names it, which ships it, whatever items
+  the record names or leaves out (`deploy --no-items`, or a trailer that missed
+  one). A piece that ended never held a number, so the work combined next is that
+  same release. An item a shipped release's record left out has not shipped: it
+  is in no piece, and starting a piece for it leaves the shipped release
+  `returned`, as from a held one.
+- The gate (D18) reads a release piece's readings at its commit: the newest
+  commit checked for it, else the one `combine` was given.
 - Only the release check's own run of a candidate reads for the release:
   `record-checks` names the release on the run's readings and refuses a run that
   names a piece itself, and a member's report, a trial or a base rerun names none.
