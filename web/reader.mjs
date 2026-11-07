@@ -4,6 +4,7 @@ import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
 import { timeNode } from './times.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices, sourceChange } from './writing-helpers.mjs';
+import { paintImageRows } from './image-rows.mjs';
 import { WritingInput, onMac, selectAllKey } from './writing-input.mjs';
 import { paintChanges } from './page-changes.mjs';
 import { wordNodes, webLinks } from './links.mjs';
@@ -504,26 +505,16 @@ export class Reader {
     const uploads = editor?.context.kind === 'reply' ? this.callbacks.uploads?.(editor) : null;
     if (!uploads) { this.drawAttachments(host, editor?.draft.attachments); return; }
     const presentation = this.presentation, active = this.admits(editor, presentation);
-    const entries = imageChoices(uploads, active), ids = new Set(entries.map(e => e.id));
-    for (const row of [...host.children]) if (!ids.has(row.dataset.selection)) row.remove();
-    for (const e of entries) {
-      let row = [...host.children].find(r => r.dataset.selection === e.id);
-      if (!row) { row = node('div', undefined, 'image-choice'); row.dataset.selection = e.id; host.append(row); }
-      if (row.dataset.view === e.view) continue;
-      row.dataset.view = e.view; row.replaceChildren(node('span', e.text));
-      const action = (label, act) => {
-        const b = node('button', label); b.type = 'button';
-        b.disabled = !active;
-        b.onclick = async () => { if (!this.admits(editor, presentation)) return; b.disabled = true; try { await act(b); } catch (error) { if (this.admits(editor, presentation)) this.notice(error.message); } finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); } };
-        row.append(b);
-      };
-      for (const item of e.actions) action(item.label, async b => {
+    paintImageRows(host, imageChoices(uploads, active), active, async (item, e, b) => {
+      try {
+        if (!this.admits(editor, presentation)) return;
         await uploads[item.method](e.id);
         // Remove takes its own button away; focus lands on Add image only if it
         // was still there. Where the person has since put it, it stays.
         if (item.method === 'remove' && this.admits(editor, presentation) && [null, document.body, b].includes(document.activeElement)) this.$('add-image').focus();
-      });
-    }
+      } catch (error) { if (this.admits(editor, presentation)) this.notice(error.message); }
+      finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); }
+    });
   }
 
   paintStatus() {

@@ -1,5 +1,6 @@
 import { paintAddress } from './people.mjs';
 import { recipientChoices, writingState, pasteImageError, namedPastedImage, imageChoices } from './writing-helpers.mjs';
+import { paintImageRows } from './image-rows.mjs';
 import { WritingInput } from './writing-input.mjs';
 import { paintChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
 
@@ -136,29 +137,18 @@ export class InlineComposer {
   }
   paintImages() {
     const p = this.presentation, editor = this.editor, uploads = this.callbacks.uploads(editor), host = this.$('attachments');
-    const active = this.admits(p, editor) && !this.state().readOnly, choices = imageChoices(uploads, active), ids = new Set(choices.map(e => e.id));
-    for (const row of [...host.children]) if (!ids.has(row.dataset.selection)) row.remove();
-    for (const choice of choices) {
-      let row = [...host.children].find(el => el.dataset.selection === choice.id);
-      if (!row) { row = node('div', undefined, 'image-choice'); row.dataset.selection = choice.id; host.append(row); }
-      if (row.dataset.view === choice.view) continue;
-      row.dataset.view = choice.view; row.replaceChildren(node('span', choice.text));
-      for (const action of choice.actions) {
-        const control = node('button', action.label); control.type = 'button'; control.disabled = !active;
-        control.onclick = async () => {
-          if (!this.admits(p, editor) || this.state().readOnly) return;
-          control.disabled = true;
-          try {
-            await uploads[action.method](choice.id);
-            // Remove takes its own button away; focus lands on Add image only if
-            // it was still there. Where the person has since put it, it stays.
-            if (action.method === 'remove' && this.admits(p, editor) && [null, document.body, control].includes(document.activeElement)) this.$('add-image').focus();
-          }
-          catch (error) { this.notice(error.message, p, editor); }
-          finally { if (control.isConnected) control.disabled = !this.admits(p, editor) || this.state().readOnly; this.paintStatus(); }
-        }; row.append(control);
+    const active = this.admits(p, editor) && !this.state().readOnly;
+    paintImageRows(host, imageChoices(uploads, active), active, async (action, choice, control) => {
+      try {
+        if (!this.admits(p, editor) || this.state().readOnly) return;
+        await uploads[action.method](choice.id);
+        // Remove takes its own button away; focus lands on Add image only if
+        // it was still there. Where the person has since put it, it stays.
+        if (action.method === 'remove' && this.admits(p, editor) && [null, document.body, control].includes(document.activeElement)) this.$('add-image').focus();
       }
-    }
+      catch (error) { this.notice(error.message, p, editor); }
+      finally { if (control.isConnected) control.disabled = !this.admits(p, editor) || this.state().readOnly; this.paintStatus(); }
+    });
   }
   paintStatus() {
     if (!this.editor) return;
