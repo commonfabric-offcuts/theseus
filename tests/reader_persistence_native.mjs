@@ -715,7 +715,9 @@ try {
           await p.key('z', 4); assert.equal(await field(p), original, 'native Undo survives retirement');
           await until(async () => (await privateState())[kind === 'reply' ? 'draft' : 'note']?.body === original && !(await scoped(p)).length, 'Undo separately saved');
         }
-        await p.key('Enter', 4); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'ordinary saved note close');
+        // Done hands the saved note back to the reply; closing then leaves nothing scoped.
+        await p.key('Enter', 4); await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#toggle-note').textContent !== 'Back to reply'`), 'ordinary saved note hands back to the reply');
+        await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader closed');
         assert.equal((await scoped(p)).length, 0); assert.deepEqual(p.errors, []);
       });
 
@@ -1107,7 +1109,7 @@ try {
           assert.match(await p.evaluate('document.querySelector("#reader-notice").textContent'), /opening the other message was cancelled/, 'newer mode choice visibly cancels navigation');
           await p.release(held);
           assert.ok((await sourceText(p)).startsWith('Source 0 '));
-          assert.equal(await p.evaluate('document.querySelector("#writing-title").textContent'), action === 'mode' ? 'Private note' : 'Reply');
+          assert.equal(await p.evaluate('document.querySelector("#toggle-note").textContent'), action === 'mode' ? 'Back to reply' : 'Add note');
           if (action === 'quote') assert.ok((await field(p)).endsWith('> Source 0 exact passage. \n\n'));
           assert.deepEqual(p.errors, []); await p.close();
         }
@@ -1127,7 +1129,7 @@ try {
         await observeURLs(p); await openAttachment(p, 'passive.png');
         const media = await started(p, 'media', facts.sources[0]);
         const mediaResponse = await until(() => p.held.find(entry => entry.event.request.url.endsWith('/api/media/read')), 'X media held');
-        await p.point('#source-body'); await p.key('ArrowRight', 4);
+        await p.point('#source-body'); await p.key('ArrowUp', 4);
         const heldY = await until(() => p.held.find(entry => entry.payload?.name === 'source'), 'Y source held');
         const openingY = await started(p, 'open', facts.sources[1]);
         assert.equal((await callState(p, openingY.id)).settled, false);
@@ -1161,7 +1163,7 @@ try {
         assert.equal((await callState(p, openingY.id)).settled, false, 'old Y stays held while restored X media is accepted');
         await p.release(heldY); await settled(p, openingY);
         assert.ok((await sourceText(p)).startsWith('Source 0 '), 'cancelled Y cannot replace restored X');
-        assert.equal(await p.evaluate('document.querySelector("#writing-title").textContent'), 'Private note');
+        assert.equal(await p.evaluate('document.querySelector("#toggle-note").textContent'), 'Back to reply');
         assert.deepEqual(p.errors, []);
       });
 
@@ -1351,8 +1353,12 @@ try {
       assert.equal(await p.evaluate('document.querySelector("#save-state").textContent'), 'Saved to Theseus');
       const reply = await field(p);
       await p.point('#toggle-note'); await p.send('Input.insertText', { text: 'Private native note' }); await p.key('Enter', 4);
-      await until(() => p.evaluate('!document.querySelector("#reader").open'), 'confirmed note close');
+      // A confirmed note leaves the Reader open, back on the reply as it was.
+      await until(() => p.evaluate("document.querySelector('#toggle-note').textContent === 'Show note'"), 'confirmed note hands back to the reply');
       assert.equal((await privateState()).note.body, 'Private native note'); assert.equal((await privateState()).draft.body, reply);
+      assert.deepEqual(await p.evaluate("({open:document.querySelector('#reader').open,active:document.activeElement.id,body:document.querySelector('#writing-body').value})"),
+        { open: true, active: 'writing-body', body: reply }, 'the saved note keeps the Reader open on the reply');
+      await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'reader closed');
       assert.equal(await p.evaluate('document.activeElement.dataset.id'), facts.sources[1].id);
       await p.open(1); assert.equal(await field(p), reply);
       await p.point('#reader-layout');
@@ -1396,7 +1402,7 @@ try {
       assert.equal(await field(p), '', 'new B is visible immediately after the send act');
       await p.send('Input.insertText', { text: 'Native delayed B' });
       await until(() => p.held[0], 'held real prepare response');
-      await p.point('#source-body'); await p.key('ArrowLeft', 4);
+      await p.point('#source-body'); await p.key('ArrowDown', 4);
       await until(() => p.evaluate('document.querySelector("#source-body").textContent.startsWith("Source 0 ")'), 'neighbor Y');
       await p.point('#source-body'); const focused = await p.evaluate('document.activeElement.id');
       const original = p.held[0].payload; await p.release(p.held[0]);

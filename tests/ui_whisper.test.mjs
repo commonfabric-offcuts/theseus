@@ -251,7 +251,7 @@ test('the Reader says a whisper is one, from the reader\'s side, and its words w
   f.r.paintOrigin({ author: 'tony', source_ref: { kind: 'message', id: 'm-v' }, whisper: true, private_to: 'aim-ux' });
   assert.equal(origin(), 'tony · Whisper to aim-ux');
   f.r.paintOrigin({ author: 'fable', source_ref: { kind: 'message', id: 'm-t' }, whisper: false });
-  assert.deepEqual([origin(), f.r.sourceBody.classList.contains('whispering')], ['fable · Message', false]);
+  assert.deepEqual([origin(), f.r.sourceBody.classList.contains('whispering')], ['fable', false], 'an ordinary message names its author alone, with no "Message"');
 });
 
 const admission = { version: 1, header: 'X-AIM-Read-Class', foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 }, background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } };

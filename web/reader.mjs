@@ -674,10 +674,11 @@ export class Reader {
   notice(text) { this.$('reader-notice').textContent = text; this.$('reader-notice').hidden = !text; }
 
   // Done, by its button or ⌘ Return, waits for a step as sending does. The
-  // note saves as it is written; Done confirms the save. A saved note leaves the Reader open and goes back to the reply as it was,
-  // where the note's button shows the note is there. A note not saved stays
-  // in front, its writing kept, and says so; a step or close that began
-  // meanwhile goes on undisturbed.
+  // note saves as it is written; Done confirms the save. A saved note leaves
+  // the Reader open and goes back to the reply as it was, where the note's
+  // button shows the note is there. A note not saved stays in front, its
+  // writing kept, and says so; a step or close that began meanwhile goes on
+  // undisturbed.
   async saveNote() {
     if (!this.admits()) { if (this.writes()) this.notice(STEP_WAITS); return; }
     const editor = this.editor, presentation = this.presentation;

@@ -65,7 +65,8 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
       await p.key('a',4);
       const chosen=await p.evaluate('String(getSelection())');
       assert.equal(chosen,message,`${focus}: the message's words alone`);
-      for(const control of ['Quote selection','Topic','Wide','Send','Private note','Add image'])assert.equal(chosen.includes(control),false,`${focus}: ${control} is not selected`);
+      const heading=await p.evaluate("document.querySelector('#reader-title').textContent");
+      for(const control of ['Quote selection',heading,'Wide','Send','Add note','Add image'])assert.equal(chosen.includes(control),false,`${focus}: ${control} is not selected`);
       assert.equal(await p.evaluate("document.querySelector('#writing-body').value"),kept+' and more','selecting the message leaves the writing as it was');
     }
     await shot(p,'select-all-reader');

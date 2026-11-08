@@ -45,7 +45,7 @@ NATIVE_STEPS = tuple(
     + [NativeStep("openings", "tests/reader_openings_native.mjs", (), "native.json"),
        NativeStep("reader", READER, (), "results.json")]
     + [NativeStep("reader-" + mode, READER, ("--" + mode,), "results.json")
-       for mode in ("keyboard", "review-gaps", "anchor-control", "mutations")])
+       for mode in ("keyboard", "review-gaps", "anchor-control", "mutations", "finished")])
 UNIT_STEPS = ("python-units", "node-units")
 REQUIRED = UNIT_STEPS + tuple("native-" + step.name for step in NATIVE_STEPS)
 TOOL = "theseus-release-check"

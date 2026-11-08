@@ -18,7 +18,8 @@ let reader;
 const callbacks = {
   edit: editor => events.push({ type: 'edit', kind: editor.context.kind, body: editor.draft.body }),
   send: (editor, options) => events.push({ type: 'send', body: editor.draft.body, ...options }),
-  saveNote: async editor => { events.push({ type: 'note', body: editor.draft.body }); await reader.close(); },
+  // As the app's own: a note saved is true, and the Reader stays open.
+  saveNote: async editor => { events.push({ type: 'note', body: editor.draft.body }); return true; },
   close: async (_sessions, reason) => { events.push({ type: 'close', reason }); return true; },
   step: direction => events.push({ type: 'step', direction }),
   destination: topic => events.push({ type: 'destination', topic }),

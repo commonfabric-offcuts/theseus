@@ -401,6 +401,12 @@ class NativeCoverage(unittest.TestCase):
         self.assertEqual((steps["pipeline"].harness, steps["pipeline"].flags), (release_check.PERSISTENCE, ("--pipeline",)))
         self.assertIn("native-pipeline", release_check.REQUIRED)
 
+    def test_the_finished_reader_mode_is_a_step(self):
+        # The Reader and reply box, finished: heading, focus ring, note button, Done, arrows.
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual((steps["reader-finished"].harness, steps["reader-finished"].flags), (release_check.READER, ("--finished",)))
+        self.assertIn("native-reader-finished", release_check.REQUIRED)
+
     def test_every_harness_mode_is_a_step(self):
         steps = [(step.harness, tuple(step.flags)) for step in release_check.NATIVE_STEPS]
         self.assertEqual(len(steps), len(set(steps)), "a mode runs twice")
