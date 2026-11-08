@@ -10,12 +10,13 @@ shipped is read from the release records (releases.py), who placed an item
 from its newest added or moved event, when a piece started from its first
 stage entry.
 
-Seams until the rest of release 21 lands, each in one place:
-- a stage's gate may name checks, but checks are not records yet (item 14), so
-  a gate's checks are kept and shown and not enforced (_gate_open);
-- `from_release` (D35) needs check runs, so it is refused RELEASE_NOT_HELD;
-- the deploy does not yet close a release piece (7.2): a release piece whose
-  release has a record reads as shipped.
+A whisper is never where an item came from (private_source_refused).
+
+What pieces hold, how each piece ended and which topics the pipeline holds Done are derived state: every command that
+changes what a piece holds or whether its items shipped (piece_start and its return to building, combine, a drop,
+piece_finish, turning releases on or off, and a release record) appends its fact to the outcome's log
+(pipeline_facts) and then _settle writes the differences between pipeline_state.derive() of the facts and what is
+stored. derive() is one pure function of the facts, so the state never depends on which command ran last.
 """
 
 import json
@@ -25,12 +26,83 @@ import uuid
 
 from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _prefix
 from .delivery import _now_ms
-from . import outcome_rules
+from . import outcome_rules, pipeline_state
 from .work import work_by_topic
 from .standing_conversation import partial
 from .whispers import private_source_refused
 
 
+# A stage entry keeps its past: once left, nothing in it changes, but (version 30) the derived end _settle wrote on a
+# piece's last entry when a record overtakes a drop or a return to building: a piece of work's `dropped` or `shipped`, or an emptied
+# release's `held` or `dropped`, decided again as `shipped`, or as `held` saying what took the release's items. When and by
+# whom it was left stay.
+_KEEPS_ITS_PAST = (
+    "CREATE TRIGGER entries_keep_their_past BEFORE UPDATE ON pipeline_stage_entries "
+    "WHEN %s OR NEW.seq IS NOT OLD.seq OR NEW.piece_id IS NOT OLD.piece_id OR NEW.stage_id IS NOT OLD.stage_id "
+    "OR NEW.round IS NOT OLD.round OR NEW.size IS NOT OLD.size OR NEW.entered_ms IS NOT OLD.entered_ms OR NEW.entered_by IS NOT OLD.entered_by "
+    "OR NEW.ask_message_id IS NOT OLD.ask_message_id BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END")
+_DECIDED_AGAIN = (
+    "(OLD.left_ms IS NOT NULL AND NOT (NEW.left_ms IS OLD.left_ms AND NEW.left_by IS OLD.left_by AND NEW.note IS OLD.note "
+    "AND NEW.progress IS OLD.progress AND NOT EXISTS (SELECT 1 FROM pipeline_stage_entries e WHERE e.piece_id=OLD.piece_id AND e.seq>OLD.seq) "
+    "AND (((SELECT kind FROM pipeline_pieces WHERE id=OLD.piece_id)='piece' AND OLD.left_outcome IN ('dropped','shipped') "
+    "AND NEW.left_outcome='shipped') OR ((SELECT kind FROM pipeline_pieces WHERE id=OLD.piece_id)='release' "
+    "AND OLD.left_outcome IN ('dropped','held') AND NEW.left_outcome IN ('held','shipped')))))")
+PIPELINE_DECIDED_AGAIN_UP = ("DROP TRIGGER entries_keep_their_past", _KEEPS_ITS_PAST % _DECIDED_AGAIN)
+PIPELINE_DECIDED_AGAIN_DOWN = ("DROP TRIGGER entries_keep_their_past", _KEEPS_ITS_PAST % "OLD.left_ms IS NOT NULL")
+# D24: a stage that waits on the owner's word is left only by the owner. From version 30 a release record also leaves
+# it: what a record names has shipped wherever it is, so the end it writes is nobody's, at the moment of a record or of
+# turning releases on (which takes the records already written) in that outcome's facts; nothing else leaves by nobody.
+_LEAVES_BY_THE_OWNER = (
+    "CREATE TRIGGER entries_leave_by_the_owner BEFORE UPDATE OF left_ms ON pipeline_stage_entries "
+    "WHEN NEW.left_ms IS NOT NULL "
+    "AND (SELECT json_extract(gate,'$.owner') FROM pipeline_stages WHERE workspace_id=OLD.workspace_id AND stage_id=OLD.stage_id) "
+    "AND NEW.left_by IS NOT (SELECT owner_id FROM workspaces WHERE id=OLD.workspace_id) "
+    "%sBEGIN SELECT RAISE(ABORT, 'STAGE_GATED'); END")
+_BY_A_RECORD = (
+    "AND NOT (NEW.left_by IS NULL AND EXISTS (SELECT 1 FROM pipeline_facts f WHERE f.workspace_id=OLD.workspace_id AND f.ms=NEW.left_ms "
+    "AND (f.kind='record' OR (f.kind='ships' AND json_extract(f.payload,'$.on'))))) ")
+# Version 30: each outcome's pipeline facts, in the order they happened, which the derived state is computed from
+# (pipeline_state), and the topics the pipeline holds Done (derived, like the member rows and a piece's end).
+PIPELINE_FACTS_SCHEMA = [
+    "CREATE TABLE pipeline_facts (seq INTEGER PRIMARY KEY AUTOINCREMENT, workspace_id TEXT NOT NULL REFERENCES pipelines(workspace_id), "
+    "kind TEXT NOT NULL CHECK(kind IN ('ships','start','combine','drop','finish','record')), ms INTEGER NOT NULL, by TEXT REFERENCES actors(id), "
+    "payload TEXT NOT NULL)",
+    "CREATE INDEX pipeline_fact_order ON pipeline_facts(workspace_id, seq)",
+    "CREATE TRIGGER facts_stay_u BEFORE UPDATE ON pipeline_facts BEGIN SELECT RAISE(ABORT, 'a fact keeps its past'); END",
+    "CREATE TRIGGER facts_stay_d BEFORE DELETE ON pipeline_facts BEGIN SELECT RAISE(ABORT, 'a fact keeps its past'); END",
+    "CREATE TABLE pipeline_done_topics (topic_id TEXT PRIMARY KEY REFERENCES topics(id), workspace_id TEXT NOT NULL, release INTEGER NOT NULL)",
+    "CREATE INDEX done_topics_of ON pipeline_done_topics(workspace_id, topic_id)",
+    "DROP TRIGGER entries_leave_by_the_owner",
+    _LEAVES_BY_THE_OWNER % _BY_A_RECORD,
+]
+# Upgrading writes version 29's pipeline as facts, in time order: each piece's start and each release's combine (from
+# their first stage entry and member rows), every move into Dropped, each finish, each change to shipping in releases,
+# and every release record. Version 29 never closed a piece by a record, so its member rows and entries are the acts
+# alone; the first pipeline write after the upgrade writes the state they derive.
+PIPELINE_FACTS_BACKFILL = (
+    "INSERT INTO pipeline_facts(workspace_id,kind,ms,by,payload) SELECT workspace_id,kind,ms,by,payload FROM ("
+    "SELECT p.workspace_id AS workspace_id,'start' AS kind,e.entered_ms AS ms,e.entered_by AS by,"
+    "json_object('piece',p.id,'numbers',(SELECT json_group_array(m.number) FROM pipeline_piece_members m WHERE m.piece_id=p.id),"
+    "'from_release',NULL) AS payload,1 AS rank,e.seq AS tie FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id "
+    "AND e.seq=(SELECT min(seq) FROM pipeline_stage_entries WHERE piece_id=p.id) WHERE p.kind='piece' "
+    "UNION ALL SELECT p.workspace_id,'combine',e.entered_ms,e.entered_by,"
+    "json_object('release',p.id,'pieces',(SELECT json_group_array(DISTINCT s.piece_id) FROM pipeline_piece_members s "
+    "JOIN pipeline_piece_members r ON r.workspace_id=s.workspace_id AND r.number=s.number WHERE r.piece_id=p.id AND s.left_reason='combined' "
+    "AND s.left_ms=e.entered_ms),'numbers',(SELECT json_group_array(m.number) FROM pipeline_piece_members m WHERE m.piece_id=p.id)),2,e.seq "
+    "FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id AND e.seq=(SELECT min(seq) FROM pipeline_stage_entries WHERE piece_id=p.id) "
+    "WHERE p.kind='release' "
+    "UNION ALL SELECT workspace_id,'drop',ms,by,json_object('number',number),3,seq FROM pipeline_events WHERE kind='moved' AND number IS NOT NULL "
+    "AND json_extract(payload,'$.after.section')='dropped' AND json_extract(payload,'$.before.section') IS NOT 'dropped' "
+    "UNION ALL SELECT workspace_id,'finish',left_ms,left_by,json_object('piece',piece_id),4,seq FROM pipeline_stage_entries WHERE left_outcome='done' "
+    "UNION ALL SELECT workspace_id,'ships',ms,by,json_object('on',json(CASE WHEN json_extract(payload,'$.after.ships_in_releases') THEN 'true' ELSE 'false' END)),"
+    "0,seq FROM pipeline_events WHERE kind='configured' "
+    "AND json_extract(payload,'$.after.ships_in_releases') IS NOT json_extract(payload,'$.before.ships_in_releases') "
+    "UNION ALL SELECT w.workspace_id,'record',r.recorded_ms,NULL,json_object('release',r.number),5,r.number FROM releases r, pipelines w"
+    ") ORDER BY ms, rank, tie")
+# An instance with no pipeline has nothing to write, and keeps no count of facts a fresh instance lacks.
+PIPELINE_FACTS_COUNT = "DELETE FROM sqlite_sequence WHERE name='pipeline_facts' AND seq=0"
+PIPELINE_FACTS_DOWN = ("DROP TRIGGER entries_leave_by_the_owner", _LEAVES_BY_THE_OWNER % "", "DROP TABLE pipeline_done_topics",
+                       "DROP TABLE pipeline_facts")
 PIPELINE_SCHEMA = [
     "CREATE TABLE pipelines (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id), "
     "enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), title TEXT NOT NULL, unit_one TEXT NOT NULL, unit_many TEXT NOT NULL, "
@@ -68,10 +140,7 @@ PIPELINE_SCHEMA = [
     "CREATE INDEX open_entries ON pipeline_stage_entries(workspace_id, piece_id) WHERE left_ms IS NULL",
     "CREATE INDEX stage_history ON pipeline_stage_entries(workspace_id, stage_id, size, round > 1, left_ms DESC) WHERE left_ms IS NOT NULL",
     "CREATE INDEX held_stage_asks ON pipeline_stage_entries(ask_message_id) WHERE ask_message_id IS NOT NULL AND left_ms IS NULL",
-    "CREATE TRIGGER entries_keep_their_past BEFORE UPDATE ON pipeline_stage_entries "
-    "WHEN OLD.left_ms IS NOT NULL OR NEW.seq IS NOT OLD.seq OR NEW.piece_id IS NOT OLD.piece_id OR NEW.stage_id IS NOT OLD.stage_id "
-    "OR NEW.round IS NOT OLD.round OR NEW.size IS NOT OLD.size OR NEW.entered_ms IS NOT OLD.entered_ms OR NEW.entered_by IS NOT OLD.entered_by "
-    "OR NEW.ask_message_id IS NOT OLD.ask_message_id BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END",
+    _KEEPS_ITS_PAST % "OLD.left_ms IS NOT NULL",
     "CREATE TRIGGER entries_stay BEFORE DELETE ON pipeline_stage_entries BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END",
     # D24: a stage that waits on the owner's word is entered only with an ask to the
     # owner by whoever enters it, in the piece's topic, and left only by the owner.
@@ -83,11 +152,7 @@ PIPELINE_SCHEMA = [
     "AND w.id=p.workspace_id AND m.topic_id=p.topic_id AND m.author_id=NEW.entered_by AND m.intent='ask' "
     "AND EXISTS (SELECT 1 FROM json_each(m.addressees) a WHERE a.value=w.owner_id)) "
     "BEGIN SELECT RAISE(ABORT, 'ASK_REQUIRED'); END",
-    "CREATE TRIGGER entries_leave_by_the_owner BEFORE UPDATE OF left_ms ON pipeline_stage_entries "
-    "WHEN NEW.left_ms IS NOT NULL "
-    "AND (SELECT json_extract(gate,'$.owner') FROM pipeline_stages WHERE workspace_id=OLD.workspace_id AND stage_id=OLD.stage_id) "
-    "AND NEW.left_by IS NOT (SELECT owner_id FROM workspaces WHERE id=OLD.workspace_id) "
-    "BEGIN SELECT RAISE(ABORT, 'STAGE_GATED'); END",
+    _LEAVES_BY_THE_OWNER % "",
     "CREATE TABLE message_subjects (message_id TEXT NOT NULL REFERENCES messages(id), workspace_id TEXT NOT NULL, "
     "kind TEXT NOT NULL CHECK(kind IN ('item','check')), ref TEXT NOT NULL, PRIMARY KEY(message_id, kind, ref))",
     "CREATE INDEX subject_ref ON message_subjects(workspace_id, kind, ref, message_id)",
@@ -212,9 +277,113 @@ class Pipeline:
                           (item["workspace_id"], item["number"])).fetchone()
         return {"done_ms": done[0]} if done else None
 
+    def _next_release(self, db):
+        """The number the next release ships as: one past the last a release record names (1 before any). A number is spent
+        only when a deploy records it, so a release piece that ended or was emptied never held one."""
+        return db.execute("SELECT coalesce(max(number),0)+1 FROM releases").fetchone()[0]
+
+    def _the_release(self, db, workspace_id):
+        """THE RELEASE (3.4): the outcome's open release piece, with its open entry, and as its release_number the number it
+        ships as (_next_release); None without one. A release piece is open until the event that ends it closes its entry
+        (every item gone from it, or its own record written: the derived state, which _settle writes), so nothing here reads records or
+        settings: combine makes one only while there is none, and configure keeps the pipeline on and shipping in releases
+        while there is one. Every reader and writer of "the release" asks here."""
+        row = db.execute("SELECT p.*,e.stage_id,e.round,e.progress,e.entered_ms FROM pipeline_stage_entries e INDEXED BY open_entries "
+                         "JOIN pipeline_pieces p ON p.id=e.piece_id WHERE e.workspace_id=? AND e.left_ms IS NULL AND p.kind='release' "
+                         "ORDER BY p.rowid LIMIT 1", (workspace_id,)).fetchone()
+        return dict(row, release_number=self._next_release(db)) if row else None
+
+    def _fact(self, db, workspace_id, kind, ms, by, payload):
+        """Appends one fact to the outcome's log (pipeline_facts): what derive() reads, in the order it happened."""
+        db.execute("INSERT INTO pipeline_facts(workspace_id,kind,ms,by,payload) VALUES (?,?,?,?,?)", (workspace_id, kind, ms, by, _json(payload)))
+
+    def _ship_release(self, db, release):
+        """7.2 step 11, in the transaction that writes a release record: the record is a fact of every outcome with a
+        pipeline (one that does not ship in releases takes it when it turns releases on), and each outcome's state is
+        derived again. Which release piece it ships, and what it ships from where, is derive()'s (pipeline_state)."""
+        for (workspace_id,) in db.execute("SELECT workspace_id FROM pipelines ORDER BY workspace_id").fetchall():
+            self._fact(db, workspace_id, "record", release["recorded_ms"], None, {"release": release["release"]})
+            self._settle(db, workspace_id)
+
+    def _settle(self, db, workspace_id):
+        """THE DERIVED STATE, written (docs/pipeline.md, "The derived state"). Every write that appends a fact then calls
+        this, in its own transaction: it derives the outcome's whole pipeline state from its facts alone
+        (pipeline_state.derive) and writes only what differs from what is stored: the pieces' member rows, the end of each
+        piece no act closed (with when it ended and whose act it was, kept once written: the database allows a later end
+        to change only how it ended), and the topics the pipeline holds Done. Nothing else writes these, so what is
+        stored is always derive() of the facts so far, whatever order they came in.
+
+        A topic the pipeline newly holds Done is set Done by nobody, "Shipped in release N", unless someone has already
+        said it is done; one it no longer holds (work for it appeared again) goes back to active only while its Done is
+        the pipeline's own. A person's own word, a Done or a reopen, always stands. The database keeps the owner's word
+        on leaving a stage (D24): an end written by someone's act that cannot leave it refuses the write, and an end a
+        record wrote (nobody's) leaves any stage."""
+        state = pipeline_state.derive(pipeline_state.read_facts(db, workspace_id))
+        stored = {(row[0], row[1]): (row[2], row[3]) for row in db.execute(
+            "SELECT piece_id,number,left_ms,left_reason FROM pipeline_piece_members WHERE workspace_id=?", (workspace_id,))}
+        wanted = {(piece, number): (left_ms, reason) for piece, number, left_ms, reason in state.members}
+        if set(stored) - set(wanted):
+            raise pipeline_state.Inconsistent("Member rows no fact explains: %r" % sorted(set(stored) - set(wanted))[:5])
+        changed = set()
+        # Rows that leave are written first, so no item is held by two pieces at once (one_piece_per_item).
+        for leaving in (True, False):
+            for piece, number, left_ms, reason in state.members:
+                if (left_ms is not None) != leaving or stored.get((piece, number)) == (left_ms, reason):
+                    continue
+                if (piece, number) in stored:
+                    db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason=? WHERE piece_id=? AND number=?", (left_ms, reason, piece, number))
+                else:
+                    db.execute("INSERT INTO pipeline_piece_members VALUES (?,?,?,?,?)", (piece, workspace_id, number, left_ms, reason))
+                changed.add(piece)
+        last = {row["piece_id"]: row for row in db.execute(
+            "SELECT * FROM pipeline_stage_entries WHERE seq IN (SELECT max(seq) FROM pipeline_stage_entries WHERE workspace_id=? GROUP BY piece_id)",
+            (workspace_id,))}
+        for piece, end in state.ends.items():
+            entry = last[piece]
+            if end is None:
+                if entry["left_ms"] is not None:
+                    raise pipeline_state.Inconsistent("Piece %s is under way by its facts but its stage was left" % piece)
+                continue
+            outcome, note, ms, by = end
+            if entry["left_ms"] is None:
+                self._leave(db, by, entry, outcome, ms, note)
+            elif (entry["left_outcome"], entry["left_note"]) != (outcome, note):
+                self._entry_write(db, workspace_id, "UPDATE pipeline_stage_entries SET left_outcome=?,left_note=? WHERE seq=?", (outcome, note, entry["seq"]))
+            else:
+                continue
+            changed.add(piece)
+        for piece in sorted(changed):
+            db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece,))
+            self._bump(db, workspace_id, piece)
+        held = dict(db.execute("SELECT topic_id,release FROM pipeline_done_topics WHERE workspace_id=?", (workspace_id,)).fetchall())
+        for topic_id in sorted(set(held) | set(state.done_topics)):
+            new, old = state.done_topics.get(topic_id), held.get(topic_id)
+            if new == old:
+                continue
+            topic = db.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone()
+            # Done by nobody is the pipeline's own word; anyone's Done, or a reopen since, is theirs.
+            its_own = topic["state"] == "done" and topic["state_by"] is None and topic["state_message_id"] is None
+            if new is not None and (its_own or (old is None and topic["state"] != "done")):
+                self._set_topic_state(db, topic, None, {"state": "done", "note": "Shipped in release %d" % new})
+            elif new is None and its_own:
+                self._set_topic_state(db, topic, None, {"state": "active", "note": ""})
+            if new is None:
+                db.execute("DELETE FROM pipeline_done_topics WHERE topic_id=?", (topic_id,))
+            else:
+                db.execute("INSERT INTO pipeline_done_topics VALUES (?,?,?) ON CONFLICT(topic_id) DO UPDATE SET release=excluded.release",
+                           (topic_id, workspace_id, new))
+
     def _open_piece_of(self, db, workspace_id, number):
+        """The piece an item is in (3.4): its member row that has not left, open or closed. An item that shipped in a release,
+        or finished in a piece, stays in it."""
         return db.execute("SELECT p.* FROM pipeline_piece_members m JOIN pipeline_pieces p ON p.id=m.piece_id "
                           "WHERE m.workspace_id=? AND m.number=? AND m.left_ms IS NULL", (workspace_id, number)).fetchone()
+
+    def _moving_entry(self, db, piece):
+        entry = self._open_entry(db, piece["id"])
+        if entry is None:
+            raise Refusal("PIECE_CLOSED", "This piece of work has finished")
+        return entry
 
     def _open_entry(self, db, piece_id):
         return db.execute("SELECT * FROM pipeline_stage_entries WHERE piece_id=? AND left_ms IS NULL", (piece_id,)).fetchone()
@@ -371,6 +540,11 @@ class Pipeline:
         if settings["ships_in_releases"] and db.execute("SELECT 1 FROM pipelines WHERE ships_in_releases=1 AND workspace_id<>?",
                                                         (workspace["id"],)).fetchone():
             raise Refusal("RELEASES_TAKEN", "Another outcome's pipeline already ships in this instance's releases")
+        release = self._the_release(db, workspace["id"]) if not (settings["enabled"] and settings["ships_in_releases"]) else None
+        if release is not None:
+            # 3.4: what is in the release is a fact of the release, so what it rests on does not change under it.
+            raise Refusal("RELEASE_OPEN", "Release %d is still being put together; the pipeline stays on and ships in releases "
+                          "until it ships or every item has left it" % release["release_number"])
         values = (int(settings["enabled"]), settings["title"], settings["unit_one"], settings["unit_many"], int(settings["sized"]),
                   int(settings["ships_in_releases"]), _json(words))
         if current is None:
@@ -378,6 +552,12 @@ class Pipeline:
         else:
             db.execute("UPDATE pipelines SET enabled=?,title=?,unit_one=?,unit_many=?,sized=?,ships_in_releases=?,section_words=? "
                        "WHERE workspace_id=?", values + (workspace["id"],))
+        if bool(current and current["ships_in_releases"]) != settings["ships_in_releases"]:
+            # Whether the records name this outcome's items is what shipping in releases means. Turned on, every record
+            # written so far is the outcome's, and ships what it names wherever it is still being built (no release is
+            # open: combine needs releases on, and configure keeps them on while one is).
+            self._fact(db, workspace["id"], "ships", _now_ms(), actor, {"on": settings["ships_in_releases"]})
+            self._settle(db, workspace["id"])
         self._event(db, workspace["id"], None, "configured", actor, {"before": before, "after": dict(settings, section_words=words)})
         version = self._bump(db, workspace["id"], "configured")
         return {"workspace_id": workspace["id"], "pipeline_revision": version, "enabled": settings["enabled"]}, [
@@ -578,9 +758,10 @@ class Pipeline:
                            "candidate_group", required=False, limit=200) if section == "candidates" else "")
             above, below = args.get("above"), args.get("below")
         piece = self._open_piece_of(db, workspace["id"], number)
+        entry = self._open_entry(db, piece["id"]) if piece is not None else None
         # An item being built stays in Now (D26), whether it is moved by section or by an Undo:
         # it leaves only by being dropped, which stops work under way and so is confirmed (D3).
-        if section != item["section"] and piece is not None and self._open_entry(db, piece["id"]) is not None:
+        if section != item["section"] and entry is not None:
             if section != "dropped":
                 raise Refusal("ITEM_IN_PIECE", "%d is being built now, so it stays in %s until it is dropped or its piece is done"
                               % (number, item["section"].capitalize()))
@@ -593,18 +774,16 @@ class Pipeline:
         position = self._place(db, workspace["id"], number, section, group, above, below)
         db.execute("UPDATE pipeline_items SET section=?,candidate_group=?,position=?,version=version+1 WHERE workspace_id=? AND number=?",
                    (section, group, position, workspace["id"], number))
-        if section == "dropped" and piece is not None:
-            # D25: the item leaves its piece; the piece ends only when no item is left.
-            db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='dropped' WHERE piece_id=? AND number=?",
-                       (ms, piece["id"], number))
-            entry = self._open_entry(db, piece["id"])
-            if entry is not None and not self._members(db, piece["id"]):
-                self._leave(db, actor, entry, "dropped", ms)
         moved = self._item_row(db, workspace["id"], number)
         after = self._neighbours(db, moved)
         relative = {"above": above} if above is not None else {"below": below} if below is not None else None
         seq = self._event(db, workspace["id"], number, "moved", actor,
                           {"before": before, "after": after, "relative": relative, "undo_of": undo_of, "because_message_id": because}, ms)
+        if section == "dropped" and item["section"] != "dropped":
+            # A drop, by a move or an Undo, is a fact (D25): the item leaves the piece under way (a finished piece keeps it),
+            # or ends the line of work it was in.
+            self._fact(db, workspace["id"], "drop", ms, actor, {"number": number})
+            self._settle(db, workspace["id"])
         version = self._bump(db, workspace["id"], number)
         return {"workspace_id": workspace["id"], "number": number, "section": section, "event": seq, "pipeline_revision": version}, []
 
@@ -618,10 +797,6 @@ class Pipeline:
         if row is None or (current and row["position"] is None):
             raise Refusal("STAGE_UNKNOWN", "This outcome has no stage %s" % stage_id)
         return dict(row, gate=_loads(row["gate"], {}))
-
-    def _gate_open(self, db, piece, stage):
-        """D18 for checks waits on item 14's check runs; until then a gate's checks are shown, not enforced."""
-        return True
 
     def _entry_write(self, db, workspace_id, sql, values):
         """Every stage entry is opened and closed here; the database keeps the owner's word (D24)."""
@@ -655,14 +830,25 @@ class Pipeline:
         if not isinstance(numbers, list) or not numbers or len(numbers) > 64:
             raise Refusal("INVALID_ARGUMENT", "A piece holds from 1 to 64 items")
         items = [self._item_row(db, workspace["id"], number) for number in dict.fromkeys(numbers)]
+        shipped = self._shipped_numbers(db) if pipeline["ships_in_releases"] else {}
+        for item in items:
+            if item["number"] in shipped:
+                # The records alone say what shipped: an item a release shipped is never built again (3.4).
+                raise Refusal("ITEM_SHIPPED", "%d shipped in release %d; it is not built again" % (item["number"], shipped[item["number"]]["release"]))
         if args.get("from_release"):
+            # D35: items of a held release go back to building; the rest is checked again as the next candidate.
             if actor not in (workspace["owner_id"], workspace["coordinator_id"]):
                 raise Refusal("FORBIDDEN", "Only the owner or the coordinator takes items back from a release")
-            raise Refusal("RELEASE_NOT_HELD", "No release is held: check runs come with the outcome's checks")
+            release = self._the_release(db, workspace["id"])
+            held = release is not None and self._release_held(db, workspace["id"])
+            for item in items:
+                piece = self._open_piece_of(db, workspace["id"], item["number"])
+                if not held or piece is None or piece["id"] != release["id"]:
+                    raise Refusal("RELEASE_NOT_HELD", "%d is not in a release the checks stopped" % item["number"])
         for item in items:
             if item["section"] != "now":
                 raise Refusal("NOT_IN_NOW", "Move %d to Now before starting work on it" % item["number"])
-            if self._open_piece_of(db, workspace["id"], item["number"]) is not None:
+            if not args.get("from_release") and self._open_piece_of(db, workspace["id"], item["number"]) is not None:
                 raise Refusal("ITEM_IN_PIECE", "%d is already in a piece of work" % item["number"])
         topic = self._topic(db, actor, args.get("topic_id"))
         if topic["workspace_id"] != workspace["id"]:
@@ -686,8 +872,11 @@ class Pipeline:
         piece_id = "p-" + uuid.uuid4().hex[:24]
         ms = _now_ms()
         db.execute("INSERT INTO pipeline_pieces VALUES (?,?,?,?,NULL,NULL,1)", (piece_id, workspace["id"], "piece", topic["id"]))
-        db.executemany("INSERT INTO pipeline_piece_members VALUES (?,?,?,NULL,NULL)", [(piece_id, workspace["id"], item["number"]) for item in items])
         self._enter(db, actor, {"id": piece_id, "workspace_id": workspace["id"]}, stage, round_number, size, ms, args.get("ask_message_id"))
+        # The piece takes its items, from the held release when they go back to building (D35).
+        self._fact(db, workspace["id"], "start", ms, actor, {"piece": piece_id, "numbers": [item["number"] for item in items],
+                                                             "from_release": release["id"] if args.get("from_release") else None})
+        self._settle(db, workspace["id"])
         version = self._bump(db, workspace["id"], piece_id)
         return {"piece_id": piece_id, "numbers": [item["number"] for item in items], "stage_id": stage["stage_id"], "pipeline_revision": version}, []
 
@@ -705,9 +894,7 @@ class Pipeline:
         piece, workspace = self._piece(db, actor, target["piece_id"])
         self._pipeline_on(db, workspace["id"])
         self._check_revision(envelope, "piece_revision", piece["version"])
-        entry = self._open_entry(db, piece["id"])
-        if entry is None:
-            raise Refusal("PIECE_CLOSED", "This piece of work has finished")
+        entry = self._moving_entry(db, piece)
         leaving = self._stage(db, workspace["id"], entry["stage_id"], current=False)
         stage = self._stage(db, workspace["id"], args.get("stage_id"))
         if stage["scope"] != ("release" if piece["kind"] == "release" else "piece"):
@@ -719,7 +906,8 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "round is a whole number from 1")
         if stage["stage_id"] == entry["stage_id"] and (stage["rounds"] == "none" or round_number != entry["round"] + 1):
             raise Refusal("INVALID_ARGUMENT", "Entering the same stage again is its next round, in a stage that has rounds")
-        if not self._gate_open(db, piece, leaving):
+        # D18 holds a piece in a gated stage; its next round there (D35: a new candidate after a stop) is not leaving it.
+        if stage["stage_id"] != entry["stage_id"] and not self._gate_open(db, piece, leaving):
             raise Refusal("STAGE_GATED", "This stage's checks have not passed")
         ms = _now_ms()
         self._leave(db, actor, entry, args["left_outcome"], ms, _text(args.get("left_note", ""), "left_note", required=False, limit=1024))
@@ -735,9 +923,7 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "A stage note is its words, and a release stage's progress")
         piece, workspace = self._piece(db, actor, target["piece_id"])
         self._check_revision(envelope, "piece_revision", piece["version"])
-        entry = self._open_entry(db, piece["id"])
-        if entry is None:
-            raise Refusal("PIECE_CLOSED", "This piece of work has finished")
+        entry = self._moving_entry(db, piece)
         progress = args.get("progress")
         if progress is not None:
             stage = self._stage(db, workspace["id"], entry["stage_id"], current=False)
@@ -758,9 +944,14 @@ class Pipeline:
         pipeline = self._pipeline_on(db, workspace["id"])
         if not pipeline["ships_in_releases"]:
             raise Refusal("NOT_A_RELEASE_PIPELINE", "This pipeline does not ship in releases")
-        release = _number(args.get("release_number"), "release_number")
-        if db.execute("SELECT 1 FROM releases WHERE number=?", (release,)).fetchone():
-            raise Refusal("RELEASE_EXISTS", "Release %d is already recorded" % release)
+        open_release = self._the_release(db, workspace["id"])
+        if open_release is not None:
+            # 3.4: one release at a time, so "the release" is one piece; approved work waits until it ships or ends.
+            raise Refusal("RELEASE_OPEN", "Release %d is still being put together (%s); combine once it ships or every item has left it"
+                          % (open_release["release_number"], self._stage(db, workspace["id"], open_release["stage_id"], current=False)["name"]))
+        release = self._next_release(db)
+        if args.get("release_number") is not None and _number(args["release_number"], "release_number") != release:
+            raise Refusal("RELEASE_NUMBER", "The next release is %d, one past the last one shipped" % release)
         topic = self._topic(db, actor, args.get("topic_id"))
         if topic["workspace_id"] != workspace["id"]:
             raise Refusal("TOPIC_OUTSIDE_OUTCOME", "The release's topic belongs to this outcome")
@@ -775,8 +966,9 @@ class Pipeline:
             raise Refusal("INVALID_ARGUMENT", "Name the approved pieces to combine")
         ms = _now_ms()
         release_id = "p-" + uuid.uuid4().hex[:24]
-        db.execute("INSERT INTO pipeline_pieces VALUES (?,?,'release',?,?,?,1)",
-                   (release_id, workspace["id"], topic["id"], release, args.get("commit_sha")))
+        # No number is stored: the release's number is _next_release's while it is the release (3.4).
+        db.execute("INSERT INTO pipeline_pieces VALUES (?,?,'release',?,NULL,?,1)",
+                   (release_id, workspace["id"], topic["id"], args.get("commit_sha")))
         numbers = []
         for piece_id in dict.fromkeys(piece_ids):
             piece, _ = self._piece(db, actor, piece_id)
@@ -788,11 +980,10 @@ class Pipeline:
                               % (piece_id, self._stage(db, workspace["id"], entry["stage_id"], current=False)["name"],
                                  waiting[0]["name"] if waiting else "the last stage a piece goes through"))
             self._leave(db, actor, entry, "combined", ms)
-            for number in self._members(db, piece["id"]):
-                db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='combined' WHERE piece_id=? AND number=?", (ms, piece["id"], number))
-                db.execute("INSERT INTO pipeline_piece_members VALUES (?,?,?,NULL,NULL)", (release_id, workspace["id"], number))
-                numbers.append(number)
+            numbers += self._members(db, piece["id"])
         self._enter(db, actor, {"id": release_id, "workspace_id": workspace["id"]}, first, 1, None, ms, args.get("ask_message_id"))
+        self._fact(db, workspace["id"], "combine", ms, actor, {"release": release_id, "pieces": list(dict.fromkeys(piece_ids)), "numbers": numbers})
+        self._settle(db, workspace["id"])
         version = self._bump(db, workspace["id"], release_id)
         return {"piece_id": release_id, "release_number": release, "numbers": numbers, "pipeline_revision": version}, []
 
@@ -808,18 +999,27 @@ class Pipeline:
         entry = self._open_entry(db, piece["id"])
         if entry is None:
             raise Refusal("PIECE_CLOSED", "This piece of work has finished")
-        self._leave(db, actor, entry, "done", _now_ms(), _text(args.get("note", ""), "note", required=False, limit=1024))
+        ms = _now_ms()
+        self._leave(db, actor, entry, "done", ms, _text(args.get("note", ""), "note", required=False, limit=1024))
+        self._fact(db, workspace["id"], "finish", ms, actor, {"piece": piece["id"]})
+        self._settle(db, workspace["id"])
         db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece["id"],))
         version = self._bump(db, workspace["id"], piece["id"])
         return {"piece_id": piece["id"], "pipeline_revision": version}, []
 
     def _record_subjects(self, db, workspace_id, message_id, subjects):
-        """A post's subjects (3.6), written with the post: items of its outcome's pipeline."""
+        """A post's subjects (3.6), written with the post: items of its outcome's pipeline, or its checks."""
         if not isinstance(subjects, list) or len(subjects) > 16:
             raise Refusal("INVALID_ARGUMENT", "subjects is a list of at most 16 {kind, ref}")
         for subject in subjects:
-            if not isinstance(subject, dict) or set(subject) != {"kind", "ref"} or subject["kind"] != "item":
-                raise Refusal("INVALID_ARGUMENT", "A subject is {kind: item, ref: number}; checks come with item 14")
+            if not isinstance(subject, dict) or set(subject) != {"kind", "ref"} or subject["kind"] not in ("item", "check"):
+                raise Refusal("INVALID_ARGUMENT", "A subject is {kind: item, ref: number} or {kind: check, ref: check id}")
+            if subject["kind"] == "check":
+                if not isinstance(subject["ref"], str) or not db.execute(
+                        "SELECT 1 FROM outcome_checks WHERE workspace_id=? AND check_id=?", (workspace_id, subject["ref"])).fetchone():
+                    raise Refusal("CHECK_UNKNOWN", "No check %s in this outcome" % subject["ref"])
+                db.execute("INSERT OR IGNORE INTO message_subjects VALUES (?,?,?,?)", (message_id, workspace_id, "check", subject["ref"]))
+                continue
             ref = _number(int(subject["ref"]) if isinstance(subject["ref"], str) and subject["ref"].isdigit() else subject["ref"], "subject")
             self._item_row(db, workspace_id, ref)
             db.execute("INSERT OR IGNORE INTO message_subjects VALUES (?,?,?,?)", (message_id, workspace_id, "item", str(ref)))
@@ -870,7 +1070,8 @@ class Pipeline:
                     "note": entry["note"], "progress": _loads(entry["progress"], None)}
         current = next((entry for entry in entries if entry["left_ms"] is None), None)
         members = self._members(db, piece["id"])
-        view = {"id": piece["id"], "kind": piece["kind"], "release_number": piece["release_number"], "commit": piece["commit_sha"],
+        view = {"id": piece["id"], "kind": piece["kind"], "release_number": piece["release_number"],
+                "commit": self._release_commit(db, piece) if piece["kind"] == "release" else None,
                 "size": entries[0]["size"] if entries else None, "items": members,
                 "titles": {str(number): titles.get(number) for number in members},
                 "started": {"by": entries[0]["entered_by"], "ms": entries[0]["entered_ms"]} if entries else None,
@@ -1005,9 +1206,10 @@ class Pipeline:
         asks = self._asks_about(db, actor, workspace["id"]) if pipeline else {}
         open_rows = db.execute("SELECT p.* FROM pipeline_stage_entries e INDEXED BY open_entries JOIN pipeline_pieces p ON p.id=e.piece_id "
                                "WHERE e.workspace_id=? AND e.left_ms IS NULL ORDER BY e.entered_ms DESC", (workspace["id"],)).fetchall() if pipeline else []
-        recorded = {row[0] for row in db.execute("SELECT number FROM releases")} if pipeline and pipeline["ships_in_releases"] else set()
-        # Seam (7.2): a release piece whose release is recorded has shipped.
-        open_rows = [row for row in open_rows if not (row["kind"] == "release" and row["release_number"] in recorded)]
+        # The release (3.4) shown with the number it ships as.
+        release = self._the_release(db, workspace["id"]) if pipeline else None
+        release_id = release["id"] if release else None
+        open_rows = [release if row["id"] == release_id else row for row in open_rows if row["kind"] == "piece" or row["id"] == release_id]
         topic_ids = sorted({row["topic_id"] for row in open_rows})
         work = work_by_topic(db, self._waits_by_topic(db, topic_ids), actor) if topic_ids else {}
         titles = {}
@@ -1102,7 +1304,8 @@ class Pipeline:
             return dict(answer, **self._shipped_groups(db, actor, workspace, pipeline, releases, offset, limit))
         rows = db.execute("SELECT * FROM pipeline_items INDEXED BY pipeline_order WHERE workspace_id=? AND section=? "
                           "ORDER BY candidate_group, position, number", (workspace["id"], section)).fetchall()
-        rows = [row for row in rows if section == "dropped" or not self._shipped(db, pipeline, row, releases)]
+        # What shipped is listed under its release, a dropped item a record overtook too, never in its section.
+        rows = [row for row in rows if not self._shipped(db, pipeline, row, releases)]
         items, size = [], 1024
         for row in rows[offset:offset + limit]:
             item = self._item_view(db, actor, workspace, pipeline, row, releases, asks, by_item, cache)
@@ -1248,6 +1451,8 @@ def import_seed(store, db, seed, actor, now_ms):
                (workspace_id, settings["title"], settings.get("unit_one", "item"), settings.get("unit_many", "items"),
                 int(bool(settings.get("sized", True))), int(bool(settings.get("ships_in_releases", False))), _json(SECTION_WORDS)))
     store._event(db, workspace_id, None, "configured", actor, {"before": None, "after": dict(settings, enabled=True), "imported": True}, now_ms)
+    if settings.get("ships_in_releases"):
+        store._fact(db, workspace_id, "ships", now_ms, actor, {"on": True})
     for position, stage in enumerate(seed.get("stages", []), 1):
         db.execute("INSERT INTO pipeline_stages VALUES (?,?,?,?,?,?,?,?,?)",
                    (workspace_id, _slug(stage["stage_id"], "stage_id"), position, stage["name"], stage.get("done_when", ""),

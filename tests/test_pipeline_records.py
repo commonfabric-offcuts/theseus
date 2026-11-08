@@ -58,6 +58,40 @@ class RecordsCase(PipelineCase):
         self.refused("UPDATE pipeline_stage_entries SET left_ms=6", words="a stage entry keeps its past")
         self.refused("UPDATE pipeline_stage_entries SET note='later words'", words="a stage entry keeps its past")
 
+    def test_an_end_is_decided_again_only_on_a_pieces_last_entry_and_only_as_a_record_would(self):
+        # A record overtaking a drop decides a piece's end again (docs/pipeline.md, "The end of a piece"): a piece of
+        # work's `dropped` or `shipped` as `shipped`, an emptied release's `dropped` or `held` as `held` or `shipped`.
+        # When and by whom it was left stay, and every other end, and every earlier entry, keeps its past.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE pipeline_stage_entries SET left_ms=5,left_outcome='dropped',left_by='owner'")
+            db.execute("UPDATE pipeline_stage_entries SET left_outcome='shipped',left_note='Shipped in release 5'")
+            db.execute("UPDATE pipeline_stage_entries SET left_note='Shipped in release 7'")
+        for statement in ("UPDATE pipeline_stage_entries SET left_outcome='dropped',left_note=''", "UPDATE pipeline_stage_entries SET left_outcome='held'",
+                          "UPDATE pipeline_stage_entries SET left_note='Shipped in release 8',left_ms=6",
+                          "UPDATE pipeline_stage_entries SET left_note='Shipped in release 8',left_by='agent-a'",
+                          "UPDATE pipeline_stage_entries SET left_note='Shipped in release 8',note='later words'"):
+            with self.subTest(statement=statement):
+                self.refused(statement, words="a stage entry keeps its past")
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO pipeline_pieces VALUES ('p-release','w1','release','t1',NULL,NULL,1)")
+            for seq, outcome in ((101, "passed"), (102, "dropped")):
+                db.execute("INSERT INTO pipeline_stage_entries(seq,piece_id,workspace_id,stage_id,round,entered_ms,entered_by,left_ms,left_outcome) "
+                           "VALUES (?,'p-release','w1','build',1,1,'owner',NULL,NULL)", (seq,))
+                db.execute("UPDATE pipeline_stage_entries SET left_ms=2,left_outcome=? WHERE seq=?", (outcome, seq))
+            db.execute("UPDATE pipeline_stage_entries SET left_outcome='held',left_note='Its last items shipped in release 5' WHERE seq=102")
+            db.execute("UPDATE pipeline_stage_entries SET left_outcome='shipped',left_note='Shipped in release 24' WHERE seq=102")
+        for statement in ("UPDATE pipeline_stage_entries SET left_outcome='held' WHERE seq=102",
+                          "UPDATE pipeline_stage_entries SET left_note='Shipped in release 25' WHERE seq=102",
+                          "UPDATE pipeline_stage_entries SET left_outcome='shipped' WHERE seq=101"):
+            with self.subTest(statement=statement):
+                self.refused(statement, words="a stage entry keeps its past")
+        # The piece of work entered a stage again: its earlier entry is no longer its end.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO pipeline_stage_entries(piece_id,workspace_id,stage_id,round,entered_ms,entered_by) VALUES (?,'w1','build',2,9,'owner')",
+                       (self.piece,))
+        self.refused("UPDATE pipeline_stage_entries SET left_note='Shipped in release 9' WHERE piece_id=? AND left_ms IS NOT NULL", (self.piece,),
+                     words="a stage entry keeps its past")
+
     def test_events_sources_subjects_and_release_notes_stay_as_written(self):
         for statement, words in (("UPDATE pipeline_events SET by='agent-a'", "an event keeps its past"),
                                  ("DELETE FROM pipeline_events", "an event keeps its past"),

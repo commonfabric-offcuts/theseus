@@ -8,11 +8,15 @@ Usage: tools/deploy.py --config CONFIG.json --release-check SUMMARY.json SHA EVI
 
 SHA is the full commit, and SUMMARY.json is tools/release_check.py's summary
 for exactly that commit; unless it passed, nothing is stopped or changed.
+With an outcome in the config, the summary is first measured as a run of the
+outcome's checks (docs/targets.md, "What got worse"): anything worse than the
+live release opens or posts in a fix topic and the run is recorded, so the
+outcome page shows the stopped candidate, before the deploy refuses.
 Every step writes its result to EVIDENCE_DIR; the first failure stops the run
-(exit 1). --dry-run reads the live processes, checkout and release records,
-stops before changing anything, and still exits 1 when the release check has
-not passed. Once the new release is verified, the deploy writes its release
-record into the instance (docs/releases.md), after any record the instance
+(exit 1). --dry-run reads the live processes, checkout, checks and release
+records, stops before changing or writing anything, and still exits 1 when the
+release check has not passed or a check got worse. Once the new release is
+verified, the deploy writes its release record into the instance (docs/releases.md), after any record the instance
 lacks that the system can know; a deploy of the live commit is a restart and
 writes no record of its own. docs/tools.md describes the config.
 """
@@ -34,13 +38,15 @@ if __package__ in (None, ""):
 
 from aim_next.contract import Refusal
 from aim_next.releases import release_row
-from tools import release_check, releases
+from tools import checks as outcome_checks, release_check, releases
 
 PYTHON = "/usr/bin/python3"
 Config = collections.namedtuple(
-    "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes")
+    "Config", "live instance python server_profile port tailnet_origin runner_profile runner_id routes outcome reporter_profile")
 REQUIRED_KEYS = ("live", "instance", "server_profile", "port", "runner_profile", "runner_id", "routes")
-OPTIONAL_KEYS = ("python", "tailnet_origin")
+# outcome: the outcome whose checks this deploy measures (docs/targets.md); reporter_profile: the profile of a member, not
+# its coordinator, that reads them, opens fix topics, writes the candidate's run and moves the release piece (D27).
+OPTIONAL_KEYS = ("python", "tailnet_origin", "outcome", "reporter_profile")
 
 
 class Refused(Exception):
@@ -68,7 +74,9 @@ def load_config(path):
     for key in ("live", "instance") + (("python",) if "python" in raw else ()):
         require(os.path.isabs(raw[key]), "deploy config: %s must be an absolute path" % key)
     instance = Path(raw["instance"])
+    require(("outcome" in raw) == ("reporter_profile" in raw), "deploy config: outcome and reporter_profile go together")
     return Config(live=Path(raw["live"]), instance=instance, python=raw.get("python", PYTHON),
+                  outcome=raw.get("outcome"), reporter_profile=instance / raw["reporter_profile"] if "reporter_profile" in raw else None,
                   server_profile=instance / raw["server_profile"], port=raw["port"],
                   tailnet_origin=raw.get("tailnet_origin"), runner_profile=instance / raw["runner_profile"],
                   runner_id=raw["runner_id"], routes=instance / raw["routes"])
@@ -411,15 +419,119 @@ def record_commands(config, evidence, records):
     return commands
 
 
+def live_checks(config, sha):
+    """The outcome's checks, live baseline, allowances and fix topics for SHA, read through the live CLI as the
+    reporter; None when the live code keeps none.
+
+    Code without outcome checks (aim_next/checks.py) keeps none, so there is
+    nothing to compare against yet. A read that fails stops the deploy: it is
+    not the same as no checks."""
+    # ls-tree lists a path HEAD has and nothing for one it lacks; only a failed read exits non-zero.
+    keeps = run(["git", "-C", str(config.live), "ls-tree", "--name-only", "HEAD", "aim_next/checks.py"])
+    require(keeps.returncode == 0, "whether the live code keeps outcome checks could not be read (exit %s): %s"
+            % (keeps.returncode, keeps.stderr.strip()[:300]))
+    if not keeps.stdout.strip():
+        return None
+    answer = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.reporter_profile), "--json",
+                  "checks", config.outcome, "--live", sha])
+    lines = [line for line in answer.stdout.splitlines() if line.startswith("{")]
+    try:
+        view = json.loads(lines[0]) if lines else {}
+    except ValueError:
+        view = {}
+    require(answer.returncode == 0 and isinstance(view.get("checks"), list),
+            "the live outcome's checks could not be read (exit %s, %s): %s" % (
+                answer.returncode, (view.get("error") or {}).get("code"), (answer.stderr or answer.stdout).strip()[:300]))
+    return view
+
+
+def as_reporter(config, *argv):
+    """One write by the reporter through the live CLI; its last receipt's result, or a refusal naming what was asked."""
+    answer = run([config.python, "-I", "-B", str(config.live / "bin/aim-next"), "--profile", str(config.reporter_profile), "--json"]
+                 + list(argv))
+    receipts = []
+    for line in answer.stdout.splitlines():
+        try:
+            receipts.append(json.loads(line))
+        except ValueError:
+            pass
+    result = receipts[-1].get("result") if receipts and isinstance(receipts[-1], dict) else None
+    require(answer.returncode == 0 and isinstance(result, dict), "%s was not written (exit %s): %s" % (
+        argv[0], answer.returncode, (answer.stdout + answer.stderr).strip()[:300]))
+    return result
+
+
+def names(items):
+    """The checks' names as words: A; A and B; A, B and C."""
+    named = [item["name"] for item in items]
+    return named[0] if len(named) == 1 else "%s and %s" % (", ".join(named[:-1]), named[-1])
+
+
+def tell_worse(config, sha, view, found, summary):
+    """02-worse (D15): each worse check told to the coordinator in its open fix topic, or in one the reporter starts,
+    each write named from (check, SHA) so a deploy run again for SHA finds the same topic and post. Returns
+    {check_id: topic_id}."""
+    told, release = {}, view["candidate_release"]
+    for item in found:
+        operation = "fix-%s-%s" % (item["check_id"], sha[:12])
+        known = view["fix_topics"].get(item["check_id"])
+        if known and known["commit"] == sha:
+            # Its reading at SHA already names the topic: this deploy was run again after its run was written.
+            told[item["check_id"]] = known["topic_id"]
+        elif known:
+            as_reporter(config, "post", known["topic_id"], "--tells", view["coordinator"], "--subject", "check:" + item["check_id"],
+                        "--operation", "fix-post-%s-%s" % (item["check_id"], sha[:12]), outcome_checks.fix_body(item, release, summary, False))
+            told[item["check_id"]] = known["topic_id"]
+        else:
+            result = as_reporter(config, "start", config.outcome, "--title", outcome_checks.fix_title(item, release), "--with",
+                                 view["coordinator"], "--operation", operation, outcome_checks.fix_body(item, release, summary, True))
+            told[item["check_id"]] = result["topic"]["id"]
+    return told
+
+
+def record_run(config, evidence, view, measured, found, told):
+    """02-run: the candidate's run, written by the server as the reporter, each worse reading naming its fix topic, and
+    so read by Core as the open release piece's; that piece, held, says why."""
+    measured = dict(measured, readings=[dict(reading, fix_topic_id=told[reading["check_id"]]) if reading["check_id"] in told else reading
+                                        for reading in measured["readings"]])
+    path = (evidence / "checks-run.json").resolve()
+    path.write_text(json.dumps(measured, indent=1) + "\n")
+    argv = [config.python, "-I", "-B", str(config.live / "bin/aim-next-admin"), "record-checks", "--profile",
+            str(config.server_profile), "--run", str(path), "--as", view["reader"]]
+    wrote = run(argv)
+    result = {"run": str(path), "exit": wrote.returncode, "stdout": wrote.stdout, "stderr": wrote.stderr, "held": None}
+    piece = view["release_piece"]
+    if wrote.returncode == 0 and found and piece:
+        words = "Held: %s got worse." % names(found)
+        as_reporter(config, "stage-note", piece["id"], words)
+        result["held"] = {"piece": piece["id"], "note": words}
+    record(evidence, "02-run", result)
+    require(wrote.returncode == 0, "the candidate's run of the outcome's checks was not written (%s); nothing was stopped"
+            % (wrote.stdout or wrote.stderr).strip()[:300])
+
+
+def enter_deploy(config, evidence, view, planned):
+    """03-stage: the outcome's release, as 02-checks read it (Core's one rule, docs/pipeline.md), leaves checks for deploy;
+    its gate holds on the readings 02-run wrote for it."""
+    piece = view["release_piece"]
+    if not planned or not piece or piece["stage"] != "checks":
+        record(evidence, "03-stage", {"entered": None, "piece": piece, "why": "a restart ships nothing" if not planned else
+                                      "no release is being put together" if not piece else "the release is in %s, not checks" % piece["stage"]})
+        return
+    result = as_reporter(config, "enter-stage", piece["id"], "deploy", "--left", "passed")
+    record(evidence, "03-stage", {"entered": "deploy", "piece": piece, "result": result})
+
+
 def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, live_since=None):
     require(re.fullmatch(r"[0-9a-f]{40}", sha or ""), "give the full 40-character commit, not %r" % sha)
     evidence.mkdir(parents=True, exist_ok=True)
-    # 0. The release check passed for exactly this commit, or nothing is touched.
-    reasons = release_check.verify_summary(summary, sha)
+    # 0. A summary of exactly this commit, or nothing is touched; one whose steps failed is still measured (7.2 step 1).
+    foreign, unpassed = release_check.judge_summary(summary, sha)
+    reasons = foreign + unpassed
     record(evidence, "00-release-check", {"summary": str(summary), "commit": sha, "passed": not reasons,
                                           "reasons": reasons})
     unchecked = "the release check has not passed for %s: %s" % (sha, "; ".join(reasons))
-    require(dry or not reasons, unchecked)
+    require(not foreign, unchecked)
     server_args, runner_args, supervisor_args = server_argv(config), runner_argv(config), supervisor_argv(config)
     record(evidence, "00-plan", {"commit": sha, "dry_run": dry, "live": config.live, "instance": config.instance,
                                  "server": server_args, "runner": supervisor_args})
@@ -451,8 +563,43 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
     ff = run(["git", "-C", str(config.live), "merge-base", "--is-ancestor", head, sha]).returncode == 0
     record(evidence, "02-checkout", {"head": head, "target": sha, "tracked_changes": dirty, "fast_forward": ff})
     require(not dirty and ff, "the live checkout has tracked changes or %s is not a fast-forward of %s" % (sha, head))
-    # A release check that did not pass has no counts to record; a dry run stops here and says why.
-    require(not reasons, unchecked)
+
+    # 02-checks (12, 104): the candidate's readings beside the live release's, read as the reporter.
+    view, found = None, []
+    if config.outcome:
+        view = live_checks(config, sha)
+        if view is None:
+            # Known from the live code, not a failed read: the import writes this release's run from its record (8.2).
+            record(evidence, "02-checks", {"outcome": config.outcome, "checks": "the live release keeps no outcome checks yet",
+                                           "run": outcome_checks.run_from_summary(json.loads(Path(summary).read_text()), [], config.outcome)})
+        else:
+            # D27: Core never delivers a message to its author, so a coordinator telling itself of a fix wakes nobody.
+            require(view["reader"] in view["members"] and view["reader"] != view["coordinator"],
+                    "the reporter, %s, must be a member of %s and not its coordinator (%s); nothing was stopped"
+                    % (view["reader"], config.outcome, view["coordinator"]))
+            written = json.loads(Path(summary).read_text())
+            measured = outcome_checks.run_from_summary(written, view["checks"], config.outcome)
+            # A replayed measure compares with its rerun beside the candidate, so that rerun must be of the code now live.
+            replayed = [check["check_id"] for check in view["checks"] if not check.get("retired_why")
+                        and set(release_check.SOURCE_STEPS.get(check["source"], ())) & set(release_check.REPLAYED)]
+            beside = (written.get("base") or {}).get("commit") if isinstance(written.get("base"), dict) else None
+            if replayed and beside != head:
+                raise Refused("the replay was measured beside %s, but release %d (%s) is live; run the release check again; nothing was stopped" % (
+                    beside[:12] if beside else "nothing (the summary has no base)", view["candidate_release"] - 1, head[:12]))
+            found = outcome_checks.worse(measured, view)
+            record(evidence, "02-checks", {"outcome": config.outcome, "live": view["live"], "candidate_release": view["candidate_release"],
+                                           "checks": len(view["checks"]), "allowances": view["allowances"], "fix_topics": view["fix_topics"],
+                                           "release_piece": view["release_piece"], "run": measured, "worse": found,
+                                           "titles": [outcome_checks.fix_title(item, view["candidate_release"]) for item in found]})
+            if not dry:
+                # 02-worse, then 02-run: told before the run is written, since a reading never changes and a worse one names its fix topic.
+                told = tell_worse(config, sha, view, found, Path(summary).resolve())
+                record(evidence, "02-worse", {"told": told})
+                record_run(config, evidence, view, measured, found, told)
+    # The verdict: anything worse first, then a summary that did not pass. Nothing has stopped.
+    if found:
+        raise Refused("%s got worse: %s" % (names(found), "; ".join(item["why"] for item in found)))
+    require(not unpassed, unchecked)
     planned, before, commits, latest = release_plan(config, head, sha, summary, number, no_items, live_since)
     # A restart (planned is None) is of the latest release, when one places the live commit.
     restart_of = latest["release"] if planned is None and latest else None
@@ -462,6 +609,8 @@ def deploy(config, sha, evidence, summary, dry, number=None, no_items=False, liv
         "release %d" % restart_of if restart_of else sha[:12])
     if dry:
         return
+    if view is not None:
+        enter_deploy(config, evidence, view, planned)
 
     # 2. Stop the runner, then the server, by captured PID; wait on each exit event. A supervisor
     # passes the stop to its runner and exits only after the runner has.

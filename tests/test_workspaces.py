@@ -20,7 +20,7 @@ class WorkspacesCase(fixtures.StoreCase):
     def listing(self, actor="owner", **args):
         answer = self.store.view(actor, "workspaces", args)
         self.assertNotIn("error", answer, answer)
-        self.assertEqual(set(answer), {"instance_id", "items", "next_cursor"})
+        self.assertEqual(set(answer), {"instance_id", "items", "next_cursor", "reached_count"})
         self.assertEqual(answer["instance_id"], "test-instance")
         return answer
 
@@ -47,10 +47,11 @@ class WorkspacesCase(fixtures.StoreCase):
         self.assertIn("topic", self.store.view("owner", "topic", {"topic_id": "t-private"}))
         before = self.records()
         # Each outcome says where it stands for the reader (item 86): neither has a topic yet.
+        # Each is to keep until its owner says otherwise on its page, and neither is reached.
         light = {"light": "quiet", "label": "Quiet", "short": {"kind": "no_topics"}, "unreadable": False}
         expected = [
-            {"id": "w-b", "owner_id": "owner", "title": "Same title", "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "light": light},
-            {"id": "w-d", "owner_id": "agent-a", "title": "Same title", "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "light": light},
+            {"id": "w-b", "owner_id": "owner", "title": "Same title", "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "kind": "keep", "reached_ms": None, "light": light},
+            {"id": "w-d", "owner_id": "agent-a", "title": "Same title", "title_truncated": False, "version": 1, "unread": 0, "addressed": 0, "kind": "keep", "reached_ms": None, "light": light},
         ]
         self.assertEqual(self.listing()["items"], expected)
         self.assertEqual(self.listing("agent-a")["items"], expected)

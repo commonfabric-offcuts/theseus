@@ -18,6 +18,7 @@ it is said, else the ask's.
 
 from .contract import LIMITS, READABLE, Refusal, organises, _body, _identifier, _prefix, _revision
 from .delivery import _now_ms
+from .outcome_asks import held_ask
 
 
 STATES = ("active", "waiting", "review", "done")
@@ -147,24 +148,31 @@ class TopicState:
         if keep and (args["keep_note"] is not True or "note" in args or "state" not in args):
             raise Refusal("INVALID_ARGUMENT", "keep_note is true, with a state and without a note")
         manager = organises(topic, actor) or actor == topic["creator_id"]
+        if "title" in args and not manager:
+            raise Refusal("FORBIDDEN", "Only the outcome's owner or coordinator, or the topic's creator, can rename it")
+        if "archived" in args and not manager:
+            raise Refusal("FORBIDDEN", "Only the outcome's owner or coordinator, or the topic's creator, can archive it")
+        if args.keys() & {"state", "note", "waiting_on"} and not self._may_say(db, topic, actor):
+            raise Refusal("FORBIDDEN", "Only the topic's participants, those who have written in it, its creator or the outcome's owner or coordinator "
+                          "can say where it stands; you can say where a topic stands once you have written in it")
+        return self._set_topic_state(db, topic, actor, args)
+
+    def _set_topic_state(self, db, topic, actor, args):
+        """The body of topic.update after its permission check: the one server path that changes a
+        topic's title, archive, state, note and waits, used by topic.update and by outcome.reach (D42)."""
+        old_waiting = [row[0] for row in db.execute("SELECT actor_id FROM topic_waiting WHERE topic_id=? AND said=1 ORDER BY actor_id", (topic["id"],))]
+        keep = "keep_note" in args
         if "title" in args:
-            if not manager:
-                raise Refusal("FORBIDDEN", "Only the outcome's owner or coordinator, or the topic's creator, can rename it")
             title = _body(args["title"])
             if not title.strip():
                 raise Refusal("EMPTY_TITLE", "A topic needs a title")
             db.execute("UPDATE topics SET title=? WHERE id=?", (title, topic["id"]))
         if "archived" in args:
-            if not manager:
-                raise Refusal("FORBIDDEN", "Only the outcome's owner or coordinator, or the topic's creator, can archive it")
             if not isinstance(args["archived"], bool):
                 raise Refusal("INVALID_ARGUMENT", "Archived is true or false")
             db.execute("UPDATE topics SET archived=? WHERE id=?", (int(args["archived"]), topic["id"]))
             db.execute("UPDATE topic_waiting SET archived=? WHERE topic_id=?", (int(args["archived"]), topic["id"]))
         if args.keys() & {"state", "note", "waiting_on"}:
-            if not self._may_say(db, topic, actor):
-                raise Refusal("FORBIDDEN", "Only the topic's participants, those who have written in it, its creator or the outcome's owner or coordinator "
-                              "can say where it stands; you can say where a topic stands once you have written in it")
             state = args.get("state", topic["state"])
             if state not in STATES:
                 raise Refusal("INVALID_ARGUMENT", "A topic's state is one of: " + ", ".join(STATES))
@@ -271,7 +279,13 @@ class TopicState:
     def _answered(self, db, topic_id, author):
         """Writing in a topic answers every ask there that waits on its author; whether one did.
 
-        A wait someone said stays until it is said otherwise."""
+        A wait someone said stays until it is said otherwise, and an ask an open record still
+        needs (a proposed target, an owner-gated stage: outcome_asks.held_ask) stays waiting."""
+        held = held_ask(db, topic_id, author)
+        if held is not None:
+            db.execute("UPDATE topic_waiting SET ask_message_id=?,state_ms=(SELECT sent_ms FROM messages WHERE id=?) "
+                       "WHERE topic_id=? AND actor_id=?", (held, held, topic_id, author))
+            return False
         row = db.execute("SELECT said FROM topic_waiting WHERE topic_id=? AND actor_id=? AND ask_message_id IS NOT NULL",
                          (topic_id, author)).fetchone()
         if row is None:

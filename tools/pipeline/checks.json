@@ -1,0 +1,295 @@
+{
+ "workspace_id": "building-theseus",
+ "built_from": "The Notebook pages \"Evaluation: target, measures and baseline\" (revision 9) and \"Measurements\" (revision 4), and the posts each reading names",
+ "target": {
+  "text": "People and agents carry out shared work in Theseus with a goal both can state, nothing said or written is lost, and every change shows whether it made that work better without breaking what already worked.",
+  "origin_note": "from the evaluation record",
+  "by": "fable",
+  "at": "2026-11-05T11:17:00-08:00"
+ },
+ "checks": [
+  {
+   "check_id": "units",
+   "group_name": "Nothing said or written is lost",
+   "position": 1,
+   "name": "Every unit check passes",
+   "kind": "pass",
+   "source": "release-check:units",
+   "explain": "These include the integrity checks aim-core counted: one message for an exact retry, new writing kept through an older send, reading never counted as acknowledging, and Notebook history kept word for word.",
+   "record_memory_item_id": "building-theseus-measurements",
+   "proves": "nothing said or written is lost"
+  },
+  {
+   "check_id": "browser-checks",
+   "group_name": "Nothing said or written is lost",
+   "position": 2,
+   "name": "Every browser check passes, one at a time, on a quiet Mac",
+   "kind": "pass",
+   "source": "release-check:native",
+   "explain": "A red result counts only when it repeats on a quiet Mac.",
+   "record_memory_item_id": "building-theseus-measurements",
+   "left_by_topic_id": "t-8dc335089dd046d79d1327a4763760b5",
+   "proves": "nothing said or written is lost"
+  },
+  {
+   "check_id": "wake-time",
+   "group_name": "Quick, and no work wasted",
+   "position": 3,
+   "name": "An agent is woken soon after a message reaches it",
+   "kind": "measure",
+   "source": "release-check:wake-replay",
+   "unit": "s",
+   "better": "lower",
+   "tolerance": 0.2,
+   "repeats": 2,
+   "explain": "One reading, so no target yet: numbers first, then a target.",
+   "record_memory_item_id": "evaluation-target-and-measures",
+   "proves": "every change shows whether it made that work better"
+  },
+  {
+   "check_id": "next-post",
+   "group_name": "Quick, and no work wasted",
+   "position": 4,
+   "name": "An agent posts again after a message addressed to it",
+   "kind": "measure",
+   "source": "reported",
+   "unit": "min",
+   "better": "lower",
+   "explain": "This is the agent's next post in the topic, not necessarily its answer. How long an answer takes is not measured yet.",
+   "record_memory_item_id": "evaluation-target-and-measures",
+   "proves": "every change shows whether it made that work better"
+  },
+  {
+   "check_id": "empty-turns",
+   "group_name": "Quick, and no work wasted",
+   "position": 5,
+   "name": "Turns that start with nothing waiting",
+   "kind": "measure",
+   "source": "reported",
+   "unit": "turns in 3 hours",
+   "better": "lower",
+   "explain": "Decided on 5 Nov: the 60-second re-wake stays, and these turns are counted, because both fixes on offer could leave work stranded.",
+   "record_memory_item_id": "evaluation-target-and-measures",
+   "proves": "every change shows whether it made that work better"
+  },
+  {
+   "check_id": "topic-open-time",
+   "group_name": "Quick, and no work wasted",
+   "position": 6,
+   "name": "How long a topic takes to open as it grows",
+   "kind": "measure",
+   "source": "reported",
+   "unit": "s",
+   "better": "lower",
+   "pending_words": "No timing check yet: it comes with speed checks on every deploy (13)",
+   "proves": "every change shows whether it made that work better"
+  },
+  {
+   "check_id": "message-appear-time",
+   "group_name": "Quick, and no work wasted",
+   "position": 7,
+   "name": "How long a message takes to appear on someone else's page",
+   "kind": "measure",
+   "source": "reported",
+   "unit": "s",
+   "better": "lower",
+   "pending_words": "No timing check yet: it comes with speed checks on every deploy (13)",
+   "proves": "every change shows whether it made that work better"
+  },
+  {
+   "check_id": "ack-time",
+   "group_name": "Quick, and no work wasted",
+   "position": 8,
+   "name": "How long an agent takes to acknowledge a delivery",
+   "kind": "measure",
+   "source": "reported",
+   "unit": "s",
+   "better": "lower",
+   "pending_words": "Theseus does not record when a delivery is acknowledged yet",
+   "proves": "every change shows whether it made that work better"
+  },
+  {
+   "check_id": "shared-goal",
+   "group_name": "We can both state the goal",
+   "position": 9,
+   "name": "You and the working agent state the same goal",
+   "kind": "pass",
+   "source": "reported",
+   "pending_words": "No sample yet: it needs your own words and the agent's, written separately",
+   "explain": "Three questions, answered separately by you and by the agent doing the work: What result are we after? What is the next useful step, and who takes it? What would show it's done? The answers are compared for meaning, not wording, and recorded as matching, different, or not yet compared.",
+   "record_memory_item_id": "evaluation-target-and-measures",
+   "proves": "with a goal both can state"
+  },
+  {
+   "check_id": "deploy-refuses",
+   "group_name": "What works keeps working",
+   "position": 10,
+   "name": "A deploy refuses any commit that has not passed every check",
+   "kind": "pass",
+   "source": "release-check:deploy-refusals",
+   "explain": "Shipped in release 19 (3). The deploy itself checks that every step of the release check passed.",
+   "proves": "without breaking what already worked"
+  },
+  {
+   "check_id": "found-problems",
+   "group_name": "What works keeps working",
+   "position": 11,
+   "name": "Problems you find that no check caught",
+   "kind": "measure",
+   "source": "found-problems",
+   "better": "lower",
+   "counted_since": "2026-11-06T00:00:00-08:00",
+   "explain": "Each problem found in the live app before any check caught it, under the release it was found in. A defect: the code did not do what was decided. A design miss: it did what was decided, and that was wrong. Fewer per release is the aim.",
+   "record_memory_item_id": "building-theseus-measurements",
+   "proves": "without breaking what already worked"
+  }
+ ],
+ "runs": [
+  {
+   "from": "Measurements page, the 5 Nov afternoon baseline (aim-ux and aim-core, #352 and #353)",
+   "started_at": "2026-11-05T15:26:00-08:00",
+   "finished_at": "2026-11-05T15:26:00-08:00",
+   "note": "5 Nov afternoon, live code",
+   "readings": [
+    {
+     "check_id": "browser-checks",
+     "result": "failed",
+     "value": null,
+     "words": "22 failing; total not recorded",
+     "detail": {
+      "failing_by_mode": {
+       "images": 6,
+       "freshness": 4,
+       "correction": 5,
+       "connected": 1,
+       "navigation": 6
+      }
+     }
+    }
+   ]
+  },
+  {
+   "from": "Evaluation record revision 7 (#249)",
+   "started_at": "2026-11-05T11:30:00-08:00",
+   "finished_at": "2026-11-05T11:30:00-08:00",
+   "note": "real traffic, 5 Nov",
+   "readings": [
+    {
+     "check_id": "wake-time",
+     "result": "measured",
+     "value": 13.9,
+     "words": "Half the time within 1 to 14 seconds, depending on the agent; the slowest about a minute",
+     "detail": {
+      "series": {
+       "aim-spec": {
+        "runs": [
+         0.8
+        ]
+       },
+       "aim-core": {
+        "runs": [
+         7.8
+        ]
+       },
+       "aim-ux": {
+        "runs": [
+         13.9
+        ]
+       }
+      },
+      "slowest_s": 55,
+      "data_size": "242 messages, 14 topics"
+     }
+    },
+    {
+     "check_id": "next-post",
+     "result": "measured",
+     "value": null,
+     "words": "Half the time within about 1 to 2½ minutes, depending on the agent",
+     "detail": {}
+    }
+   ]
+  },
+  {
+   "from": "fable's update to Tony (#265)",
+   "started_at": "2026-11-05T11:40:00-08:00",
+   "finished_at": "2026-11-05T11:40:00-08:00",
+   "note": "5 Nov",
+   "readings": [
+    {
+     "check_id": "empty-turns",
+     "result": "measured",
+     "value": 10,
+     "words": "About 10 in 3 hours",
+     "detail": {}
+    }
+   ]
+  },
+  {
+   "from": "Measurements page, written by hand at release 18's deploy",
+   "release": 18,
+   "note": "counts written by hand",
+   "readings": [
+    {
+     "check_id": "units",
+     "result": "passed",
+     "value": 1642,
+     "words": "991 server and 651 browser-side",
+     "detail": {
+      "parts": {
+       "server": 991,
+       "browser-side": 651
+      }
+     }
+    },
+    {
+     "check_id": "browser-checks",
+     "result": "passed",
+     "value": 152,
+     "words": "152 of 152 pass",
+     "detail": {
+      "pass": 152,
+      "total": 152
+     }
+    }
+   ]
+  },
+  {
+   "from": "Measurements page: from release 19 the deploy refuses any commit whose release check did not pass every step",
+   "release": 19,
+   "note": "the deploy's own refusal, shipped in release 19",
+   "readings": [
+    {
+     "check_id": "deploy-refuses",
+     "result": "passed",
+     "value": null,
+     "words": "Since release 19",
+     "detail": {}
+    }
+   ]
+  }
+ ],
+ "problems": [
+  {
+   "what": "The New line followed your replies, so it stayed on messages you had long since read",
+   "kind": "design_miss",
+   "seq": 470,
+   "cover_item": 96,
+   "cover_words": "Being built (96): the line follows what you've read"
+  },
+  {
+   "what": "The activity dot in the topic list looked like an unread mark that never cleared, and your own posts lit it",
+   "kind": "design_miss",
+   "seq": 490,
+   "cover_words": "Being built: a hollow grey ring with a key (91b), and your own posts no longer light it"
+  },
+  {
+   "what": "Agents could not see a screenshot you sent: their read showed an empty message",
+   "kind": "defect",
+   "found_by": "fable",
+   "note": "reading your screenshot",
+   "found_at": "2026-11-06T08:00:00-08:00",
+   "cover_words": "Being built: agent reads list attachments and can save them"
+  }
+ ]
+}

@@ -132,7 +132,7 @@ export async function lightChecks({ check, page, until, control, view, facts, sh
     await glide(later.x + 20, later.y + (later.bottom - later.y) / 2);
     const other = await until(async () => { const t = await tip(); return t?.last && t; }, 'the other row\'s peek');
     assert.equal(other.name, 'No topics yet');
-    assert.equal(other.last, `Started by ${facts.actor}.`, 'with no topic, who started it');
+    assert.match(other.last, new RegExp(`^Started by ${facts.actor} at \\d{1,2}:\\d{2} (AM|PM)\\.$`), 'with no topic, who started it and when, from its start record (D22)');
     // A topic opened by another member while the peek is open changes it, without a reload.
     await control({ method: 'light_outcome', outcome: 'light-later', exists: true, topic: { id: 'light-later-topic', title: 'Later topic' } });
     await until(async () => { const t = await tip(); return /^Worked on at /.test(t?.name ?? '') && t.last === 'Last: fixture-notebook-agent in “Later topic”'; }, 'the open peek follows the commit');

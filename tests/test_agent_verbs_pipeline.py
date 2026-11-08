@@ -86,6 +86,7 @@ class PipelineVerbCase(AgentVerbCase):
         self.assertIn("1    Build me  [now · shipped]", self.ok("item", "w1", "1"))
 
     def test_combining_into_a_release_stage_on_the_owners_word_takes_an_ask(self):
+        self.store.record_release({"release": 22, "commit": "4" * 40, "deployed_at": "2026-11-06T05:28:35-08:00", "items": [], "source": "backfill"})
         self.ok("pipeline-on", "w1", "--releases", actor="owner")
         stages = Path(self.temp.name) / "stages.json"
         stages.write_text(json.dumps([{"stage_id": "wait", "name": "Waits to combine"},
@@ -93,7 +94,7 @@ class PipelineVerbCase(AgentVerbCase):
         self.ok("stages", "w1", "--set", str(stages), actor="owner")
         self.ok("add", "w1", "--title", "Ship me", "--section", "now", "--size", "small", "--note", "n", "-")
         piece = self.ok("piece", "w1", "1", "--topic", "t1", "--stage", "wait").split()[2]
-        code, out, err = self.run_cli("combine", "w1", "--release", "23", "--pieces", piece, "--topic", "t1")
+        code, out, err = self.run_cli("combine", "w1", "--pieces", piece, "--topic", "t1")
         self.assertEqual(code, 2)
         self.assertIn("ASK_REQUIRED", err)
         self.ok("post", "t1", "--asks", "owner", "May release 23 go out?")

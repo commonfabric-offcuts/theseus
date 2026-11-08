@@ -463,6 +463,17 @@ class WaitsCase(ConversationCase):
         self.assertEqual(self.waiting(), [])
         self.assertEqual(self.found()["waits"], [])
 
+    def test_an_outcome_reached_closes_its_conversation_and_no_ask_there_waits_on_anyone_after(self):
+        # D42: Reached clears every wait in the outcome, asks included; the conversation's asks are kept on their own.
+        self.posted("@agent-b which build?", addressees=["agent-b"], intent="ask")
+        self.assertEqual(len(self.found()["waits"]), 1)
+        workspace = lambda: self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        self.committed(self.command("outcome.kind_set", {"kind": "reach"}, {"workspace_id": "w1"}, {"workspace_revision": workspace()}))
+        self.committed(self.command("outcome.reach", {"words": "The launch went out", "unmet_confirmed": True}, {"workspace_id": "w1"},
+                                    {"workspace_revision": workspace()}))
+        self.assertEqual(self.sql("SELECT state,archived FROM topics WHERE id=?", (self.conversation,)), [("done", 1)])
+        self.assertEqual((self.waiting(), self.found()["waits"]), ([], []))
+
     def test_an_answerers_ask_back_on_an_item_waits_on_its_author_and_leaves_the_item_new(self):
         asked = self.posted("Can you move the launch?")
         back = self.posted("@owner to which day?", actor="agent-a", reply_to=asked, addressees=["owner"], intent="ask")

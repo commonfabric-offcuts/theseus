@@ -69,7 +69,12 @@ record without a number on an instance with none is refused with
   writes one record from a JSON file holding the fields above (`release`,
   `previous`, `measurements` and `evidence` may be left out). It is an
   operator act on the local instance, never an HTTP route; it prints the
-  stored record and whether it was written now.
+  stored record and whether it was written now. Writing the record of the next
+  release also ships the outcome's release, in the same transaction; a record
+  of an older release takes only the items it names out of it. The record is a
+  fact of every outcome's pipeline, and what each piece holding them has become,
+  and its topic, is the state derived from those facts
+  ([pipeline.md](pipeline.md#the-release)).
 - The `releases` view (`cursor`, `limit`) lists the records newest first;
   `next_cursor` is the last release number on the page. Every enabled member
   of the instance can read it, over `/api/view` like any view.
@@ -100,6 +105,21 @@ records them from what it keeps:
   So running a deploy again at a commit that went live without its record
   records that release once, from its server's run record, with no
   measurements.
+- The record of a release that went live without one is the next release's
+  record, so it ships the release being put together, whatever commit that
+  release was checked at ([pipeline.md](pipeline.md#the-release)). After a
+  deploy that stopped past its restart, that release is the one it put live,
+  still in deploy, and its record ships it as it should. When a commit went live
+  outside the release (finished by hand) while another release was being put
+  together, the release the next deploy moves into deploy is shipped under the
+  older number by the record written before the deploy's own; its items go back
+  to building, and the deploy's own record lists them under its number. The
+  deploy does not refuse when the release it moves is numbered other than the
+  record it writes: in the first case that difference is the recovery above, and
+  in the second, recording the live commit's release by any route (a restart, or
+  by hand) ships the open release the same way, so a refusal would leave nothing
+  else to do. Only a rule that ships a release by the record of its own commit
+  would avoid it, and that is a change to how a release ships, not to the deploy.
 
 The same records can also be written by hand on an instance at schema 23 or later,
 without a deploy, once per file:

@@ -74,7 +74,7 @@ def main(argv=None):
         argv.append(args.case_filter)
     result = release_check.run_step(
         "native-" + step.name, argv, release_check.REPO, args.out,
-        lambda text: release_check.native_counts(step, evidence), playwright)
+        lambda text: release_check.native_counts(step, evidence), step.harness, playwright=playwright)
     try:
         report = json.loads((evidence / step.results).read_text())
     except (OSError, ValueError):

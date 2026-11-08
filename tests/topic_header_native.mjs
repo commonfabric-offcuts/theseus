@@ -234,6 +234,8 @@ export async function headerChecks({ check, page, until, control, view, facts, s
     const shown = await team();
     assert.deepEqual([shown.shown, shown.add], [true, true], 'the coordinator gets "+ Add"');
     assert.ok(!shown.removes.includes(`Remove ${facts.agent}`), 'the owner cannot be removed: ' + JSON.stringify(shown));
+    // The outcome page puts its Target above the topics and the team (D11), so the team can sit below the fold.
+    await p.evaluate(`document.querySelector('#team-people .add-chip').scrollIntoView({block:'center'})`);
     await p.point('#team-people .add-chip');
     await until(() => p.evaluate(`document.activeElement?.matches('#team-people .people-add input')`), '"+ Add" opens the filter with the caret in it');
     await p.send('Input.insertText', { text: 'fixture-outside-agent' });

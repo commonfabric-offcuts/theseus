@@ -38,6 +38,15 @@ COMMANDS = {
     "pipeline.stage_note": "_command_pipeline_stage_note",
     "pipeline.combine": "_command_pipeline_combine",
     "pipeline.piece_finish": "_command_pipeline_piece_finish",
+    "target.propose": "_command_target_propose",
+    "target.settle": "_command_target_settle",
+    "check.define": "_command_check_define",
+    "check.report": "_command_check_report",
+    "check.accept_worse": "_command_check_accept_worse",
+    "problem.file": "_command_problem_file",
+    "problem.cover": "_command_problem_cover",
+    "outcome.kind_set": "_command_outcome_kind_set",
+    "outcome.reach": "_command_outcome_reach",
 }
 EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_revision"},
             "note.save": {"note_revision"}, "submission.prepare": {"draft_revision"},
@@ -60,7 +69,16 @@ EXPECTED = {"workspace.create": {"workspace_revision"}, "draft.save": {"draft_re
             "pipeline.stage_enter": {"piece_revision"},
             "pipeline.stage_note": {"piece_revision"},
             "pipeline.combine": set(),
-            "pipeline.piece_finish": {"piece_revision"}}
+            "pipeline.piece_finish": {"piece_revision"},
+            "target.propose": {"target_revision"},
+            "target.settle": {"target_revision"},
+            "check.define": {"checks_revision"},
+            "check.report": set(),
+            "check.accept_worse": {"checks_revision"},
+            "problem.file": set(),
+            "problem.cover": {"problem_revision"},
+            "outcome.kind_set": {"workspace_revision"},
+            "outcome.reach": {"workspace_revision"}}
 REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision",
                      "submission.prepare": "draft_revision", "participation.set": "topic_revision",
                      "memory.create": "item_revision", "memory.revise": "item_revision",
@@ -73,7 +91,7 @@ REQUIRED_EXPECTED = {"draft.save": "draft_revision", "note.save": "note_revision
 VIEWS = {
     "changes": {"scope", "cursor", "limit"},
     "capabilities": set(), "operation": {"operation_id"}, "workspace": {"workspace_id"},
-    "workspaces": {"cursor", "limit"},
+    "workspaces": {"cursor", "limit", "reached"},
     "outcome_light": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items"}, "source": {"source_ref", "kind", "id", "revision"},
@@ -94,6 +112,9 @@ VIEWS = {
     "pipeline": {"workspace_id", "section", "cursor", "limit"},
     "pipeline_item": {"workspace_id", "number"},
     "pipeline_row": {"workspace_id"},
+    "outcome_checks": {"workspace_id"},
+    "check_readings": {"workspace_id", "check_id", "cursor", "limit"},
+    "outcome_live": {"workspace_id", "commit"},
 }
 
 
