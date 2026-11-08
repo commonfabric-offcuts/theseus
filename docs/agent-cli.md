@@ -137,17 +137,17 @@ above; `binding`, `view` and `command` are unchanged.
 
 | Verb | Does |
 | --- | --- |
-| `outcomes` | Lists the actor's outcomes. |
-| `new-outcome --title TITLE [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. |
+| `outcomes [--reached]` | Lists the actor's outcomes, each with its owner, its kind and where it stands, then how many are reached; `--reached` lists those. |
+| `new-outcome --title TITLE [--kind reach\|keep] [--purpose TEXT] [--team A,B]` | Creates an outcome the actor owns, with the team as members. Without `--kind` it is an outcome to keep until its owner chooses on its page ([targets.md](targets.md#two-kinds-of-outcome)). |
 | `owner OUTCOME ACTOR` | Hands the outcome to ACTOR (`workspace.owner_set`, fenced on the outcome's version as read). Only its owner can, and only to someone already on its team; the former owner stays on the team, and the coordinator is unchanged. Prints `OUTCOME is now owned by ACTOR (was FORMER)`, or `OUTCOME is already owned by ACTOR` when nothing changed. The new owner and the coordinator, beside each topic's creator, change the team, rename and archive the outcome's topics, say where any of them stands and change who takes part; only the owner hands the outcome on, and the `wakes` notice goes to the owner ([openings.md](openings.md#workspaceowner_set)). |
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
-| `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
+| `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--operation ID] TEXT\|-` | Sends one `message.post`; with `--operation ID` it is sent under that operation id, so sending the same post again answers with the message already recorded, and different words under the same id are refused (`OPERATION_PAYLOAD_MISMATCH`), nothing sent; `-` reads the text from stdin. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
 | `whisper TOPIC --to NAME [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post` with `whisper: true` to NAME alone (see [whispers.md](whispers.md)). An agent only answers: `--reply-to` names a whisper sent to it, and `--to` the person who sent it. Prints `whispered m-… to NAME in t-…`. `read` shows a whisper you are in as `#470 m-… tony whispers to aim-ux` with a note under its body; `inbox` and `watch` print `whisper "TITLE" …` for one sent to you. Nobody else ever sees it. |
 | `coordinator OUTCOME NAME\|--none` | Chooses who answers in the outcome's conversation (`workspace.coordinator_set`, the owner only); see [conversation.md](conversation.md). |
 | `conversation OUTCOME [--new]` | Prints `conversation t-… in "TITLE": fable answers; 1 new`, then its newest messages as `read` prints them, with what became of each item under it (`[new]`, `[answered]`, `[topic]`, `[pipeline]`, `[waiting]`). `--new` lists only items not yet settled. `topics` prints the conversation's line first; `post --part` and `start --from … --part` take only part of an item, so it stays New. |
-| `start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT\|-` | Saves and publishes an opening. With `--from`, the topic answers that message: the topics already started from it are listed first, and the start is refused (`ALREADY_STARTED`, nothing saved) until `--seen` names each one you have read; see [sources.md](sources.md). If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
+| `start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] TEXT\|-` | Saves and publishes an opening. With `--operation ID`, the opening, its topic and both writes are named from that id, so starting again with the same words answers with the topic already started (how a deploy run again opens a fix topic once), and other words under it are refused. With `--from`, the topic answers that message: the topics already started from it are listed first, and the start is refused (`ALREADY_STARTED`, nothing saved) until `--seen` names each one you have read; see [sources.md](sources.md). If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
 | `publish OPENING [--seen T1,T2]` | Publishes a saved opening at its current revision; `--seen` names the topics already started from the message it answers. |
 | `state TOPIC active\|waiting\|review\|done [--note TEXT] [--waiting-on A,B]` | Says where a topic stands (`topic.update`). A new state clears the note and who it waits on unless they are given; only a waiting topic waits on someone, and only on people and agents who can read it; someone who loses the topic, by leaving it or the outcome, is taken off the list. Its participants, its creator, the outcome's owner or coordinator and anyone who has written in it can say it. Writing in a topic does not make you a participant: you are not woken for what is written there next, unless it names you. A topic is done until someone posts in it, which makes it active again. A topic read's `reader_may_say` says whether its reader may say it. |
 | `responsible TOPIC TEXT\|-` | Says what you are responsible for in a topic you take part in (`responsibility.set`, fenced on your note's own revision); empty text clears it. `read` lists each participant's note under the topic's title (see [responsibility.md](responsibility.md)). |
@@ -296,13 +296,43 @@ are absolute local times.
 - `move OUTCOME N --above M | --below M | --to SECTION | --undo EVENT [--underway] [--because MSG]`.
 - `piece OUTCOME N[,N...] --topic T --stage S [--size S] [--ask MSG]` starts
   work on items in a topic; `enter-stage PIECE STAGE [--round R] [--left approved|sent-back|passed|held] [--note N] [--ask MSG]`,
-  `stage-note PIECE TEXT`, `combine OUTCOME --release N --pieces P,... --topic T [--commit SHA] [--ask MSG]`
+  `stage-note PIECE TEXT`, `combine OUTCOME --pieces P,... --topic T [--release N] [--commit SHA] [--ask MSG]`
   and `finish PIECE` move it along.
 - `post --subject item:92,item:93` names the items a message is about; an ask
   about an item puts it in the asked person's "Waiting on you".
 
 The import from the hand-written page is an operator act:
 `bin/aim-next-admin pipeline-import --profile P --seed S --as ACTOR`.
+
+## Targets and checks
+
+An outcome's target is a few sentences saying what done looks like; its checks
+prove it. The owner or the coordinator writes the words, and the agents add the
+checks.
+
+- `checks OUTCOME [--readings]` prints the target, its word and every check.
+- `target OUTCOME [--origin NOTE] [--ask MSG | --ask-in TOPIC] TEXT` writes the
+  target's words. The first wording, and the owner's own, are current at once.
+  Anyone else's later wording is an ask to the owner: `--ask` names an ask you
+  already posted to the owner in this outcome, and `--ask-in TOPIC` posts it
+  for you, with the words, in that topic of the outcome. The ask keeps the
+  owner's Waiting on you lit until he uses the words or keeps the old ones
+  (`target-settle OUTCOME REV accepted|declined`, the owner only).
+- `check-define OUTCOME FILE` writes a check's next definition from JSON. Its
+  optional `proves` names which words of the target the check proves, quoted
+  or in short; the outcome page shows it under the check.
+- `check-report OUTCOME FILE` records a run of the outcome's checks from JSON
+  (a `reported` run, by hand or by a member); `accept-worse OUTCOME CHECK RUN
+  TEXT` is the owner accepting that one measure got worse at that run.
+- `problem OUTCOME --kind defect|design-miss (--from m-… | --note TEXT) TEXT`
+  records a problem found before a check caught it; `problem-cover OUTCOME
+  PROBLEM [--item N] [--test T] TEXT` says what now covers it.
+- `outcome-kind OUTCOME reach|keep` changes the kind (the owner only), and
+  `reached OUTCOME [--unmet] TEXT` says an outcome to reach is reached, in his
+  words. Reached is final; `--unmet` confirms it while a check is not met, or
+  while nothing checks it.
+
+The rules behind every word these verbs print are in [targets.md](targets.md).
 
 Schema upgrades and actor registration are operator acts in
 `bin/aim-next-admin`, not agent commands.

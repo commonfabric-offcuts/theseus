@@ -91,7 +91,7 @@ def register(verb):
     note.add_argument("--progress")
     combine = verb("combine")
     combine.add_argument("outcome")
-    combine.add_argument("--release", type=int, required=True)
+    combine.add_argument("--release", type=int)
     combine.add_argument("--pieces", required=True)
     combine.add_argument("--topic", required=True)
     combine.add_argument("--commit")
@@ -288,7 +288,9 @@ class PipelineVerbs:
 
     def do_combine(self):
         options = self.options
-        args = {"release_number": options.release, "piece_ids": [part for part in options.pieces.split(",") if part], "topic_id": options.topic}
+        args = {"piece_ids": [part for part in options.pieces.split(",") if part], "topic_id": options.topic}
+        if options.release is not None:
+            args["release_number"] = options.release
         if options.commit:
             args["commit_sha"] = options.commit
         if options.ask:

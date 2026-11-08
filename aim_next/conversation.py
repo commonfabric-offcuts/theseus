@@ -474,8 +474,10 @@ class Conversation:
         # reader_may_say: whether the reader may say where it stands, so a page offers its form.
         topic = dict(topic, archived=bool(topic["archived"]), waiting_on=waiting_on, asks=asks, work=work_by_topic(db, waits, actor)[topic["id"]],
                      reader_may_say=self._may_say(db, topic, actor))
+        # D10: the outcome's target, closed, above the conversation; None for an outcome to keep with no target and no checks.
+        target = self._outcome_target_line(db, actor, topic["workspace_id"])
         return {"instance_id": self.instance_id, "topic": topic, "participants": participants, "summary": summary,
-                "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
+                "outcome_target": target, "relevant_versions": {"topic": topic["version"]}, "allowed_actions": ["draft.save", "message.send"]}
 
     def _view_topic_messages(self, db, actor, args):
         topic = self._topic(db, actor, args.get("topic_id"))

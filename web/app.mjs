@@ -47,6 +47,8 @@ import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine }
 import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
 import { HealthLight } from './health-light.mjs';
+import { phoneCheck } from './phone-check.mjs';
+import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -1192,6 +1194,9 @@ async function initialize() {
   if (!token || token === '__AIM_SESSION_TOKEN__') throw Error('This page needs a session from the Theseus server.');
   api = new Api(token); bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  // The phone check is a page of its own: no topic, no live updates (docs/device-evidence.md).
+  const asked = parseRoute(new URL(location.href));
+  if (asked.kind === 'phone-check') { await phoneCheck({ api, bootstrap, topicId: asked.id }); document.body.dataset.ready = 'true'; return; }
   shareLinksFrom(bootstrap.links?.origin);
   if (liveOffered(bootstrap) && !live) {
     live = new Live({ token });
@@ -1304,6 +1309,11 @@ async function initialize() {
         target: { topic_id: current.id }, expected: { responsibility_revision: revision, authority: { authority_id, authority_epoch } }, args: { note } });
     } });
   topicState.paint(topic, result.participants);
+  // The outcome's target, one closed line above the conversation (D10).
+  paintTopicTarget($('topic-target'), result.outcome_target ?? null, event => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); return openDestination({ kind: 'workspace', id: topic.workspace_id }, result.outcome_target.workspace_title);
+  });
   // Keep startup retry read-only: no editor or clickable source exists until
   // both initial list bodies have arrived after the captured feed baseline.
   const messageAnswer = checkedView(await api.view('topic_messages', { topic_id: topicId, audience: 'all', direction: 'before', limit: 30 }), bootstrap.instance_id);
@@ -1775,6 +1785,7 @@ async function initializeOutcomePage(route) {
   if(route.kind==='opening')return initializeOpeningPage(route);
   if(route.kind==='pipeline'||route.kind==='item')return initializePipelinePage(route);
   if(route.kind==='health')return initializeHealthPage();
+  if(route.kind==='measurements')return initializeMeasurementsPage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
   status('');
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
@@ -1798,9 +1809,12 @@ async function initializeOutcomePage(route) {
     await reload();
   } else {
     // Other outcomes' questions in one quiet line, or why the list they are read
-    // from could not be read and Retry, then where this outcome stands, then its
-    // conversation's one row (outcome-conversation.mjs), then its topics; its Notebook pages are listed after them, and one opens in place below them.
-    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('pipeline-line'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'));
+    // from could not be read and Retry, then where this outcome stands, its target
+    // and checks, the pipeline line, the improvement loop and the problems found
+    // (D11), then its conversation's one row (outcome-conversation.mjs), then its topics;
+    // its Notebook pages are listed after them, and one opens in place below them.
+    $('outcome-page').append($('also-waiting'),$('outcomes-status'),$('retry-workspaces'),$('outcome-standing'),$('target-panel'),$('pipeline-line'),$('loop-panel'),$('problems-panel'),$('conversation-navigation'),$('topic-navigation'),$('outcome-references'),$('page-here'));
+    const targets=new OutcomeTargets({hosts:{target:$('target-panel'),loop:$('loop-panel'),problems:$('problems-panel')},workspace:route.id,reader:bootstrap.actor,read:pipelineView,send:pipelineSend});
     // The page lists the outcome's topics and pages itself, so it has no rail:
     // the logo block, then "← Outcomes", head the main column.
     const rail=document.querySelector('.rail');rail.hidden=true;
@@ -1855,7 +1869,7 @@ async function initializeOutcomePage(route) {
         open:(id,title)=>openDestination({kind:'topic',id},title),
         updated:()=>{$('outcome-empty').hidden=!topicRail.empty||!$('topics-status').hidden;}});
       if(!outcomeReferences)outcomeReferences=outcomePages(route.id,()=>run(reload));
-      return (await Promise.all([stands(workspace),topicRail.load(),outcomeReferences.load(),loadConversation(),
+      return (await Promise.all([stands(workspace),targets.load(),topicRail.load(),outcomeReferences.load(),loadConversation(),
         paintPipelineLine($('pipeline-line'),{workspace:route.id,read:pipelineView})])).every(read=>read!==false);
     };
     // A commit may change the team or the outcome's revision as well as its
@@ -1920,6 +1934,25 @@ async function initializeHealthPage() {
   $('health-page').hidden=false;
   live?.listen(event=>page.heard(event));
   await followCommits(()=>page.load())();
+// An outcome's Measurements: every check's readings by release (docs/targets.md). The rail
+// shows this outcome, as on its pipeline page; the page and the rail read again on every commit.
+async function initializeMeasurementsPage(route) {
+  status('');
+  for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
+  $('measurements-page').hidden=false;
+  topicNavigation=new TopicNavigation({current:route,navigateTarget:target=>location.assign(routeHref(target))});
+  const page=new MeasurementsPage({host:$('measurements-page'),header:{eyebrow:$('workspace-name'),title:$('topic-title'),description:$('topic-description')},workspace:route.id,read:pipelineView});
+  enableNewTopic(route.id);
+  topicRail=new TopicRail({reader:bootstrap.actor,pageMax:pageMax(),pages:new TopicPages(bootstrap.instance_id,route.id,null),host:$('topics'),more:$('more-topics'),
+    retry:$('retry-topics'),message:$('topics-status'),...topicFolds(),key:$('topics-key'),denied:error=>readFailure(error).kind==='forbidden',
+    read:async args=>checkedView(await api.view('workspace_topics',args,{readClass:'foreground'}),bootstrap.instance_id),
+    open:(id,title)=>openDestination({kind:'topic',id},title)});
+  outcomeReferences=outcomePages(route.id,()=>{});
+  outcomeScope=new OutcomeScope({workspaceId:route.id,kind:'measurements',rail:document.querySelector('.rail'),home:$('outcomes-home'),attention,open:openDestination,
+    sections:[pipelineSection(route.id,false),{name:'topics',node:$('topic-navigation'),load:()=>topicRail.load()},
+      {name:'notebook',node:$('outcome-references'),load:()=>outcomeReferences.load()}]});
+  placeBrand(document.querySelector('.rail'));
+  await followCommits(async()=>(await Promise.all([outcomeScope.load(),page.load()])).every(read=>read!==false))();
   document.body.dataset.ready='true';
 }
 // An outcome's Notebook pages on its own page, each opening in place.

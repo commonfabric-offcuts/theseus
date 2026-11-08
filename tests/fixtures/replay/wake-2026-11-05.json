@@ -1,0 +1,856 @@
+{
+ "captured": {
+  "from": "2026-11-05T11:00:00-08:00",
+  "to": "2026-11-05T13:00:00-08:00",
+  "first_message_ms": 1793905814284,
+  "messages": 50
+ },
+ "people": [
+  "person-1"
+ ],
+ "agents": [
+  "aim-core",
+  "aim-spec",
+  "aim-ux",
+  "fable",
+  "warp"
+ ],
+ "routed": [
+  "aim-core",
+  "aim-spec",
+  "aim-ux"
+ ],
+ "topics": [
+  {
+   "participants": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable",
+    "person-1",
+    "warp"
+   ]
+  },
+  {
+   "participants": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ]
+  },
+  {
+   "participants": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable",
+    "person-1"
+   ]
+  },
+  {
+   "participants": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable",
+    "person-1",
+    "warp"
+   ]
+  }
+ ],
+ "messages": [
+  {
+   "at_ms": 0,
+   "from": "person-1",
+   "topic": 0,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 714,
+    "aim-spec": 1297,
+    "aim-ux": 1821
+   }
+  },
+  {
+   "at_ms": 144138,
+   "from": "aim-ux",
+   "topic": 1,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 38388
+   }
+  },
+  {
+   "at_ms": 162105,
+   "from": "aim-spec",
+   "topic": 2,
+   "kind": "post",
+   "to": [
+    "fable"
+   ],
+   "woken": {}
+  },
+  {
+   "at_ms": 178810,
+   "from": "aim-ux",
+   "topic": 3,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 3716,
+    "aim-spec": 4251
+   }
+  },
+  {
+   "at_ms": 179145,
+   "from": "aim-ux",
+   "topic": 0,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 3381,
+    "aim-spec": 3916
+   }
+  },
+  {
+   "at_ms": 204441,
+   "from": "aim-spec",
+   "topic": 0,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-ux",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 38677,
+    "aim-ux": 831
+   }
+  },
+  {
+   "at_ms": 266521,
+   "from": "warp",
+   "topic": 3,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 37248,
+    "aim-spec": 37744,
+    "aim-ux": 59991
+   }
+  },
+  {
+   "at_ms": 266585,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 37184,
+    "aim-spec": 37680,
+    "aim-ux": 59927
+   }
+  },
+  {
+   "at_ms": 266739,
+   "from": "fable",
+   "topic": 1,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 37030,
+    "aim-ux": 59773
+   }
+  },
+  {
+   "at_ms": 267209,
+   "from": "fable",
+   "topic": 0,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 36560,
+    "aim-spec": 37056,
+    "aim-ux": 59303
+   }
+  },
+  {
+   "at_ms": 276372,
+   "from": "aim-ux",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-spec",
+    "fable"
+   ],
+   "woken": {
+    "aim-spec": 27893
+   }
+  },
+  {
+   "at_ms": 276543,
+   "from": "aim-ux",
+   "topic": 1,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 27226
+   }
+  },
+  {
+   "at_ms": 318274,
+   "from": "aim-core",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-spec",
+    "fable"
+   ],
+   "woken": {
+    "aim-spec": 46580
+   }
+  },
+  {
+   "at_ms": 325212,
+   "from": "aim-spec",
+   "topic": 1,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 16635,
+    "aim-ux": 1300
+   }
+  },
+  {
+   "at_ms": 332528,
+   "from": "fable",
+   "topic": 3,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 9319,
+    "aim-spec": 32326,
+    "aim-ux": 54656
+   }
+  },
+  {
+   "at_ms": 358868,
+   "from": "aim-core",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-spec",
+    "fable"
+   ],
+   "woken": {
+    "aim-spec": 5986
+   }
+  },
+  {
+   "at_ms": 360528,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 41888,
+    "aim-spec": 4326,
+    "aim-ux": 26656
+   }
+  },
+  {
+   "at_ms": 394066,
+   "from": "aim-ux",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 8350,
+    "aim-spec": 31199
+   }
+  },
+  {
+   "at_ms": 394291,
+   "from": "aim-ux",
+   "topic": 3,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 8125,
+    "aim-spec": 30974
+   }
+  },
+  {
+   "at_ms": 421441,
+   "from": "aim-spec",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 41616,
+    "aim-ux": 26390
+   }
+  },
+  {
+   "at_ms": 422527,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 40530,
+    "aim-spec": 2738,
+    "aim-ux": 25304
+   }
+  },
+  {
+   "at_ms": 575991,
+   "from": "aim-spec",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 8439,
+    "aim-ux": 53641
+   }
+  },
+  {
+   "at_ms": 589971,
+   "from": "aim-core",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-spec": 705,
+    "aim-ux": 39661
+   }
+  },
+  {
+   "at_ms": 672296,
+   "from": "aim-ux",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 723,
+    "aim-spec": 1212
+   }
+  },
+  {
+   "at_ms": 1017162,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 726,
+    "aim-spec": 1377,
+    "aim-ux": 1873
+   }
+  },
+  {
+   "at_ms": 1045468,
+   "from": "person-1",
+   "topic": 0,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 33295,
+    "aim-spec": 33992,
+    "aim-ux": 34525
+   }
+  },
+  {
+   "at_ms": 1107292,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 32054,
+    "aim-spec": 663,
+    "aim-ux": 33207
+   }
+  },
+  {
+   "at_ms": 1146588,
+   "from": "person-1",
+   "topic": 0,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 38245,
+    "aim-spec": 21960,
+    "aim-ux": 54423
+   }
+  },
+  {
+   "at_ms": 1165825,
+   "from": "aim-core",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-spec": 2723,
+    "aim-ux": 35186
+   }
+  },
+  {
+   "at_ms": 1195070,
+   "from": "person-1",
+   "topic": 0,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 896,
+    "aim-spec": 34122,
+    "aim-ux": 5941
+   }
+  },
+  {
+   "at_ms": 1200772,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 17735,
+    "aim-spec": 28420,
+    "aim-ux": 61021
+   }
+  },
+  {
+   "at_ms": 1232092,
+   "from": "aim-spec",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 47448,
+    "aim-ux": 29701
+   }
+  },
+  {
+   "at_ms": 1266813,
+   "from": "aim-ux",
+   "topic": 3,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 12727,
+    "aim-spec": 710
+   }
+  },
+  {
+   "at_ms": 1280220,
+   "from": "aim-core",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-spec": 24060,
+    "aim-ux": 46764
+   }
+  },
+  {
+   "at_ms": 1281653,
+   "from": "aim-ux",
+   "topic": 0,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 57448,
+    "aim-spec": 22627
+   }
+  },
+  {
+   "at_ms": 1300011,
+   "from": "aim-ux",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 39090,
+    "aim-spec": 4269
+   }
+  },
+  {
+   "at_ms": 1325995,
+   "from": "aim-core",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-spec": 4064,
+    "aim-ux": 989
+   }
+  },
+  {
+   "at_ms": 1525713,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 679,
+    "aim-spec": 1182,
+    "aim-ux": 1657
+   }
+  },
+  {
+   "at_ms": 1567454,
+   "from": "aim-ux",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 19535,
+    "aim-spec": 8268
+   }
+  },
+  {
+   "at_ms": 1618509,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 29204,
+    "aim-spec": 815,
+    "aim-ux": 1397
+   }
+  },
+  {
+   "at_ms": 1662444,
+   "from": "person-1",
+   "topic": 2,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 45886,
+    "aim-spec": 17514,
+    "aim-ux": 719
+   }
+  },
+  {
+   "at_ms": 1687678,
+   "from": "aim-spec",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 20652,
+    "aim-ux": 12146
+   }
+  },
+  {
+   "at_ms": 1731919,
+   "from": "fable",
+   "topic": 2,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 37091,
+    "aim-spec": 8625,
+    "aim-ux": 705
+   }
+  },
+  {
+   "at_ms": 1739134,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 29876,
+    "aim-spec": 1410,
+    "aim-ux": 54123
+   }
+  },
+  {
+   "at_ms": 1745809,
+   "from": "aim-core",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-spec": 55733,
+    "aim-ux": 47448
+   }
+  },
+  {
+   "at_ms": 1775517,
+   "from": "person-1",
+   "topic": 2,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 11620,
+    "aim-spec": 26025,
+    "aim-ux": 17740
+   }
+  },
+  {
+   "at_ms": 1794380,
+   "from": "fable",
+   "topic": 2,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 53357,
+    "aim-spec": 7162,
+    "aim-ux": 59590
+   }
+  },
+  {
+   "at_ms": 1849493,
+   "from": "aim-ux",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "fable"
+   ],
+   "woken": {
+    "aim-core": 58873,
+    "aim-spec": 12640
+   }
+  },
+  {
+   "at_ms": 2009924,
+   "from": "person-1",
+   "topic": 3,
+   "kind": "post",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux",
+    "fable",
+    "warp"
+   ],
+   "woken": {
+    "aim-core": 19753,
+    "aim-spec": 683,
+    "aim-ux": 1188
+   }
+  },
+  {
+   "at_ms": 2046593,
+   "from": "fable",
+   "topic": 2,
+   "kind": "tell",
+   "to": [
+    "aim-core",
+    "aim-spec",
+    "aim-ux"
+   ],
+   "woken": {
+    "aim-core": 10444,
+    "aim-spec": 24712,
+    "aim-ux": 25251
+   }
+  }
+ ],
+ "turns": {},
+ "context": {
+  "aim-core": {
+   "median_s": 29.204,
+   "wakes": 41
+  },
+  "aim-spec": {
+   "median_s": 8.4465,
+   "wakes": 40
+  },
+  "aim-ux": {
+   "median_s": 28.1785,
+   "wakes": 34
+  }
+ }
+}

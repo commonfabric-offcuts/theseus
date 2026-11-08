@@ -24,12 +24,18 @@ STUB_NODE = r'''#!%s
 import json, os, sys
 args = sys.argv[1:]
 fail = os.environ.get("STUB_FAIL", "")
+if args[0] == "--version":
+    print("v22.11.0")
+    sys.exit(0)
 if args[0] == "--test":
     bad = int(fail == "node-units")
     print("# tests 2\n# pass %%d\n# fail %%d\n# cancelled 0" %% (2 - bad, bad))
     sys.exit(bad)
 harness, chrome, evidence, flags = args[0], args[1], args[2], args[3:]
 name = os.path.basename(harness).replace("_native.mjs", "") + "".join(flags)
+# A WebKit mode loads playwright-core from AIM_PLAYWRIGHT_CORE; without it there are no results.
+if harness.endswith("webkit_native.mjs") and not os.environ.get("AIM_PLAYWRIGHT_CORE"):
+    fail = "no-results-" + name
 bad = fail == name
 if harness.endswith("reader_native.mjs"):
     results = [{"name": "case", "passed": not bad}]
@@ -44,8 +50,22 @@ sys.exit(int(bad or fail == "exit-only-" + name))
 '''
 
 STUB_PYTHON = r'''#!%s
-import os, subprocess, sys
-if os.environ.get("STUB_FAIL") == "python-units":
+import json, os, subprocess, sys
+args = sys.argv[1:]
+if args[:1] == ["-c"]:
+    print("3.9.6")
+    sys.exit(0)
+if "tools/wake_replay.py" in " ".join(args):
+    # A replay run: STUB_FAIL=wake-replay loses one wake; the run's side (base or candidate) is in its --out.
+    out = args[args.index("--out") + 1]
+    lost = os.environ.get("STUB_FAIL") == "wake-replay"
+    median = 2.0 if "/base-" in out else 1.0
+    open(os.path.join(out, "replay.json"), "w").write(json.dumps({"agents": {"aim-ux": {
+        "median": median, "wakes": 3, "lost": [1200] if lost else [], "delays": [median] * 3}}}))
+    open(os.path.join(os.path.dirname(os.path.dirname(out)), "replay-order.txt"), "a").write(os.path.basename(out) + " " + args[args.index("--code") + 1] + "\n")
+    sys.exit(1 if lost else 0)
+step = "deploy-refusals" if "DeployRefuses" in args else "python-units"
+if os.environ.get("STUB_FAIL") == step:
     print("Ran 3 tests in 0.1s\n\nFAILED (failures=1)")
     sys.exit(1)
 if os.environ.get("STUB_FAIL") == "dirty":
@@ -54,7 +74,7 @@ if os.environ.get("STUB_FAIL") == "commit":
     subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "--allow-empty",
                     "-m", "moved"], check=True)
 print("Ran 3 tests in 0.1s\n\nOK (skipped=1)")
-sys.exit(int(os.environ.get("STUB_FAIL") == "exit-only-python-units"))
+sys.exit(int(os.environ.get("STUB_FAIL") == "exit-only-" + step))
 '''
 
 
@@ -78,7 +98,8 @@ class FakeCheckout(unittest.TestCase):
         base = Path(self.tmp.name)
         self.root = base / "checkout"
         (self.root / "tests").mkdir(parents=True)
-        for harness in {step.harness for step in release_check.NATIVE_STEPS}:
+        for harness in release_check.harnesses():
+            (self.root / harness).parent.mkdir(parents=True, exist_ok=True)
             (self.root / harness).write_text("// stand-in\n")
         (self.root / "tests" / "a.test.mjs").write_text("// stand-in\n")
         for argv in (["init", "-q"], ["add", "-A"],
@@ -95,10 +116,11 @@ class FakeCheckout(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def check(self, fail=""):
+    def check(self, fail="", playwright="/stub/playwright-core"):
         with mock.patch.dict(os.environ, {"STUB_FAIL": fail}), redirect_stdout(io.StringIO()):
+            os.environ.pop("AIM_PLAYWRIGHT_CORE", None)
             return release_check.check(self.root, self.out, "/x" + release_check.CHROME_SUFFIX,
-                                       self.python, self.node)
+                                       self.python, self.node, playwright)
 
 
 class ReleaseCheckRuns(FakeCheckout):
@@ -113,6 +135,16 @@ class ReleaseCheckRuns(FakeCheckout):
         self.assertEqual((python["counts"]["tests"], python["counts"]["skipped"]), (3, 1))
         # Each step gets its own bytecode cache, never the checkout's.
         self.assertTrue((self.out / "pyc").is_dir())
+
+    def test_the_webkit_modes_get_playwright_core_and_fail_without_it(self):
+        summary = self.check()
+        self.assertTrue(summary["passed"])
+        self.assertEqual(summary["playwright"], "/stub/playwright-core")
+        self.out = Path(self.tmp.name) / "out-no-playwright"
+        summary = self.check(playwright=None)
+        self.assertFalse(summary["passed"])
+        self.assertEqual([step["name"] for step in summary["steps"] if not step["passed"]],
+                         ["native-webkit-" + mode for mode in release_check.WEBKIT_MODES])
 
     def test_one_failing_native_mode_fails_the_run_and_the_summary_names_it(self):
         summary = self.check(fail="reader_persistence--colors")
@@ -171,6 +203,201 @@ class ReleaseCheckRuns(FakeCheckout):
                       release_check.verify_summary(self.out / "summary.json", self.commit))
 
 
+# A stand-in for the live agent CLI: `releases` names the live release (STUB_LIVE, or none), `pipeline` an open
+# release piece in STUB_STAGE (round 1), and every write is recorded in STUB_CALLS and answered as committed;
+# STUB_CLI=fail makes every call fail.
+STUB_CLI = r"""#!%s
+import json, os, sys
+args = sys.argv[1:]
+verb = args[args.index("--json") + 1]
+with open(os.environ["STUB_CALLS"], "a") as handle:
+    handle.write(json.dumps(args[args.index("--json") + 1:]) + "\n")
+if os.environ.get("STUB_CLI") == "fail":
+    print("Traceback: the live store is busy")
+    sys.exit(1)
+if verb == "releases":
+    live = os.environ.get("STUB_LIVE")
+    items = [{"release": 19, "commit": live, "measurements": {"native": {"total": 188}}}] if live else []
+    print(json.dumps({"instance_id": "i", "items": items, "next_cursor": None}))
+elif verb == "checks":
+    print(json.dumps({"checks": [], "release_piece": {"id": "p-rel", "release": 20, "stage": os.environ.get("STUB_STAGE", "combine"), "round": 1}}))
+else:
+    if verb == "stage-note":
+        progress = json.loads(open(args[args.index("--progress") + 1]).read())
+        with open(os.environ["STUB_CALLS"], "a") as handle:
+            handle.write(json.dumps({"progress": progress}) + "\n")
+    print(json.dumps({"status": "committed", "result": {"piece_id": "p-rel"}}))
+"""
+
+
+class ReleaseCheckMeasures(FakeCheckout):
+    """What the summary says beyond pass or fail: its tools, the deploy's refusals, the wake replay, --only, --base and
+    --report (items 12 and 104; 7.1)."""
+
+    def setUp(self):
+        super().setUp()
+        self.cli = script(Path(self.tmp.name) / "aim-next", STUB_CLI)
+        self.calls = Path(self.tmp.name) / "calls.jsonl"
+
+    def run_check(self, fail="", env=None, **options):
+        # The WebKit modes need playwright-core; ReleaseCheckRuns holds what happens without it.
+        options.setdefault("playwright", "/stub/playwright-core")
+        with mock.patch.dict(os.environ, dict({"STUB_FAIL": fail, "STUB_CALLS": str(self.calls)}, **(env or {}))), \
+                redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as err:
+            summary = release_check.check(self.root, self.out, "/x" + release_check.CHROME_SUFFIX, self.python, self.node, **options)
+        self.stderr = err.getvalue()
+        return summary
+
+    def written(self):
+        return [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
+
+    def test_the_summary_names_its_tools_and_an_older_summary_without_them_still_verifies(self):
+        tools = self.run_check()["tools"]
+        self.assertEqual(set(tools["harnesses"]), set(release_check.harnesses()))
+        self.assertIn(release_check.REPLAY_FILE, tools["harnesses"])
+        for path, value in tools["harnesses"].items():
+            self.assertEqual(value, release_check.git(self.root, "rev-parse", "HEAD:" + path).stdout.strip(), path)
+        self.assertEqual((tools["python"], tools["node"], tools["chrome"]), ("3.9.6", "v22.11.0", None))
+        self.assertIsNone(tools["release_check"], "this checkout has no tools/release_check.py at HEAD")
+        self.assertEqual(release_check.verify_summary(self.out / "summary.json", self.commit), [])
+        older = json.loads((self.out / "summary.json").read_text())
+        del older["tools"]
+        (self.out / "summary.json").write_text(json.dumps(older))
+        self.assertEqual(release_check.verify_summary(self.out / "summary.json", self.commit), [], "a summary written before it named its tools")
+
+    def test_the_deploys_refusals_are_a_required_step(self):
+        summary = self.run_check(fail="deploy-refusals")
+        self.assertIn(release_check.DEPLOY_REFUSALS, release_check.REQUIRED)
+        [step] = [s for s in summary["steps"] if s["name"] == release_check.DEPLOY_REFUSALS] or [None]
+        self.assertIsNotNone(step, "the release check runs the deploy's refusals")
+        self.assertIn("DeployRefuses", step["argv"])
+        self.assertEqual(release_check.verify_summary(self.out / "summary.json", self.commit), ["deploy-refusals failed (exit 1)"])
+        without = json.loads((self.out / "summary.json").read_text())
+        without["steps"] = [s for s in without["steps"] if s["name"] != release_check.DEPLOY_REFUSALS]
+        (self.out / "summary.json").write_text(json.dumps(without))
+        self.assertIn("the release check did not run deploy-refusals", release_check.verify_summary(self.out / "summary.json", self.commit))
+
+    def test_the_wake_replay_runs_repeats_times_and_a_lost_wake_fails_it(self):
+        summary = self.run_check(repeats=3)
+        step = summary["steps"][-1]
+        self.assertEqual((step["name"], step["passed"], step["series"]["aim-ux"]["runs"], step["series"]["aim-ux"]["median"]),
+                         (release_check.WAKE_REPLAY, True, [1.0, 1.0, 1.0], 1.0))
+        self.out = Path(self.tmp.name) / "out-lost"
+        summary = self.run_check(fail="wake-replay")
+        step = summary["steps"][-1]
+        self.assertEqual((step["passed"], step["series"]["aim-ux"]["lost"]), (False, [1200]))
+        self.assertFalse(summary["passed"])
+
+    def test_only_runs_the_named_steps_says_so_and_does_not_describe_the_commit(self):
+        summary = self.run_check(only=["node-units", release_check.WAKE_REPLAY])
+        self.assertEqual(([s["name"] for s in summary["steps"]], summary["only"], summary["passed"]),
+                         (["node-units", release_check.WAKE_REPLAY], ["node-units", release_check.WAKE_REPLAY], True))
+        foreign, _ = release_check.judge_summary(self.out / "summary.json", self.commit)
+        self.assertEqual(foreign, ["the release check ran only node-units, wake-replay, so it does not describe %s" % self.commit])
+        self.out = Path(self.tmp.name) / "out-unknown"
+        with self.assertRaises(release_check.Refused):
+            self.run_check(only=["native-nothing"])
+
+    def commit_again(self):
+        """A second commit, so the live release (the first) is not HEAD."""
+        (self.root / "tests" / "b.test.mjs").write_text("// stand-in\n")
+        for argv in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "next"]):
+            subprocess.run(["git", "-C", str(self.root)] + argv, check=True, capture_output=True)
+        live, self.commit = self.commit, release_check.tree(self.root)[0]
+        return live
+
+    def test_the_base_reruns_the_replay_on_the_live_releases_code_alternating_with_the_candidate(self):
+        live = self.commit_again()
+        summary = self.run_check(env={"STUB_LIVE": live}, base=(self.cli, "/profile.json"))
+        order = [line.split() for line in (self.out / "replay-order.txt").read_text().splitlines()]
+        self.assertEqual([side for side, _ in order], ["base-1", "candidate-1", "base-2", "candidate-2"])
+        base_code = {code for side, code in order if side.startswith("base")}
+        self.assertEqual({code for side, code in order if side.startswith("candidate")}, {str(self.root)})
+        [code] = base_code
+        self.assertNotEqual(code, str(self.root))
+        self.assertFalse(Path(code).exists(), "the base's code is removed")
+        self.assertEqual((summary["base"]["commit"], summary["base"]["tools"]), (live, summary["tools"]))
+        [rerun] = summary["base"]["steps"]
+        self.assertEqual((rerun["name"], rerun["series"]["aim-ux"]["runs"]), (release_check.WAKE_REPLAY, [2.0, 2.0]))
+        self.assertEqual(self.written()[0], ["releases", "--limit", "1"])
+        # No live release to read: refused before anything runs.
+        self.out = Path(self.tmp.name) / "out-nolive"
+        with self.assertRaises(release_check.Refused):
+            self.run_check(base=(self.cli, "/profile.json"))
+        self.assertFalse((self.out / "summary.json").exists())
+
+    def test_the_report_enters_checks_and_notes_the_steps_so_far_after_every_step(self):
+        live = self.commit_again()
+        summary = self.run_check(env={"STUB_LIVE": live, "STUB_STAGE": "checks"}, report=(self.cli, "/profile.json", "building-theseus"),
+                                 only=["python-units", "native-colors", "native-live"])
+        calls = self.written()
+        enter = [call for call in calls if isinstance(call, list) and call[0] == "enter-stage"]
+        self.assertEqual(enter, [["enter-stage", "p-rel", "checks", "--round", "2", "--left", "held"]], "already in checks: the next round")
+        notes = [call for call in calls if isinstance(call, list) and call[0] == "stage-note"]
+        progress = [call["progress"] for call in calls if isinstance(call, dict)]
+        self.assertEqual(len(notes), 4, "before each step, and after the last")
+        self.assertEqual([[step["name"] for step in each["steps"]] for each in progress],
+                         [[], ["python-units"], ["python-units", "native-colors"], ["python-units", "native-colors", "native-live"]])
+        self.assertEqual([(each["running"] or {}).get("name") for each in progress], ["python-units", "native-colors", "native-live", None])
+        self.assertEqual({(each["steps_total"], each["commit"]) for each in progress}, {(3, self.commit)})
+        self.assertEqual(notes[-1][2], "2 browser checks run so far, none failed. Release 19 ran 188.")
+        self.assertTrue(summary["passed"])
+        # From combine it enters checks round 1; with no live record the note says only what it counted.
+        self.calls.unlink()
+        self.out = Path(self.tmp.name) / "out-combine"
+        self.run_check(env={"STUB_STAGE": "combine"}, report=(self.cli, "/profile.json", "building-theseus"), only=["native-colors"], fail="reader_persistence--colors")
+        calls = self.written()
+        self.assertIn(["enter-stage", "p-rel", "checks", "--left", "passed"], calls)
+        self.assertEqual([call for call in calls if isinstance(call, list) and call[0] == "stage-note"][-1][2],
+                         "1 browser checks run so far; 1 failed: case.")
+
+    def test_a_report_that_cannot_be_written_never_changes_the_verdict(self):
+        for fail, passed in (("", True), ("reader_persistence--colors", False)):
+            with self.subTest(fail=fail):
+                self.out = Path(self.tmp.name) / ("out-" + (fail or "pass"))
+                summary = self.run_check(fail=fail, env={"STUB_CLI": "fail"}, report=(self.cli, "/profile.json", "building-theseus"),
+                                         only=["python-units", "native-colors"])
+                self.assertEqual(summary["passed"], passed)
+                self.assertIn("report: checks was not written", self.stderr)
+
+    def test_a_measure_and_its_base_rerun_compare_as_measured_by_the_same_tools(self):
+        # D32 through the deploy's reading of a summary this check wrote (tools/checks.py run_from_summary).
+        from tools import checks
+        from aim_next import outcome_rules
+        live = self.commit_again()
+        summary = self.run_check(env={"STUB_LIVE": live}, base=(self.cli, "/profile.json"))
+        wake = {"check_id": "wake-time", "name": "Wake time", "kind": "measure", "source": "release-check:wake-replay"}
+        run = checks.run_from_summary(summary, [wake], "w1")
+        self.assertEqual(run["tools"], summary["tools"])
+        self.assertTrue(outcome_rules.comparable(run["base"], run))
+        self.assertEqual([step.get("tool") for step in run["steps"]][-1], release_check.REPLAY_TOOL)
+        older = dict(summary, tools=None)
+        self.assertFalse(outcome_rules.comparable(run["base"], checks.run_from_summary(older, [wake], "w1")),
+                         "a summary that names no tools is not compared with a rerun that does")
+
+
+class EveryCheckHasItsStep(unittest.TestCase):
+    """Class 2's guard: every machine-read check source a seed names reads steps the release check runs, and reads
+    exactly them: given only its steps it has a reading, and given every other step it has none."""
+
+    def test_each_seeded_release_check_source_is_read_from_its_own_required_steps(self):
+        from aim_next import check_reading
+        seeds = json.loads((Path(release_check.REPO) / "tools" / "pipeline" / "checks.json").read_text())
+        sources = {check["source"] for check in (seeds["checks"] if isinstance(seeds, dict) else seeds) if check["source"].startswith("release-check:")}
+        self.assertTrue(sources)
+        self.assertLessEqual(sources, set(release_check.SOURCE_STEPS), "a seeded source the release check has no step for")
+        for source, names in release_check.SOURCE_STEPS.items():
+            with self.subTest(source=source):
+                self.assertTrue(names and set(names) <= set(release_check.REQUIRED), names)
+                check = {"check_id": "c", "source": source}
+                step = lambda name: dict({"name": name, "passed": True, "total": 1, "pass": 1},
+                                         **({"values": {"aim-ux": {"median": 1.0, "lost": []}}} if name in release_check.REPLAYED else {}))
+                self.assertTrue(check_reading.readings([check], [step(name) for name in names], 0, 60000), "read from its own steps")
+                if source != "release-check:duration":
+                    others = [step(name) for name in release_check.REQUIRED if name not in names]
+                    self.assertEqual(check_reading.readings([check], others, 0, 60000), [], "and from no other step")
+
+
 class ReleaseCheckRefuses(FakeCheckout):
     def refusal(self, **overrides):
         args = dict(root=self.root, out=self.out, chrome="/x" + release_check.CHROME_SUFFIX,
@@ -219,14 +446,14 @@ class ReleaseCheckRefuses(FakeCheckout):
     def test_main_exits_two_on_refusal_and_records_why(self):
         (self.root / "untracked.py").write_text("")
         with mock.patch.object(release_check, "REPO", self.root), redirect_stderr(io.StringIO()), \
-                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX):
+                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), mock.patch.object(release_check, "playwright_path", return_value="/stub/playwright-core"):
             code = release_check.main(["--out", str(self.out), "--python", self.python, "--node", self.node])
         self.assertEqual(code, 2)
         self.assertIn("has changes", json.loads((self.out / "summary.json").read_text())["refused"])
 
     def main(self, out):
         with mock.patch.object(release_check, "REPO", self.root), redirect_stderr(io.StringIO()) as err, \
-                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX):
+                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), mock.patch.object(release_check, "playwright_path", return_value="/stub/playwright-core"):
             try:
                 code = release_check.main(["--out", str(out), "--python", self.python, "--node", self.node])
             except Exception as error:  # a refusal is an answer, not a traceback
@@ -249,7 +476,7 @@ class ReleaseCheckRefuses(FakeCheckout):
         for fail, expected in (("reader--mutations", 1), ("", 0)):
             out = Path(self.tmp.name) / ("main-" + (fail or "pass"))
             with mock.patch.object(release_check, "REPO", self.root), mock.patch.dict(os.environ, {"STUB_FAIL": fail}), \
-                    mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), \
+                    mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), mock.patch.object(release_check, "playwright_path", return_value="/stub/playwright-core"), \
                     redirect_stdout(io.StringIO()):
                 code = release_check.main(["--out", str(out), "--python", self.python, "--node", self.node])
             self.assertEqual(code, expected, fail)
@@ -362,6 +589,44 @@ class Environment(unittest.TestCase):
                 release_check.chrome_path(str(chrome), environ={})
 
 
+class PlaywrightPath(unittest.TestCase):
+    """The WebKit modes load one playwright-core, named or found in its cache, and nothing else."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self.tmp.name)
+        self.cache = self.home / release_check.PLAYWRIGHT_CACHE
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def package(self, path, name="playwright-core"):
+        path.mkdir(parents=True)
+        (path / "package.json").write_text(json.dumps({"name": name}))
+        return str(path)
+
+    def test_named_then_environment_then_the_one_cached_version(self):
+        named = self.package(self.home / "named")
+        env = self.package(self.home / "env")
+        cached = self.package(self.cache / "1.63.0")
+        self.assertEqual(release_check.playwright_path(named, environ={"AIM_PLAYWRIGHT_CORE": env}, home=self.home), named)
+        self.assertEqual(release_check.playwright_path(None, environ={"AIM_PLAYWRIGHT_CORE": env}, home=self.home), env)
+        self.assertEqual(release_check.playwright_path(None, environ={}, home=self.home), cached)
+
+    def test_none_several_relative_or_another_package_is_refused(self):
+        with self.assertRaises(release_check.Refused):
+            release_check.playwright_path(None, environ={}, home=self.home)
+        self.package(self.cache / "1.62.0")
+        self.package(self.cache / "1.63.0")
+        with self.assertRaises(release_check.Refused):
+            release_check.playwright_path(None, environ={}, home=self.home)
+        with self.assertRaises(release_check.Refused):
+            release_check.playwright_path("relative/playwright-core", environ={}, home=self.home)
+        other = self.package(self.home / "other", name="playwright")
+        with self.assertRaises(release_check.Refused):
+            release_check.playwright_path(other, environ={}, home=self.home)
+
+
 class NativeCoverage(unittest.TestCase):
     """The release check runs every mode of every native entry point in the repository."""
 
@@ -395,6 +660,12 @@ class NativeCoverage(unittest.TestCase):
         self.assertEqual((steps["conversation"].harness, steps["conversation"].flags), (release_check.PERSISTENCE, ("--conversation",)))
         self.assertIn("native-conversation", release_check.REQUIRED)
 
+    def test_the_targets_mode_is_a_step(self):
+        # An outcome's target, its kind, its checks, Measurements and Reached (items 14, 104, 12).
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual((steps["targets"].harness, steps["targets"].flags), (release_check.PERSISTENCE, ("--targets",)))
+        self.assertIn("native-targets", release_check.REQUIRED)
+
     def test_the_pipeline_mode_is_a_step(self):
         # The pipeline's page, its rail row, its outcome line and Add to pipeline in the Reader (item 84).
         steps = {step.name: step for step in release_check.NATIVE_STEPS}
@@ -406,6 +677,15 @@ class NativeCoverage(unittest.TestCase):
         steps = {step.name: step for step in release_check.NATIVE_STEPS}
         self.assertEqual((steps["reader-finished"].harness, steps["reader-finished"].flags), (release_check.READER, ("--finished",)))
         self.assertIn("native-reader-finished", release_check.REQUIRED)
+
+    def test_the_webkit_modes_are_steps(self):
+        # Safari's engine runs the reading colours, whispers, Notebook pages, the rail, the pipeline
+        # page (each with its phone layouts) and the phone check page.
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual(release_check.WEBKIT_MODES, ("colors", "whispers", "notebook", "rail", "pipeline", "device"))
+        for mode in release_check.WEBKIT_MODES:
+            self.assertEqual((steps["webkit-" + mode].harness, steps["webkit-" + mode].flags), (release_check.WEBKIT, ("--" + mode,)))
+            self.assertIn("native-webkit-" + mode, release_check.REQUIRED)
 
     def test_every_harness_mode_is_a_step(self):
         steps = [(step.harness, tuple(step.flags)) for step in release_check.NATIVE_STEPS]

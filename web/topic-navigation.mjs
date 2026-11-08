@@ -12,7 +12,7 @@ const badRoute = () => { throw Error('This destination link is incomplete or amb
 // message to open in the Reader when it opens ('message', docs/links.md).
 const OPTIONAL = {opening:['from'],topic:['message']};
 export function routeKey(route) {
-  const fields = {root:[],health:[],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
+  const fields = {root:[],health:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
   if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>validId(route[key]))) badRoute();
   return JSON.stringify([route.kind,...fields.map(key=>route[key]),...optional.map(key=>[key,route[key]])]);
@@ -20,8 +20,8 @@ export function routeKey(route) {
 export function routeHref(route) {
   routeKey(route);
   const params = route.kind === 'root' ? null : route.kind === 'health' ? {health:''} : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{})} : route.kind === 'conversation' ? {conversation:route.id} :
-    route.kind === 'workspace' ? {workspace:route.id} : route.kind === 'pipeline' ? {pipeline:route.id} :
-    route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
+    route.kind === 'workspace' ? {workspace:route.id} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} :
+    route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
   return params ? '?' + new URLSearchParams(params) : '/';
 }
@@ -40,8 +40,12 @@ export function parseRoute(url) {
   else if (keys.length===1 && p.has('conversation')) route={kind:'conversation',id:p.get('conversation')};
   // An outcome's pipeline, and one item's record in it (docs/pipeline.md).
   else if (keys.length===1 && p.has('pipeline')) route={kind:'pipeline',id:p.get('pipeline')};
+  // An outcome's Measurements: every check's readings by release (docs/targets.md).
+  else if (keys.length===1 && p.has('measurements')) route={kind:'measurements',id:p.get('measurements')};
   else if (keys.length===2 && p.has('pipeline') && /^[1-9][0-9]{0,8}$/.test(p.get('item') ?? '')) route={kind:'item',id:p.get('pipeline'),item:p.get('item')};
   else if (keys.length===2 && p.get('new')==='outcome' && p.has('intent')) route={kind:'create',intent:p.get('intent')};
+  // The phone check, posting what the phone did to one topic (docs/device-evidence.md).
+  else if (keys.length===1 && p.has('phone-check')) route={kind:'phone-check',id:p.get('phone-check')};
   else if ([3,4].includes(keys.length) && ['workspace','opening','opening_topic'].every(k=>p.has(k)) && (keys.length===3 || p.has('opening_from'))) {
     route={kind:'opening',workspace:p.get('workspace'),opening:p.get('opening'),topic:p.get('opening_topic'),...(p.has('opening_from')?{from:p.get('opening_from')}:{})};
   }

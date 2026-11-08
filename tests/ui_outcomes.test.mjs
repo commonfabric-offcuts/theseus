@@ -92,6 +92,7 @@ function railFixture(t) {
     addEventListener(name,fn){this.handlers[name]=fn;}
     setAttribute(k,v){this.attributes[k]=v;}removeAttribute(k){delete this.attributes[k];}
     insertBefore(child,before){child.remove();const index=before?this.children.indexOf(before):this.children.length;this.children.splice(index,0,child);child.parent=this;}
+    after(...nodes){const host=this.parent;if(!host)return;for(const node of nodes)node.remove();host.children.splice(host.children.indexOf(this)+1,0,...nodes);for(const node of nodes)node.parent=host;}
     remove(){if(this.parent)this.parent.children=this.parent.children.filter(x=>x!==this);}
     focus(){document.activeElement=this;}
     getBoundingClientRect(){return this.box;}
@@ -120,6 +121,27 @@ test('outcome links expose stable IDs and preserve native activation and More fo
   first.onclick({button:0,preventDefault(){prevented++;}});assert.equal(prevented,1);
   assert.deepEqual(f.opened,[[{kind:'workspace',id:'a'},'Same']]);assert.equal(first.href,'?workspace=a');
   assert.deepEqual(f.calls,[{limit:20},{limit:20,cursor:'a'}]);
+});
+test('reached outcomes fold into one Reached (N) line after the list, read only when it is opened',async t=>{
+  const f=railFixture(t);
+  const column=document.createElement();column.append(f.more);f.more.after(f.rail.reached);
+  assert.equal(f.rail.reached.hidden,true);
+  f.queue.push({...f.answer(['a']),reached_count:2});await f.rail.load();
+  assert.equal(f.rail.reached.hidden,false);assert.equal(f.rail.reached.children[0].textContent,'Reached (2)');
+  assert.deepEqual(f.calls,[{limit:20}],'nothing reached is read until the line is opened');
+  f.queue.push({instance_id:'instance',items:[{id:'r1',title:'Old deck',reached_ms:Date.UTC(2026,10,1,12)},{id:'a',title:'Same',reached_ms:null}],next_cursor:null});
+  f.rail.reached.open=true;f.rail.reached.ontoggle();await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.calls.at(-1),{reached:true,limit:20});
+  const links=f.rail.reached.children[1].children;
+  assert.deepEqual(links.map(link=>[link.href,link.children[0].textContent]),[['?workspace=r1','Old deck'],['?workspace=a','Same']]);
+  assert.match(links[0].children[1].textContent,/^Reached \S/);assert.equal(links[1].children[1].textContent,'Reached');
+  assert.equal(links[1].attributes['aria-current'],'page','the open outcome is marked');
+  const read=f.calls.length;f.rail.reached.open=false;f.rail.reached.ontoggle();
+  assert.equal(f.calls.length,read,'closing the line reads nothing');
+  f.queue.push({...f.answer(['a']),reached_count:0});await f.rail.load();
+  assert.equal(f.rail.reached.hidden,true,'with none reached the line goes');
+  f.queue.push(()=>Promise.reject(Object.assign(Error('Denied'),{status:403})));f.rail.reachedCount=3;await f.rail.load();
+  assert.equal(f.rail.reached.hidden,true,'a reader denied the list sees no line');
 });
 test('outcome error and empty recovery leave focus on visible choices',async t=>{
   const f=railFixture(t);f.queue.push(f.answer(['a'],'a'));await f.rail.load();

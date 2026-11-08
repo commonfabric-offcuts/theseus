@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -17,6 +18,7 @@ STUB = r'''#!%s
 import json, os, sys
 evidence = sys.argv[3]
 open(os.path.join(evidence, "argv.json"), "w").write(json.dumps(sys.argv[1:]))
+open(os.path.join(evidence, "playwright.json"), "w").write(json.dumps(os.environ.get("AIM_PLAYWRIGHT_CORE")))
 bad = sys.argv[-1] == "bad"
 open(os.path.join(evidence, "native.json"), "w").write(json.dumps(
     {"browserClosed": True, "results": [{"name": "case", "passed": not bad,
@@ -65,6 +67,22 @@ class Main(unittest.TestCase):
         self.assertEqual(code, 0, printed)
         argv = json.loads((out / "evidence" / "argv.json").read_text())
         self.assertEqual(argv, [release_check.PERSISTENCE, CHROME, str(out / "evidence"), "--colors", "rendering"])
+
+    def test_a_webkit_mode_gets_playwright_core_and_a_chrome_mode_does_not(self):
+        with mock.patch.dict(os.environ), \
+                mock.patch.object(release_check, "playwright_path", return_value="/stub/playwright-core") as found:
+            os.environ.pop("AIM_PLAYWRIGHT_CORE", None)
+            out = self.base / "webkit"
+            code, printed = self.main("--out", str(out), "--playwright", "/named", "webkit-colors")
+            self.assertEqual(code, 0, printed)
+            found.assert_called_once_with("/named")
+            self.assertEqual(json.loads((out / "evidence" / "argv.json").read_text())[0], release_check.WEBKIT)
+            self.assertEqual(json.loads((out / "evidence" / "playwright.json").read_text()), "/stub/playwright-core")
+            out = self.base / "chrome"
+            code, printed = self.main("--out", str(out), "--playwright", "/named", "colors")
+            self.assertEqual(code, 0, printed)
+            found.assert_called_once_with("/named")
+            self.assertIsNone(json.loads((out / "evidence" / "playwright.json").read_text()))
 
     def test_a_failed_case_exits_one_and_is_listed(self):
         code, printed = self.main("--out", str(self.base / "run"), "openings", "bad")

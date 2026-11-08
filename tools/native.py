@@ -3,7 +3,7 @@ from __future__ import annotations
 
 """Run one native browser mode, optionally only the cases a filter selects, and summarise its failures.
 
-Usage: tools/native.py --out ABSOLUTE_DIR [--chrome PATH] [--node PATH] STEP [CASE_FILTER]
+Usage: tools/native.py --out ABSOLUTE_DIR [--chrome PATH] [--playwright DIR] [--node PATH] STEP [CASE_FILTER]
 
 STEP is a native step name from tools/release_check.py (journal, live, colors,
 openings, reader-keyboard, ...). This is for development; a release runs
@@ -51,6 +51,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Run one native browser mode.")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--chrome")
+    parser.add_argument("--playwright")
     parser.add_argument("--node", default=shutil.which("node"))
     parser.add_argument("step", choices=sorted(steps))
     parser.add_argument("case_filter", nargs="?")
@@ -58,6 +59,7 @@ def main(argv=None):
     step = steps[args.step]
     try:
         chrome = release_check.chrome_path(args.chrome)
+        playwright = release_check.playwright_path(args.playwright) if step.harness == release_check.WEBKIT else None
         if not args.out.is_absolute() or (args.out.exists() and any(args.out.iterdir())):
             raise release_check.Refused("--out must be a fresh absolute directory: %s" % args.out)
         if args.case_filter is not None and step.harness == release_check.READER:
@@ -72,7 +74,7 @@ def main(argv=None):
         argv.append(args.case_filter)
     result = release_check.run_step(
         "native-" + step.name, argv, release_check.REPO, args.out,
-        lambda text: release_check.native_counts(step, evidence))
+        lambda text: release_check.native_counts(step, evidence), step.harness, playwright=playwright)
     try:
         report = json.loads((evidence / step.results).read_text())
     except (OSError, ValueError):

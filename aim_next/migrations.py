@@ -29,7 +29,10 @@ from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCH
 from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
 from .standing_conversation import STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
-from .pipeline import PIPELINE_DOWN, PIPELINE_OCCUPIED, PIPELINE_SCHEMA
+from .pipeline import (PIPELINE_DECIDED_AGAIN_DOWN, PIPELINE_DECIDED_AGAIN_UP, PIPELINE_DOWN, PIPELINE_FACTS_BACKFILL, PIPELINE_FACTS_COUNT,
+                       PIPELINE_FACTS_DOWN, PIPELINE_FACTS_SCHEMA, PIPELINE_OCCUPIED, PIPELINE_SCHEMA)
+from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
+from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 from .health import HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED, HEALTH_SCHEMA
 
 
@@ -103,12 +106,25 @@ STEPS = (
     # placement and edit, the messages whose subject is an item, and the release
     # notes written by hand. Stepping back is refused once any of them exists.
     ("28", "29", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
-    # The next version keeps, per recipient, when a wake last got through, how
+    # Version 30 keeps each outcome's target and its checks, every run of them
+    # and what it measured, the owner's allowances, the problems found before
+    # a check caught them, and the outcome's kind and Reached (docs/targets.md).
+    # It also keeps each outcome's pipeline facts, written from version 29's
+    # pieces, moves and release records, from which what pieces hold, how each
+    # ended and which topics the pipeline holds Done are derived (docs/pipeline.md,
+    # "The derived state"); a piece's end can be decided again when a release
+    # record overtakes a drop or a return to building. Stepping back keeps every
+    # end and topic as it stands. Stepping back is refused once any of the rest
+    # exists.
+    ("29", "30", CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA
+     + [PIPELINE_FACTS_BACKFILL, PIPELINE_FACTS_COUNT],
+     list(PIPELINE_FACTS_DOWN) + list(PIPELINE_DECIDED_AGAIN_DOWN) + list(KINDS_DOWN) + list(CHECKS_DOWN), CHECKS_OCCUPIED),
+    # Version 31 keeps, per recipient, when a wake last got through, how
     # many have not since and why the latest did not, and how the runner's
     # previous run ended, for the Health page (health.py). They are worked out
     # from settlements and exits, so stepping back loses no record; it is
     # refused once Theseus has posted a health notice.
-    ("29", "30", HEALTH_SCHEMA + HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED),
+    ("30", "31", HEALTH_SCHEMA + HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED),
 )
 
 

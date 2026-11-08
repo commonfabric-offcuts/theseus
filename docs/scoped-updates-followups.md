@@ -47,13 +47,35 @@ validation. The accepted correction specification is revision 04, reviewed in
 
 ## Evidence qualifications
 
-The original native resync-authority ordering assertion can pass when the
-expected event is absent, and its bootstrap observations can include cleanup
-reads. It does not independently prove that specific ordering. Some original
-“healthy again” waits also accept a deferred state; they do not independently
-prove a successful catch-up. The correction receipt must name any new checks
-that supersede these limits rather than treating the original assertions as
-stronger proof than they provide.
+The original native resync ordering assertion passed when the expected event
+was absent (a missing event's index, -1, sorts first), and its bootstrap
+observations could include cleanup reads. Some original "healthy again" waits
+also accepted a deferred state, so they did not prove a catch-up. These are
+superseded in `tests/reader_freshness_native.mjs` (`--freshness`):
+
+- "F1 finite continuation and same-binding resync" orders the controller's own
+  reads after the `RESYNC_REQUIRED` refusal: its bootstrap read succeeds and
+  finishes before the replacement baseline starts. The network-level bootstrap
+  record is kept as evidence only (`bootstrap-while-resyncing`), since a
+  cleanup's bootstrap can be in it. A mutant that skips the resync's bootstrap
+  read fails it.
+- "F5 transient reads back off" waits, after each delay and after Retry
+  updates, for a pass that ran to its end with nothing left to read
+  (`Freshness.settled`), not stopped, no notice, and an answered changes read
+  after the failure. Mutants that leave the page deferred after a failure, or
+  after an explicit retry, fail it; the old waits passed both. Because the wait
+  now runs to the end of a pass, "no request pile" counts the changes reads
+  sent between the refusal and the first read answered after it (one to three),
+  not the paging reads of the pass that answer starts.
+- "C2 identical paired open and neighbor latency workload" orders admission
+  events with `inOrder`, which requires both events to have happened. A
+  mutant that drops the callback-enter event fails it. Against the candidate
+  server, every measured source read must also show its Store closing before
+  its permit is released, since the server releases a permit before it
+  answers; a mutant that stops recording `released` fails it. An automatic
+  read can still be closing when the events are read, so its release order is
+  checked once it has been released. The baseline's old server holds no
+  partitioned permit, and C2 there requires that none is released.
 
 The existing API error discards the difference between a broken body stream
 and JSON parse failure after HTTP 200. The accepted narrow error correction

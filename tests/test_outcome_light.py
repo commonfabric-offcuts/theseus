@@ -383,7 +383,18 @@ class LightReadsCase(fixtures.StoreCase):
     def test_an_outcome_with_no_topics_says_so_and_who_started_it(self):
         answer = self.stands()
         self.assertEqual(light(answer), ("quiet", {"kind": "no_topics"}))
-        self.assertEqual(answer["facts"], [{"kind": "created", "by": "owner", "ms": None}])
+        # D22: who started it and when, from its start record.
+        (started,), = self.sql("SELECT set_ms FROM outcome_kinds WHERE workspace_id='w1' AND origin='create'")
+        self.assertEqual(answer["facts"], [{"kind": "created", "by": "owner", "ms": started}])
+        # An outcome made before its start was recorded says who, with no time, even once its owner sets its kind.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("DROP TRIGGER kinds_stay_d")
+            db.execute("DELETE FROM outcome_kinds")
+        self.assertEqual(self.stands()["facts"], [{"kind": "created", "by": "owner", "ms": None}])
+        version = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        self.assertEqual(self.command("outcome.kind_set", {"kind": "reach"}, {"workspace_id": "w1"}, expected={"workspace_revision": version})["status"], "committed")
+        self.assertEqual(self.sql("SELECT seq,kind,origin FROM outcome_kinds WHERE workspace_id='w1'"), [(1, "reach", "change")])
+        self.assertEqual(self.stands()["facts"], [{"kind": "created", "by": "owner", "ms": None}])
 
 
 # Do not rerun the inherited StoreCase tests here.
