@@ -82,7 +82,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const registry = { inline: p, current: null, sessions: new Map([[editor.key, { editor }]]), disposed: false,
     get interactive() { return this.current ?? this.inline; },
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
-    cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); }, resumeRefused() { events.push(['resume-refused']); return Promise.resolve(); },
+    cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); }, resumeHeld() { events.push(['resume-held']); return Promise.resolve(); },
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
@@ -564,18 +564,46 @@ test('a live feed refused for its session renews it in place: the feed wakes, wa
   assert.equal(f.events.some(e => e[0] === 'invalidate' && e[1] === 'availability'), false, 'confirmed access is not checked again');
 });
 
-// Replies the refused session held up go on whenever the page holds the
-// server's session: a new one, or the one it has; not while Theseus is away.
-test('a renewal resumes the replies the refused session held up, and nothing does while the server is away', async () => {
+// Held replies go on whenever the page reaches Theseus with the session it
+// holds: a new one, the one it has, or its live feed up again; not while
+// Theseus is away.
+test('reaching Theseus again resumes held replies, and nothing does while the server is away', async () => {
   const renewals = [], { f, live, answers } = restartable(renewals);
   await f.initialize(); await drain();
-  const resumed = () => f.events.filter(e => e[0] === 'resume-refused').length;
-  live.emit({ kind: 'refused' }); await drain();
+  const resumed = () => f.events.filter(e => e[0] === 'resume-held').length;
+  live.emit({ kind: 'refused' }); live.emit({ kind: 'state', state: 'down' }); await drain();
   assert.equal(resumed(), 0, 'not while the server is away');
   answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
   assert.equal(resumed(), 1);
   answers.push('current'); f.updateStatus({ kind: 'reconnect' }); await drain();
   assert.equal(resumed(), 2);
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(resumed(), 3, 'the live feed back up');
+});
+
+// Reconnect pressed while Theseus is not answering says so; the page then
+// reconnects by itself, and the line saying it is not answering goes with it.
+// A line about anything else stays.
+test('the not-answering line from Reconnect clears when the page reconnects by itself', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  await f.get('updates-retry').onclick(); await drain();
+  assert.match(f.get('app-status').textContent, /not answering yet/);
+  answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(f.get('app-status').hidden, true, f.get('app-status').textContent);
+  // Up again by its live feed alone (the session was the server's): the same.
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  await f.get('updates-retry').onclick(); await drain();
+  assert.match(f.get('app-status').textContent, /not answering yet/);
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(f.get('app-status').hidden, true, f.get('app-status').textContent);
+  // A line about something else that took its place stays.
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  await f.get('updates-retry').onclick(); await drain();
+  await f.run(async () => { throw new AttemptError('This topic is closed.', 409, { error: { code: 'CONFLICT' } }); });
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(f.get('app-status').textContent, 'This topic is closed.');
 });
 
 test('a renewed session leaves a message that was not about the connection, and writing that cannot be saved', async () => {

@@ -53,15 +53,11 @@ const node = (tag, text, className) => {
   if (className) element.className = className; return element;
 };
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
-const status = message => { $('app-status').textContent = message; $('app-status').hidden = !message; };
-// What a request said when the server did not answer, or refused this page's
-// session; reconnect() clears it once the page holds the server's session.
-let unreachable = null;
-const failed = error => {
-  status(error.message);
-  unreachable = error instanceof AttemptError && (!error.status || error.status === 401) ? error.message : null;
-  return null;
-};
+// The page's status line. `reach`: it says Theseus did not answer, or refused
+// this page's session, so it is over once the page reaches Theseus (reached()).
+let statusReach = false;
+const status = (message, reach = false) => { $('app-status').textContent = message; $('app-status').hidden = !message; statusReach = reach && Boolean(message); };
+const failed = error => { status(error.message, error instanceof AttemptError && (!error.status || error.status === 401)); return null; };
 const run = action => { try { return Promise.resolve(action()).catch(failed); } catch (error) { return Promise.resolve(failed(error)); } };
 let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
@@ -1201,6 +1197,13 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
   freshness.setVisible(document.visibilityState === 'visible');
 }
+// The page reaches Theseus with the session it holds: a renewal, the session
+// it has confirmed, or the live feed up again. Whatever the status line said
+// about not reaching it is over, and replies it did not take go on.
+function reached() {
+  if (statusReach) status('');
+  registry?.resumeHeld();
+}
 // A restarted server (every deploy) refuses this page's session. The page
 // reads the server's new one (session-renewal.mjs) when the live feed is
 // refused, or a read is, and goes on in place: the writing, the lists and the
@@ -1209,12 +1212,9 @@ let renewal = null, reconnectRetried = null;
 async function reconnect() {
   const result = await renewal?.renew();
   if (!result) return false;
-  // Replies the refused session held up go on with the session the page holds.
-  registry?.resumeRefused();
+  reached();
   if (result === 'renewed') {
     live?.wake(); attention?.refresh();
-    if (unreachable !== null && $('app-status').textContent === unreachable) status('');
-    unreachable = null;
     for (const { editor } of registry?.sessions.values() ?? []) {
       if (editor.dirty && !editor.authorityRecovery && !editor.conflict && !editor.unavailable) registry.schedule(editor);
     }
@@ -1241,7 +1241,7 @@ async function initialize() {
     adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });
   if (liveOffered(bootstrap) && !live) {
     live = new Live({ token });
-    live.listen(event => { if (event.kind === 'refused') run(reconnect); });
+    live.listen(event => { if (event.kind === 'refused') run(reconnect); else if (event.state === 'live') reached(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') live.wake(); });
     window.addEventListener('online', () => live.wake());
     live.start();
@@ -1488,7 +1488,7 @@ async function initialize() {
   $('updates-retry').onclick = () => run(async () => {
     if (updateState?.kind === 'reconnect') {
       reconnectRetried = null;
-      if (!await reconnect()) status('Theseus is not answering yet. Your writing is kept; this page reconnects when it is back.');
+      if (!await reconnect()) throw new AttemptError('Theseus is not answering yet. Your writing is kept; this page reconnects when it is back.');
       return;
     }
     if (updateState?.kind === 'authority') { const p = registry.interactive; if (p) await showVersions(p.editors[p.mode], $('updates-retry'), p); return; }

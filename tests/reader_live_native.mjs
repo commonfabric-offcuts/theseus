@@ -1122,4 +1122,79 @@ export async function liveChecks({ check, page, until, control, observations, or
       await p.close();
     });
   }
+
+  // Theseus is down for its restart when the person presses Send: the reply's
+  // save meets no server, and neither does the look-up of what became of it,
+  // so the reply is held. Once the restarted server answers, the page takes
+  // its new session, and the reply goes on by itself and is published once,
+  // in the Reader and in the topic's composer.
+  for (const surface of ['reader', 'composer']) {
+    await check(`live restart: a reply sent while Theseus is down is published once it is back (${surface})`, async () => {
+      const p = await page(`live-restart-down-${surface}`, null, true);
+      await settled(p);
+      const reader = surface === 'reader', body = `Sent while Theseus was down (${surface})`;
+      const fieldId = reader ? '#writing-body' : '#inline-writing-body', sendId = reader ? '#send-reply' : '#inline-send';
+      const item = `[...appRegistry().sessions.values()].flatMap(s=>s.editor.submissions).find(i=>i.snapshot.body===${JSON.stringify(body)})`;
+      if (reader) await p.open(1);
+      else await p.evaluate(`document.querySelector(${JSON.stringify(fieldId)}).scrollIntoView({block:'center'})`);
+      await p.point(fieldId); await p.key('a', 4); await p.send('Input.insertText', { text: body });
+      await control({ method: 'server_stop' });
+      await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+      await p.point(sendId);
+      const held = await until(() => p.evaluate(`${item}?.blocked?.code ?? null`), 'the reply is held while nothing answers');
+      assert.equal(held, 'CONNECTION_UNKNOWN', 'held because nothing answered');
+      const restarted = await control({ method: 'server_start' });
+      facts.token = restarted.token;
+      const published = async () => (await view('topic_messages', { topic_id: 't1', direction: 'before' })).items.filter(row => row.body === body).length;
+      await until(async () => await published() > 0, 'the reply is published', 30000);
+      await until(() => hasText(p, '#messages', body), 'the reply is shown', 5000);
+      await until(() => p.evaluate(`${item}.status === 'confirmed'`), 'the reply is confirmed on the page');
+      assert.equal(await p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)}`), true, 'the page holds the new session');
+      assert.equal(await published(), 1, 'published once');
+      const sends = p.calls.filter(c => c.payload?.kind === 'message.send');
+      assert.equal(sends.length, 1, 'sent once');
+      await settled(p);
+      assert.equal(await p.evaluate("document.querySelector('#app-status').hidden || !document.querySelector('#app-status').textContent"), true,
+        await p.evaluate("document.querySelector('#app-status').textContent"));
+      observations.push({ name: 'reply sent while Theseus was down', surface, kinds: p.calls.filter(c => c.payload?.kind).map(c => c.payload.kind) });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
+
+  // The restarted server's new session cannot be confirmed at first (the
+  // answer to the page's renewal is cut off), so the updates notice offers
+  // Reconnect. Pressed while that is still so, the page says Theseus is not
+  // answering yet. Then the page reconnects by itself, and nothing on it says
+  // Theseus is not answering.
+  await check('live restart: after Reconnect found Theseus not answering, the page reconnects by itself and says nothing stale', async () => {
+    const p = await page('live-restart-reconnect-press', null, true);
+    await settled(p);
+    const session = () => p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+    const before = await session();
+    const authorization = event => Object.entries(event.request.headers).find(([key]) => key.toLowerCase() === 'authorization')?.[1];
+    let closed = true, cut = 0;
+    // Every renewal's question to a session other than the page's own is cut off while closed.
+    p.intercept(async (_payload, event) => {
+      if (!closed || !event.request.url.endsWith('/api/bootstrap') || authorization(event) === `Bearer ${before}`) return false;
+      cut++; await p.fail({ event }); return true;
+    });
+    await control({ method: 'server_stop' });
+    const restarted = await control({ method: 'server_start' });
+    facts.token = restarted.token;
+    await until(() => p.evaluate("!document.querySelector('#updates-status').hidden && document.querySelector('#updates-retry').textContent === 'Reconnect'"), 'the updates notice offers Reconnect', 30000);
+    await until(() => cut > 0, 'the renewal was cut off');
+    await p.point('#updates-retry');
+    await until(() => p.evaluate("/not answering yet/.test(document.querySelector('#app-status').textContent)"), 'Reconnect says Theseus is not answering yet');
+    closed = false;
+    await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`), 'the page reconnects by itself', 30000);
+    await settled(p);
+    await until(() => p.evaluate("document.querySelector('#updates-status').hidden"), 'the updates notice is gone');
+    assert.equal(await p.evaluate("document.querySelector('#app-status').hidden || !document.querySelector('#app-status').textContent"), true,
+      'after reconnecting, the page still says: ' + await p.evaluate("document.querySelector('#app-status').textContent"));
+    observations.push({ name: 'Reconnect while not answering, then back by itself', cut });
+    p.intercept(null);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
 }

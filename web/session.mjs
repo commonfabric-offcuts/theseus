@@ -3,12 +3,16 @@ import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
 const copy = value => structuredClone(value);
 // A refused session (a restarted server, before the page has its new session)
-// is refused before Core reads the request, so the act was never delivered. It
-// does not park the act: once the page holds the new session, it goes again as
-// the same operation (resumeRefused), and an outcome a refused look-up could
-// not read is looked up again first.
+// is refused before Core reads the request, so the act was never delivered.
 const sessionRefused = error => error?.status === 401 && error.details?.error?.code === 'SESSION_REQUIRED';
-const SESSION_REFUSED = 'SESSION_REQUIRED';
+// What an attempt that got no recorded answer holds. A session's refusal says
+// retrying with that session cannot help; the page's next session can carry
+// the act, so it stays retryable, as a lost connection is.
+const attemptError = error => {
+  const found = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
+  if (sessionRefused(error)) found.retryable = true;
+  return found;
+};
 const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'intent', 'whisper', 'caret', 'reply_to', 'exchange_id'];
 const authorityPair = value => value && typeof value.authority_id === 'string' && value.authority_id &&
   typeof value.authority_epoch === 'string' && value.authority_epoch
@@ -320,8 +324,7 @@ export class EditorSession {
       let answer;
       try { answer = await this.api.view('operation', { operation_id: entry.envelope.operation_id }); }
       catch (error) {
-        entry.error = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
-        if (sessionRefused(error)) entry.error.retryable = true;
+        entry.error = attemptError(error);
         await this.persist();
         return null;
       }
@@ -342,7 +345,7 @@ export class EditorSession {
     let receipt;
     try { receipt = await this.api.command(copy(entry.envelope)); }
     catch (error) {
-      entry.error = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
+      entry.error = attemptError(error);
       if (sessionRefused(error)) {
         // Core never read it: undelivered, it waits for the new session, as
         // the same session would only be refused again.
@@ -411,19 +414,21 @@ export class EditorSession {
     return sending;
   }
 
-  // The page holds the server's session again (renewed after a restart, or a
-  // new document). A reply whose preparation the old session's refusal held up
-  // is prepared and sent, and one whose send it refused is sent, each under its
-  // own operations, as the person asked when they pressed Send. Acts under way
-  // finish first, so one refused as the session changed is resumed too. A
-  // runtime change under review holds them, as it holds Send.
-  async resumeRefused() {
+  // The page reaches Theseus again: its session renewed after a restart, its
+  // live feed back, or a new document. Every reply the person sent that is not
+  // yet published, and not under way, goes on under its own operations, as
+  // they asked when they pressed Send, whatever held it. Whether each act may
+  // go again is dispatch()'s rule alone: a private save or a resumed
+  // preparation after its operation is looked up, a public send only if it
+  // never reached Core, and nothing an error says no retry mends. Everything
+  // waits while a runtime change is under review. Acts under way finish
+  // first, so one held as the page reconnected is taken up too.
+  async resumeHeld() {
     await Promise.allSettled([this.queue, ...this.sends.values()]);
     if (this.recovery) return [];
-    return Promise.all(this.editor.submissions.flatMap(item =>
-      item.status === 'preparing' && item.blocked?.code === SESSION_REFUSED ? [this.start(item, { stay: true }, true)]
-        : item.status === 'prepared' && this.attempts.some(entry => entry.envelope.operation_id === item.sendOperationId && entry.error?.code === SESSION_REFUSED)
-          ? [this.track(item.id, this.sendPrepared(item).then(() => item))] : []));
+    return Promise.all(this.editor.submissions.flatMap(item => item.detached || this.sends.has(item.id) ? []
+      : item.status === 'preparing' ? [this.start(item, { stay: true }, true)]
+        : item.status === 'prepared' ? [this.track(item.id, this.sendPrepared(item).then(() => item))] : []));
   }
 
   async block(item, entry, conflict = null) {

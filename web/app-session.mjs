@@ -164,18 +164,17 @@ export class EditorRegistry {
       session.uploads = new Uploads(session, this);
       session.uploads.importRetained();
       await this.recoveryCandidates(editor);
-      // A reply the old session's refusal held up, kept from a page that was
-      // reloaded before it reconnected, goes on with this page's session.
+      // A reply kept on this device that Theseus did not take, from a page
+      // that was reloaded or lost its connection, goes on now that it answers.
       this.resumeSession(session);
     }
     return editor;
   }
 
-  // The page holds the server's session again: replies its old session's
-  // refusal held up go on (EditorSession.resumeRefused).
-  resumeRefused() { return Promise.all([...this.sessions.values()].map(session => this.resumeSession(session))); }
+  // The page reaches Theseus again: held replies go on (EditorSession.resumeHeld).
+  resumeHeld() { return Promise.all([...this.sessions.values()].map(session => this.resumeSession(session))); }
   resumeSession(session) {
-    return session.resumeRefused().catch(error => { session.editor.journalError = error.message; this.changed(session.editor); });
+    return session.resumeHeld().catch(error => { session.editor.journalError = error.message; this.changed(session.editor); });
   }
 
   async keepLocal(presentation) {

@@ -108,16 +108,20 @@ check for the same commit runs beside them rather than after them.
   it speaks for the same instance and person, and goes on in place: the writing,
   the lists and the Reader stay, saves the refusal held up go out under their
   own operations, and the stopped updates are tried once more for that session.
-  A reply sent before the page had the new session is refused wherever the old
-  session meets the server (its save, its preparation or its send); Core never
-  read it, so it goes on by itself and is published once. A page reloaded
-  before it reconnected holds the new session, and such a reply kept on the
-  device goes on when its writing is opened there. A reply held for any other
-  reason waits for the person, as before.
+  Whenever the page reaches Theseus again (a renewed session, the session it
+  has confirmed, or the live stream back up), every reply the person sent that
+  Theseus has not yet published goes on by itself and is published once,
+  whatever held it: sent while the server was down, refused for the old
+  session, or held while Core was busy. Each act goes again under its own
+  operation by the rule Send already follows: a private save or a preparation
+  after looking up what became of it, a send only if it never reached Core. A
+  page reloaded meanwhile does the same when the writing is opened there. A
+  reply held for a reason no retry mends (Core refused it, a send whose answer
+  was lost, or a runtime change under review) waits for the person.
   A refused live stream starts the same renewal. **Reconnect** does it on
-  demand; while the server is not answering, the page says so and renews when
-  the stream or a read reaches it again. It never reloads itself or erases its
-  journal.
+  demand; while the server is not answering, the page says so, and that line
+  goes once the page reaches Theseus again. It never reloads itself or erases
+  its journal.
 - **Review saved writing** handles a changed runtime authority. Automatic
   updates pause; recovery proceeds through the existing review controls.
 - If a topic becomes unavailable, its lists are hidden and sending to it is
