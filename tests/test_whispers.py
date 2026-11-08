@@ -587,7 +587,8 @@ MESSAGE_READS = {
     "aim_next/sources.py": ("the latest message on the record from topic_summaries", 1),
     "aim_next/wake_health.py": ("on the record only (private_to IS NULL)", 1),
     "aim_next/health.py": ("on the record only (private_to IS NULL), but an agent's own count for that agent, as wakes; "
-                           "and the step back's check for Theseus's notices, which are never whispers", 3),
+                           "the step back's check for Theseus's notices, which are never whispers; and the upgrade's "
+                           "reads of when an agent wrote, its own acts, of which only a time is kept, as live keeps any act", 5),
     "aim_next/whispers.py": ("the rule itself", 5),
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "

@@ -1934,6 +1934,8 @@ async function initializeHealthPage() {
   $('health-page').hidden=false;
   live?.listen(event=>page.heard(event));
   await followCommits(()=>page.load())();
+  document.body.dataset.ready='true';
+}
 // An outcome's Measurements: every check's readings by release (docs/targets.md). The rail
 // shows this outcome, as on its pipeline page; the page and the rail read again on every commit.
 async function initializeMeasurementsPage(route) {
