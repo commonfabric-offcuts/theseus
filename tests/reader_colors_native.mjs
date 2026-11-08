@@ -111,11 +111,16 @@ export async function readingColorsCheck({ check, page, until, facts, view, cont
         // because the scan clipped it to the desired selection height.
         const margin=2*parseFloat(coverage.lineHeight),top=rect.y-margin,bottom=rect.y+rect.height+margin;
         const hover=paintedBand(hoverPixels,x,top,bottom,rgb(hovered.background));
-        const selected=paintedBand(selectionPixels,x,top,bottom,rgb(selectionColor));
+        // Chrome paints ::selection as computed; a harness whose engine paints it otherwise says what it painted.
+        const selectedPaint=p.selectionPaint?p.selectionPaint(selectionPixels,x,shared,rgb(selectionColor),rgb(hovered.background)):rgb(selectionColor);
+        const selected=paintedBand(selectionPixels,x,top,bottom,selectedPaint);
         assert.ok(hover&&selected,'pixel instrument finds both native paint bands');
         assert.equal(paintedBand(selectionPixels,x,top,bottom,[255,0,255]),null,'wrong-color negative control is not a selection');
         bands.push({x,hover,selected});
-        expect(Math.abs(hover.top-selected.top)<=1&&Math.abs(hover.bottom-selected.bottom)<=1,theme+': hover and native selection have the same painted vertical extent');
+        // Chrome paints a selection over the whole line box, and the hover matches it exactly. Safari
+        // paints less on some lines (docs/device-evidence.md), so there the hover only has to cover it.
+        if(p.selectionWithinHover)expect(hover.top<=selected.top&&selected.bottom<=hover.bottom,theme+`: the hover covers all that a native selection paints (hover ${hover.top}-${hover.bottom}, selection ${selected.top}-${selected.bottom})`);
+        else expect(Math.abs(hover.top-selected.top)<=1&&Math.abs(hover.bottom-selected.bottom)<=1,theme+`: hover and native selection have the same painted vertical extent (hover ${hover.top}-${hover.bottom}, selection ${selected.top}-${selected.bottom})`);
       }
       assert.ok(bands.length>=2,'wrapped hover is measured on both lines');
       await shot(p,'reading-colors-'+theme+'-selection');

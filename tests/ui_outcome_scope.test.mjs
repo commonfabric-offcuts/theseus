@@ -280,3 +280,19 @@ test('a phone strip shows its open row whole near the middle, and never cuts a l
   assert.equal(s.pageMoved, false, 'only the strip\'s own scrollLeft is written, never the page');
   assert.deepEqual(s.children.map(row => row.i), [...Array(12).keys()], 'the order of the rows is unchanged');
 });
+
+test('in Safari, which keeps scrollLeft in whole pixels, a lit neighbour cut by under a pixel is still shown whole', () => {
+  // Rows of fractional width, as fonts lay them out; the strip truncates what is written to scrollLeft.
+  const widths = [200, 100.2, 234.7, 100], left = i => widths.slice(0, i).reduce((a, b) => a + b, 0);
+  let offset = 0;
+  const rows = widths.map((w, i) => ({ hidden: false, getAttribute: name => name === 'aria-current' && i === 1 ? 'page' : null,
+    querySelector: selector => i === 2 && selector.includes('.topic-state.mine') ? {} : null,
+    getBoundingClientRect: () => ({ left: left(i) - offset, right: left(i) + w - offset }) }));
+  const host = { children: rows, clientWidth: 335, scrollWidth: Math.ceil(left(4)), getBoundingClientRect: () => ({ left: 0 }),
+    get scrollLeft() { return offset; }, set scrollLeft(value) { offset = Math.trunc(value); } };
+  showOpenInStrip(host);
+  const whole = i => left(i) >= offset - 0.5 && left(i) + widths[i] <= offset + 335 + 0.5;
+  assert.ok(whole(1), 'the open row is whole');
+  assert.ok(whole(2), `the lit row after it is whole at ${offset}`);
+  assert.equal(offset, Math.trunc(offset), 'a whole pixel');
+});

@@ -53,7 +53,8 @@ const LIT = '.topic-state.mine';
 // middle; then, when a lit row would be cut at either edge, it moves by the
 // least amount that shows that row whole while the open row stays whole. The
 // open row wins when both cannot be whole. Only the strip's own scrollLeft is
-// written, never the page's.
+// written, never the page's. Safari keeps scrollLeft in whole pixels, so every
+// place is a whole pixel, rounded away from the row being shown.
 export function showOpenInStrip(strip) {
   const width = strip.clientWidth, room = strip.scrollWidth - width;
   if (!(room > 0)) return;
@@ -64,7 +65,7 @@ export function showOpenInStrip(strip) {
   const span = row => { const box = row.getBoundingClientRect(); return { start: box.left - base, end: box.right - base }; };
   const clamp = value => Math.max(0, Math.min(room, value));
   const here = span(open), whole = (part, at) => part.start >= at - 0.5 && part.end <= at + width + 0.5;
-  let at = clamp((here.start + here.end) / 2 - width / 2);
+  let at = clamp(Math.round((here.start + here.end) / 2 - width / 2));
   let best = null;
   for (const row of rows) {
     if (row === open || !row.querySelector(LIT)) continue;
@@ -72,7 +73,7 @@ export function showOpenInStrip(strip) {
     const cut = part.start < at + width && part.end > at && !whole(part, at);
     if (!cut) continue;
     const move = part.start < at ? part.start - at : part.end - (at + width);
-    const next = clamp(at + move);
+    const next = clamp(move > 0 ? Math.ceil(at + move) : Math.floor(at + move));
     if (whole(part, next) && whole(here, next) && (best === null || Math.abs(move) < Math.abs(best - at))) best = next;
   }
   if (best !== null) at = best;

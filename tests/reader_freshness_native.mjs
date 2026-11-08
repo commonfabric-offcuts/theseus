@@ -72,6 +72,15 @@ export async function uploadProof(...args){
 `;
 }
 
+// An order holds only between events that happened: findIndex and indexOf
+// answer -1 for a missing event, which sorts before every event that did.
+export function inOrder(events, first, then, label) {
+  const a = events.indexOf(first), b = events.indexOf(then);
+  assert.ok(a >= 0, `${label}: ${first} happened`);
+  assert.ok(b >= 0, `${label}: ${then} happened`);
+  assert.ok(a < b, `${label}: ${first} before ${then}`);
+}
+
 export async function freshnessChecks({ check, page, until, root, facts, view, control, replace, field, shot, observations, baseline = false, legacyAdmission = false }) {
   // An image says Ready as its publication is confirmed; its Check is offered
   // once the upload that confirmed it has finished.
@@ -89,6 +98,12 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     body: { instance_id: facts.instance_id, error: { code, message: `Fixture ${code}`, retryable: false } }, count: 1 });
   const hasText = (p, selector, text) => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent.includes(${JSON.stringify(text)})`);
   const idleRead = p => until(() => p.evaluate('window.observedFreshness && !observedFreshness.running'), 'completed current freshness window');
+  // Healthy again: a pass ran to its end and found nothing left to read
+  // (Freshness.settled), it is not stopped, no notice shows, and a changes read
+  // after the failure was answered. A hidden notice alone also follows a
+  // deferred pass, which reads nothing and catches nothing up.
+  const caughtUpAfter = (p, since, label) => until(async () => await p.evaluate('Boolean(window.observedFreshness && observedFreshness.settled && !observedFreshness.running && !observedFreshness.stopped && document.querySelector("#updates-status").hidden)') &&
+    p.responses.some(r => r.payload?.name === 'changes' && r.at > since && r.status === 200 && !r.body.error), `${label}: a pass ran to its end after a changes read was answered`);
   const publicSendRequest = (event, clickedAt) => event.method === 'Network.requestWillBeSent' &&
     event.params.request.url.endsWith('/api/command') && event.params.wallTime * 1000 >= clickedAt &&
     JSON.parse(event.params.request.postData).kind === 'message.send';
@@ -254,6 +269,12 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     assert.ok(delayCounts.foreground > 0);
     if (!baseline) assert.ok(delayCounts.background > 0, 'candidate automatic updates remain active during comparison');
     assert.ok(delays.filter(e=>e.name==='source').length >= 20, 'every measured open reaches the real delayed callback');
+    // The candidate server's partitioned admission releases a read's permit
+    // after its Store closes and before it answers, so every measured source
+    // read, which the page has had answered, has released its permit. The
+    // baseline's old server holds no such permit (the fixture observes its
+    // read only as legacy-read-enter and -exit), so nothing is released there.
+    const partitioned = !baseline && !legacyAdmission;
     for (const start of delays) {
       const events = admission.events.filter(e=>e.request_id===start.request_id);
       const end = events.find(e=>e.event==='delay-exit');
@@ -263,9 +284,13 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       }
       assert.ok(end.at-start.at >= .024, 'the requested25ms delay is inside the measured permit');
       const order = events.map(e=>e.event);
-      assert.ok(order.indexOf('callback-enter') < order.indexOf('delay-enter'));
-      assert.ok(order.indexOf('delay-exit') < order.indexOf('callback-exit'));
-      if (order.includes('released')) assert.ok(order.indexOf('close-exit') < order.indexOf('released'));
+      inOrder(order, 'callback-enter', 'delay-enter', 'the delay runs inside the Store callback');
+      inOrder(order, 'delay-exit', 'callback-exit', 'the delay ends inside the Store callback');
+      if (partitioned && start.name === 'source') inOrder(order, 'close-exit', 'released', 'the Store closes before its permit is released');
+      // An automatic read can still be closing when the events are read: its
+      // permit's order is checked once it has been released.
+      else if (partitioned && order.includes('released')) inOrder(order, 'close-exit', 'released', 'an automatic read closes before its permit is released');
+      else assert.ok(partitioned || !order.includes('released'), 'the baseline server holds no partitioned permit');
     }
     observations.push({ name: 'paired latency', baseline, workload: 'two visible CFT windows; 10 native open/close rounds each;25ms actual Store callback delay inside admission; no Response-stage delay or hidden cleanup wait',
       opens, neighbors, openToPresentMs: stats(opens.map(r => r.present-r.start)), neighborMs: stats(neighbors.map(r => r.end-r.start)),
@@ -699,7 +724,9 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     const schedule = []; let captured = false, resyncing = false, baselineCaptured = false, initialHeld = false, releaseInitial;
     const initialGate = new Promise(resolve => { releaseInitial = resolve; });
     p.intercept(async (payload, event) => {
-      if (event.request.url.endsWith('/api/bootstrap') && resyncing) schedule.push({ kind: 'resync-bootstrap', body: await p.response(event) });
+      // Any bootstrap the page asks for while resyncing, a cleanup's included:
+      // evidence of the network, not of the controller's order (asserted below).
+      if (event.request.url.endsWith('/api/bootstrap') && resyncing) schedule.push({ kind: 'bootstrap-while-resyncing', body: await p.response(event) });
       if (payload?.name !== 'changes') return false;
       const body = await p.response(event);
       if (!initialHeld) {
@@ -731,14 +758,24 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await until(() => hasText(p, '#messages', 'Committed after the replacement same-binding baseline'), 'same-binding resync catches up', 12000);
     assert.ok(baselineCaptured);
     assert.ok(p.responses.some(r=>r.payload?.name==='changes' && r.body.error?.code==='RESYNC_REQUIRED'));
-    assert.ok(schedule.findIndex(x=>x.kind==='resync-bootstrap') < schedule.findIndex(x=>x.kind==='resync-baseline'));
+    // The controller's own reads after the refusal, in the order it made them:
+    // the bootstrap that rechecks its binding finishes before the replacement
+    // baseline starts. A cleanup's bootstrap is not one of these reads.
+    const reads = await p.evaluate('freshEvidence.reads.map(r=>({name:r.name,cursor:Boolean(r.args?.cursor),start:r.start,end:r.end??null,error:r.error??null}))');
+    const refused = reads.findIndex(r => r.name === 'changes' && String(r.error).includes('RESYNC_REQUIRED'));
+    assert.ok(refused >= 0, 'the controller read the RESYNC_REQUIRED refusal');
+    const resync = reads.slice(refused + 1).map(r => r.name === 'bootstrap' ? 'bootstrap' : r.name === 'changes' && !r.cursor ? 'baseline' : r.name);
+    inOrder(resync, 'bootstrap', 'baseline', 'same-binding resync');
+    const bootstrapRead = reads[refused + 1 + resync.indexOf('bootstrap')], baselineRead = reads[refused + 1 + resync.indexOf('baseline')];
+    assert.equal(bootstrapRead.error, null, 'the resync bootstrap read succeeded');
+    assert.ok(bootstrapRead.end !== null && bootstrapRead.end <= baselineRead.start, 'the bootstrap finished before the baseline began');
     const after = await p.evaluate('freshSnapshot()');
     for (const key of ['presentation','sourceObject','editorObject','generation','pending','shows','source','editorSource','key','cycle','body','quotes','focus','caret','scroll']) assert.deepEqual(after[key], before[key], key);
     const countsAfter = await control({ method: 'counts' });
     // Draft autosaves remain owned by writing; freshness never publishes.
     assert.equal(p.calls.some(c => ['message.send','submission.prepare','delivery.ack'].includes(c.payload?.kind)), false);
     for (const key of ['http_media_publications','http_delivery_acks','acknowledged_deliveries','media']) assert.equal(countsAfter[key], countsBefore[key], key);
-    observations.push({ name: 'finite window and resync', schedule, before, after, countsBefore, countsAfter });
+    observations.push({ name: 'finite window and resync', schedule, reads, before, after, countsBefore, countsAfter });
     assert.deepEqual(p.errors, []);
   });
 
@@ -1061,9 +1098,12 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       assert.ok(sessions.some(s => s.source.kind === 'message' && s.source.id === facts.sources[1].id), 'the Reader\'s session is observed');
       assert.deepEqual(sessions.filter(s => s.cleanupError !== null), [], 'a server delay never reports a cleanup failure');
       const failedAt = p.responses.find(r=>r.payload?.name==='changes' && r.status===status && r.body.error?.code===code).at;
-      await until(() => p.evaluate('document.querySelector("#updates-status").hidden'), `healthy read after ${code}`);
-      const requests = p.calls.filter(c => c.payload?.name === 'changes' && c.at >= failedAt);
-      assert.ok(requests.length <= 3, 'one pending retry, no request pile');
+      await caughtUpAfter(p, failedAt, `healthy read after ${code}`);
+      // The retries are the reads sent between the refusal and the first read answered after it;
+      // the reads of the pass that answer starts are paging, not a pile.
+      const healedAt = p.responses.find(r => r.payload?.name === 'changes' && r.at > failedAt && r.status === 200 && !r.body.error).at;
+      const requests = p.calls.filter(c => c.payload?.name === 'changes' && c.at >= failedAt && c.at <= healedAt);
+      assert.ok(requests.length >= 1 && requests.length <= 3, `one pending retry, no request pile: ${requests.length}`);
       observations.push({ name: 'transient read', status, code, requests });
     }
     await fault('changes', 'INVALID_ARGUMENT');
@@ -1081,8 +1121,8 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await assert.rejects(p.point('#topic-title'), /inside the viewport/, 'the native pointer instrument must reject an offscreen target');
     const retry = await p.box('#updates-retry');
     assert.ok(retry.y >= 0 && retry.y + retry.height <= retry.viewportHeight, 'Retry updates stays in view in the rail');
-    await p.point('#updates-retry');
-    await until(() => p.evaluate('!observedFreshness.stopped && document.querySelector("#updates-status").hidden'), 'explicit retry restores reads');
+    const retriedAt = Date.now(); await p.point('#updates-retry');
+    await caughtUpAfter(p, retriedAt, 'explicit retry restores reads');
     assert.deepEqual(p.calls.filter(c => c.url.endsWith('/api/command')).map(c => c.payload?.kind).filter(kind => kind !== 'topic.read_through'), []);
     await shot(p, 'freshness-read-retry'); assert.deepEqual(p.errors, []);
   });
