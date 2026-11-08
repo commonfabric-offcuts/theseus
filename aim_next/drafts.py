@@ -209,16 +209,17 @@ class Drafts:
                         authority=dict(envelope["expected"]["authority"]))
         metadata = {k: snapshot[k] for k in ("id", "source_ref", "topic_id", "draft_id", "draft_revision", "draft_generation", "prepare_operation_id", "send_operation_id", "authority")}
         send_kind = "topic.create_and_send" if "opening" in snapshot else "message.send"
-        db.execute("INSERT INTO submissions(id,actor_id,source_key,topic_id,prepare_operation_id,send_operation_id,send_kind,authority_id,authority_epoch,metadata,snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                   (submission_id, actor, row["source_key"], row["topic_id"], envelope["operation_id"], send_op, send_kind,
-                    snapshot["authority"]["authority_id"], snapshot["authority"]["authority_epoch"], _json(metadata), _json(snapshot)))
+        seq = db.execute("INSERT INTO submissions(id,actor_id,source_key,topic_id,prepare_operation_id,send_operation_id,send_kind,authority_id,authority_epoch,metadata,snapshot) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                         (submission_id, actor, row["source_key"], row["topic_id"], envelope["operation_id"], send_op, send_kind,
+                          snapshot["authority"]["authority_id"], snapshot["authority"]["authority_epoch"], _json(metadata), _json(snapshot))).lastrowid
         generation = "g-" + uuid.uuid4().hex
         successor = {"source_ref": snapshot["source_ref"], "body": "", "attachments": [], "quotes": [], "addressees": []}
         db.execute("UPDATE drafts SET revision=?,generation=?,payload=? WHERE actor_id=? AND id=?",
                    (row["revision"] + 1, generation, _json(successor), actor, row["id"]))
         self._change(db, "actor", actor, "draft", row["id"], row["revision"] + 1)
         self._change(db, "actor", actor, "submission", submission_id, 1)
-        return {"submission_id": submission_id, "send_operation_id": send_op, "phase": "prepared",
+        # seq places the reply in its source's list of replies (see _view_submissions).
+        return {"submission_id": submission_id, "send_operation_id": send_op, "phase": "prepared", "seq": seq,
                 "draft_id": row["id"], "draft_revision": row["revision"],
                 "next_draft": {"id": row["id"], "revision": row["revision"] + 1, "generation": generation}}, [
                     {"kind": "draft", "id": row["id"], "version": row["revision"] + 1},
@@ -236,21 +237,32 @@ class Drafts:
         receipt = db.execute("SELECT outcome FROM operations WHERE actor_id=? AND id=?", (actor, row["send_operation_id"])).fetchone()
         return dict(snapshot, instance_id=self.instance_id, send_receipt=json.loads(receipt[0]) if receipt else None)
 
+    # The person's own replies, oldest first. With unsent, only those whose send
+    # is not recorded as committed: the replies that may be in doubt, a short
+    # list however many went. through is the last seq this read could see, so
+    # once every page is read, a reply whose prepare answered a seq up to it
+    # and that is not listed is recorded sent (docs/replies-in-doubt.md).
     def _view_submissions(self, db, actor, args):
         limit = _page_size(args)
-        where, values = "s.actor_id=? AND s.seq>?", [actor, args.get("cursor", 0)]
+        unsent = args.get("unsent", False)
+        if not isinstance(unsent, bool):
+            raise Refusal("INVALID_ARGUMENT", "unsent is true or false")
+        where, values = "s.actor_id=?", [actor]
         if "source_ref" in args:
             key = _source_key(args["source_ref"])
             _topic_composition(args["source_ref"], args.get("topic_id"))
             where += " AND s.source_key=? AND s.topic_id=?"
             values += [key, args.get("topic_id")]
-        rows = db.execute("SELECT s.seq,s.metadata,o.outcome FROM submissions s LEFT JOIN operations o ON o.actor_id=s.actor_id AND o.id=s.send_operation_id WHERE " + where + " ORDER BY s.seq LIMIT ?", values + [limit + 1]).fetchall()
+        through = db.execute("SELECT COALESCE(MAX(s.seq),0) FROM submissions s WHERE " + where, values).fetchone()[0]
+        where += " AND s.seq>?" + (" AND (o.outcome IS NULL OR json_extract(o.outcome,'$.status')<>'committed')" if unsent else "")
+        rows = db.execute("SELECT s.seq,s.metadata,o.outcome FROM submissions s LEFT JOIN operations o ON o.actor_id=s.actor_id AND o.id=s.send_operation_id WHERE " + where + " ORDER BY s.seq LIMIT ?", values + [args.get("cursor", 0), limit + 1]).fetchall()
         items = []
         for row in rows[:limit]:
             item = json.loads(row["metadata"])
             item.update(send_status=json.loads(row["outcome"])["status"] if row["outcome"] else "unknown", snapshot_available=True)
             items.append(item)
-        return {"instance_id": self.instance_id, "items": items, "next_cursor": rows[limit - 1]["seq"] if len(rows) > limit else None}
+        return {"instance_id": self.instance_id, "items": items, "next_cursor": rows[limit - 1]["seq"] if len(rows) > limit else None,
+                "through": through}
 
     def _view_editor_state(self, db, actor, args):
         key = _source_key(args.get("source_ref"))

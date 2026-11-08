@@ -614,21 +614,41 @@ test('freshness authority park gates all existing editors before local persisten
   assert.equal(f.registry.current, p);
 });
 
+// A reply prepared on the server from this source, as from another device,
+// and sent unless the case says its send never landed.
+async function serverReply(f, source, body, { send = true } = {}) {
+  const envelope = (kind, args, target, expected = {}, operation_id = crypto.randomUUID()) => ({ v: 1, instance_id: f.bootstrap.instance_id,
+    operation_id, kind, target, args, expected: { ...expected, authority: {
+      authority_id: f.bootstrap.authority.authority_id, authority_epoch: f.bootstrap.authority.authority_epoch } } });
+  const draft = (await f.api.view('editor_state', { source_ref: source, topic_id: f.facts.topic_id })).draft ?? { id: crypto.randomUUID(), revision: 0, generation: crypto.randomUUID() };
+  const saved = await f.api.command(envelope('draft.save', { source_ref: source, topic_id: f.facts.topic_id, generation: draft.generation, body },
+    { draft_id: draft.id }, { draft_revision: draft.revision }));
+  assert.equal(saved.status, 'committed', JSON.stringify(saved));
+  const submission = crypto.randomUUID(), sendId = crypto.randomUUID();
+  const receipt = await f.api.command(envelope('submission.prepare', { draft_id: draft.id, submission_id: submission, send_operation_id: sendId },
+    { topic_id: f.facts.topic_id }, { draft_revision: saved.result.draft_revision }));
+  assert.equal(receipt.status, 'committed', JSON.stringify(receipt));
+  if (send) assert.equal((await f.api.command(envelope('message.send', { submission_id: submission }, { topic_id: f.facts.topic_id }, {}, sendId))).status, 'committed');
+  return { submission, receipt };
+}
+
 test('server-only pending details are fetched explicitly and confirmation performs no command', async t => {
-  const f = await fixture(t), p = await f.open(0), editor = p.editors.reply;
+  const f = await fixture(t), { submission } = await serverReply(f, f.facts.sources[0], 'Prepared elsewhere. '.repeat(100), { send: false });
+  const commands = f.calls.filter(call => call.type === 'command').length, p = await f.open(0), editor = p.editors.reply;
   const item = f.registry.pending(editor).items[0];
-  assert.ok(item); assert.equal(f.calls.filter(call => call.name === 'submission').length, 0);
+  assert.equal(item?.id, submission); assert.equal(f.calls.filter(call => call.name === 'submission').length, 0);
   assert.equal(typeof f.registry.inspectPending, 'function', 'explicit snapshot inspection must be implemented');
   const full = await f.registry.inspectPending(editor, item.id);
   assert.ok(full.body.length > 1024); assert.equal(full.id, item.id);
   await f.registry.checkPending(editor, item.id);
-  assert.equal(f.calls.filter(call => call.type === 'command').length, 0);
-  assert.equal(f.registry.pending(editor).items[0].send_status, 'committed');
+  assert.equal(f.calls.filter(call => call.type === 'command').length, commands);
+  assert.equal(f.registry.pending(editor).items[0].send_status, 'unknown', 'its send never landed');
 });
 
 test('pending detail mismatch cannot disclose another source snapshot', async t => {
-  const f = await fixture(t), p = await f.open(0), editor = p.editors.reply;
-  const item = f.registry.pending(editor).items[0];
+  const f = await fixture(t); await serverReply(f, f.facts.sources[0], 'Prepared elsewhere', { send: false });
+  const p = await f.open(0), editor = p.editors.reply;
+  const item = f.registry.pending(editor).items[0]; assert.ok(item);
   const real = f.transport.view;
   f.transport.view = async (name, args) => {
     const answer = await real(name, args); if (name === 'submission') answer.source_ref = f.facts.sources[1]; return answer;
@@ -1519,10 +1539,12 @@ test('pending continuation is explicit and scoped, and discovery never sends', a
   assert.equal(first.items.length, 2); assert.notEqual(first.next_cursor, null);
   assert.equal(first.items.some(item => item.id === prepared.at(-1)), false);
   assert.equal(f.calls.filter(call => call.type === 'view' && call.name === 'submissions').length, 0);
+  assert.equal(f.registry.doubt(reply).label, 'Review 2+ replies', 'a list not read to its end says more may be in doubt');
   await f.registry.morePending(reply);
   const all = f.registry.pending(reply);
   assert.ok(all.items.some(item => item.id === prepared.at(-1)));
   assert.equal(all.next_cursor, null);
+  assert.equal(f.registry.doubt(reply).label, 'Review 3 replies', 'read to its end, it says how many');
   const request = f.calls.find(call => call.type === 'view' && call.name === 'submissions');
   assert.deepEqual(request.args.source_ref, f.facts.sources[0]);
   assert.equal(request.args.topic_id, f.facts.topic_id); assert.equal(request.args.cursor, first.next_cursor);
@@ -1530,6 +1552,28 @@ test('pending continuation is explicit and scoped, and discovery never sends', a
   assert.equal(f.calls.filter(call => call.type === 'command').length, 0);
   const messages = await f.api.view('topic_messages', { topic_id: f.facts.topic_id, limit: 50 });
   assert.equal(messages.items.length, 2, 'only the two seeded sources were published');
+});
+
+// Item 118: replies that went do not crowd a reply in doubt off the server's
+// list: on another device, with no copy of its own, the page still has a
+// Review button for the one reply whose send never landed, in the topic's
+// composer and in a message's Reader.
+for (const composer of ['topic', 'message']) test(`a reply in doubt behind replies that went still has its Review button on another device: ${composer}`, async t => {
+  const f = await fixture(t, { pendingPageSize: 2 });
+  const source = composer === 'topic' ? { kind: 'topic', id: f.facts.topic_id } : f.facts.sources[0];
+  const prepared = [];
+  // The first two went; the last one's send never landed.
+  for (let index = 0; index < 3; index++) {
+    const { submission, receipt } = await serverReply(f, source, `Reply ${index}`, { send: index < 2 });
+    assert.ok(Number.isSafeInteger(receipt.result.seq), 'the prepare answers its place in the list');
+    prepared.push(submission);
+  }
+  const reply = composer === 'topic' ? (await f.registry.initializeInline((await f.api.view('topic', { topic_id: f.facts.topic_id })).topic)).editors.reply
+    : (await f.open()).editors.reply;
+  assert.deepEqual(reply.submissions, [], 'this device holds no copy');
+  assert.deepEqual(f.registry.pending(reply).items.map(item => item.id), [prepared[2]], 'the list holds only the reply not sent');
+  assert.deepEqual([...f.registry.doubt(reply).ids], [prepared[2]]);
+  assert.equal(f.registry.doubt(reply).label, 'Review 1 reply');
 });
 
 test('source access refusal still exposes authorized retained writing without old source text', async t => {

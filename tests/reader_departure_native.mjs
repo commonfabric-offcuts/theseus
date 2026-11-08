@@ -12,7 +12,7 @@ export function assertDepartureTrace(trace, expectedReceipts) {
     assert.equal(click?.target.topic,entry.destination.id,'actual native target matches the navigation decision');
     assert.ok(trace.some(e=>e.act===entry.act&&['openTarget settled','openTarget refused'].includes(e.event)),'navigation decision settled in retained trace');
     assert.equal(typeof entry.state.hasInFlightSend,'boolean');
-    assert.ok(Array.isArray(entry.state.unconfirmed)&&Array.isArray(entry.state.sessions));
+    assert.ok(Array.isArray(entry.state.inDoubt)&&Array.isArray(entry.state.sessions));
     assert.equal(typeof entry.state.notice.hidden,'boolean');
     for(const session of entry.state.sessions)assert.ok(Array.isArray(session.activeSends)&&Array.isArray(session.submissions));
   }
@@ -74,7 +74,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
       links:[...document.querySelectorAll('#topics a')].map(a=>({id:a.dataset.topicId,href:a.href})),
       visibleCards:[...document.querySelectorAll('#review-content [data-id]')].map(n=>({id:n.dataset.id,text:n.textContent})),
       notice:{text:document.querySelector('#topic-navigation-status')?.textContent,hidden:document.querySelector('#topic-navigation-status')?.hidden},
-      hasInFlightSend:r?.hasInFlightSend,unconfirmed:r?.unconfirmedSends.map(({editor,item})=>({key:editor.key,source:editor.sourceRef,id:item.id,status:item.status,receipt:item.receipt})),
+      hasInFlightSend:r?.hasInFlightSend,inDoubt:r?.inDoubt.map(({editor,ids,unread,label})=>({key:editor.key,source:editor.sourceRef,ids:[...ids],unread,label})),
       sessions:r?[...r.sessions.values()].map(s=>({key:s.editor.key,source:s.editor.sourceRef,activeSends:[...s.sends.keys()],submissions:s.editor.submissions.map(i=>({id:i.id,status:i.status,receipt:i.receipt,blocked:i.blocked})),attempts:s.attempts.map(a=>({id:a.envelope.operation_id,kind:a.envelope.kind,error:a.error,receipt:a.receipt}))})):[]};};
     document.addEventListener('click',e=>{const t=e.target.closest('a,button')??e.target;departureClick=performance.timeOrigin+':'+(++departureAct);departureTrace({event:'native click',act:departureClick,target:{tag:t.tagName,text:t.textContent?.slice(0,100),id:t.id,href:t.href,topic:t.dataset.topicId,submission:t.closest('[data-id]')?.dataset.id},state:departureState()});},true);
     document.addEventListener('DOMContentLoaded',()=>{const n=document.querySelector('#topic-navigation-status');if(n)new MutationObserver(()=>departureTrace({event:'notice mutation',text:n.textContent,hidden:n.hidden,state:departureState()})).observe(n,{subtree:true,childList:true,attributes:true,characterData:true});});
@@ -103,6 +103,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const whilePreparing=await composer();
     assert.deepEqual([whilePreparing.button,whilePreparing.paints],[null,0],'no Review button while the reply is prepared to go: '+JSON.stringify(whilePreparing));
     await choose(p);await until(async()=>/send/i.test(await notice(p)),'active prepare keeps page with guidance');
+    assert.equal(await notice(p),'Wait for the send to finish before changing topics.','the wait names no Review button, as none shows');
     assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
     assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,0,'sidebar does not fall back to beforeunload');
     await p.release(preparing);
@@ -126,8 +127,8 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const held=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'&&h.payload.operation_id!==sending.payload.operation_id),'unknown publication response');
     p.intercept(null);await p.fail(held);
     const item=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.status==='prepared'&&i.snapshot.body===unknown);},'settled pending publication');
-    await choose(p);await until(async()=>/unconfirmed/i.test(await notice(p)),'unconfirmed choice notice');
-    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has a Review button');
+    await choose(p);await until(async()=>/Use “Review 1 reply” to check/.test(await notice(p)),'unconfirmed choice notice names the Review button');
+    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has the Review button the notice names');
     await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button`);
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${item.id}"] h3')?.textContent==='Sent to Theseus'`),'Check confirms original publication');
     await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'checked as sent, its Review button goes');
@@ -164,8 +165,9 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(null);await p.fail(held);
     const original=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.blocked&&i.snapshot.body===body);},'durable blocked-before-prepare item');
     assert.equal(p.calls.some(c=>c.payload?.kind==='submission.prepare'),false,'preparation was never issued');
-    await choose(p);await until(async()=>/unconfirmed/i.test(await notice(p)),'first blocked departure stays');
-    assert.match(await notice(p),/device.*Design discussion/is);
+    await choose(p);await until(async()=>/Use “Review 1 reply” to check/.test(await notice(p)),'first blocked departure stays');
+    assert.match(await notice(p),/kept.*“Design discussion” again/is);
+    assert.equal(await p.evaluate(`document.querySelector('#inline-pending button')?.textContent`),'Review 1 reply','the notice names the Review button the page shows');
     assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
     await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');
     const retained=(await rows(p)).flatMap(r=>r.snapshot.submissions).find(i=>i.id===original.id);
@@ -220,6 +222,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await point(p,'#review-close');
     const stay=async stage=>{
       await choose(p);await until(async()=>/Wait for the send/.test(await notice(p)),stage+' uses active send guidance');
+      assert.doesNotMatch(await notice(p),/Review/,stage+': the wait names no Review button, as none shows');
       assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
       const before=p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length;
       const origin=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');

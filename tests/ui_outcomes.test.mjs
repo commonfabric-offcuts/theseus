@@ -54,7 +54,7 @@ function departure() {
   const visits=[], editor={key:'writing',localVersion:1,ackVersion:0,submissions:[],get dirty(){return this.localVersion>this.ackVersion;}};
   const owner={editor,sends:new Map()};
   const registry={sessions:new Map([['writing',owner]]),inline:{editors:{reply:editor}},current:null,
-    disposed:false,hasInFlightSend:false,unconfirmedSends:[],hasUnprotectedWriting:false,
+    disposed:false,hasInFlightSend:false,inDoubt:[],hasUnprotectedWriting:false,
     flush:async()=>{editor.ackVersion=editor.localVersion;return {recorded:true,status:'committed'};},keepEditorsLocal:async()=>{}};
   const navigation=new nav.TopicNavigation({registry,current:{kind:'topic',id:'same'},navigateTarget:route=>visits.push(route)});
   return {navigation,registry,editor,visits};
@@ -71,11 +71,11 @@ test('typed outcome/root departures use the same save/send guard and do not alia
   }
 });
 test('the informed second choice is bound to destination kind as well as id', async () => {
-  const f=departure(),item={id:'s',status:'prepared',prepareOperationId:'p',sendOperationId:'send',authority:{id:'a'}};
-  f.registry.unconfirmedSends=[{session:f.registry.sessions.get('writing'),editor:f.editor,item}];
+  const f=departure();
+  f.registry.inDoubt=[{session:f.registry.sessions.get('writing'),editor:f.editor,ids:new Set(['s']),items:[{id:'s',status:'prepared'}],unread:false,label:'Review 1 reply'}];
   const w={kind:'workspace',id:'next'},t={kind:'topic',id:'next'};
-  await assert.rejects(f.navigation.openTarget(w,'Outcome'),/unconfirmed/i);
-  await assert.rejects(f.navigation.openTarget(t,'Topic'),/unconfirmed/i);
+  await assert.rejects(f.navigation.openTarget(w,'Outcome'),/“Review 1 reply”.*“Outcome” again/);
+  await assert.rejects(f.navigation.openTarget(t,'Topic'),/“Review 1 reply”.*“Topic” again/);
   assert.deepEqual(f.visits,[]);
   await f.navigation.openTarget(t,'Topic');assert.deepEqual(f.visits,[t]);
 });

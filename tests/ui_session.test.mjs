@@ -333,7 +333,9 @@ async function correctionDepartureFixture(t) {
   const refused = f.editor.submissions[0]; assert.equal(refused.status, 'refused');
   assert.equal(refused.receipt.error.code, 'REVISION_CONFLICT');
   const registry = Object.create(EditorRegistry.prototype);
-  Object.assign(registry, { sessions: new Map([[f.editor.key, f.session]]), localWrites: new Map(), pages: new Map(), bootstrap: { instance_id: 'ux-fixture' },
+  // As at an open, the server's list of replies not sent was read before the writing was registered.
+  Object.assign(registry, { sessions: new Map([[f.editor.key, f.session]]), localWrites: new Map(), bootstrap: { instance_id: 'ux-fixture' },
+    pages: new Map([[f.editor.key, { instance_id: 'ux-fixture', items: [], next_cursor: null, through: 0 }]]),
     inline: { editors: { reply: f.editor } }, current: null, disposed: false,
     flush: () => f.session.save(), keepEditorsLocal: () => f.session.persist() });
   const visits = [], navigation = new TopicNavigation({ registry, topicId: 't1', navigate: id => visits.push(id) });
@@ -358,11 +360,11 @@ test('correction departure protects synchronous validation prepare and publicati
     for (const [stage, release] of [[validation,releaseValidation],[prepare,releasePrepare],[publication,releasePublication]]) {
       await stage.promise;
       assert.equal(f.registry.hasInFlightSend, true); assert.equal(f.registry.hasUnprotectedWriting, true);
-      if (stage === validation) assert.deepEqual([...f.registry.inDoubt(f.editor)], [f.refused.id], 'until its correction exists, the refusal is in doubt');
+      if (stage === validation) assert.deepEqual([...f.registry.doubt(f.editor).ids], [f.refused.id], 'until its correction exists, the refusal is in doubt');
       else {
         corrected = f.editor.submissions.find(item => item.id === f.refused.correctedBy);
         assert.equal(f.session.underWay(corrected.id), true, 'the corrected reply is under way');
-        assert.deepEqual([...f.registry.inDoubt(f.editor)], [], 'so neither it nor the refusal it carries is in doubt');
+        assert.deepEqual([...f.registry.doubt(f.editor).ids], [], 'so neither it nor the refusal it carries is in doubt');
       }
       await assert.rejects(f.navigation.open('t2'), /Wait for the send/); assert.deepEqual(f.visits, []);
       if (stage !== publication) release.resolve();
@@ -373,7 +375,7 @@ test('correction departure protects synchronous validation prepare and publicati
     assert.deepEqual([...f.session.sends], [[f.refused.id, unrelated]], 'only the correction marker is removed');
     assert.equal(f.session.underWay(corrected.id), false, 'the corrected reply went, so it is no longer under way');
     f.session.sends.delete(f.refused.id); assert.equal(f.registry.hasUnprotectedWriting, false);
-    assert.deepEqual([...f.registry.inDoubt(f.editor)], [], 'the correction went, so the refusal it carries is not in doubt');
+    assert.deepEqual([...f.registry.doubt(f.editor).ids], [], 'the correction went, so the refusal it carries is not in doubt');
     assert.equal(await f.navigation.open('t2'), true); assert.deepEqual(f.visits, ['t2']);
     const messages = await f.api.view('topic_messages', { topic_id: 't1' });
     assert.equal(messages.items.filter(m => m.body === 'Exact correction original').length, 1);

@@ -47,7 +47,12 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get ownerDocument() { return this.owner ?? document; }
     set ownerDocument(value) { this.owner = value; }
     get firstElementChild() { return this.children[0]; }
-    querySelector(selector) { return get(selector.slice(1)); }
+    // A bare tag name finds the first such element inside; any other selector names an element by id.
+    querySelector(selector) {
+      if (!/^[a-z][a-z0-9]*$/.test(selector)) return get(selector.slice(1));
+      for (const child of this.children) { if (child.tagName === selector.toUpperCase()) return child; const inner = child.querySelector?.(selector); if (inner) return inner; }
+      return null;
+    }
     // The rail's sideways strips are a phone layout this fixture does not draw.
     querySelectorAll(selector = '') { return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
     setAttribute(name, value) { this[name] = value; }
@@ -85,7 +90,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
     // Which replies are in doubt is the registry's own rule, read with this fake's pages and the sends a test says are going.
-    going: new Map(), inDoubt(editor) { return EditorRegistry.prototype.inDoubt.call({ pending: e => this.pending(e), sessions: this.going }, editor); },
+    going: new Map(), doubt(editor) { return EditorRegistry.prototype.doubt.call({ pages: { get: () => this.pending(editor) }, sessions: this.going }, editor); },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
       list: action => action({ readClass: 'foreground' }) },
@@ -393,7 +398,7 @@ test('the first page of a review is drawn when the registry applied it and its s
 test('actual home wordmark, Outcomes and topic links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
-  f.registry.keepEditorsLocal=async()=>{};f.registry.unconfirmedSends=[];
+  f.registry.keepEditorsLocal=async()=>{};f.registry.inDoubt=[];
   Object.assign(f.editor,{localVersion:1,ackVersion:0});Object.defineProperty(f.editor,'dirty',{get:()=>f.editor.ackVersion<f.editor.localVersion});
   f.registry.flush=async()=>({recorded:false,status:'unknown'});
   f.api.view=async(name,args)=>name==='workspace_topics'?{instance_id:'fixture',items:[{id:'t2',title:'Second',workspace_id:'w1',activity_ms:1}],next_cursor:null}:read(name,args);
@@ -592,6 +597,55 @@ test('a refused reply prepared again shows a Review button only while its correc
   assert.deepEqual(shown(), ['Review 1 reply'], 'a correction this device does not hold answers for nothing: the refusal stays in doubt');
   modal.submissions = [{ id: 'other', status: 'confirmed' }]; f.changed(modal);
   assert.deepEqual(shown(), [], 'and the button goes once none is');
+});
+
+// Item 118: the server's list of replies not sent answers for the replies it
+// could see only once it is read to its end. A list not read to its end, or
+// not read at all, is never an answer of none.
+test('a Review button counts a reply prepared here as sent only from a complete read that could see it, and an unread list keeps a button', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  const page = (items, next_cursor, through) => { f.registry.pending = () => ({ items, next_cursor, through }); f.changed(modal); return shown(); };
+  const held = { id: 'held', status: 'prepared', preparationConfirmed: true, prepareReceipt: { result: { seq: 5 } } };
+  modal.submissions = [held];
+  assert.deepEqual(page([], null, 5), [], 'the whole list of replies not sent was read after it was prepared and does not hold it: it went');
+  assert.deepEqual(page([], null, 9), [], 'a read later still');
+  assert.deepEqual(page([], null, 4), ['Review 1 reply'], 'a read that could not see it answers nothing for it');
+  assert.deepEqual(page([{ id: 'held', send_status: 'unknown' }], null, 5), ['Review 1 reply'], 'listed as not sent, it is in doubt');
+  assert.deepEqual(page([], 3, 5), ['Review 1+ replies'], 'a list not read to its end answers nothing, and more may be in doubt');
+  modal.submissions = [{ ...held, prepareReceipt: { result: {} } }];
+  assert.deepEqual(page([], null, 5), ['Review 1 reply'], 'a prepare answer with no place in the list answers nothing');
+  modal.submissions = [{ ...held, status: 'preparing', preparationConfirmed: false, prepareReceipt: undefined }];
+  assert.deepEqual(page([], null, 5), ['Review 1 reply'], 'a reply whose preparation is not confirmed is in doubt');
+  modal.submissions = [];
+  assert.deepEqual(page([{ id: 'x', send_status: 'unknown' }], 21, 40), ['Review 1+ replies'], 'one known, more unread');
+  assert.deepEqual(page([], 21, 40), ['Review more replies'], 'none known, more unread');
+  f.registry.pending = () => undefined; f.changed(modal);
+  assert.deepEqual(shown(), ['Review more replies'], 'a list never read is not an answer of none');
+  assert.deepEqual(page([], null, 40), [], 'a whole list with nothing in it is');
+});
+
+// Item 118: "Review 2 replies" opens those two. A reply checked as sent
+// while the list is open says so in its place.
+test('the Review list shows the replies its button counts, and keeps one checked as sent while it is open', async () => {
+  const f = fixture(), settle = async () => { for (let n = 0; n < 6; n++) await new Promise(setImmediate); };
+  f.get('version-review').showModal = function () { this.open = true; };
+  const kept = (id, status) => ({ id, status, topicId: 't1', snapshot: { body: id, attachments: [] } });
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [kept('went', 'confirmed'), kept('held', 'prepared')] };
+  f.registry.current = { editors: { reply: modal } }; f.registry.pendingReason = () => null;
+  f.registry.pending = () => ({ items: [{ id: 'old', send_status: 'committed', topic_id: 't1' }, { id: 'lost', send_status: 'unknown', topic_id: 't1' }], next_cursor: null, through: 9 });
+  f.registry.checkPending = async (editor, id) => { editor.submissions.find(item => item.id === id).status = 'confirmed'; f.changed(editor); };
+  f.changed(modal);
+  const control = f.get('topic-pending').children[0].firstElementChild;
+  assert.equal(control.textContent, 'Review 2 replies');
+  await control.onclick(); await settle();
+  const cards = () => f.get('review-content').children.filter(card => card.dataset.id).map(card => [card.dataset.id, card.querySelector('h3').textContent]);
+  assert.deepEqual(cards(), [['held', 'Confirmation unknown'], ['lost', 'Confirmation unknown']], 'the two in doubt, not the two that went');
+  await f.get('review-content').children[0].children.find(child => child.textContent === 'Check confirmation').onclick(); await settle();
+  assert.equal(control.textContent, 'Review 1 reply', 'checked as sent, it is no longer counted');
+  assert.deepEqual(cards(), [['held', 'Sent to Theseus'], ['lost', 'Confirmation unknown']], 'but its card stays, and says so in place');
 });
 
 // Item 117: the page wires the phone rail's drawer as it starts.
@@ -2468,7 +2522,7 @@ test('a link to a place in this Theseus opens it as the rail does, keeping writi
   const f = fixture('https://fixture/?topic=t1', { location });
   // As the topic rows' check does: writing not yet confirmed saved holds the move.
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
-  f.registry.keepEditorsLocal = async () => {}; f.registry.unconfirmedSends = [];
+  f.registry.keepEditorsLocal = async () => {}; f.registry.inDoubt = [];
   Object.assign(f.editor, { localVersion: 1, ackVersion: 0 }); Object.defineProperty(f.editor, 'dirty', { get: () => f.editor.ackVersion < f.editor.localVersion });
   f.registry.flush = async () => ({ recorded: false, status: 'unknown' });
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });

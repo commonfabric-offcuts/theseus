@@ -291,13 +291,11 @@ async function showCorrection(editor, item, opener, presentation = presentationF
   $('review-content').append(prepare);
 }
 
-// Replies whose words are in doubt, as the session knows them: a reply that
-// went, is going, or was carried by a correction that went needs no button.
-const pendingCount = editor => registry.inDoubt(editor).size;
+// A Review button shows only while a reply is in doubt, in the registry's words.
 function pendingButton(host, editor, presentation = presentationFor(editor)) {
-  const count = pendingCount(editor), label = `Review ${count} ${count === 1 ? 'reply' : 'replies'}`;
+  const { label } = registry.doubt(editor);
   let control = host.firstElementChild;
-  if (!count) { host.replaceChildren(); return; }
+  if (!label) { host.replaceChildren(); return; }
   if (!control) { control = button(label, () => showPending(editor, control, presentation)); host.append(control); }
   control.textContent = label; control.onclick = () => run(() => showPending(editor, control, presentation));
 }
@@ -305,10 +303,14 @@ async function showPending(editor, opener, presentation = presentationFor(editor
   const serial = beginReview('Your replies', opener), current = () => serial === reviewSerial && review.open;
   const host = $('review-content');
   const names = { preparing: 'Preparing — writing kept', prepared: 'Confirmation unknown', confirmed: 'Sent to Theseus', refused: 'Not sent — writing kept', unknown: 'Confirmation unknown', committed: 'Sent to Theseus', rejected: 'Not sent — writing kept' };
+  // The replies in doubt, and those that were while the list is open, so a
+  // reply checked as sent says so in place.
+  const shown = new Set();
   const draw = () => {
     if (!current()) return;
+    for (const id of registry.doubt(editor).ids) shown.add(id);
     const local = new Map(editor.submissions.map(item => [item.id, item]));
-    const entries = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))];
+    const entries = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))].filter(item => shown.has(item.id));
     for (const item of entries) {
       const statusKey = item.status ?? item.send_status;
       let card = [...host.children].find(child => child.dataset.id === item.id);
@@ -350,7 +352,7 @@ function changed(editor) {
   invalidateComparison(editor);
   if (editor.context.kind === 'reply' && editor.context.sourceRef.kind !== 'topic') {
     let host = [...$('topic-pending').children].find(child => child.dataset.key === editor.key);
-    if (!pendingCount(editor)) host?.remove();
+    if (!registry.doubt(editor).label) host?.remove();
     else {
       if (!host) { host = node('div'); host.dataset.key = editor.key; $('topic-pending').append(host); }
       pendingButton(host, editor);

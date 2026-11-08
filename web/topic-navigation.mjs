@@ -175,15 +175,16 @@ export class TopicNavigation {
       snapshots.every(s => registry.sessions.get(s.editor.key) === s.owner && s.owner?.editor === s.editor && s.editor.localVersion === s.version &&
         JSON.stringify(s.editor.submissions.map(item => item.id)) === s.sendIds);
     const sendGuard = () => {
-      if (registry.hasInFlightSend) throw Error('Wait for the send to finish before changing topics. Open the pending reply’s Review button to Check confirmation.');
+      if (registry.hasInFlightSend) throw Error('Wait for the send to finish before changing topics.');
     };
-    const pendingSnapshot = () => registry.unconfirmedSends.map(({ session, editor, item }) => ({
-      session, editor, item, identity: JSON.stringify([item.id, item.status, item.prepareOperationId, item.sendOperationId, item.authority]),
+    // The replies in doubt, by the registry's one answer, which also shows each
+    // writing's Review button with these words.
+    const pendingSnapshot = () => registry.inDoubt.map(({ session, editor, items, unread, label }) => ({
+      session, editor, label, identity: JSON.stringify([unread, ...items.map(item => [item.id, item.status ?? item.send_status, item.detached,
+        item.prepareOperationId ?? item.prepare_operation_id, item.sendOperationId ?? item.send_operation_id, item.authority])]),
     }));
-    const samePending = (a, b) => a.length === b.length && a.every((entry, index) => {
-      const other = b[index];
-      return entry.session === other.session && entry.editor === other.editor && entry.item === other.item && entry.identity === other.identity;
-    });
+    const samePending = (a, b) => a.length === b.length && a.every((entry, index) =>
+      entry.session === b[index].session && entry.editor === b[index].editor && entry.identity === b[index].identity);
     const imagesAttached = () => editors.every(editor => currentImages(editor).every(image =>
       image.ready_descriptor && image.association?.cycle_id === editor.clientCycleId &&
       editor.draft.attachments.some(ref => ref.id === image.association.media_id)));
@@ -208,7 +209,7 @@ export class TopicNavigation {
       const pending = pendingSnapshot();
       if (pending.length && !(previousChoice?.destinationKey === destinationKey && previousChoice.same() && samePending(previousChoice.pending, pending))) {
         nextChoice = { destinationKey, same, pending };
-        throw Error(`A send is unconfirmed; its pending copy is kept on this device. Choose “${title}” again to leave without resolving it. Use the pending reply’s Review button to Check confirmation; after returning, use Review versions for a local copy.`);
+        throw Error(`Not every reply here is confirmed sent; each is kept. Use ${pending.map(entry => `“${entry.label}”`).join(' or ')} to check, or choose “${title}” again to leave without resolving it.`);
       }
       navigate(); return true;
     } catch (error) {

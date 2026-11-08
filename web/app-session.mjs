@@ -87,14 +87,15 @@ export class EditorRegistry {
     const initialize = async () => {
       const foreground = this.cleanup.foreground(), sourceRef = { kind: 'topic', id: topic.id };
       try {
-        const state = await foreground.read(options => this.api.view('editor_state', { source_ref: sourceRef, topic_id: topic.id, limit: this.pendingPageSize }, options));
+        const state = await foreground.read(options => this.api.view('editor_state', { source_ref: sourceRef, topic_id: topic.id, limit: this.pendingPageSize, unsent: true }, options));
         this.validateState(state, sourceRef, topic.id);
         if (state.note !== null) throw Error('A topic composer cannot hold a private note.');
         if (this.disposed) return null;
-        const reply = await this.register({ instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId: topic.id, kind: 'reply' }, state.draft);
+        const context = { instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId: topic.id, kind: 'reply' };
+        this.pages.set(editorKey(context), copy(state.submissions));
+        const reply = await this.register(context, state.draft);
         if (this.disposed) return null;
         reply.unavailable = !state.source_available || !state.destination_available;
-        this.pages.set(reply.key, copy(state.submissions));
         this.inline = { surface: 'inline', initialized: true, topic: copy(topic), editors: { reply }, mode: 'reply', destinationAvailable: !reply.unavailable };
         this.present(this.inline); this.activity(); return this.inline;
       } finally { foreground.release(); }
@@ -120,7 +121,7 @@ export class EditorRegistry {
 
   validatePage(page) {
     if (page?.instance_id !== this.bootstrap.instance_id || !Array.isArray(page.items) ||
-        !(page.next_cursor === null || Number.isInteger(page.next_cursor))) throw Error('The pending reply page could not be confirmed.');
+        !(page.next_cursor === null || Number.isInteger(page.next_cursor)) || !(page.through === undefined || Number.isSafeInteger(page.through))) throw Error('The pending reply page could not be confirmed.');
     return page;
   }
 
@@ -201,7 +202,7 @@ export class EditorRegistry {
     await this.keepBeforeStep(this.interactive);
     const [sourceAnswer, state] = await foreground.read(options => pairedReads([
       this.api.view('source', sourceRef, options),
-      this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize }, options),
+      this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize, unsent: true }, options),
     ]));
     // A message the person may not read, such as a whisper they are not in, is
     // refused exactly as one that is not there (docs/whispers.md): a link to
@@ -213,6 +214,7 @@ export class EditorRegistry {
         !same(sourceAnswer.source_ref, sourceRef))) throw Error('The full source identity could not be confirmed.');
     if (token !== this.generation || this.disposed) return null;
     const context = { instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId };
+    this.pages.set(editorKey({ ...context, kind: 'reply' }), copy(state.submissions));
     const reply = await this.register({ ...context, kind: 'reply' }, state.draft);
     const note = await this.register({ ...context, kind: 'note' }, state.note);
     if (token !== this.generation || this.disposed) return null;
@@ -225,7 +227,6 @@ export class EditorRegistry {
     note.unavailable = sourceUnavailable;
     // What the person now reads; writing not yet begun is about it.
     if (!sourceUnavailable) { reply.read(sourceRef); note.read(sourceRef); }
-    this.pages.set(reply.key, copy(state.submissions));
     const source = sourceUnavailable ? { instance_id: this.bootstrap.instance_id, source_ref: copy(sourceRef),
       topic_id: topicId ?? null, title: 'Source unavailable', body: '', attachments: [] } : sourceAnswer;
     const presentation = { token, source, sourceUnavailable, destinationAvailable: state.destination_available,
@@ -608,7 +609,7 @@ export class EditorRegistry {
     const previous = this.pending(editor);
     if (previous.next_cursor === null) return previous;
     const page = this.validatePage(await this.api.view('submissions', { source_ref: editor.sourceRef,
-      topic_id: editor.context.topicId, cursor: previous.next_cursor, limit: this.pendingPageSize }));
+      topic_id: editor.context.topicId, cursor: previous.next_cursor, limit: this.pendingPageSize, unsent: true }));
     // Another open/refresh can replace the page while this read is in flight.
     if (this.pages.get(editor.key) !== previous) return this.pending(editor);
     const ids = new Set(previous.items.map(item => item.id));
@@ -616,24 +617,31 @@ export class EditorRegistry {
     this.pages.set(editor.key, result); this.changed(editor); return result;
   }
 
-  // The ids of this editor's replies whose words are in doubt, from all that is
-  // known of them, here and on the server: neither known sent, here or by the
-  // server's record of its send, nor on its way, nor replaced by a correction
-  // this device holds, which then answers for those words in its place.
-  inDoubt(editor) {
-    const local = new Map(editor.submissions.map(item => [item.id, item])), server = this.pending(editor).items;
-    const sent = new Set([...editor.submissions.filter(item => item.status === 'confirmed'), ...server.filter(item => item.send_status === 'committed')].map(item => item.id));
-    return new Set([...local.keys(), ...server.map(item => item.id)].filter(id => !sent.has(id) &&
-      !local.has(local.get(id)?.correctedBy) && this.sessions.get(editor.key)?.underWay(id) !== true));
+  // The one answer to which of this editor's replies are in doubt (each as
+  // this device holds it, else as the server lists it), and the words of the
+  // button that reviews them (null when none is). A reply is in doubt unless
+  // it is known sent, is on its way, or was replaced by a correction this
+  // device holds, which then answers in its place. Known sent is this device's
+  // confirmation, the server's record of its send, or the server's list of
+  // replies not sent read to its end without it, when that read could see it
+  // (docs/replies-in-doubt.md). A list not read to its end, or not read at
+  // all, is unread: more may be in doubt, so it is never an answer of none.
+  doubt(editor) {
+    if (editor.context.kind !== 'reply') return { ids: new Set(), items: [], unread: false, label: null };
+    const page = this.pages.get(editor.key), unread = page?.next_cursor !== null, session = this.sessions.get(editor.key);
+    const local = new Map(editor.submissions.map(item => [item.id, item])), listed = new Map((page?.items ?? []).map(item => [item.id, item]));
+    const sent = id => local.get(id)?.status === 'confirmed' || listed.get(id)?.send_status === 'committed' ||
+      !unread && !listed.has(id) && local.get(id)?.status === 'prepared' && local.get(id).prepareReceipt?.result?.seq <= page.through;
+    const items = [...new Map([...listed, ...local]).values()].filter(({ id }) => !sent(id) &&
+      !local.has(local.get(id)?.correctedBy) && session?.underWay(id) !== true), ids = new Set(items.map(item => item.id));
+    const count = unread ? (ids.size ? ids.size + '+' : 'more') : ids.size;
+    return { ids, items, unread, label: ids.size || unread ? `Review ${count} ${count === 1 ? 'reply' : 'replies'}` : null };
+  }
+  // Every registered writing with replies in doubt, with that answer.
+  get inDoubt() {
+    return [...this.sessions.values()].map(session => ({ session, editor: session.editor, ...this.doubt(session.editor) })).filter(entry => entry.label);
   }
   get hasInFlightSend() { return [...this.sessions.values()].some(session => session.sends.size > 0); }
-  get unconfirmedSends() {
-    return [...this.sessions.values()].flatMap(session => {
-      const editor = session.editor;
-      return editor.submissions.filter(item => !item.detached && ['preparing', 'prepared'].includes(item.status))
-        .map(item => ({ session, editor, item }));
-    });
-  }
   get hasUnprotectedWriting() {
     return this.hasInFlightSend || [...this.sessions.values()].some(({ editor }) => this.localWrites.get(editor.key)?.pending ||
       editor.imageBusy || editor.imageReservation || editor.imageStorageError || editor.uploadState?.entries.some(e => e.selected && ['memory-only', 'capturing'].includes(e.bytes_state)) ||
