@@ -22,13 +22,15 @@ WAKE_CHECK = {"check_id": "wake-time", "group_name": "Measures", "position": 1, 
 UNITS_CHECK = {"check_id": "units", "group_name": "Checks", "position": 2, "name": "Unit checks", "kind": "pass", "source": "release-check:units"}
 
 # The repository's own release check, as a trial runs it in its clone: it writes a summary of only the steps it is
-# given, beside a base at the repository's first commit, slow (20 and 21 s) while slow.txt exists.
+# given, beside a base at the repository's first commit, slow (20 and 21 s) while slow.txt exists, running the replay
+# --repeats times (default once, as the real one does).
 STAND_IN = r'''#!/usr/bin/python3 -I
 import argparse, datetime, json, os, subprocess
 parser = argparse.ArgumentParser()
 for flag in ("--out", "--only", "--cli", "--profile", "--chrome"):
     parser.add_argument(flag)
 parser.add_argument("--base", action="store_true")
+parser.add_argument("--repeats", type=int, default=1)
 args = parser.parse_args()
 git = lambda *a: subprocess.run(["git"] + list(a), capture_output=True, text=True).stdout.strip()
 now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
@@ -37,8 +39,8 @@ wake = lambda runs: {"name": "wake-replay", "tool": "tools/wake_replay.py", "pas
 tools = {"release_check": "stand-in", "python": "3.9.6"}
 summary = {"tool": "theseus-release-check", "commit": git("rev-parse", "HEAD"), "checkout": os.getcwd(), "tools": tools,
            "started_at": now, "finished_at": now, "only": args.only.split(","), "passed": True,
-           "steps": [wake([20.0, 21.0] if os.path.exists("slow.txt") else [13.1, 13.2])] if "wake-replay" in args.only and not os.environ.get("STAND_IN_SKIPS") else [],
-           "base": {"commit": git("rev-list", "--max-parents=0", "HEAD"), "tools": tools, "steps": [wake([13.0, 13.4])]} if args.base else None}
+           "steps": [wake(([20.0, 21.0] if os.path.exists("slow.txt") else [13.1, 13.2])[:args.repeats])] if "wake-replay" in args.only and not os.environ.get("STAND_IN_SKIPS") else [],
+           "base": {"commit": git("rev-list", "--max-parents=0", "HEAD"), "tools": tools, "steps": [wake([13.0, 13.4][:args.repeats])]} if args.base else None}
 os.makedirs(args.out)
 with open(os.path.join(args.out, "summary.json"), "w") as handle:
     json.dump(summary, handle)

@@ -61,13 +61,16 @@ class FakeHost:
     """Answers the deploy's ps and git calls from a table and records every call; nothing real runs."""
 
     def __init__(self, config, servers=(111,), runners=(222,), supervisors=(), children=(), dirty="", ff=True, backup=0,
-                 merge=0, migrate=0, spelled_as_deployed=False,
+                 merge=0, migrate=0, spelled_as_deployed=False, changed=(),
                  log=SHIPPED, keeps=True, releases=(page(19), 0), cli=0, recorded=0, on_cli=None, logs=None,
                  kept=(), listed=0, at=SHA, line=(HEAD,), others=()):
         """runners are bare runners (as started before supervision); children are (pid, parent) runner processes,
         spelled the way the real supervisor starts them (its own interpreter and its checkout's resolved path), or
         exactly as the deploy spells a runner when those are the same."""
         self.spelled_as_deployed = spelled_as_deployed
+        # changed: the paths git says differ between the live HEAD and the commit; None when git cannot say. No file
+        # names a unit module, and the replay imports no tools module.
+        self.changed = changed
         self.config, self.calls = config, []
         self.servers, self.runners = list(servers), list(runners)
         self.supervisors, self.children = list(supervisors), list(children)
@@ -99,6 +102,10 @@ class FakeHost:
             out = "Thu Nov  5 15:02:31 2026     process %s" % argv[-1]
         elif argv[0] == "git" and "rev-parse" in argv:
             out = HEAD + "\n"
+        elif argv[0] == "git" and "diff" in argv:
+            out, code = ("\0".join(self.changed) + "\0", 0) if self.changed is not None else ("", 128)
+        elif argv[0] == "git" and "grep" in argv:
+            code = 1
         elif argv[0] == "git" and "status" in argv:
             out = self.dirty
         elif argv[0] == "git" and "merge-base" in argv and argv[-1] == SHA:
@@ -997,6 +1004,49 @@ class DeployRefuses(DeployCase):
         self.assertEqual(self.records(), ["00-plan", "00-release-check", "01-live", "02-checkout"])
         self.assertEqual(self.kills, [])
 
+    def skipped(self, live=HEAD, steps=release_check.SKIPPABLE):
+        """A passed summary that skipped the browser modes and the wake replay beside live (item 166)."""
+        written = summary()
+        written["steps"] = [step for step in written["steps"] if step["name"] not in release_check.SKIPPABLE]
+        written["skipped"] = {"steps": list(steps), "live": live, "changed": ["docs/tools.md"], "why": release_check.skipped_words(live)}
+        self.summary.write_text(json.dumps(written))
+
+    def test_a_summary_that_skipped_what_the_change_cannot_reach_is_taken_for_that_change_alone(self):
+        self.skipped()
+        host = FakeHost(self.config, ff=False, changed=["docs/tools.md", "tools/checks.py", "tests/test_tools_deploy.py"])
+        self.assertIn("fast-forward", self.refused(host), "taken: the deploy goes on to the live checkout")
+        written = json.loads((self.evidence / "00-release-check.json").read_text())
+        self.assertEqual((written["passed"], written["reasons"]), (True, []))
+        self.assertIn("skipped, not passed", written["skipped"])
+        [diff] = host.ran("diff")
+        self.assertEqual(diff[-3:], [HEAD, SHA, "--"], "the paths are read from the live HEAD to the commit, by the deploy itself")
+
+    def test_a_summary_that_skipped_steps_is_refused_for_any_other_change_before_anything_stops(self):
+        cases = (("web", dict(changed=["docs/tools.md", "web/app.mjs"]), {}, "but web/app.mjs changed since then, which they could see"),
+                 ("aim_next", dict(changed=["aim_next/store.py"]), {}, "but aim_next/store.py changed since then"),
+                 ("a harness", dict(changed=[release_check.READER]), {}, "but %s changed since then" % release_check.READER),
+                 ("another live commit", dict(changed=["docs/tools.md"]), dict(live="a" * 40), "but %s is live; run the release check again" % HEAD),
+                 ("unreadable", dict(changed=None), {}, "cannot be taken: what changed since the live commit"),
+                 ("other steps", dict(changed=["docs/tools.md"]), dict(steps=[release_check.WAKE_REPLAY]), "skipped steps it never skips together"))
+        for case, host_args, skip, words in cases:
+            with self.subTest(case):
+                self.skipped(**skip)
+                host = FakeHost(self.config, **host_args)
+                refusal = self.refused(host)
+                self.assertIn("the release check has not passed for %s" % SHA, refusal)
+                self.assertIn(words, refusal)
+                self.assertEqual(self.records(), ["00-release-check"])
+                self.assertFalse(host.ran("ps"), "refused before the live processes are read")
+                self.assertEqual(self.kills, [])
+
+    def test_a_deploy_that_measures_an_outcome_refuses_a_summary_that_skipped_steps(self):
+        self.config_path.write_text(json.dumps(dict(self.raw, outcome="building-theseus", reporter_profile="agent-b.profile.json")))
+        self.config = deploy.load_config(self.config_path)
+        self.skipped()
+        host = FakeHost(self.config, changed=["docs/tools.md"])
+        self.assertIn("measuring building-theseus reads every step, so run the release check without --live", self.refused(host))
+        self.assertEqual((host.calls, self.records()), ([], ["00-release-check"]))
+
     def test_only_a_full_commit_is_accepted(self):
         host = FakeHost(self.config)
         for sha in ("c" * 7, "C" * 40, "HEAD", ""):
@@ -1454,6 +1504,18 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         # Beside the live head, the same replay is measured (and here it got worse).
         self.write_summary(wake=([20.0, 21.0], [13.0, 13.4]))
         self.assertEqual(self.deploy(), "Wake time got worse: aim-ux got worse in every run")
+
+    def test_a_replay_that_ran_fewer_times_than_its_check_asks_is_refused_before_anything_is_told_or_stopped(self):
+        # Item 166: the release check runs the replay once unless asked; a rule of two would read it as worse and tell it.
+        self.define(WAKE_CHECK)
+        topics = self.sql("SELECT count(*) FROM topics")
+        for now, base in (([20.0], [13.0, 13.4]), ([20.0, 21.0], [13.0])):
+            with self.subTest(now=now, base=base):
+                self.write_summary(wake=(now, base))
+                self.assertEqual(self.deploy(), "the wake replay ran 1 time and wake-time asks for 2; run the release check with --repeats 2; "
+                                 "nothing was stopped")
+                self.assertEqual((self.kills, self.sql("SELECT count(*) FROM topics"), self.sql("SELECT count(*) FROM check_runs WHERE commit_sha=?", (SHA,))),
+                                 ([], topics, [(0,)]))
 
     def test_a_worse_measure_the_owner_accepts_lets_the_same_commit_go_on_into_deploy(self):
         self.define(WAKE_CHECK)

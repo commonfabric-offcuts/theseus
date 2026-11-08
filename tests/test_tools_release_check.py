@@ -288,6 +288,22 @@ class ReleaseCheckMeasures(FakeCheckout):
         self.assertEqual((step["passed"], step["series"]["aim-ux"]["lost"]), (False, [1200]))
         self.assertFalse(summary["passed"])
 
+    def test_the_wake_replay_runs_once_unless_more_are_asked_for(self):
+        # Item 166: one replay is about 16 minutes; a combined release's check runs it once, beside its base once.
+        live = self.commit_again()
+        summary = self.run_check(env={"STUB_LIVE": live}, base=(self.cli, "/profile.json"))
+        order = [line.split()[0] for line in (self.out / "replay-order.txt").read_text().splitlines()]
+        self.assertEqual(order, ["base-1", "candidate-1"])
+        self.assertEqual((summary["steps"][-1]["series"]["aim-ux"]["runs"], summary["base"]["steps"][0]["series"]["aim-ux"]["runs"]), ([1.0], [2.0]))
+        self.assertEqual(release_check.replay_runs(summary), 1)
+        self.out = Path(self.tmp.name) / "out-main"
+        with mock.patch.object(release_check, "check", return_value={"commit": self.commit, "passed": True, "steps": []}) as check, \
+                mock.patch.object(release_check, "chrome_path", return_value="/c"), mock.patch.object(release_check, "playwright_path", return_value="/p"), \
+                redirect_stdout(io.StringIO()):
+            release_check.main(["--out", str(self.out)])
+            release_check.main(["--out", str(self.out), "--repeats", "2"])
+        self.assertEqual([call.kwargs["repeats"] for call in check.call_args_list], [1, 2])
+
     def test_only_runs_the_named_steps_says_so_and_does_not_describe_the_commit(self):
         summary = self.run_check(only=["node-units", release_check.WAKE_REPLAY])
         self.assertEqual(([s["name"] for s in summary["steps"]], summary["only"], summary["passed"]),
@@ -308,7 +324,7 @@ class ReleaseCheckMeasures(FakeCheckout):
 
     def test_the_base_reruns_the_replay_on_the_live_releases_code_alternating_with_the_candidate(self):
         live = self.commit_again()
-        summary = self.run_check(env={"STUB_LIVE": live}, base=(self.cli, "/profile.json"))
+        summary = self.run_check(env={"STUB_LIVE": live}, base=(self.cli, "/profile.json"), repeats=2)
         order = [line.split() for line in (self.out / "replay-order.txt").read_text().splitlines()]
         self.assertEqual([side for side, _ in order], ["base-1", "candidate-1", "base-2", "candidate-2"])
         base_code = {code for side, code in order if side.startswith("base")}
@@ -374,6 +390,120 @@ class ReleaseCheckMeasures(FakeCheckout):
         older = dict(summary, tools=None)
         self.assertFalse(outcome_rules.comparable(run["base"], checks.run_from_summary(older, [wake], "w1")),
                          "a summary that names no tools is not compared with a rerun that does")
+
+
+class ReleaseCheckSkips(FakeCheckout):
+    """Item 166: with --live, a change none of whose paths since the live commit the browser modes or the wake replay
+    could see skips them, keyed on those paths alone; the summary says so, and only a reader that confirms the diff
+    takes it."""
+
+    def setUp(self):
+        super().setUp()
+        # What the real checkout holds that the rule reads: a fixture the harnesses run that imports a unit module,
+        # and a replay that imports a tools module.
+        self.live = self.commit_files({"tests/reader_fixture.py": "import test_store as fixtures\n", "tests/test_store.py": "# units\n",
+                                       release_check.REPLAY_TOOL: "from tools import replay_helper\n", "tools/replay_helper.py": "# helper\n",
+                                       "tools/checks.py": "# trials\n", "tests/test_other.py": "# units\n", "web/app.mjs": "// app\n",
+                                       "aim_next/store.py": "# store\n", "docs/tools.md": "# Tools\n"})
+
+    def commit_files(self, files, remove=()):
+        for path, text in files.items():
+            (self.root / path).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / path).write_text(text)
+        for path in remove:
+            (self.root / path).unlink()
+        for argv in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-qm", "change"]):
+            subprocess.run(["git", "-C", str(self.root)] + argv, check=True, capture_output=True)
+        self.commit = release_check.tree(self.root)[0]
+        return self.commit
+
+    def checked(self, files, remove=(), name="out"):
+        self.commit_files(files, remove)
+        self.out = Path(self.tmp.name) / name
+        with mock.patch.dict(os.environ, {"STUB_FAIL": ""}), redirect_stdout(io.StringIO()):
+            return release_check.check(self.root, self.out, "/x" + release_check.CHROME_SUFFIX, self.python, self.node, "/stub/playwright-core",
+                                       live=self.live)
+
+    def test_a_change_only_they_cannot_see_skips_them_and_says_so_plainly(self):
+        summary = self.checked({"docs/tools.md": "# Tools, again\n", "tools/checks.py": "# trials, again\n", "tests/test_other.py": "# more\n",
+                                "tests/ui_new.test.mjs": "// new\n"})
+        ran = [step["name"] for step in summary["steps"]]
+        self.assertEqual(ran, list(release_check.UNIT_STEPS) + [release_check.DEPLOY_REFUSALS])
+        self.assertTrue(summary["passed"], "every step it ran passed")
+        skipped = summary["skipped"]
+        self.assertEqual((skipped["steps"], skipped["live"]), (list(release_check.SKIPPABLE), self.live))
+        self.assertEqual(sorted(skipped["changed"]), ["docs/tools.md", "tests/test_other.py", "tests/ui_new.test.mjs", "tools/checks.py"])
+        self.assertIn("skipped, not passed", skipped["why"])
+        self.assertFalse(set(release_check.SKIPPABLE) & set(ran), "a skipped step never appears as one that ran")
+        # Nothing but a reader that confirms the diff takes it: not verify_summary, not a basis of another live commit or a seen path.
+        path = self.out / "summary.json"
+        [said] = release_check.verify_summary(path, self.commit)
+        self.assertIn("skipped the browser modes and the wake replay beside the live commit %s; only the deploy" % self.live, said)
+        self.assertEqual(release_check.judge_summary(path, self.commit, lambda: (self.live, [])), ([], []))
+        self.assertIn("but %s is live" % ("a" * 40), release_check.judge_summary(path, self.commit, lambda: ("a" * 40, []))[0][0])
+        self.assertIn("but web/app.mjs changed since then", release_check.judge_summary(path, self.commit, lambda: (self.live, ["web/app.mjs"]))[0][0])
+
+        def unreadable():
+            raise release_check.Refused("git is gone")
+        self.assertIn("cannot be taken: git is gone", release_check.judge_summary(path, self.commit, unreadable)[0][0])
+        self.assertEqual(release_check.skipped_of(path), skipped["why"])
+        # The release record keeps the words beside its empty browser counts, so it never reads as a run of none.
+        from tools import releases
+        record = releases.measurements(summary)
+        self.assertEqual((record.get("skipped"), record["native"]["total"]), ({"live": self.live, "why": skipped["why"]}, 0))
+        self.assertNotIn("skipped", releases.measurements(dict(summary, skipped=None)))
+
+    def test_a_change_they_could_see_never_skips(self):
+        cases = {"web": ({"web/app.mjs": "// changed\n"}, ()), "aim_next": ({"aim_next/store.py": "# changed\n"}, ()),
+                 "deleted web": ({}, ("web/app.mjs",)), "bin": ({"bin/aim-next": "# new\n"}, ()), "top level": ({"README.md": "hi\n"}, ()),
+                 "harness": ({release_check.READER: "// changed\n"}, ()), "replay": ({release_check.REPLAY_TOOL: "from tools import replay_helper\n#\n"}, ()),
+                 "replay traffic": ({release_check.REPLAY_FILE: "{}\n"}, ()), "this tool": ({"tools/release_check.py": "# changed\n"}, ()),
+                 "imported tools module": ({"tools/replay_helper.py": "# changed\n"}, ()),
+                 "unit module a fixture imports": ({"tests/test_store.py": "# changed\n"}, ()),
+                 "fixture": ({"tests/fixtures/ui_http.py": "# new\n"}, ()),
+                 "docs and web together": ({"docs/tools.md": "# again\n", "web/app.mjs": "// again\n"}, ())}
+        for case, (files, remove) in sorted(cases.items()):
+            with self.subTest(case):
+                self.commit_files(files, remove)
+                changed = release_check.changed_paths(self.root, self.live, self.commit)
+                could = release_check.seen(self.root, self.commit, changed)
+                self.assertTrue(could and set(could) <= set(changed) and not could[0].startswith("docs/"), (changed, could))
+                # The next case is measured from this one.
+                self.live = self.commit
+        # The whole check, for one of them: every step runs, and the summary names what it could see.
+        summary = self.checked({"web/app.mjs": "// once more\n", "docs/tools.md": "# once more\n"})
+        self.assertNotIn("skipped", summary)
+        self.assertEqual([step["name"] for step in summary["steps"]], list(release_check.REQUIRED))
+        self.assertEqual((summary["ran_all"]["live"], summary["ran_all"]["seen"]), (self.live, ["web/app.mjs"]))
+        self.assertEqual(release_check.verify_summary(self.out / "summary.json", self.commit), [])
+
+    def test_without_live_or_with_only_nothing_is_skipped_and_git_that_cannot_say_refuses(self):
+        self.commit_files({"docs/tools.md": "# again\n"})
+        with mock.patch.dict(os.environ, {"STUB_FAIL": ""}), redirect_stdout(io.StringIO()):
+            summary = release_check.check(self.root, self.out, "/x" + release_check.CHROME_SUFFIX, self.python, self.node, "/stub/playwright-core")
+        self.assertEqual([step["name"] for step in summary["steps"]], list(release_check.REQUIRED))
+        self.assertNotIn("skipped", summary)
+        for live, only, words in ((self.live, ["node-units"], "give one"), ("f" * 40, None, "cannot be read"), ("HEAD", None, "full 40-character")):
+            with self.subTest(words):
+                self.out = Path(self.tmp.name) / ("out-" + words.replace(" ", "-"))
+                with self.assertRaises(release_check.Refused) as refused:
+                    release_check.check(self.root, self.out, "/x" + release_check.CHROME_SUFFIX, self.python, self.node, "/stub/playwright-core",
+                                        only=only, live=live)
+                self.assertIn(words, str(refused.exception))
+                self.assertFalse((self.out / "summary.json").exists())
+
+    def test_a_skipped_summary_that_left_out_more_or_other_steps_is_not_taken(self):
+        self.checked({"docs/tools.md": "# again\n"})
+        path = self.out / "summary.json"
+        written = json.loads(path.read_text())
+        fewer = dict(written, steps=[step for step in written["steps"] if step["name"] != "python-units"])
+        path.write_text(json.dumps(fewer))
+        self.assertEqual(release_check.judge_summary(path, self.commit, lambda: (self.live, [])), ([], ["the release check did not run python-units"]))
+        other = dict(written, skipped=dict(written["skipped"], steps=[release_check.WAKE_REPLAY]))
+        path.write_text(json.dumps(other))
+        foreign, unpassed = release_check.judge_summary(path, self.commit, lambda: (self.live, []))
+        self.assertIn("skipped steps it never skips together", foreign[0])
+        self.assertIn("the release check did not run native-journal", unpassed)
 
 
 class EveryCheckHasItsStep(unittest.TestCase):
