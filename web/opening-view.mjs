@@ -4,6 +4,7 @@ import { namedPastedImage } from './writing-helpers.mjs';
 import { OpeningPages } from './opening.mjs';
 import { routeHref } from './topic-navigation.mjs';
 import { wordNodes } from './links.mjs';
+import { holdsItsPress } from './image-rows.mjs';
 
 const el=(tag,text,className)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(className)n.className=className;return n;};
 const button=(label,action,className)=>{const n=el('button',label,className);n.type='button';n.onclick=action;return n;};
@@ -118,6 +119,8 @@ export class OpeningView {
     keyed(this.attachments,ids,id=>{
       const row=el('div',undefined,'image-choice');
       row.append(el('span'),button('Retry upload',()=>this.run(()=>d.retryUpload(id))),button('Remove',()=>this.run(()=>{d.detach(id);this.addImage.focus();})));
+      // A press on a row's button is its own though a row above it grows meanwhile.
+      for(const b of row.querySelectorAll('button'))holdsItsPress(b);
       return row;
     },(row,id)=>{
       const m=d.media.get(id)??{name:'Image',state:'checking',message:''},[text,retry,remove]=row.children;

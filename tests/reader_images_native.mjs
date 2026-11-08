@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdtemp, copyFile, rm } from 'node:fs/promises';
+import os from 'node:os';
 import { createHash } from 'node:crypto';
 export const imageInstrumentation = `(()=>{
   window.imagePuts=[];
@@ -9,6 +10,85 @@ export const imageInstrumentation = `(()=>{
   IDBObjectStore.prototype.put=function(value,...rest){if(this.name==='editors')imagePuts.push({kind:value.kind,bytes:bytes(value),id:value.id});return put.call(this,value,...rest)};
   window.imageRows=()=>new Promise((resolve,reject)=>{const r=indexedDB.open('aim-next-pending');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const d=r.result,t=d.transaction('editors');t.objectStore('editors').getAll().onsuccess=e=>resolve(e.target.result.map(v=>({...v,blob:v.blob?{size:v.blob.size}:undefined})));t.oncomplete=()=>d.close()}});
 })()`;
+// Presses Remove on the row of host's image `name` while an upload is held
+// (its own, or the row `finishing` above it), keeps the press down while that
+// upload is let go and its row repaints as it finishes, and releases it there
+// (item 116). The press is aimed near Remove's top right corner, where a
+// button replaced or moved down under the pointer is missed, or with
+// aim: 'bottom' near its bottom right corner, which a button moved up leaves:
+// the Reader keeps its footer in place, so a row that grows in the Reader
+// moves everything above its bottom up. Where nothing changes height, Remove
+// keeps its place through its own row's repaint (place: 'kept'). Where
+// something does (place: 'moved': a row above grows in the inline composer,
+// or in the Reader the row itself or one below it grows; 'either': it may
+// or may not, by the width), Remove may be pushed from under the pointer,
+// and the press is still Remove's. With touch, the press is a
+// finger (the page has touch emulation on): the tap's mousedown, mouseup and
+// click, which the browser sends once the finger lifts to whatever is then
+// under the point it went down on, reach nothing in the page but that Remove,
+// so nothing that slid under the finger takes focus or is pressed.
+// With fail, the held upload fails instead of finishing. With from, focus is
+// in that field before the press, as when a person pasted the image there or
+// went back to typing. Returns where Remove was, and where focus is once the
+// image is removed and whether it shows a focus ring there.
+export async function holdRemoveThroughUpload(p, host, held, until, { name = 'screen.png', finishing = name, place: expected = 'kept', aim = 'top', touch = false, fail = false, from = null } = {}) {
+  const rowOf = n => `[...document.querySelectorAll(${JSON.stringify(host + ' .image-choice')})].find(r=>r.firstElementChild.textContent.startsWith(${JSON.stringify(n + ' · ')}))`;
+  const running = `JSON.parse(${rowOf(finishing)}?.dataset.view||'[]')[4]`;
+  await until(() => p.evaluate(`${running}===true&&[...(${rowOf(name)}?.querySelectorAll('button')??[])].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'an uploading image and the Remove to press');
+  await p.evaluate(`[...${rowOf(name)}.querySelectorAll('button')].find(b=>b.textContent==='Remove').dataset.heldRemove=''`);
+  if (!touch) await p.point('[data-held-remove]', 'move');
+  if (from) assert.equal(await p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(from)});f.focus();return document.activeElement===f})()`), true, `focus is in ${from} before the press`);
+  const place = () => p.evaluate(`(()=>{const b=document.querySelector('[data-held-remove]');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,words:b.parentElement.firstElementChild.textContent,removes:[...b.parentElement.querySelectorAll('button')].filter(x=>x.textContent==='Remove').length}})()`);
+  const before = await place(), x = before.x + before.width - 3, y = aim === 'bottom' ? before.y + before.height - 3 : before.y + 3;
+  const over = () => p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held-remove]')`);
+  assert.equal(await over(), true, 'the press is aimed at Remove');
+  await recordTap(p);
+  if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  else {
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+  }
+  p.intercept(null); await (fail ? p.fail(held) : p.release(held));
+  await until(() => p.evaluate(`${running}===false`), 'the row repainted as its upload finished');
+  const after = await place();
+  assert.ok(after, 'the Remove held down is still in the row after it repainted');
+  assert.equal(after.removes, 1, 'the row repainted with the Remove held down as its only Remove');
+  const overAtRelease = await over();
+  if (expected === 'moved') {
+    assert.ok(Math.abs(after.y - before.y) > 3, `the row above moved Remove from under the press (${before.y} to ${after.y})`);
+    assert.equal(overAtRelease, false, 'the press comes up over something else, so the browser\'s own click cannot press Remove');
+  } else if (expected === 'kept') assert.deepEqual({ ...after, words: before.words }, before, `Remove kept its place under the pointer as the row went from "${before.words}" to "${after.words}"`);
+  if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  else await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  await until(() => p.evaluate(`!${rowOf(name)}`), 'the held Remove removed the image');
+  if (touch) assert.deepEqual(await tapReachedElsewhere(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger but the Remove it went down on');
+  return { before, after, overAtRelease, ...await p.evaluate('({focus:document.activeElement?.id||document.activeElement?.tagName,ring:document.activeElement?.matches(":focus-visible")})') };
+}
+// What a tap's mousedown, mouseup and click reached in the page from here on:
+// each one the browser sends (a trusted one) that the page did not stop, with
+// what it went to ('pressed' for the button the press went down on, marked
+// data-held-remove or data-held).
+export const recordTap = p => p.evaluate(`(()=>{window.tapReached=[];if(!window.tapRecorded){window.tapRecorded=true;for(const t of ['mousedown','mouseup','click','mousemove'])document.addEventListener(t,e=>{if(e.isTrusted)tapReached.push(t==='mousemove'?(e.clientX===1&&e.clientY===1?'moved to the corner':null):[t,e.target.closest?.('[data-held-remove],[data-held]')?'pressed':e.target.id||e.target.tagName,(e.target.textContent||'').slice(0,20)])},true)}return true})()`);
+// The browser sends a tap's mouse events after the finger lifts, ahead of any
+// input that comes after it: a mouse moved to the page's corner afterwards
+// arrives after them, so what reached the page before it is the whole tap.
+export async function tapReached(p, until) {
+  await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+  await until(() => p.evaluate(`tapReached.includes('moved to the corner')`), 'a mouse moved after the tap reached the page');
+  return p.evaluate(`tapReached.slice(0,tapReached.indexOf('moved to the corner')).filter(Boolean)`);
+}
+// What of the tap reached anything but the button it went down on.
+export const tapReachedElsewhere = async (p, until) => (await tapReached(p, until)).filter(([, target]) => target !== 'pressed');
+// A copy of the fixture image under a name a person's file has: a long one,
+// and the name macOS gives a screenshot. Their words wrap where screen.png's
+// never do.
+export const LONG_NAME = 'Whiteboard photo from the Tuesday planning session, take two.png';
+export const SCREENSHOT_NAME = 'Screenshot 2026-11-07 at 2.31.45 PM.png';
+export async function namedImages(root) {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'aim-image-names-'));
+  for (const name of [LONG_NAME, SCREENSHOT_NAME]) await copyFile(path.join(root, 'tests/fixtures/media/screen.png'), path.join(dir, name));
+  return { file: name => path.join(dir, name), done: () => rm(dir, { recursive: true, force: true }) };
+}
 export async function imageChecks({ check: harnessCheck, page: harnessPage, until, root, facts, view, control, replace, field, shot, observations }) {
   // Every case owns its writing: the drafts an earlier case left (recovery
   // copies' text, retained attachments) are emptied before it starts, as a
@@ -580,6 +660,181 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     assert.equal(await field(p), 'Typed after a late Remove');
     assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
     assert.deepEqual(p.errors, []);
+  });
+
+  await check('images Remove held down while its upload finishes removes the image', async () => {
+    const p = await page('remove-held', null, true); await p.open(1);
+    await replace(p, 'Writing kept through a held Remove');
+    p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+    const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
+    const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'reply chooser');
+    await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
+    const held = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'held upload');
+    await holdRemoveThroughUpload(p, '#writing-attachments', held, until);
+    await until(async () => { const draft = (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft; return draft?.body === 'Writing kept through a held Remove' && draft.attachments.length === 0; }, 'the saved reply keeps its writing and no image');
+    assert.equal(await field(p), 'Writing kept through a held Remove');
+    assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+    assert.deepEqual(p.errors, []);
+  });
+
+  // The Reader's image row with a name whose words wrap, at the desktop
+  // width and the phone's. As the upload finishes, Check confirmation comes
+  // in before Remove, and where that wraps the words onto more lines the row
+  // grows and the Reader, which keeps its footer in place, moves Remove up;
+  // the press still removes the image.
+  const choose = async (p, file, upload = 'reply chooser') => {
+    const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
+    const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), upload);
+    await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [file] });
+  };
+  const uploading = p => p.held.filter(x => x.event.request.url.endsWith('/api/media/upload'));
+  for (const [width, name] of [[1440, LONG_NAME], [390, SCREENSHOT_NAME], [390, LONG_NAME]]) {
+    await check(`images Remove held while its upload finishes keeps its place at ${width} wide with the name ${name}`, async () => {
+      const names = await namedImages(root);
+      try {
+        const p = await page(`remove-held-${width}-${name.length}`, null, true);
+        await p.open(1);
+        if (width === 390) await narrow(p);
+        p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+        await choose(p, names.file(name));
+        const held = await until(() => uploading(p)[0], 'held upload');
+        const { before, after, overAtRelease } = await holdRemoveThroughUpload(p, '#writing-attachments', held, until, { name, place: 'either' });
+        observations.push({ name: 'held Remove in the Reader', width, file: name, before: before.y, after: after.y, overAtRelease });
+        await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
+        assert.deepEqual(p.errors, []);
+      } finally { await names.done(); }
+    });
+  }
+
+  // The same on a phone, pressed with a finger near Remove's bottom edge,
+  // with focus in the reply field (the person pasted the image there, or went
+  // back to typing, so the keyboard is open): with the long name the row
+  // grows as Check confirmation comes in, and the Reader moves Remove up from
+  // under the finger, which lifts over the row's words. Remove removes the
+  // image, the tap's mouse events and click reach nothing under the finger,
+  // and focus lands on Add image with no ring, as a tap on a Remove the page
+  // left in place does (the screenshot's name, whose words keep their lines,
+  // and screen.png at the desktop width), so the keyboard closes either way.
+  for (const [name, width, place] of [[LONG_NAME, 390, 'moved'], [SCREENSHOT_NAME, 390, 'kept'], ['screen.png', 1440, 'kept']]) {
+    await check(`images Remove held by a finger while its upload finishes removes the image, nothing under the finger is pressed, and focus leaves the reply field for Add image, with the name ${name} at ${width} wide`, async () => {
+      const names = await namedImages(root);
+      try {
+        const p = await page(`remove-tap-${name.length}`, null, true);
+        await p.open(1);
+        if (width === 390) await narrow(p);
+        await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+        await choose(p, name === 'screen.png' ? path.join(root, 'tests/fixtures/media/screen.png') : names.file(name));
+        const held = await until(() => uploading(p)[0], 'held upload');
+        const { focus, ring } = await holdRemoveThroughUpload(p, '#writing-attachments', held, until, { name, place, aim: 'bottom', touch: true, from: '#writing-body' });
+        assert.deepEqual({ focus, ring }, { focus: 'add-image', ring: false }, 'focus leaves the reply field for Add image, with no ring, not for what slid under the finger');
+        await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
+        assert.deepEqual(p.errors, []);
+      } finally { await names.done(); }
+    });
+  }
+
+  // A quick finger tap on a Ready image's Remove that rolls a few pixels off
+  // its edge before lifting, as fingers do, with nothing on the page moving.
+  // The browser counts it a tap on Remove (it does the same for Add image,
+  // beside it), and Remove removes the image: a reviewer found this tap did
+  // nothing while the page judged taps itself.
+  for (const radius of [1, 12]) {
+    await check(`images a finger tap that rolls off Remove before lifting removes the image, with a touch radius of ${radius}`, async () => {
+      const p = await page(`remove-roll-${radius}`, null, true);
+      await p.open(1);
+      await narrow(p);
+      await choose(p, path.join(root, 'tests/fixtures/media/screen.png'));
+      await until(() => p.evaluate(`[...document.querySelectorAll('#writing-attachments .image-choice')].some(r=>r.firstElementChild.textContent==='screen.png · Ready'&&JSON.parse(r.dataset.view||'[]')[4]===false&&[...r.querySelectorAll('button')].some(b=>b.textContent==='Remove'&&!b.disabled))`), 'a ready image with Remove');
+      await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.heldRemove=""');
+      const b = await p.box('[data-held-remove]'), x = b.x + b.width / 2, y = b.y + b.height - 2, lift = y + 6;
+      assert.equal(await p.evaluate(`document.elementFromPoint(${x},${lift})?.closest('[data-held-remove]')??null`), null, 'the finger lifts off Remove');
+      await recordTap(p);
+      await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, radiusX: radius, radiusY: radius }] });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: lift, radiusX: radius, radiusY: radius }] });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      assert.deepEqual(await tapReachedElsewhere(p, until), [], 'the tap reaches nothing but Remove');
+      await until(() => p.evaluate('document.querySelector("#writing-attachments").children.length===0'), 'the tap removed the image');
+      assert.equal(await p.evaluate('document.activeElement?.id'), 'add-image', 'focus lands on Add image, as a tap on Remove leaves it');
+      await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
+      assert.deepEqual(p.errors, []);
+    });
+  }
+
+  // On a phone, with the keyboard open, a finger goes down in the reply field
+  // just above an uploading image's Remove, to place the caret, and the
+  // upload fails before it lifts. With the long name the row's change of
+  // height lets the reply field move up, and Remove with it, under the
+  // finger; the browser now aims the tap at Remove. Nothing is pressed: the
+  // image stays and focus stays in the reply field. With screen.png nothing
+  // moves and the tap reaches the reply field, as it always did.
+  for (const name of [LONG_NAME, 'screen.png']) {
+    await check(`images a finger that goes down in the reply field presses no Remove the page moves under it, with the name ${name}`, async () => {
+      const names = await namedImages(root);
+      try {
+        const p = await page(`field-tap-${name.length}`, null, true);
+        await p.open(1);
+        await narrow(p);
+        await replace(p, 'Typing a reply on the phone');
+        await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+        await choose(p, name === 'screen.png' ? path.join(root, 'tests/fixtures/media/screen.png') : names.file(name));
+        const held = await until(() => uploading(p)[0], 'held upload');
+        await until(() => p.evaluate(`[...document.querySelectorAll('#writing-attachments button')].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'Remove');
+        await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.slid=""');
+        const remove = await p.box('[data-slid]'), body = await p.box('#writing-body');
+        const x = remove.x + remove.width / 2, y = body.y + body.height - 14;
+        const under = () => p.evaluate(`(e=>e?.closest('[data-slid]')?'Remove':e?.id||e?.tagName)(document.elementFromPoint(${x},${y}))`);
+        assert.equal(await under(), 'writing-body', 'the finger goes down in the reply field');
+        assert.equal(await p.evaluate('(()=>{const f=document.querySelector("#writing-body");f.focus();return document.activeElement===f})()'), true, 'focus is in the reply field');
+        await recordTap(p);
+        await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+        p.intercept(null); await p.fail(held);
+        await until(() => p.evaluate(`JSON.parse(document.querySelector('#writing-attachments .image-choice')?.dataset.view||'[]')[4]===false`), 'the row repainted as its upload failed');
+        assert.equal(await under(), name === 'screen.png' ? 'writing-body' : 'Remove', name === 'screen.png' ? 'nothing moved' : 'the page moved Remove under the finger');
+        await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        const reached = (await tapReached(p, until)).map(([type, target]) => [type, target]);
+        assert.deepEqual(reached, name === 'screen.png' ? [['mousedown', 'writing-body'], ['mouseup', 'writing-body'], ['click', 'writing-body']] : [], name === 'screen.png' ? 'the tap reaches the reply field' : 'the tap reaches nothing: Remove, slid under the finger, is not pressed');
+        assert.deepEqual(await p.evaluate('({rows:document.querySelectorAll("#writing-attachments .image-choice").length,focus:document.activeElement?.id,remove:!document.querySelector("[data-slid]").disabled})'), { rows: 1, focus: 'writing-body', remove: true }, 'the image stays, Remove was never pressed, and focus stays in the reply field');
+        assert.equal(await field(p), 'Typing a reply on the phone');
+        assert.deepEqual(p.errors, []);
+      } finally { await names.done(); }
+    });
+  }
+
+  // Two images on a phone: Remove is pressed, near its bottom edge, on the
+  // first, which is ready, while the second's upload finishes. The second
+  // row grows as Check confirmation squeezes its long name onto more lines,
+  // and the Reader, which keeps its footer in place, moves the first row's
+  // Remove up from under the press, which comes up over the second row's
+  // Remove. The press still removes the first image, and only that. A press
+  // then dragged off the second row's Remove onto its words lets go.
+  await check('images Remove held above a row whose upload finishes removes its own image, and a press dragged off Remove lets go', async () => {
+    const names = await namedImages(root);
+    try {
+      const p = await page('remove-held-above', null, true); await p.open(1);
+      await narrow(p);
+      await choose(p, path.join(root, 'tests/fixtures/media/screen.png'));
+      await until(() => p.evaluate(`[...document.querySelectorAll('#writing-attachments .image-choice')].some(r=>r.firstElementChild.textContent==='screen.png · Ready'&&JSON.parse(r.dataset.view||'[]')[4]===false)`), 'the first image ready');
+      p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+      await choose(p, names.file(LONG_NAME), 'second reply chooser');
+      const second = await until(() => uploading(p)[0], 'second held upload');
+      await holdRemoveThroughUpload(p, '#writing-attachments', second, until, { name: 'screen.png', finishing: LONG_NAME, place: 'moved', aim: 'bottom' });
+      await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 1, 'the saved reply keeps the second image only');
+      assert.equal(await p.evaluate('[...document.querySelectorAll("#writing-attachments .image-choice")].map(r=>r.firstElementChild.textContent.split(" · ")[0]).join("|")'), LONG_NAME, 'the second image\'s row stays');
+      await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.dragged=""');
+      const remove = await p.box('[data-dragged]'), words = await p.box('#writing-attachments .image-choice span');
+      const x = remove.x + remove.width / 2, y = remove.y + remove.height / 2, to = { x: words.x + words.width / 2, y: words.y + words.height / 2 };
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+      await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      for (let step = 1; step <= 4; step++) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + (to.x - x) * step / 4, y: y + (to.y - y) * step / 4, button: 'left', buttons: 1 });
+      await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...to, button: 'left', buttons: 0, clickCount: 1 });
+      assert.equal(await p.evaluate('(()=>{const b=document.querySelector("[data-dragged]");return Boolean(b?.isConnected&&!b.disabled)})()'), true, 'the press dragged off Remove did not press it');
+      assert.equal((await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length, 1, 'the second image is still attached');
+      assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+      assert.deepEqual(p.errors, []);
+    } finally { await names.done(); }
   });
 
   await check('images Notebook held Remove explicit download and recorded refusal cards', async () => {
