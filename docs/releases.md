@@ -71,8 +71,9 @@ record without a number on an instance with none is refused with
   operator act on the local instance, never an HTTP route; it prints the
   stored record and whether it was written now. Writing the record of the next
   release also ships the outcome's release, in the same transaction; a record
-  of an older release takes only the items it names out of it, and the pieces
-  whose items have all shipped finish ([pipeline.md](pipeline.md#the-release)).
+  of an older release takes only the items it names out of it, and what each
+  piece holding them has become, and its topic, is decided by the one rule for
+  the end of a piece ([pipeline.md](pipeline.md#the-release)).
 - The `releases` view (`cursor`, `limit`) lists the records newest first;
   `next_cursor` is the last release number on the page. Every enabled member
   of the instance can read it, over `/api/view` like any view.

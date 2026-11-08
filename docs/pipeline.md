@@ -100,12 +100,13 @@ release check's `--report`, and which piece a candidate's readings name.
 - While it is open, the pipeline stays on and keeps shipping in releases:
   `configure` refuses turning either off (`RELEASE_OPEN`), so the settings never
   change what is in it.
-- It ends when every item has gone back to building (its entry is left `held`,
-  "Every item went back to building"), when every item is dropped (left
-  `dropped`), when its last items shipped in an older release (left `held`,
-  "Its last items shipped in release N", its topic as it was), or when the
-  record of its release is written: a release record
-  whose number is the next one, since that is the number the release ships as.
+- It ends when no item is left in it, or when the record of its release is
+  written. Emptied, it is left `dropped` when every item was dropped, else
+  `held`, saying what took its items: "Every item went back to building", "Its
+  last items shipped in release N" (older releases), or each of them ("Its
+  items went back to building or were dropped"); its topic is as it was. Its
+  record is a release record whose number is the next one, since that is the
+  number the release ships as.
   Any deploy that records the next release ships it, from whatever stage it is
   in: the release being put together, even a hotfix of another commit naming
   none of its items. `record-release` then leaves its entry `shipped` ("Shipped
@@ -122,22 +123,32 @@ release check's `--report`, and which piece a candidate's readings name.
   next is that same release. An item a record names in a piece of work still
   being built (a trailer naming it on another release's commit) leaves that
   piece the same way, and the piece builds the rest, so combining it never puts
-  a shipped item in a release.
+  a shipped item in a release. Turning releases on makes the records already
+  written the outcome's, so what they name leaves its pieces under way the same
+  way.
 - What shipped is never built again: `piece_start` refuses an item a release
-  record names (`ITEM_SHIPPED`), whichever record named it, and an item stays in
-  the piece it was in when that piece finished, so what shipped in a release
-  stays in it. Dropping an item leaves only a piece under way (D25).
-- A piece's work left to ship is each item still in it, or combined from it into
-  a release, that no record names and that was not dropped. One rule reads it
-  both ways: when a record is written, each piece of work an item it names was
-  ever in has finished once it has none (its open entry is left `shipped`), and
-  the topic of a piece that finished, or of the release the record ships, is set
-  Done, "Shipped in release N" (D1), once no piece in that topic has any, unless
-  someone already said it is done. A piece under way always has some, and an
-  item combined from a piece that went back to building keeps that piece, and
-  its topic, unfinished until the item ships or is dropped, whichever piece or
-  release shares the topic. A release piece finishes only by the record of its
-  own release.
+  record names (`ITEM_SHIPPED`), whichever record named it, and what shipped in a
+  release stays in that release. Dropping an item leaves only a piece under way
+  (D25).
+- **The end of a piece** is one rule (`_settle`), asked by every path that
+  changes what a piece holds or whether its items shipped: a release record,
+  any move of an item (a drop, putting it back, a move in its section, an Undo),
+  a return to building, `piece_start`, `combine`, `piece_finish`, and turning
+  releases on or off. Each changes only those facts; the rule then reads them,
+  and only them, for every piece the items were ever in, so the same facts end a
+  piece the same way whatever order they came in. A piece's work left to ship
+  is each item still in it, or combined from it into a release and not dropped
+  since, that no record names. A piece still under way ends once it has none: a
+  piece of work has shipped if any item it held shipped, "Shipped in release N"
+  with N the newest record naming one, and was dropped if none did; a release
+  ships only by the record of its own release, and ends emptied otherwise (above).
+  Its topic is set Done, "Shipped in release N" (D1), once no piece in it has
+  work left and one of them shipped an item or is the release a record ships,
+  unless it is the outcome's conversation or someone already said it is done. This is asked when one of its
+  pieces ends, or when an item one of its pieces held ships or is dropped, so an
+  item combined from a piece that went back to building keeps that piece's topic
+  open until the item ships or is dropped, whichever piece or release shares the
+  topic, and a later word on the topic stands. An end, once written, stays.
 - The gate (D18) reads a release piece's readings at its commit: the newest
   commit checked for it, else the one `combine` was given.
 - Only the release check's own run of a candidate reads for the release:

@@ -10,9 +10,10 @@ says: a reading's release is the release whose record names its commit, and a
 run is a candidate's while no record names it. The target's word is worked out
 from the readings and the outcome's kind (outcome_kind.py); nobody sets it.
 
-Seams until the rest of release 21 lands, each in one place:
-- 92's whisper rule is absent: the topic access check alone decides who sees a
-  message these views show;
+A whisper is never where a problem was found, nor the account of a worse check
+(private_source_refused, private_to).
+
+Seams until the rest of release 21 lands:
 - skills (17) is absent: readings carry no skill versions, so tools_words is
   empty, and no tool rows are drawn under the measures.
 """
