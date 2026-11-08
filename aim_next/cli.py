@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
+import mimetypes
 import os
 from pathlib import Path
 import re
 import stat
 import sys
 import time
+import urllib.parse
 import uuid
 
 from .authority import AuthorityError
@@ -175,12 +178,15 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "{binding | view FILE|- | command FILE|- | outcomes [--reached] | new-outcome --title TITLE [--kind reach|keep] [--purpose TEXT] [--team A,B] "
          "| owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--operation ID] TEXT|- "
-         "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] TEXT|- "
+         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] [--subject KIND:REF,...] [--operation ID] [--attach FILE]... TEXT|- "
+         "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--operation ID] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] "
+         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] "
          "| attachment ATTACHMENT --message MESSAGE --out FILE "
+         "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
+         "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
+         "| note read ITEM [--revision N] | note link ITEM [--revision N] [--origin URL] "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION | --undo EVENT) "
@@ -194,6 +200,29 @@ SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
 C1 = re.compile("[\x7f-\x9f]")
+# Images by their bytes, so a screenshot shows in place whatever it is called;
+# Core checks each image's structure again before it is ready.
+IMAGE_SIGNATURES = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\xff\xd8\xff", "image/jpeg"),
+                    (b"GIF87a", "image/gif"), (b"GIF89a", "image/gif"))
+# Kinds of file agents send that the standard table (read without the system's files) lacks.
+FILE_TYPES = {".md": "text/markdown", ".markdown": "text/markdown", ".log": "text/plain",
+              ".diff": "text/x-diff", ".patch": "text/x-diff", ".jsonl": "application/x-ndjson"}
+MEDIA_TYPE = re.compile(r"[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+")
+
+
+def _media_type(name, data):
+    """An attachment's type: an image's from its bytes, any other file's from its name.
+    A name that claims an image the bytes are not is a plain file."""
+    for signature, kind in IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return kind
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    guessed = FILE_TYPES.get(os.path.splitext(name)[1].lower()) or mimetypes.MimeTypes().guess_type(name)[0] or ""
+    guessed = guessed.lower()
+    if not MEDIA_TYPE.fullmatch(guessed) or len(guessed) > 127 or guessed.startswith("image/"):
+        return "application/octet-stream"
+    return guessed
 
 
 def _parser():
@@ -241,6 +270,7 @@ def _parser():
     post.add_argument("--part", action="store_true")
     # --operation ID: the write's own operation id, so sending it again returns the same message (a deploy's retry).
     post.add_argument("--operation")
+    post.add_argument("--attach", action="append", default=[])
     post.add_argument("text")
     whisper = verb("whisper")
     whisper.add_argument("topic")
@@ -258,6 +288,7 @@ def _parser():
     # --operation ID: the start's operation id; the opening, its topic and both writes are named from it, so starting
     # again with the same words returns the same topic.
     start.add_argument("--operation")
+    start.add_argument("--attach", action="append", default=[])
     start.add_argument("text")
     coordinator = verb("coordinator")
     coordinator.add_argument("outcome")
@@ -287,7 +318,7 @@ def _parser():
     through = verb("read-through")
     through.add_argument("topic")
     through.add_argument("seq", type=int)
-    verb("watch")
+    verb("watch").add_argument("--once", action="store_true")
     verb("retry").add_argument("operation")
     verb("releases").add_argument("--limit", type=int)
     attachment = verb("attachment")
@@ -295,6 +326,39 @@ def _parser():
     attachment.add_argument("--message", required=True)
     attachment.add_argument("--out", required=True)
     post.add_argument("--subject")
+    # Notebook pages (docs/agent-cli.md, "Notebook pages"). SCOPE is an outcome,
+    # or with --topic a topic, whose Notebook holds the pages.
+    notes = verb("notes")
+    notes.add_argument("scope")
+    notes.add_argument("--topic", action="store_true")
+    note = verbs.add_parser("note", add_help=False)
+    pages = note.add_subparsers(dest="note_verb", parser_class=Parser)
+    pages.required = True
+
+    def page_verb(name):
+        sub = pages.add_parser(name, add_help=False)
+        sub.add_argument("--json", dest="json_after", action="store_true")
+        sub.add_argument("--outbox", dest="outbox_after")
+        return sub
+    new = page_verb("new")
+    new.add_argument("scope")
+    new.add_argument("--topic", action="store_true")
+    new.add_argument("--title", required=True)
+    new.add_argument("--attach", action="append", default=[])
+    new.add_argument("file")
+    revise = page_verb("revise")
+    revise.add_argument("item")
+    revise.add_argument("--expected", type=int, required=True)
+    revise.add_argument("--title")
+    revise.add_argument("--attach", action="append", default=[])
+    revise.add_argument("file")
+    page_read = page_verb("read")
+    page_read.add_argument("item")
+    page_read.add_argument("--revision", type=int)
+    link = page_verb("link")
+    link.add_argument("item")
+    link.add_argument("--revision", type=int)
+    link.add_argument("--origin")
     register_pipeline(verb)
     register_targets(verb)
     return parser
@@ -446,6 +510,26 @@ class Agent(PipelineVerbs, TargetVerbs):
             self.fail(result["error"])
         return result
 
+    def read_back(self, name, args, recorded, check):
+        """A read that follows a write this verb has recorded. Its failure is not
+        the write's: an error answer (busy, refused) or a store that does not
+        answer ends the verb as READ_BACK_UNCONFIRMED, exit 1, naming what was
+        recorded, its operation and how to read it, so an agent following the
+        exit codes never sends the write again as a new command."""
+        try:
+            result = self.store.view(self.actor, name, args)
+        except (StoreError, OSError):
+            reason = "the store did not answer"
+        else:
+            error = result.get("error")
+            if not error:
+                self.out.raw(result)
+                return result
+            reason = "%s: %s" % (error.get("code"), error.get("message"))
+        _diagnostic(self.out.stderr, "READ_BACK_UNCONFIRMED: %s (%s, operation %s), but reading %s back failed (%s); do not send %s again: %s." % (
+            recorded["what"], recorded["kind"], self.operation, recorded["it"], _shown(reason), recorded["it"], check))
+        raise Failed(1, recorded=True)
+
     def pages(self, name, args):
         cursor, items = None, []
         while True:
@@ -520,10 +604,10 @@ class Agent(PipelineVerbs, TargetVerbs):
         os.replace(str(partial), str(final))
         self._sync_directory(directory)
 
-    def dispatch(self, directory, request):
+    def dispatch(self, directory, request, send=None):
         envelope = request["command"]
         self.operation = envelope["operation_id"]
-        receipt = self.store.command(self.actor, envelope)
+        receipt = (send or self.store.command)(self.actor, envelope)
         if receipt.get("recorded") is True:
             try:
                 self._save_receipt(directory, envelope["operation_id"], receipt)
@@ -546,13 +630,19 @@ class Agent(PipelineVerbs, TargetVerbs):
             raise Failed(code, recorded=receipt.get("recorded") is True)
         return receipt["result"]
 
-    def command(self, kind, target, args, expected=None, operation=None):
-        """Saves the request in the outbox, then sends it. A caller's own operation id that is already saved is sent
-        again when the request is the same (Core then answers with what it recorded), and refused when it is not."""
+    def envelope(self, kind, target, args, expected=None, operation=None):
+        return {"v": 1, "instance_id": self.profile.instance_id, "operation_id": operation or "cli-" + uuid.uuid4().hex,
+                "kind": kind, "target": target, "args": args,
+                "expected": dict(expected or {}, authority={key: self.binding[key] for key in ("authority_id", "authority_epoch")})}
+
+    def command(self, kind, target, args, expected=None, operation=None, send=None):
+        """The verb's act: saved in the outbox, then sent. Every way it can end
+        unrecorded names its operation, since `retry` of it finishes the verb. A
+        caller's own operation id that is already saved is sent again when the
+        request is the same (Core then answers with what it recorded), and
+        refused when it is not."""
         directory = self.outbox()
-        envelope = {"v": 1, "instance_id": self.profile.instance_id, "operation_id": operation or "cli-" + uuid.uuid4().hex,
-                    "kind": kind, "target": target, "args": args,
-                    "expected": dict(expected or {}, authority={key: self.binding[key] for key in ("authority_id", "authority_epoch")})}
+        envelope = self.envelope(kind, target, args, expected, operation)
         request = {"v": 1, "binding": self.binding, "command": envelope}
         try:
             self._save_request(directory, envelope["operation_id"], request)
@@ -566,7 +656,7 @@ class Agent(PipelineVerbs, TargetVerbs):
         except OSError:
             self.unsent("the request could not be saved")
         self.operation = envelope["operation_id"]
-        return self.dispatch(directory, request)
+        return self.dispatch(directory, request, send)
 
     def operation_of(self, suffix=""):
         """The caller's --operation id with suffix, checked as a name; None when it gave none."""
@@ -580,10 +670,15 @@ class Agent(PipelineVerbs, TargetVerbs):
     def text(self):
         if self.options.text != "-":
             return self.options.text
+        return self.bounded_text(self.stdin)
+
+    @staticmethod
+    def bounded_text(source):
+        """UTF-8 words read from a byte stream, at most the body limit."""
         cap = LIMITS["body_utf8_bytes"]
         raw = bytearray()
         while len(raw) <= cap:
-            chunk = self.stdin.read(min(65536, cap + 1 - len(raw)))
+            chunk = source.read(min(65536, cap + 1 - len(raw)))
             if not isinstance(chunk, bytes):
                 raise InvalidRequest()
             if not chunk:
@@ -869,6 +964,217 @@ class Agent(PipelineVerbs, TargetVerbs):
         self.out.plain("saved %s (%s, %s bytes, sha256 %s) to %s" % (descriptor["name"], descriptor["content_type"],
                                                                     descriptor["size_bytes"], descriptor["sha256"], options.out))
 
+    # Notebook pages ------------------------------------------------------------
+
+    def notebook_scope(self):
+        return {"kind": "topic" if self.options.topic else "workspace", "id": self.options.scope}
+
+    @staticmethod
+    def scope_words(scope):
+        return ("topic " if scope["kind"] == "topic" else "outcome ") + scope["id"]
+
+    def page_words(self):
+        """A page's words from FILE, or from stdin for -, exactly as written."""
+        path = self.options.file
+        if path == "-":
+            return self.bounded_text(self.stdin)
+        return self.bounded_text(io.BytesIO(self.read_file(path, LIMITS["body_utf8_bytes"] + 1)))
+
+    def read_file(self, path, cap):
+        """At most cap bytes of the regular file at path, refused with nothing sent when it cannot be read."""
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError as error:
+            self.refuse("FILE_UNAVAILABLE", "%s cannot be read (%s); nothing was sent" % (path, error.strerror))
+        try:
+            with os.fdopen(fd, "rb") as source:
+                if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                    self.refuse("FILE_UNAVAILABLE", "%s is not a regular file; nothing was sent" % path)
+                return source.read(cap)
+        except OSError as error:
+            self.refuse("FILE_UNAVAILABLE", "%s cannot be read (%s); nothing was sent" % (path, error.strerror))
+
+    def attach(self, kept=()):
+        """Uploads each --attach file as people's uploads go (media.begin, then its
+        bytes through the verified stream) and returns the attachments to send.
+        Every file is read and held to the limits first, together with the ones
+        kept, so nothing is sent when one is refused."""
+        paths, files = self.options.attach, []
+        if len(kept) + len(paths) > LIMITS["attachment_count"]:
+            self.refuse("TOO_MANY_ATTACHMENTS", "At most %d attachments go with one message or page; nothing was sent" % LIMITS["attachment_count"])
+        total = sum(item["size_bytes"] for item in kept)
+        for path in paths:
+            name = os.path.basename(path)
+            try:
+                encoded = name.encode("utf-8")
+            except UnicodeError:
+                self.refuse("INVALID_ARGUMENT", "An attachment's file name must be UTF-8; rename %s; nothing was sent" % path)
+            if not encoded or len(encoded) > LIMITS["media_name_utf8_bytes"]:
+                self.refuse("INVALID_ARGUMENT", "%s needs a file name of 1 to %d bytes; nothing was sent" % (path, LIMITS["media_name_utf8_bytes"]))
+            # The larger cap first, so the type can be read from the bytes.
+            data = self.read_file(path, LIMITS["media_file_bytes"] + 1)
+            content_type = _media_type(name, data)
+            image = content_type.startswith("image/")
+            cap = LIMITS["image_bytes"] if image else LIMITS["media_file_bytes"]
+            if len(data) > cap:
+                self.refuse("ATTACHMENT_TOO_LARGE", "%s is larger than the %s an %s may be; nothing was sent" % (
+                    name, _size(cap), "image" if image else "attached file"))
+            total += len(data)
+            if total > LIMITS["attachment_bytes"]:
+                self.refuse("TOO_MANY_ATTACHMENTS", "The attachments come to more than %s together; nothing was sent" % _size(LIMITS["attachment_bytes"]))
+            files.append((name, content_type, data))
+        return [self.upload(name, content_type, data) for name, content_type, data in files]
+
+    def upload(self, name, content_type, data):
+        """One file, uploaded as people's uploads go: media.begin, then its bytes
+        through the verified stream. An upload only prepares the verb's act:
+        retrying it cannot send the message or page (and a publication cannot
+        be retried without the bytes). So neither request goes through
+        `command`, is saved in the outbox or is named for `retry`; however the
+        upload ends, the verb ends here, saying the message or page was not
+        sent and to run the command again, exit 2 (130 when interrupted)."""
+        media, publication = "media-" + uuid.uuid4().hex, "cli-" + uuid.uuid4().hex
+        steps = ((self.envelope("media.begin", {"media_id": media}, {
+                     "name": name, "content_type": content_type, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                     "publish_operation_id": publication}, {"media_revision": 0}), self.store.command),
+                 (self.envelope("media.publish", {"media_id": media}, {}, {"media_revision": 1}, publication),
+                  lambda actor, envelope: self.store.publish_media(actor, envelope, io.BytesIO(data))))
+        code = 2
+        try:
+            for envelope, send in steps:
+                receipt = send(self.actor, envelope)
+                error = receipt.get("error")
+                if error:
+                    reason = "%s: %s" % (error.get("code"), error.get("message"))
+                    break
+                self.out.raw(receipt)
+            else:
+                self.out.plain("attached %s (%s, %s%s) as %s" % (name, content_type, _size(len(data)),
+                                                                  ", inline" if receipt["result"]["inline"] else "", media))
+                return {"id": media}
+        except (StoreError, OSError):
+            reason = "the store did not answer"
+        except OutputFailed:
+            reason = "its result could not be written out"
+        except KeyboardInterrupt:
+            reason, code = "interrupted", 130
+        message = "%s was not attached (%s), so the message or page was not sent; run the command again." % (name, reason)
+        _diagnostic(self.out.stderr, _shown("ATTACHMENT_NOT_SENT: " + message))
+        try:
+            # --json gets it as its last line too; stderr has said it already,
+            # so a line that cannot be written changes nothing.
+            self.out.raw(_attempt("ATTACHMENT_NOT_SENT", message))
+        except OutputFailed:
+            pass
+        raise Failed(code)
+
+    def write_page(self, kind, target, expected, args):
+        """Writes one revision, then reads it back: a page that does not read back
+        as written fails loudly, naming the revision that was recorded."""
+        result = self.command(kind, target, args, {"item_revision": expected})
+        check = "read it with `note read %s --revision %d`" % (result["item_id"], result["revision"])
+        source = self.read_back("source", {"source_ref": result["source_ref"]}, {
+            "what": "revision %d of %s was recorded" % (result["revision"], result["item_id"]), "kind": kind, "it": "it"}, check)
+        differs = [name for name, same in (
+            ("title", source["title"] == args["title"]), ("body", source["body"] == args["body"]),
+            ("attachments", [item["id"] for item in source["attachments"]] == [item["id"] for item in args["attachments"]]),
+            ("evidence", source["references"] == args["references"]),
+            ("revision", source["source_ref"] == result["source_ref"]), ("author", source["author"] == self.actor)) if not same]
+        if differs:
+            _diagnostic(self.out.stderr, "READ_BACK_MISMATCH: revision %d of %s was recorded, but it reads back with a different %s; "
+                        "%s before writing again." % (result["revision"], result["item_id"], " and ".join(differs), check))
+            raise Failed(1, recorded=True)
+        return result
+
+    def do_note(self):
+        getattr(self, "note_" + self.options.note_verb)()
+
+    def note_new(self):
+        options = self.options
+        scope = self.notebook_scope()
+        args = {"title": options.title, "body": self.page_words(), "attachments": [], "references": []}
+        args["attachments"] = self.attach()
+        item = "n-" + uuid.uuid4().hex
+        result = self.write_page("memory.create", {"item_id": item, "owner_scope": scope}, 0, args)
+        self.out.plain('created %s "%s" in %s at revision %d; read back matches' % (
+            item, _one_line(options.title, 60), self.scope_words(result["owner_scope"]), result["revision"]))
+
+    def note_revise(self):
+        """A new revision: the words given, keeping the title (unless --title),
+        attachments and evidence of the page as it stands. Core refuses it unless
+        --expected is the revision it stands at."""
+        options = self.options
+        body = self.page_words()
+        current = self.view("memory_current", {"item_id": options.item})
+        args = {"title": current["title"] if options.title is None else options.title, "body": body,
+                "attachments": [{"id": item["id"]} for item in current["attachments"]] + self.attach(kept=current["attachments"]),
+                "references": current["references"]}
+        result = self.write_page("memory.revise", {"item_id": options.item}, options.expected, args)
+        self.out.plain('revised %s "%s" to revision %d; read back matches' % (result["item_id"], _one_line(args["title"], 60), result["revision"]))
+
+    def note_read(self):
+        """One revision of a page, the latest unless --revision names one. Once it
+        is printed, it records that the actor read that revision (memory.read,
+        which only moves forward, so reading an older one moves nothing back), and
+        `notes` stops marking the page changed."""
+        options = self.options
+        source = (self.view("memory_current", {"item_id": options.item}) if options.revision is None else
+                  self.view("source", {"source_ref": {"kind": "memory", "id": options.item, "revision": options.revision}}))
+        self.out.plain('%s  "%s"  revision %s of %s by %s  (%s)' % (
+            source["source_ref"]["id"], _one_line(source["title"]), source["version"], source["current_revision"],
+            source["author"], self.scope_words(source["owner_scope"])))
+        self.out.plain("")
+        for line in source["body"].split("\n") if source["body"] else ():
+            self.out.plain(line)
+        for attachment in source["attachments"]:
+            self.out.plain(_attachment_line(attachment))
+        for ref in source["references"]:
+            self.out.plain("  [evidence: %s]" % ("message " + ref["id"] if ref["kind"] == "message" else
+                                                 "page %s revision %s" % (ref["id"], ref["revision"])))
+        item, revision = source["source_ref"]["id"], source["source_ref"]["revision"]
+        try:
+            self.command("memory.read", {"item_id": item}, {"revision": revision})
+        except BaseException as stopped:
+            # The page is shown either way; reading it again is harmless. A
+            # final refusal is not offered for retry, as dispatch never does.
+            sent = self.operation is not None and not (isinstance(stopped, Failed) and stopped.code == 2)
+            _diagnostic(self.out.stderr, "READ_NOT_RECORDED: revision %s of %s is printed above, but that you read it was not confirmed, "
+                        "so `notes` may still mark the page changed; %s records it." % (
+                            revision, item, "`retry %s`" % self.operation if sent else "`note read %s --revision %s`" % (item, revision)))
+            raise
+
+    def note_link(self):
+        """The address that opens a page (docs/links.md, "A Notebook page's link"):
+        its Notebook's topic or outcome, the page, and the revision when one is
+        named. --origin puts the instance's address in front. It records nothing."""
+        options = self.options
+        origin = options.origin
+        if origin is not None:
+            parts = urllib.parse.urlsplit(origin)
+            if parts.scheme not in ("http", "https") or not parts.hostname or parts.path not in ("", "/") or parts.query or parts.fragment or "@" in parts.netloc:
+                self.refuse("INVALID_ARGUMENT", "--origin is the instance's address alone, such as https://NAME.ts.net:PORT")
+            origin = "%s://%s" % (parts.scheme, parts.netloc)
+        source = (self.view("memory_current", {"item_id": options.item}) if options.revision is None else
+                  self.view("source", {"source_ref": {"kind": "memory", "id": options.item, "revision": options.revision}}))
+        scope = source["owner_scope"]
+        params = [("topic" if scope["kind"] == "topic" else "workspace", scope["id"]), ("page", source["source_ref"]["id"])]
+        if options.revision is not None:
+            params.append(("revision", str(source["source_ref"]["revision"])))
+        link = (origin + "/" if origin else "") + "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+        self.out.raw({"link": link})
+        self.out.plain(link)
+
+    def do_notes(self):
+        """A Notebook's pages, oldest first, each marked when it changed since the actor read it."""
+        items = self.pages("memory_items", {"owner_scope": self.notebook_scope()})
+        for item in items:
+            line = '%s  "%s"  revision %s by %s' % (item["id"], _one_line(item["title"], 80), item["revision"], item["author"])
+            if 0 < item["read_revision"] < item["revision"]:
+                line += "  [changed since you read revision %s]" % item["read_revision"]
+            self.out.plain(line)
+        if not items:
+            self.out.plain("no Notebook pages")
+
     @staticmethod
     def delivery_line(item):
         message = item["message"]
@@ -895,6 +1201,8 @@ class Agent(PipelineVerbs, TargetVerbs):
             flag = "--asks" if options.asks is not None else "--tells"
             self.refuse("INVALID_ARGUMENT", "%s names who it is to (%s A,B), and these name nobody; nothing was sent" % (flag, flag))
         args = {"body": self.text(), "addressees": addressees}
+        if options.attach:
+            args["attachments"] = self.attach()
         if addressees:
             args["intent"] = "ask" if options.asks is not None else "tell"
         if options.reply_to:
@@ -952,6 +1260,7 @@ class Agent(PipelineVerbs, TargetVerbs):
                 writing["part"] = True
         elif seen:
             self.refuse("INVALID_ARGUMENT", "--seen names topics started from the message --from names; nothing was sent")
+        writing["attachments"] = self.attach()
         try:
             saved = self.command("opening.save", {"opening_id": opening}, writing, {"opening_revision": 0}, self.operation_of("-save"))
         except BaseException as stopped:
@@ -1036,7 +1345,7 @@ class Agent(PipelineVerbs, TargetVerbs):
         except WatchError as error:
             self.refuse("WATCH_UNAVAILABLE", "The native database watch is unavailable (%s)" % error)
         try:
-            self.watch_changes(watch)
+            self.watch_changes(watch, once=self.options.once)
         except WatchStopped:
             # Stopped mid-notice: what the reader did not take is dropped, so
             # the exit cannot block on flushing it again.
@@ -1091,7 +1400,10 @@ class Agent(PipelineVerbs, TargetVerbs):
             if cursor is None:
                 return sorted(items, key=lambda item: item["seq"])
 
-    def watch_changes(self, watch):
+    def watch_changes(self, watch, once=False):
+        """Each delivery and change as a line, until a stop. With once, the
+        oldest delivery waiting, or else the next pending one to arrive, then
+        it returns; acknowledgments and other changes pass unprinted."""
         # The watch is armed before the baseline, so a write after the
         # checkpoint always produces another event.
         page = self.changes(watch, None)
@@ -1105,11 +1417,16 @@ class Agent(PipelineVerbs, TargetVerbs):
         pending = self.pending(watch)
         if pending is None:
             return
+        if once and pending:
+            pending = pending[:1]
         for item in pending:
             self.notice(watch, {"event": "delivery", "item": item}, self.delivery_line(item))
             self.shown.add(item["id"])
-        self.notice(watch, {"event": "watching", "actor_id": self.actor, "checkpoint": cursor},
-                    "watching %s from change %s" % (self.actor, cursor["after_seq"]))
+        if once and pending:
+            return
+        if not once:
+            self.notice(watch, {"event": "watching", "actor_id": self.actor, "checkpoint": cursor},
+                        "watching %s from change %s" % (self.actor, cursor["after_seq"]))
         while True:
             event = watch.wait(None)
             if event["stop"]:
@@ -1131,6 +1448,10 @@ class Agent(PipelineVerbs, TargetVerbs):
                 if watch.companion_moved:
                     raise WatchError("authority_anchor_replaced")
                 for change in page["items"]:
+                    if once:
+                        if self.arrived(watch, change):
+                            return
+                        continue
                     self.report(watch, change)
                 if not page["has_more"]:
                     cursor = page["checkpoint"]
@@ -1140,6 +1461,22 @@ class Agent(PipelineVerbs, TargetVerbs):
                 raise WatchError("authority_anchor_replaced")
             if watch.stopped:
                 return
+
+    def arrived(self, watch, change):
+        """For watch --once: print this change if it is a delivery still
+        pending, and say whether it was."""
+        if change["resource_kind"] != "delivery":
+            return False
+        result = self.read(watch, "delivery", {"delivery_id": change["resource_id"]})
+        error = result.get("error")
+        if error:
+            self.notice(watch, {"event": "delivery", "change": change, "error": error},
+                        "delivery unavailable (%s)  [%s]" % (error.get("code"), change["resource_id"]))
+            return True
+        if result["item"]["state"] != "pending":
+            return False
+        self.notice(watch, {"event": "delivery", "change": change, "item": result["item"]}, self.delivery_line(result["item"]))
+        return True
 
     def report(self, watch, change):
         kind, identity, version = change["resource_kind"], change["resource_id"], change["version"]
@@ -1165,7 +1502,7 @@ class Agent(PipelineVerbs, TargetVerbs):
                     "acknowledged %s" % identity if kind == "delivery" and version == 2 else "change %s %s v%s" % (kind, identity, version))
 
 
-PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out"}
+PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out", "file", "attach"}
 
 
 def _utf8_arguments(options):

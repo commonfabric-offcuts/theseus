@@ -555,6 +555,7 @@ VIEW_PATHS = {
     "source_topics": "_message_access applies visible()",
     "wakes": "on_record_wake_health for every reader but the agent",
     "memory_items": "Notebook revisions; a whisper is refused as evidence",
+    "memory_current": "a Notebook page as it stands, read as the source view reads a revision; a whisper is refused as evidence",
     "capabilities": "no message", "operation": "the reader's own operation", "workspace": "no message",
     "opening": "the reader's own opening", "openings": "the reader's own openings", "workspace_members": "no message",
     "actors": "no message", "colors": "no message", "releases": "no message",

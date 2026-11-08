@@ -9,18 +9,24 @@ const afterId = (id,previous) => {
 };
 const badRoute = () => { throw Error('This destination link is incomplete or ambiguous. Open Outcomes to choose a place.'); };
 // An opening may name the message its topic answers ('from'); a topic, the
-// message to open in the Reader when it opens ('message', docs/links.md).
-const OPTIONAL = {opening:['from'],topic:['message']};
+// message to open in the Reader when it opens ('message', docs/links.md); a
+// topic or an outcome, a page of its Notebook to open ('page'), at a revision
+// ('revision') or as it stands.
+const OPTIONAL = {opening:['from'],topic:['message','page','revision'],workspace:['page','revision']};
+const REVISION = /^[1-9][0-9]{0,17}$/;
 export function routeKey(route) {
   const fields = {root:[],'phone-check':['id'],topic:['id'],workspace:['id'],conversation:['id'],pipeline:['id'],measurements:['id'],item:['id','item'],create:['intent'],opening:['workspace','opening','topic']}[route?.kind];
   const optional = (OPTIONAL[route?.kind] ?? []).filter(key=>key in route);
   if (!fields || Object.keys(route).length !== fields.length + optional.length + 1 || ![...fields,...optional].every(key=>validId(route[key]))) badRoute();
+  // A page is named alone (not with a message), and a revision only with its page.
+  if (('page' in route && 'message' in route) || ('revision' in route && !('page' in route)) || ('revision' in route && !REVISION.test(route.revision))) badRoute();
   return JSON.stringify([route.kind,...fields.map(key=>route[key]),...optional.map(key=>[key,route[key]])]);
 }
 export function routeHref(route) {
   routeKey(route);
-  const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{})} : route.kind === 'conversation' ? {conversation:route.id} :
-    route.kind === 'workspace' ? {workspace:route.id} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} :
+  const page = route.page ? {page:route.page,...(route.revision?{revision:route.revision}:{})} : {};
+  const params = route.kind === 'root' ? null : route.kind === 'topic' ? {topic:route.id,...(route.message?{message:route.message}:{}),...page} : route.kind === 'conversation' ? {conversation:route.id} :
+    route.kind === 'workspace' ? {workspace:route.id,...page} : route.kind === 'pipeline' ? {pipeline:route.id} : route.kind === 'measurements' ? {measurements:route.id} :
     route.kind === 'item' ? {pipeline:route.id,item:route.item} : route.kind === 'phone-check' ? {'phone-check':route.id} : route.kind === 'create' ? {new:'outcome',intent:route.intent} :
       {workspace:route.workspace,opening:route.opening,opening_topic:route.topic,...(route.from?{opening_from:route.from}:{})};
   return params ? '?' + new URLSearchParams(params) : '/';
@@ -34,6 +40,10 @@ export function parseRoute(url) {
   if (!keys.length) route={kind:'root'};
   else if (keys.length===1 && p.has('topic')) route={kind:'topic',id:p.get('topic')};
   else if (keys.length===2 && p.has('topic') && p.has('message')) route={kind:'topic',id:p.get('topic'),message:p.get('message')};
+  // A Notebook page's link: its topic's or its outcome's, the page, and perhaps its revision.
+  else if ([2,3].includes(keys.length) && (p.has('topic') || p.has('workspace')) && p.has('page') && (keys.length===2 || p.has('revision')) && !(p.has('topic') && p.has('workspace'))) {
+    route={kind:p.has('topic')?'topic':'workspace',id:p.get('topic') ?? p.get('workspace'),page:p.get('page'),...(p.has('revision')?{revision:p.get('revision')}:{})};
+  }
   else if (keys.length===1 && p.has('workspace')) route={kind:'workspace',id:p.get('workspace')};
   else if (keys.length===1 && p.has('conversation')) route={kind:'conversation',id:p.get('conversation')};
   // An outcome's pipeline, and one item's record in it (docs/pipeline.md).

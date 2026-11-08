@@ -31,6 +31,14 @@ export function shareLinksFrom(origin) { shareOrigin = typeof origin === 'string
 export function messageLink(topicId, messageId) {
   return new URL(routeHref({ kind: 'topic', id: topicId, message: messageId }), shareOrigin ?? globalThis.location.origin).href;
 }
+// The link that opens one Notebook page: in the Reader on its topic's page, or
+// in place on its outcome's page. scope: the page's owner_scope; revision: a
+// number to name that revision, or none for the page as it stands.
+export function pageLink(scope, itemId, revision = null) {
+  if (!['topic', 'workspace'].includes(scope?.kind)) throw Error('A Notebook page belongs to a topic or an outcome.');
+  const route = { kind: scope.kind, id: scope.id, page: itemId, ...(revision === null ? {} : { revision: String(revision) }) };
+  return new URL(routeHref(route), shareOrigin ?? globalThis.location.origin).href;
+}
 
 const count = (text, char) => text.split(char).length - 1;
 // Sentence punctuation after an address stays outside it, and so does a
@@ -76,8 +84,8 @@ export function webLinks(text, { partial = false } = {}) {
   return found.sort((a, b) => a.start - b.start);
 }
 
-// What a link to a topic, or to a message in one, shows given the topic's name.
-const shown = (route, name) => route.message ? `Message in ${name}` : name;
+// What a link to a topic, or to a message or a Notebook page in one, shows given the topic's name.
+const shown = (route, name) => route.message ? `Message in ${name}` : route.page ? `Notebook page in ${name}` : name;
 // Whether a link shows its topic's name: a topic's id or address, or a message's.
 const named = link => link.route?.kind === 'topic';
 

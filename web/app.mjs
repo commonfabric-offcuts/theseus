@@ -40,7 +40,7 @@ import { PageHere } from './page-here.mjs';
 import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers, switchWriting } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
-import { linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink } from './links.mjs';
+import { linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink, pageLink } from './links.mjs';
 import { openMessageMenu, sayOn, copyText } from './message-menu.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
@@ -67,6 +67,8 @@ let topicUnavailable = false, listAccessEpoch = 0;
 let settings = null, topicRail, topicNavigation, outcomeRail, outcomeReferences, outcomeScope = null, inlineDiscovery = null, sentHost = null, participantsPanel = null, outcomeMembers = null, colors = null;
 let intentJournal, intentOpening, outcomeCreation, readThrough, cardObserver, middleObserver, marks = null, commitReload = null, pageReads = null;
 let pipelineRow = null, pipelineAddFor = null;
+// An outcome page's Notebook page shown in place (page-here.mjs), and that outcome.
+let pageHere = null, pageHereOutcome = null;
 const halfShown = new Set(), atMiddle = new Set();
 const listLoads = new Map();
 const candidates = new Map(), mediaURLs = new Set();
@@ -824,7 +826,9 @@ function paintReaderMark() {
   if (pipelineAddFor !== null && pipelineAddFor !== ref?.id) closePipelineAdd(false);
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
   paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
-  $('reader-menu').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic) && !reader?.layoutChoice;
+  // The ⋯ shows while it offers something: a message's or a Notebook page's
+  // links (openReaderMenu), or the layout where the window has room to choose.
+  $('reader-menu').hidden = !(p && !p.sourceUnavailable && ((ref?.kind === 'message' && topic) || (ref?.kind === 'memory' && p.source.owner_scope))) && !reader?.layoutChoice;
 }
 // Every page of the person's marks in this topic.
 function loadMarks() {
@@ -912,15 +916,33 @@ async function markFromMenu(messageId, marked) {
   if (receipt?.error?.code === 'REVISION_CONFLICT') status(`This message's mark changed in another tab or device: it is ${marks.state(messageId)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
   else if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'The mark was not confirmed. Choose it again to send the same request.');
 }
-// The Reader's ⋯: Copy Link and the mark for a message, and Wide or Stacked.
+// A Notebook page's link (docs/links.md, "A Notebook page's link"): the page as
+// it stands, or with revision, that revision.
+async function copyPageLink(source, revision, say) {
+  const link = pageLink(source.owner_scope, source.source_ref.id, revision);
+  if (!await copyText(link)) { status(`The link could not be copied here. Select it to copy it: ${link}`); return; }
+  if (say?.getClientRects().length) sayOn(say, 'Link copied'); else status('Link copied.');
+}
+// The Reader's ⋯: Copy Link and the mark for a message, Copy Link and Copy
+// Link to Revision N for a Notebook page, and Wide or Stacked.
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
   const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
   if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
+  if (p && !p.sourceUnavailable && ref?.kind === 'memory' && p.source.owner_scope) {
+    items.push({ label: 'Copy Link', act: () => run(() => copyPageLink(p.source, null, button)) },
+      { label: `Copy Link to Revision ${ref.revision}`, act: () => run(() => copyPageLink(p.source, ref.revision, button)) });
+  }
   const state = message && p.mark ? marks.state(ref.id) : null;
   if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, act: () => reader.toggleLayout() });
-  openMessageMenu({ anchor: button, items, label: 'This message' });
+  openMessageMenu({ anchor: button, items, label: ref?.kind === 'memory' ? 'This page' : 'This message' });
+}
+// The source a page's link names: that revision, or the page as it stands,
+// which Core is asked for by name (memory_current).
+async function pageSource(page) {
+  if (page.revision) return { kind: 'memory', id: page.id, revision: Number(page.revision) };
+  return checkedView(await api.view('memory_current', { item_id: page.id }, { readClass: 'foreground' }), bootstrap.instance_id).source_ref;
 }
 function authorityReviewPending() {
   return updateState?.kind === 'authority' ||
@@ -1230,7 +1252,9 @@ async function initialize() {
   let topicId = route.id;
   // A message's link names the message to open once the page is up (docs/links.md).
   const anchored = route.kind === 'topic' ? route.message ?? null : null;
-  if (anchored) { route = { kind: 'topic', id: topicId }; history.replaceState(history.state, '', routeHref(route) + location.hash); }
+  // So does a Notebook page's link, the page and perhaps its revision.
+  const pageAnchor = route.kind === 'topic' && route.page ? { id: route.page, revision: route.revision ?? null } : null;
+  if (anchored || pageAnchor) { route = { kind: 'topic', id: topicId }; history.replaceState(history.state, '', routeHref(route) + location.hash); }
   if (route.kind === 'conversation') {
     const found = validate(await api.view('conversation', { workspace_id: route.id })).conversation;
     if (!found) throw Error('This outcome has no conversation yet.');
@@ -1463,6 +1487,8 @@ async function initialize() {
     const entry = [...$('messages').children].find(child => child.dataset.id === anchored);
     run(() => openSource({ kind: 'message', id: anchored }, entry ? cardIn(entry) : $('main')));
   }
+  // A Notebook page's link opens the page in the Reader, as its card or row does.
+  if (pageAnchor) run(async () => openSource(await pageSource(pageAnchor), $('main')));
 }
 // A message sent by name opens its topic, or, where the reader has lost the
 // topic, the outcomes page that lists it to be marked read.
@@ -1729,6 +1755,18 @@ async function openDestination(target, title, from = null) {
     const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
     return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement));
   }
+  // A link to a Notebook page this page can show opens it here: in the Reader
+  // when it is the open topic's or its outcome's, in place on its outcome's page.
+  if (target.page) {
+    const page = { id: target.page, revision: target.revision ?? null };
+    if (topic && views && (target.kind === 'topic' ? target.id === topic.id : target.id === topic.workspace_id)) {
+      const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
+      return run(async () => openSource(await pageSource(page), opener?.isConnected ? opener : document.activeElement));
+    }
+    if (!topic && pageHere && target.kind === 'workspace' && target.id === pageHereOutcome) {
+      return run(async () => pageHere.open(await pageSource(page), from?.isConnected ? from : document.activeElement));
+    }
+  }
   // A page whose start failed has no navigation; leave it for the destination.
   if (!topicNavigation) { location.assign(routeHref(target)); return; }
   const notice=$('topic-navigation-status');notice.hidden=true;
@@ -1771,6 +1809,10 @@ async function initializeOutcomePage(route) {
   if(route.kind==='pipeline'||route.kind==='item')return initializePipelinePage(route);
   if(route.kind==='measurements')return initializeMeasurementsPage(route);
   if(!['root','workspace'].includes(route.kind))throw Error('This opening link is not available yet. Open Outcomes to choose a place.');
+  // A Notebook page's link opens the page in place once the outcome's lists are
+  // up; the address then names the outcome alone, as a message's link does.
+  const shown=route.page?{id:route.page,revision:route.revision??null}:null;
+  if(shown){route={kind:'workspace',id:route.id};history.replaceState(history.state,'',routeHref(route)+location.hash);}
   status('');
   for(const id of ['notebook','topic-people','messages','topic-pending','inline-composer'])$(id).hidden=true;
   $('outcome-page').hidden=false;
@@ -1860,6 +1902,7 @@ async function initializeOutcomePage(route) {
     // topics, and other outcomes' questions in the line above them.
     const reload=followCommits(async()=>(await Promise.all([outcomeRail.load(),refresh()])).every(read=>read!==false));
     await reload();
+    if(shown)run(async()=>pageHere.open(await pageSource(shown),$('main')));
   }
   document.body.dataset.ready='true';
 }
@@ -1932,7 +1975,7 @@ function outcomePages(workspace,recorded) {
     return api.command({v:1,instance_id:bootstrap.instance_id,operation_id:crypto.randomUUID(),kind:'memory.read',
       target:{item_id:id},expected:{authority:{authority_id,authority_epoch}},args:{revision}});
   }});
-  const here=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref)});
+  const here=pageHere=new PageHere({host:$('page-here'),reads,read:ref=>view('source',ref)});pageHereOutcome=workspace;
   return new OutcomeReferences({scope:workspace,host:$('outcome-references'),list:$('outcome-references-list'),more:$('more-references'),
     message:$('outcome-references-status'),pageMax:pageMax(),denied:error=>readFailure(error).kind==='forbidden',
     read:args=>view('memory_items',{owner_scope:{kind:'workspace',id:workspace},...args}),open:(ref,row)=>run(()=>here.open(ref,row))});

@@ -38,8 +38,9 @@ class Memory:
         else:
             self._workspace(db, actor, scope_id)
         if write:
-            if self._actor(db, actor)["kind"] != "agent":
-                raise Refusal("FORBIDDEN", "Only participating agents edit this Notebook")
+            # A topic's pages are its active participants' to edit, and an
+            # outcome's are its team's (the owner always among them), people
+            # and agents alike; every revision is kept.
             if scope["kind"] == "topic":
                 allowed = db.execute("SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1", (scope_id, actor)).fetchone()
             else:
@@ -168,6 +169,12 @@ class Memory:
                 "body": row["body"], "attachments": json.loads(row["attachments"]),
                 "references": json.loads(row["refs"]), "version": row["revision"],
                 "current_revision": item["current_revision"], "allowed_actions": ["quote", "note.save"]}
+
+    def _view_memory_current(self, db, actor, args):
+        """A Notebook page as it stands, at the revision its answer's source_ref names.
+        A source_ref without a revision never reads the latest one; this is asked for by name."""
+        item = self._memory_identity(db, actor, args.get("item_id"))
+        return self._memory_source(db, actor, {"kind": "memory", "id": item["id"], "revision": item["current_revision"]})
 
     def _view_memory_items(self, db, actor, args):
         scope = self._memory_scope(db, actor, args.get("owner_scope"))

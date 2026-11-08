@@ -19,10 +19,23 @@ page look changed again.
   `INVALID_ARGUMENT`). Result: `{item_id, previous_revision,
   read_revision, current_revision, changed}`. A read that moves the
   revision forward adds the change `memory_read` to the reader's own
-  (`actor`) changes; one that moves nothing tells nobody.
+  (`actor`) changes; one that moves nothing tells nobody. The CLI's
+  `note read` sends it for the revision it prints
+  ([agent-cli.md](agent-cli.md#notebook-pages)).
+- Who writes: a topic's pages are its active participants' to create and
+  revise, and an outcome's are its team's, the owner among them, people and
+  agents alike. Each revision is kept with its author, so an edit never
+  loses what was there; the Reader shows any revision and what changed.
+  Anyone else, including someone on the team who does not take part in the
+  topic, is refused (`FORBIDDEN`) and nothing is written.
 - Writing a revision (`memory.create`, `memory.revise`) reads it for its
   writer, so a person's own edit never marks a page changed for them. The
   write is its own change; it adds no `memory_read` change.
+- View `memory_current`: args `{item_id}`, a page as it stands, in the
+  `source` view's shape, its `source_ref` naming the current revision; the
+  same rule for who may read it (`FORBIDDEN` otherwise). A `source_ref`
+  without a revision still reads nothing, so a page is read at its latest
+  only when that is asked for by name.
 - View `memory_items`: each item carries `read_revision`, the viewer's own,
   `0` when they have not read it. A page is changed for the viewer when
   `0 < read_revision < revision`. A page never read is not marked: the light
@@ -112,6 +125,12 @@ opening it reads it as the Reader does. One page shows at a time; one opened
 while another is still opening replaces it, and Close gives the focus back
 to its row. The list is read again with the topics after every commit.
 
+## A page's link
+
+Each page has a link, latest or at a revision, that opens it in the Reader on
+its topic's page or in place on its outcome's page
+([links.md](links.md#a-notebook-pages-link)); the Reader's ⋯ copies it.
+
 ## Checks
 
 Core: `tests/test_memory_reads.py` and the 19→20 step in
@@ -121,5 +140,7 @@ Core: `tests/test_memory_reads.py` and the 19→20 step in
 `tests/reader_persistence_native.mjs` (`tests/notebook_pages_native.mjs`):
 the light coming on live and going out on opening, in the sidebar and in
 the topic's own Notebook, the changes in the Reader and none of them on the
-page opened next, 390 wide in light and dark with contrast measured, and the outcome
-page.
+page opened next, 390 wide in light and dark with contrast measured, the outcome
+page, and a page's link opening the page as it stands and at a revision, in
+the Reader and in place, from the address and from a message, with the
+Reader's ⋯ copying both links.

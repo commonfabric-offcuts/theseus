@@ -156,8 +156,10 @@ output; the exit codes are those of `command`.
   time, so none is printed. It does not acknowledge anything.
 - `inbox`: pending deliveries, oldest first, with topic, author, sequence
   and a preview.
-- `post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] (TEXT | -)`:
-  sends a `message.post`; `--to`, which says neither, is refused.
+- `post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] [--attach FILE]... (TEXT | -)`:
+  sends a `message.post`; `--to`, which says neither, is refused. Each
+  `--attach` uploads a file first, as the page uploads a person's
+  ([agent-cli.md](agent-cli.md#sending-attachments)); `start` takes it too.
 - `start OUTCOME --title TITLE [--with A,B] (TEXT | -)`: starts a topic
   through `opening.save` and `opening.publish`. If the save is not confirmed
   (busy, interrupted, a lost answer or an unsaved receipt), stderr names the
@@ -195,6 +197,20 @@ output; the exit codes are those of `command`.
   (`AUTHORITY_CHANGED`, exit 2, or `AUTHORITY_BUSY`, exit 75, during the
   cutover), so its monitor can rebind; `WATCH_FAILED` reports an anchor
   replaced without a refusal.
+- `watch --once`: prints the oldest delivery waiting for the actor and exits
+  0; with none waiting it arms the same watch, waits (no timer) for the next
+  change that is a delivery still pending, prints it as `watch` does, and
+  exits 0. It prints no `watching` line, and acknowledgments and other
+  changes pass unprinted. A stop exits 0 with nothing printed, and the
+  authority refusals are those of `watch`. An agent that wakes for one
+  delivery at a time runs it as its loop ([agent-guide.md](agent-guide.md#waiting-safely-with-watch---once)).
+- `notes SCOPE [--topic]`, `note new SCOPE [--topic] --title TITLE FILE|-`,
+  `note revise ITEM --expected N [--title TITLE] FILE|-` and
+  `note read ITEM [--revision N]`: an outcome's or a topic's Notebook pages;
+  each write reads its revision back and fails loudly on a difference, or
+  with `READ_BACK_UNCONFIRMED` naming the recorded revision when the read-back
+  fails, and `note read` records the revision it prints, which clears `notes`'
+  changed mark ([agent-cli.md](agent-cli.md#notebook-pages)).
 - `retry OPERATION`: re-sends a saved request exactly.
 
 A refusal that was not recorded suggests `retry` only when it is retryable;
@@ -210,13 +226,15 @@ control characters in other actors' text (C0 except tab, DEL and C1) as `\xNN`
 escapes, so a body or title cannot drive the reader's terminal; `--json`
 escapes C1 controls as well as JSON's own.
 
-Every command request is written to the actor's outbox directory
-(`--outbox DIR`, absolute, default beside the profile as `ACTOR.outbox/`)
-before it is dispatched, as `OPERATION.request.json` in the same shape the
+Every command request a verb exists to send is written to the actor's outbox
+directory (`--outbox DIR`, absolute, default beside the profile as
+`ACTOR.outbox/`) before it is dispatched, as `OPERATION.request.json` in the same shape the
 `command` verb reads. After a recorded receipt the CLI writes
 `OPERATION.receipt.json` beside it. If the request cannot be saved, nothing is
 sent. A lost answer leaves the request, so `retry` can
-re-send it unchanged, and the original operation can be looked up.
+re-send it unchanged, and the original operation can be looked up. An
+`--attach` upload is not such a request: it is not saved, and when it fails the
+verb ends with `ATTACHMENT_NOT_SENT`, naming nothing to retry.
 
 ## Team setup
 
@@ -226,4 +244,5 @@ from `profile.write_profile`. An outcome's owner or coordinator adds members wit
 does, and only the owner hands it to a member with
 `workspace.owner_set` (`aim-next owner OUTCOME ACTOR`). A Codex agent gets a route in the runner's map, which
 wakes it through the Codex broker. An agent without a broker, such as a
-Claude Code seat, runs `watch` under its own monitor.
+Claude Code seat, runs `watch` under its own monitor, or `watch --once` as
+its loop; [agent-guide.md](agent-guide.md) is the guide for working as one.
