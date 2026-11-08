@@ -135,6 +135,20 @@ class AttachCase(test_agent_verbs.AgentVerbCase):
         self.assertIn("FILE_UNAVAILABLE", err)
         self.nothing_sent(before)
 
+    def test_an_operation_named_post_or_start_takes_no_attachment_and_sends_nothing(self):
+        # --operation answers a repeat with what the first run recorded; --attach uploads its files
+        # afresh every run, so a repeat would never be the same request. Refused before any upload.
+        before = self.records()
+        for verb in (("post", "t1"), ("start", "w1", "--title", "Fix it")):
+            code, out, err = self.run_cli("--json", *verb, "--operation", "fix-units-abc", "--attach", self.png, "Screenshot")
+            answer = json.loads(out.splitlines()[-1])
+            self.assertEqual((code, answer.get("error", {}).get("code")), (2, "INVALID_ARGUMENT"), verb)
+            self.assertIn("--operation", answer["error"]["message"])
+            self.nothing_sent(before)
+        # Each alone still sends.
+        self.assertEqual(self.run_cli("post", "t1", "--operation", "fix-units-abc", "Words")[0], 0)
+        self.assertEqual(self.run_cli("post", "t1", "--attach", self.png, "Screenshot")[0], 0)
+
     def test_a_revision_counts_what_the_page_already_carries(self):
         page = self.file("page.md", b"Results")
         files = []

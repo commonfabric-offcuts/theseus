@@ -665,6 +665,11 @@ class Agent(PipelineVerbs, TargetVerbs):
             return None
         if not SAFE_NAME.fullmatch(operation + suffix):
             self.refuse("INVALID_ARGUMENT", "--operation is a name of letters, digits, '.', '_', '@' and '-'; nothing was sent")
+        if getattr(self.options, "attach", None):
+            # A repeat answers with what the first run recorded only when it is the same request,
+            # and --attach uploads its files afresh each run, so it never would be.
+            self.refuse("INVALID_ARGUMENT", "--operation sends the same words again as the same write, and --attach uploads its files "
+                        "afresh each time, so they do not go together; nothing was sent")
         return operation + suffix
 
     def text(self):
@@ -1200,6 +1205,7 @@ class Agent(PipelineVerbs, TargetVerbs):
         if named is not None and not addressees:
             flag = "--asks" if options.asks is not None else "--tells"
             self.refuse("INVALID_ARGUMENT", "%s names who it is to (%s A,B), and these name nobody; nothing was sent" % (flag, flag))
+        operation = self.operation_of()
         args = {"body": self.text(), "addressees": addressees}
         if options.attach:
             args["attachments"] = self.attach()
@@ -1212,7 +1218,7 @@ class Agent(PipelineVerbs, TargetVerbs):
         if options.subject:
             # --subject item:92,item:31: what the post is about, written with it.
             args["subjects"] = [dict(zip(("kind", "ref"), part.strip().split(":", 1))) for part in options.subject.split(",") if part.strip()]
-        result = self.command("message.post", {"topic_id": options.topic}, args, operation=self.operation_of())
+        result = self.command("message.post", {"topic_id": options.topic}, args, operation=operation)
         self.out.plain("posted %s in %s (%s deliveries queued)" % (result["message_id"], result["topic"]["id"], result["delivery"]["queued"]))
 
     def do_whisper(self):
