@@ -26,6 +26,7 @@ times.clock.now = () => TODAY;
 import { PageReads } from '../web/page-reads.mjs';
 import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
+import { EditorRegistry } from '../web/app-session.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -82,7 +83,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
     cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); },
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
-    pending() { return { items: [], next_cursor: null }; }, sending() { return false; }, cancelOpen() { return false; },
+    pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
+    // Which replies are in doubt is the registry's own rule, read with this fake's pages and the sends a test says are going.
+    going: new Map(), inDoubt(editor) { return EditorRegistry.prototype.inDoubt.call({ pending: e => this.pending(e), sessions: this.going }, editor); },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
       list: action => action({ readClass: 'foreground' }) },
@@ -544,7 +547,7 @@ test('a reply on its way has no Review button; one whose send ended without a co
   f.registry.current = { editors: { reply: modal } };
   const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
   const going = new Set();
-  f.registry.sending = (editor, id) => { assert.equal(editor, modal); return going.has(id); };
+  f.registry.going.set('modal', { underWay: id => going.has(id) });
   going.add('next'); modal.submissions = [{ id: 'next', status: 'preparing' }]; f.changed(modal);
   assert.deepEqual(shown(), [], 'a reply being prepared to go has none');
   modal.submissions = [{ id: 'next', status: 'prepared' }]; f.changed(modal);
@@ -559,6 +562,36 @@ test('a reply on its way has no Review button; one whose send ended without a co
   modal.submissions = [{ id: 'next', status: 'confirmed' }, { id: 'another', status: 'preparing' }];
   f.registry.pending = () => ({ items: [], next_cursor: null }); f.changed(modal);
   assert.deepEqual(shown(), [], 'the first confirmed and the second on its way: no button');
+});
+
+// Item 118: a refusal that was prepared again is carried by its correction, so
+// the two are one reply: in doubt while the correction is, and not once it went.
+test('a refused reply prepared again shows a Review button only while its correction is in doubt, here or from an earlier runtime', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  const going = new Set(); f.registry.going.set('modal', { underWay: id => going.has(id) });
+  const refused = { id: 'orig', status: 'refused', receipt: { kind: 'submission.prepare', status: 'rejected' } };
+  modal.submissions = [refused]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'the refusal alone is in doubt');
+  going.add('fix'); modal.submissions = [{ ...refused, correctedBy: 'fix' }, { id: 'fix', status: 'preparing' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'its correction is on its way, so its words are');
+  going.delete('fix'); modal.submissions = [{ ...refused, correctedBy: 'fix' }, { id: 'fix', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'the correction went, so the refusal leaves no button');
+  modal.submissions = [{ id: 'old', status: 'prepared', detached: true, correctedBy: 'fix' }, { id: 'fix', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'nor does an earlier runtime\'s reply whose correction went');
+  f.registry.pending = () => ({ items: [{ id: 'old', send_status: 'unknown' }], next_cursor: null }); f.changed(modal);
+  assert.deepEqual(shown(), [], 'even while the server lists that earlier reply unconfirmed');
+  f.registry.pending = () => ({ items: [], next_cursor: null });
+  modal.submissions = [{ ...refused, correctedBy: 'fix' }, { id: 'fix', status: 'refused', correctedBy: 'again' }, { id: 'again', status: 'prepared' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'a twice-corrected reply whose last correction ended unconfirmed is one reply in doubt');
+  modal.submissions = [{ ...refused, correctedBy: 'fix' }, { id: 'fix', status: 'refused', receipt: { kind: 'message.send', status: 'rejected' } }, { id: 'other', status: 'unknown' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 2 replies'], 'a correction refused in its turn is in doubt, beside another reply');
+  modal.submissions = [{ ...refused, correctedBy: 'missing' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'a correction this device does not hold answers for nothing: the refusal stays in doubt');
+  modal.submissions = [{ id: 'other', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'and the button goes once none is');
 });
 
 // Item 117: the page wires the phone rail's drawer as it starts.

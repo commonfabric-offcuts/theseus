@@ -616,8 +616,16 @@ export class EditorRegistry {
     this.pages.set(editor.key, result); this.changed(editor); return result;
   }
 
-  // Whether this editor's reply with that id is on its way, so not in doubt.
-  sending(editor, id) { return this.sessions.get(editor.key)?.underWay(id) === true; }
+  // The ids of this editor's replies whose words are in doubt, from all that is
+  // known of them, here and on the server: neither known sent, here or by the
+  // server's record of its send, nor on its way, nor replaced by a correction
+  // this device holds, which then answers for those words in its place.
+  inDoubt(editor) {
+    const local = new Map(editor.submissions.map(item => [item.id, item])), server = this.pending(editor).items;
+    const sent = new Set([...editor.submissions.filter(item => item.status === 'confirmed'), ...server.filter(item => item.send_status === 'committed')].map(item => item.id));
+    return new Set([...local.keys(), ...server.map(item => item.id)].filter(id => !sent.has(id) &&
+      !local.has(local.get(id)?.correctedBy) && this.sessions.get(editor.key)?.underWay(id) !== true));
+  }
   get hasInFlightSend() { return [...this.sessions.values()].some(session => session.sends.size > 0); }
   get unconfirmedSends() {
     return [...this.sessions.values()].flatMap(session => {

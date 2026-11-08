@@ -214,9 +214,9 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await reviewButton('Prepare this reply again');
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held corrected preparation');
-    // The corrected reply is on its way, not in doubt: while it goes, only the refused original has a Review button.
+    // The correction carries the refused reply's words (item 118): while it goes, they are on their way, not in doubt.
     const inDoubt=()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent??null`);
-    assert.equal(await inDoubt(),'Review 1 reply','while the correction is prepared, only the refused original is in doubt');
+    await until(async()=>await inDoubt()===null,'while the correction is prepared, no Review button');
     await point(p,'#review-close');
     const stay=async stage=>{
       await choose(p);await until(async()=>/Wait for the send/.test(await notice(p)),stage+' uses active send guidance');
@@ -228,15 +228,20 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     };
     await stay('correction prepare');await p.release(preparing);
     const sending=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'),'held corrected publication');
-    assert.equal(await inDoubt(),'Review 1 reply','while the correction is sent, only the refused original is in doubt');
+    assert.equal(await inDoubt(),null,'nor while the correction is sent');
     await stay('correction publication');p.intercept(null);await p.release(sending);await exact(p,sending,body);
-    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'only the refused original is still in doubt, not the correction that went');
-    await point(p,'#inline-pending button');
-    await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${sending.payload.args.submission_id}"] h3')?.textContent==='Sent to Theseus'`),'corrected publication visibly confirmed');
-    assert.equal(await p.evaluate(`document.querySelector('#review-content [data-id="${original.id}"] h3').textContent`),'Not sent — writing kept');
+    // The correction went, so the refused reply it carries leaves no Review button, now or when the page is opened again.
+    const kept=async()=>{const all=(await rows(p)).flatMap(r=>r.snapshot.submissions);return [all.find(i=>i.id===original.id),all.find(i=>i.id===sending.payload.args.submission_id)];};
+    const settled=async()=>{const [refused,corrected]=await kept();return refused?.correctedBy===corrected?.id&&corrected?.status==='confirmed'&&[refused.status,corrected.status];};
+    assert.deepEqual(await until(settled,'corrected publication confirmed, the refusal kept'),['refused','confirmed']);
+    await until(async()=>await inDoubt()===null,'the correction went, so no Review button');
     assert.deepEqual(await view('operation',{operation_id:original.prepareOperationId}),originalReceipt,'original refusal is immutable');
     assert.equal(p.calls.filter(c=>c.payload?.kind==='message.send').length,1,'one correction publication, no original replay');
-    await point(p,'#review-close');await choose(p);await ready(p,'t2');
+    await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');
+    await until(()=>p.evaluate(`Boolean(document.querySelector('#inline-writing-body')?.getBoundingClientRect().height)`),'the composer is restored');
+    assert.deepEqual(await settled(),['refused','confirmed'],'the page opened again with the kept refusal and its confirmed correction');
+    assert.equal(await inDoubt(),null,'and shows no Review button for them');
+    await choose(p);await ready(p,'t2');
     assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,2,'only the two deliberate reloads prompted');
     assert.deepEqual(p.errors,[]);observations.push({name:'native correction original refusal',originalReceipt,otherReceipt});
   });
