@@ -3,7 +3,10 @@ from __future__ import annotations
 """Explicit local Store calls; transport success never acknowledges delivery."""
 
 import argparse
+import hashlib
+import io
 import json
+import mimetypes
 import os
 from pathlib import Path
 import re
@@ -172,12 +175,14 @@ LEGACY_VERBS = ("binding", "view", "command")
 USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DIR] "
          "{binding | view FILE|- | command FILE|- | outcomes | new-outcome --title TITLE [--purpose TEXT] [--team A,B] | owner OUTCOME ACTOR "
          "| topics OUTCOME [--archived] | read TOPIC [--after SEQ] [--limit N] "
-         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT|- "
+         "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] [--attach FILE]... TEXT|- "
+         "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] "
          "| attachment ATTACHMENT --message MESSAGE --out FILE "
-         "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE FILE|- | note revise ITEM --expected N [--title TITLE] FILE|- "
+         "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
+         "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
          "| note read ITEM [--revision N] "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
@@ -188,6 +193,29 @@ SAFE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@-]{0,199}")
 # C0 controls other than tab, DEL and C1 controls: terminal instructions, not text.
 CONTROL = re.compile("[\x00-\x08\x0a-\x1f\x7f-\x9f]")
 C1 = re.compile("[\x7f-\x9f]")
+# Images by their bytes, so a screenshot shows in place whatever it is called;
+# Core checks each image's structure again before it is ready.
+IMAGE_SIGNATURES = ((b"\x89PNG\r\n\x1a\n", "image/png"), (b"\xff\xd8\xff", "image/jpeg"),
+                    (b"GIF87a", "image/gif"), (b"GIF89a", "image/gif"))
+# Kinds of file agents send that the standard table (read without the system's files) lacks.
+FILE_TYPES = {".md": "text/markdown", ".markdown": "text/markdown", ".log": "text/plain",
+              ".diff": "text/x-diff", ".patch": "text/x-diff", ".jsonl": "application/x-ndjson"}
+MEDIA_TYPE = re.compile(r"[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+")
+
+
+def _media_type(name, data):
+    """An attachment's type: an image's from its bytes, any other file's from its name.
+    A name that claims an image the bytes are not is a plain file."""
+    for signature, kind in IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return kind
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    guessed = FILE_TYPES.get(os.path.splitext(name)[1].lower()) or mimetypes.MimeTypes().guess_type(name)[0] or ""
+    guessed = guessed.lower()
+    if not MEDIA_TYPE.fullmatch(guessed) or len(guessed) > 127 or guessed.startswith("image/"):
+        return "application/octet-stream"
+    return guessed
 
 
 def _parser():
@@ -232,6 +260,7 @@ def _parser():
     post.add_argument("--to")
     post.add_argument("--reply-to")
     post.add_argument("--part", action="store_true")
+    post.add_argument("--attach", action="append", default=[])
     post.add_argument("text")
     whisper = verb("whisper")
     whisper.add_argument("topic")
@@ -246,6 +275,7 @@ def _parser():
     start.add_argument("--from", dest="source")
     start.add_argument("--seen")
     start.add_argument("--part", action="store_true")
+    start.add_argument("--attach", action="append", default=[])
     start.add_argument("text")
     coordinator = verb("coordinator")
     coordinator.add_argument("outcome")
@@ -301,11 +331,13 @@ def _parser():
     new.add_argument("scope")
     new.add_argument("--topic", action="store_true")
     new.add_argument("--title", required=True)
+    new.add_argument("--attach", action="append", default=[])
     new.add_argument("file")
     revise = page_verb("revise")
     revise.add_argument("item")
     revise.add_argument("--expected", type=int, required=True)
     revise.add_argument("--title")
+    revise.add_argument("--attach", action="append", default=[])
     revise.add_argument("file")
     page_read = page_verb("read")
     page_read.add_argument("item")
@@ -534,10 +566,10 @@ class Agent(PipelineVerbs):
         os.replace(str(partial), str(final))
         self._sync_directory(directory)
 
-    def dispatch(self, directory, request):
+    def dispatch(self, directory, request, send=None):
         envelope = request["command"]
         self.operation = envelope["operation_id"]
-        receipt = self.store.command(self.actor, envelope)
+        receipt = (send or self.store.command)(self.actor, envelope)
         if receipt.get("recorded") is True:
             try:
                 self._save_receipt(directory, envelope["operation_id"], receipt)
@@ -560,9 +592,9 @@ class Agent(PipelineVerbs):
             raise Failed(code, recorded=receipt.get("recorded") is True)
         return receipt["result"]
 
-    def command(self, kind, target, args, expected=None):
+    def command(self, kind, target, args, expected=None, operation=None, send=None):
         directory = self.outbox()
-        envelope = {"v": 1, "instance_id": self.profile.instance_id, "operation_id": "cli-" + uuid.uuid4().hex,
+        envelope = {"v": 1, "instance_id": self.profile.instance_id, "operation_id": operation or "cli-" + uuid.uuid4().hex,
                     "kind": kind, "target": target, "args": args,
                     "expected": dict(expected or {}, authority={key: self.binding[key] for key in ("authority_id", "authority_epoch")})}
         request = {"v": 1, "binding": self.binding, "command": envelope}
@@ -571,7 +603,7 @@ class Agent(PipelineVerbs):
         except OSError:
             self.unsent("the request could not be saved")
         self.operation = envelope["operation_id"]
-        return self.dispatch(directory, request)
+        return self.dispatch(directory, request, send)
 
     def text(self):
         if self.options.text != "-":
@@ -874,14 +906,66 @@ class Agent(PipelineVerbs):
         path = self.options.file
         if path == "-":
             return self.bounded_text(self.stdin)
+        return self.bounded_text(io.BytesIO(self.read_file(path, LIMITS["body_utf8_bytes"] + 1)))
+
+    def read_file(self, path, cap):
+        """At most cap bytes of the regular file at path, refused with nothing sent when it cannot be read."""
         try:
             fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
         except OSError as error:
             self.refuse("FILE_UNAVAILABLE", "%s cannot be read (%s); nothing was sent" % (path, error.strerror))
-        with os.fdopen(fd, "rb") as source:
-            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
-                self.refuse("FILE_UNAVAILABLE", "%s is not a regular file; nothing was sent" % path)
-            return self.bounded_text(source)
+        try:
+            with os.fdopen(fd, "rb") as source:
+                if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                    self.refuse("FILE_UNAVAILABLE", "%s is not a regular file; nothing was sent" % path)
+                return source.read(cap)
+        except OSError as error:
+            self.refuse("FILE_UNAVAILABLE", "%s cannot be read (%s); nothing was sent" % (path, error.strerror))
+
+    def attach(self, kept=()):
+        """Uploads each --attach file as people's uploads go (media.begin, then its
+        bytes through the verified stream) and returns the attachments to send.
+        Every file is read and held to the limits first, together with the ones
+        kept, so nothing is sent when one is refused."""
+        paths, files = self.options.attach, []
+        if len(kept) + len(paths) > LIMITS["attachment_count"]:
+            self.refuse("TOO_MANY_ATTACHMENTS", "At most %d attachments go with one message or page; nothing was sent" % LIMITS["attachment_count"])
+        total = sum(item["size_bytes"] for item in kept)
+        for path in paths:
+            name = os.path.basename(path)
+            try:
+                encoded = name.encode("utf-8")
+            except UnicodeError:
+                self.refuse("INVALID_ARGUMENT", "An attachment's file name must be UTF-8; rename %s; nothing was sent" % path)
+            if not encoded or len(encoded) > LIMITS["media_name_utf8_bytes"]:
+                self.refuse("INVALID_ARGUMENT", "%s needs a file name of 1 to %d bytes; nothing was sent" % (path, LIMITS["media_name_utf8_bytes"]))
+            # The larger cap first, so the type can be read from the bytes.
+            data = self.read_file(path, LIMITS["media_file_bytes"] + 1)
+            content_type = _media_type(name, data)
+            image = content_type.startswith("image/")
+            cap = LIMITS["image_bytes"] if image else LIMITS["media_file_bytes"]
+            if len(data) > cap:
+                self.refuse("ATTACHMENT_TOO_LARGE", "%s is larger than the %s an %s may be; nothing was sent" % (
+                    name, _size(cap), "image" if image else "attached file"))
+            total += len(data)
+            if total > LIMITS["attachment_bytes"]:
+                self.refuse("TOO_MANY_ATTACHMENTS", "The attachments come to more than %s together; nothing was sent" % _size(LIMITS["attachment_bytes"]))
+            files.append((name, content_type, data))
+        sent = []
+        for name, content_type, data in files:
+            media, publication = "media-" + uuid.uuid4().hex, "cli-" + uuid.uuid4().hex
+            try:
+                self.command("media.begin", {"media_id": media}, {"name": name, "content_type": content_type, "size_bytes": len(data),
+                             "sha256": hashlib.sha256(data).hexdigest(), "publish_operation_id": publication}, {"media_revision": 0})
+                ready = self.command("media.publish", {"media_id": media}, {}, {"media_revision": 1}, operation=publication,
+                                     send=lambda actor, envelope: self.store.publish_media(actor, envelope, io.BytesIO(data)))
+            except BaseException:
+                # Whatever ends an upload, what it was to go with is not sent.
+                _diagnostic(self.out.stderr, "%s was not attached, so the message or page was not sent; run the command again." % name)
+                raise
+            self.out.plain("attached %s (%s, %s%s) as %s" % (name, content_type, _size(len(data)), ", inline" if ready["inline"] else "", media))
+            sent.append({"id": media})
+        return sent
 
     def write_page(self, kind, target, expected, args):
         """Writes one revision, then reads it back: a page that does not read back
@@ -907,6 +991,7 @@ class Agent(PipelineVerbs):
         options = self.options
         scope = self.notebook_scope()
         args = {"title": options.title, "body": self.page_words(), "attachments": [], "references": []}
+        args["attachments"] = self.attach()
         item = "n-" + uuid.uuid4().hex
         result = self.write_page("memory.create", {"item_id": item, "owner_scope": scope}, 0, args)
         self.out.plain('created %s "%s" in %s at revision %d; read back matches' % (
@@ -920,7 +1005,8 @@ class Agent(PipelineVerbs):
         body = self.page_words()
         current = self.view("memory_current", {"item_id": options.item})
         args = {"title": current["title"] if options.title is None else options.title, "body": body,
-                "attachments": [{"id": item["id"]} for item in current["attachments"]], "references": current["references"]}
+                "attachments": [{"id": item["id"]} for item in current["attachments"]] + self.attach(kept=current["attachments"]),
+                "references": current["references"]}
         result = self.write_page("memory.revise", {"item_id": options.item}, options.expected, args)
         self.out.plain('revised %s "%s" to revision %d; read back matches' % (result["item_id"], _one_line(args["title"], 60), result["revision"]))
 
@@ -978,6 +1064,8 @@ class Agent(PipelineVerbs):
             flag = "--asks" if options.asks is not None else "--tells"
             self.refuse("INVALID_ARGUMENT", "%s names who it is to (%s A,B), and these name nobody; nothing was sent" % (flag, flag))
         args = {"body": self.text(), "addressees": addressees}
+        if options.attach:
+            args["attachments"] = self.attach()
         if addressees:
             args["intent"] = "ask" if options.asks is not None else "tell"
         if options.reply_to:
@@ -1030,13 +1118,15 @@ class Agent(PipelineVerbs):
                 writing["part"] = True
         elif seen:
             self.refuse("INVALID_ARGUMENT", "--seen names topics started from the message --from names; nothing was sent")
+        writing["attachments"] = self.attach()
+        uploaded = self.operation
         try:
             saved = self.command("opening.save", {"opening_id": opening}, writing, {"opening_revision": 0})
         except BaseException as stopped:
             # Once the save request is saved, any end but a final refusal may
             # leave the save recorded (or recordable by `retry`), so the
             # opening and its topic are named for `publish`.
-            if self.operation is not None and not (isinstance(stopped, Failed) and stopped.code == 2):
+            if self.operation not in (None, uploaded) and not (isinstance(stopped, Failed) and stopped.code == 2):
                 _diagnostic(self.out.stderr, "start: " + self.publish_hint(opening, topic))
             raise
         try:
@@ -1243,7 +1333,7 @@ class Agent(PipelineVerbs):
                     "acknowledged %s" % identity if kind == "delivery" and version == 2 else "change %s %s v%s" % (kind, identity, version))
 
 
-PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out", "file"}
+PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out", "file", "attach"}
 
 
 def _utf8_arguments(options):

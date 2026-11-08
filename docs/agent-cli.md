@@ -143,11 +143,11 @@ above; `binding`, `view` and `command` are unchanged.
 | `topics OUTCOME [--archived]` | Lists an outcome's topics, latest activity first, each with where it stands, then the done ones under `done (N):`, and says how many are archived; `--archived` lists only its archived topics ([topic-list.md](topic-list.md)). |
 | `read TOPIC [--after SEQ] [--limit N]` | Prints messages with sequence (instance-wide, so not contiguous within a topic), ID, author, addressees, full body and one line per attachment (see [Attachments](#attachments)). Acknowledges nothing. |
 | `inbox` | Lists pending deliveries, oldest first: topic title, sequence, author, preview, delivery ID. |
-| `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin. A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
+| `post TOPIC [--asks A,B \| --tells A,B] [--reply-to MESSAGE] [--attach FILE]... TEXT\|-` | Sends one `message.post`; `-` reads the text from stdin, and each `--attach` sends a file with it (see [Attachments](#attachments)). A post in a done topic makes it active again ([topic-list.md](topic-list.md#a-message-in-a-done-topic)), so post a closing summary before `state TOPIC done`. A message to someone says whether it asks or tells them (see [Asking and telling](#asking-and-telling)); with neither it goes to the topic and names nobody. |
 | `whisper TOPIC --to NAME [--reply-to MESSAGE] TEXT\|-` | Sends one `message.post` with `whisper: true` to NAME alone (see [whispers.md](whispers.md)). An agent only answers: `--reply-to` names a whisper sent to it, and `--to` the person who sent it. Prints `whispered m-… to NAME in t-…`. `read` shows a whisper you are in as `#470 m-… tony whispers to aim-ux` with a note under its body; `inbox` and `watch` print `whisper "TITLE" …` for one sent to you. Nobody else ever sees it. |
 | `coordinator OUTCOME NAME\|--none` | Chooses who answers in the outcome's conversation (`workspace.coordinator_set`, the owner only); see [conversation.md](conversation.md). |
 | `conversation OUTCOME [--new]` | Prints `conversation t-… in "TITLE": fable answers; 1 new`, then its newest messages as `read` prints them, with what became of each item under it (`[new]`, `[answered]`, `[topic]`, `[pipeline]`, `[waiting]`). `--new` lists only items not yet settled. `topics` prints the conversation's line first; `post --part` and `start --from … --part` take only part of an item, so it stays New. |
-| `start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT\|-` | Saves and publishes an opening. With `--from`, the topic answers that message: the topics already started from it are listed first, and the start is refused (`ALREADY_STARTED`, nothing saved) until `--seen` names each one you have read; see [sources.md](sources.md). If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
+| `start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--attach FILE]... TEXT\|-` | Saves and publishes an opening, its first message carrying any `--attach` files. With `--from`, the topic answers that message: the topics already started from it are listed first, and the start is refused (`ALREADY_STARTED`, nothing saved) until `--seen` names each one you have read; see [sources.md](sources.md). If the save is unconfirmed, names the opening and its topic to `publish` once `retry` records the save; `retry` of the save names them again. If the publish fails after the save is recorded, names them to `publish`. |
 | `publish OPENING [--seen T1,T2]` | Publishes a saved opening at its current revision; `--seen` names the topics already started from the message it answers. |
 | `state TOPIC active\|waiting\|review\|done [--note TEXT] [--waiting-on A,B]` | Says where a topic stands (`topic.update`). A new state clears the note and who it waits on unless they are given; only a waiting topic waits on someone, and only on people and agents who can read it; someone who loses the topic, by leaving it or the outcome, is taken off the list. Its participants, its creator, the outcome's owner or coordinator and anyone who has written in it can say it. Writing in a topic does not make you a participant: you are not woken for what is written there next, unless it names you. A topic is done until someone posts in it, which makes it active again. A topic read's `reader_may_say` says whether its reader may say it. |
 | `responsible TOPIC TEXT\|-` | Says what you are responsible for in a topic you take part in (`responsibility.set`, fenced on your note's own revision); empty text clears it. `read` lists each participant's note under the topic's title (see [responsibility.md](responsibility.md)). |
@@ -160,8 +160,8 @@ above; `binding`, `view` and `command` are unchanged.
 | `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
 | `attachment ATTACHMENT --message MESSAGE --out FILE` | Saves one attachment's bytes, read through the message that carries it, to a new file (see [Attachments](#attachments)). |
 | `notes SCOPE [--topic]` | Lists the pages in an outcome's Notebook, or with `--topic` a topic's own: id, title, revision and author, and `[changed since you read revision N]` on a page revised since the actor read it (see [Notebook pages](#notebook-pages)). |
-| `note new SCOPE [--topic] --title TITLE FILE\|-` | Makes a page in that Notebook from FILE's words, or stdin's for `-`, and reads it back. |
-| `note revise ITEM --expected N [--title TITLE] FILE\|-` | Writes the page's next revision from FILE's words, keeping its title (unless `--title`), attachments and evidence, and reads it back. Refused unless the page stands at revision N. |
+| `note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE\|-` | Makes a page in that Notebook from FILE's words, or stdin's for `-`, and reads it back. |
+| `note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE\|-` | Writes the page's next revision from FILE's words, keeping its title (unless `--title`), attachments and evidence, adding any `--attach` files, and reads it back. Refused unless the page stands at revision N. |
 | `note read ITEM [--revision N]` | Prints one revision of a page, the latest unless `--revision` names one. Records nothing. |
 
 Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
@@ -261,6 +261,32 @@ there by then it is left alone, and when the removal itself fails the refusal
 is still `OUT_UNAVAILABLE` and says a partial file may remain. It prints
 `saved NAME (TYPE, N bytes, sha256 HEX) to FILE`, or with `--json`
 `{attachment, message_id, path}`. It sends no command and acknowledges nothing.
+
+### Sending attachments
+
+`post`, `start`, `note new` and `note revise` take `--attach FILE`, once per
+file, and send each file the way the web page sends a person's upload:
+`media.begin` with its name, type, size and SHA-256, then its bytes through
+the verified stream (`media.publish`), so it lands in the same store and
+shows as people's uploads do. Each prints `attached NAME (TYPE, SIZE[,
+inline]) as media-…` before the message or page goes, and the attachments
+follow in the order given.
+
+- The name is the file's own name, without its directory.
+- An image is known by its bytes (PNG, JPEG, GIF, WebP), so a screenshot shows
+  in place whatever it is called, and Core checks its structure again before
+  it is ready. Any other file's type comes from its name (`.md` is
+  `text/markdown`, `.log` text/plain, an unknown one
+  `application/octet-stream`), and it shows as a named download. A name that
+  claims an image the bytes are not is sent as a plain file.
+- The limits are Core's: at most 8 attachments to a message or page (a
+  revision counts the ones it keeps), 16 MB for an image, 64 MB for any
+  other file, 64 MB together. Every file is read and held to them before
+  anything is sent, so a missing file (`FILE_UNAVAILABLE`), a file too large
+  (`ATTACHMENT_TOO_LARGE`) or too many (`TOO_MANY_ATTACHMENTS`) sends nothing.
+- If an upload is refused or not confirmed, the message or page is not sent,
+  and stderr says `NAME was not attached, so the message or page was not
+  sent; run the command again`. An upload already made is left unused.
 
 ## Notebook pages
 

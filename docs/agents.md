@@ -156,8 +156,10 @@ output; the exit codes are those of `command`.
   time, so none is printed. It does not acknowledge anything.
 - `inbox`: pending deliveries, oldest first, with topic, author, sequence
   and a preview.
-- `post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] (TEXT | -)`:
-  sends a `message.post`; `--to`, which says neither, is refused.
+- `post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] [--attach FILE]... (TEXT | -)`:
+  sends a `message.post`; `--to`, which says neither, is refused. Each
+  `--attach` uploads a file first, as the page uploads a person's
+  ([agent-cli.md](agent-cli.md#sending-attachments)); `start` takes it too.
 - `start OUTCOME --title TITLE [--with A,B] (TEXT | -)`: starts a topic
   through `opening.save` and `opening.publish`. If the save is not confirmed
   (busy, interrupted, a lost answer or an unsaved receipt), stderr names the
