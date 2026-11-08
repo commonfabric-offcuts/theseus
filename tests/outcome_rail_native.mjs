@@ -170,6 +170,13 @@ export async function railChecks({ check, page, until, control, view, facts, sho
         const at = `${size} ${theme}`;
         const p = await open(`rail-pipeline-${size}-${theme}`, '/?pipeline=w1', size, theme);
         await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && Boolean(document.querySelector("#pipeline-links a"))'), at + ': the rail is drawn');
+        if (SIZES[size].mobile) {
+          // On a phone the pipeline comes first, as a topic does: the rail is folded behind "☰ Topics".
+          const folded = await top(p);
+          assert.deepEqual([folded.rail, folded.control], [[], true], at + ': the folded rail shows nothing above the pipeline, and "☰ Topics" is shown');
+          await tap(p, '#rail-open');
+          await until(async () => (await drawer(p)).open, at + ': "☰ Topics" opens the rail over the pipeline');
+        }
         const seen = await top(p);
         assert.deepEqual(seen.rail.slice(0, 5), ['brand', 'outcomes-home', 'conversation-navigation', 'pipeline-navigation', 'topic-navigation'],
           at + ': the logo block, ← Outcomes, the outcome\'s conversation, its Pipeline row, then the topics');
