@@ -103,12 +103,27 @@ them. An attempt is one claim the runner settles itself, or one hosted turn
 with every hand it took: the claim that started it and each claim whose work
 was steered into it. However many messages were steered into a turn, it is one
 attempt, settled once, when Core records its end (`end_hosted_turn`); a hand
-to a turn that had already ended joins an attempt already settled. Each
-attempt comes to one fact (`claim_attempt` and `turn_attempt` in `health.py`):
+to a turn that had already ended joins an attempt already settled.
+
+A claim that settles without a hand while a turn of its agent runs, one that
+the same run of the runner handed work to, joins that turn too
+(`_running_turn`): the running turn could not take its message (Codex said it
+cannot take more work during a compact or review turn, or refused the steer),
+its Codex process exited with the steer in flight, or the claim expired. It is
+traffic to a turn already reaching the agent, so the turn's end decides it,
+and one Codex fault is one attempt: a process that exits with a steer in
+flight ends its turn `lost`, and that is the one failure. A notice accepted
+with work waiting gives the turn work to answer. A claim of another run joins
+nothing: a runner's Codex processes end with it, so the next runner reaches
+the agent only through a process of its own, and its first claim to reach the
+thread ends the turns the last one left (`lost`); a claim of the new runner
+that cannot reach it is an attempt that did not get through, however long the
+old turn stays open. Each attempt comes to one fact (`claim_attempt` and
+`turn_attempt` in `health.py`):
 
 | attempt | got through | did not, with why |
 | --- | --- | --- |
-| a claim | it settled `accepted` (its notice is in the agent's chat) or `queued` (an earlier one still waiting leads there) | it settled `error`, `unavailable` or `busy`, with the runner's own fixed code for how it went, or `expired` with its claim |
+| a claim, with no turn running that the same run handed work to | it settled `accepted` (its notice is in the agent's chat) or `queued` (an earlier one still waiting leads there) | it settled `error`, `unavailable` or `busy`, with the runner's own fixed code for how it went, or `expired` with its claim |
 | a hosted turn | it ended `completed`, or the agent recorded a command after its first claim began, however it ended: only an agent the turn reached can act in it | it ended `failed`, `lost` or `interrupted` with no command from the agent, with Codex's own code for why |
 
 An act recorded once Codex has started the turn but before the runner records
@@ -159,7 +174,8 @@ never on a timer of its own, and never again while nothing changes.
   same pair again with the next batch. What is told depends only on the
   subject's own facts, so it changes only when they do: for an agent, whether
   it is enabled, its attempts as each came out, and its own acts. How many
-  messages were steered into a turn is traffic too: a turn is one attempt.
+  messages were steered into a turn, or refused by it while it ran, is
+  traffic too: a turn is one attempt.
 - **A runner that never ran is not told.** It is red on the page and the
   link while a woken agent has work, since wakes that are needed are not
   going out. But nothing about it changed: the instance was never given a
@@ -247,7 +263,8 @@ Core cannot know.
 The database step (version 32) that adds `wake_facts`, `wake_turns` (each
 hosted turn still running, as one attempt) and `runner_prior` works the facts
 out once from the settlements already kept, by the same rule (`settled`) over
-the same attempts: every claim the runner settled itself and every hosted turn
+the same attempts: every claim the runner settled itself, less each that
+settled while a turn the same run handed work to ran, and every hosted turn
 that ended, in the order they settled. Before it, the only acts whose time
 Core kept are the messages an agent wrote, so a turn the agent wrote in after
 its first claim got through, and one it only acknowledged in counts as it
@@ -280,14 +297,15 @@ keeps what was shown and says so; an answer without `red`, `runner` and
 ### Limits
 
 - A hosted turn that Codex keeps running while its process goes on
-  answering settles nothing until it ends, however many steers it takes.
-  Core keeps no deadline for a turn (a turn may rightly run for many
-  minutes), and a claim's deadline ends when its work is handed, so there is
-  no fact that ends it sooner, and Health adds no timer of its own. A Codex
-  process that stops answering is ended by the runner, and its turns end
-  `lost`; a steer Codex never answers expires with its claim, which is an
-  attempt that did not get through; and a runner that stops or loses its
-  role is red at once, and the next one ends the turns it left as `lost`.
+  answering settles nothing until it ends, however many steers it takes and
+  however many claims it refuses meanwhile. Core keeps no deadline for a turn
+  (a turn may rightly run for many minutes), and a claim's deadline ends when
+  its work is handed, so there is no fact that ends it sooner, and Health
+  adds no timer of its own. A Codex process that stops answering is ended by
+  the runner, and its turns end `lost`; a steer Codex never answers expires
+  with its claim and joins the turn, which that end then settles; and a
+  runner that stops or loses its role is red at once, and the next one ends
+  the turns it left as `lost`.
 
 - A WebSocket that stays open but has stalled (a half-open connection after
   the Mac sleeps or the network changes) still looks live to the page, so the

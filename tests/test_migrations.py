@@ -2618,6 +2618,37 @@ class HealthStepCase(MigrationCase):
                          [("agent-a", 1000, 1, 61000, "expired", "expired"), ("agent-b", 150000, 1, 210000, "lost", None),
                           ("owner", None, 3, 30000, "failed", "serverOverloaded")])
 
+    def claims(self, recipient, claims):
+        """Claims the older version kept that settled other than handed: (outcome, finished_ms, runner_token),
+        each begun 500 ms before it settled."""
+        with sqlite3.connect(str(self.path)) as db:
+            for outcome, finished, runner in claims:
+                attempt = "a-%s-c%d" % (recipient, finished)
+                db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                           "VALUES (?,?,?,?,1,1,?,?)", (attempt, "c-" + attempt, runner, recipient, finished - 500, finished + 20000))
+                db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt, outcome, finished))
+
+    def test_upgrade_settles_a_claim_with_the_turn_the_same_run_handed_work_to_that_ran_when_it_settled(self):
+        # agent-a: a turn r-1 started at 61000 and Codex lost at 90000. r-1's claims while it ran
+        # (busy, unavailable, one found expired) joined it; r-1's claims before and after it, a claim of
+        # another run (r-2) while it ran, and r-1's claim after a steer it answered once the turn had
+        # ended, are each their own.
+        self.turns("agent-a", [([("start", 61000, None)], ("lost", None, 90000))])
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                       "VALUES ('a-late','c-late','r-1','agent-a',1,1,94500,115000)")
+            db.execute("INSERT INTO wake_results VALUES ('a-late','handed',95000)")
+            db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,finished_ms) "
+                       "VALUES ('a-late','agent-a','thread-agent-a','turn-0','steer','theseus:a-late',1,95000,'lost',95000)")
+        self.claims("agent-a", [("error", 30000, "r-1"), ("busy", 62000, "r-1"), ("unavailable", 63000, "r-1"), ("unavailable", 64000, "r-2"),
+                                ("expired", 70000, "r-1"), ("error", 91000, "r-1"), ("busy", 96000, "r-1")])
+        # agent-b: a turn r-1 started at 1000 still runs; r-1's claim at 2000 joined it, r-2's at 3000 is its own.
+        self.turns("agent-b", [([("start", 1000, None)], (None, None, None))])
+        self.claims("agent-b", [("busy", 2000, "r-1"), ("busy", 3000, "r-2")])
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(sorted(self.sql("SELECT recipient_id,failed_wakes,failing_since_ms,failed_outcome FROM wake_facts")),
+                         [("agent-a", 5, 30000, "busy"), ("agent-b", 1, 3000, "busy")])
+
     def test_step_back_restores_the_frozen_layout_and_every_row_while_no_notice_is_posted(self):
         self.settled(["error", "error", "error"])
         stored = everything(self.path)

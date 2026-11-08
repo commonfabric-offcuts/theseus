@@ -286,12 +286,18 @@ class AttemptPropertyCase(HealthCase):
     """Random hosted turns with 0 to 5 steers (read or not, some handed after their turn ended),
     claims the runner settles every way, claims left to expire, work withdrawn between a claim
     and its hand, and agent-a acting at every point, with Core's clock moving between every act.
+    While a turn runs, claims also settle every way but handed (busy, error, unavailable,
+    accepted, queued) or are left to expire, and Core's clock passing a runner's lease puts a
+    new runner in its place, so some of those claims are a run's that handed the turn work and
+    some are not.
 
     The test keeps its own list of attempts to reach agent-a, each as it came out, and agent-a's
     acts, and after every step:
     - what Core keeps (failed_wakes, failed_outcome, unanswered_wakes) is the pure function of
       that list and the acts: the failures since the last attempt that got through, and the
-      attempts left unanswered since agent-a last acted;
+      attempts left unanswered since agent-a last acted; a claim settled while a turn runs that
+      the same run of the runner handed work to is not on the list but joins the turn, which it
+      gives work to answer if it is a notice accepted with work waiting;
     - what is told about agent-a is what that function says, so a told key about agent-a
       changes only in a step that settled an attempt (or, for not answering, one where agent-a
       acted): no notice pair repeats while attempt outcomes do not change."""
@@ -316,10 +322,15 @@ class AttemptPropertyCase(HealthCase):
             expired = self.sql("SELECT outcome,finished_ms FROM wake_results WHERE attempt_id=?", (self.outstanding["attempt_id"],))
             if expired:
                 self.assertEqual(expired[0][0], "expired")
-                self.attempt(through=False, outcome="expired", unanswered=False, ended=expired[0][1])
+                if not self.joins(self.outstanding["runner"]):
+                    self.attempt(through=False, outcome="expired", unanswered=False, ended=expired[0][1])
                 self.outstanding = None
         self.tick()
         return claims[0] if claims else None
+
+    def joins(self, runner):
+        """Whether a claim of runner's settled now joins the running turn: the same run handed it work."""
+        return self.turn is not None and runner in self.turn["runners"]
 
     def attempt(self, through, outcome, unanswered, ended=None):
         self.attempts.append({"through": through, "outcome": outcome, "unanswered": unanswered, "ended": self.now if ended is None else ended})
@@ -363,7 +374,7 @@ class AttemptPropertyCase(HealthCase):
 
     def step(self, rng):
         if self.turn is not None:
-            choice = rng.choice(["steer"] * 4 + ["see"] * 2 + ["end"] * 3 + ["send", "time"] + ["act"] * self.acts_weight)
+            choice = rng.choice(["steer"] * 4 + ["see"] * 2 + ["end"] * 3 + ["fault"] * 3 + ["send", "time"] + ["act"] * self.acts_weight)
         else:
             choice = rng.choice(["start"] * 4 + ["claim"] * 3 + ["withdrawn", "expire", "late", "send", "time"] + ["act"] * self.acts_weight)
         if choice == "send":
@@ -394,7 +405,7 @@ class AttemptPropertyCase(HealthCase):
                 self.turns += 1
                 result = self.hand(claim, "turn-%d" % self.turns, "start")
                 self.turn = {"id": "turn-%d" % self.turns, "began": claim["lease_until_ms"] - 20000,
-                             "carried": result["handed_seq"] is not None, "steers": [], "unseen": []}
+                             "carried": result["handed_seq"] is not None, "steers": [], "unseen": [], "runners": {self.runner}}
                 if choice == "withdrawn":
                     self.part(True)
                     self.tick()
@@ -405,8 +416,38 @@ class AttemptPropertyCase(HealthCase):
             if claim is not None:
                 result = self.hand(claim, self.turn["id"], "steer")
                 self.turn["carried"] = self.turn["carried"] or result["handed_seq"] is not None
+                self.turn["runners"].add(self.runner)
                 self.turn["steers"].append(claim["attempt_id"])
                 self.turn["unseen"].append(claim["attempt_id"])
+        elif choice == "fault" and self.turn is not None:
+            # A message arrives while the turn runs and its claim does not hand: Codex cannot take
+            # more work (a compact or review turn), refuses the steer, or its process exits; or the
+            # runner never settles it, and the next claim finds it expired.
+            self.send_next("Traffic %d" % rng.randrange(10 ** 6))
+            self.tick()
+            claim = self.claim_one()
+            if claim is not None:
+                outcome = rng.choice(["busy", "error", "unavailable", "accepted", "queued", "expire"])
+                if outcome == "expire":
+                    self.outstanding = dict(claim, runner=self.runner)
+                    self.tick(21000)
+                else:
+                    # Sometimes the owner takes agent-a off its topic before the claim settles, so nothing waits.
+                    withdrawn = rng.random() < 0.25
+                    if withdrawn:
+                        self.part(False)
+                        self.tick()
+                    reason = {"busy": "not_steerable", "error": "steer_failed", "unavailable": "child_exited"}.get(outcome)
+                    result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome, reason=reason)
+                    self.assertEqual(result["status"], "settled", result)
+                    if withdrawn:
+                        self.part(True)
+                    work = outcome == "accepted" and bool(result["pending_count"])
+                    if not self.joins(self.runner):
+                        self.attempt(through=outcome in ("accepted", "queued"), outcome=outcome, unanswered=work)
+                    elif work:
+                        self.turn["carried"] = True
+                    self.tick()
         elif choice == "see" and self.turn is not None and self.turn["unseen"]:
             attempt_id = self.turn["unseen"].pop(rng.randrange(len(self.turn["unseen"])))
             self.fresh_lease()
@@ -433,7 +474,7 @@ class AttemptPropertyCase(HealthCase):
             claim = self.claim_one()
             if claim is not None:
                 # The runner never settles it: the next claim finds it expired.
-                self.outstanding = claim
+                self.outstanding = dict(claim, runner=self.runner)
                 self.tick(21000)
         if rng.random() < self.acts_weight / 10:
             self.act_now(rng)  # an act at any point

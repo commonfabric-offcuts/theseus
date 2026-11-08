@@ -345,7 +345,8 @@ class AttemptCase(HealthCase):
     were steered into a turn never changes what it says about whether agent-a can be woken."""
 
     def facts(self):
-        return self.sql("SELECT failed_wakes,failed_outcome,unanswered_wakes FROM wake_facts WHERE recipient_id='agent-a'")[0]
+        rows = self.sql("SELECT failed_wakes,failed_outcome,unanswered_wakes FROM wake_facts WHERE recipient_id='agent-a'")
+        return rows[0] if rows else (0, None, 0)  # no attempt settled yet
 
     def steered_turn(self, turn_id, steers, see=False):
         """A turn started with agent-a's work, then `steers` more messages, each steered into it."""
@@ -461,6 +462,143 @@ class AttemptCase(HealthCase):
         self.assertEqual(self.hand(claim, turn_id="turn-1", mode="steer")["handed_seq"], None)
         self.end("completed", turn_id="turn-1")
         self.assertEqual(self.facts(), (0, None, 1))
+
+    def settle(self, claim, outcome, reason=None):
+        result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome, reason=reason)
+        self.assertEqual(result["status"], "settled", result)
+        return result
+
+    def traffic_during(self, turn_id, outcomes):
+        """While turn_id runs, one more message arrives and each claim for it settles as outcomes say
+        (the runner's codes for a claim its running turn could not take), on the scheduler's backoff."""
+        self.now += 1000
+        self.send_next("More for %s" % turn_id)
+        for outcome, reason in outcomes:
+            due = self.store.runner_schedule(["agent-a"])["next_due_ms"]
+            self.now = max(self.now, due)
+            self.settle(self.claim_now(), outcome, reason)
+
+    def test_claims_that_fail_while_the_runners_turn_runs_join_that_turn_and_its_end_decides_them(self):
+        """The reviewer's P1: a message arrives while Codex cannot take more work (a compact or review
+        turn) or refuses the steer, so claims settle busy, error and unavailable while agent-a's turn
+        runs; the turn then completes and agent-a acts. Twice. Every turn ran and completed, so nothing
+        is told; and while the turn runs the page says what the settled attempts said."""
+        for round_ in range(2):
+            self.steered_turn("turn-b%d" % round_, 0)
+            self.traffic_during("turn-b%d" % round_, [("busy", "not_steerable"), ("busy", "not_steerable"),
+                                                      ("error", "steer_failed"), ("unavailable", "child_exited")])
+            self.assertEqual(self.facts(), (0, None, 0), "round %d: the turn still runs, so nothing settled" % round_)
+            self.assertEqual(self.light(), [])
+            for item in self.pending()["items"]:
+                self.ack(item["id"])
+            self.end("completed", turn_id="turn-b%d" % round_)
+            self.assertEqual(self.facts(), (0, None, 0), "round %d: one wake, and it got through" % round_)
+        self.assertEqual(self.notices(), [])
+        # Once no turn runs, each claim that fails is an attempt of its own.
+        self.traffic_during("after", [("busy", "not_steerable")] * FAILING_AFTER)
+        self.assertEqual(self.facts(), (FAILING_AFTER, "busy", 0))
+        self.assertEqual(self.light(), ["failing:agent-a"])
+
+    def test_one_codex_exit_with_a_steer_in_flight_is_one_wake_that_did_not_get_through(self):
+        """The reviewer's P2: Codex's process exits while a steer is in flight, so the steer's claim
+        settles unavailable and the turn ends lost. One fault, one attempt; twice is two, and tells
+        nothing; the third is told once, with the turn's own why."""
+        for number in range(FAILING_AFTER):
+            self.steered_turn("turn-x%d" % number, 0)
+            self.traffic_during("turn-x%d" % number, [("unavailable", "child_exited")])
+            self.end("lost", turn_id="turn-x%d" % number)
+            self.assertEqual(self.facts(), (number + 1, "lost", 0), "exit %d" % number)
+            self.assertEqual(self.notices() != [], number + 1 == FAILING_AFTER, "exit %d" % number)
+        self.assertEqual([body for _, body in self.notices()],
+                         ["Health: agent-a can't be woken: its last 3 wakes did not get through. Why: its Codex turn was lost." + NOTICE_TAIL])
+
+    def test_a_steer_claim_left_to_expire_joins_its_turn_even_when_the_next_runner_finds_it(self):
+        """A steer's claim is never settled (its runner stopped); the next claim finds it expired while
+        the turn is still open, and the next runner ends the turn lost: one attempt that did not get
+        through, once the same runner finds it and once the next one does."""
+        for number, wait in enumerate([21000, 61000]):
+            self.steered_turn("turn-e%d" % number, 0)
+            self.now += 1000
+            self.send_next("More for turn-e%d" % number)
+            before = self.runner
+            self.claim_now()
+            self.now += wait
+            claim = self.claim_now()
+            self.assertEqual(self.runner == before, wait < 30000, "the runner taking the next claim")
+            self.assertEqual(self.facts(), (0, None, 0), "the expired claim joined the running turn")
+            self.end("lost", turn_id="turn-e%d" % number)
+            self.assertEqual(self.facts(), (1, "lost", 0))
+            self.settle(claim, "unavailable", "abandoned")
+            self.assertEqual(self.facts(), (2, "unavailable", 0), "a claim after the turn ended is its own")
+            self.now += 61000
+            self.hand(self.claim_now(), turn_id="turn-ok%d" % number)
+            self.ack(self.pending()["items"][0]["id"])
+            self.end("completed", turn_id="turn-ok%d" % number)
+            self.assertEqual(self.facts(), (0, None, 0))
+
+    def test_claims_of_a_runner_that_never_handed_work_to_the_running_turn_are_attempts_of_their_own(self):
+        """A runner stops with its turn open, and the next one cannot reach agent-a (its Codex process
+        exits before it reads the thread, so it never ends the turn the last one left): every claim
+        of the new runner is an attempt of its own, so the team is told, though the old turn is open."""
+        self.steered_turn("turn-1", 0)
+        before = self.runner
+        self.now += 61000
+        self.send_next("More for turn-1")
+        for _ in range(FAILING_AFTER):
+            self.miss(reason="child_exited")
+        self.assertNotEqual(self.runner, before)
+        self.assertEqual(self.facts(), (FAILING_AFTER, "unavailable", 0))
+        self.assertEqual(self.light(), ["failing:agent-a"])
+        self.end("lost", turn_id="turn-1")
+        self.assertEqual(self.facts(), (FAILING_AFTER + 1, "lost", 0))
+
+    def test_a_notice_accepted_with_work_while_the_turn_runs_gives_the_turn_work_and_its_end_decides_it(self):
+        """A turn handed nothing pending (the owner took the work away before its hand) runs while a
+        notice with work is accepted: it joins the turn, so the turn was given work. Completed with no
+        act it is left unanswered once; failed it did not get through, and nothing is left unanswered."""
+        for number, status in enumerate(["completed", "failed"]):
+            self.now += 61000
+            self.send_next("Work %d" % number)
+            claim = self.claim_now()
+            self.part(False)
+            self.assertIsNone(self.hand(claim, turn_id="turn-%d" % number)["handed_seq"])
+            self.part(True)
+            self.now += 1000
+            self.send_next("More %d" % number)
+            self.now = max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"])
+            self.assertTrue(self.settle(self.claim_now(), "accepted")["pending_count"])
+            self.assertEqual(self.facts(), (0, None, number), "turn %d still runs" % number)
+            self.end(status, turn_id="turn-%d" % number, **({} if status == "completed" else {"error_code": "serverOverloaded"}))
+        self.assertEqual(self.facts(), (1, "failed", 1))
+        # A notice accepted once the owner took the work away again gave the turn nothing to answer.
+        self.now += 61000
+        self.send_next("Work 2")
+        claim = self.claim_now()
+        self.part(False)
+        self.assertIsNone(self.hand(claim, turn_id="turn-2")["handed_seq"])
+        self.part(True)
+        self.now += 1000
+        self.send_next("More 2")
+        self.now = max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"])
+        claim = self.claim_now()
+        self.part(False)
+        self.assertEqual(self.settle(claim, "accepted")["pending_count"], 0)
+        self.end("completed", turn_id="turn-2")
+        self.assertEqual(self.facts(), (0, None, 1), "the turn got through and was given nothing to answer")
+        # Nor did a claim with work waiting that the running turn could not take.
+        self.part(True)
+        self.now += 61000
+        self.send_next("Work 3")
+        claim = self.claim_now()
+        self.part(False)
+        self.assertIsNone(self.hand(claim, turn_id="turn-3")["handed_seq"])
+        self.part(True)
+        self.now += 1000
+        self.send_next("More 3")
+        self.now = max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"])
+        self.assertTrue(self.settle(self.claim_now(), "busy", "not_steerable")["pending_count"])
+        self.end("completed", turn_id="turn-3")
+        self.assertEqual(self.facts(), (0, None, 1), "the turn got through and was given nothing to answer")
 
 
 @own_cases
