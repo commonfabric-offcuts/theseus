@@ -39,7 +39,7 @@ const { webkit } = createRequire(import.meta.url)(playwrightPath);
 const HELD = 'holds a read open with the Chrome harness\'s request interception (intercept), which this harness does not offer';
 const SKIPPED = {
   '--rail': {
-    'rail the outcome\'s conversation row stands in its place while its read is out, so on a phone the topics and the page below do not move when it lands': HELD,
+    'rail the outcome\'s conversation row stands in its place while its read is out, so on a phone the topics in the open rail and the page below do not move when it lands': HELD,
     'rail an outcome with no conversation never draws its row: on a phone nothing stands there while the conversation\'s read is out, nor after it lands, and nothing moves': HELD,
     'rail a write elsewhere shows with no reload, and an unconfirmed state change says where the topic stands': HELD,
     'rail waited on only in this outcome, a topic page never lights ← Outcomes as it loads; with a wait elsewhere too it counts one other': 'reads Chrome\'s network event stream (Network.requestWillBeSent) to know when a read was sent',
