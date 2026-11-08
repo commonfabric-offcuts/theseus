@@ -334,3 +334,69 @@ test('an Api tells its holder when the server refused its session, and on nothin
     }
   }
 });
+
+// The page stops requests of its own: a foreground read stops the background
+// read in flight where the server keeps the lanes apart (cleanup.mjs
+// foreground), and removing an image stops its upload. Theseus was not asked
+// to answer, so none of these says anything of the live feed: it is left
+// alone, and a line hidden while the page was connected stays hidden. A wait
+// the page gives up on is different: nothing answered in time, so a
+// background read that runs out doubts the feed as a Reader open's deadline does.
+test('a request the page stopped itself leaves the live feed alone; one it gave up waiting for makes the page open the feed again', async () => {
+  const sockets = [];
+  const feed = new Live({ token: 'session', socket: () => { const socket = { closed: false, close() { this.closed = true; } }; sockets.push(socket); return socket; },
+    timers: { setTimeout: () => 1, clearTimeout() {} }, origin: 'https://fixture' });
+  follow(feed); feed.start();
+  const up = () => feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) });
+  const turns = async () => { for (let i = 0; i < 20; i++) await new Promise(resolve => setImmediate(resolve)); };
+  // A browser's fetch to a server that answers every request, when let to, and ends when its request is aborted.
+  const answering = [];
+  const browser = (path, init) => new Promise((resolve, reject) => {
+    answering.push(() => resolve(theseus(200, null)));
+    init.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+  });
+  const silent = (path, init) => new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true }));
+  const stoppedBy = async (start) => { const controller = new AbortController(), failing = failureOf(start(controller.signal)); await turns(); controller.abort(); return failing; };
+  const line = element();
+  for (const [what, stop] of [
+    ['a foreground read stopped the background read in flight', async () => {
+      const cleanup = cleanupWith(browser); cleanup.runtime.readTimeoutMs = 60000;
+      const background = failureOf(cleanup.read(options => cleanup.api.view('changes', {}, options)));
+      await turns();
+      const foreground = cleanup.foreground(), opening = foreground.read(options => cleanup.api.view('source', {}, options));
+      await background; await turns();
+      const after = [sockets.length, feed.state];
+      answering.at(-1)(); await opening; foreground.release();
+      return after;
+    }],
+    ['a request the page aborted', async () => { await stoppedBy(signal => new Api('session', browser).view('source', {}, { signal })); return [sockets.length, feed.state]; }],
+    ['an upload the person removed', async () => { await stoppedBy(signal => new Api('session', browser).upload({ v: 1 }, new Blob(['x']), { signal })); return [sockets.length, feed.state]; }],
+    ['a request the page aborted while its answer was read', async () => {
+      await stoppedBy(signal => new Api('session', (path, init) => new Response(new ReadableStream({ start(body) {
+        init.signal.addEventListener('abort', () => body.error(new DOMException('The operation was aborted.', 'AbortError')), { once: true });
+      } }), { status: 200 })).view('source', {}, { signal }));
+      return [sockets.length, feed.state];
+    }],
+  ]) {
+    up();
+    const before = sockets.length;
+    showLine(line, lost());
+    assert.equal(said(line), '', `${what}: a failure while connected is hidden`);
+    assert.deepEqual(await stop(), [before, 'live'], `${what}: Theseus was never left unanswering, yet the page let its live feed go and opened another`);
+    assert.deepEqual([sockets.length, feed.state, said(line)], [before, 'live', ''], `${what}: the feed is left alone and the hidden line stays hidden`);
+  }
+  for (const [what, giveUp] of [
+    ['a background read that ran out', () => { const cleanup = cleanupWith(silent); return failureOf(cleanup.read(options => cleanup.api.view('changes', {}, options))); }],
+    ['a Reader open that ran out', async () => {
+      const cleanup = cleanupWith(silent), foreground = cleanup.foreground();
+      try { return await failureOf(foreground.read(options => cleanup.api.view('source', {}, options))); } finally { foreground.release(); }
+    }],
+  ]) {
+    up();
+    const before = sockets.length, doubted = sockets.at(-1);
+    showLine(line, await giveUp());
+    assert.deepEqual([sockets.length - before, doubted.closed, feed.state, said(line) !== ''], [1, true, 'down', true],
+      `${what}: nothing answered in time, so the feed is opened again and the line shows`);
+  }
+  follow(null);
+});

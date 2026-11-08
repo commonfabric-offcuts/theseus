@@ -120,15 +120,19 @@ const answerOf = response => response.json().catch(() => null);
 // Every attempt an Api makes: when it began, and, when Theseus answered it
 // (what it asked for, or a refusal of Theseus's own), that it did (contact).
 // One that got no answer may say the feed is gone; one the server refused for
-// the Api's session is told to whoever holds that session (refused).
-async function attempted(api, attempt) {
+// the Api's session is told to whoever holds that session (refused). One the
+// page stopped itself, through the signal it gave the attempt, says nothing
+// of the feed: Theseus was not left to answer it (a foreground read stopping
+// a background one, an image removed). A wait the page gave up on did get no
+// answer, and the Deadline that ended it says so itself (Deadline failure).
+async function attempted(api, attempt, signal) {
   const began = clock;
   try { const result = await attempt(); answered(); return result; }
   catch (error) {
     if (error instanceof AttemptError) {
       error.began = began;
       if (!unreached(error)) answered();
-      else unansweredAttempt(error);
+      else if (!signal?.aborted) unansweredAttempt(error);
       if (sessionRefused(error)) api.refused(error);
     }
     throw error;
@@ -144,7 +148,7 @@ export class Api {
     this.refused = () => {};
   }
 
-  request(path, data, options) { return attempted(this, () => this.attempt(path, data, options)); }
+  request(path, data, options) { return attempted(this, () => this.attempt(path, data, options), options?.signal); }
   async attempt(path, data, { signal, readClass } = {}) {
     let response;
     try {
@@ -171,7 +175,7 @@ export class Api {
   command(envelope) { return this.request('/api/command', envelope); }
   view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
 
-  upload(envelope, blob, options) { return attempted(this, () => this.sendUpload(envelope, blob, options)); }
+  upload(envelope, blob, options) { return attempted(this, () => this.sendUpload(envelope, blob, options), options?.signal); }
   async sendUpload(envelope, blob, { signal } = {}) {
     const command = JSON.stringify(envelope).replace(/[\u007f-\uffff]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
     let response;

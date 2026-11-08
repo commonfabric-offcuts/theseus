@@ -149,7 +149,12 @@ check for the same commit runs beside them rather than after them.
   (`web/live.mjs` `reopen`), and until the new one answers the stream is
   down, so the line says what happened. An attempt still out when something
   answered, one Theseus answered, or one made while the stream is already
-  down leaves the stream alone, so nothing reopens it in a loop.
+  down leaves the stream alone, so nothing reopens it in a loop. So does one
+  the page stopped itself, since Theseus was not left to answer it: a
+  foreground read stopping the background read in flight, or an image
+  removed while it uploads. A read the page gives up waiting for (a Reader
+  open's deadline, a background read that runs out) did get no answer, and
+  counts.
   A failure is about reaching Theseus when the attempt got no answer of
   Theseus's own (nothing answered, or only something in front of it did, such
   as the 502 with an empty body Tailscale Serve gives while the server

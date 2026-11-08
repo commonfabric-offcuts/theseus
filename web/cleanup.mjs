@@ -122,10 +122,12 @@ export class RecoveryCleanup {
     const epoch = this.readEpoch;
     const next = this.readTail.then(async () => {
       if (this.foregroundCount || this.stopped() || own && this.paused() || epoch !== this.readEpoch) throw this.deferred();
-      const controller = new AbortController();
-      this.readController = controller;
-      const timer = setTimeout(() => controller.abort(), this.runtime.readTimeoutMs);
-      const transport = Promise.resolve().then(() => operation({ signal: controller.signal, ...(this.partitioned ? { readClass: 'background' } : {}) }));
+      // A read that runs out got no answer (api.mjs Deadline); one a
+      // foreground read stops (readController) is the page's own doing.
+      const deadline = new Deadline(this.runtime.readTimeoutMs, 'Background read timed out.');
+      this.readController = deadline.controller;
+      const timer = setTimeout(() => deadline.failure(), this.runtime.readTimeoutMs);
+      const transport = Promise.resolve().then(() => operation({ signal: deadline.signal, ...(this.partitioned ? { readClass: 'background' } : {}) }));
       this.activeRead = transport;
       try {
         const answer = await transport;
