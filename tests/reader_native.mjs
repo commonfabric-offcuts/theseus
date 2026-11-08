@@ -411,20 +411,26 @@ try {
 
   // The save status beside the buttons, wherever the writing column is
   // narrow: a narrow window in either layout, the Wide layout with its divider
-  // anywhere, a phone, and the topic's new-message composer. Every words the
-  // status can say (app-session.mjs's saveSign) are shown in turn: the writing
-  // and the buttons stay still, and while the footer has room to read in, the
-  // usual words take one line and the longest at most three.
-  await check('finished the save status keeps room to read beside the buttons at every width and layout, and a change of words never moves the writing', async () => {
-    const words = [...(await readFile(path.join(root, 'web/app-session.mjs'), 'utf8')).matchAll(/sign\('[a-z]*', '([^']+)'\)/g)].map(match => match[1]);
-    assert.ok(words.length >= 9 && words.includes('Saved to Theseus'), 'every words of the saving sign are read from the page\'s own code');
+  // anywhere, a phone, and the topic's new-message composer. The status is one
+  // line whatever it says, so its words are never measured against a guess:
+  // these are the longest it says today, words built elsewhere (an image's
+  // file name, the cleanup error) and words no status says yet. The writing
+  // and the buttons stay still for every one of them, "Saved to Theseus" reads
+  // whole wherever the footer has room to read in, and a tap on a status too
+  // long for its line shows all of it.
+  await check('finished the save status is one line whatever it says: no words move the writing, "Saved to Theseus" reads whole at every width and layout, and a tap shows all of a long status', async () => {
+    const long = 'Finish or remove the image Screenshot 2026-11-07 at 10.32.15 AM.png before sending.';
+    const words = ['Saved to Theseus', 'Saved', 'Source or destination unavailable — writing kept on this device',
+      'The image change is not saved on this device. Retry before sending.', 'Saved; recovery-copy cleanup could not finish. Retry from Review versions.',
+      long, `Finish or remove the image ${'IMG_0001-'.repeat(40)}.png before sending.`, 'Words no status says yet. '.repeat(12)];
     const rem = 16, roomy = 12 * rem;
     let opened = 0;
     const measure = surface => evaluate(`(()=>{const at=s=>{const b=document.querySelector(s).getBoundingClientRect();return [b.x,b.y,b.width,b.height].map(n=>Math.round(n*2)/2)};
       const lines=e=>{const r=document.createRange();r.selectNodeContents(e);return new Set([...r.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size};
       const ids=${JSON.stringify(surface)}==='reader'?['#writing-body','#send-reply','#add-image','#toggle-note','#reader .writing-footer']:['#inline-writing-body','#inline-send','#inline-add-image','#inline-composer .writing-footer'];
       const status=document.querySelector(${JSON.stringify(surface)}==='reader'?'#save-state':'#inline-save-state'),hint=document.querySelector(${JSON.stringify(surface)}==='reader'?'#writing-hint':'#inline-writing-hint');
-      return {boxes:ids.map(at),footer:at(ids.at(-1))[2],status:at('#'+status.id),statusLines:lines(status),hintLines:lines(hint)}})()`);
+      return {boxes:ids.map(at),footer:at(ids.at(-1))[2],status:at('#'+status.id),statusLines:lines(status),whole:status.scrollWidth<=status.clientWidth,hintLines:lines(hint)}})()`);
+    const say = (status, text) => evaluate(`document.querySelector(${JSON.stringify(status)}).textContent = ${JSON.stringify(text)}`);
     // The cases after this one run at the harness's own window size.
     try {
       for (const [width, height, mobile = false] of [[1440, 900], [1000, 800], [900, 800], [800, 800], [761, 800], [390, 844, true]]) {
@@ -449,14 +455,25 @@ try {
           await until(() => evaluate('document.getAnimations().every(animation => animation.playState !== "running")'), 'settled layout');
           const label = `${width}px ${view}`, status = surface === 'reader' ? '#save-state' : '#inline-save-state';
           const shown = [];
-          for (const text of words) { await evaluate(`document.querySelector(${JSON.stringify(status)}).textContent = ${JSON.stringify(text)}`); shown.push({ text, ...await measure(surface) }); }
+          for (const text of words) { await say(status, text); shown.push({ text, ...await measure(surface) }); }
           const first = shown[0];
-          observations.push({ label, footer: first.footer, status: first.status, lines: Object.fromEntries(shown.map(item => [item.text, item.statusLines])), hintLines: first.hintLines });
+          observations.push({ label, footer: first.footer, status: first.status, whole: Object.fromEntries(shown.map(item => [item.text.slice(0, 40), item.whole])), hintLines: first.hintLines });
           for (const item of shown) assert.deepEqual(item.boxes, first.boxes, `${label}: "${item.text}" moves nothing: the writing and the buttons stay still`);
+          for (const item of shown) assert.equal(item.statusLines, 1, `${label}: "${item.text}" takes one line`);
           if (first.footer < roomy) continue;
-          assert.equal(shown.find(item => item.text === 'Saved to Theseus').statusLines, 1, `${label}: "Saved to Theseus" takes one line, never a word to a line`);
-          assert.ok(Math.max(...shown.map(item => item.statusLines)) <= 3, `${label}: the longest status takes at most three lines`);
+          assert.equal(first.whole, true, `${label}: "Saved to Theseus" reads whole beside the buttons`);
           assert.ok(first.hintLines <= 2, `${label}: the hint takes at most two lines`);
+          if (width !== 1440 || view !== 'stacked') continue;
+          // A tap on a status too long for its line shows all of it, in place;
+          // a tap back in the writing returns it to its line.
+          await say(status, long);
+          assert.equal((await measure(surface)).whole, false, `${label}: the long status ends in an ellipsis`);
+          await point(status);
+          const tapped = await measure(surface);
+          observations.push({ label: `${label} tapped`, lines: tapped.statusLines, whole: tapped.whole });
+          assert.ok(tapped.whole && tapped.statusLines > 1, `${label}: a tap shows all its words`);
+          await point('#writing-body');
+          assert.deepEqual((await measure(surface)).boxes, first.boxes, `${label}: back in the writing, the status is one line again`);
         }
       }
     } finally { await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }); }
@@ -499,17 +516,22 @@ try {
       { name: 'arrows-for-a-page-oldest-on-top', file: 'web/reader.mjs', index: 11,
         from: 'const NEWEST_ON_TOP = true;', to: 'const NEWEST_ON_TOP = false;', expected: /up is the newer message, and comes first/ },
       // The status's room as the branch first had it: only on a phone, so a
-      // narrow Wide layout squeezed it to a word a line and it moved the writing.
+      // narrow Wide layout squeezed "Saved to Theseus" to a word or two.
       { name: 'status-room-only-on-a-phone', file: 'web/aim.css', index: 12,
         from: '@container writing-footer (max-width:34rem){#reader', to: '@media(max-width:760px){#reader',
-        expected: /\d+px wide[^:]*: .*(moves nothing|takes one line|at most three lines|at most two lines)/ },
-      { name: 'reserve-shorter-than-a-status', file: 'web/index.html', index: 12,
-        from: '<span id="save-state" role="status">Saved</span><span class="save-reserve" aria-hidden="true">Source or destination unavailable — writing kept on this device</span>',
-        to: '<span id="save-state" role="status">Saved</span><span class="save-reserve" aria-hidden="true">Saved on this device — not yet saved to Theseus</span>',
-        expected: /"Source or destination unavailable — writing kept on this device" moves nothing/ },
+        expected: /\d+px wide[^:]*: "Saved to Theseus" reads whole/ },
+      // The status's room as the last round had it: as tall as its words, so a
+      // long file name or the cleanup error grows the footer.
+      { name: 'status-as-tall-as-its-words', file: 'web/aim.css', index: 12,
+        from: '.save-status>span{display:block;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        to: '.save-status>span{display:block;font-size:.78rem;color:var(--muted)}',
+        expected: /"Finish or remove the image Screenshot 2026-11-07 at 10\.32\.15 AM\.png before sending\." moves nothing/ },
+      { name: 'tap-shows-nothing-more', file: 'web/aim.css', index: 12,
+        from: '.save-status>span:focus{white-space:normal;overflow-wrap:anywhere;outline:none}', to: '',
+        expected: /a tap shows all its words/ },
       { name: 'composer-status-squeezed', file: 'web/aim.css', index: 12,
         from: '@container writing-footer (max-width:28rem){#inline-composer .writing-footer>div{order:-1;flex:1 0 100%}#inline-composer .writing-footer>button:last-child{margin-left:auto}}', to: '',
-        expected: /px composer: .*(moves nothing|takes one line|at most three lines|at most two lines)/ },
+        expected: /px composer: "Saved to Theseus" reads whole/ },
     ] : [
       { name: 'nonempty-reply-misread-as-empty', file: 'web/reader.mjs', index: 5,
         from: 'writingEmpty: !reply.body.trim() && !reply.attachments.length', to: 'writingEmpty: true', expected: /nonempty Shift-Cmd-Return sends exactly once/ },
