@@ -121,36 +121,43 @@ check for the same commit runs beside them rather than after them.
   A refused live stream starts the same renewal. **Reconnect** does it on
   demand; while the server is not answering, the page says so. It never
   reloads itself or erases its journal.
-- A line whose every failure was about reaching Theseus goes once the page
-  reaches Theseus again, wherever it was written: the page's status line, the
-  Reader's notice, the composer's notice or the navigation line. A failure is
-  about reaching Theseus when the attempt got no answer of Theseus's own
-  (nothing answered, or only something in front of it did, such as the 502
-  with an empty body Tailscale Serve gives while the server restarts; Theseus
-  answers every request it reads with JSON, or the page stopped waiting for
-  an answer) or the server refused the page's session. Every wait the page
-  bounds (a Reader open, its next or previous message, **Retry access**, a
-  recovery read) is bounded by `web/api.mjs` `Deadline`, which aborts the
-  requests and ends the wait as one that got no answer; no other module makes
-  an attempt's failure or ends a wait on a timer of its own. The line works this out from the failures it shows (`web/api.mjs`
-  `unreached`, `web/lines.mjs`), never from its writer: every writer hands it
-  the error itself, and code that puts a failure into words of its own makes
-  them an error whose cause is that failure, which is judged in its place.
-  Words beside such a failure say what it stopped, and the page does that
-  again once it reaches Theseus (a Notebook page's read and what changed
-  since, the topic's composer) or the person asks again (a mark, an
-  attachment). A line that carries an answer Theseus gave, words with no
-  failure, or a control of its own (Reload this page) stays.
-- A failure to reach Theseus can settle after the page has already reached
-  it again: a read still out on a stalled connection when the live stream
-  comes back on a fresh one, or the session is renewed, then runs out of
-  time. A quiet live stream says nothing more, so nothing later would clear
-  what that failure leaves. Every attempt is stamped with when it began
-  (`web/api.mjs` `overtaken`), and one that began before the page last
-  reached Theseus is over as it settles: it leaves no line, and what it held
-  up (a Notebook page's read, the topic's composer) is done again at once.
-  The attempt made again began after, so if it fails too it waits for the
-  next time the page reaches Theseus.
+- A line whose every failure was about reaching Theseus (a connection line)
+  shows only while what it says is true now: the page is not connected (its
+  live stream is down) and nothing has answered since the failure it
+  describes. Anything Theseus answers counts: a request it answered, a refusal
+  of its own included, the live stream coming up or naming a commit, or the
+  server handing out its session; so does the live stream having been up
+  after the failure. The page keeps those facts in one place (`web/api.mjs`
+  `contact`, each stamped from one clock that only goes forward) and every
+  connection line is worked out from them afresh whenever they change
+  (`web/lines.mjs`): the status line, the Reader's notice, the composer's
+  notice and the navigation line. Nothing counts reconnections. So a read that
+  runs out on a stalled connection while the live stream is up leaves no
+  line, a line written while the stream was down goes at the first answer of
+  any kind, and a line that has gone never comes back.
+  A failure is about reaching Theseus when the attempt got no answer of
+  Theseus's own (nothing answered, or only something in front of it did, such
+  as the 502 with an empty body Tailscale Serve gives while the server
+  restarts; Theseus answers every request it reads with JSON, or the page
+  stopped waiting for an answer) or the server refused the page's session.
+  Every wait the page bounds (a Reader open, its next or previous message,
+  **Retry access**, a recovery read) is bounded by `web/api.mjs` `Deadline`,
+  which aborts the requests and ends the wait as one that got no answer; no
+  other module makes an attempt's failure or ends a wait on a timer of its
+  own. The line works this out from the failures it shows (`web/api.mjs`
+  `unreached`), never from its writer: every writer hands it the error itself,
+  and code that puts a failure into words of its own makes them an error
+  whose cause is that failure, which is judged in its place. A line that
+  carries an answer Theseus gave, words with no failure, or a control of its
+  own (Reload this page) stays as written.
+- Words beside such a failure say what it stopped. What the page could not do
+  for want of Theseus (a Notebook page's read and what changed since, the
+  topic's composer) is done again once Theseus has answered since the attempt
+  that failed began (`web/api.mjs` `answeredSince`): at once for an attempt
+  still out when the live stream came back, otherwise at the next answer of
+  any kind. The attempt made again began after that answer, so if it fails
+  too it waits for a newer one, and nothing is tried in a loop. A mark or an
+  attachment the person asks for again.
 - **Review saved writing** handles a changed runtime authority. Automatic
   updates pause; recovery proceeds through the existing review controls.
 - If a topic becomes unavailable, its lists are hidden and sending to it is

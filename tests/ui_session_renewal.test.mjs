@@ -83,3 +83,16 @@ test('the session is read from the page the way the browser reads its own meta',
   assert.equal(sessionIn(page('&amp;lt;')), '&lt;', 'once, not twice');
   assert.equal(sessionIn('<meta name="other" content="x">'), null);
 });
+
+// The server handing out its session is Theseus answering the page
+// (web/api.mjs contact): a renewed session and the current one both are; no
+// answer, or a page with no session, is not.
+test('a session handed out is an answer, whether it is newer or the one the page holds; nothing handed out is not', async () => {
+  const { contact } = await import('../web/api.mjs');
+  for (const [name, options, counts] of [['renewed', {}, true], ['current', { html: page('old') }, true],
+    ['not answering', { fails: true }, false], ['not ok', { ok: false }, false], ['no session', { html: page('__AIM_SESSION_TOKEN__') }, false]]) {
+    const before = contact.answered;
+    await fixture(options).renewal.renew();
+    assert.equal(contact.answered > before, counts, name);
+  }
+});

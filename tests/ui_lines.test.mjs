@@ -1,18 +1,20 @@
 // The page's lines work out from the failure they show whether it is about
-// reaching Theseus, and only such a line goes when the page reaches Theseus
-// again (web/lines.mjs, web/api.mjs unreached).
+// reaching Theseus, and such a line shows only while the page is not connected
+// and nothing has answered since that failure (web/lines.mjs, web/api.mjs
+// unreached, unanswered, contact).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Api, AttemptError, Deadline, unreached, sessionRefused, overtaken, reachedTheseus } from '../web/api.mjs';
+import { Api, AttemptError, Deadline, unreached, sessionRefused, unanswered, answeredSince, answered, contact, follow } from '../web/api.mjs';
+import { Live } from '../web/live.mjs';
 import { PageReads } from '../web/page-reads.mjs';
-import { showLine, clearUnreached, lineText } from '../web/lines.mjs';
+import { showLine, lineText } from '../web/lines.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
 import { RuntimeAuthority } from '../web/session.mjs';
 
 const lost = () => new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
 const refusedSession = () => new AttemptError('Open this instance to establish a session.', 401, { error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.' } });
 const element = () => ({ textContent: '', hidden: true, dataset: {}, children: [], append(...items) { this.children.push(...items); } });
-const page = (...lines) => ({ querySelectorAll: selector => selector === '[data-unreached]' ? lines.filter(line => 'unreached' in line.dataset) : [] });
+const said = line => line.hidden ? '' : line.textContent;
 
 // What answers while Theseus restarts behind Tailscale Serve (docs/tailnet-access.md):
 // the proxy's 502 with an empty body. Theseus's own answers are JSON.
@@ -20,6 +22,8 @@ const proxyDown = () => new Response('', { status: 502 });
 const theseus = (status, error) => new Response(JSON.stringify({ recorded: false, error }), { status, headers: { 'Content-Type': 'application/json' } });
 const nothing = () => { throw new TypeError('Failed to fetch'); };
 const failureOf = promise => promise.then(() => assert.fail('the attempt was meant to fail'), error => error);
+// Theseus answers a request: the sign every line waits for.
+const answers = () => new Api('session', async () => theseus(200, null)).view('attention', {});
 
 test('a failure is about reaching Theseus when nothing answered, only something in front of it did, or the server refused this page\'s session; and not otherwise', () => {
   assert.equal(unreached(lost()), true, 'no answer');
@@ -64,7 +68,7 @@ test('every way the page reaches Theseus says so the same: a request, an image u
 
 // The Reader's notice for a Notebook page that comes forward while the server
 // is down: the real Api, the real PageReads and the real line.
-test('a page read that met no server leaves a notice that goes when the page reaches Theseus; one Core refused stays', async () => {
+test('a page read that met no server leaves a notice that goes when Theseus answers; one Core refused stays', async () => {
   const source = { source_ref: { kind: 'memory', id: 'n1', revision: 2 } };
   for (const [name, fetcher] of [['nothing answered', nothing], ['the proxy answered', proxyDown]]) {
     const api = new Api('session', async () => fetcher());
@@ -72,17 +76,17 @@ test('a page read that met no server leaves a notice that goes when the page rea
     const notice = element();
     showLine(notice, await failureOf(reads.opened(source)));
     assert.equal(notice.hidden, false, `${name}: the notice says the read failed`);
-    clearUnreached(page(notice));
-    assert.equal(notice.hidden ? '' : notice.textContent, '', `${name}: the reader notice still says: ${notice.textContent}`);
+    await answers();
+    assert.equal(said(notice), '', `${name}: the reader notice still says: ${notice.textContent}`);
   }
   const refusing = new PageReads({ send: async () => ({ status: 'rejected', error: { code: 'FORBIDDEN', message: 'Not yours.' } }) });
   const notice = element();
   showLine(notice, await failureOf(refusing.opened(source)));
-  clearUnreached(page(notice));
+  await answers();
   assert.equal(notice.textContent, 'Not yours. It may still show as changed.');
 });
 
-test('a line goes when every failure on it was about reaching Theseus, whatever words came with them; a refusal, words alone or a control stay', () => {
+test('a line goes when Theseus answers if every failure on it was about reaching Theseus, whatever words came with them; a refusal, words alone or a control stay', () => {
   const status = element(), notice = element(), worded = element(), refusal = element(), control = element(), words = element(), button = { id: 'again' };
   showLine(status, lost());
   showLine(notice, refusedSession());
@@ -93,7 +97,7 @@ test('a line goes when every failure on it was about reaching Theseus, whatever 
   assert.deepEqual([status.textContent, status.hidden], ['Connection interrupted. Confirmation is unknown; your writing is kept.', false]);
   assert.equal(worded.textContent, 'What changed since revision 2 could not be read. Connection interrupted. Confirmation is unknown; your writing is kept.');
   assert.deepEqual(control.children, [' ', button], 'a control the line offers follows its words');
-  clearUnreached(page(status, notice, worded, refusal, control, words));
+  answered();
   assert.deepEqual([status, notice, worded].map(line => [line.textContent, line.hidden, 'unreached' in line.dataset]), [['', true, false], ['', true, false], ['', true, false]]);
   assert.deepEqual([refusal, control, words].map(line => line.hidden), [false, false, false], 'a Core refusal, a control and words alone stay');
 });
@@ -102,7 +106,7 @@ test('a line written again says what it says now: a connection line replaced by 
   const status = element();
   showLine(status, lost());
   showLine(status, 'This topic is closed.');
-  clearUnreached(page(status));
+  answered();
   assert.deepEqual([status.textContent, status.hidden], ['This topic is closed.', false]);
   showLine(status, '');
   assert.deepEqual([status.textContent, status.hidden], ['', true]);
@@ -114,14 +118,14 @@ test('several failures are said once each, and go only when every one was about 
   assert.equal(both.textContent, lost().message);
   showLine(mixed, [lost(), new AttemptError('Image upload was refused.', 413, { error: { code: 'TOO_LARGE' } })]);
   assert.equal(lineText([lost(), 'kept']), lost().message + ' kept');
-  clearUnreached(page(both, mixed));
+  answered();
   assert.deepEqual([both.hidden, mixed.hidden], [true, false]);
 });
 
 // A wait the page gives up on is a request that got no answer. The page's
 // deadlines (a Reader open, its next or previous message, Retry access, a
 // recovery read) end the request through the one place that knows whether
-// Theseus answered, so the line they leave goes once the page reaches Theseus.
+// Theseus answered, so the line they leave goes once Theseus answers.
 // The real Api, RecoveryCleanup, RuntimeAuthority and line.
 const authority = { authority_id: 'a1', authority_epoch: 'e1', continuity: 'initial' };
 // A browser's fetch that never answers and ends when its request is aborted; or one that ignores the abort.
@@ -134,7 +138,7 @@ const cleanupWith = (fetcher, admission = true) => new RecoveryCleanup({ api: ne
   journal: {}, runtime: { readTimeoutMs: 30 } });
 const lineFor = async promise => { const line = element(); showLine(line, await failureOf(promise)); return line; };
 
-test('a read the page stopped waiting for leaves a line that goes when the page reaches Theseus; one Core answered stays', async () => {
+test('a read the page stopped waiting for leaves a line that goes when Theseus answers; one Core answered stays', async () => {
   const lines = {};
   for (const [name, fetcher] of [['nothing answers', stalled], ['nothing answers and the abort is not heard', deaf]]) {
     const cleanup = cleanupWith(fetcher), fg = cleanup.foreground();
@@ -160,50 +164,102 @@ test('a read the page stopped waiting for leaves a line that goes when the page 
   lines['recovery read'] = await lineFor(runtime.read(options => runtime.api.bootstrap(options)));
   for (const [name, line] of Object.entries(lines)) assert.equal(line.hidden, false, `${name}: the line says the read failed`);
   assert.deepEqual(aborted, ['/api/view', '/api/bootstrap'], 'the requests the page stopped waiting for are aborted');
-  const refused = cleanupWith(coreRefuses), answered = refused.foreground();
-  const kept = await lineFor(answered.read(options => refused.api.view('source', {}, options)));
-  clearUnreached(page(...Object.values(lines), kept));
+  const refused = cleanupWith(coreRefuses), refusing = refused.foreground();
+  const kept = await lineFor(refusing.read(options => refused.api.view('source', {}, options)));
+  answered();
   assert.deepEqual(Object.entries(lines).map(([name, line]) => [name, line.hidden ? '' : line.textContent]), Object.keys(lines).map(name => [name, '']));
   assert.equal(kept.textContent, 'This topic is closed.', 'Core\'s answer stays');
 });
 
-// The page reaches Theseus again while an attempt is out (the live feed back
-// on a fresh connection, or a renewed session). The attempt's failure, when it
-// settles, says nothing newer than that, and a quiet live feed would never
-// clear its line, so the line is over as it is written. Every way the page
-// makes an attempt says when it began: a request, an image upload, an
-// attachment read, and a wait the page bounds.
-test('a failure about reaching Theseus whose attempt began before the page last reached it leaves no line; one begun after, or one Theseus answered, does', async () => {
-  const gated = answer => { const gate = { open: null }; const opened = new Promise(resolve => { gate.open = resolve; });
-    return { gate, api: new Api('session', async (path, init) => { await opened; return answer(); }) }; };
-  const ways = [['request', a => a.view('source', {})], ['upload', a => a.upload({ v: 1 }, new Blob(['x']))], ['media', a => a.media('instance', { id: 'm1' }, null)]];
-  for (const [name, attempt] of ways) {
-    for (const [answered, answer] of [['nothing answered', nothing], ['the proxy answered', proxyDown], ['a late session refusal', () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.' })]]) {
-      const before = gated(answer), out = failureOf(attempt(before.api));
-      reachedTheseus(); before.gate.open();
-      const failure = await out, line = element();
-      showLine(line, ['Could not open.', Error('In words of its own.', { cause: failure })]);
-      assert.deepEqual([overtaken(failure), line.hidden, line.textContent, 'unreached' in line.dataset], [true, true, '', false], `${name}, ${answered}: begun before the page reached Theseus`);
-      const after = gated(answer); after.gate.open();
-      const fresh = await failureOf(attempt(after.api)), kept = element();
-      showLine(kept, fresh);
-      assert.deepEqual([overtaken(fresh), kept.hidden, 'unreached' in kept.dataset], [false, false, true], `${name}, ${answered}: begun after, it says so until the next time`);
+
+// What the page knows of Theseus answering it decides every connection line:
+// an answer of any kind since the line's failure, or the live feed up now or
+// up since that failure. Nothing counts reconnections.
+const gated = answer => { const gate = { open: null }; const opened = new Promise(resolve => { gate.open = resolve; });
+  return { gate, api: new Api('session', async () => { await opened; return answer(); }) }; };
+const ways = [['request', a => a.view('source', {})], ['upload', a => a.upload({ v: 1 }, new Blob(['x']))], ['media', a => a.media('instance', { id: 'm1' }, null)]];
+
+test('every way the page makes an attempt says when Theseus answered it: what it asked for or a refusal of its own, not nothing, a proxy or a refused session', async () => {
+  const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array([1])))].map(byte => byte.toString(16).padStart(2, '0')).join('');
+  const attachment = { id: 'm1', name: 'a.png', content_type: 'image/png', size_bytes: 1, sha256, inline: true };
+  const header = JSON.stringify({ instance_id: 'instance', media_id: 'm1', ...attachment });
+  const ok = { request: () => theseus(200, null), upload: () => theseus(200, null), media: () => new Response(new Uint8Array([1]), { status: 200, headers: { 'X-AIM-Media': header } }) };
+  for (const [name, attempt] of [...ways.slice(0, 2), ['media', a => a.media('instance', attachment, null)]]) {
+    for (const [what, answer, counts] of [['what it asked for', ok[name], true], ['a refusal of its own', () => theseus(409, { code: 'CONFLICT', message: 'Closed.' }), true],
+      ['nothing', nothing, false], ['the proxy', proxyDown, false], ['a refused session', () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance.' }), false]]) {
+      const before = contact.answered;
+      await attempt(new Api('session', async () => answer())).catch(() => {});
+      assert.equal(contact.answered > before, counts, `${name}: ${what}`);
     }
-    const refusing = gated(() => theseus(409, { code: 'CONFLICT', message: 'This topic is closed.' })), out = failureOf(attempt(refusing.api));
-    reachedTheseus(); refusing.gate.open();
-    const refused = await out, line = element();
-    showLine(line, refused);
-    assert.deepEqual([overtaken(refused), line.hidden], [false, false], `${name}: an answer Theseus gave stays`);
   }
-  // A wait the page bounds began when its deadline was set, whenever it passes.
+});
+
+test('a connection line shows only while the page is not connected and nothing has answered since its failure', async () => {
+  const line = element(), other = element();
+  // Nothing answered since: it shows, and goes at the first answer, of a request or of the live feed.
+  showLine(line, lost()); showLine(other, ['Could not open.', Error('In words of its own.', { cause: refusedSession() })]);
+  assert.deepEqual([said(line), 'unreached' in line.dataset, said(other)], [lost().message, true, 'Could not open. In words of its own.']);
+  await failureOf(new Api('session', async () => nothing()).view('x', {}));
+  assert.equal(said(line), lost().message, 'a request that got no answer is no answer');
+  await answers();
+  assert.deepEqual([said(line), line.hidden, 'unreached' in line.dataset, said(other)], ['', true, false, ''], 'a request Theseus answered');
+  // The live feed: up now hides every connection line, and one it hid stays hidden when it goes down again.
+  const feed = new Live({ token: 'session', socket: () => ({ close() {} }), timers: { setTimeout: () => 1, clearTimeout() {} }, origin: 'https://fixture' });
+  follow(feed); feed.start();
+  showLine(line, lost());
+  assert.equal(said(line), lost().message, 'a feed that has not come up says nothing');
+  feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) });
+  assert.deepEqual([contact.live, said(line)], [true, ''], 'the live feed came up');
+  showLine(line, lost());
+  assert.equal(said(line), '', 'a failure while the live feed is up');
+  feed.current.socket.onmessage({ data: JSON.stringify({ seq: 2 }) });
+  const whileUp = lost();
+  feed.current.socket.onclose();
+  assert.deepEqual([contact.live, said(line)], [false, ''], 'what the feed hid while up does not come back when it goes down');
+  showLine(line, ['Could not open.', whileUp]);
+  assert.equal(said(line), '', 'a failure from while the feed was up, written after it went down');
+  showLine(line, lost());
+  assert.equal(said(line), lost().message, 'a failure after the feed went down');
+  // A refused session is no answer; the session handed out again is (session-renewal.mjs).
+  await failureOf(new Api('session', async () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance.' })).view('x', {}));
+  assert.equal(said(line), lost().message, 'a refused session');
+  follow(null);
+});
+
+test('a line\'s latest failure decides it, and a line with a control of its own or an answer Theseus gave stays', () => {
+  const old = lost();
+  answered();
+  const line = element(), control = element(), button = { id: 'again' };
+  showLine(line, [old, lost()]);
+  assert.equal(said(line), lost().message, 'one failure answered since and one not: the line still says so');
+  showLine(control, [lost(), button]);
+  answered();
+  assert.deepEqual([said(line), control.hidden, control.children], ['', false, [' ', button]], 'a control the line offers keeps it');
+  // Written after an answer for a failure from before it: no line at all.
+  const stale = lost(); answered();
+  showLine(line, ['Could not open.', stale]);
+  assert.deepEqual([line.hidden, line.textContent, 'unreached' in line.dataset], [true, '', false]);
+  // The pure rule itself.
+  assert.equal(unanswered(5, { answered: 4, live: false, liveUntil: 3 }), true);
+  assert.equal(unanswered(5, { answered: 6, live: false, liveUntil: 3 }), false, 'answered since');
+  assert.equal(unanswered(5, { answered: 4, live: true, liveUntil: 3 }), false, 'connected now');
+  assert.equal(unanswered(5, { answered: 4, live: false, liveUntil: 6 }), false, 'the feed was up after it');
+});
+
+// What a failure held up is done again once Theseus has answered since its
+// attempt began: an attempt still out when an answer came, or a wait the page
+// bounds that was set before it, is done again at once; one begun after waits.
+test('Theseus has answered since an attempt began, for every way the page makes one and for a wait it bounds', async () => {
+  for (const [name, attempt] of ways) {
+    const before = gated(nothing), out = failureOf(attempt(before.api));
+    answered(); before.gate.open();
+    const failure = await out;
+    assert.equal(answeredSince(Error('In words of its own.', { cause: failure })), true, `${name}: begun before an answer`);
+    const after = gated(nothing); after.gate.open();
+    assert.equal(answeredSince(await failureOf(attempt(after.api))), false, `${name}: begun after`);
+  }
   const early = new Deadline(0, 'Reader request timed out. Your writing is kept.');
-  reachedTheseus();
-  const ranOut = await failureOf(early.bound(deaf())), late = await failureOf(new Deadline(0, 'Reader request timed out. Your writing is kept.').bound(deaf()));
-  assert.deepEqual([overtaken(ranOut), overtaken(late)], [true, false], 'a deadline set before the page reached Theseus, and one set after');
-  // The attempt a deadline ended began before it too.
-  const request = gated(nothing), bounded = new Deadline(0, 'Reader request timed out. Your writing is kept.'), waiting = request.api.view('source', {}, { signal: bounded.signal });
-  reachedTheseus();
-  assert.equal(overtaken(await failureOf(bounded.bound(waiting))), true);
-  request.gate.open(); await waiting.catch(() => {});
-  assert.equal(overtaken(lost()), false, 'an attempt made just now');
+  answered();
+  const ranOut = await failureOf(early.bound(new Promise(() => {}))), late = await failureOf(new Deadline(0, 'Reader request timed out. Your writing is kept.').bound(new Promise(() => {})));
+  assert.deepEqual([answeredSince(ranOut), answeredSince(late), unreached(ranOut)], [true, false, true], 'a deadline set before an answer, and one set after');
 });

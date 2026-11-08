@@ -29,7 +29,7 @@ import { hasTitle } from '../web/creation.mjs';
 import { SessionRenewal } from '../web/session-renewal.mjs';
 import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
 import * as apiExports from '../web/api.mjs';
-import { showLine, lineText, clearUnreached } from '../web/lines.mjs';
+import { showLine, lineText } from '../web/lines.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -99,7 +99,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, clearUnreached, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -533,7 +533,8 @@ const restartable = renewals => {
     Live: class { constructor({ token }) { live.token = token; return live; } },
     // 'renewed' gives the page's reads a new session, as the real renewal does.
     SessionRenewal: class { constructor(options) { renewals.push(options); this.api = options.api; }
-      renew() { const answer = answers.shift() ?? null; if (answer === 'renewed') this.api.token = 'session-' + renewals.length + '-' + answers.length; return Promise.resolve(answer); } } });
+      // The server answering with its session is an answer, as session-renewal.mjs records it.
+      renew() { const answer = answers.shift() ?? null; if (answer) apiExports.answered(); if (answer === 'renewed') this.api.token = 'session-' + renewals.length + '-' + answers.length; return Promise.resolve(answer); } } });
   f.bootstrap.transport = { ...f.bootstrap.transport, live: { version: 2, path: '/api/live', protocol: 'theseus-live.v1' } };
   return { f, live, answers };
 };
@@ -644,7 +645,7 @@ test('a line that says only that Theseus could not be reached goes once the page
 
 // However a failure to reach Theseus was put into words on its way to a line
 // (a Notebook page's read, a mark, an attachment, the composer), the line goes
-// once the page reaches Theseus, and what the page could not do for want of it
+// once Theseus answers, and what the page could not do for want of it
 // is done again. Theseus is down behind Tailscale Serve, which answers 502
 // with an empty body, or nothing answers; the real Api says what came back.
 test('a line a caller put into words goes once the page reaches Theseus, and a page read or a composer that met no Theseus is done again', async () => {
@@ -657,7 +658,8 @@ test('a line a caller put into words goes once the page reaches Theseus, and a p
     const renewals = [], { f, live, answers } = restartable(renewals);
     await f.initialize(); await drain();
     const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
-    const back = async how => { if (how === 'renewed') answers.push('renewed'), live.emit({ kind: 'refused' }); else live.emit({ kind: 'state', state: 'live' }); await drain(); await drain(); };
+    // Theseus comes back, by its live feed or a renewed session, and is away again before the next case.
+    const back = async how => { if (how === 'renewed') answers.push('renewed'), live.emit({ kind: 'refused' }); else live.emit({ kind: 'state', state: 'live' }); await drain(); await drain(); live.emit({ kind: 'state', state: 'down' }); await drain(); };
     const command = f.api.command, view = f.api.view;
     for (const how of ['live', 'renewed']) {
       // A mark pressed in the Reader.
@@ -729,80 +731,168 @@ test('a line a caller put into words goes once the page reaches Theseus, and a p
   }
 });
 
-// The page reaches Theseus while an attempt is still out: the live feed comes
-// back on a fresh connection, or the session is renewed, while a read waits on
-// the stalled one until the page stops waiting for it. A quiet live feed says
-// nothing more, so what that attempt's failure would hold up until the next
-// reconnection is over as it settles: no line stays, and what was owed is done
-// at once. An attempt begun after the page reached Theseus, or one Theseus
-// answered, is not.
-test('a failure to reach Theseus that settles after the page reached it again, for an attempt begun before, leaves no line and is done again at once', async () => {
+// The reviewer's case (round 4): the live feed is back and quiet. A read that
+// then runs out on a stalled connection, or a request that gets no answer,
+// leaves no line while the page is connected, and none comes back when the
+// feed goes down later. A failure while it is down says so until anything
+// answers, a request as much as the feed. What a failure held up is done again
+// once Theseus has answered since its attempt began: at once for one still out
+// when the feed came back; for one begun after, at the next answer of any
+// kind, never only at a reconnection.
+test('a connection line shows only while the page is not connected and nothing has answered since; what it held up goes at the next answer', async () => {
   const timedOut = 'Reader request timed out. Your writing is kept.', lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
-  for (const how of ['live', 'renewed']) {
-    const renewals = [], { f, live, answers } = restartable(renewals);
+  const renewals = [], { f, live } = restartable(renewals);
+  await f.initialize(); await drain();
+  const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
+  const feed = async up => { live.emit({ kind: 'state', state: up ? 'live' : 'down' }); await drain(); await drain(); };
+  const nothing = new RealApi('fixture-session', async () => { throw new TypeError('Failed to fetch'); });
+  const theseus = new RealApi('fixture-session', async () => new Response(JSON.stringify({ instance_id: 'fixture', items: [] }), { status: 200 }));
+  // A Reader read the page bounds, on a connection that stays stalled until the page aborts it; the gate says when its time is up.
+  let gate;
+  const stalled = new RealApi('fixture-session', (path, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })));
+  f.registry.open = () => { const deadline = new Deadline(0, timedOut), request = stalled.view('source', {}, { signal: deadline.signal }); return gate.promise.then(() => deadline.bound(request)); };
+  const open = async (current, id) => { gate = defer(); f.registry.current = current; const opened = f.openSource({ kind: 'message', id }); await drain(); gate.resolve(); await opened; await drain(); };
+  const inReader = { source: {}, editors: {}, mode: 'reply' };
+  await feed(true);
+  await open(inReader, 'm2');
+  assert.equal(said('reader-notice'), '', `the Reader's next message ran out while the live feed was up, yet reader-notice says: ${said('reader-notice')}`);
+  await open(null, 'm1');
+  assert.equal(said('app-status'), '', `a tapped message ran out while the live feed was up, yet app-status says: ${said('app-status')}`);
+  await f.run(() => nothing.view('topic', {})); await drain();
+  assert.equal(said('app-status'), '', 'a request that got no answer while the live feed was up');
+  await feed(false);
+  assert.deepEqual([said('app-status'), said('reader-notice')], ['', ''], 'nor when the feed goes down later');
+  // Down: each failure says so, and goes at the first answer, which is no reconnection.
+  await f.run(() => nothing.view('topic', {})); await drain();
+  assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [lost, true], 'a request that got no answer while the feed was down');
+  await open(inReader, 'm2');
+  assert.equal(said('reader-notice'), timedOut, 'a read that ran out while the feed was down');
+  await theseus.view('attention', {}); await drain();
+  assert.deepEqual([said('app-status'), said('reader-notice')], ['', ''], 'Theseus answered a request');
+  // A refusal Theseus gave is an answer, and its line stays.
+  await f.run(() => new RealApi('fixture-session', async () => new Response(JSON.stringify({ recorded: false, error: { code: 'CONFLICT', message: 'This topic is closed.' } }), { status: 409 })).view('topic', {})); await drain();
+  await feed(true); await feed(false);
+  assert.equal(said('app-status'), 'This topic is closed.', 'a refusal Theseus answered stays');
+  // A Notebook page's read, owed when it meets no Theseus.
+  const page = { source: { source_ref: { kind: 'memory', id: 'n1', revision: 3 }, body: 'Now' }, editors: { reply: {}, note: {} } };
+  f.registry.current = page;
+  const reads = [], command = f.api.command;
+  gate = defer();
+  const gated = new RealApi('fixture-session', async () => { await gate.promise; throw new TypeError('Failed to fetch'); });
+  // Past ten reads Theseus answers, so a page that read again in a loop stops and is counted.
+  f.api.command = envelope => { reads.push(envelope.kind); return reads.length > 10 ? Promise.resolve({ recorded: true, status: 'committed', operation_id: envelope.operation_id, result: { previous_revision: 3 } }) : gated.command(envelope); };
+  const reading = f.readPage(page); await drain();
+  await feed(true); gate.resolve(); await reading; await drain(); await drain();
+  assert.equal(reads.length, 2, `a page read still out when the live feed came back, that failed after, is read again at once (reads: ${reads.length})`);
+  await drain(); await drain();
+  assert.equal(reads.length, 2, 'the read made again, begun after, waits for Theseus to answer again');
+  await theseus.view('attention', {}); await drain(); await drain();
+  assert.equal(reads.length, 3, 'a request Theseus answered, with the live feed up and quiet and no reconnection');
+  await drain(); await drain();
+  assert.equal(reads.length, 3, 'that read failed too, and waits');
+  live.emit({ kind: 'commit', seq: 7 }); await drain(); await drain();
+  assert.equal(reads.length, 4, 'a commit the live feed named is an answer too');
+  f.api.command = command;
+  await feed(false);
+});
+
+// A small seeded random source, so a failing interleaving can be run again by its seed.
+const seeded = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+
+// Whether the page's status line shows a connection failure is a function of
+// what the page knows now, after any interleaving: it shows while the page is
+// not connected (its live feed is down) and nothing has answered since that
+// failure (a request Theseus answered, the live feed coming up or naming a
+// commit, a session handed out again), not even while the feed was last up.
+// The app's own code (run, the status line, reconnect, its live wiring) with
+// the real Api, Deadline, Live and SessionRenewal; the expected line is worked
+// out from the steps alone.
+test('property: after every step of any interleaving of requests, the live feed and renewals, a connection line shows exactly while the page is not connected and nothing has answered since its failure', async () => {
+  const timedOut = 'Reader request timed out. Your writing is kept.';
+  const endings = {
+    success: () => new Response(JSON.stringify({ instance_id: 'fixture', items: [] }), { status: 200 }),
+    refusal: () => new Response(JSON.stringify({ recorded: false, error: { code: 'CONFLICT', message: 'This topic is closed.' } }), { status: 409 }),
+    nothing: () => { throw new TypeError('Failed to fetch'); },
+    proxy: () => new Response('', { status: 502 }),
+    session: () => new Response(JSON.stringify({ recorded: false, error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.' } }), { status: 401 }),
+  };
+  const words = { refusal: 'This topic is closed.', nothing: 'Connection interrupted. Confirmation is unknown; your writing is kept.',
+    proxy: 'AIM returned an unreadable response. Confirmation is unknown.', session: 'Open this instance to establish a session.', ranOut: timedOut };
+  const SEEDS = 40, STEPS = 60;
+  let checked = 0, shown = 0, hidden = 0;
+  const seen = new Set();
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    const random = seeded(seed), pick = list => list[Math.floor(random() * list.length)];
+    const sockets = [], held = { live: null, page: null };
+    const f = fixture('https://fixture/?topic=t1', {
+      Live: class extends Live { constructor(options) {
+        super({ ...options, origin: 'https://fixture', socket: () => { const socket = { close() {} }; sockets.push(socket); return socket; }, timers: { setTimeout: () => 0, clearTimeout() {} } });
+        held.live = this;
+      } },
+      SessionRenewal: class extends SessionRenewal { constructor(options) {
+        super({ ...options, fetcher: async () => held.page(), makeApi: token => new RealApi(token, async () => new Response(JSON.stringify(f.bootstrap), { status: 200 })) });
+      } } });
+    f.bootstrap.transport = { ...f.bootstrap.transport, live: { version: 2, path: '/api/live', protocol: 'theseus-live.v1' } };
     await f.initialize(); await drain();
-    const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
-    const marked = id => 'unreached' in f.get(id).dataset;
-    const back = async () => { if (how === 'renewed') answers.push('renewed'), live.emit({ kind: 'refused' }); else live.emit({ kind: 'state', state: 'live' }); await drain(); await drain(); };
-    // Every request waits until the gate opens, then gets what answer() gives:
-    // nothing (the stalled connection), or Theseus's own refusal.
-    let gate = defer(), answer = () => { throw new TypeError('Failed to fetch'); };
-    const api = new RealApi('fixture-session', async (path, init) => {
-      const opened = gate.promise;
-      await Promise.race([opened, new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))]);
-      return answer();
-    });
-    // A Reader read bounded by the page's deadline, which passes once the gate
-    // opens, on a connection that stays stalled until the page aborts it.
-    const stalled = new RealApi('fixture-session', (path, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })));
-    const bounded = () => { const deadline = new Deadline(0, timedOut), request = stalled.view('source', {}, { signal: deadline.signal }); return gate.promise.then(() => deadline.bound(request)); };
-    // The Reader's next message, in the Reader; then a message tapped, on the
-    // page's status line, and a request cut off once the page reached Theseus.
-    f.registry.open = bounded;
-    for (const [where, current, id] of [['reader-notice', { source: {}, editors: {}, mode: 'reply' }, 'm2'], ['app-status', null, 'm1']]) {
-      gate = defer(); f.registry.current = current;
-      const opened = f.openSource({ kind: 'message', id });
-      const cut = where === 'app-status' ? f.run(() => api.view('topic', {})) : null;
-      await drain(); await back();
-      gate.resolve(); await opened; await cut; await drain();
-      assert.equal(said(where), '', `${how}: the page reached Theseus while the read was out, yet ${where} says: ${said(where)}`);
-      // Without the page reaching Theseus meanwhile, the same read says it failed.
-      gate = defer(); f.registry.current = current;
-      const alone = f.openSource({ kind: 'message', id });
-      await drain(); gate.resolve(); await alone; await drain();
-      assert.deepEqual([said(where), marked(where)], [timedOut, true], `${how}: a read that ran out with no reconnection says so in ${where}`);
-      await back();
+    const live = held.live, said = () => f.get('app-status').hidden ? '' : f.get('app-status').textContent;
+    // The model: each fact stamped with its step.
+    const model = { answered: 0, live: false, liveUntil: 0, text: said(), at: null };
+    const expected = () => model.at === null ? model.text : (!model.live && model.at > model.answered && model.at > model.liveUntil ? model.text : '');
+    const pending = [], history = [];
+    let seq = 0;
+    for (let step = 1; step <= STEPS; step++) {
+      const kinds = ['start', 'start', 'renew', ...(pending.length ? ['end', 'end', 'end'] : []), ...(live.state === 'live' ? ['message', 'down'] : ['up', 'up'])];
+      const kind = pick(kinds);
+      let did = kind;
+      if (kind === 'start') {
+        const entry = { gate: defer(), bounded: random() < 0.3 };
+        if (entry.bounded) {
+          const deadline = new Deadline(0, timedOut);
+          const request = new RealApi('fixture-session', (path, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))).view('source', {}, { signal: deadline.signal });
+          entry.done = f.run(() => entry.gate.promise.then(() => deadline.bound(request)));
+        } else entry.done = f.run(() => new RealApi('fixture-session', async () => { await entry.gate.promise; return endings[entry.ending](); }).view('topic', {}));
+        pending.push(entry); did = entry.bounded ? 'start a bounded read' : 'start a request';
+      } else if (kind === 'end') {
+        const entry = pending.splice(Math.floor(random() * pending.length), 1)[0];
+        entry.ending = entry.bounded ? 'ranOut' : pick(Object.keys(endings));
+        entry.gate.resolve();
+        if (entry.bounded) await new Promise(resolve => setTimeout(resolve, 2));
+        await entry.done; await drain();
+        if (entry.ending === 'success' || entry.ending === 'refusal') model.answered = step;
+        if (entry.ending !== 'success') Object.assign(model, { text: words[entry.ending], at: entry.ending === 'refusal' ? null : step });
+        did = `end: ${entry.ending}`;
+      } else if (kind === 'up') {
+        if (!live.current) live.start();
+        live.current.socket.onmessage({ data: JSON.stringify({ seq }) });
+        Object.assign(model, { live: true, answered: step });
+      } else if (kind === 'message') {
+        live.current.socket.onmessage({ data: JSON.stringify({ seq: ++seq }) });
+        model.answered = step;
+      } else if (kind === 'down') {
+        live.current.socket.onclose();
+        Object.assign(model, { live: false, liveUntil: step });
+      } else {
+        const answers = random() < 0.6;
+        held.page = answers ? async () => new Response('<meta name="aim-next-session" content="session-' + seed + '-' + (random() < 0.5 ? step : 0) + '">', { status: 200 }) : async () => { throw new TypeError('Failed to fetch'); };
+        f.updateStatus({ kind: 'reconnect' });
+        await drain(); await drain();
+        if (answers) model.answered = step;
+        did = answers ? 'renewal answered' : 'renewal not answered';
+      }
+      await drain();
+      history.push(did); seen.add(did);
+      if (model.at !== null) { if (expected()) shown++; else hidden++; }
+      assert.equal(said(), expected(), `seed ${seed}, step ${step} (${did}): the status line says ${JSON.stringify(said())}, the rule says ${JSON.stringify(expected())}; steps: ${history.join(', ')}`);
+      checked++;
     }
-    // Theseus answered a request begun before: that line stays.
-    gate = defer(); answer = () => new Response(JSON.stringify({ recorded: false, error: { code: 'CONFLICT', message: 'This topic is closed.' } }), { status: 409 });
-    const answered = f.run(() => api.view('topic', {}));
-    await drain(); await back(); gate.resolve(); await answered; await drain();
-    assert.equal(said('app-status'), 'This topic is closed.', `${how}: a refusal Theseus answered stays`);
-    // A request begun after the page reached Theseus that gets no answer keeps its line until the next time.
-    answer = () => { throw new TypeError('Failed to fetch'); };
-    await f.run(() => api.view('topic', {})); await drain();
-    assert.deepEqual([said('app-status'), marked('app-status')], [lost, true], `${how}: a request begun after the page reached Theseus says it failed`);
-    await back();
-    assert.equal(said('app-status'), '', `${how}: and its line goes the next time the page reaches Theseus`);
-    // A Notebook page's read, owed when it meets no Theseus: one begun before
-    // the page reached Theseus is read again at once; the read made then, if
-    // it fails too, waits for the next time.
-    const page = { source: { source_ref: { kind: 'memory', id: 'n1', revision: 3 }, body: 'Now' }, editors: { reply: {}, note: {} } };
-    f.registry.current = page;
-    const reads = [], command = f.api.command;
-    gate = defer();
-    f.api.command = envelope => { reads.push(envelope.kind); return api.command(envelope); };
-    const reading = f.readPage(page);
-    await drain(); await back();
-    gate.resolve(); await reading; await drain(); await drain();
-    assert.equal(reads.length, 2, `${how}: the page read that failed after the page reached Theseus is read again at once, not at the next reconnection (reads: ${reads.length})`);
-    assert.equal(said('reader-notice'), 'Connection interrupted; this page may still show as changed. Open it again to read it.', `${how}: the read made again, begun after, says it failed`);
-    await drain(); await drain();
-    assert.equal(reads.length, 2, `${how}: and is not read again until the next time`);
-    await back();
-    assert.equal(reads.length, 3, `${how}: the next time, it is read again`);
-    f.api.command = command;
+    for (const entry of pending) { entry.ending = 'success'; entry.gate.resolve(); }
+    await new Promise(resolve => setTimeout(resolve, 2)); await Promise.all(pending.map(entry => entry.done)); await drain();
   }
+  assert.equal(checked, SEEDS * STEPS);
+  // Every kind of step ran, and connection lines both showed and were hidden.
+  assert.deepEqual([...seen].sort(), ['down', 'end: nothing', 'end: proxy', 'end: ranOut', 'end: refusal', 'end: session', 'end: success', 'message',
+    'renewal answered', 'renewal not answered', 'start a bounded read', 'start a request', 'up']);
+  assert.ok(shown > 50 && hidden > 50, `connection lines shown at ${shown} steps and hidden at ${hidden}`);
 });
 
 test('a renewed session leaves a message that was not about the connection, and writing that cannot be saved', async () => {

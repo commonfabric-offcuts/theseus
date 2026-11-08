@@ -7,6 +7,8 @@
 // when the session it holds is the server's, and null when the server cannot
 // be reached or offers no session for this instance and person (so nothing
 // changed). Renewals asked for while one runs share it.
+import { answered } from './api.mjs';
+
 const PLACEHOLDER = '__AIM_SESSION_TOKEN__';
 // The server writes the token HTML-escaped (Python's html.escape with quotes).
 const ESCAPED = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#x27;': "'" };
@@ -35,6 +37,8 @@ export class SessionRenewal {
       token = sessionIn(await response.text());
     } catch { return null; }
     if (!token) return null;
+    // The server answered with its session (api.mjs contact).
+    answered();
     if (token === this.api.token) return 'current';
     // The new session must speak for the same instance and person before any
     // writing or read goes through it.

@@ -1,4 +1,4 @@
-import { Api, notAnswering, unreached, overtaken, reachedTheseus } from './api.mjs';
+import { Api, notAnswering, unreached, answeredSince, heard, follow } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -46,7 +46,7 @@ import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
-import { showLine, clearUnreached, lineText } from './lines.mjs';
+import { showLine, lineText } from './lines.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -913,10 +913,10 @@ async function markFromMenu(messageId, marked) {
     const now = marks.state(messageId);
     if (receipt?.error?.code === 'REVISION_CONFLICT' && now?.marked === marked) return;
     if (!state && receipt?.error?.code === 'REVISION_CONFLICT' && now) receipt = await marks.send(messageId, marked, now.mark_revision);
-  } catch { status('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.'); return; }
+  } catch (error) { status(Error('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.', { cause: error })); return; }
   if (receipt?.status === 'committed' && !marked) { views.placeAfresh(); if (commitReload) run(commitReload); }
   if (receipt?.error?.code === 'REVISION_CONFLICT') status(`This message's mark changed in another tab or device: it is ${marks.state(messageId)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
-  else if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'The mark was not confirmed. Choose it again to send the same request.');
+  else if (receipt?.status !== 'committed') status(receipt?.error ?? 'The mark was not confirmed. Choose it again to send the same request.');
 }
 // The Reader's ⋯: Copy Link and the mark for a message, and Wide or Stacked.
 function openReaderMenu() {
@@ -1199,25 +1199,21 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
   freshness.setVisible(document.visibilityState === 'visible');
 }
-// The page reaches Theseus with the session it holds: a renewal, the session
-// it has confirmed, or the live feed up again. Whatever a line said about not
-// reaching it is over, replies it did not take go on, and what could not be
-// done for want of it is done again.
-// Each is named, so the latest of one kind is the one done. One whose attempt
-// began before the page last reached Theseus is done at once (api.mjs
-// overtaken): a quiet live feed may not reconnect again.
-const untilReached = new Map();
-const owe = (error, name, again) => {
-  if (overtaken(error)) run(again);
-  else if (unreached(error)) untilReached.set(name, again);
-};
-function reached() {
-  reachedTheseus();
-  clearUnreached(document);
-  registry?.resumeHeld();
-  const again = [...untilReached.values()]; untilReached.clear();
-  for (const action of again) run(action);
+// What could not be done for want of Theseus is done again once Theseus has
+// answered since the attempt that failed began (api.mjs answeredSince): at
+// once when it already has, as when the live feed came back while a read was
+// out, or at the next answer of any kind. The attempt made again began after
+// that answer, so if it fails too it waits for a newer one. Each is named, so
+// the latest of one kind is the one done.
+const owed = new Map();
+const owe = (error, name, again) => { if (unreached(error)) { owed.set(name, { error, again }); settleOwed(); } };
+function settleOwed() {
+  for (const [name, { error, again }] of owed) if (answeredSince(error)) { owed.delete(name); run(again); }
 }
+heard(settleOwed);
+// The page reaches Theseus with the session it holds: a renewal, the session
+// it has confirmed, or the live feed up again. Replies it did not take go on.
+function reached() { registry?.resumeHeld(); }
 // A restarted server (every deploy) refuses this page's session. The page
 // reads the server's new one (session-renewal.mjs) when the live feed is
 // refused, or a read is, and goes on in place: the writing, the lists and the
@@ -1260,6 +1256,8 @@ async function initialize() {
     window.addEventListener('online', () => live.wake());
     live.start();
   }
+  // Whether the page is connected now is its live feed's state (api.mjs contact).
+  follow(live);
   if (!attention) {
     attention = new Attention({ api: { view: (...args) => api.view(...args) }, instanceId: bootstrap.instance_id, after: bootstrap.attention?.after,
       doc: document, open: openSent });
@@ -1389,7 +1387,7 @@ async function initialize() {
       if (cancelled) reader.notice('Stayed on this message; opening the other message was cancelled.');
     },
     // A note that could not be saved says so in the Reader, beside its writing.
-    saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error.message); return null; }),
+    saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
     close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error); return false; }),
     step: async direction => {

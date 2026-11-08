@@ -179,7 +179,7 @@ export class Reader {
     this.opener = opener ?? this.opener ?? document.activeElement;
     this.disarm();
     this.topics = topics;
-    this.paintTitle(source);
+    this.paintTitle(source, topics);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
     // topic, a choice of this topic or the outcome's conversation (outcome-conversation.mjs).

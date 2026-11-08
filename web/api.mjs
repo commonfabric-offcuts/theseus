@@ -11,22 +11,45 @@ export class AttemptError extends Error {
     this.recorded = false;
     this.status = status;
     this.details = details;
-    // When the attempt began, counted in the times the page has reached
-    // Theseus (overtaken). Its maker stamps the start when it knows it.
-    this.began = reaches;
+    // When it failed, and when its attempt began (its maker stamps the start
+    // when it knows it), on the clock of what the page knows (contact).
+    this.at = this.began = tick();
   }
 }
 
-// Each time the page reaches Theseus again (a renewal, or the live feed back
-// up), it says so here, and each attempt is stamped with how many times it had
-// when the attempt began. A failure about reaching Theseus whose attempt began
-// before the page last reached it is over as it settles: the page has reached
-// Theseus since, so whatever it held up is done now rather than at the next
-// reconnection, and a line it would write is already over (lines.mjs). The
-// attempt made then began after, so its own failure waits for the next time.
-let reaches = 0;
-export function reachedTheseus() { reaches += 1; }
-const began = (error, at) => { if (error instanceof AttemptError) error.began = Math.min(error.began, at); return error; };
+// What the page knows now of Theseus answering it. Every fact is stamped from
+// one clock that only goes forward, so which came first is exact.
+// - answered: when Theseus last answered: a request it answered (a refusal of
+//   its own too, but not of the page's session), the live feed coming up or
+//   naming a commit, or the server handing out its session (session-renewal.mjs).
+// - live: whether the live feed is up now; liveUntil: when it last went down.
+// Whatever depends on these listens (heard) and works its answer out from
+// them afresh each time: a connection line (lines.mjs), and what waits on
+// Theseus (app.mjs owe).
+let clock = 0;
+const tick = () => ++clock;
+export const contact = { answered: 0, live: false, liveUntil: 0 };
+const listeners = new Set();
+export const heard = listener => { listeners.add(listener); return () => listeners.delete(listener); };
+const learned = () => { for (const listener of [...listeners]) listener(); };
+export function answered() { contact.answered = tick(); learned(); }
+function liveIs(up) {
+  if (contact.live && !up) contact.liveUntil = tick();
+  contact.live = up;
+  if (up) answered(); else learned();
+}
+// The page's live feed (live.mjs): the one it follows says whether it is up.
+let followed = null;
+export function follow(live) {
+  if (followed === live) return;
+  followed = live;
+  liveIs(live?.state === 'live');
+  live?.listen(event => {
+    if (followed !== live) return;
+    if (event.kind === 'state') liveIs(event.state === 'live');
+    else if (event.kind === 'commit') answered();
+  });
+}
 
 // The server refused this page's session, as a restarted server does, before
 // Core read the request.
@@ -36,8 +59,8 @@ export const sessionRefused = error => error instanceof AttemptError && error.st
 // answered, only something in front of it did, or the page stopped waiting:
 // Deadline), or the server refused this page's session. A failure a caller put into words of its own carries the
 // attempt's error as its cause and is judged by it. The one place a failure is
-// known to be about reaching Theseus; reaching it again ends it (lines.mjs).
-const attemptOf = error => {
+// known to be about reaching Theseus (lines.mjs).
+export const attemptOf = error => {
   for (let at = error, seen = new Set(); typeof at === 'object' && at !== null && !seen.has(at); seen.add(at), at = at.cause) {
     if (at instanceof AttemptError) return at;
   }
@@ -47,8 +70,12 @@ export function unreached(error) {
   const at = attemptOf(error);
   return Boolean(at) && (at.details === null || sessionRefused(at));
 }
-// A failure about reaching Theseus whose attempt the page has reached Theseus since.
-export function overtaken(error) { return unreached(error) && attemptOf(error).began < reaches; }
+// A connection line shows while it says something true now: the page is not
+// connected (its live feed is down) and nothing has answered since the failure
+// it describes (at), not even while the live feed was last up.
+export const unanswered = (at, { answered, live, liveUntil } = contact) => !live && at > answered && at > liveUntil;
+// Theseus has answered since the attempt that failed began: what it held up can be done again.
+export const answeredSince = error => contact.answered > attemptOf(error).began;
 // The connection itself failed: no answer came.
 const interrupted = (message, error) => new AttemptError(message, 0, null, { cause: error });
 // Reconnect found no server to give this page a session.
@@ -60,13 +87,13 @@ export const notAnswering = () => new AttemptError('Theseus is not answering yet
 // failure of no answer, whether or not what was awaited heard the abort.
 export class Deadline {
   constructor(ms, words, code = undefined) {
-    this.at = Date.now() + ms; this.words = words; this.code = code; this.controller = new AbortController(); this.began = reaches;
+    this.at = Date.now() + ms; this.words = words; this.code = code; this.controller = new AbortController(); this.began = clock;
   }
   get signal() { return this.controller.signal; }
   get passed() { return Date.now() >= this.at; }
   failure() {
     this.controller.abort();
-    return Object.assign(began(new AttemptError(this.words, 0, null), this.began), this.code ? { code: this.code } : {});
+    return Object.assign(new AttemptError(this.words, 0, null), { began: this.began }, this.code ? { code: this.code } : {});
   }
   // What the wait settles with, or this deadline's failure once it passes.
   async bound(wait) {
@@ -77,6 +104,19 @@ export class Deadline {
 }
 // Theseus's JSON answer to a response, or null when what answered was not Theseus.
 const answerOf = response => response.json().catch(() => null);
+// Every attempt the page makes: when it began, and, when Theseus answered it
+// (what it asked for, or a refusal of Theseus's own), that it did (contact).
+async function attempted(attempt) {
+  const began = clock;
+  try { const result = await attempt(); answered(); return result; }
+  catch (error) {
+    if (error instanceof AttemptError) {
+      error.began = began;
+      if (!unreached(error)) answered();
+    }
+    throw error;
+  }
+}
 
 export class Api {
   constructor(token, fetcher = globalThis.fetch.bind(globalThis)) {
@@ -84,10 +124,7 @@ export class Api {
     this.fetcher = fetcher;
   }
 
-  async request(path, data, options) {
-    const at = reaches;
-    try { return await this.attempt(path, data, options); } catch (error) { throw began(error, at); }
-  }
+  request(path, data, options) { return attempted(() => this.attempt(path, data, options)); }
   async attempt(path, data, { signal, readClass } = {}) {
     let response;
     try {
@@ -114,10 +151,7 @@ export class Api {
   command(envelope) { return this.request('/api/command', envelope); }
   view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
 
-  async upload(envelope, blob, options) {
-    const at = reaches;
-    try { return await this.sendUpload(envelope, blob, options); } catch (error) { throw began(error, at); }
-  }
+  upload(envelope, blob, options) { return attempted(() => this.sendUpload(envelope, blob, options)); }
   async sendUpload(envelope, blob, { signal } = {}) {
     const command = JSON.stringify(envelope).replace(/[\u007f-\uffff]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
     let response;
@@ -135,10 +169,7 @@ export class Api {
     return body;
   }
 
-  async media(instanceId, attachment, sourceRef) {
-    const at = reaches;
-    try { return await this.readMedia(instanceId, attachment, sourceRef); } catch (error) { throw began(error, at); }
-  }
+  media(instanceId, attachment, sourceRef) { return attempted(() => this.readMedia(instanceId, attachment, sourceRef)); }
   async readMedia(instanceId, attachment, sourceRef) {
     let response;
     try {
