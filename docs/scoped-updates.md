@@ -119,9 +119,16 @@ check for the same commit runs beside them rather than after them.
   reply held for a reason no retry mends (Core refused it, a send whose answer
   was lost, or a runtime change under review) waits for the person.
   A refused live stream starts the same renewal. **Reconnect** does it on
-  demand; while the server is not answering, the page says so, and that line
-  goes once the page reaches Theseus again. It never reloads itself or erases
-  its journal.
+  demand; while the server is not answering, the page says so. It never
+  reloads itself or erases its journal.
+- A line that says only that Theseus could not be reached (nothing answered,
+  or the server refused the page's session) goes once the page reaches
+  Theseus again, wherever it was written: the page's status line, the
+  Reader's notice, the composer's notice or the navigation line. The line
+  works this out from the failure itself (`web/lines.mjs`), so every writer
+  hands it the error, not its words. A line that also says what could not be
+  done, or offers its own way on (Reload this page, Retry composer), or that
+  carries an answer Core gave, stays.
 - **Review saved writing** handles a changed runtime authority. Automatic
   updates pause; recovery proceeds through the existing review controls.
 - If a topic becomes unavailable, its lists are hidden and sending to it is

@@ -8,6 +8,15 @@ export class AttemptError extends Error {
   }
 }
 
+// The server refused this page's session, as a restarted server does, before
+// Core read the request.
+export const sessionRefused = error => error instanceof AttemptError && error.status === 401 &&
+  error.details?.error?.code === 'SESSION_REQUIRED';
+// Theseus was not reached: the attempt got no answer at all (the server is
+// away), or the server refused this page's session. The one place a failure is
+// known to be about reaching Theseus; reaching it again ends it (lines.mjs).
+export const unreached = error => error instanceof AttemptError && (error.status === 0 || sessionRefused(error));
+
 export class Api {
   constructor(token, fetcher = globalThis.fetch.bind(globalThis)) {
     this.token = token;

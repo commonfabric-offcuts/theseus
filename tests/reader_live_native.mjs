@@ -1197,4 +1197,41 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  // A message opened while Theseus is down for its restart cannot be read,
+  // and the page says so where the open was asked: on the page's status line
+  // for a card tapped on the topic, in the Reader's notice for the Reader's
+  // next message. Once the page reaches the restarted server, nothing on it
+  // still says the connection was interrupted.
+  for (const where of ['card', 'reader']) {
+    await check(`live restart: a message that could not open while Theseus was down leaves no connection line once it is back (${where})`, async () => {
+      const p = await page(`live-restart-open-${where}`, null, true);
+      await settled(p);
+      const line = where === 'card' ? '#app-status' : '#reader-notice';
+      const says = () => p.evaluate(`(e => e.hidden ? '' : e.textContent)(document.querySelector(${JSON.stringify(line)}))`);
+      if (where === 'reader') {
+        await p.open(1);
+        await until(() => p.evaluate("!document.querySelector('#next-message').disabled || !document.querySelector('#previous-message').disabled"), 'the Reader offers another message');
+      }
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      await control({ method: 'server_stop' });
+      await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+      if (where === 'card') {
+        const card = await p.evaluate("(c => c && c.dataset.id)([...document.querySelectorAll('#messages .message-card')].find(c => { const b = c.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; }))");
+        assert.ok(card, 'a card is in view');
+        await p.point(`#messages [data-id="${card}"]`);
+      } else await p.point(await p.evaluate("document.querySelector('#next-message').disabled ? '#previous-message' : '#next-message'"));
+      await until(async () => /Connection interrupted/.test(await says()), `the open that met no server is said in ${line}`);
+      const restarted = await control({ method: 'server_start' });
+      assert.notEqual(restarted.token, before);
+      facts.token = restarted.token;
+      await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.token === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`),
+        'the page took the new session and its live feed is connected again', 30000);
+      await settled(p);
+      assert.equal(await says(), '', `after reconnecting, ${line} still says what the restart did`);
+      observations.push({ name: 'open while Theseus was down', where });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
 }

@@ -1,4 +1,5 @@
 import { keyAction } from './editor.mjs';
+import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
@@ -74,7 +75,7 @@ export class Reader {
         const token = uploads.reserve(this.presentation);
         this.imagePicker = { uploads, token }; this.$('image-file').value = '';
         this.paintStatus(); this.$('image-file').click();
-      } catch (error) { this.notice(error.message); }
+      } catch (error) { this.notice(error); }
     };
     this.$('cancel-image').onclick = () => { this.cancelImagePicker(); this.$('add-image').focus(); };
     this.$('image-file').addEventListener('cancel', () => this.cancelImagePicker());
@@ -82,7 +83,7 @@ export class Reader {
       const picker = this.imagePicker, file = event.target.files?.[0]; this.imagePicker = null;
       if (!picker) { if (file) this.notice('That image selection expired. Choose it again.'); return; }
       try { await picker.uploads.choose(picker.token, file); }
-      catch (error) { this.notice(error.message); }
+      catch (error) { this.notice(error); }
       finally { this.paintStatus(); }
     };
     for (const where of ['above', 'below']) {
@@ -153,9 +154,9 @@ export class Reader {
       });
       const errors = (await Promise.allSettled(choices)).filter(result => result.status === 'rejected');
       if (errors.length && this.editor === editor && this.presentation === presentation && this.mode === 'reply' && this.admits(editor, presentation)) {
-        this.notice([...new Set(errors.map(result => result.reason.message))].join(' '));
+        this.notice(errors.map(result => result.reason));
       }
-    } catch (error) { this.notice(error.message); }
+    } catch (error) { this.notice(error); }
     finally { this.paintStatus(); }
   }
 
@@ -575,7 +576,7 @@ export class Reader {
       const action = (label, act) => {
         const b = node('button', label); b.type = 'button';
         b.disabled = !active;
-        b.onclick = async () => { if (!this.admits(editor, presentation)) return; b.disabled = true; try { await act(b); } catch (error) { if (this.admits(editor, presentation)) this.notice(error.message); } finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); } };
+        b.onclick = async () => { if (!this.admits(editor, presentation)) return; b.disabled = true; try { await act(b); } catch (error) { if (this.admits(editor, presentation)) this.notice(error); } finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); } };
         row.append(b);
       };
       for (const item of e.actions) action(item.label, async b => {
@@ -690,7 +691,8 @@ export class Reader {
     this.paintStatus();
   }
 
-  notice(text) { this.$('reader-notice').textContent = text; this.$('reader-notice').hidden = !text; }
+  // A failure goes to the notice as the error itself (lines.mjs).
+  notice(what) { showLine(this.$('reader-notice'), what); }
 
   // Done, by its button or ⌘ Return, waits for a step as sending does. The
   // note saves as it is written; Done confirms the save. A saved note leaves

@@ -1,10 +1,8 @@
 // Private saves are serialized. Public send confirmation never holds that queue.
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
+import { sessionRefused } from './api.mjs';
 const copy = value => structuredClone(value);
-// A refused session (a restarted server, before the page has its new session)
-// is refused before Core reads the request, so the act was never delivered.
-const sessionRefused = error => error?.status === 401 && error.details?.error?.code === 'SESSION_REQUIRED';
 // What an attempt that got no recorded answer holds. A session's refusal says
 // retrying with that session cannot help; the page's next session can carry
 // the act, so it stays retryable, as a lost connection is.
@@ -347,8 +345,9 @@ export class EditorSession {
     catch (error) {
       entry.error = attemptError(error);
       if (sessionRefused(error)) {
-        // Core never read it: undelivered, it waits for the new session, as
-        // the same session would only be refused again.
+        // A refused session is refused before Core reads the request, so the
+        // act is undelivered: it waits for the new session, as the same
+        // session would only be refused again.
         entry.dispatched = false;
         await this.persist();
         return null;

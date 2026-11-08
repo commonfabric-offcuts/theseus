@@ -28,6 +28,7 @@ import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
 import { SessionRenewal } from '../web/session-renewal.mjs';
 import { AttemptError } from '../web/api.mjs';
+import { showLine, lineText, clearUnreached } from '../web/lines.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -64,7 +65,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
-    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: () => [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
@@ -90,14 +91,14 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
       list: action => action({ readClass: 'foreground' }) },
     runtime: { current: bootstrap.authority },
   };
-  const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
+  const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, ...times, SessionRenewal, AttemptError, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...writing, ...times, SessionRenewal, AttemptError, showLine, lineText, clearUnreached, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -604,6 +605,40 @@ test('the not-answering line from Reconnect clears when the page reconnects by i
   await f.run(async () => { throw new AttemptError('This topic is closed.', 409, { error: { code: 'CONFLICT' } }); });
   live.emit({ kind: 'state', state: 'live' }); await drain();
   assert.equal(f.get('app-status').textContent, 'This topic is closed.');
+});
+
+// Whoever writes a line, a failure to reach Theseus goes to it as the error
+// itself, and the line goes once the page reaches Theseus: a message that could
+// not open (on the page's status line, or in the Reader when the Reader asked),
+// and a composer read. A message Core refused to open stays.
+test('a line that says only that Theseus could not be reached goes once the page reaches it, wherever it was written', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize(); await drain();
+  const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  const lines = () => ['app-status', 'reader-notice', 'inline-notice'].map(id => f.get(id).hidden ? '' : f.get(id).textContent);
+  const fail = () => {
+    f.registry.open = async () => { throw new AttemptError(lost); };
+    f.registry.recoveryCandidates = async () => { throw new AttemptError(lost); };
+  };
+  const writeAll = async () => {
+    f.registry.current = { source: {}, editors: {}, mode: 'reply' };
+    await f.openSource({ kind: 'message', id: 'm2' });
+    f.registry.current = null;
+    await f.openSource({ kind: 'message', id: 'm1' });
+    await f.discover(f.p, f.editor);
+  };
+  fail(); await writeAll();
+  assert.deepEqual(lines(), [lost, lost, lost], 'each line says the connection was interrupted');
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.deepEqual(lines(), ['', '', ''], 'the live feed back up');
+  await writeAll();
+  answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.deepEqual(lines(), ['', '', ''], 'a renewed session');
+  f.registry.open = async () => { throw new AttemptError('Source could not open', 404, { error: { code: 'NOT_FOUND', message: 'Source could not open' } }); };
+  await f.openSource({ kind: 'message', id: 'm1' });
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(f.get('app-status').textContent, 'Source could not open', 'a refusal Core answered stays');
 });
 
 test('a renewed session leaves a message that was not about the connection, and writing that cannot be saved', async () => {

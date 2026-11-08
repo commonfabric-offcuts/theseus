@@ -46,6 +46,7 @@ import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { SessionRenewal } from './session-renewal.mjs';
+import { showLine, clearUnreached, lineText } from './lines.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -53,11 +54,9 @@ const node = (tag, text, className) => {
   if (className) element.className = className; return element;
 };
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
-// The page's status line. `reach`: it says Theseus did not answer, or refused
-// this page's session, so it is over once the page reaches Theseus (reached()).
-let statusReach = false;
-const status = (message, reach = false) => { $('app-status').textContent = message; $('app-status').hidden = !message; statusReach = reach && Boolean(message); };
-const failed = error => { status(error.message, error instanceof AttemptError && (!error.status || error.status === 401)); return null; };
+// The page's status line (lines.mjs): a failure goes to it as the error itself.
+const status = what => showLine($('app-status'), what);
+const failed = error => { status(error); return null; };
 const run = action => { try { return Promise.resolve(action()).catch(failed); } catch (error) { return Promise.resolve(failed(error)); } };
 let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
@@ -421,7 +420,7 @@ async function present(presentation) {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
     registry.current.neighbors = neighbors;
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
-  }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
+  }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error); });
   sourceAttachments(presentation);
 }
 // A Notebook page shown in the Reader is read once the person can see it, as
@@ -442,12 +441,12 @@ async function readPage(presentation) {
   const current = () => registry.isSourceCurrent(presentation) && !presentation.sourceUnavailable;
   let since;
   try { since = await pageReads.opened(presentation.source); }
-  catch (error) { if (current()) reader.notice(error.message); return; }
+  catch (error) { if (current()) reader.notice(error); return; }
   if (since === null || !current()) return;
   const ref = { ...presentation.source.source_ref, revision: since };
   let earlier;
   try { earlier = checkedView(await registry.cleanup.list(options => api.view('source', ref, options)), bootstrap.instance_id); }
-  catch (error) { if (current()) reader.notice(`What changed since revision ${since} could not be read. ${error.message}`); return; }
+  catch (error) { if (current()) reader.notice([`What changed since revision ${since} could not be read.`, error]); return; }
   if (current()) reader.showChanges(since, earlier.body ?? '', presentation.source.body ?? '');
 }
 // A reply to someone else's message in this topic goes to its author unless
@@ -470,7 +469,7 @@ function listCandidates(editor, page, continued) {
 }
 function discover(presentation, editor) {
   return registry.recoveryCandidates(editor, { limit: 10 }, (page, continued) => listCandidates(editor, page, continued))
-    .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
+    .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error); });
 }
 // Rows a foreground read deferred were checked again: what the page lists for
 // exactly those rows is replaced, a copy that moved is added, and every other
@@ -489,7 +488,7 @@ function rechecked(session, ids, page) {
   changed(editor);
   validated.catch(error => {
     const presentation = presentationFor(editor);
-    if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message);
+    if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error);
   });
 }
 // One attachment of a source: a button that fetches it, then shows an image
@@ -515,7 +514,7 @@ function attachmentControl(attachment, sourceRef, current, notice) {
       const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
       notice('');
       if (held && unplaced()) download.focus();
-    } catch (error) { if (available()) notice(error.message); }
+    } catch (error) { if (available()) notice(error); }
     finally { if (show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
   }); host.append(show);
   return host;
@@ -529,9 +528,9 @@ function sourceAttachments(presentation) {
   let last = null;
   for (const attachment of presentation.source.attachments ?? []) {
     const mine = {};
-    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, message => {
-      if (message) { mine.said = `${attachment.name ?? 'attachment'}: ${message}`; last = mine; reader.notice(mine.said); }
-      else if (last === mine && $('reader-notice').textContent === mine.said) { reader.notice(''); last = null; }
+    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, failure => {
+      if (failure) { mine.said = [`${attachment.name ?? 'attachment'}:`, failure]; last = mine; reader.notice(mine.said); }
+      else if (last === mine && $('reader-notice').textContent === lineText(mine.said)) { reader.notice(''); last = null; }
     }));
   }
 }
@@ -545,8 +544,8 @@ async function openSource(ref, opener, act = null) {
   try { await marks.open(registry, ref, { topicId: topic.id, opener }, act); }
   catch (error) {
     if (request === opening) {
-      if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error.message);
-      else status(error.message);
+      if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
+      else status(error);
     }
   }
   finally { if (request === opening) { views.retain(views.currentItem, null); reader.paintOffer(); } }
@@ -862,7 +861,7 @@ async function toggleMark() {
   if (!registry.isSourceCurrent(p)) return;
   if (receipt?.error?.code === 'REVISION_CONFLICT') {
     reader.notice(`This message's mark changed in another tab or device: it is ${marks.state(ref.id)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
-  } else if (receipt?.status !== 'committed') reader.notice(receipt?.error?.message ?? 'The mark was not confirmed. Press again to send the same request.');
+  } else if (receipt?.status !== 'committed') reader.notice(receipt?.error ?? 'The mark was not confirmed. Press again to send the same request.');
 }
 // A message's ⋯ menu and right-click menu (docs/links.md, "A message's menu").
 function messageMenuButton(item) {
@@ -1069,7 +1068,7 @@ async function checkInlineAvailability(read, current) {
 }
 async function initializeInlineComposer() {
   try { await registry.initializeInline(topic); }
-  catch (error) { inline.fail(error.message); return; }
+  catch (error) { inline.fail(error); return; }
   // Recovery discovery reads in the background lane, which any foreground read
   // defers. The optional rail reads that follow wait for it, so a saved copy
   // that Core already acknowledges is retired rather than left for review.
@@ -1088,7 +1087,7 @@ async function retryInline() {
     if (current()) {
       const failure = readFailure(error);
       if (failure.kind === 'authority') { await registry.parkAuthority(bindingOf(bootstrap), failure.code); updateStatus(failure); }
-      inline.notice('Could not confirm topic access. Your writing is kept. ' + failure.message);
+      inline.notice(['Could not confirm topic access. Your writing is kept.', failure]);
     }
   } finally { foreground.release(); }
 }
@@ -1201,7 +1200,7 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
 // it has confirmed, or the live feed up again. Whatever the status line said
 // about not reaching it is over, and replies it did not take go on.
 function reached() {
-  if (statusReach) status('');
+  clearUnreached(document);
   registry?.resumeHeld();
 }
 // A restarted server (every deploy) refuses this page's session. The page
@@ -1377,7 +1376,7 @@ async function initialize() {
     // A note that could not be saved says so in the Reader, beside its writing.
     saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error.message); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
-    close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error.message); return false; }),
+    close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error); return false; }),
     step: async direction => {
       const presentation = registry.current, neighbors = presentation.neighbors ?? await registry.neighbors(presentation);
       if (!registry.isCurrent(presentation)) return;
@@ -1392,7 +1391,7 @@ async function initialize() {
     reconcile: editor => run(() => registry.checkConfirmation(editor)),
     renderPending: (host, editor) => pendingButton(host, editor, reader.presentation),
     recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
-    error: error => reader.notice(error.message),
+    error: error => reader.notice(error),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     people: whisperPeople, actor: () => bootstrap.actor,
   });
@@ -1524,7 +1523,7 @@ async function acknowledgeSent(item) {
   try {
     const receipt = await api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'delivery.ack',
       target: { delivery_id: item.id }, expected: { authority: { authority_id, authority_epoch } }, args: {} });
-    if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'Marking it read was not confirmed.');
+    if (receipt?.status !== 'committed') status(receipt?.error ?? 'Marking it read was not confirmed.');
   } finally {
     // Whether or not the answer arrived, the list shows what Core now holds.
     await attention.refresh();
@@ -1775,12 +1774,12 @@ async function openDestination(target, title, from = null) {
   }
   // A page whose start failed has no navigation; leave it for the destination.
   if (!topicNavigation) { location.assign(routeHref(target)); return; }
-  const notice=$('topic-navigation-status');notice.hidden=true;
+  const notice=$('topic-navigation-status');showLine(notice,'');
   const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
   try { return await pending; }
   catch(error) {
     if(serial!==topicNavigation.serial)return;
-    notice.textContent=error.message;notice.hidden=false;notice.scrollIntoView({block:'nearest'});
+    showLine(notice,error);notice.scrollIntoView({block:'nearest'});
   }
 }
 // painted hears the outcome rows after each read (the outcome page's "Also waiting on you" line).
@@ -2047,7 +2046,7 @@ async function initializeCreationPage(route) {
   catch(error) {
     // Another tab is starting this form: say so, and open it here once that tab lets go.
     if(!outcomeCreation.waiting)throw error;
-    status(error.message);run(reload);document.body.dataset.ready='true';
+    status(error);run(reload);document.body.dataset.ready='true';
     if(!await outcomeCreation.waiting)return;
     status('');
   }
@@ -2070,9 +2069,8 @@ watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor
 // reload runs start afresh. Settles true when the page started.
 function begin(starting = start) {
   return Promise.resolve().then(starting).then(() => true, error => {
-    status(error.message);
     const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => location.reload();
-    $('app-status').append(' ', again);
+    status([error, again]);
     return false;
   });
 }
