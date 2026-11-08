@@ -3,10 +3,12 @@ import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
 const copy = value => structuredClone(value);
 // A refused session (a restarted server, before the page has its new session)
-// is refused before Core reads the request. It does not park the act: once the
-// page holds the new session, its outcome is looked up and, if unrecorded, it
-// goes again as the same operation.
+// is refused before Core reads the request, so the act was never delivered. It
+// does not park the act: once the page holds the new session, it goes again as
+// the same operation (resumeRefused), and an outcome a refused look-up could
+// not read is looked up again first.
 const sessionRefused = error => error?.status === 401 && error.details?.error?.code === 'SESSION_REQUIRED';
+const SESSION_REFUSED = 'SESSION_REQUIRED';
 const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'intent', 'whisper', 'caret', 'reply_to', 'exchange_id'];
 const authorityPair = value => value && typeof value.authority_id === 'string' && value.authority_id &&
   typeof value.authority_epoch === 'string' && value.authority_epoch
@@ -341,7 +343,13 @@ export class EditorSession {
     try { receipt = await this.api.command(copy(entry.envelope)); }
     catch (error) {
       entry.error = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
-      if (sessionRefused(error)) entry.error.retryable = true;
+      if (sessionRefused(error)) {
+        // Core never read it: undelivered, it waits for the new session, as
+        // the same session would only be refused again.
+        entry.dispatched = false;
+        await this.persist();
+        return null;
+      }
       await this.persist();
       await this.authorityChanged(entry);
       return retries > 0 ? this.dispatch(entry, { retries: retries - 1, resumePreparation }) : null;
@@ -387,16 +395,35 @@ export class EditorSession {
   start(item, options, resume = false) {
     // Freeze at the person's act, before any queued save or network wait.
     const preparing = this.enqueue(() => this.prepare(item, resume));
-    const sending = preparing.then(async ready => {
+    return this.track(item.id, preparing.then(async ready => {
       if (!ready || item.detached) return item;
       // prepare() persisted the successor and A before this navigation hook.
       this.prepared(this.editor, item, options);
       await this.sendPrepared(item);
       return item;
-    });
-    this.sends.set(item.id, sending);
-    sending.then(() => this.sends.delete(item.id), () => this.sends.delete(item.id));
+    }));
+  }
+
+  // A reply's act under way, until it settles.
+  track(key, sending) {
+    this.sends.set(key, sending);
+    sending.then(() => this.sends.delete(key), () => this.sends.delete(key));
     return sending;
+  }
+
+  // The page holds the server's session again (renewed after a restart, or a
+  // new document). A reply whose preparation the old session's refusal held up
+  // is prepared and sent, and one whose send it refused is sent, each under its
+  // own operations, as the person asked when they pressed Send. Acts under way
+  // finish first, so one refused as the session changed is resumed too. A
+  // runtime change under review holds them, as it holds Send.
+  async resumeRefused() {
+    await Promise.allSettled([this.queue, ...this.sends.values()]);
+    if (this.recovery) return [];
+    return Promise.all(this.editor.submissions.flatMap(item =>
+      item.status === 'preparing' && item.blocked?.code === SESSION_REFUSED ? [this.start(item, { stay: true }, true)]
+        : item.status === 'prepared' && this.attempts.some(entry => entry.envelope.operation_id === item.sendOperationId && entry.error?.code === SESSION_REFUSED)
+          ? [this.track(item.id, this.sendPrepared(item).then(() => item))] : []));
   }
 
   async block(item, entry, conflict = null) {

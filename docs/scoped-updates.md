@@ -108,6 +108,12 @@ check for the same commit runs beside them rather than after them.
   it speaks for the same instance and person, and goes on in place: the writing,
   the lists and the Reader stay, saves the refusal held up go out under their
   own operations, and the stopped updates are tried once more for that session.
+  A reply sent before the page had the new session is refused wherever the old
+  session meets the server (its save, its preparation or its send); Core never
+  read it, so it goes on by itself and is published once. A page reloaded
+  before it reconnected holds the new session, and such a reply kept on the
+  device goes on when its writing is opened there. A reply held for any other
+  reason waits for the person, as before.
   A refused live stream starts the same renewal. **Reconnect** does it on
   demand; while the server is not answering, the page says so and renews when
   the stream or a read reaches it again. It never reloads itself or erases its

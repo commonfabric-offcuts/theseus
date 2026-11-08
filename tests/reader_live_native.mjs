@@ -1061,4 +1061,65 @@ export async function liveChecks({ check, page, until, control, observations, or
       await p.close();
     });
   }
+
+  // The server restarts, and the person's Send meets it before the page has the
+  // new session: the restarted server refuses the reply's save, its
+  // preparation or its send, whichever the old session carries first. For the
+  // later two, the old server's answer to the act before is held until it has
+  // restarted. The page's renewal is held at the server's answer, so the
+  // refusal falls inside that window every time. Once the renewal lands, the
+  // reply goes on by itself and is published once, in the Reader and in the
+  // topic's composer.
+  for (const [surface, phase] of [['reader', 'draft.save'], ['reader', 'submission.prepare'], ['reader', 'message.send'], ['composer', 'draft.save']]) {
+    await check(`live restart: a reply sent before the page has the new session is published once it does (${surface}, refused at ${phase})`, async () => {
+      const p = await page(`live-restart-send-${surface}-${phase}`, null, true);
+      await settled(p);
+      const reader = surface === 'reader', body = `Sent in the restart window (${surface}, ${phase})`;
+      const fieldId = reader ? '#writing-body' : '#inline-writing-body', sendId = reader ? '#send-reply' : '#inline-send';
+      // The reply's session, wherever the page shows it now (the Reader closes once a reply is prepared).
+      const reply = `[...appRegistry().sessions.values()].find(s=>s.editor.submissions.some(i=>i.snapshot.body===${JSON.stringify(body)}))`;
+      if (reader) await p.open(1);
+      else await p.evaluate(`document.querySelector(${JSON.stringify(fieldId)}).scrollIntoView({block:'center'})`);
+      const write = async () => { await p.point(fieldId); await p.key('a', 4); await p.send('Input.insertText', { text: body }); };
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      const holdFirst = { 'submission.prepare': 'draft.save', 'message.send': 'submission.prepare' }[phase];
+      let restarted = null;
+      const authorization = event => Object.entries(event.request.headers).find(([key]) => key.toLowerCase() === 'authorization')?.[1];
+      p.intercept((payload, event) => (restarted === null && holdFirst && payload?.kind === holdFirst) ||
+        (restarted !== null && event.request.url.endsWith('/api/bootstrap') && authorization(event) === `Bearer ${restarted.token}`));
+      let answered = null;
+      if (holdFirst) {
+        // Sent to the old server, which answers; the answer reaches the page after the restart.
+        await write(); await p.point(sendId);
+        answered = await until(() => p.held.find(h => h.payload?.kind === holdFirst), `the old server's answer to ${holdFirst} is held`);
+      }
+      await control({ method: 'server_stop' });
+      restarted = await control({ method: 'server_start' });
+      assert.notEqual(restarted.token, before);
+      facts.token = restarted.token;
+      const inWindow = await p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(before)}`);
+      assert.equal(inWindow, true, 'the page still holds the old session');
+      if (answered) await p.release(answered); else { await write(); await p.point(sendId); }
+      const refused = await until(() => p.evaluate(`(()=>{const s=${reply};const i=s?.editor.submissions.find(i=>i.snapshot.body===${JSON.stringify(body)});
+        return i && (i.blocked?.code === 'SESSION_REQUIRED' ? i.blocked.phase : i.status === 'prepared' && s.attempts.find(a=>a.envelope.operation_id===i.sendOperationId)?.error?.code === 'SESSION_REQUIRED' ? 'message.send' : null);})()`),
+        'the restarted server refused the reply for the old session');
+      assert.equal(refused, phase, 'refused at the act this case is about');
+      const renewal = await until(() => p.held.find(h => h.event.request.url.endsWith('/api/bootstrap')), 'the renewal is held at the server\'s answer');
+      p.intercept(null); await p.release(renewal);
+      await until(async () => (await view('topic_messages', { topic_id: 't1', direction: 'before' })).items.some(item => item.body === body), 'the reply is published', 15000);
+      await until(() => hasText(p, '#messages', body), 'the reply is shown', 5000);
+      await until(() => p.evaluate(`${reply}.editor.submissions.filter(i=>i.snapshot.body===${JSON.stringify(body)}).every(i=>i.status==='confirmed')`), 'the reply is confirmed on the page');
+      const published = (await view('topic_messages', { topic_id: 't1', direction: 'before' })).items.filter(item => item.body === body).length;
+      assert.equal(published, 1, 'published once');
+      const sends = p.calls.filter(c => c.payload?.kind === 'message.send');
+      assert.equal(new Set(sends.map(c => c.payload.operation_id)).size, 1, 'one send operation');
+      assert.equal(sends.length, phase === 'message.send' ? 2 : 1, 'the refused send went once more; others went once');
+      await settled(p);
+      assert.equal(await p.evaluate("document.querySelector('#app-status').hidden || !document.querySelector('#app-status').textContent"), true,
+        await p.evaluate("document.querySelector('#app-status').textContent"));
+      observations.push({ name: 'reply sent in the restart window', surface, phase, inWindow, kinds: p.calls.filter(c => c.payload?.kind).map(c => c.payload.kind) });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
 }

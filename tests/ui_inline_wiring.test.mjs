@@ -82,7 +82,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const registry = { inline: p, current: null, sessions: new Map([[editor.key, { editor }]]), disposed: false,
     get interactive() { return this.current ?? this.inline; },
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
-    cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); },
+    cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); }, resumeRefused() { events.push(['resume-refused']); return Promise.resolve(); },
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
@@ -562,6 +562,20 @@ test('a live feed refused for its session renews it in place: the feed wakes, wa
   f.registry.current.availabilityUnconfirmed = false;
   f.events.length = 0; answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
   assert.equal(f.events.some(e => e[0] === 'invalidate' && e[1] === 'availability'), false, 'confirmed access is not checked again');
+});
+
+// Replies the refused session held up go on whenever the page holds the
+// server's session: a new one, or the one it has; not while Theseus is away.
+test('a renewal resumes the replies the refused session held up, and nothing does while the server is away', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  const resumed = () => f.events.filter(e => e[0] === 'resume-refused').length;
+  live.emit({ kind: 'refused' }); await drain();
+  assert.equal(resumed(), 0, 'not while the server is away');
+  answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(resumed(), 1);
+  answers.push('current'); f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(resumed(), 2);
 });
 
 test('a renewed session leaves a message that was not about the connection, and writing that cannot be saved', async () => {

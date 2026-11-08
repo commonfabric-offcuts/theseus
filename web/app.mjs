@@ -1204,11 +1204,13 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
 // A restarted server (every deploy) refuses this page's session. The page
 // reads the server's new one (session-renewal.mjs) when the live feed is
 // refused, or a read is, and goes on in place: the writing, the lists and the
-// Reader stay, waiting saves go out, and stopped updates resume once.
+// Reader stay, waiting saves and held replies go out, and stopped updates resume once.
 let renewal = null, reconnectRetried = null;
 async function reconnect() {
   const result = await renewal?.renew();
   if (!result) return false;
+  // Replies the refused session held up go on with the session the page holds.
+  registry?.resumeRefused();
   if (result === 'renewed') {
     live?.wake(); attention?.refresh();
     if (unreachable !== null && $('app-status').textContent === unreachable) status('');

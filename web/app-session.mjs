@@ -164,8 +164,18 @@ export class EditorRegistry {
       session.uploads = new Uploads(session, this);
       session.uploads.importRetained();
       await this.recoveryCandidates(editor);
+      // A reply the old session's refusal held up, kept from a page that was
+      // reloaded before it reconnected, goes on with this page's session.
+      this.resumeSession(session);
     }
     return editor;
+  }
+
+  // The page holds the server's session again: replies its old session's
+  // refusal held up go on (EditorSession.resumeRefused).
+  resumeRefused() { return Promise.all([...this.sessions.values()].map(session => this.resumeSession(session))); }
+  resumeSession(session) {
+    return session.resumeRefused().catch(error => { session.editor.journalError = error.message; this.changed(session.editor); });
   }
 
   async keepLocal(presentation) {

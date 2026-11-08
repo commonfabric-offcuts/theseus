@@ -287,6 +287,100 @@ test('a refusal from the server that is not about the session is not sent again 
   assert.equal(f.session.attempts[0].error.code, 'ORIGIN_REFUSED');
 });
 
+// A reply sent while the restarted server still refuses the page's old
+// session: whichever of its acts is refused (the save inside it, its
+// preparation, or its send), Core never read it. Once the page holds the new
+// session the reply goes on, each act under its own operation, and is
+// published once (docs/scoped-updates.md).
+const sessionRefusal = () => new AttemptError('Open this instance to establish a session.', 401,
+  { error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.', retryable: false } });
+function refusing(f, from) {
+  // Refused from the first act of that kind until the check renews the session.
+  const state = { refused: false, restarted: false };
+  const command = f.transport.command, view = f.transport.view;
+  f.transport.command = async envelope => {
+    if (envelope.kind === from && !state.restarted) state.refused = state.restarted = true;
+    if (state.refused) { f.calls.push(copy(envelope)); throw sessionRefusal(); }
+    return command(envelope);
+  };
+  f.transport.view = async (name, args) => { if (state.refused) throw sessionRefusal(); return view(name, args); };
+  return state;
+}
+const published = async (f, body) => (await f.api.view('topic_messages', { topic_id: 't1', direction: 'before' })).items.filter(item => item.body === body).length;
+
+for (const phase of ['draft.save', 'submission.prepare', 'message.send']) {
+  test(`a reply whose ${phase} was refused for the old session goes on and is published once the session is renewed`, async t => {
+    const f = await fixture(t), state = refusing(f, phase), body = `Sent while the session was refused at ${phase}`;
+    f.editor.edit({ body });
+    const sending = f.session.send(); f.editor.edit({ body: 'B typed meanwhile' }); await sending;
+    const a = f.editor.submissions[0];
+    assert.equal(a.status, phase === 'message.send' ? 'prepared' : 'preparing');
+    if (phase !== 'message.send') assert.equal(a.blocked.code, 'SESSION_REQUIRED');
+    assert.equal(f.calls.filter(c => c.kind === phase).length, 1, 'the refused act is not tried again with the same session');
+    assert.equal(await published(f, body), 0);
+    state.refused = false;
+    await f.session.resumeRefused();
+    assert.equal(a.status, 'confirmed', JSON.stringify(a.blocked));
+    assert.equal(await published(f, body), 1, 'published once');
+    const acts = f.calls.filter(c => c.kind === phase);
+    assert.equal(acts.length, 2); assert.deepEqual(acts[0], acts[1], 'the same operation, sent once more');
+    assert.equal(f.editor.draft.body, 'B typed meanwhile', 'the writing begun after Send stays');
+    await f.session.resumeRefused();
+    assert.equal(f.calls.filter(c => c.kind === phase).length, 2, 'a published reply is not sent again');
+  });
+}
+
+// The refusal lands just as the page renews its session: the resumption waits
+// for the act under way, then takes it up.
+test('a reply refused while the session is being renewed is resumed once the act under way ends', async t => {
+  const f = await fixture(t), gate = deferred(), body = 'Refused as the session changed';
+  const command = f.transport.command;
+  let held = true;
+  f.transport.command = async envelope => {
+    if (held && envelope.kind === 'draft.save') { held = false; f.calls.push(copy(envelope)); await gate.promise; throw sessionRefusal(); }
+    return command(envelope);
+  };
+  f.editor.edit({ body });
+  const sending = f.session.send();
+  const resuming = f.session.resumeRefused();
+  gate.resolve(); await sending; await resuming;
+  assert.equal(f.editor.submissions[0].status, 'confirmed');
+  assert.equal(await published(f, body), 1);
+});
+
+// Only the session's refusal is resumed by itself: a reply held for another
+// reason waits for the person, and one already sent is left alone.
+test('a refused send waits while a runtime change is under review, as Send does', async t => {
+  const f = await fixture(t), state = refusing(f, 'message.send'), body = 'Refused send during a runtime review';
+  f.editor.edit({ body });
+  await f.session.send();
+  assert.equal(f.editor.submissions[0].status, 'prepared');
+  await f.session.parkAuthority(f.pin());
+  state.refused = false;
+  await f.session.resumeRefused();
+  assert.equal(f.calls.filter(c => c.kind === 'message.send').length, 1, 'not sent while the review is open');
+  assert.equal(await published(f, body), 0);
+});
+
+test('a reply held for a reason other than the session is not resumed by a renewal', async t => {
+  const f = await fixture(t);
+  const command = f.transport.command;
+  let busy = true;
+  f.transport.command = async envelope => {
+    f.calls.push(copy(envelope));
+    if (busy) return { instance_id: 'ux-fixture', operation_id: envelope.operation_id, kind: envelope.kind,
+      recorded: false, status: 'retryable', error: { code: 'AUTHORITY_BUSY', retryable: true, message: 'Authority is busy.' } };
+    return command(envelope);
+  };
+  f.editor.edit({ body: 'Held while busy' });
+  await f.session.send();
+  assert.equal(f.editor.submissions[0].blocked.code, 'AUTHORITY_BUSY');
+  busy = false; const before = f.calls.length;
+  await f.session.resumeRefused();
+  assert.equal(f.calls.length, before, 'nothing is sent');
+  assert.equal(f.editor.submissions[0].status, 'preparing');
+});
+
 test('private note save cannot send the reply beneath it', async t => {
   const f = await fixture(t);
   const note = new Editor({ ...f.context, kind: 'note' }, { id: 'note1', revision: 0, body: '' });
