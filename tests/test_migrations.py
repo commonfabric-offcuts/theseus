@@ -2567,8 +2567,8 @@ class HealthStepCase(MigrationCase):
                                "VALUES (?,?,?,?,1,1,?,?)", (attempt, "c-" + attempt, "r-1", recipient, handed - 500, handed + 20000))
                     db.execute("INSERT INTO wake_results VALUES (?,'handed',?)", (attempt, handed))
                     db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,seen_ms,final_status,error_code,finished_ms) "
-                               "VALUES (?,?,'thread-1',?,?,?,1,?,?,?,?,?)", (attempt, recipient, "turn-%d" % number, mode, "theseus:" + attempt,
-                                                                         handed, seen, status, code, finished))
+                               "VALUES (?,?,?,?,?,?,1,?,?,?,?,?)", (attempt, recipient, "thread-" + recipient, "turn-%d" % number, mode,
+                                                                    "theseus:" + attempt, handed, seen, status, code, finished))
 
     def posted(self, author, sent_ms):
         """A message the older version kept, by author at sent_ms: one of the agent's acts with its time."""
@@ -2589,9 +2589,17 @@ class HealthStepCase(MigrationCase):
         self.turns("owner", [([("start", 1000 + 60000 * n, None), ("steer", 2000 + 60000 * n, 2500 + 60000 * n),
                                ("steer", 3000 + 60000 * n, None)], ("failed", "serverOverloaded", 30000 + 60000 * n)) for n in range(3)])
         self.posted("owner", 100)  # before any of its wakes began
-        # agent-a: a claim that got through, then one found expired, which is its own why.
+        # agent-a: a claim that got through, then one found expired, which is its own why; and a turn still
+        # running that holds no work (the scheduler handed it back), which the scheduler's one unanswered
+        # wake therefore does not include.
         self.settled(["accepted", "expired"], recipient="agent-a")
+        self.turns("agent-a", [([("start", 300000, None)], (None, None, None))])
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('agent-a',1) ON CONFLICT DO NOTHING")
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=1000,handed_seq=NULL WHERE recipient_id='agent-a'")
         self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(self.sql("SELECT unanswered_wakes,unanswered_since_ms FROM wake_facts WHERE recipient_id='agent-a'"), [(1, 1000)])
+        self.assertEqual(self.sql("SELECT thread_id,turn_id,began_ms,handed_ms,carried FROM wake_turns"), [("thread-agent-a", "turn-0", 299500, 300000, 0)])
         self.assertEqual(sorted(self.sql("SELECT recipient_id,reached_ms,failed_wakes,failing_since_ms,failed_outcome,failed_reason FROM wake_facts")),
                          [("agent-a", 1000, 1, 61000, "expired", "expired"), ("agent-b", 150000, 1, 210000, "lost", None),
                           ("owner", None, 3, 30000, "failed", "serverOverloaded")])

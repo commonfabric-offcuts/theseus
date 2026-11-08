@@ -428,6 +428,40 @@ class AttemptCase(HealthCase):
             self.assertEqual(self.agent()["reached_ms"], self.now)
         self.assertEqual(self.notices(), [])
 
+    def test_an_accepted_notice_with_nothing_left_waiting_is_not_left_unanswered(self):
+        """The owner takes agent-a off its topic between the claim and the notice being accepted."""
+        for number in range(3):
+            self.part(True)
+            self.now += 61000
+            self.send_next("Work %d" % number)
+            claim = self.claim_now()
+            self.part(False)
+            self.assertEqual(self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], "accepted")["pending_count"], 0)
+            self.assertEqual(self.facts(), (0, None, 0), "wake %d" % number)
+        self.assertEqual(self.notices(), [])
+
+    def test_wakes_left_unanswered_are_counted_from_the_first(self):
+        reached = []
+        for number in range(3):
+            self.now += 61000
+            self.send_next("Work %d" % number)
+            claim = self.claim_now()
+            self.now += 5
+            self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], "accepted")
+            reached.append(self.now)
+        self.assertEqual(self.sql("SELECT unanswered_wakes,unanswered_since_ms FROM wake_facts WHERE recipient_id='agent-a'"), [(3, reached[0])])
+
+    def test_a_turn_given_work_by_any_of_its_hands_is_left_unanswered_when_it_completes_with_no_act(self):
+        """A turn started with work takes a steer whose work the owner took away before its hand:
+        the turn was still given work, by its start, and agent-a did not act."""
+        self.steered_turn("turn-1", 0)
+        self.send_next("More for turn-1")
+        claim = self.claim_now()
+        self.part(False)
+        self.assertEqual(self.hand(claim, turn_id="turn-1", mode="steer")["handed_seq"], None)
+        self.end("completed", turn_id="turn-1")
+        self.assertEqual(self.facts(), (0, None, 1))
+
 
 @own_cases
 class RunnerNoticeCase(HealthCase):
