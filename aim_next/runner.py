@@ -609,6 +609,50 @@ class Runner:
                 raise RunnerError("DATABASE_BUSY", "Runner state is busy; the exit was not recorded", retryable=True) from error
             raise RunnerError("RUNNER_STORAGE_ERROR", "The runner's exit could not be confirmed") from error
 
+    def settle_lapsed_lease(self, lease_until_ms):
+        """What the server saw: the running runner's lease ended at lease_until_ms and was not renewed.
+
+        A hung runner's process lives, so no exit is recorded and it makes no
+        more commits; its lease running out is the only sign. This settles what
+        is red then (health.py), so the team is told and every open page reads
+        it on this commit. It needs no guard and records nothing of the
+        runner's: a runner that comes back finds its role lost, as before.
+        Status "settled" when it wrote, "unchanged" when what is red was
+        already announced, "renewed" when that lease is no longer the
+        running runner's, "early" while it has not yet ended."""
+        _bounded(lease_until_ms, 0, 9223372036854775807, "lease_until_ms")
+        from .store import _connect
+        try:
+            with self._authority.shared() as fence:
+                db, _ = _connect(self.path)
+                try:
+                    db.execute("BEGIN IMMEDIATE")
+                    fence.verify()
+                    self._check_instance(db)
+                    state, now = self._runner_state(db), delivery._now_ms()
+                    if state["state"] != "running" or state["lease_until_ms"] != lease_until_ms:
+                        status = "renewed"
+                    elif lease_until_ms > now:
+                        status = "early"
+                    elif self._health_settle(db, now):
+                        self._advance_commit_seq(db)
+                        db.commit()
+                        status = "settled"
+                    else:
+                        status = "unchanged"
+                    return {"status": status, "instance_id": self.instance_id}
+                finally:
+                    try:
+                        if db.in_transaction:
+                            db.rollback()
+                    finally:
+                        db.close()
+        except (sqlite3.Error, OSError) as error:
+            if (isinstance(error, sqlite3.OperationalError) and error.__cause__ is None
+                    and ("locked" in str(error).lower() or "busy" in str(error).lower())):
+                raise RunnerError("DATABASE_BUSY", "Runner state is busy; the lapsed lease was not settled", retryable=True) from error
+            raise RunnerError("RUNNER_STORAGE_ERROR", "The lapsed lease could not be settled") from error
+
     def pause_runner(self, guard, runner_token, reason_code, child=None):
         """child, for cleanup_failed only: (pid, started_at) of the broker whose
         group cleanup was not confirmed, recorded with the pause itself."""

@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from aim_next import cli
-from aim_next.health import FAILING_AFTER, WHY, report_lines
+from aim_next.health import FAILING_AFTER, WHY, machine_load as _real_machine_load, report_lines
 from aim_next.profile import write_profile
 from test_hosted_schedule import OTHER_THREAD
 from test_wake_contract import HostedFixture, own_cases
@@ -204,12 +204,38 @@ class RunnerNoticeCase(HealthCase):
         self.assertEqual(self.light(), [])
         self.assertEqual(self.notices(), [], "a deploy's stop and start post nothing")
 
-    def test_a_runner_that_stopped_renewing_is_red_by_the_clock_and_not_told(self):
-        self.now += 60000
-        self.send_next("Work after the lease ran out")
+    def test_a_runner_that_stopped_renewing_is_told_once_by_the_act_that_sees_it_and_again_when_a_runner_takes_the_role(self):
+        # Hung: its process lives, so neither the supervisor nor the server records an exit.
+        self.now += 3600 * 1000
+        self.send_next("Work an hour after the runner hung")
+        self.send_next("More work")
         self.assertEqual(self.light(), ["runner"])
         self.assertEqual(self.health()["runner"]["state"], "unrenewed")
-        self.assertEqual(self.notices(), [])
+        self.assertEqual(self.notices(), [(self.conversation(), "Health: The agent runner stopped answering (its lease ran out and it "
+                                           "did not renew it), so no wakes are going out." + NOTICE_TAIL)])
+        # Its end recorded later is the same red thing: nothing more is posted.
+        self.assertEqual(self.store.record_runner_exit(__import__("os").getpid(), 75)["status"], "recorded")
+        self.assertEqual(len(self.notices()), 1)
+        self.hosting.close()
+        self.token(self.guard("successor"))
+        self.assertEqual(self.light(), [])
+        self.assertEqual(self.notices()[-1][1], "Health: The agent runner is running again, so wakes are going out." + NOTICE_TAIL)
+
+    def test_the_server_settles_a_lapsed_lease_on_a_commit_of_its_own_once(self):
+        """What the live feed calls when the lease ends with no act at all to see it (docs/health.md)."""
+        lease = self.sql("SELECT lease_until_ms FROM runner_state")[0][0]
+        seq = lambda: int(self.sql("SELECT value FROM metadata WHERE key='commit_seq'")[0][0])
+        before = seq()
+        self.assertEqual(self.store.settle_lapsed_lease(lease)["status"], "early", "a lease that has not ended")
+        self.assertEqual((seq(), self.notices()), (before, []))
+        self.now = lease
+        self.assertEqual(self.store.settle_lapsed_lease(lease)["status"], "settled")
+        self.assertEqual(seq(), before + 1, "on a commit of its own, so every open page reads it")
+        self.assertEqual([body.split(",")[0] for _, body in self.notices()], ["Health: The agent runner stopped answering (its lease ran out and it did not renew it)"])
+        self.assertEqual(self.store.settle_lapsed_lease(lease)["status"], "unchanged")
+        self.assertEqual((seq(), len(self.notices())), (before + 1, 1), "said once")
+        self.assertEqual(self.store.settle_lapsed_lease(lease - 1)["status"], "renewed", "a lease the runner no longer holds")
+        self.assertEqual(self.sql("SELECT state,lease_until_ms FROM runner_state")[0], ("running", lease), "nothing of the runner's is recorded")
 
     def test_a_paused_runner_then_stopped_has_not_come_back(self):
         self.store.pause_runner(self.hosting, self.runner, "storage_failure")
@@ -247,6 +273,21 @@ class CommandLineCase(HealthCase):
         self.assertRegex(lines[1], r"^  - agent-a can't be woken: no wake since .+ has got through \(3 wakes\)\. Why: %s\. 1 message waits for it\.$"
                          % WHY["route_unavailable"].replace("(", r"\(").replace(")", r"\)"))
         self.assertTrue(any(line.startswith("  agent-a  can't be woken · 1 waiting") for line in lines), lines)
+
+    def test_a_load_that_could_not_be_read_is_said_never_left_out(self):
+        with mock.patch("aim_next.health.os.getloadavg", side_effect=OSError("unavailable")), mock.patch("aim_next.health.os.cpu_count", return_value=8):
+            self.assertEqual(_real_machine_load(), {"load": None, "cpus": 8})
+        answer = self.health()
+        answer["machine"] = {"load": None, "cpus": 8}
+        lines = report_lines(answer, str)
+        self.assertIn("This Mac: its load could not be read (8 cores)", lines)
+        self.assertTrue(lines[0].startswith("Everything is working"), lines)
+        answer["machine"] = {"load": [9.0, 9.0, 9.0], "cpus": None}
+        lines = report_lines(answer, str)
+        self.assertIn("This Mac: load 9.0 on a core count that could not be read (1, 5 and 15 minutes: 9.0, 9.0, 9.0)", lines)
+        self.assertTrue(lines[0].startswith("Everything is working"), "an unknown core count is not an overload")
+        answer["machine"] = {"load": [9.0, 9.0, 9.0], "cpus": 8}
+        self.assertEqual(report_lines(answer, str)[1], "  - The Mac is overloaded: its load is 9.0 on 8 cores, so everything here may be slow.")
 
     def test_the_words_follow_red_not_the_runners_state_alone(self):
         answer = self.health()

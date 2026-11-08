@@ -18,6 +18,15 @@ const TOGETHER_MS = 2 * 60 * 1000;
 // command line and the notices posted to the team all say the same.
 const ROUTE = { codex_queue: "the Codex app's queue", codex_hosted: 'a Codex turn this Theseus hosts', other: 'a route of its own' };
 
+// Whether the Mac's 1-minute load is above its core count; never when either could not be read.
+const overloaded = machine => Boolean(machine?.load && machine.cpus && machine.load[0] > machine.cpus);
+
+// A health answer the page can say anything from: what is red, the runner and
+// the agents. Anything else is a read that failed, never "nothing is wrong".
+export function readable(answer) {
+  return Array.isArray(answer?.red) && typeof answer.runner === 'object' && answer.runner !== null && Array.isArray(answer.agents);
+}
+
 // How the runner stands, as a phrase after "The agent runner".
 export function runnerPhrase(runner, now) {
   const since = Number.isInteger(runner.since_ms) ? at(runner.since_ms, now) : null;
@@ -88,7 +97,7 @@ export function healthProblems(answer, { now, feed } = {}) {
     problems.push(`${agent.actor_id} has not answered its last ${count(item.count)} wakes${Number.isInteger(item.since_ms) ? `, since ${at(item.since_ms, now)}` : ''}; ${plural(agent.waiting, 'message waits', 'messages wait')} for it.`);
   }
   const machine = answer.machine;
-  if (machine?.cpus && machine.load[0] > machine.cpus) {
+  if (overloaded(machine)) {
     problems.push(`The Mac is overloaded: its load is ${machine.load[0]} on ${machine.cpus} cores, so everything here may be slow.`);
   }
   return problems;
@@ -133,12 +142,17 @@ export function healthLines(answer, { now, feed } = {}) {
       details: [`It serves database version ${answer.schema_version}.`], bad: feed === 'down' });
   }
   for (const agent of answer.agents ?? []) lines.push({ group: 'Agents', key: `agent:${agent.actor_id}`, label: null, ...agentLines(agent, now, runner.live) });
-  const machine = answer.machine;
-  if (machine) {
-    const [one, five, fifteen] = machine.load, busy = machine.cpus ? one / machine.cpus : 0;
-    const word = busy > 1 ? 'overloaded' : busy > 0.7 ? 'busy' : 'light';
-    lines.push({ group: 'This Mac and releases', key: 'machine', label: 'This Mac', summary: `Load ${one} on ${machine.cpus} cores · ${word}`,
-      details: [`${one} over the last minute, ${five} over 5 minutes, ${fifteen} over 15. Read at ${at(answer.read_ms, now)}, when this page last read Health.`], bad: busy > 1 });
+  // The Mac's load and core count are each said, or said to be unreadable; never left out.
+  const machine = answer.machine ?? { load: null, cpus: null };
+  const cores = machine.cpus ? `${machine.cpus} cores` : 'a core count that could not be read';
+  if (machine.load) {
+    const [one, five, fifteen] = machine.load, busy = machine.cpus ? one / machine.cpus : null;
+    const word = busy === null ? 'how busy is not known' : busy > 1 ? 'overloaded' : busy > 0.7 ? 'busy' : 'light';
+    lines.push({ group: 'This Mac and releases', key: 'machine', label: 'This Mac', summary: `Load ${one} on ${cores} · ${word}`,
+      details: [`${one} over the last minute, ${five} over 5 minutes, ${fifteen} over 15. Read at ${at(answer.read_ms, now)}, when this page last read Health.`], bad: overloaded(machine) });
+  } else {
+    lines.push({ group: 'This Mac and releases', key: 'machine', label: 'This Mac', summary: `Its load could not be read · ${cores}`,
+      details: [`The Mac did not give its load when this page last read Health, at ${at(answer.read_ms, now)}; it is read again with the next change.`], bad: false });
   }
   const release = answer.release;
   if (release) {
@@ -167,7 +181,9 @@ export class HealthPage {
 
   async load() {
     try {
-      this.answer = await this.read();
+      const answer = await this.read();
+      if (!readable(answer)) throw new Error('Health could not be read: the answer did not say what is red.');
+      this.answer = answer;
       this.failed = false;
     } catch (error) {
       this.failed = error?.message || 'Health could not be read.';
@@ -189,7 +205,7 @@ export class HealthPage {
       if (details.open) this.open.add(details.dataset.key); else this.open.delete(details.dataset.key);
     }
     const parts = [];
-    if (this.failed) parts.push(this.el('p', `${this.failed} What is shown is from the last read.`, 'notice'));
+    if (this.failed) parts.push(this.el('p', this.answer ? `${this.failed} What is shown is from the last read.` : this.failed, 'notice'));
     if (!this.answer) { this.host.replaceChildren(...parts); return; }
     const now = this.now(), feed = this.feed();
     const problems = healthProblems(this.answer, { now, feed });

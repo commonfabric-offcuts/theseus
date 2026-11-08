@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from aim_next import Store, initialize
+from aim_next import server as server_module
 from aim_next.server import create_server, RequestError
 
 
@@ -336,6 +337,10 @@ def main():
             command("memory.create", "fixture-notebook", {"title": "Image Notebook", "body": "Notebook passage to quote.", "attachments": [], "references": []},
                     {"item_id": "fixture-notebook", "owner_scope": {"kind": "topic", "id": "t1"}}, {"item_revision": 0}, sender="fixture-notebook-agent")
         max_reads = 1 if "--legacy-read-admission" in sys.argv else 2
+        # The server's own event lines (a runner gone, a lease that lapsed) are
+        # kept for the checks to read, so stderr carries only what went wrong.
+        server_events = []
+        server_module._stderr = server_events.append
         server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web",
                                max_reads=max_reads,
                                live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
@@ -580,7 +585,12 @@ def main():
                         # the fixture makes it due at once (next_due_ms), which is the
                         # one fact not reached through a runner act. "pause" pauses the
                         # runner as an operator; "resume" takes the role again with a
-                        # fresh guard, as the supervisor's resume does.
+                        # fresh guard, as the supervisor's resume does. "renew" renews
+                        # the role, a commit that changes nothing on the page; "hang"
+                        # renews it for one second and then never again, as a hung
+                        # runner whose process lives; "take" takes the role again
+                        # after that with a fresh guard; "notices" reads what Theseus posted;
+                        # "settled" reads the server's event lines and what Core last announced as red.
                         agent, action = "fixture-notebook-agent", request["action"]
                         def claimed():
                             with sqlite3.connect(str(path)) as db:
@@ -607,6 +617,22 @@ def main():
                                                               reason=request.get("reason") if action == "fail" else None)
                                 assert settled["status"] == "settled", settled
                             answer = {"settled": request.get("count", 1)}
+                        elif action in ("renew", "hang"):
+                            answer = store().renew_runner(health_runner["guard"], health_runner["token"], 120000 if action == "renew" else 1000)
+                        elif action == "take":
+                            health_runner["guard"].close()
+                            health_runner["guard"] = store().runner_guard("fixture-health-taken")
+                            health_runner["guard"].__enter__()
+                            answer = store().acquire_runner(health_runner["guard"], lease_ms=120000)
+                            health_runner["token"] = answer.get("runner_token")
+                            answer = {"status": answer["status"]}
+                        elif action == "settled":
+                            with sqlite3.connect(str(path)) as db:
+                                row = db.execute("SELECT value FROM metadata WHERE key='health_announced'").fetchone()
+                            answer = {"events": list(server_events), "announced": sorted(json.loads(row[0])) if row else []}
+                        elif action == "notices":
+                            with sqlite3.connect(str(path)) as db:
+                                answer = [row[0] for row in db.execute("SELECT body FROM messages WHERE author_id='theseus' ORDER BY seq")]
                         elif action == "pause":
                             answer = store().pause_runner(health_runner["guard"], health_runner["token"], "operator_pause")
                         elif action == "resume":

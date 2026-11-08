@@ -13,8 +13,13 @@ each, and nobody noticed.
 `?health`, from one quiet "Health" link under the instance label, which heads
 the rail on every page (the logo block on pages without a rail). While
 anything is red the link says so: "Health · needs attention", in the alert
-colour, with no edge or box of its own. Agents read the same thing with
-`aim-next health` (docs/agent-cli.md).
+colour, with no edge or box of its own. It is quiet only after a read that
+says nothing is red: until its first read answers it says "Health ·
+checking", and after a read that fails (the server sheds background reads
+under load) or answers without a list of what is red it says "Health ·
+couldn't check", also in the alert colour, since something may be red that it
+cannot see. Agents read the same thing with `aim-next health`
+(docs/agent-cli.md).
 
 ## What is red
 
@@ -51,21 +56,31 @@ the code say so.
 ## Telling the team
 
 When what is red changes, Theseus posts one notice to the team, in the act
-that changed it; never on a timer, and never again while it stays red.
+that changed it (or, for a hung runner, at its lease's own end); never on a
+timer of its own, and never again while it stays red.
 
 - **When.** Every act that changes what the reds are read from runs
   `_health_settle` in its own transaction: each recorded command, each runner
   act (a settlement, a claim that finds an expired one, a pause, an
   acquisition), and each recorded runner exit (the supervisor's, or the
-  server's when its live feed sees the runner process end). It compares what
+  server's when its live feed sees the runner process end), and the server's
+  settling of a lease that ended unrenewed (below). It compares what
   is red now with what was last announced (metadata `health_announced`) and
   posts only the difference: what went red, and what went green again.
-- **What.** Faults an act records: a pause, an exit, wakes failing, a parked
-  agent. A graceful stop (a deploy's) is red on the page and the link until a
-  runner takes the role again, but is never posted, so a deploy does not
-  post twice; a runner that stopped renewing is known gone only by the clock,
-  so it is not posted either, and the next runner's acquisition says what it
-  came back from on the page.
+- **What.** Faults: a pause, an exit, a runner that stopped renewing, wakes
+  failing, a parked agent. A graceful stop (a deploy's) is red on the page and
+  the link until a runner takes the role again, but is never posted, so a
+  deploy does not post twice.
+- **A hung runner.** A runner that stops renewing while its process lives has
+  no exit to record and makes no more commits. Whatever act first sees its
+  lease ended posts it ("The agent runner stopped answering (its lease ran out
+  and it did not renew it)"), and with no act at all the server's live feed
+  does: its wait lasts no longer than the running runner's lease, and when the
+  lease ends unrenewed it asks Core to settle what is red on a commit of its
+  own (`settle_lapsed_lease`, docs/effects-runner.md), so the team is told and
+  every page's link reads it. A recorded exit that follows is the same red
+  thing and posts nothing more. A Mac that sleeps past the lease posts as it
+  did through the `lease_lost` exit: once red, once green.
 - **Who.** Theseus itself, as the member `theseus` ("Theseus"), registered
   disabled with its first notice: never on a team, in a list of people, or
   woken, and never a person or agent who did not write the words. If someone
@@ -96,7 +111,7 @@ returns:
 | `agents` | every enabled agent (at most 100): `route` (`codex_queue`, `codex_hosted`, `other`, from its route pin, this binding's first; `null` with none), `waiting` and `waiting_since_ms` (pending deliveries in live groups and the oldest one's send time; another agent's whispers are not counted for the reader), and for a scheduled agent `next_due_ms`, `reached_ms` (when a wake last got through), `failing: {count, since_ms, outcome, reason, why}` while `failing:<agent>` is red, `not_answering: {count, since_ms}` while `parked:<agent>` is, and `waking` while a claim is out |
 | `failing_after` | the number of wakes in a row that did not get through before an agent is said to be failing (3) |
 | `release` | the latest release record: `release`, `commit`, `deployed_ms`, `items`, `source`, and `check` (the release check's `finished_ms`, `commit`, `python`, `node` and `native` counts), or `null` |
-| `machine` | `{load: [1, 5, 15 minute averages], cpus}`, read by `os.getloadavg()` when the view is read; never on a timer |
+| `machine` | `{load: [1, 5, 15 minute averages], cpus}`, read by `os.getloadavg()` and `os.cpu_count()` when the view is read; never on a timer. Either that could not be read is `null`, never left out, and the page and the command line say it could not be read |
 | `schema_version`, `read_ms` | the database version and when the view was read |
 
 Over HTTP the server adds `server: {started_ms, pid, live_feed}`, the one line
@@ -115,10 +130,12 @@ agents whose wakes are failing and why (grouped when their failures began
 within two minutes of each other for the same reason, since then the cause is
 something they share; when they all go through the Codex app's queue the page
 says to look there first), parked agents, and a Mac whose 1-minute load is
-above its core count. With nothing wrong it says so in one line.
+above its core count (never when either could not be read). With nothing
+wrong it says so in one line.
 
 Below, one line each, opening in place: the agent runner, the server, every
 agent, the Mac, and the latest release. The page reads the view again on every
 commit the live feed announces (a wake's settlement is a commit), and repaints
 at once when the feed drops or comes back. A failed read keeps what was shown
-and says so.
+and says so; an answer without `red`, `runner` and `agents` is a failed read,
+never "Everything is working".

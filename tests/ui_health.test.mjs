@@ -3,8 +3,8 @@
 // words, and the link lights while anything is red.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { healthLines, healthProblems } from '../web/health.mjs';
-import { HealthLight, LIT_WORDS } from '../web/health-light.mjs';
+import { HealthPage, healthLines, healthProblems } from '../web/health.mjs';
+import { HealthLight, LIT_WORDS, UNREAD_WORDS } from '../web/health-light.mjs';
 
 const NOW = new Date(2026, 10, 7, 9, 0).getTime();
 const MIN = 60 * 1000;
@@ -69,15 +69,83 @@ test('the Health link lights while anything is red and goes quiet when nothing i
   assert.equal(node.attributes['aria-label'], undefined);
 });
 
-test('a read of the light that fails keeps what the link said', async () => {
-  let fail = false;
+test('a link that cannot read what is red says it could not check, never quiet', async () => {
+  assert.equal(UNREAD_WORDS, "Health · couldn't check");
+  const unread = node => {
+    assert.equal(node.textContent, UNREAD_WORDS);
+    assert.equal(node.classList.contains('red'), true, 'in the alert colour: something may be red that it cannot see');
+    assert.equal(node.attributes['aria-label'], 'Health: it could not be checked, so something may need attention');
+  };
+  // The first read fails: the link has never been told that nothing is red.
+  const first = link();
+  assert.equal(await new HealthLight({ link: first, read: async () => { throw new Error('Unsupported view'); } }).load(), false);
+  unread(first);
+  // An answer with no list of what is red is a failed read, not a quiet one.
+  for (const reply of [{ instance_id: 'x' }, { error: { code: 'UNKNOWN_VIEW' } }, { red: 'runner' }, null]) {
+    const node = link();
+    await new HealthLight({ link: node, read: async () => reply }).load();
+    unread(node);
+  }
+  // Quiet, then every read fails: it does not stay quiet.
+  let reply = { red: [] }, fail = false;
   const node = link();
-  const light = new HealthLight({ link: node, read: async () => { if (fail) throw new Error('offline'); return { red: ['runner'] }; } });
-  await light.load();
+  const light = new HealthLight({ link: node, read: async () => { if (fail) throw new Error('BUSY'); return reply; } });
+  assert.equal(await light.load(), true);
+  assert.equal(node.textContent, 'Health');
   fail = true;
   await light.load();
-  assert.equal(node.textContent, LIT_WORDS, 'an unreadable light is not a green one');
-  const fresh = link();
-  await new HealthLight({ link: fresh, read: async () => ({ error: { code: 'UNKNOWN_VIEW' } }) }).load();
-  assert.equal(fresh.textContent, 'Health', 'a reply with no red list lights nothing');
+  await light.load();
+  unread(node);
+  // Lit, then a read fails: it says it could not check, not what it last read.
+  fail = false; reply = { red: ['runner'] };
+  await light.load();
+  assert.equal(node.textContent, LIT_WORDS);
+  fail = true;
+  await light.load();
+  unread(node);
+  // A read that answers again says what it answers.
+  fail = false; reply = { red: [] };
+  await light.load();
+  assert.equal(node.textContent, 'Health');
+  assert.equal(node.classList.contains('red'), false);
+});
+
+test('the Mac\'s load or core count that could not be read is said, never left out or called light', () => {
+  const noLoad = healthLines(answer({ machine: { load: null, cpus: 8 } }), { now: NOW }).find(item => item.key === 'machine');
+  assert.ok(noLoad, 'the Mac has a line');
+  assert.equal(noLoad.summary, 'Its load could not be read · 8 cores');
+  assert.equal(noLoad.bad, false);
+  assert.deepEqual(healthProblems(answer({ machine: { load: null, cpus: 8 } }), { now: NOW }), []);
+  const noCores = healthLines(answer({ machine: { load: [9, 9, 9], cpus: null } }), { now: NOW }).find(item => item.key === 'machine');
+  assert.equal(noCores.summary, 'Load 9 on a core count that could not be read · how busy is not known');
+  assert.equal(noCores.bad, false);
+  const missing = healthLines(answer({ machine: undefined }), { now: NOW }).find(item => item.key === 'machine');
+  assert.equal(missing.summary, 'Its load could not be read · a core count that could not be read');
+  const busy = healthLines(answer({ machine: { load: [9, 9, 9], cpus: 8 } }), { now: NOW }).find(item => item.key === 'machine');
+  assert.deepEqual([busy.summary, busy.bad], ['Load 9 on 8 cores · overloaded', true]);
+});
+
+class Node {
+  constructor(tag) { this.tag = tag; this.children = []; this.textContent = ''; this.className = ''; this.dataset = {}; this.attributes = {}; }
+  append(...nodes) { this.children.push(...nodes); }
+  replaceChildren(...nodes) { this.children = nodes; }
+  setAttribute(key, value) { this.attributes[key] = value; }
+  querySelectorAll() { return []; }
+}
+const texts = node => [node.textContent, ...node.children.flatMap(texts)].filter(Boolean);
+
+test('a health answer that does not say what is red is a failed read, never "everything is working"', async () => {
+  // First the answers an unchecked page would call healthy: no list of what is red, or no list of agents.
+  for (const reply of [{ runner: { live: true }, agents: [] }, { red: [], runner: { live: true } }, { instance_id: 'x' }, { red: [], agents: [] }]) {
+    const host = new Node('section');
+    const page = new HealthPage({ host, read: async () => reply, doc: { createElement: tag => new Node(tag) } });
+    assert.equal(await page.load(), false, JSON.stringify(reply));
+    const said = texts(host).join(' ');
+    assert.doesNotMatch(said, /Everything is working/);
+    assert.match(said, /^Health could not be read/);
+  }
+  const host = new Node('section');
+  const page = new HealthPage({ host, read: async () => answer(), doc: { createElement: tag => new Node(tag) } });
+  assert.equal(await page.load(), true);
+  assert.match(texts(host).join(' '), /Everything is working/);
 });

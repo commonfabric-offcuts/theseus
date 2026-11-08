@@ -914,6 +914,25 @@ def runner_gone(store_factory, emit):
     return gone
 
 
+def lease_lapsed(store_factory, emit):
+    """What the live feed calls when the running runner's lease ends with no renewal: tell Core at once,
+    say what Core answered, and return its status, or None when Core could not be told."""
+    from .runner import RunnerError
+    from .contract import StoreError
+
+    def lapsed(lease_until_ms):
+        try:
+            record = store_factory().settle_lapsed_lease(lease_until_ms)
+            status = record["status"]
+        except (AuthorityError, StoreError, RunnerError) as error:
+            code = getattr(error, "code", None)
+            record, status = {"status": "unsettled", "code": code if isinstance(code, str) else type(error).__name__}, None
+        if status != "early":
+            emit({"event": "lease_lapsed", "lease_until_ms": lease_until_ms, "record": record})
+        return status
+    return lapsed
+
+
 def _stderr(event):
     print(json.dumps(event, separators=(",", ":")), file=sys.stderr, flush=True)
 
@@ -957,7 +976,8 @@ def create_server(store_factory, instance_id, actor, web_root, *, host="127.0.0.
         # feed reads the commit number on its own thread, so a writer's lock
         # at start delays its first message and never disables it.
         try:
-            server.live_feed = LiveFeed(*live, runner_gone=runner_gone(store_factory, _stderr))
+            server.live_feed = LiveFeed(*live, runner_gone=runner_gone(store_factory, _stderr),
+                                        lease_lapsed=lease_lapsed(store_factory, _stderr))
         except (WatchError, OSError):
             server.live_feed = None
     return server

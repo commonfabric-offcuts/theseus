@@ -13,6 +13,7 @@ import sys
 import tempfile
 import textwrap
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -279,6 +280,32 @@ class LiveStreamTests(unittest.TestCase):
         self.assertEqual((view["runner"]["state"], view["runner"]["reason"]), ("exited", "ended"))
         self.assertEqual([(event["event"], event["pid"], event["record"]["status"]) for event in told],
                          [("runner_gone", child.pid, "recorded")])
+
+    def test_a_hung_runner_whose_lease_runs_out_is_settled_and_announced_with_no_other_commit(self):
+        """Its process lives, so there is no exit; its lease ending is the one sign, and the feed waits no longer than that."""
+        told = self.telling()
+        client = self.open()
+        self.line(client)
+        child = self.runner_process()
+        self.take_runner(child.pid)
+        self.settled(client)
+        lease = int(time.time() * 1000) + 700
+        with sqlite3.connect(str(self.db)) as db:
+            db.execute("UPDATE runner_state SET lease_until_ms=? WHERE id=1", (lease,))
+        # The write wakes the feed, which reads the new lease; then nothing else is committed.
+        line = self.announced(client)
+        self.assertEqual(line, {"seq": self.seq()})
+        self.assertGreaterEqual(int(time.time() * 1000), lease, "announced once the lease ended, not before")
+        self.assertEqual([(event["event"], event["lease_until_ms"], event["record"]["status"]) for event in told],
+                         [("lease_lapsed", lease, "settled")])
+        self.assertEqual(self.store.view("test-human", "health_light", {})["red"], ["runner"])
+        with sqlite3.connect(str(self.db)) as db:
+            announced = json.loads(db.execute("SELECT value FROM metadata WHERE key='health_announced'").fetchone()[0])
+        self.assertEqual(list(announced), ["runner"], "what is red was settled on that commit")
+        self.assertEqual(self.runner_state(), ("running", None, child.pid), "nothing of the runner's is recorded")
+        # Said once: the feed goes on announcing commits and does not settle that lease again.
+        self.settled(client)
+        self.assertEqual(len(told), 1)
 
     def test_a_runner_process_already_gone_when_the_server_starts_is_recorded_at_once(self):
         self.stop()

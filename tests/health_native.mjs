@@ -37,7 +37,8 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     assert.equal(mine.route, 'codex_queue');
     assert.match(line(shown, `agent:${agent}`).summary, new RegExp(`^${agent} — (wakes going out|being woken now) · ${mine.waiting} waiting since `));
     assert.ok(line(shown, `agent:${agent}`).details.includes("Woken through the Codex app's queue."));
-    const link = await readLink(p);
+    // The link says "checking" until its first read answers, then quiet.
+    const link = await until(async () => { const l = await readLink(p); return l.text === 'Health' && l; }, 'the link reads quiet');
     assert.deepEqual([link.text, link.red, link.label], ['Health', false, null]);
     assert.notEqual(link.color, link.alert, 'a quiet link is not in the alert colour');
     await shot(p, 'health-quiet');
@@ -162,5 +163,54 @@ export async function healthChecks({ check, page, until, control, view, facts, s
         await p.close();
       }
     }
+  });
+
+  await check('health a link that cannot read what is red says it could not check, and is quiet only after a read that says nothing is', async () => {
+    // Every read of the light fails while window.failLight is set, as when the server sheds background reads.
+    const failing = `(()=>{const fetch=window.fetch.bind(window);window.failLight=true;
+      window.fetch=(input,init)=>window.failLight&&String(init?.body??'').includes('"health_light"')?Promise.reject(new TypeError('Failed to fetch')):fetch(input,init);})()`;
+    const p = await page('health-unread', null, true, { beforeNavigate: q => q.send('Page.addScriptToEvaluateOnNewDocument', { source: failing }) });
+    await ready(p);
+    const unread = await until(async () => { const l = await readLink(p); return l.text !== 'Health · checking' && l; }, 'the first read of the light settles');
+    assert.deepEqual([unread.text, unread.red, unread.label], ["Health · couldn't check", true, 'Health: it could not be checked, so something may need attention']);
+    assert.equal(unread.color, unread.alert, 'in the alert colour: something may be red that it cannot see');
+    await p.evaluate('window.failLight = false');
+    await control({ method: 'health', action: 'renew' });
+    await until(async () => (await readLink(p)).text === 'Health · needs attention', 'a read that answers says what Core says is red');
+    await control({ method: 'health', action: 'through' });
+    await until(async () => (await readLink(p)).text === 'Health', 'and quiet once a read says nothing is red');
+    assert.deepEqual((await view('health_light', {})).red, []);
+    await p.evaluate('window.failLight = true');
+    await control({ method: 'health', action: 'renew' });
+    const again = await until(async () => { const l = await readLink(p); return l.text !== 'Health' && l; }, 'a failed read after a quiet one');
+    assert.deepEqual([again.text, again.red], ["Health · couldn't check", true], 'a quiet link whose next read fails does not stay quiet');
+    await shot(p, 'health-link-unread');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('health a runner that stops renewing lights the link with no other commit, and Core settles it to be told', async () => {
+    const p = await page('health-hung', null, true);
+    await ready(p);
+    await until(async () => (await readLink(p)).text === 'Health', 'the link is quiet');
+    const before = await control({ method: 'health', action: 'settled' });
+    assert.deepEqual(before.announced, []);
+    // The runner renews for one second, then never again; its process lives, so no exit is recorded.
+    const hung = await control({ method: 'health', action: 'hang' });
+    assert.equal(hung.status, 'renewed');
+    const lit = await until(async () => { const l = await readLink(p); return l.text === 'Health · needs attention' && l; }, 'the link lights when the lease runs out');
+    assert.equal(lit.color, lit.alert);
+    const facts = await view('health', {});
+    assert.deepEqual([facts.red, facts.runner.state], [['runner'], 'unrenewed']);
+    // The server, at the lease's end, had Core settle what is red: announced to the team on that commit.
+    const settled = await control({ method: 'health', action: 'settled' });
+    assert.deepEqual(settled.announced, ['runner']);
+    assert.deepEqual(settled.events.slice(before.events.length).map(event => [event.event, event.lease_until_ms, event.record.status]),
+      [['lease_lapsed', hung.lease_until_ms, 'settled']]);
+    assert.equal((await control({ method: 'health', action: 'take' })).status, 'acquired');
+    await until(async () => (await readLink(p)).text === 'Health', 'a runner taking the role clears it');
+    assert.deepEqual((await control({ method: 'health', action: 'settled' })).announced, []);
+    assert.deepEqual(p.errors, []);
+    await p.close();
   });
 }

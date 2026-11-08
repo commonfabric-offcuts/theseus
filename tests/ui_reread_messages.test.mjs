@@ -33,7 +33,7 @@ test('the page has no header bar and no Refresh button; the logo block tops the 
   assert.doesNotMatch(html, /<header class="app-header"/);
   assert.doesNotMatch(html, /id="refresh"/);
   const rail = html.match(/<nav class="rail"[^>]*>\s*([\s\S]*?)<\/nav>/)[1];
-  assert.match(rail, /^<div class="brand">\s*<a class="wordmark" href="\/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"><\/span><\/a>\s*<span id="instance-label">[^<]*<\/span>\s*<a id="health-link" class="health-link" href="\?health">Health<\/a>\s*<button id="notify"[^>]*>Turn on notifications<\/button>\s*<\/div>/,
+  assert.match(rail, /^<div class="brand">\s*<a class="wordmark" href="\/" aria-label="Theseus Outcomes">Theseus<span class="presence-dot" aria-hidden="true"><\/span><\/a>\s*<span id="instance-label">[^<]*<\/span>\s*<a id="health-link" class="health-link" href="\?health">Health · checking<\/a>\s*<button id="notify"[^>]*>Turn on notifications<\/button>\s*<\/div>/,
     'the wordmark with its presence dot, the workspace name, the Health link and Turn on notifications, first in the rail');
   const after = rail.slice(rail.indexOf('</div>') + 6);
   assert.match(after, /^\s*<div id="app-status"[^>]*><\/div>\s*<div id="wakes-status"[^>]*><\/div>\s*<div id="updates-status"/, 'the notices directly under it');

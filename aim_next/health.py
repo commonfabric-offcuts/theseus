@@ -15,7 +15,8 @@ so the page can say what it came back from.
 What is red is one rule (`_health_reds`), read by the page, by the link that
 heads every page, and by the notices: when what is red changes, Theseus itself
 posts one notice to each outcome the change concerns, in the act that changed
-it (`_health_settle`), never on a timer.
+it (`_health_settle`), or at a hung runner's lease's own end
+(`settle_lapsed_lease`), never on a timer of its own.
 
 The counts and the runner's previous end are derived from settlements and
 exits, nobody's records, kept in tables of their own: stepping back drops them
@@ -106,6 +107,8 @@ UNRECORDED_WHY = "Theseus did not record why: these failures began before it did
 # phrase follows "The agent runner", a pause's follows "because".
 ENDED = {"killed": "was killed", "lease_lost": "lost its lease", "failed": "failed",
          "stopped_unrecorded": "stopped without saying why", "ended": "ended"}
+# A runner whose lease ran out with no renewal and no recorded end: hung, or its Mac asleep.
+UNRENEWED = "stopped answering (its lease ran out and it did not renew it)"
 PAUSED = {"operator_pause": "an operator paused it", "cleanup_failed": "it could not confirm a helper process it started was gone",
           "route_binding_changed": "a route changed", "storage_failure": "of a storage fault"}
 ROUTE_KINDS = {"codex-queue-stdio": "codex_queue", "codex-hosted-stdio": "codex_hosted"}
@@ -129,6 +132,8 @@ def runner_why(light):
         return ENDED.get(light.get("reason"), "ended")
     if light.get("state") == "paused":
         return PAUSED.get(light.get("reason"), "of %s" % (light.get("reason") or "a reason it did not record"))
+    if light.get("state") == "unrenewed":
+        return UNRENEWED
     return None
 
 
@@ -152,12 +157,21 @@ def _release_check(measurements):
 
 
 def machine_load():
-    """The Mac's load averages over 1, 5 and 15 minutes and its processor count, read now."""
+    """The Mac's load averages over 1, 5 and 15 minutes and its processor count, read now.
+
+    Either that could not be read is None in its place, never left out, so the
+    page and the command line say it could not be read rather than nothing."""
     try:
         one, five, fifteen = os.getloadavg()
+        load = [round(one, 2), round(five, 2), round(fifteen, 2)]
     except OSError:
-        return None
-    return {"load": [round(one, 2), round(five, 2), round(fifteen, 2)], "cpus": os.cpu_count()}
+        load = None
+    return {"load": load, "cpus": os.cpu_count()}
+
+
+def overloaded(machine):
+    """Whether the Mac's 1-minute load is above its core count; never when either could not be read."""
+    return bool(machine and machine.get("load") and machine.get("cpus") and machine["load"][0] > machine["cpus"])
 
 
 def _names(names):
@@ -276,20 +290,20 @@ class Health:
         while a woken agent has work on the record. "failing:<agent>" once
         FAILING_AFTER wakes in a row did not get through. "parked:<agent>"
         while it has left PARKED_AFTER wakes unanswered and work on the record
-        waits for it. A fact is `posted` to the team when it is a fault an act
-        records: a pause, an exit, failing wakes, a parked agent; a graceful
-        stop is deliberate, and a runner that stopped renewing is known gone
-        only by the clock. The Mac's load is read by the page, not recorded,
-        so it is never here."""
+        waits for it. A fact is `posted` to the team when it is a fault: a
+        pause, an exit, a runner that stopped renewing (hung: its process
+        lives, so no exit is recorded), failing wakes, a parked agent. A
+        graceful stop is deliberate, so it is not posted. The Mac's load is
+        read by the page, not recorded, so it is never here."""
         from .wake_health import PARKED_AFTER
         routes = self._health_routes(db) if routes is None else routes
         reds = {}
         light = dict(self._runner_light(db, now))
         if not light["live"]:
-            # A pause or an exit is a fault Core records; a graceful stop (a
+            # A pause, an exit or a lapsed lease is a fault; a graceful stop (a
             # deploy's) is red on the page while it lasts, and is never posted.
-            posted = light["state"] in ("paused", "exited")
-            if posted or light["state"] in ("stopped", "unrenewed") or any(
+            posted = light["state"] in ("paused", "exited", "unrenewed")
+            if posted or light["state"] == "stopped" or any(
                     self._on_record_waiting(db, agent)[0] for agent in sorted(routes)):
                 light.update(kind="runner", posted=posted, why=runner_why(light))
                 reds["runner"] = light
@@ -316,6 +330,8 @@ class Health:
     def _health_settle(self, db, now):
         """After an act that may change what is red: when the recorded reds changed, post one notice per outcome concerned.
 
+        Returns whether anything was written: what was announced, and any notice.
+
         Called by every act that changes what the reds are read from: each
         command, each runner act and each recorded runner exit, in the act's
         own transaction, so a notice says what that act changed and is posted
@@ -330,7 +346,7 @@ class Health:
         # paused runner then stopped by a deploy), has not gone green.
         reds = {key: fact for key, fact in every.items() if fact["posted"] or key in announced}
         if set(reds) == set(announced):
-            return
+            return False
         went_red = {key: fact for key, fact in reds.items() if key not in announced}
         from .wake_health import PARKED_AFTER
         went_green = {}
@@ -352,7 +368,7 @@ class Health:
             for agent in agents:
                 concerned.setdefault(agent, set()).add(key)
         if not concerned:
-            return
+            return True
         marks = ",".join("?" * len(concerned))
         outcomes, about = {}, {}
         for workspace_id, agent in db.execute(
@@ -370,7 +386,7 @@ class Health:
                                  {key: went_green[key] for key in keys if key in went_green}, reds)
             body = "Health: %s\n\nThe Health page, under the instance name, says more; agents can run aim-next health." % " ".join(lines)
             if not self._health_author(db):
-                return
+                return True
             # The people in it see the link light; only an agent the notice is not about gets it as work.
             people = {row[0] for row in db.execute("SELECT p.actor_id FROM topic_participants p JOIN actors a ON a.id=p.actor_id "
                                                    "WHERE p.topic_id=? AND p.active=1 AND a.kind='human'", (conversation["id"],))}
@@ -384,6 +400,7 @@ class Health:
                 # say) leaves the act it reports alone; the page still says it.
                 db.execute("ROLLBACK TO health_notice")
             db.execute("RELEASE health_notice")
+        return True
 
     @staticmethod
     def _health_author(db):
@@ -494,7 +511,7 @@ def report_lines(answer, at):
                 agent["actor_id"], _count(parked["count"], "wake", "wakes"), when(parked.get("since_ms")),
                 _count(agent.get("waiting") or 0, "message waits for it", "messages wait for it")))
     machine = answer.get("machine")
-    if machine and machine.get("cpus") and machine["load"][0] > machine["cpus"]:
+    if overloaded(machine):
         problems.append("The Mac is overloaded: its load is %s on %d cores, so everything here may be slow." % (machine["load"][0], machine["cpus"]))
     lines = ["Needs attention:"] + ["  - " + line for line in problems] if problems else [
         "Everything is working: the agent runner is sending wakes and they are getting through."]
@@ -512,8 +529,10 @@ def report_lines(answer, at):
         reached = " · a wake last got through%s" % when(agent.get("reached_ms"), "at") if isinstance(agent.get("reached_ms"), int) else ""
         lines.append("  %s  %s · %s%s" % (agent["actor_id"].ljust(width), state, waiting, reached))
     if machine:
-        lines.append("This Mac: load %s on %s cores (1, 5 and 15 minutes: %s)" % (
-            machine["load"][0], machine.get("cpus"), ", ".join(str(value) for value in machine["load"])))
+        cores = "%s cores" % machine["cpus"] if machine.get("cpus") else "a core count that could not be read"
+        lines.append("This Mac: load %s on %s (1, 5 and 15 minutes: %s)" % (
+            machine["load"][0], cores, ", ".join(str(value) for value in machine["load"])) if machine.get("load")
+            else "This Mac: its load could not be read (%s)" % cores)
     release = answer.get("release")
     lines.append("Latest release: %d, live%s, shipped %s" % (
         release["release"], when(release.get("deployed_ms")), ", ".join(str(item) for item in release["items"]) or "no pipeline item")

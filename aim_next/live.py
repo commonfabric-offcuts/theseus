@@ -7,6 +7,7 @@ import threading
 
 from .contract import StoreError
 from .effects_watch import NativeWatch, WatchError
+from . import delivery
 from .store import _connect
 
 
@@ -48,9 +49,21 @@ class LiveFeed:
     returns whether Core answered; when it did not (a writer held the lock past
     the store's wait), the pid is forgotten, and the read after the next commit
     finds it still recorded as running, and gone, and says so again.
+
+    A hung runner's process lives, so it has no exit event, and it makes no
+    more commits. Its lease is the one sign: the same read learns when the
+    running runner's lease ends, and the thread's wait lasts no longer than
+    that, as the runner's own wait lasts no longer than its lease. When the
+    lease ends unrenewed it calls lease_lapsed(lease_until_ms), and Core
+    settles what is red on a commit of its own, so every page reads it. A
+    renewal is a commit, so the read after it sees the new lease and the
+    wait moves with it. lease_lapsed returns Core's status, or None when
+    Core could not be told; then, as with an exit, the read after the next
+    commit asks again. "early" (this clock and Core's disagree by a moment)
+    waits again for the same lease.
     """
 
-    def __init__(self, db_path, companions=(), max_streams=8, runner_gone=None):
+    def __init__(self, db_path, companions=(), max_streams=8, runner_gone=None, lease_lapsed=None):
         self.db_path = Path(db_path)
         self.lock = threading.Lock()
         self.slots = threading.BoundedSemaphore(max_streams)
@@ -62,6 +75,8 @@ class LiveFeed:
         self.detached = False  # stop() left the thread to close what it holds
         self.runner_gone = runner_gone
         self.runner_pid = None  # the runner process whose exit this feed asked the kernel for
+        self.lease_lapsed = lease_lapsed
+        self.lease_told = None  # the lapsed lease Core has been told of
         self.stop_read, self.stop_write = os.pipe()
         self.watch = None
         try:
@@ -87,15 +102,15 @@ class LiveFeed:
         try:
             db.execute("PRAGMA query_only=ON")
             row = db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()
-            runner = db.execute("SELECT runner_pid FROM runner_state WHERE id=1 AND state='running'").fetchone()
+            runner = db.execute("SELECT runner_pid,lease_until_ms FROM runner_state WHERE id=1 AND state='running'").fetchone()
         finally:
             db.close()
         if row is None or not isinstance(row[0], str) or not row[0].isascii() or not row[0].isdigit():
             raise ValueError("commit_seq is unreadable")
-        return int(row[0]), runner[0] if runner else None
+        return int(row[0]), runner[0] if runner else None, runner[1] if runner else None
 
     def _settled_seq(self):
-        """The commit number and the running runner's pid once no writer holds the lock, or None if the feed is stopping.
+        """The commit number, the running runner's pid and its lease end once no writer holds the lock, or None if the feed is stopping.
 
         The read waits on the writer's lock for as long as it is held, so the
         feed never ends, or fails to start, because a commit was slow.
@@ -116,20 +131,22 @@ class LiveFeed:
         reason = "stopped"
         try:
             # The watch is open before this first read, so no commit falls between them.
-            dirty = True
+            dirty, lease = True, None
             while True:
                 if dirty:
                     read = self._settled_seq()
                     if read is None:
                         break
-                    seq, runner = read
+                    seq, runner, lease = read
                     with self.lock:
                         if seq != self.seq:
                             self.seq = seq
                             self._wake_all()
                     if not self._watch_runner(runner):
                         break
-                result = self.watch.wait(None)
+                    if self.lease_lapsed is None or lease == self.lease_told:
+                        lease = None
+                result = self.watch.wait(self._until(lease))
                 if self.stop_read in result["readable"]:
                     break
                 if self.watch.companion_moved:
@@ -139,6 +156,14 @@ class LiveFeed:
                 if exited:
                     self.runner_pid = None
                 dirty = result["dirty"] or exited
+                if not dirty and lease is not None and delivery._now_ms() >= lease:
+                    told = self._lease_ended(lease)
+                    if told is False:
+                        break
+                    # Told, or Core could not be told: either way the read after
+                    # the next commit decides (a renewal moves the lease on).
+                    if told != "early":
+                        lease = None
         except WatchError:
             reason = "database_moved"
         except (sqlite3.Error, StoreError, ValueError, OSError):
@@ -171,6 +196,31 @@ class LiveFeed:
             # runner): its end is known when its lease runs out, as before.
             return True
         return self._runner_ended(pid)
+
+    @staticmethod
+    def _until(lease):
+        """How long the thread's wait may last: until the lease ends, within NativeWatch's bound; None waits with no end."""
+        if lease is None:
+            return None
+        return min(60, max(0, lease - delivery._now_ms() + 1) / 1000.0)
+
+    def _lease_ended(self, lease):
+        """Tell Core the lease ended unrenewed: Core's status, "untold" when it could not be told, False if the feed is stopping."""
+        with self.lock:
+            if self.stopped:
+                return False
+            self.reading = True
+        try:
+            status = self.lease_lapsed(lease)
+        finally:
+            with self.lock:
+                self.reading = False
+                stopped = self.stopped
+        if stopped:
+            return False
+        if status not in (None, "early"):
+            self.lease_told = lease
+        return status if status is not None else "untold"
 
     def _runner_ended(self, pid):
         """Say the runner process ended; False if the feed is stopping. The call may wait on a writer's lock."""
