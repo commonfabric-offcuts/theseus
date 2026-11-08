@@ -7,6 +7,7 @@ import { EditorSession, RuntimeAuthority, PRIOR_PUBLICATION_NOTICE } from '../we
 import { RecoveryJournal } from '../web/journal.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
 import { TopicNavigation } from '../web/topic-navigation.mjs';
+import { AttemptError } from '../web/api.mjs';
 
 const copy = value => structuredClone(value);
 const deferred = () => {
@@ -239,6 +240,227 @@ test('an unknown lookup and a nonretryable attempt never cause automatic replay'
   assert.equal(f.editor.dirty, true);
   assert.equal(f.session.attempts[0].receipt, null);
   assert.equal(f.session.attempts[0].error.code, 'INTERNAL_ERROR');
+});
+
+// A restarted server refuses the page's session before Core reads anything,
+// so a save it refused was not recorded: once the page holds the new session,
+// the same save goes again under its own operation and is recorded once.
+test('a save refused for its session is sent again, as the same operation, once the session is renewed', async t => {
+  const f = await fixture(t);
+  let refused = true;
+  const refusal = () => new AttemptError('Open this instance to establish a session.', 401,
+    { error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.', retryable: false } });
+  const command = f.transport.command, view = f.transport.view;
+  f.transport.command = async envelope => { if (refused) { f.calls.push(copy(envelope)); throw refusal(); } return command(envelope); };
+  f.transport.view = async (name, args) => { if (refused) throw refusal(); return view(name, args); };
+  f.editor.edit({ body: 'Typed while the server restarted' });
+  await f.session.save();
+  assert.equal(f.calls.length, 1, 'a refused session is not tried again with the same session');
+  assert.equal(f.editor.dirty, true);
+  assert.equal(f.session.attempts[0].receipt, null);
+  refused = false;
+  await f.session.save();
+  assert.equal(f.editor.dirty, false, 'the writing is saved once the session is renewed');
+  assert.equal((await f.state()).draft.body, 'Typed while the server restarted');
+  assert.deepEqual(f.calls.map(c => c.operation_id), [f.calls[0].operation_id, f.calls[0].operation_id], 'the same operation, sent once more');
+  assert.equal(f.session.attempts.length, 1);
+  assert.equal(f.session.attempts[0].receipt.status, 'committed');
+});
+
+// The server went away mid-save (its answer unknown), and came back with a new
+// session: the look-up of what happened is refused too, and is made again once
+// the session is renewed, so the save is recorded once.
+test('a save whose answer was lost while the server restarted is looked up again once the session is renewed', async t => {
+  const f = await fixture(t);
+  let phase = 'down';
+  const command = f.transport.command, view = f.transport.view;
+  const refusal = () => new AttemptError('Open this instance to establish a session.', 401,
+    { error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.', retryable: false } });
+  f.transport.command = async envelope => {
+    if (phase === 'down') { f.calls.push(copy(envelope)); throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.'); }
+    if (phase === 'refused') { f.calls.push(copy(envelope)); throw refusal(); }
+    return command(envelope);
+  };
+  f.transport.view = async (name, args) => {
+    if (phase === 'down') throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+    if (phase === 'refused') throw refusal();
+    return view(name, args);
+  };
+  f.editor.edit({ body: 'Lost in the restart' });
+  await f.session.save();
+  phase = 'refused';
+  await f.session.save();
+  assert.equal(f.editor.dirty, true);
+  phase = 'renewed';
+  await f.session.save();
+  assert.equal(f.editor.dirty, false, 'saved once the session is renewed');
+  assert.equal((await f.state()).draft.body, 'Lost in the restart');
+  assert.equal(new Set(f.calls.map(c => c.operation_id)).size, 1, 'one operation throughout');
+  assert.equal(f.session.attempts.length, 1);
+});
+
+// Any other refusal Core did not explain stays parked, as before.
+test('a refusal from the server that is not about the session is not sent again by itself', async t => {
+  const f = await fixture(t);
+  f.transport.command = async envelope => {
+    f.calls.push(copy(envelope));
+    throw new AttemptError('This request is not from the instance.', 403, { error: { code: 'ORIGIN_REFUSED', retryable: false } });
+  };
+  f.editor.edit({ body: 'Refused for its origin' });
+  await f.session.save(); await f.session.save();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.editor.dirty, true);
+  assert.equal(f.session.attempts[0].error.code, 'ORIGIN_REFUSED');
+});
+
+// A reply sent while the restarted server still refuses the page's old
+// session: whichever of its acts is refused (the save inside it, its
+// preparation, or its send), Core never read it. Once the page holds the new
+// session the reply goes on, each act under its own operation, and is
+// published once (docs/scoped-updates.md).
+const sessionRefusal = () => new AttemptError('Open this instance to establish a session.', 401,
+  { error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.', retryable: false } });
+function refusing(f, from) {
+  // Refused from the first act of that kind until the check renews the session.
+  const state = { refused: false, restarted: false };
+  const command = f.transport.command, view = f.transport.view;
+  f.transport.command = async envelope => {
+    if (envelope.kind === from && !state.restarted) state.refused = state.restarted = true;
+    if (state.refused) { f.calls.push(copy(envelope)); throw sessionRefusal(); }
+    return command(envelope);
+  };
+  f.transport.view = async (name, args) => { if (state.refused) throw sessionRefusal(); return view(name, args); };
+  return state;
+}
+const published = async (f, body) => (await f.api.view('topic_messages', { topic_id: 't1', direction: 'before' })).items.filter(item => item.body === body).length;
+
+for (const phase of ['draft.save', 'submission.prepare', 'message.send']) {
+  test(`a reply whose ${phase} was refused for the old session goes on and is published once the session is renewed`, async t => {
+    const f = await fixture(t), state = refusing(f, phase), body = `Sent while the session was refused at ${phase}`;
+    f.editor.edit({ body });
+    const sending = f.session.send(); f.editor.edit({ body: 'B typed meanwhile' }); await sending;
+    const a = f.editor.submissions[0];
+    assert.equal(a.status, phase === 'message.send' ? 'prepared' : 'preparing');
+    if (phase !== 'message.send') assert.equal(a.blocked.code, 'SESSION_REQUIRED');
+    assert.equal(f.calls.filter(c => c.kind === phase).length, 1, 'the refused act is not tried again with the same session');
+    assert.equal(await published(f, body), 0);
+    state.refused = false;
+    await f.session.resumeHeld();
+    assert.equal(a.status, 'confirmed', JSON.stringify(a.blocked));
+    assert.equal(await published(f, body), 1, 'published once');
+    const acts = f.calls.filter(c => c.kind === phase);
+    assert.equal(acts.length, 2); assert.deepEqual(acts[0], acts[1], 'the same operation, sent once more');
+    assert.equal(f.editor.draft.body, 'B typed meanwhile', 'the writing begun after Send stays');
+    await f.session.resumeHeld();
+    assert.equal(f.calls.filter(c => c.kind === phase).length, 2, 'a published reply is not sent again');
+  });
+}
+
+// The refusal lands just as the page renews its session: the resumption waits
+// for the act under way, then takes it up.
+test('a reply refused while the session is being renewed is resumed once the act under way ends', async t => {
+  const f = await fixture(t), gate = deferred(), body = 'Refused as the session changed';
+  const command = f.transport.command;
+  let held = true;
+  f.transport.command = async envelope => {
+    if (held && envelope.kind === 'draft.save') { held = false; f.calls.push(copy(envelope)); await gate.promise; throw sessionRefusal(); }
+    return command(envelope);
+  };
+  f.editor.edit({ body });
+  const sending = f.session.send();
+  const resuming = f.session.resumeHeld();
+  gate.resolve(); await sending; await resuming;
+  assert.equal(f.editor.submissions[0].status, 'confirmed');
+  assert.equal(await published(f, body), 1);
+});
+
+test('a refused send waits while a runtime change is under review, as Send does', async t => {
+  const f = await fixture(t), state = refusing(f, 'message.send'), body = 'Refused send during a runtime review';
+  f.editor.edit({ body });
+  await f.session.send();
+  assert.equal(f.editor.submissions[0].status, 'prepared');
+  await f.session.parkAuthority(f.pin());
+  state.refused = false;
+  await f.session.resumeHeld();
+  assert.equal(f.calls.filter(c => c.kind === 'message.send').length, 1, 'not sent while the review is open');
+  assert.equal(await published(f, body), 0);
+});
+
+// Theseus is down for its restart when Send is pressed: the reply's save meets
+// no server, and neither does the look-up of what became of it. Whatever held
+// the reply, once the page reaches Theseus again it goes on, the save as the
+// same operation after its look-up, and is published once.
+test('a reply sent while Theseus does not answer goes on, published once, when the page reaches it again', async t => {
+  const f = await fixture(t), body = 'Sent while Theseus was down';
+  let down = true;
+  const lost = () => new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+  const command = f.transport.command, view = f.transport.view;
+  f.transport.command = async envelope => { if (down) { f.calls.push(copy(envelope)); throw lost(); } return command(envelope); };
+  f.transport.view = async (name, args) => { if (down) throw lost(); return view(name, args); };
+  f.editor.edit({ body });
+  await f.session.send();
+  const a = f.editor.submissions[0];
+  assert.deepEqual([a.status, a.blocked?.code], ['preparing', 'CONNECTION_UNKNOWN']);
+  assert.equal(await published(f, body), 0);
+  down = false;
+  await f.session.resumeHeld();
+  assert.equal(a.status, 'confirmed', JSON.stringify(a.blocked));
+  assert.equal(await published(f, body), 1, 'published once');
+  const saves = f.calls.filter(c => c.kind === 'draft.save');
+  assert.equal(new Set(saves.map(c => c.operation_id)).size, 1, 'the save went again as the same operation');
+  await f.session.resumeHeld();
+  assert.equal(f.calls.filter(c => c.kind === 'message.send').length, 1, 'a published reply is not sent again');
+});
+
+// Core said the save could not be taken yet and may be tried again: the reply
+// goes on once the page reaches Theseus again, like any reply Send left held.
+test('a reply Core held as busy goes on, published once, when the page reaches Theseus again', async t => {
+  const f = await fixture(t), body = 'Held while busy';
+  const command = f.transport.command;
+  let busy = true;
+  f.transport.command = async envelope => {
+    if (!busy) return command(envelope);
+    f.calls.push(copy(envelope));
+    return { instance_id: 'ux-fixture', operation_id: envelope.operation_id, kind: envelope.kind,
+      recorded: false, status: 'retryable', error: { code: 'AUTHORITY_BUSY', retryable: true, message: 'Authority is busy.' } };
+  };
+  f.editor.edit({ body });
+  await f.session.send();
+  assert.equal(f.editor.submissions[0].blocked.code, 'AUTHORITY_BUSY');
+  busy = false;
+  await f.session.resumeHeld();
+  assert.equal(f.editor.submissions[0].status, 'confirmed');
+  assert.equal(await published(f, body), 1);
+});
+
+// What no retry can mend waits for the person: a hold that says so, and a
+// send whose answer was lost (it may already be published).
+test('a hold that says retrying cannot help, and a send whose answer was lost, are not sent again by themselves', async t => {
+  const f = await fixture(t);
+  f.transport.command = async envelope => {
+    f.calls.push(copy(envelope));
+    throw new AttemptError('This request is not from the instance.', 403, { error: { code: 'ORIGIN_REFUSED', retryable: false } });
+  };
+  f.editor.edit({ body: 'Refused for its origin' });
+  await f.session.send();
+  assert.deepEqual([f.editor.submissions[0].blocked.code, f.editor.submissions[0].blocked.retryable], ['ORIGIN_REFUSED', false]);
+  const before = f.calls.length;
+  await f.session.resumeHeld();
+  assert.equal(f.calls.length, before, 'nothing is sent');
+  assert.equal(f.editor.submissions[0].status, 'preparing');
+
+  const g = await fixture(t), body = 'Its send answer was lost';
+  const command = g.transport.command;
+  g.transport.command = async envelope => {
+    if (envelope.kind !== 'message.send') return command(envelope);
+    g.calls.push(copy(envelope)); throw new AttemptError('Connection interrupted. Confirmation is unknown; your writing is kept.');
+  };
+  g.editor.edit({ body });
+  await g.session.send();
+  assert.equal(g.editor.submissions[0].status, 'prepared');
+  const sends = g.calls.filter(c => c.kind === 'message.send').length;
+  await g.session.resumeHeld();
+  assert.equal(g.calls.filter(c => c.kind === 'message.send').length, sends, 'a send that may have reached Core is not sent again');
 });
 
 test('private note save cannot send the reply beneath it', async t => {

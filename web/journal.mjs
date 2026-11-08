@@ -217,7 +217,7 @@ export async function openJournal({ instanceId, actor } = {}) {
   try { previousWriter = sessionStorage.getItem(hintKey); sessionStorage.setItem(hintKey, writerId); } catch { /* hints are optional */ }
 
   const scopedKey = key => {
-    let parts; try { parts = JSON.parse(key); } catch { throw Error('Invalid recovery editor identity.'); }
+    let parts; try { parts = JSON.parse(key); } catch (error) { throw Error('Invalid recovery editor identity.', { cause: error }); }
     if (!Array.isArray(parts) || parts[0] !== instanceId || parts[1] !== actor) throw Error('Recovery editor belongs to a different actor or instance.');
     return key;
   };

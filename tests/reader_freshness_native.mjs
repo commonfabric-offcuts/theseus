@@ -914,7 +914,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await shot(p, 'freshness-parked'); assert.deepEqual(p.errors, []);
   });
 
-  for (const [status, code, reconnect] of [[401,'SESSION_REQUIRED',true], [403,'ORIGIN_REFUSED',true], [200,'VIEW_TOO_LARGE',false], [400,'INVALID_READ_CLASS',false], [200,'MALFORMED_INSTANCE',false]]) {
+  for (const [status, code] of [[200,'VIEW_TOO_LARGE'], [400,'INVALID_READ_CLASS'], [200,'MALFORMED_INSTANCE']]) {
     await check(`freshness F5 boundary ${code} stops without automatic adoption or reconnect`, async () => {
       const p = await page('freshness-boundary-'+code, null, true); await p.open(1);
       await replace(p, 'Writing retained at '+code); p.recordResponses();
@@ -925,7 +925,7 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       assert.ok(p.responses.some(r=>r.payload?.name==='changes' && r.status===status && (code==='MALFORMED_INSTANCE' ? r.body.instance_id==='wrong-instance' : r.body.error?.code===code)), 'the measured boundary response was received');
       const after = await p.evaluate('freshSnapshot()');
       for (const key of ['presentation','sourceObject','editorObject','generation','shows','source','editorSource','key','cycle','body','quotes','focus','caret','scroll']) assert.deepEqual(after[key], before[key], key);
-      assert.equal(await p.evaluate('document.querySelector("#updates-retry").textContent'), reconnect ? 'Reload to reconnect' : 'Retry updates');
+      assert.equal(await p.evaluate('document.querySelector("#updates-retry").textContent'), 'Retry updates');
       const reads = p.calls.filter(c=>c.payload?.name==='changes').length;
       const consumerReads = await p.evaluate('freshEvidence.reads.length');
       const foregroundBootstraps = () => p.calls.filter(c=>c.url.endsWith('/api/bootstrap') && !Object.entries(c.headers).some(([key,value])=>key.toLowerCase()==='x-aim-read-class'&&value==='background')).length;
@@ -937,6 +937,42 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       assert.equal(p.calls.some(c=>['message.send','submission.prepare','delivery.ack'].includes(c.payload?.kind)), false);
       assert.deepEqual(p.errors, []);
       observations.push({ name:'failure boundary', status, code, before, after, consumerReads, reads, probes, qualification:'Private HTTP response seam; explicit Reload is not activated. Existing image cleanup may still perform its own background bootstrap bracket.' });
+    });
+  }
+
+  // A refused session or Origin is what a restarted server answers. The page
+  // reads the server's current session from its own address (here the same
+  // one, since the refusal was injected), tries the stopped updates once more
+  // for that session, and goes on; refused again, it stops and offers
+  // Reconnect, without trying again by itself.
+  for (const [status, code] of [[401,'SESSION_REQUIRED'], [403,'ORIGIN_REFUSED']]) for (const refusals of [1, 2]) {
+    await check(`freshness F5 boundary ${code} refused ${refusals === 1 ? 'once reconnects by itself' : 'twice stops at Reconnect'}, keeping the writing`, async () => {
+      const p = await page(`freshness-boundary-${code}-${refusals}`, null, true); await p.open(1);
+      await replace(p, 'Writing retained at '+code); p.recordResponses();
+      const before = await p.evaluate('freshSnapshot()');
+      const reads = () => p.calls.filter(c=>c.payload?.name==='changes').length, from = reads();
+      for (let n = 0; n < refusals; n++) await fault('changes', code, status);
+      await until(()=>p.responses.filter(r=>r.payload?.name==='changes' && r.status===status && r.body.error?.code===code).length === refusals, 'the refusals were received');
+      const foregroundBootstraps = () => p.calls.filter(c=>c.url.endsWith('/api/bootstrap') && !Object.entries(c.headers).some(([key,value])=>key.toLowerCase()==='x-aim-read-class'&&value==='background')).length;
+      const probes = foregroundBootstraps();
+      if (refusals === 1) {
+        await until(()=>p.evaluate('!observedFreshness.stopped && !observedFreshness.running && document.querySelector("#updates-status").hidden'), 'updates resumed by themselves');
+        assert.ok(p.responses.some(r=>r.payload?.name==='changes' && r.status===200 && !r.body.error && r.at > p.responses.find(x=>x.body.error?.code===code).at), 'a later Changes read succeeded');
+      } else {
+        await until(()=>p.evaluate('observedFreshness.stopped && !observedFreshness.running'), 'stopped after the second refusal');
+        assert.equal(await p.evaluate('document.querySelector("#updates-retry").textContent'), 'Reconnect');
+        assert.equal(await p.evaluate('document.querySelector("#updates-message").textContent'), 'Reconnecting to Theseus. Your writing is kept. ');
+        const stoppedAt = reads();
+        await new Promise(resolve=>setTimeout(resolve,650));
+        assert.equal(reads(), stoppedAt, 'tried once for this session, not again by itself');
+        assert.equal(stoppedAt - from, 2, 'the first read and its one retry');
+      }
+      assert.equal(foregroundBootstraps(), probes, 'the same session is not asked who it is again');
+      const after = await p.evaluate('freshSnapshot()');
+      for (const key of ['presentation','sourceObject','editorObject','generation','shows','source','editorSource','key','cycle','body','quotes','focus','caret','scroll']) assert.deepEqual(after[key], before[key], key);
+      assert.equal(p.calls.some(c=>['message.send','submission.prepare','delivery.ack'].includes(c.payload?.kind)), false);
+      assert.deepEqual(p.errors, []);
+      observations.push({ name:'session boundary', status, code, refusals, reads: reads() - from });
     });
   }
 
@@ -1125,5 +1161,53 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     await caughtUpAfter(p, retriedAt, 'explicit retry restores reads');
     assert.deepEqual(p.calls.filter(c => c.url.endsWith('/api/command')).map(c => c.payload?.kind).filter(kind => kind !== 'topic.read_through'), []);
     await shot(p, 'freshness-read-retry'); assert.deepEqual(p.errors, []);
+  });
+
+  // Access to the topic and its source goes, then comes back, with the Reader
+  // open on a newer message. The refused source hides its title too; writing
+  // begun while access is checked keeps the focus; once the topic is back the
+  // Reader stops saying its updates are paused, and More messages returns.
+  await check('freshness access that comes back clears the paused note and More, and leaves the focus in writing begun meanwhile', async () => {
+    await control({ method: 'seed', messages: 35, memory_items: 0 });
+    // Everything read, so no New line stands in for More messages.
+    const { result: { message_id: newest } } = await control({ method: 'agent_message', operation_id: 'freshness-access-back-read', body: 'Newest, read', topic_id: 't1', addressees: [], read: true });
+    const p = await page('freshness-access-back', null, true); await idleRead(p);
+    const text = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).textContent`);
+    const shown = selector => p.evaluate(`!document.querySelector(${JSON.stringify(selector)}).hidden`);
+    assert.equal(await shown('#more-messages'), true, 'older messages to read');
+    const card = `#messages [data-id="${newest}"]`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), 'the newest message is shown');
+    await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({block:'center'})`);
+    await p.point(card);
+    await until(() => p.evaluate('document.querySelector("#reader").open && document.getAnimations().every(a => a.playState !== "running")'), 'the Reader is open');
+    const title = await text('#reader-title');
+    await replace(p, 'Writing kept while access is checked');
+    await until(() => p.evaluate('(()=>{const e=observedRegistry.current.editors.reply;return e.localVersion===e.ackVersion})()'), 'the writing is saved');
+    await fault('source', 'FORBIDDEN'); await fault('changes', 'FORBIDDEN');
+    await until(() => p.evaluate('observedFreshness.stopped && observedRegistry.current.sourceUnavailable === true && !observedRegistry.current.availabilityChecking'), 'the topic and the source are refused');
+    assert.equal(await text('#reader-title'), 'Source unavailable', 'the refused source hides its title');
+    assert.match(await text('#source-access-status'), /Topic updates are paused\./);
+    assert.equal(await shown('#more-messages'), false);
+    // Retry access, and while it checks, the person starts writing.
+    p.intercept(payload => payload?.name === 'source');
+    await p.point('#retry-source');
+    const held = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the access check is under way');
+    await p.point('#writing-body');
+    assert.equal(await p.evaluate('document.activeElement.id'), 'writing-body');
+    p.intercept(null); await p.release(held);
+    await until(() => p.evaluate('!observedRegistry.current.availabilityChecking && !observedRegistry.current.sourceUnavailable'), 'the source is back');
+    assert.equal(await p.evaluate('document.activeElement.id'), 'writing-body', 'the focus stays in the writing');
+    assert.equal(await text('#reader-title'), title, 'the title comes back with the source');
+    assert.equal(await text('#source-access-status'), 'This source is available. Topic updates remain paused.');
+    // The topic comes back. Retry updates is behind the open Reader, so the
+    // check makes the request that button makes.
+    await p.evaluate('observedFreshness.request({ refresh: true, retry: true })');
+    await until(() => p.evaluate('!observedFreshness.stopped && !observedFreshness.running && document.querySelector("#updates-status").hidden'), 'updates run again');
+    await until(async () => !await shown('#source-access-status'), 'the Reader no longer says updates are paused');
+    assert.equal(await field(p), 'Writing kept while access is checked');
+    await p.point('#reader-close'); await until(() => p.evaluate('!document.querySelector("#reader").open'), 'the Reader closes');
+    assert.equal(await shown('#more-messages'), true, 'More messages is back');
+    observations.push({ name: 'access comes back', title, qualification: 'Refusals are injected at the HTTP read seam; the topic comes back through the request Retry updates makes, since the open Reader covers that button.' });
+    assert.deepEqual(p.errors, []);
   });
 }

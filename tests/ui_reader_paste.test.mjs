@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Reader } from '../web/reader.mjs';
+import { lineText } from '../web/lines.mjs';
 
 function fixture({ mode = 'reply', readOnly = false, authorityRecovery = null } = {}) {
   const calls = [], notices = [], selected = [];
@@ -12,7 +13,7 @@ function fixture({ mode = 'reply', readOnly = false, authorityRecovery = null } 
   const reader = Object.assign(Object.create(Reader.prototype), {
     mode, sessions: { reply: editor, note: {} }, presentation,
     callbacks: { uploads: value => { selected.push(value); return uploads; } },
-    writingReadOnly: () => readOnly, notice: text => notices.push(text), paintStatus() {},
+    writingReadOnly: () => readOnly, notice: what => notices.push(lineText(what)), paintStatus() {},
   });
   const event = (files = []) => ({
     clipboardData: { items: files.map(file => ({ type: file.type, getAsFile: () => file })) },

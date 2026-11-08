@@ -434,7 +434,7 @@ export class TopicStatePanel {
       let receipt = null, error = null;
       try {
         receipt = await (field.name === 'duty' ? this.sendNote(topic, out.args.note, out.fences.duty, out.id) : this.send(topic, out.args, out.fences, out.id));
-      } catch (caught) { error = caught ?? Error('The change was not confirmed.'); }
+      } catch (caught) { error = caught ?? Error('The change was not confirmed.', { cause: caught }); }
       await this.answered(field, out, topic, receipt, error);
     })().catch(error => this.show(error?.message ?? String(error)));
     this.running.add(run);

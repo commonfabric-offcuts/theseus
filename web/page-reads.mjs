@@ -3,6 +3,8 @@
 // and device until they open it again; the next commit the live feed names
 // redraws the sidebar without its light. The answer says which revision the
 // person had read before, which is where what changed since begins.
+import { unreached } from './api.mjs';
+
 export class PageReads {
   // send(itemId, revision): the memory.read command's receipt.
   // recorded(): after a read Core recorded, so a page without the live feed
@@ -24,7 +26,11 @@ export class PageReads {
     }
     let receipt;
     try { receipt = await this.send(ref.id, ref.revision); }
-    catch { throw Error('Connection interrupted; this page may still show as changed. Open it again to read it.'); }
+    catch (error) {
+      // The failure goes on as the cause, so the line it reaches knows whether it was about reaching Theseus.
+      throw Error(unreached(error) ? 'Connection interrupted; this page may still show as changed. Open it again to read it.'
+        : `${error.message} It may still show as changed.`, { cause: error });
+    }
     if (receipt?.status !== 'committed') {
       throw Error((receipt?.error?.message ?? 'Reading this page was not recorded.') + ' It may still show as changed.');
     }

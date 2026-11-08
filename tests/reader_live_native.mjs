@@ -291,11 +291,16 @@ export async function liveChecks({ check, page, until, control, observations, or
     const opened = name => until(() => p.evaluate(`Boolean(document.querySelector('#source-attachments a[download=${JSON.stringify(name)}]'))`), name + ' opens');
     const notice = () => p.evaluate("document.querySelector('#reader-notice').hidden ? '' : document.querySelector('#reader-notice').textContent");
     const press = name => p.evaluate(`${named(name)}.focus()`).then(() => p.key('Enter'));
+    // Theseus refuses the read with an answer of its own. (A read that got no
+    // answer at all leaves no line while the live feed is up: web/lines.mjs.)
+    const refuseHeld = held => p.send('Fetch.fulfillRequest', { requestId: held.event.requestId, responseCode: 404,
+      responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+      body: Buffer.from(JSON.stringify({ recorded: false, error: { code: 'MEDIA_UNAVAILABLE', message: 'This attachment is unavailable.' } })).toString('base64') });
     const refuse = async name => {
       p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
       await press(name);
       const held = await until(() => p.held.find(h => !h.done && h.event.request.url.endsWith('/api/media/read')), 'the read of ' + name + ' is held');
-      held.done = true; p.intercept(null); await p.fail(held);
+      held.done = true; p.intercept(null); await refuseHeld(held);
       await until(async () => (await notice()).startsWith(name + ': '), 'the refusal names ' + name);
     };
     await offered('passive.png');
@@ -322,7 +327,7 @@ export async function liveChecks({ check, page, until, control, observations, or
       p.intercept((_payload, event) => event.request.url.endsWith('/api/media/read'));
       await p.evaluate(`${nth(n)}.focus()`); await p.key('Enter');
       const held = await until(() => p.held.find(h => !h.done && h.event.request.url.endsWith('/api/media/read')), 'the read is held');
-      held.done = true; p.intercept(null); await p.fail(held);
+      held.done = true; p.intercept(null); await refuseHeld(held);
       await until(() => p.evaluate(`!(${nth(n)}).disabled`), 'the refusal settles');
     };
     await refuseNth(0);
@@ -640,8 +645,9 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.point(card(topic.message));
     const held = await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
     p.intercept(null); await p.fail(held);
-    await until(async () => (await status()) !== '', 'the failed read is reported');
     await openSettled(p);
+    // The live feed is up, so a read that got no answer says nothing (web/lines.mjs), and the refusal before it is replaced.
+    assert.equal(await status(), '', 'a read that got no answer while the live feed is up leaves no line');
     assert.equal(await p.evaluate("document.querySelector('#reader').open"), false);
     assert.deepEqual(markCalls(p), []);
     assert.equal(await pill(p, topic.message), true);
@@ -1013,4 +1019,360 @@ export async function liveChecks({ check, page, until, control, observations, or
     assert.deepEqual(p.errors, []);
     await p.close();
   });
+
+  // A deploy restarts the server, and the restarted server refuses the page's
+  // session. An open page, at laptop and at phone width, comes back by itself:
+  // the same document (no Reload), the Reader still open with the writing in
+  // its box, writing typed while the server was down saved to Core, and a
+  // message sent afterwards shown live.
+  for (const [width, metrics] of [['laptop', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false }],
+    ['phone', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true }]]) {
+    await check(`live restart: an open page reconnects by itself after the server restarts, with nothing lost (${width})`, async () => {
+      const p = await page(`live-restart-${width}`, null, true, { beforeNavigate: q => q.send('Emulation.setDeviceMetricsOverride', metrics) });
+      await settled(p);
+      await p.open(1);
+      const field = () => p.evaluate("document.querySelector('#writing-body').value");
+      const draft = async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.body;
+      const write = async text => {
+        await p.point('#writing-body'); await p.key('a', 4);
+        await p.send('Input.insertText', { text }); assert.equal(await field(), text);
+      };
+      await write(`Saved before the restart (${width})`);
+      await until(async () => await draft() === `Saved before the restart (${width})`, 'the writing is saved before the restart', 15000);
+      await p.evaluate('(window.sameDocumentBeforeRestart = true)');
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      await control({ method: 'server_stop' });
+      await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+      // Typed while nothing answers: kept on the page, and saved once Theseus is back.
+      const typed = `Written while Theseus was restarting (${width})`;
+      await write(typed);
+      const restarted = await control({ method: 'server_start' });
+      assert.equal(restarted.origin, facts.origin, 'the server is back at the same address');
+      assert.notEqual(restarted.token, before, 'the restarted server has a new session');
+      facts.token = restarted.token;
+      await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.token === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`),
+        'the page took the new session and its live feed is connected again', 20000);
+      await until(async () => await draft() === typed, 'the writing typed while the server was down is saved to Core', 15000);
+      assert.equal(await p.evaluate('window.sameDocumentBeforeRestart === true'), true, 'the same document: nothing reloaded the page');
+      assert.equal(await field(), typed, 'the writing is still in its box');
+      assert.equal(await p.evaluate("document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source 1 ')"), true, 'the Reader is still open on its source');
+      const text = `Arrives after the restart (${width})`;
+      await message(text);
+      await until(() => hasText(p, '#messages', text), 'a message sent after the restart is shown', 5000);
+      await settled(p);
+      assert.equal(await p.evaluate("document.querySelector('#updates-status').hidden"), true, 'no updates notice is left behind');
+      assert.equal(await p.evaluate("document.querySelector('#app-status').hidden || !document.querySelector('#app-status').textContent"), true,
+        await p.evaluate("document.querySelector('#app-status').textContent"));
+      observations.push({ name: 'restart under an open page', width, opened: await p.evaluate('observedFreshness.live.opened') });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
+
+  // The server restarts, and the person's Send meets it before the page has the
+  // new session: the restarted server refuses the reply's save, its
+  // preparation or its send, whichever the old session carries first. For the
+  // later two, the old server's answer to the act before is held until it has
+  // restarted. The page's renewal is held at the server's answer, so the
+  // refusal falls inside that window every time. Once the renewal lands, the
+  // reply goes on by itself and is published once, in the Reader and in the
+  // topic's composer.
+  for (const [surface, phase] of [['reader', 'draft.save'], ['reader', 'submission.prepare'], ['reader', 'message.send'], ['composer', 'draft.save']]) {
+    await check(`live restart: a reply sent before the page has the new session is published once it does (${surface}, refused at ${phase})`, async () => {
+      const p = await page(`live-restart-send-${surface}-${phase}`, null, true);
+      await settled(p);
+      const reader = surface === 'reader', body = `Sent in the restart window (${surface}, ${phase})`;
+      const fieldId = reader ? '#writing-body' : '#inline-writing-body', sendId = reader ? '#send-reply' : '#inline-send';
+      // The reply's session, wherever the page shows it now (the Reader closes once a reply is prepared).
+      const reply = `[...appRegistry().sessions.values()].find(s=>s.editor.submissions.some(i=>i.snapshot.body===${JSON.stringify(body)}))`;
+      if (reader) await p.open(1);
+      else await p.evaluate(`document.querySelector(${JSON.stringify(fieldId)}).scrollIntoView({block:'center'})`);
+      const write = async () => { await p.point(fieldId); await p.key('a', 4); await p.send('Input.insertText', { text: body }); };
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      const holdFirst = { 'submission.prepare': 'draft.save', 'message.send': 'submission.prepare' }[phase];
+      let restarted = null;
+      const authorization = event => Object.entries(event.request.headers).find(([key]) => key.toLowerCase() === 'authorization')?.[1];
+      p.intercept((payload, event) => (restarted === null && holdFirst && payload?.kind === holdFirst) ||
+        (restarted !== null && event.request.url.endsWith('/api/bootstrap') && authorization(event) === `Bearer ${restarted.token}`));
+      let answered = null;
+      if (holdFirst) {
+        // Sent to the old server, which answers; the answer reaches the page after the restart.
+        await write(); await p.point(sendId);
+        answered = await until(() => p.held.find(h => h.payload?.kind === holdFirst), `the old server's answer to ${holdFirst} is held`);
+      }
+      await control({ method: 'server_stop' });
+      restarted = await control({ method: 'server_start' });
+      assert.notEqual(restarted.token, before);
+      facts.token = restarted.token;
+      const inWindow = await p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(before)}`);
+      assert.equal(inWindow, true, 'the page still holds the old session');
+      if (answered) await p.release(answered); else { await write(); await p.point(sendId); }
+      const refused = await until(() => p.evaluate(`(()=>{const s=${reply};const i=s?.editor.submissions.find(i=>i.snapshot.body===${JSON.stringify(body)});
+        return i && (i.blocked?.code === 'SESSION_REQUIRED' ? i.blocked.phase : i.status === 'prepared' && s.attempts.find(a=>a.envelope.operation_id===i.sendOperationId)?.error?.code === 'SESSION_REQUIRED' ? 'message.send' : null);})()`),
+        'the restarted server refused the reply for the old session');
+      assert.equal(refused, phase, 'refused at the act this case is about');
+      const renewal = await until(() => p.held.find(h => h.event.request.url.endsWith('/api/bootstrap')), 'the renewal is held at the server\'s answer');
+      p.intercept(null); await p.release(renewal);
+      await until(async () => (await view('topic_messages', { topic_id: 't1', direction: 'before' })).items.some(item => item.body === body), 'the reply is published', 15000);
+      await until(() => hasText(p, '#messages', body), 'the reply is shown', 5000);
+      await until(() => p.evaluate(`${reply}.editor.submissions.filter(i=>i.snapshot.body===${JSON.stringify(body)}).every(i=>i.status==='confirmed')`), 'the reply is confirmed on the page');
+      const published = (await view('topic_messages', { topic_id: 't1', direction: 'before' })).items.filter(item => item.body === body).length;
+      assert.equal(published, 1, 'published once');
+      const sends = p.calls.filter(c => c.payload?.kind === 'message.send');
+      assert.equal(new Set(sends.map(c => c.payload.operation_id)).size, 1, 'one send operation');
+      assert.equal(sends.length, phase === 'message.send' ? 2 : 1, 'the refused send went once more; others went once');
+      await settled(p);
+      assert.equal(await p.evaluate("document.querySelector('#app-status').hidden || !document.querySelector('#app-status').textContent"), true,
+        await p.evaluate("document.querySelector('#app-status').textContent"));
+      observations.push({ name: 'reply sent in the restart window', surface, phase, inWindow, kinds: p.calls.filter(c => c.payload?.kind).map(c => c.payload.kind) });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
+
+  // Theseus is down for its restart when the person presses Send: the reply's
+  // save meets no server, and neither does the look-up of what became of it,
+  // so the reply is held. Once the restarted server answers, the page takes
+  // its new session, and the reply goes on by itself and is published once,
+  // in the Reader and in the topic's composer.
+  for (const surface of ['reader', 'composer']) {
+    await check(`live restart: a reply sent while Theseus is down is published once it is back (${surface})`, async () => {
+      const p = await page(`live-restart-down-${surface}`, null, true);
+      await settled(p);
+      const reader = surface === 'reader', body = `Sent while Theseus was down (${surface})`;
+      const fieldId = reader ? '#writing-body' : '#inline-writing-body', sendId = reader ? '#send-reply' : '#inline-send';
+      const item = `[...appRegistry().sessions.values()].flatMap(s=>s.editor.submissions).find(i=>i.snapshot.body===${JSON.stringify(body)})`;
+      if (reader) await p.open(1);
+      else await p.evaluate(`document.querySelector(${JSON.stringify(fieldId)}).scrollIntoView({block:'center'})`);
+      await p.point(fieldId); await p.key('a', 4); await p.send('Input.insertText', { text: body });
+      await control({ method: 'server_stop' });
+      await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+      await p.point(sendId);
+      const held = await until(() => p.evaluate(`${item}?.blocked?.code ?? null`), 'the reply is held while nothing answers');
+      assert.equal(held, 'CONNECTION_UNKNOWN', 'held because nothing answered');
+      const restarted = await control({ method: 'server_start' });
+      facts.token = restarted.token;
+      const published = async () => (await view('topic_messages', { topic_id: 't1', direction: 'before' })).items.filter(row => row.body === body).length;
+      await until(async () => await published() > 0, 'the reply is published', 30000);
+      await until(() => hasText(p, '#messages', body), 'the reply is shown', 5000);
+      await until(() => p.evaluate(`${item}.status === 'confirmed'`), 'the reply is confirmed on the page');
+      assert.equal(await p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)}`), true, 'the page holds the new session');
+      assert.equal(await published(), 1, 'published once');
+      const sends = p.calls.filter(c => c.payload?.kind === 'message.send');
+      assert.equal(sends.length, 1, 'sent once');
+      await settled(p);
+      assert.equal(await p.evaluate("document.querySelector('#app-status').hidden || !document.querySelector('#app-status').textContent"), true,
+        await p.evaluate("document.querySelector('#app-status').textContent"));
+      observations.push({ name: 'reply sent while Theseus was down', surface, kinds: p.calls.filter(c => c.payload?.kind).map(c => c.payload.kind) });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
+
+  // The restarted server's new session cannot be confirmed at first (the
+  // answer to the page's renewal is cut off), so the updates notice offers
+  // Reconnect. Pressed while that is still so, the page says Theseus is not
+  // answering yet. Then the page reconnects by itself, and nothing on it says
+  // Theseus is not answering.
+  await check('live restart: after Reconnect found Theseus not answering, the page reconnects by itself and says nothing stale', async () => {
+    const p = await page('live-restart-reconnect-press', null, true);
+    await settled(p);
+    const session = () => p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+    const before = await session();
+    const authorization = event => Object.entries(event.request.headers).find(([key]) => key.toLowerCase() === 'authorization')?.[1];
+    let closed = true, cut = 0;
+    // Every renewal's question to a session other than the page's own is cut off while closed.
+    p.intercept(async (_payload, event) => {
+      if (!closed || !event.request.url.endsWith('/api/bootstrap') || authorization(event) === `Bearer ${before}`) return false;
+      cut++; await p.fail({ event }); return true;
+    });
+    await control({ method: 'server_stop' });
+    const restarted = await control({ method: 'server_start' });
+    facts.token = restarted.token;
+    await until(() => p.evaluate("!document.querySelector('#updates-status').hidden && document.querySelector('#updates-retry').textContent === 'Reconnect'"), 'the updates notice offers Reconnect', 30000);
+    await until(() => cut > 0, 'the renewal was cut off');
+    await p.point('#updates-retry');
+    await until(() => p.evaluate("/not answering yet/.test(document.querySelector('#app-status').textContent)"), 'Reconnect says Theseus is not answering yet');
+    closed = false;
+    await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`), 'the page reconnects by itself', 30000);
+    await settled(p);
+    await until(() => p.evaluate("document.querySelector('#updates-status').hidden"), 'the updates notice is gone');
+    assert.equal(await p.evaluate("document.querySelector('#app-status').hidden || !document.querySelector('#app-status').textContent"), true,
+      'after reconnecting, the page still says: ' + await p.evaluate("document.querySelector('#app-status').textContent"));
+    observations.push({ name: 'Reconnect while not answering, then back by itself', cut });
+    p.intercept(null);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  // A message opened while Theseus is down for its restart cannot be read,
+  // and the page says so where the open was asked: on the page's status line
+  // for a card tapped on the topic, in the Reader's notice for the Reader's
+  // next message; and a Mark pressed then says the mark is unknown. Once the
+  // page reaches the restarted server, nothing on it still says so. Nothing
+  // answers while the server is down, or, as for a phone that reaches Theseus
+  // through Tailscale Serve (docs/tailnet-access.md), the proxy answers every
+  // request 502 with an empty body. Or the open's read gets no answer at all
+  // before the restart, as when the server hangs or a phone's tunnel stalls,
+  // and the page stops waiting for it.
+  for (const [where, answer] of [['card', 'nothing'], ['reader', 'nothing'], ['card', 'proxy'], ['reader', 'proxy'], ['mark', 'proxy'], ['card', 'stall'], ['reader', 'stall']]) {
+    const through = answer === 'proxy' ? ', through a proxy that answers 502' : answer === 'stall' ? ', after its read got no answer' : '';
+    await check(`live restart: a message that could not open while Theseus was down leaves no connection line once it is back (${where}${through})`, async () => {
+      // Mark unread is offered on another person's message, in a topic of its own.
+      const marking = where === 'mark' ? await markTopic(`Restart: mark (${answer})`) : null;
+      const p = await page(`live-restart-open-${where}-${answer}`, null, true, marking ? { url: marking.url } : undefined);
+      await settled(p);
+      const line = where === 'card' ? '#app-status' : '#reader-notice';
+      const says = () => p.evaluate(`(e => e.hidden ? '' : e.textContent)(document.querySelector(${JSON.stringify(line)}))`);
+      if (marking) {
+        await openCard(p, marking.message, 'Fixture conversation');
+        await pressed(p, ['Mark unread', 'false']);
+      } else if (where === 'reader') {
+        await p.open(1);
+        await until(() => p.evaluate("!document.querySelector('#next-message').disabled || !document.querySelector('#previous-message').disabled"), 'the Reader offers another message');
+      }
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      const opens = await p.evaluate('freshEvidence.opens.length');
+      let proxied = 0, down = answer === 'proxy';
+      if (down) p.intercept(async (_payload, event) => {
+        if (!down || !event.request.url.startsWith(facts.origin + '/api/')) return false;
+        proxied++;
+        await p.send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 502, responseHeaders: [{ name: 'Content-Length', value: '0' }], body: '' });
+        return true;
+      });
+      const open = async () => {
+        if (where === 'card') {
+          const card = await p.evaluate("(c => c && c.dataset.id)([...document.querySelectorAll('#messages .message-card')].find(c => { const b = c.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; }))");
+          assert.ok(card, 'a card is in view');
+          await p.point(`#messages [data-id="${card}"]`);
+        } else if (where === 'mark') await p.point('#mark-unread');
+        else await p.point(await p.evaluate("document.querySelector('#next-message').disabled ? '#previous-message' : '#next-message'"));
+        if (answer === 'stall') {
+          // The live feed is still up, so the read that got no answer says nothing (web/lines.mjs).
+          const ended = await until(() => p.evaluate(`(o => o?.end !== undefined && o)(freshEvidence.opens[${opens}])`), 'the open has ended', 15000);
+          assert.match(ended.error ?? '', /timed out/, 'the page stopped waiting for the read');
+          assert.equal(await says(), '', `the live feed is up, yet ${line} says what the stall did`);
+          return;
+        }
+        const failed = where === 'mark' ? /whether the mark was saved is unknown/ : answer === 'proxy' ? /unreadable response/ : /Connection interrupted/;
+        await until(async () => failed.test(await says()), `what met no answer is said in ${line}`, 15000);
+      };
+      if (answer === 'stall') {
+        // The source's answer never reaches the page; once the page has stopped waiting, what was held goes on.
+        p.intercept(payload => payload?.name === 'source');
+        await open();
+        p.intercept(null);
+        for (const held of p.held.splice(0)) await p.release(held).catch(() => {});
+      }
+      await control({ method: 'server_stop' });
+      await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+      if (answer !== 'stall') await open();
+      if (down) assert.ok(proxied > 0, 'the proxy answered for the stopped server');
+      const restarted = await control({ method: 'server_start' });
+      down = false;
+      assert.notEqual(restarted.token, before);
+      facts.token = restarted.token;
+      await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.token === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`),
+        'the page took the new session and its live feed is connected again', 30000);
+      await settled(p);
+      assert.equal(await says(), '', `after reconnecting, ${line} still says what the restart did`);
+      p.intercept(null);
+      observations.push({ name: 'open while Theseus was down', where, answer, proxied });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
+
+  // The page reaches Theseus again while a message's read is still out on the
+  // connection that stalled: the server restarts and the page renews its
+  // session, or a network change drops only the live feed, which comes back on
+  // a fresh connection. The read then runs out of time. The live feed stays up
+  // and quiet, so nothing later would clear a line, and none is left: the page
+  // has reached Theseus since that read began.
+  for (const how of ['restart', 'socket']) for (const where of ['card', 'reader']) {
+    await check(`live restart: a message whose read is still out when the page reaches Theseus again leaves no connection line once the read runs out (${where}, ${how})`, async () => {
+      const p = await page(`live-restart-overtaken-${where}-${how}`, null, true);
+      await settled(p);
+      const line = where === 'card' ? '#app-status' : '#reader-notice';
+      const says = () => p.evaluate(`(e => e.hidden ? '' : e.textContent)(document.querySelector(${JSON.stringify(line)}))`);
+      if (where === 'reader') {
+        await p.open(1);
+        await until(() => p.evaluate("!document.querySelector('#next-message').disabled || !document.querySelector('#previous-message').disabled"), 'the Reader offers another message');
+      }
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      const opens = await p.evaluate('freshEvidence.opens.length'), opened = await p.evaluate('observedFreshness.live.opened');
+      p.intercept(payload => payload?.name === 'source');
+      if (where === 'card') {
+        const card = await p.evaluate("(c => c && c.dataset.id)([...document.querySelectorAll('#messages .message-card')].find(c => { const b = c.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; }))");
+        assert.ok(card, 'a card is in view');
+        await p.point(`#messages [data-id="${card}"]`);
+      } else await p.point(await p.evaluate("document.querySelector('#next-message').disabled ? '#previous-message' : '#next-message'"));
+      await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
+      if (how === 'restart') {
+        await control({ method: 'server_stop' });
+        await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+        const restarted = await control({ method: 'server_start' });
+        assert.notEqual(restarted.token, before);
+        facts.token = restarted.token;
+        await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`), 'the page took the new session and its live feed is connected again', 30000);
+      } else {
+        await p.evaluate('observedFreshness.live.current.socket.close()');
+        await until(() => p.evaluate(`observedFreshness.live.opened > ${opened} && observedFreshness.live.connected`), 'the live feed is connected again on a new socket', 30000);
+      }
+      const reconnected = await says();
+      const ended = await until(() => p.evaluate(`(o => o?.end !== undefined && o)(freshEvidence.opens[${opens}])`), 'the open has ended', 15000);
+      assert.match(ended.error ?? '', /timed out/, 'the read got no answer and the page stopped waiting for it after it reached Theseus');
+      p.intercept(null);
+      for (const held of p.held.splice(0)) await p.release(held).catch(() => {});
+      await settled(p);
+      const left = { reconnected, after: await says(), unreached: await p.evaluate(`document.querySelector(${JSON.stringify(line)}).hasAttribute('data-unreached')`), connected: await p.evaluate('observedFreshness.live.connected') };
+      assert.deepEqual(left, { reconnected: '', after: '', unreached: false, connected: true }, `the page reached Theseus while the read was out, and ${line} still says what the stall did`);
+      observations.push({ name: 'read out when the page reached Theseus again', where, how });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
+
+  // A reviewer's case (round 4): the page reaches Theseus again first (a
+  // dropped live socket, a restart, or nothing at all), and a card tapped just
+  // after, on a connection still stalled, runs out of time. The live feed is
+  // up and quiet and Theseus answers, so no line says it could not be reached.
+  for (const how of ['socket', 'restart', 'none']) {
+    await check(`live restart: RVC a card tapped just after the page reached Theseus again, whose read runs out, leaves no line once Theseus answers (${how})`, async () => {
+      const p = await page(`live-restart-rvc-${how}`, null, true);
+      await settled(p);
+      const says = () => p.evaluate(`(e => e.hidden ? '' : e.textContent)(document.querySelector('#app-status'))`);
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      const opened0 = await p.evaluate('observedFreshness.live.opened');
+      if (how === 'restart') {
+        await control({ method: 'server_stop' });
+        await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+        const restarted = await control({ method: 'server_start' });
+        assert.notEqual(restarted.token, before);
+        facts.token = restarted.token;
+        await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`), 'reconnected', 30000);
+      } else if (how === 'socket') {
+        await p.evaluate('observedFreshness.live.current.socket.close()');
+        await until(() => p.evaluate(`observedFreshness.live.opened > ${opened0} && observedFreshness.live.connected`), 'live reconnected', 30000);
+      }
+      await settled(p);
+      const opens = await p.evaluate('freshEvidence.opens.length');
+      p.intercept(payload => payload?.name === 'source');
+      const card = await p.evaluate("(c => c && c.dataset.id)([...document.querySelectorAll('#messages .message-card')].find(c => { const b = c.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; }))");
+      assert.ok(card, 'a card is in view');
+      await p.point(`#messages [data-id="${card}"]`);
+      await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
+      const ended = await until(() => p.evaluate(`(o => o?.end !== undefined && o)(freshEvidence.opens[${opens}])`), 'the open has ended', 15000);
+      p.intercept(null);
+      for (const held of p.held.splice(0)) await p.release(held).catch(() => {});
+      await settled(p);
+      const written = await says(), mark = await p.evaluate("document.querySelector('#app-status').hasAttribute('data-unreached')");
+      // Theseus answers the page again: a view read through the page's own Api succeeds.
+      const answered = await p.evaluate(`fetch('/api/view', { method: 'POST', headers: { Authorization: 'Bearer ' + document.querySelector('meta[name="aim-next-session"]').content, 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'attention', args: {} }) }).then(r => r.status)`);
+      let last = '';
+      try { await until(async () => (last = await says()) === '', 'the line goes once Theseus answers', 12000); }
+      catch { assert.fail(`RVC(${how}): open ended with ${JSON.stringify(ended.error)}; line ${JSON.stringify(written)} data-unreached=${mark}; a later read answered ${answered}; 12 s later connected=${await p.evaluate('observedFreshness.live.connected')}, #app-status still says ${JSON.stringify(last)}`); }
+      await p.close();
+    });
+  }
 }

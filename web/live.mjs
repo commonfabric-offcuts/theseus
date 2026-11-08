@@ -21,7 +21,8 @@ export class Live {
     this.failures = 0; this.timer = null; this.current = null; this.stopped = false; this.opened = 0;
   }
   // listener({ kind: 'commit', seq }) on each new number, and
-  // listener({ kind: 'state', state }) with 'live' or 'down'.
+  // listener({ kind: 'state', state }) with 'live' or 'down', and
+  // listener({ kind: 'refused' }) when a socket ends before its first number.
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   emit(event) { for (const listener of [...this.listeners]) listener(event); }
   setState(state) {
@@ -50,7 +51,12 @@ export class Live {
       socket.onmessage = socket.onclose = socket.onerror = null;
       // Leave nothing open behind a socket this page has stopped listening to.
       try { socket.close(); } catch { /* already closing */ }
-      if (!this.stopped) this.retry(attempt.clean);
+      if (this.stopped) return;
+      this.retry(attempt.clean);
+      // Ended before its first number: refused, or the server is not there.
+      // A restarted server refuses the page's old session, so whoever holds
+      // the session hears it and may renew it (then wake() tries at once).
+      if (!attempt.lines) this.emit({ kind: 'refused' });
     };
     socket.onmessage = event => {
       let message = null;
@@ -82,16 +88,30 @@ export class Live {
     const delay = clean ? 1000 : Math.min(LONGEST_WAIT, 1000 * 2 ** Math.min(this.failures++, 5));
     this.timer = this.timers.setTimeout(() => { this.timer = null; this.start(); }, delay + Math.floor(this.random() * 250));
   }
+  // Stop listening to the socket under way and close it.
+  drop() {
+    const socket = this.current?.socket; this.current = null;
+    if (socket) { socket.onmessage = socket.onclose = socket.onerror = null; try { socket.close(); } catch { /* closing */ } }
+  }
   stop() {
     this.stopped = true;
     if (this.timer !== null) this.timers.clearTimeout(this.timer);
     this.timer = null;
-    const socket = this.current?.socket; this.current = null;
-    if (socket) { socket.onmessage = socket.onclose = socket.onerror = null; try { socket.close(); } catch { /* closing */ } }
+    this.drop();
     this.setState('down');
   }
   // A page that becomes visible or comes back online tries at once.
   wake() { if (!this.stopped && this.state !== 'live' && !this.current) this.start(); }
+  // The page doubts the socket it holds, whatever it reads: an attempt got no
+  // answer, or the session it was opened under was renewed. It lets that
+  // socket go and opens another at once, under the session it holds now; until
+  // the new one answers, the feed is down.
+  reopen() {
+    if (this.stopped) return;
+    this.drop();
+    this.setState('down');
+    this.start();
+  }
 }
 
 // A load asked for while one runs is run once more after it, so a commit that

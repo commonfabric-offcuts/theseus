@@ -102,8 +102,87 @@ check for the same commit runs beside them rather than after them.
 
 - **Updates delayed** means a retryable read failed. Background checks back off;
   your writing is kept. **Retry updates** requests another check.
-- **Reload to reconnect** is an explicit reconnection after the HTTP session
-  becomes unavailable. The page does not reload itself or erase its journal.
+- **Reconnecting to Theseus** means the server refused the page's session, as
+  a restarted server does (every deploy restarts it). The page reads the
+  server's current session from its own address, as a Reload would, checks that
+  it speaks for the same instance and person, and goes on in place: the writing,
+  the lists and the Reader stay, saves the refusal held up go out under their
+  own operations, and the stopped updates are tried once more for that session.
+  Whenever the page reaches Theseus again (a renewed session, the session it
+  has confirmed, or the live stream back up), every reply the person sent that
+  Theseus has not yet published goes on by itself and is published once,
+  whatever held it: sent while the server was down, refused for the old
+  session, or held while Core was busy. Each act goes again under its own
+  operation by the rule Send already follows: a private save or a preparation
+  after looking up what became of it, a send only if it never reached Core. A
+  page reloaded meanwhile does the same when the writing is opened there. A
+  reply held for a reason no retry mends (Core refused it, a send whose answer
+  was lost, or a runtime change under review) waits for the person.
+  Anything the page asks that is refused for its session (a read, a save, the
+  live stream, the updates) starts the same renewal at once. A renewed session
+  opens the live stream again under it, even one that still reads as up: a
+  socket opened under the old session can stay half-open across a restart (a
+  laptop asleep through a deploy) and carry nothing. **Reconnect** does it on
+  demand; while the server is not answering, the page says so. It never
+  reloads itself or erases its journal.
+- A line whose every failure was about reaching Theseus (a connection line)
+  shows only while what it says is true now: the page is not connected (its
+  live stream is down) and nothing has answered since the failure it
+  describes. Anything Theseus answers counts: a request it answered, a refusal
+  of its own included, the live stream coming up or naming a commit, or the
+  server handing out its session. The stream reading as up after the failure
+  is no answer. The page keeps those facts in one place (`web/api.mjs`
+  `contact`, each stamped from one clock that only goes forward) and every
+  connection line is worked out from them afresh whenever they change
+  (`web/lines.mjs`): the status line, the Reader's notice, the composer's
+  notice and the navigation line. Nothing counts reconnections. So a read
+  still out when the stream came back that then runs out on a stalled
+  connection leaves no line while the stream is up; a line written while the
+  stream was down goes at the first answer of any kind; a line hidden while
+  the stream was up shows again if the stream goes down before anything
+  answers; and once something has answered since its failure, a line never
+  comes back.
+  A socket can read as up after its connection is gone (a laptop that slept,
+  a network that dropped before the browser noticed). An attempt that got no
+  answer, when nothing has answered since it began, is the page's reason to
+  doubt it: the page lets that socket go and opens another at once
+  (`web/live.mjs` `reopen`), and until the new one answers the stream is
+  down, so the line says what happened. An attempt still out when something
+  answered, one Theseus answered, or one made while the stream is already
+  down leaves the stream alone, so nothing reopens it in a loop. So does one
+  the page stopped itself, since Theseus was not left to answer it: a
+  foreground read stopping the background read in flight, or an image
+  removed while it uploads. A read the page gives up waiting for (a Reader
+  open's deadline, a background read that runs out) did get no answer, and
+  counts. Each attempt is judged from when it began, never from when the
+  wait around it was set: when a deadline passes, what it gives up on is the
+  attempts still out under it, so in **Retry access** a read begun after the
+  one before it was answered, and never answered, doubts the stream. A
+  deadline that passes with nothing out asked Theseus nothing and doubts
+  nothing.
+  A failure is about reaching Theseus when the attempt got no answer of
+  Theseus's own (nothing answered, or only something in front of it did, such
+  as the 502 with an empty body Tailscale Serve gives while the server
+  restarts; Theseus answers every request it reads with JSON, or the page
+  stopped waiting for an answer) or the server refused the page's session.
+  Every wait the page bounds (a Reader open, its next or previous message,
+  **Retry access**, a recovery read) is bounded by `web/api.mjs` `Deadline`,
+  which aborts the requests and ends the wait as one that got no answer; no
+  other module makes an attempt's failure or ends a wait on a timer of its
+  own. The line works this out from the failures it shows (`web/api.mjs`
+  `unreached`), never from its writer: every writer hands it the error itself,
+  and code that puts a failure into words of its own makes them an error
+  whose cause is that failure, which is judged in its place. A line that
+  carries an answer Theseus gave, words with no failure, or a control of its
+  own (Reload this page) stays as written.
+- Words beside such a failure say what it stopped. What the page could not do
+  for want of Theseus (a Notebook page's read and what changed since, the
+  topic's composer) is done again once Theseus has answered since the attempt
+  that failed began (`web/api.mjs` `answeredSince`): at once for an attempt
+  still out when the live stream came back, otherwise at the next answer of
+  any kind. The attempt made again began after that answer, so if it fails
+  too it waits for a newer one, and nothing is tried in a loop. A mark or an
+  attachment the person asks for again.
 - **Review saved writing** handles a changed runtime authority. Automatic
   updates pause; recovery proceeds through the existing review controls.
 - If a topic becomes unavailable, its lists are hidden and sending to it is
@@ -160,11 +239,10 @@ record. Preserve its database, authority, profiles, effects runner and browser
 journal. Do not repeat initialization, copy session tokens or clear writing.
 
 Coordinate the restart with Tony at a pause between sends, outside an in-flight
-Send. After the owned server restarts, the handoff asks Tony to reload the same
-URL once to receive its new in-memory session and reader files. A connected
-reader with automatic updates shows **Reload to reconnect** until he does.
-Locally saved unsent writing survives the reload; preserve the journal and honor
-the page's unload protection for writing not yet durable. The agent verifies
+Send. After the owned server restarts, an open page takes the new in-memory
+session by itself and carries on; it keeps the reader files it loaded until it
+is reloaded. Locally saved unsent writing survives either way; preserve the
+journal and honor the page's unload protection for writing not yet durable. The agent verifies
 process/log state and scoped views through its own profile, without fetching
 Tony's HTML or reloading his page as a probe. The handoff names the exact
 published revision, observed runtime and measured limits. Automatic process

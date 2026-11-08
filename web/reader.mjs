@@ -1,4 +1,5 @@
 import { keyAction } from './editor.mjs';
+import { showLine } from './lines.mjs';
 import { ReaderLayout } from './layout.mjs';
 import { imageBarrier, recoveryReadOnly } from './upload-state.mjs';
 import { paintAddress } from './people.mjs';
@@ -75,7 +76,7 @@ export class Reader {
         const token = uploads.reserve(this.presentation);
         this.imagePicker = { uploads, token }; this.$('image-file').value = '';
         this.paintStatus(); this.$('image-file').click();
-      } catch (error) { this.notice(error.message); }
+      } catch (error) { this.notice(error); }
     };
     this.$('cancel-image').onclick = () => { this.cancelImagePicker(); this.$('add-image').focus(); };
     this.$('image-file').addEventListener('cancel', () => this.cancelImagePicker());
@@ -83,7 +84,7 @@ export class Reader {
       const picker = this.imagePicker, file = event.target.files?.[0]; this.imagePicker = null;
       if (!picker) { if (file) this.notice('That image selection expired. Choose it again.'); return; }
       try { await picker.uploads.choose(picker.token, file); }
-      catch (error) { this.notice(error.message); }
+      catch (error) { this.notice(error); }
       finally { this.paintStatus(); }
     };
     for (const where of ['above', 'below']) {
@@ -154,9 +155,9 @@ export class Reader {
       });
       const errors = (await Promise.allSettled(choices)).filter(result => result.status === 'rejected');
       if (errors.length && this.editor === editor && this.presentation === presentation && this.mode === 'reply' && this.admits(editor, presentation)) {
-        this.notice([...new Set(errors.map(result => result.reason.message))].join(' '));
+        this.notice(errors.map(result => result.reason));
       }
-    } catch (error) { this.notice(error.message); }
+    } catch (error) { this.notice(error); }
     finally { this.paintStatus(); }
   }
 
@@ -178,6 +179,7 @@ export class Reader {
     this.$('source-changes').hidden = true;
     this.opener = opener ?? this.opener ?? document.activeElement;
     this.disarm();
+    this.topics = topics;
     this.paintTitle(source, topics);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
@@ -572,7 +574,7 @@ export class Reader {
         // Remove takes its own button away; focus lands on Add image only if it
         // was still there. Where the person has since put it, it stays.
         if (item.method === 'remove' && this.admits(editor, presentation) && [null, document.body, b].includes(document.activeElement)) this.$('add-image').focus();
-      } catch (error) { if (this.admits(editor, presentation)) this.notice(error.message); }
+      } catch (error) { if (this.admits(editor, presentation)) this.notice(error); }
       finally { if (b.isConnected) b.disabled = !this.admits(editor, presentation); this.paintStatus(); }
     });
   }
@@ -608,7 +610,7 @@ export class Reader {
     retry.onclick = () => this.callbacks.retrySource?.();
     status.textContent = p?.accessMessage || (p?.sourceUnavailable ? 'The source is unavailable. Your private writing is kept.'
       : p?.availabilityUnconfirmed ? 'Source access is unconfirmed. Your private writing is kept.' : '');
-    if (p?.topicUpdatesPaused) status.textContent += blocked ? ' Topic updates are paused. Retry access checks only this source.' : 'This source is available. Topic updates remain paused.';
+    if (p?.topicUpdatesPaused) status.textContent = [status.textContent, blocked ? 'Topic updates are paused. Retry access checks only this source.' : 'This source is available. Topic updates remain paused.'].filter(Boolean).join(' ');
     status.hidden = !status.textContent;
   }
 
@@ -623,7 +625,7 @@ export class Reader {
 
   // A message's heading is its topic's name, and a press on it goes back to
   // that topic, as the arrow beside it does.
-  paintTitle(source, topics) {
+  paintTitle(source, topics = this.topics ?? []) {
     const title = this.$('reader-title');
     const topic = source.source_ref.kind === 'message' && source.topic_id ? topics.find(item => item.id === source.topic_id) : null;
     if (!topic?.title) { title.textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message'); return; }
@@ -649,6 +651,7 @@ export class Reader {
   }
   hideUnavailableSource() {
     this.disarm(); this.sourceBody.replaceChildren(); this.$('source-attachments').replaceChildren();
+    this.$('reader-title').textContent = 'Source unavailable';
     this.$('reader-origin').textContent = 'Source unavailable'; this.paintTone(null); this.sourceBody.classList.remove('whispering');
     this.paintStatus();
   }
@@ -679,7 +682,8 @@ export class Reader {
     this.paintStatus();
   }
 
-  notice(text) { this.$('reader-notice').textContent = text; this.$('reader-notice').hidden = !text; }
+  // A failure goes to the notice as the error itself (lines.mjs).
+  notice(what) { showLine(this.$('reader-notice'), what); }
 
   // Done, by its button or ⌘ Return, waits for a step as sending does. The
   // note saves as it is written; Done confirms the save. A saved note leaves
@@ -782,7 +786,7 @@ export class Reader {
     }
     const inEditor = target === this.field;
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
-      event.preventDefault(); navigator.clipboard.writeText(this.source.body).catch(() => this.notice('Could not copy. Select the text and use Copy.')); return;
+      event.preventDefault(); navigator.clipboard.writeText(this.source.body).catch(error => this.notice(Error('Could not copy. Select the text and use Copy.', { cause: error }))); return;
     }
     const where = Object.keys(STEPPING).find(at => STEPPING[at].key === event.key);
     if (!inEditor && event.metaKey && !event.shiftKey && where) {

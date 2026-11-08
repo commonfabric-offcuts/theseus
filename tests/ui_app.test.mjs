@@ -873,6 +873,35 @@ test('cleanup exact send successor retires while canonical submission stays disc
   assert.equal((await f.api.view('submission', { submission_id: item.id })).body, 'An immutable real publication');
 });
 
+// The server restarts, and a reply is sent before the page has the new
+// session: the real server refuses it. The page is reloaded before it
+// reconnects. The reloaded page holds the new session, and the reply kept on
+// this device goes on when its writing is opened, published once.
+test('a reply refused by a restarted server and kept across a reload goes on, published once, when the reloaded page opens it', async t => {
+  const f = await fixture(t), p = await f.open(1), editor = p.editors.reply, body = 'Sent in the window, then reloaded';
+  await f.control({ method: 'server_stop' });
+  const restarted = await f.control({ method: 'server_start' });
+  editor.edit({ body });
+  await f.registry.send(editor, { stay: true });
+  assert.equal(editor.submissions[0].status, 'preparing');
+  assert.equal(editor.submissions[0].blocked.code, 'SESSION_REQUIRED', 'the real server refused the old session');
+  f.registry.dispose();
+  f.api.token = restarted.token;
+  const reloaded = new EditorRegistry({ api: f.transport, bootstrap: f.bootstrap, journal: new RecoveryJournal(f.backend, 'fixture-document'), saveDelayMs: 30000, maxSaveDelayMs: 60000 });
+  t.after(() => reloaded.dispose());
+  const again = await reloaded.open(f.facts.sources[1], { topicId: f.facts.topic_id });
+  const restored = again.editors.reply;
+  assert.equal(restored.submissions[0]?.snapshot.body, body, 'the reply was kept on this device');
+  // The open itself took the reply up; wait for that act alone.
+  const session = reloaded.sessionFor(restored);
+  assert.equal(session.sends.size, 1, 'opening the writing took up the held reply');
+  await Promise.allSettled([...session.sends.values()]);
+  assert.equal(restored.submissions[0].status, 'confirmed', JSON.stringify(restored.submissions[0].blocked));
+  const sent = f.calls.filter(c => c.type === 'command' && c.envelope.kind === 'message.send');
+  assert.equal(sent.length, 1, 'sent once');
+  assert.equal((await f.api.view('submission', { submission_id: restored.submissions[0].id })).body, body);
+});
+
 async function retainedAcknowledgement(t, kind = 'reply', send = false, options = {}) {
   const f = await fixture(t, options), p = await f.open(1), editor = p.editors[kind], session = f.registry.sessionFor(editor);
   const read = f.transport.view;

@@ -172,16 +172,25 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');
     const retained=(await rows(p)).flatMap(r=>r.snapshot.submissions).find(i=>i.id===original.id);
     assert.deepEqual(retained,original,'same retained pending item survives both navigations');
+    assert.equal(p.calls.some(c=>c.payload?.kind==='message.send'||c.payload?.kind==='submission.prepare'),false,'departure never replays');
     // A different document finds local-only work through the existing explicit
-    // recovery flow. It must not silently adopt or replay the submission.
+    // recovery flow; nothing adopts it silently. Recovered, the reply the
+    // person sent goes on as Send left it, under its own operations, and is
+    // published once (EditorSession.resumeHeld).
     await point(p,'#inline-review-versions');
     await until(()=>p.evaluate(`[...document.querySelectorAll('#review-content button')].some(b=>b.textContent==='Recover this version')`),'retained copy recovery action renders');
     const recover=await p.evaluate(`(()=>{const b=[...document.querySelectorAll('#review-content button')].find(b=>b.textContent==='Recover this version');if(!b)return null;b.dataset.nativeRecover='';return !b.disabled;})()`);
     assert.equal(recover,true,'retained copy is discoverable and recoverable');
     await point(p,'[data-native-recover]');await until(()=>p.evaluate('!document.querySelector("#version-review").open'),'explicit recovery closes review');
+    const published=async()=>(await view('topic_messages',{topic_id:'t1',limit:100,direction:'before'})).items.filter(item=>item.body===body).length;
+    await until(async()=>await published()>0,'the recovered reply is published',15000);
+    await until(async()=>(await rows(p)).filter(r=>!r.superseded_by).flatMap(r=>r.snapshot.submissions).filter(i=>i.id===original.id).every(i=>i.status==='confirmed'),'the page confirmed the reply');
     await point(p,'#inline-pending button');
-    assert.equal(await p.evaluate(`document.querySelector('#review-content [data-id="${original.id}"] pre').textContent`),body);
-    assert.equal(p.calls.some(c=>c.payload?.kind==='message.send'||c.payload?.kind==='submission.prepare'),false,'departure and explicit recovery never replay');
+    const card=`#review-content [data-id="${original.id}"]`;
+    assert.deepEqual(await p.evaluate(`[document.querySelector('${card} h3').textContent,document.querySelector('${card} pre').textContent]`),['Sent to Theseus',body]);
+    assert.equal(await published(),1,'published once');
+    assert.deepEqual([p.calls.filter(c=>c.payload?.kind==='submission.prepare').map(c=>c.payload.operation_id),p.calls.filter(c=>c.payload?.kind==='message.send').map(c=>c.payload.operation_id)],
+      [[original.prepareOperationId],[original.sendOperationId]],'under its own operations, each once');
     assert.equal(p.events.some(e=>e.method==='Page.javascriptDialogOpening'),false,'settled item alone does not trap navigation');
     observations.push({name:'retained blocked original',original,retained});await shot(p,'departure-retained-pending');assert.deepEqual(p.errors,[]);
   });

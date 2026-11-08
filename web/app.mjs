@@ -1,4 +1,4 @@
-import { Api } from './api.mjs';
+import { Api, notAnswering, unreached, answeredSince, heard, follow } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -48,6 +48,8 @@ import { firstLine } from './pipeline-words.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
 import { railDrawer } from './rail-drawer.mjs';
+import { SessionRenewal } from './session-renewal.mjs';
+import { showLine, lineText } from './lines.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -55,8 +57,10 @@ const node = (tag, text, className) => {
   if (className) element.className = className; return element;
 };
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
-const status = message => { $('app-status').textContent = message; $('app-status').hidden = !message; };
-const run = action => { try { return Promise.resolve(action()).catch(error => { status(error.message); return null; }); } catch (error) { status(error.message); return Promise.resolve(null); } };
+// The page's status line (lines.mjs): a failure goes to it as the error itself.
+const status = what => showLine($('app-status'), what);
+const failed = error => { status(error); return null; };
+const run = action => { try { return Promise.resolve(action()).catch(failed); } catch (error) { return Promise.resolve(failed(error)); } };
 let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
 // The open page's outcome conversation: its view (the rail row reads it), and on the conversation page
@@ -450,7 +454,7 @@ async function present(presentation) {
     if (!neighbors || !registry.isSourceCurrent(presentation)) return;
     registry.current.neighbors = neighbors;
     $('previous-message').disabled = !neighbors.previous; $('next-message').disabled = !neighbors.next;
-  }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error.message); });
+  }).catch(error => { if (registry.isSourceCurrent(presentation)) reader.notice(error); });
   sourceAttachments(presentation);
 }
 // A Notebook page shown in the Reader is read once the person can see it, as
@@ -467,16 +471,18 @@ function notePageRead() {
 // A read Core did not record says so in the Reader, and the page keeps its
 // light. A page the person read at an older revision shows what changed
 // since then.
+// One that met no Theseus is read again once the page reaches it.
 async function readPage(presentation) {
   const current = () => registry.isSourceCurrent(presentation) && !presentation.sourceUnavailable;
+  const again = error => owe(error, 'page read', () => { if (current()) { pageShown = presentation; notePageRead(); } });
   let since;
   try { since = await pageReads.opened(presentation.source); }
-  catch (error) { if (current()) reader.notice(error.message); return; }
+  catch (error) { if (current()) { reader.notice(error); again(error); } return; }
   if (since === null || !current()) return;
   const ref = { ...presentation.source.source_ref, revision: since };
   let earlier;
   try { earlier = checkedView(await registry.cleanup.list(options => api.view('source', ref, options)), bootstrap.instance_id); }
-  catch (error) { if (current()) reader.notice(`What changed since revision ${since} could not be read. ${error.message}`); return; }
+  catch (error) { if (current()) { reader.notice([`What changed since revision ${since} could not be read.`, error]); again(error); } return; }
   if (current()) reader.showChanges(since, earlier.body ?? '', presentation.source.body ?? '');
 }
 // A reply to someone else's message in this topic goes to its author unless
@@ -499,7 +505,7 @@ function listCandidates(editor, page, continued) {
 }
 function discover(presentation, editor) {
   return registry.recoveryCandidates(editor, { limit: 10 }, (page, continued) => listCandidates(editor, page, continued))
-    .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message); });
+    .catch(error => { if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error); });
 }
 // Rows a foreground read deferred were checked again: what the page lists for
 // exactly those rows is replaced, a copy that moved is added, and every other
@@ -518,7 +524,7 @@ function rechecked(session, ids, page) {
   changed(editor);
   validated.catch(error => {
     const presentation = presentationFor(editor);
-    if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error.message);
+    if (registry.isCurrent(presentation, editor)) writingSurface(presentation).notice(error);
   });
 }
 // One attachment of a source: a button that fetches it, then shows an image
@@ -544,7 +550,7 @@ function attachmentControl(attachment, sourceRef, current, notice) {
       const download = node('a', `Download ${attachment.name}`); download.href = url; download.download = attachment.name; host.append(download);
       notice('');
       if (held && unplaced()) download.focus();
-    } catch (error) { if (available()) notice(error.message); }
+    } catch (error) { if (available()) notice(error); }
     finally { if (show.isConnected) { show.disabled = false; if (held && unplaced()) show.focus(); } }
   }); host.append(show);
   return host;
@@ -558,9 +564,9 @@ function sourceAttachments(presentation) {
   let last = null;
   for (const attachment of presentation.source.attachments ?? []) {
     const mine = {};
-    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, message => {
-      if (message) { mine.said = `${attachment.name ?? 'attachment'}: ${message}`; last = mine; reader.notice(mine.said); }
-      else if (last === mine && $('reader-notice').textContent === mine.said) { reader.notice(''); last = null; }
+    $('source-attachments').append(attachmentControl(attachment, presentation.source.source_ref, current, failure => {
+      if (failure) { mine.said = [`${attachment.name ?? 'attachment'}:`, failure]; last = mine; reader.notice(mine.said); }
+      else if (last === mine && $('reader-notice').textContent === lineText(mine.said)) { reader.notice(''); last = null; }
     }));
   }
 }
@@ -574,8 +580,8 @@ async function openSource(ref, opener, act = null) {
   try { await marks.open(registry, ref, { topicId: topic.id, opener }, act); }
   catch (error) {
     if (request === opening) {
-      if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error.message);
-      else status(error.message);
+      if (from?.surface !== 'inline' && registry.isCurrent(from)) reader.notice(error);
+      else status(error);
     }
   }
   finally { if (request === opening) { views.retain(views.currentItem, null); reader.paintOffer(); } }
@@ -627,6 +633,8 @@ function paintViews(kind) {
     if (!here?.page) topicRail?.updateCurrent(topic);
     paintParticipants(topic, views.participants);
     for (const id of ['messages', 'notebook', 'topic-people']) $(id).hidden = false;
+    paintMoreMessages();
+    if (registry?.current?.topicUpdatesPaused) { registry.current.topicUpdatesPaused = false; reader.paintStatus(); }
     paintMarks(); noteRead(); return;
   }
   keepListAnchor(() => {
@@ -703,7 +711,7 @@ function paintAgentColors() {
 // The picker for one agent's color, under its name (anchor); closing it gives
 // the focus to back. The choices are read first if the page has not read them.
 async function pickColor(agent, anchor, back = anchor) {
-  if (!colors.loaded) await colors.load('foreground').catch(() => { throw Error('The agent colors could not be read. Try again.'); });
+  if (!colors.loaded) await colors.load('foreground').catch(error => { throw Error('The agent colors could not be read. Try again.', { cause: error }); });
   return openColorPicker({ anchor, back, agent, palette: colors.palette, chosen: colors.chosen(agent), own: agentColor(agent),
     choose: color => colors.choose(agent, color) });
 }
@@ -880,8 +888,8 @@ async function toggleMark() {
   if (!state) return;
   let receipt;
   try { receipt = await marks.send(ref.id, !state.marked, state.mark_revision); }
-  catch {
-    if (registry.isSourceCurrent(p)) reader.notice('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.');
+  catch (error) {
+    if (registry.isSourceCurrent(p)) reader.notice(Error('Connection interrupted; whether the mark was saved is unknown. Press again to send the same request.', { cause: error }));
     return;
   }
   // An explicit Mark read places the New line afresh, wherever the oldest
@@ -891,7 +899,7 @@ async function toggleMark() {
   if (!registry.isSourceCurrent(p)) return;
   if (receipt?.error?.code === 'REVISION_CONFLICT') {
     reader.notice(`This message's mark changed in another tab or device: it is ${marks.state(ref.id)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
-  } else if (receipt?.status !== 'committed') reader.notice(receipt?.error?.message ?? 'The mark was not confirmed. Press again to send the same request.');
+  } else if (receipt?.status !== 'committed') reader.notice(receipt?.error ?? 'The mark was not confirmed. Press again to send the same request.');
 }
 // A message's ⋯ menu and right-click menu (docs/links.md, "A message's menu").
 function messageMenuButton(item) {
@@ -941,10 +949,10 @@ async function markFromMenu(messageId, marked) {
     const now = marks.state(messageId);
     if (receipt?.error?.code === 'REVISION_CONFLICT' && now?.marked === marked) return;
     if (!state && receipt?.error?.code === 'REVISION_CONFLICT' && now) receipt = await marks.send(messageId, marked, now.mark_revision);
-  } catch { status('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.'); return; }
+  } catch (error) { status(Error('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.', { cause: error })); return; }
   if (receipt?.status === 'committed' && !marked) { views.placeAfresh(); if (commitReload) run(commitReload); }
   if (receipt?.error?.code === 'REVISION_CONFLICT') status(`This message's mark changed in another tab or device: it is ${marks.state(messageId)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
-  else if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'The mark was not confirmed. Choose it again to send the same request.');
+  else if (receipt?.status !== 'committed') status(receipt?.error ?? 'The mark was not confirmed. Choose it again to send the same request.');
 }
 // A Notebook page's link (docs/links.md, "A Notebook page's link"): the page as
 // it stands, or with revision, that revision.
@@ -1051,9 +1059,13 @@ function updateStatus(state) {
   $('updates-message').textContent = state.kind === 'retry' ? 'Updates delayed. Your writing is kept. '
     : state.kind === 'authority' ? 'The runtime changed. Review your saved writing before reconnecting. '
     : state.kind === 'forbidden' ? 'This topic is unavailable. Your private writing is kept. '
+    : state.kind === 'reconnect' ? 'Reconnecting to Theseus. Your writing is kept. '
     : state.message + ' ';
-  $('updates-retry').textContent = state.kind === 'reconnect' ? 'Reload to reconnect' : state.kind === 'authority' ? 'Review saved writing' : 'Retry updates';
+  $('updates-retry').textContent = state.kind === 'reconnect' ? 'Reconnect' : state.kind === 'authority' ? 'Review saved writing' : 'Retry updates';
   $('updates-retry').hidden = state.kind === 'manual';
+  // Updates that ran again may be retried after a later refusal.
+  if (state.kind === 'current') reconnectRetried = null;
+  if (state.kind === 'reconnect') run(reconnect);
 }
 async function checkAvailability(read, current, topicDenied = true) {
   if (topicDenied) {
@@ -1112,10 +1124,9 @@ async function checkInlineAvailability(read, current) {
 }
 async function initializeInlineComposer() {
   try { await registry.initializeInline(topic); }
-  catch (error) {
-    // The failed composer shows: writing registered before the failure has its button there.
-    inline.fail(error.message); paintReview(); return;
-  }
+  // The failed composer shows: writing registered before the failure has its button there.
+  // A composer that met no Theseus is retried once the page reaches it, as Retry composer would.
+  catch (error) { inline.fail(error); paintReview(); owe(error, 'composer', retryInline); return; }
   // Recovery discovery reads in the background lane, which any foreground read
   // defers. The optional rail reads that follow wait for it, so a saved copy
   // that Core already acknowledges is retired rather than left for review.
@@ -1134,7 +1145,7 @@ async function retryInline() {
     if (current()) {
       const failure = readFailure(error);
       if (failure.kind === 'authority') { await registry.parkAuthority(bindingOf(bootstrap), failure.code); updateStatus(failure); }
-      inline.notice('Could not confirm topic access. Your writing is kept. ' + failure.message);
+      inline.notice(['Could not confirm topic access. Your writing is kept.', error]);
     }
   } finally { foreground.release(); }
 }
@@ -1158,7 +1169,7 @@ async function checkSourceAvailability(read, current, topicDenied) {
     if (!owns()) return;
     p = registry.current;
     p.sourceUnavailable = true; p.availabilityUnconfirmed = false;
-    p.source.body = ''; p.source.attachments = []; p.editors.note.unavailable = true;
+    p.source.body = ''; p.source.attachments = []; p.source.title = 'Source unavailable'; p.editors.note.unavailable = true;
     revokeMedia(); reader.hideUnavailableSource(); return;
   }
   if (!owns()) return;
@@ -1171,18 +1182,24 @@ async function checkSourceAvailability(read, current, topicDenied) {
   registry.validateState(state, p.source.source_ref, topic.id);
   p.availabilityUnconfirmed = false;
   if (!state.source_available) {
-    p.sourceUnavailable = true; p.source.body = ''; p.source.attachments = []; revokeMedia(); reader.hideUnavailableSource();
+    p.sourceUnavailable = true; p.source.body = ''; p.source.attachments = []; p.source.title = 'Source unavailable'; revokeMedia(); reader.hideUnavailableSource();
   } else if (wasUnavailable) {
     Object.assign(p.source, source); p.sourceUnavailable = false;
     reader.drawSource(source.body); sourceAttachments(p);
-    reader.paintOrigin(source);
+    reader.paintTitle(source); reader.paintOrigin(source);
   }
   p.destinationAvailable = state.destination_available;
   p.editors.reply.unavailable = !state.source_available || !state.destination_available;
   p.editors.note.unavailable = !state.source_available;
   reader.paintStatus();
   } finally {
-    if (sameSource()) { registry.current.availabilityChecking = false; reader.paintStatus(); paintReaderMark(); }
+    // The check is over even when an open was under way as it ended, so Retry
+    // access is never left waiting on it.
+    if (serial === availabilitySerial) {
+      sourcePresentation.availabilityChecking = false;
+      if (registry.current?.source === sourcePresentation.source) registry.current.availabilityChecking = false;
+    }
+    if (sameSource()) { reader.paintStatus(); paintReaderMark(); }
   }
 }
 async function retrySource() {
@@ -1202,7 +1219,8 @@ async function retrySource() {
     if (current()) {
       reader.paintStatus();
       const failed = registry.current.sourceUnavailable || registry.current.availabilityUnconfirmed;
-      (failed ? $('retry-source') : $('source-body')).focus({ preventScroll: true });
+      // Writing begun while access was checked keeps the focus.
+      if ([null, document.body, $('retry-source')].includes(document.activeElement)) (failed ? $('retry-source') : $('source-body')).focus({ preventScroll: true });
     }
   }
 }
@@ -1236,6 +1254,46 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
   window.addEventListener('online', () => { if (document.visibilityState === 'visible') freshness.request(); topicState?.reconnected(); });
   freshness.setVisible(document.visibilityState === 'visible');
 }
+// What could not be done for want of Theseus is done again once Theseus has
+// answered since the attempt that failed began (api.mjs answeredSince): at
+// once when it already has, as when the live feed came back while a read was
+// out, or at the next answer of any kind. The attempt made again began after
+// that answer, so if it fails too it waits for a newer one. Each is named, so
+// the latest of one kind is the one done.
+const owed = new Map();
+const owe = (error, name, again) => { if (unreached(error)) { owed.set(name, { error, again }); settleOwed(); } };
+function settleOwed() {
+  for (const [name, { error, again }] of owed) if (answeredSince(error)) { owed.delete(name); run(again); }
+}
+heard(settleOwed);
+// The page reaches Theseus with the session it holds: a renewal, the session
+// it has confirmed, or the live feed up again. Replies it did not take go on.
+function reached() { registry?.resumeHeld(); }
+// A restarted server (every deploy) refuses this page's session. The page
+// reads the server's new one (session-renewal.mjs) when anything it asks is
+// refused for its session (api.mjs refused), its live feed or its updates
+// among them, and goes on in place: the writing, the lists and the Reader
+// stay, the live feed opens again under the new session (a socket opened
+// under the old one can still read live, half-open), waiting saves and held
+// replies go out, and stopped updates resume once.
+let renewal = null, reconnectRetried = null;
+async function reconnect() {
+  const result = await renewal?.renew();
+  if (!result) return false;
+  reached();
+  if (result === 'renewed') {
+    live?.reopen(); attention?.refresh();
+    for (const { editor } of registry?.sessions.values() ?? []) {
+      if (editor.dirty && !editor.authorityRecovery && !editor.conflict && !editor.unavailable) registry.schedule(editor);
+    }
+    // Access a check could not confirm while the session was refused is checked again.
+    if (registry?.current?.availabilityUnconfirmed || registry?.inline?.availabilityUnconfirmed) { freshness?.invalidate('availability', 0, true); freshness?.request(); }
+  }
+  if (updateState?.kind === 'reconnect' && reconnectRetried !== api.token) {
+    reconnectRetried = api.token; await freshness?.request({ refresh: true, retry: true });
+  }
+  return true;
+}
 let startup = null;
 function start() {
   if (!startup) startup = initialize().finally(() => { startup = null; });
@@ -1244,18 +1302,24 @@ function start() {
 async function initialize() {
   const token = document.querySelector('meta[name="aim-next-session"]')?.content;
   if (!token || token === '__AIM_SESSION_TOKEN__') throw Error('This page needs a session from the Theseus server.');
-  api = new Api(token); bootstrap = await api.bootstrap();
+  api = new Api(token); api.refused = () => run(reconnect);
+  bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
   // The phone check is a page of its own: no topic, no live updates (docs/device-evidence.md).
   const asked = parseRoute(new URL(location.href));
   if (asked.kind === 'phone-check') { await phoneCheck({ api, bootstrap, topicId: asked.id }); document.body.dataset.ready = 'true'; return; }
   shareLinksFrom(bootstrap.links?.origin);
+  renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),
+    adopted: fresh => { document.querySelector('meta[name="aim-next-session"]').content = fresh; } });
   if (liveOffered(bootstrap) && !live) {
     live = new Live({ token });
+    live.listen(event => { if (event.kind === 'refused') run(reconnect); else if (event.state === 'live') reached(); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') live.wake(); });
     window.addEventListener('online', () => live.wake());
     live.start();
   }
+  // Whether the page is connected now is its live feed's state (api.mjs contact).
+  follow(live);
   if (!attention) {
     attention = new Attention({ api: { view: (...args) => api.view(...args) }, instanceId: bootstrap.instance_id, after: bootstrap.attention?.after,
       doc: document, open: openSent });
@@ -1392,9 +1456,9 @@ async function initialize() {
       if (cancelled) reader.notice('Stayed on this message; opening the other message was cancelled.');
     },
     // A note that could not be saved says so in the Reader, beside its writing.
-    saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error.message); return null; }),
+    saveNote: editor => registry.saveNote(editor).catch(error => { reader.notice(error); return null; }),
     send: (editor, options) => registry.send(editor, { ...options, presentation: reader.presentation }),
-    close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error.message); return false; }),
+    close: () => registry.close(reader.presentation, { explicit: true }).catch(error => { reader.notice(error); return false; }),
     step: async direction => {
       const presentation = registry.current, neighbors = presentation.neighbors ?? await registry.neighbors(presentation);
       if (!registry.isCurrent(presentation)) return;
@@ -1409,7 +1473,7 @@ async function initialize() {
     reconcile: editor => run(() => registry.checkConfirmation(editor)),
     renderPending: () => paintReview(),
     recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
-    error: error => reader.notice(error.message),
+    error: error => reader.notice(error),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     people: whisperPeople, actor: () => bootstrap.actor,
   });
@@ -1503,7 +1567,11 @@ async function initialize() {
   });
   $('review-versions').onclick = () => run(() => showVersions(reader.editor, $('review-versions'), reader.presentation));
   $('updates-retry').onclick = () => run(async () => {
-    if (updateState?.kind === 'reconnect') { location.reload(); return; }
+    if (updateState?.kind === 'reconnect') {
+      reconnectRetried = null;
+      if (!await reconnect()) throw notAnswering();
+      return;
+    }
     if (updateState?.kind === 'authority') { const p = registry.interactive; if (p) await showVersions(p.editors[p.mode], $('updates-retry'), p); return; }
     if (registry.current?.sourceUnavailable || registry.current?.availabilityUnconfirmed || registry.inline?.editors.reply.unavailable || updateState?.kind === 'forbidden') freshness?.invalidate('availability', 0, true);
     await freshness?.request({ refresh: true, retry: true });
@@ -1539,7 +1607,7 @@ async function acknowledgeSent(item) {
   try {
     const receipt = await api.command({ v: 1, instance_id: bootstrap.instance_id, operation_id: crypto.randomUUID(), kind: 'delivery.ack',
       target: { delivery_id: item.id }, expected: { authority: { authority_id, authority_epoch } }, args: {} });
-    if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'Marking it read was not confirmed.');
+    if (receipt?.status !== 'committed') status(receipt?.error ?? 'Marking it read was not confirmed.');
   } finally {
     // Whether or not the answer arrived, the list shows what Core now holds.
     await attention.refresh();
@@ -1802,12 +1870,12 @@ async function openDestination(target, title, from = null) {
   }
   // A page whose start failed has no navigation; leave it for the destination.
   if (!topicNavigation) { location.assign(routeHref(target)); return; }
-  const notice=$('topic-navigation-status');notice.hidden=true;
+  const notice=$('topic-navigation-status');showLine(notice,'');
   const pending=topicNavigation.openTarget(target,title),serial=topicNavigation.serial;
   try { return await pending; }
   catch(error) {
     if(serial!==topicNavigation.serial)return;
-    notice.textContent=error.message;notice.hidden=false;notice.scrollIntoView({block:'nearest'});
+    showLine(notice,error);notice.scrollIntoView({block:'nearest'});
   }
 }
 // painted hears the outcome rows after each read (the outcome page's "Also waiting on you" line).
@@ -2104,7 +2172,7 @@ async function initializeCreationPage(route) {
   catch(error) {
     // Another tab is starting this form: say so, and open it here once that tab lets go.
     if(!outcomeCreation.waiting)throw error;
-    status(error.message);run(reload);document.body.dataset.ready='true';
+    status(error);run(reload);document.body.dataset.ready='true';
     if(!await outcomeCreation.waiting)return;
     status('');
   }
@@ -2129,9 +2197,8 @@ railDrawer(document, window);
 // reload runs start afresh. Settles true when the page started.
 function begin(starting = start) {
   return Promise.resolve().then(starting).then(() => true, error => {
-    status(error.message);
     const again = node('button', 'Reload this page'); again.type = 'button'; again.id = 'start-reload'; again.onclick = () => location.reload();
-    $('app-status').append(' ', again);
+    status([error, again]);
     return false;
   });
 }

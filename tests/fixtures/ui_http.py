@@ -336,19 +336,25 @@ def main():
             command("memory.create", "fixture-notebook", {"title": "Image Notebook", "body": "Notebook passage to quote.", "attachments": [], "references": []},
                     {"item_id": "fixture-notebook", "owner_scope": {"kind": "topic", "id": "t1"}}, {"item_revision": 0}, sender="fixture-notebook-agent")
         max_reads = 1 if "--legacy-read-admission" in sys.argv else 2
-        server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web",
-                               max_reads=max_reads,
-                               live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
-        if "--live" in sys.argv:
-            assert server.live_feed is not None, "The live fixture needs the native watch"
-        else:
-            assert server.live_feed is None
-        if "--baseline-read-admission" in sys.argv:
-            assert "--legacy-read-admission" not in sys.argv, "Baseline uses default shared2, never single-slot legacy"
-            assert getattr(server, "read_admission", None) is None, "Baseline flag requires the actual old server"
         controls = FreshnessControls() if freshness else None
-        if controls is not None:
-            controls.install(server, store)
+
+        def serve(port=0):
+            """The real server, with a session of its own: a restart (server_stop,
+            then server_start) brings it back at the same address with a new one."""
+            server = create_server(store, instance, actor, Path(__file__).resolve().parents[2] / "web",
+                                   max_reads=max_reads, port=port,
+                                   live=(path, (root / "control" / "authority.json",)) if "--live" in sys.argv else None)
+            if "--live" in sys.argv:
+                assert server.live_feed is not None, "The live fixture needs the native watch"
+            else:
+                assert server.live_feed is None
+            if "--baseline-read-admission" in sys.argv:
+                assert "--legacy-read-admission" not in sys.argv, "Baseline uses default shared2, never single-slot legacy"
+                assert getattr(server, "read_admission", None) is None, "Baseline flag requires the actual old server"
+            if controls is not None:
+                controls.install(server, store)
+            return server
+        server = serve()
 
         def on_team(operation):
             """The fixture's agent, a member of the outcome w1; adding a member already there changes nothing."""
@@ -463,6 +469,23 @@ def main():
                             answer.append(command("message.mark", "%s-%s" % (request["operation_id"], message_id),
                                                   {"marked": request["marked"]}, {"message_id": message_id},
                                                   {"mark_revision": row[0] if row else 0})["result"])
+                    elif request["method"] == "server_stop":
+                        # As a deploy stops the server: its live streams end and
+                        # the address refuses connections until server_start.
+                        assert server is not None, "The server is already stopped"
+                        port = server.server_address[1]
+                        server.shutdown()
+                        server.server_close()
+                        thread.join(2)
+                        assert not thread.is_alive(), "Owned HTTP fixture did not stop"
+                        server = None
+                        answer = {"stopped": True}
+                    elif request["method"] == "server_start":
+                        assert server is None, "Stop the server before starting it again"
+                        server = serve(port)
+                        thread = threading.Thread(target=server.serve_forever, daemon=True)
+                        thread.start()
+                        answer = {"origin": server.origin, "token": server.session_token}
                     elif freshness and request["method"] in ("read_hold", "read_release", "read_cancel", "read_delay", "read_fault", "admission_events"):
                         answer = controls.control(request, server)
                     elif freshness and request["method"] == "navigation_topics":
@@ -829,10 +852,11 @@ def main():
         finally:
             if controls is not None:
                 controls.close()
-            server.shutdown()
-            server.server_close()
-            thread.join(2)
-            assert not thread.is_alive(), "Owned HTTP fixture did not close"
+            if server is not None:
+                server.shutdown()
+                server.server_close()
+                thread.join(2)
+                assert not thread.is_alive(), "Owned HTTP fixture did not close"
             if controls is not None:
                 controls.assert_healthy()
 

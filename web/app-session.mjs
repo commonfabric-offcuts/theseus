@@ -168,8 +168,17 @@ export class EditorRegistry {
       session.uploads = new Uploads(session, this);
       session.uploads.importRetained();
       await this.recoveryCandidates(editor);
+      // A reply kept on this device that Theseus did not take, from a page
+      // that was reloaded or lost its connection, goes on now that it answers.
+      this.resumeSession(session);
     }
     return editor;
+  }
+
+  // The page reaches Theseus again: held replies go on (EditorSession.resumeHeld).
+  resumeHeld() { return Promise.all([...this.sessions.values()].map(session => this.resumeSession(session))); }
+  resumeSession(session) {
+    return session.resumeHeld().catch(error => { session.editor.journalError = error.message; this.changed(session.editor); });
   }
 
   async keepLocal(presentation) {
@@ -185,7 +194,7 @@ export class EditorRegistry {
     catch (error) {
       if (error instanceof ImageHeld) throw error;
       console.warn('Step: this device could not keep the writing', error);
-      throw Error('Not opened: this device could not keep your writing. It stays here; keep this page open.');
+      throw Error('Not opened: this device could not keep your writing. It stays here; keep this page open.', { cause: error });
     }
   }
 

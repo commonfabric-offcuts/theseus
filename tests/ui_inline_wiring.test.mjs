@@ -28,6 +28,10 @@ import { PageReads } from '../web/page-reads.mjs';
 import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
 import { EditorRegistry } from '../web/app-session.mjs';
+import { SessionRenewal } from '../web/session-renewal.mjs';
+import { Api as RealApi, AttemptError, Deadline, notAnswering, unreached } from '../web/api.mjs';
+import * as apiExports from '../web/api.mjs';
+import { showLine, lineText } from '../web/lines.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -75,7 +79,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   }
   const get = id => { if (!elements.has(id)) elements.set(id, new Element(id)); return elements.get(id); };
   const document = { body: get('body'), activeElement: null, visibilityState: 'visible', focused: true, hasFocus() { return this.focused; }, getElementById: get,
-    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: () => [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
+    createElement: tag => Object.assign(new Element(), { tagName: String(tag).toUpperCase() }), createTextNode: data => ({ data, textContent: data, children: [] }), querySelectorAll: s => s === '[data-unreached]' ? [...elements.values()].filter(el => 'unreached' in el.dataset) : [], querySelector: s => s.startsWith('meta') ? { content: 'fixture-session' } : get(s.slice(1)),
     addEventListener(name, fn) { events.push(['document-handler', name, fn]); } };
   const bootstrap = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human', authority: { id: 'a', epoch: 'e' } };
   const topic = { id: 't1', title: 'Fixture', workspace_id: 'w1' };
@@ -98,7 +102,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const registry = { inline: p, current: null, sessions: new Map([[editor.key, { editor, underWay: () => false }]]), disposed: false,
     get interactive() { return this.current ?? this.inline; },
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
-    cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); },
+    cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); }, resumeHeld() { events.push(['resume-held']); return Promise.resolve(); },
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
     // Which replies are in doubt, and the Review buttons, are the registry's own answers, read over this fake's registered writings and pages.
@@ -109,14 +113,14 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
       list: action => action({ readClass: 'foreground' }) },
     runtime: { current: bootstrap.authority },
   };
-  const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
+  const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: what => { showLine(get('reader-notice'), what); events.push(['reader-notice', lineText(what)]); }, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]), paintTitle: source => events.push(['title', source.title]) };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
     constructor(callback, options) { this.callback = callback; this.options = options; this.targets = []; observers.push(this); }
     observe(target) { this.targets.push(target); }
   }
-  const scope = { ...writing, ...times, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
+  const scope = { ...apiExports, ...writing, ...times, SessionRenewal, showLine, lineText, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
     window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
@@ -196,7 +200,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   assert.equal(source.match(/^begin\(\);$/gm)?.length, 1); source = source.replace(/^begin\(\);$/m, '');
-  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor,
+  vm.runInContext(source + `\nglobalThis.wiring = { initialize, begin, toggleMark, readPage, sourceAttachments, initializeInlineComposer, openSource, retrySource, checkAvailability, checkInlineAvailability, changed, paintViews, showVersions, discover, openSent, offerAuthor, run, updateStatus,
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
@@ -475,19 +479,683 @@ test('Reader Retry updates source access without touching inline flags/save, als
   }
 });
 
-test('a source that comes back on Retry gets its whole origin line again, time included', async () => {
+test('a source that comes back on Retry gets its whole origin line and its title again, time included', async () => {
   const f = fixture();
-  const source = { source_ref: { kind: 'message', id: 'm1' }, author: 'tony', body: '', sent_ms: 1762350240000 };
-  const modal = { source: { ...source }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+  const source = { source_ref: { kind: 'memory', id: 'n1', revision: 2 }, title: 'Release plan', author: 'tony', body: '', sent_ms: 1762350240000 };
+  const modal = { source: { ...source, title: 'Source unavailable' }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
   f.registry.current = modal;
   f.api.view = async (name, args) => name === 'source' ? { ...source, body: 'Back again', instance_id: 'fixture' } : f.state(args.source_ref);
   await f.retrySource();
   const painted = f.events.filter(e => e[0] === 'origin');
   assert.equal(painted.length, 1);
   assert.deepEqual([painted[0][1].author, painted[0][1].sent_ms, modal.sourceUnavailable], ['tony', 1762350240000, false]);
+  assert.deepEqual(f.events.filter(e => e[0] === 'title'), [['title', 'Release plan']], 'the Notebook title comes back with the text');
+  assert.equal(modal.source.title, 'Release plan');
   f.events.length = 0;
   await f.retrySource();
-  assert.equal(f.events.some(e => e[0] === 'origin'), false, 'a source that never went away keeps its line');
+  assert.equal(f.events.some(e => e[0] === 'origin' || e[0] === 'title'), false, 'a source that never went away keeps its line');
+});
+
+// A source check that ends while another open is under way is still over:
+// coming back to the source, Retry access works.
+test('a source check that ends while another source is open leaves Retry access usable on coming back', async () => {
+  const f = fixture(), gate = defer();
+  const source = { source_ref: { kind: 'message', id: 'm1' }, author: 'tony', body: '', attachments: [] };
+  const first = { source: { ...source }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+  const other = { source: { source_ref: { kind: 'message', id: 'm2' } }, editors: { reply: {}, note: {} } };
+  f.registry.current = first;
+  let reads = 0;
+  f.api.view = async (name, args) => { if (name === 'source') { reads++; await gate.promise; return { ...source, body: 'Back', instance_id: 'fixture' }; } return f.state(args.source_ref); };
+  const checking = f.retrySource();
+  assert.equal(first.availabilityChecking, true);
+  f.registry.current = other;
+  gate.resolve(); await checking;
+  assert.equal(first.availabilityChecking, false, 'the check is over');
+  f.registry.current = first;
+  await f.retrySource();
+  assert.equal(reads, 2, 'Retry access reads the source again');
+});
+
+// Writing begun while access was being checked keeps the focus; with nothing
+// else holding it, the focus goes to the source or to Retry access.
+test('a finished access check moves the focus only when nothing else holds it', async () => {
+  for (const [held, refused, expected] of [['writing-body', false, 'writing-body'], ['writing-body', true, 'writing-body'], [null, false, 'source-body'], [null, true, 'retry-source'], ['retry-source', false, 'source-body']]) {
+    const f = fixture();
+    const source = { source_ref: { kind: 'message', id: 'm1' }, author: 'tony', body: '', attachments: [] };
+    f.registry.current = { source: { ...source }, sourceUnavailable: true, availabilityUnconfirmed: false, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+    f.api.view = async (name, args) => {
+      if (name !== 'source') return f.state(args.source_ref);
+      f.document.activeElement = held === null ? null : f.get(held);
+      if (refused) throw Object.assign(Error('Forbidden'), { code: 'FORBIDDEN' });
+      return { ...source, body: 'Back', instance_id: 'fixture' };
+    };
+    await f.retrySource();
+    assert.equal(f.document.activeElement?.id, expected, JSON.stringify({ held, refused }));
+  }
+});
+
+// After access to the topic comes back, the Reader stops saying its updates
+// are paused, and More messages returns.
+test('a topic painted again after access returns clears the paused note and brings More messages back', async () => {
+  const f = fixture();
+  await f.initialize(); await drain();
+  const p = { source: { source_ref: { kind: 'message', id: 'm1' } }, topicUpdatesPaused: true, editors: { reply: {}, note: {} } };
+  f.registry.current = p;
+  let painted = 0; f.reader.paintStatus = () => { painted++; };
+  f.views.topic = { ...f.topic }; f.views.participants = []; f.views.olderCursor = 'older';
+  f.get('more-messages').hidden = true;
+  f.paintViews('topic');
+  assert.equal(p.topicUpdatesPaused, false);
+  assert.equal(painted, 1, 'the Reader repaints what it says');
+  assert.equal(f.get('more-messages').hidden, false);
+  // Nothing older to read: More stays away.
+  f.views.olderCursor = null; f.get('more-messages').hidden = true; p.topicUpdatesPaused = false;
+  f.paintViews('topic');
+  assert.equal(f.get('more-messages').hidden, true);
+  assert.equal(painted, 1, 'a Reader that was not paused is left alone');
+});
+
+// A restarted server refuses the page's session; the page takes the new one
+// in place and goes on (docs/scoped-updates.md).
+const restartable = renewals => {
+  // reopen: the real one lets its socket go and says the feed is down until a new one answers.
+  const live = { ...stream(), wakes: 0, reopens: 0, token: null, start() {}, wake() { this.wakes++; }, reopen() { this.reopens++; this.emit({ kind: 'state', state: 'down' }); } };
+  const answers = [];
+  const f = fixture('https://fixture/?topic=t1', {
+    Live: class { constructor({ token }) { live.token = token; return live; } },
+    // 'renewed' gives the page's reads a new session, as the real renewal does.
+    SessionRenewal: class { constructor(options) { renewals.push(options); this.api = options.api; }
+      // The server answering with its session is an answer, as session-renewal.mjs records it.
+      renew() { const answer = answers.shift() ?? null; if (answer) apiExports.answered(); if (answer === 'renewed') this.api.token = 'session-' + renewals.length + '-' + answers.length; return Promise.resolve(answer); } } });
+  f.bootstrap.transport = { ...f.bootstrap.transport, live: { version: 2, path: '/api/live', protocol: 'theseus-live.v1' } };
+  return { f, live, answers };
+};
+
+test('a live feed refused for its session renews it in place: the feed opens again, waiting saves go out, and the lost connection\'s message clears', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  assert.equal(renewals.length, 1);
+  assert.equal(live.token, 'fixture-session');
+  const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  await f.run(async () => { throw new AttemptError(lost); });
+  assert.equal(f.get('app-status').textContent, lost);
+  // The server is not back yet: nothing changes.
+  f.events.length = 0; live.emit({ kind: 'refused' }); await drain();
+  assert.deepEqual([live.reopens, f.events.filter(e => e[0] === 'schedule').length, f.get('app-status').textContent], [0, 0, lost]);
+  // Back, with a new session.
+  answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(live.reopens, 1, 'the feed opens again at once, under the new session');
+  assert.deepEqual(f.events.filter(e => e[0] === 'schedule'), [['schedule', 'inline']], 'the waiting save goes out');
+  assert.equal(f.get('app-status').hidden, true);
+  // Back with the same session (it was not a restart): nothing to resume.
+  f.events.length = 0; answers.push('current'); live.emit({ kind: 'refused' }); await drain();
+  assert.deepEqual([live.reopens, f.events.filter(e => e[0] === 'schedule').length], [1, 0]);
+  // Access a check could not confirm while the session was refused is checked again.
+  f.registry.current = { source: { source_ref: { kind: 'message', id: 'm1' } }, availabilityUnconfirmed: true, editors: { reply: {}, note: {} } };
+  f.events.length = 0; answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.deepEqual(f.events.filter(e => e[0] === 'invalidate' && e[1] === 'availability').length, 1);
+  f.registry.current.availabilityUnconfirmed = false;
+  f.events.length = 0; answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(f.events.some(e => e[0] === 'invalidate' && e[1] === 'availability'), false, 'confirmed access is not checked again');
+});
+
+// Held replies go on whenever the page reaches Theseus with the session it
+// holds: a new one, the one it has, or its live feed up again; not while
+// Theseus is away.
+test('reaching Theseus again resumes held replies, and nothing does while the server is away', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  const resumed = () => f.events.filter(e => e[0] === 'resume-held').length;
+  live.emit({ kind: 'refused' }); live.emit({ kind: 'state', state: 'down' }); await drain();
+  assert.equal(resumed(), 0, 'not while the server is away');
+  answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(resumed(), 1);
+  answers.push('current'); f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(resumed(), 2);
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(resumed(), 3, 'the live feed back up');
+});
+
+// Reconnect pressed while Theseus is not answering says so; the page then
+// reconnects by itself, and the line saying it is not answering goes with it.
+// A line about anything else stays.
+test('the not-answering line from Reconnect clears when the page reconnects by itself', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  await f.get('updates-retry').onclick(); await drain();
+  assert.match(f.get('app-status').textContent, /not answering yet/);
+  answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(f.get('app-status').hidden, true, f.get('app-status').textContent);
+  // Up again by its live feed alone (the session was the server's): the same.
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  await f.get('updates-retry').onclick(); await drain();
+  assert.match(f.get('app-status').textContent, /not answering yet/);
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(f.get('app-status').hidden, true, f.get('app-status').textContent);
+  // A line about something else that took its place stays.
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  await f.get('updates-retry').onclick(); await drain();
+  await f.run(async () => { throw new AttemptError('This topic is closed.', 409, { error: { code: 'CONFLICT' } }); });
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(f.get('app-status').textContent, 'This topic is closed.');
+});
+
+// Whoever writes a line, a failure to reach Theseus goes to it as the error
+// itself, and the line goes once the page reaches Theseus: a message that could
+// not open (on the page's status line, or in the Reader when the Reader asked),
+// and a composer read. A message Core refused to open stays.
+test('a line that says only that Theseus could not be reached goes once the page reaches it, wherever it was written', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize(); await drain();
+  const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  const lines = () => ['app-status', 'reader-notice', 'inline-notice'].map(id => f.get(id).hidden ? '' : f.get(id).textContent);
+  const fail = () => {
+    f.registry.open = async () => { throw new AttemptError(lost); };
+    f.registry.recoveryCandidates = async () => { throw new AttemptError(lost); };
+  };
+  const writeAll = async () => {
+    f.registry.current = { source: {}, editors: {}, mode: 'reply' };
+    await f.openSource({ kind: 'message', id: 'm2' });
+    f.registry.current = null;
+    await f.openSource({ kind: 'message', id: 'm1' });
+    await f.discover(f.p, f.editor);
+  };
+  fail(); await writeAll();
+  assert.deepEqual(lines(), [lost, lost, lost], 'each line says the connection was interrupted');
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.deepEqual(lines(), ['', '', ''], 'the live feed back up');
+  await writeAll();
+  answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.deepEqual(lines(), ['', '', ''], 'a renewed session');
+  f.registry.open = async () => { throw new AttemptError('Source could not open', 404, { error: { code: 'NOT_FOUND', message: 'Source could not open' } }); };
+  await f.openSource({ kind: 'message', id: 'm1' });
+  live.emit({ kind: 'state', state: 'live' }); await drain();
+  assert.equal(f.get('app-status').textContent, 'Source could not open', 'a refusal Core answered stays');
+});
+
+// However a failure to reach Theseus was put into words on its way to a line
+// (a Notebook page's read, a mark, an attachment, the composer), the line goes
+// once Theseus answers, and what the page could not do for want of it
+// is done again. Theseus is down behind Tailscale Serve, which answers 502
+// with an empty body, or nothing answers; the real Api says what came back.
+test('a line a caller put into words goes once the page reaches Theseus, and a page read or a composer that met no Theseus is done again', async () => {
+  const down = {
+    proxy: new RealApi('fixture-session', async () => new Response('', { status: 502 })),
+    nothing: new RealApi('fixture-session', async () => { throw new TypeError('Failed to fetch'); }),
+  };
+  const theseus = new RealApi('fixture-session', async () => new Response(JSON.stringify({ recorded: false, error: { code: 'CONFLICT', message: 'Core refused this.' } }), { status: 409 }));
+  for (const [name, api] of Object.entries(down)) {
+    const renewals = [], { f, live, answers } = restartable(renewals);
+    await f.initialize(); await drain();
+    const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
+    // Theseus comes back, by its live feed or a renewed session, and is away again before the next case.
+    const back = async how => { if (how === 'renewed') answers.push('renewed'), live.emit({ kind: 'refused' }); else live.emit({ kind: 'state', state: 'live' }); await drain(); await drain(); live.emit({ kind: 'state', state: 'down' }); await drain(); };
+    const command = f.api.command, view = f.api.view;
+    for (const how of ['live', 'renewed']) {
+      // A mark pressed in the Reader.
+      f.registry.current = { source: { source_ref: { kind: 'message', id: 'm5' }, topic_id: 't1', seq: 5 }, mark: { marked: false, mark_revision: 0 }, editors: { reply: {}, note: {} } };
+      f.owners().marks.learn('m5', 0, { topicId: 't1', seq: 5 });
+      f.api.command = envelope => api.command(envelope);
+      await f.toggleMark(); await drain();
+      assert.match(said('reader-notice'), /whether the mark was saved is unknown/, `${name}: the mark says so`);
+      f.api.command = command;
+      await back(how);
+      assert.equal(said('reader-notice'), '', `${name}, ${how}: the reader notice still says what the restart did`);
+      // An attachment opened in the Reader.
+      const shown = { source: { source_ref: { kind: 'message', id: 'm6' }, topic_id: 't1', attachments: [{ id: 'a1', name: 'photo.png' }] }, editors: { reply: {}, note: {} } };
+      f.registry.current = shown; f.get('source-attachments').replaceChildren();
+      f.api.media = (...args) => api.media(...args);
+      f.sourceAttachments(shown);
+      await f.get('source-attachments').children[0].children[0].onclick(); await drain();
+      assert.match(said('reader-notice'), /^photo\.png: /, `${name}: the attachment says so`);
+      await back(how);
+      assert.equal(said('reader-notice'), '', `${name}, ${how}: the attachment's line still says what the restart did`);
+      // A Notebook page that came forward: read again once Theseus is back, and what changed since is shown.
+      const page = { source: { source_ref: { kind: 'memory', id: 'n1', revision: 3 }, body: 'Now' }, editors: { reply: {}, note: {} } };
+      f.registry.current = page;
+      const reads = [], changes = [];
+      f.reader.showChanges = (since, before, after) => changes.push([since, before, after]);
+      f.api.command = envelope => { reads.push(envelope.kind); return api.command(envelope); };
+      await f.readPage(page); await drain();
+      assert.match(said('reader-notice'), /this page may still show as changed/, `${name}: the page read says so`);
+      f.api.command = async envelope => { reads.push(envelope.kind); return { recorded: true, status: 'committed', operation_id: envelope.operation_id, result: { previous_revision: 2 } }; };
+      f.api.view = async (viewName, args) => viewName === 'source' ? { instance_id: 'fixture', body: 'Before' } : view(viewName, args);
+      await back(how);
+      assert.equal(said('reader-notice'), '', `${name}, ${how}: the page read's notice still says what the restart did`);
+      assert.deepEqual([reads, changes], [['memory.read', 'memory.read'], [[2, 'Before', 'Now']]], `${name}, ${how}: the page is read again once Theseus is back`);
+      // Read, but what changed since could not be read: the same.
+      reads.length = 0; changes.length = 0;
+      f.api.view = (viewName, args) => viewName === 'source' ? api.view(viewName, args) : view(viewName, args);
+      await f.readPage(page); await drain();
+      assert.match(said('reader-notice'), /^What changed since revision 2 could not be read\. /, `${name}: what changed since says so`);
+      f.api.view = async (viewName, args) => viewName === 'source' ? { instance_id: 'fixture', body: 'Before' } : view(viewName, args);
+      await back(how);
+      assert.equal(said('reader-notice'), '', `${name}, ${how}: what changed since still says what the restart did`);
+      assert.deepEqual([reads, changes], [['memory.read', 'memory.read'], [[2, 'Before', 'Now']]], `${name}, ${how}: what changed since is read again once Theseus is back`);
+      f.api.command = command; f.api.view = view; delete f.api.media;
+      // The composer's access, checked again by Retry access.
+      f.registry.current = null; f.registry.inline = f.p; f.owners().inline.show(f.p);
+      f.api.view = (viewName, args) => api.view(viewName, args);
+      await f.get('inline-retry').onclick(); await drain();
+      assert.match(said('inline-notice'), /^Could not confirm topic access\. Your writing is kept\. /, `${name}: the composer's access says so`);
+      f.api.view = view;
+      await back(how);
+      assert.equal(said('inline-notice'), '', `${name}, ${how}: the composer's access line still says what the restart did`);
+      // The topic's composer.
+      let tries = 0;
+      f.registry.inline = null;
+      f.registry.initializeInline = async () => { if (++tries === 1) await api.view('topic', {}); f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+      await f.initializeInlineComposer(); await drain();
+      assert.match(said('inline-notice'), /^New message is unavailable\./, `${name}: the composer says so`);
+      await back(how);
+      assert.deepEqual([said('inline-notice'), tries], ['', 2], `${name}, ${how}: the composer is loaded again once Theseus is back`);
+    }
+    // Theseus answered: the line stays, and nothing is done again.
+    f.registry.current = { source: { source_ref: { kind: 'memory', id: 'n2', revision: 3 }, body: 'Now' }, editors: { reply: {}, note: {} } };
+    let reads = 0;
+    f.api.command = envelope => { reads++; return theseus.command(envelope); };
+    await f.readPage(f.registry.current); await drain();
+    await back('live');
+    assert.deepEqual([said('reader-notice'), reads], ['Core refused this. It may still show as changed.', 1], `${name}: a refusal Theseus answered stays, and is not read again`);
+    f.api.command = command;
+  }
+});
+
+// The reviewer's cases (rounds 4 and 5). The live feed is back and quiet. A
+// read still out when it came back that then runs out on a stalled connection
+// leaves no line while the page is connected, and the feed is left alone; if
+// the feed then goes down with nothing answered since, the line says so. A
+// read or request begun after the feed's last answer that gets none is a
+// reason to doubt the feed: the page opens it again and says what happened
+// until anything answers, a request as much as the feed. What a failure held
+// up is done again once Theseus has answered since its attempt began: at once
+// for one still out when the feed came back; for one begun after, at the next
+// answer of any kind, never only at a reconnection.
+test('a connection line shows only while the page is not connected and nothing has answered since; what it held up goes at the next answer', async () => {
+  const timedOut = 'Reader request timed out. Your writing is kept.', lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  const renewals = [], { f, live } = restartable(renewals);
+  await f.initialize(); await drain();
+  const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
+  const feed = async up => { live.emit({ kind: 'state', state: up ? 'live' : 'down' }); await drain(); await drain(); };
+  const nothing = new RealApi('fixture-session', async () => { throw new TypeError('Failed to fetch'); });
+  const theseus = new RealApi('fixture-session', async () => new Response(JSON.stringify({ instance_id: 'fixture', items: [] }), { status: 200 }));
+  // A Reader read the page bounds, on a connection that stays stalled until the page aborts it; the gate says when its time is up.
+  let gate;
+  const stalled = new RealApi('fixture-session', (path, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true })));
+  f.registry.open = () => { const deadline = new Deadline(0, timedOut), request = stalled.view('source', {}, { signal: deadline.signal }); return gate.promise.then(() => deadline.bound(request)); };
+  const open = async (current, id) => { gate = defer(); f.registry.current = current; const opened = f.openSource({ kind: 'message', id }); await drain(); gate.resolve(); await opened; await drain(); };
+  const inReader = { source: {}, editors: {}, mode: 'reply' };
+  // Still out when the feed came back: no line while connected, and the feed is left alone.
+  const still = async (current, id) => { gate = defer(); f.registry.current = current; const opened = f.openSource({ kind: 'message', id }); await drain(); await feed(true); gate.resolve(); await opened; await drain(); };
+  await still(inReader, 'm2');
+  assert.deepEqual([said('reader-notice'), live.reopens], ['', 0], `the Reader's next message, out when the feed came back, ran out while it was up, yet reader-notice says: ${said('reader-notice')}`);
+  await feed(false); await still(null, 'm1');
+  assert.deepEqual([said('app-status'), live.reopens], ['', 0], `a tapped message, out when the feed came back, ran out while it was up, yet app-status says: ${said('app-status')}`);
+  await feed(false);
+  assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [timedOut, true], 'the feed went down with nothing answered since the failure: the line says so');
+  await feed(true);
+  assert.equal(said('app-status'), '', 'the feed came up: an answer');
+  // Begun after the feed's last answer, and no answer: the feed is opened again and the line says so.
+  await open(inReader, 'm2');
+  assert.deepEqual([said('reader-notice'), live.reopens], [timedOut, 1], 'a read begun while the feed was up and quiet ran out: the page doubts the feed');
+  await feed(true);
+  assert.equal(said('reader-notice'), '', 'the feed opened again answered');
+  await f.run(() => nothing.view('topic', {})); await drain();
+  assert.deepEqual([said('app-status'), live.reopens], [lost, 2], 'a request that got no answer while the feed was up and quiet');
+  await feed(true); await feed(false);
+  assert.deepEqual([said('app-status'), said('reader-notice')], ['', ''], 'answered since: nothing comes back when the feed goes down later');
+  // Down: each failure says so, and goes at the first answer, which is no reconnection.
+  await f.run(() => nothing.view('topic', {})); await drain();
+  assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [lost, true], 'a request that got no answer while the feed was down');
+  await open(inReader, 'm2');
+  assert.equal(said('reader-notice'), timedOut, 'a read that ran out while the feed was down');
+  await theseus.view('attention', {}); await drain();
+  assert.deepEqual([said('app-status'), said('reader-notice')], ['', ''], 'Theseus answered a request');
+  // A refusal Theseus gave is an answer, and its line stays.
+  await f.run(() => new RealApi('fixture-session', async () => new Response(JSON.stringify({ recorded: false, error: { code: 'CONFLICT', message: 'This topic is closed.' } }), { status: 409 })).view('topic', {})); await drain();
+  await feed(true); await feed(false);
+  assert.equal(said('app-status'), 'This topic is closed.', 'a refusal Theseus answered stays');
+  // A Notebook page's read, owed when it meets no Theseus.
+  const page = { source: { source_ref: { kind: 'memory', id: 'n1', revision: 3 }, body: 'Now' }, editors: { reply: {}, note: {} } };
+  f.registry.current = page;
+  const reads = [], command = f.api.command;
+  gate = defer();
+  const gated = new RealApi('fixture-session', async () => { await gate.promise; throw new TypeError('Failed to fetch'); });
+  // Past ten reads Theseus answers, so a page that read again in a loop stops and is counted.
+  f.api.command = envelope => { reads.push(envelope.kind); return reads.length > 10 ? Promise.resolve({ recorded: true, status: 'committed', operation_id: envelope.operation_id, result: { previous_revision: 3 } }) : gated.command(envelope); };
+  const reading = f.readPage(page); await drain();
+  await feed(true); gate.resolve(); await reading; await drain(); await drain();
+  assert.equal(reads.length, 2, `a page read still out when the live feed came back, that failed after, is read again at once (reads: ${reads.length})`);
+  await drain(); await drain();
+  assert.equal(reads.length, 2, 'the read made again, begun after, waits for Theseus to answer again');
+  await theseus.view('attention', {}); await drain(); await drain();
+  assert.equal(reads.length, 3, 'a request Theseus answered, with the live feed up and quiet and no reconnection');
+  await drain(); await drain();
+  assert.equal(reads.length, 3, 'that read failed too, and waits');
+  live.emit({ kind: 'commit', seq: 7 }); await drain(); await drain();
+  assert.equal(reads.length, 4, 'a commit the live feed named is an answer too');
+  f.api.command = command;
+  await feed(false);
+});
+
+// The app with the real Api for its own requests, the real Live and the real
+// SessionRenewal. The fixture's server answers through the real Api unless a
+// case answers the page's requests itself (held.server); each socket the feed
+// opens and each read of the page's address (the renewal) are the case's to
+// settle.
+const realPage = () => {
+  const sockets = [], pages = [], held = { live: null, server: null };
+  const f = fixture('https://fixture/?topic=t1', {
+    Api: class extends RealApi { constructor(token) { super(token, async (path, init) => {
+      if (held.server) return held.server(path, init);
+      const body = init.body ? JSON.parse(init.body) : null;
+      const answer = path === '/api/bootstrap' ? await f.api.bootstrap() : path === '/api/view' ? await f.api.view(body.name, body.args) : await f.api.command(body);
+      return new Response(JSON.stringify(answer), { status: 200 });
+    }); held.api = this; } },
+    Live: class extends Live { constructor(options) {
+      super({ ...options, origin: 'https://fixture', timers: { setTimeout: () => 0, clearTimeout() {} },
+        socket: (url, protocols) => { const socket = { protocols, closed: false, close() { this.closed = true; } }; sockets.push(socket); return socket; } });
+      held.live = this;
+    } },
+    SessionRenewal: class extends SessionRenewal { constructor(options) {
+      super({ ...options, fetcher: () => { const page = defer(); pages.push(page); return page.promise; },
+        makeApi: token => new RealApi(token, async () => new Response(JSON.stringify(f.bootstrap), { status: 200 })) });
+    } } });
+  f.bootstrap.transport = { ...f.bootstrap.transport, live: { version: 2, path: '/api/live', protocol: 'theseus-live.v1' } };
+  const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
+  const socket = () => sockets.at(-1);
+  // The newest socket gives its first number, or a commit: Theseus answering over the feed.
+  const number = seq => { socket().onmessage({ data: JSON.stringify({ seq }) }); };
+  return { f, sockets, pages, held, said, socket, number };
+};
+const sessionRefusal = () => new Response(JSON.stringify({ recorded: false, error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.' } }), { status: 401 });
+const pageWith = token => new Response('<meta name="aim-next-session" content="' + token + '">', { status: 200 });
+
+// The reviewer's case (RVX-5): Retry access reads the source, which is
+// answered, and then the source's state, which never is: the network dropped
+// between the two. The page gives up on that read once the foreground deadline
+// passes. It began after the last answer and got none, so the feed that reads
+// live is doubted: it is opened again, and until it answers the page is not
+// connected.
+test('Retry access, its first read answered and its second never: the feed that reads live is opened again', async () => {
+  const { f, sockets, held, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  const source = { source_ref: { kind: 'message', id: 'm1' }, body: 'Original source' };
+  const modal = { source, sourceUnavailable: false, availabilityUnconfirmed: true, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+  f.registry.current = modal;
+  f.registry.cleanup = new RecoveryCleanup({ api: held.api, changed: () => {}, bootstrap: { transport: { read_admission: { version: 1, header: 'X-AIM-Read-Class', foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 }, background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } } } }, journal: {}, runtime: { readTimeoutMs: 80 } });
+  held.server = async (path, init) => {
+    if (JSON.parse(init.body).name === 'source') return new Response(JSON.stringify({ ...source, instance_id: 'fixture' }), { status: 200 });
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
+  };
+  const before = sockets.length;
+  await f.retrySource(); await drain();
+  assert.deepEqual([sockets.length - before, held.live.state], [1, 'down'], `the source state read began after the last answer and got none, yet the feed was left reading live (access line ${JSON.stringify(modal.accessMessage)})`);
+});
+
+// The reviewer's case (round 5, RV5-A): the feed reads live after its last
+// message, a request gets no answer (on a network drop, Chrome rejects the
+// fetch before the WebSocket closes), then the socket closes and nothing
+// answers. The page is not connected and nothing has answered since the
+// failure, so the line says so, from the failure on and after the close.
+test('a request that gets no answer while the feed still reads live says so, and keeps saying so after the socket closes with nothing answered', async () => {
+  const { f, sockets, pages, said, socket, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  f.registry.open = () => new RealApi('fixture-session', async () => { throw new TypeError('Failed to fetch'); }).view('source', {});
+  f.registry.current = null;
+  await f.openSource({ kind: 'message', id: 'm1' }); await drain();
+  assert.equal(said('app-status'), lost, `not connected now, nothing answered since the failure (the feed's last message came before it), yet the line says ${JSON.stringify(said('app-status'))}`);
+  assert.deepEqual([sockets.length, sockets[0].closed], [2, true], 'the feed that read live is opened again');
+  socket().onclose(); await drain();
+  pages.forEach(page => page.resolve(new Response('', { status: 502 }))); await drain();
+  assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [lost, true], 'the socket closed and nothing answered: still so');
+});
+
+// A line hidden only because the page was connected is not dropped: when the
+// feed goes down with nothing answered since its failure, it shows again; a
+// line something answered after never comes back.
+test('a connection line hidden while the feed was up shows again when it goes down with nothing answered since, and never after an answer', async () => {
+  const { f, sockets, held, said, socket, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  // A request still out when the feed named a commit (and the reads the commit
+  // asked for were answered), which then gets no answer.
+  const gate = defer();
+  f.registry.open = () => new RealApi('fixture-session', async () => { await gate.promise; throw new TypeError('Failed to fetch'); }).view('source', {});
+  f.registry.current = null;
+  const opening = f.openSource({ kind: 'message', id: 'm1' }); await drain();
+  number(2); await drain();
+  gate.resolve(); await opening; await drain();
+  assert.deepEqual([said('app-status'), sockets.length], ['', 1], 'something answered while it was out and the feed is up: no line, and the feed is left alone');
+  socket().onclose(); await drain();
+  assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [lost, true], 'the feed went down and nothing has answered since that failure');
+  // Up again: the line goes, and does not come back when the feed goes down again.
+  held.live.start();
+  number(2); await drain();
+  assert.equal(said('app-status'), '', 'the feed came up again: an answer after the failure');
+  socket().onclose(); await drain();
+  assert.equal(said('app-status'), '', 'answered after it: the line never comes back');
+});
+
+// The reviewer's case (round 5, RV5-C and RV5-B): a laptop sleeps through a
+// deploy. The socket stays half-open and reads live; a tapped message is
+// refused for the page's session. The refusal proves the server restarted: the
+// line says so, the page renews its session at once and opens its feed again;
+// once renewed, the feed runs under the new session and messages arrive again.
+test('a refusal of the page\'s session while the feed reads live says so, renews the session and reopens the feed under the new one', async () => {
+  const { f, sockets, pages, held, said, socket, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  const refused = 'Open this instance to establish a session.';
+  held.server = async () => sessionRefusal();
+  f.registry.open = () => held.api.view('source', {});
+  f.registry.current = null;
+  await f.openSource({ kind: 'message', id: 'm1' }); await drain();
+  assert.deepEqual([said('app-status'), pages.length], [refused, 1], `the open was refused for the page's session, yet the status line says ${JSON.stringify(said('app-status'))} and the renewal was asked ${pages.length} times`);
+  assert.deepEqual([sockets.length, sockets[0].closed, held.live.state], [2, true, 'down'], 'the socket opened under the refused session is let go, and the feed opened again');
+  // The new socket is refused too (the old session): the renewal under way is the one.
+  socket().onclose(); await drain();
+  assert.equal(pages.length, 1, 'renewals asked while one is under way share it');
+  // The server hands out its new session: the line goes, and the feed opens under it.
+  const before = sockets.length;
+  held.server = null;
+  pages[0].resolve(pageWith('restarted-session')); await drain(); await drain();
+  assert.equal(said('app-status'), '', 'the server answered with its session');
+  assert.deepEqual([held.api.token, sockets.length > before, socket().protocols], ['restarted-session', true, ['theseus-live.v1', 'bearer.restarted-session']],
+    `renewed after a restart, yet the feed opened no socket under the new session (sockets ${before} -> ${sockets.length})`);
+  number(2); await drain();
+  assert.equal(held.live.state, 'live', 'messages arrive again');
+});
+
+// Renewed while the feed still reads live (here the updates were refused for
+// the session): the socket opened under the old session is replaced.
+test('a renewed session replaces a socket that still reads live with one under the new session', async () => {
+  const { f, sockets, pages, held, socket, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.deepEqual([pages.length, sockets.length], [1, 1]);
+  pages[0].resolve(pageWith('restarted-session')); await drain(); await drain();
+  assert.deepEqual([sockets.length, sockets[0].closed, held.live.state, socket().protocols], [2, true, 'down', ['theseus-live.v1', 'bearer.restarted-session']],
+    `renewed after a restart, yet the page keeps the socket opened under the refused session (sockets 1 -> ${sockets.length}, state ${held.live.state})`);
+  number(1); await drain();
+  assert.equal(held.live.state, 'live');
+});
+
+// A small seeded random source, so a failing interleaving can be run again by its seed.
+const seeded = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+
+// Whether the page's status line shows a connection failure is a function of
+// what the page knows now, after any interleaving: it shows while the page is
+// not connected (its live feed is down) and nothing has answered since that
+// failure (a request Theseus answered, the live feed coming up or naming a
+// commit, a session handed out again). Nothing else: the feed having read live
+// after the failure is no answer. The feed is down from the moment the page
+// doubts it (an attempt that got no answer with nothing answered since it
+// began) or renews its session, until a socket answers. The app's own code
+// (run, the status line, reconnect, its live wiring) with the real Api,
+// Deadline, Live and SessionRenewal; the expected line is worked out from the
+// steps alone.
+test('property: after every step of any interleaving of requests, the live feed and renewals, a connection line shows exactly while the page is not connected and nothing has answered since its failure', async () => {
+  const timedOut = 'Reader request timed out. Your writing is kept.';
+  const endings = {
+    success: () => new Response(JSON.stringify({ instance_id: 'fixture', items: [] }), { status: 200 }),
+    refusal: () => new Response(JSON.stringify({ recorded: false, error: { code: 'CONFLICT', message: 'This topic is closed.' } }), { status: 409 }),
+    nothing: () => { throw new TypeError('Failed to fetch'); },
+    proxy: () => new Response('', { status: 502 }),
+    session: () => new Response(JSON.stringify({ recorded: false, error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.' } }), { status: 401 }),
+  };
+  const words = { refusal: 'This topic is closed.', nothing: 'Connection interrupted. Confirmation is unknown; your writing is kept.',
+    proxy: 'AIM returned an unreadable response. Confirmation is unknown.', session: 'Open this instance to establish a session.', ranOut: timedOut };
+  const SEEDS = 40, STEPS = 60;
+  let checked = 0, shown = 0, hidden = 0, doubted = 0, renewed = 0;
+  const seen = new Set();
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    const random = seeded(seed), pick = list => list[Math.floor(random() * list.length)];
+    const sockets = [], held = { live: null, page: null };
+    const f = fixture('https://fixture/?topic=t1', {
+      Live: class extends Live { constructor(options) {
+        super({ ...options, origin: 'https://fixture', socket: () => { const socket = { close() {} }; sockets.push(socket); return socket; }, timers: { setTimeout: () => 0, clearTimeout() {} } });
+        held.live = this;
+      } },
+      SessionRenewal: class extends SessionRenewal { constructor(options) {
+        super({ ...options, fetcher: async () => held.page(), makeApi: token => new RealApi(token, async () => new Response(JSON.stringify(f.bootstrap), { status: 200 })) });
+      } } });
+    f.bootstrap.transport = { ...f.bootstrap.transport, live: { version: 2, path: '/api/live', protocol: 'theseus-live.v1' } };
+    await f.initialize(); await drain();
+    const live = held.live, said = () => f.get('app-status').hidden ? '' : f.get('app-status').textContent;
+    // The model: each fact stamped with its step.
+    const model = { answered: 0, live: false, text: said(), at: null, token: 'fixture-session' };
+    const expected = () => model.at === null ? model.text : (!model.live && model.at > model.answered ? model.text : '');
+    const pending = [], history = [];
+    let seq = 0;
+    for (let step = 1; step <= STEPS; step++) {
+      const kinds = ['start', 'start', 'renew', ...(pending.length ? ['end', 'end', 'end'] : []), ...(live.state === 'live' ? ['message', 'down'] : ['up', 'up'])];
+      const kind = pick(kinds);
+      let did = kind;
+      if (kind === 'start') {
+        const entry = { gate: defer(), bounded: random() < 0.3, began: step };
+        if (entry.bounded) {
+          const deadline = new Deadline(0, timedOut);
+          const request = new RealApi('fixture-session', (path, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))).view('source', {}, { signal: deadline.signal });
+          entry.done = f.run(() => entry.gate.promise.then(() => deadline.bound(request)));
+        } else entry.done = f.run(() => new RealApi('fixture-session', async () => { await entry.gate.promise; return endings[entry.ending](); }).view('topic', {}));
+        pending.push(entry); did = entry.bounded ? 'start a bounded read' : 'start a request';
+      } else if (kind === 'end') {
+        const entry = pending.splice(Math.floor(random() * pending.length), 1)[0];
+        entry.ending = entry.bounded ? 'ranOut' : pick(Object.keys(endings));
+        entry.gate.resolve();
+        if (entry.bounded) await new Promise(resolve => setTimeout(resolve, 2));
+        await entry.done; await drain();
+        if (entry.ending === 'success' || entry.ending === 'refusal') model.answered = step;
+        else if (model.live && model.answered <= entry.began) { model.live = false; doubted++; }
+        if (entry.ending !== 'success') Object.assign(model, { text: words[entry.ending], at: entry.ending === 'refusal' ? null : step });
+        did = `end: ${entry.ending}`;
+      } else if (kind === 'up') {
+        if (!live.current) live.start();
+        live.current.socket.onmessage({ data: JSON.stringify({ seq }) });
+        Object.assign(model, { live: true, answered: step });
+      } else if (kind === 'message') {
+        live.current.socket.onmessage({ data: JSON.stringify({ seq: ++seq }) });
+        model.answered = step;
+      } else if (kind === 'down') {
+        live.current.socket.onclose();
+        model.live = false;
+      } else {
+        const answers = random() < 0.6, token = answers ? 'session-' + seed + '-' + (random() < 0.5 ? step : 0) : null;
+        held.page = answers ? async () => new Response('<meta name="aim-next-session" content="' + token + '">', { status: 200 }) : async () => { throw new TypeError('Failed to fetch'); };
+        f.updateStatus({ kind: 'reconnect' });
+        await drain(); await drain();
+        if (answers) model.answered = step;
+        // A newer session: the feed opens again under it.
+        if (answers && token !== model.token) { Object.assign(model, { token, live: false }); renewed++; }
+        did = answers ? 'renewal answered' : 'renewal not answered';
+      }
+      await drain();
+      history.push(did); seen.add(did);
+      if (model.at !== null) { if (expected()) shown++; else hidden++; }
+      assert.equal(said(), expected(), `seed ${seed}, step ${step} (${did}): the status line says ${JSON.stringify(said())}, the rule says ${JSON.stringify(expected())}; steps: ${history.join(', ')}`);
+      checked++;
+    }
+    for (const entry of pending) { entry.ending = 'success'; entry.gate.resolve(); }
+    await new Promise(resolve => setTimeout(resolve, 2)); await Promise.all(pending.map(entry => entry.done)); await drain();
+  }
+  assert.equal(checked, SEEDS * STEPS);
+  // Every kind of step ran, and connection lines both showed and were hidden.
+  assert.deepEqual([...seen].sort(), ['down', 'end: nothing', 'end: proxy', 'end: ranOut', 'end: refusal', 'end: session', 'end: success', 'message',
+    'renewal answered', 'renewal not answered', 'start a bounded read', 'start a request', 'up']);
+  assert.ok(shown > 50 && hidden > 50, `connection lines shown at ${shown} steps and hidden at ${hidden}`);
+  assert.ok(doubted > 20 && renewed > 20, `the feed doubted ${doubted} times and opened again under a renewed session ${renewed} times`);
+});
+
+test('a renewed session leaves a message that was not about the connection, and writing that cannot be saved', async () => {
+  const renewals = [], { f, live, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  await f.run(async () => { throw new AttemptError('This topic is closed.', 409, { error: { code: 'CONFLICT' } }); });
+  f.editor.unavailable = true;
+  f.events.length = 0; answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
+  assert.equal(f.get('app-status').textContent, 'This topic is closed.');
+  assert.equal(f.events.some(e => e[0] === 'schedule'), false, 'writing whose destination is unavailable is not saved');
+});
+
+test('updates refused for the session say so, reconnect by themselves, and retry once for each session', async () => {
+  const renewals = [], { f, answers } = restartable(renewals);
+  await f.initialize(); await drain();
+  const requests = () => f.events.filter(e => e[0] === 'request').length;
+  let before = requests();
+  answers.push('renewed');
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(f.get('updates-message').textContent, 'Reconnecting to Theseus. Your writing is kept. ');
+  assert.equal(f.get('updates-retry').textContent, 'Reconnect');
+  assert.equal(requests() - before, 1, 'the stopped updates are tried again');
+  // Refused again with the same session: not tried again by itself.
+  before = requests(); answers.push('current');
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(requests() - before, 0);
+  // The Reconnect button tries again on demand.
+  before = requests(); answers.push('current');
+  await f.get('updates-retry').onclick(); await drain();
+  assert.equal(requests() - before, 1);
+  // Once updates have run again, a later refusal of the same session is tried again once.
+  f.updateStatus({ kind: 'current' });
+  before = requests(); answers.push('current');
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(requests() - before, 1, 'tried again after updates ran');
+  before = requests(); answers.push('current');
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.equal(requests() - before, 0, 'and only once');
+  // Not answering yet: the button says so, and nothing else runs.
+  before = requests();
+  await f.get('updates-retry').onclick(); await drain();
+  assert.equal(requests() - before, 0);
+  assert.match(f.get('app-status').textContent, /not answering yet/);
+});
+
+// A refused source hides its Notebook title with its text, so a page the
+// reader can no longer see does not keep saying what it was called.
+test('a source refused on Retry hides its title along with its text', async () => {
+  const f = fixture();
+  const source = { source_ref: { kind: 'memory', id: 'n1', revision: 2 }, title: 'Private plan', author: 'tony', body: 'Secret words', attachments: [] };
+  const modal = { source: { ...source }, sourceUnavailable: false, availabilityUnconfirmed: false, editors: { reply: { unavailable: false }, note: { unavailable: false } } };
+  f.registry.current = modal;
+  f.reader.hideUnavailableSource = () => f.events.push(['hidden']);
+  f.api.view = async (name, args) => { if (name === 'source') throw Object.assign(Error('Forbidden'), { code: 'FORBIDDEN' }); return f.state(args.source_ref); };
+  await f.retrySource();
+  assert.equal(modal.sourceUnavailable, true);
+  assert.deepEqual([modal.source.title, modal.source.body], ['Source unavailable', '']);
+  assert.equal(f.events.filter(e => e[0] === 'hidden').length, 1);
+  // Readable, but Core says this person may no longer see it: the same.
+  const g = fixture(), shown = { source: { ...source }, sourceUnavailable: false, availabilityUnconfirmed: false, editors: { reply: { unavailable: false }, note: { unavailable: false } } };
+  g.registry.current = shown;
+  g.api.view = async (name, args) => name === 'source' ? { ...source, instance_id: 'fixture' } : { ...g.state(args.source_ref), source_available: false };
+  await g.retrySource();
+  assert.deepEqual([shown.sourceUnavailable, shown.source.title, shown.source.body], [true, 'Source unavailable', '']);
 });
 
 test('confirmed inline access resumes dirty save only after confirmation; no send or recovery replay', async () => {
@@ -2859,8 +3527,7 @@ function smallCore(instanceId) {
 const BOOT = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human',
   authority: { authority_id: 'runtime-1', authority_epoch: 'epoch-1', continuity: 'initial' } };
 
-// Mulberry32: the same seed is the same run.
-const seeded = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+// Mulberry32 (seeded, above): the same seed is the same run.
 
 async function reviewRun(seed, tally, steps = 30) {
   const random = seeded(seed), pick = list => list[Math.floor(random() * list.length)], chance = p => random() < p;

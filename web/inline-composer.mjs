@@ -3,6 +3,7 @@ import { recipientChoices, writingState, pasteImageError, namedPastedImage, imag
 import { paintImageRows } from './image-rows.mjs';
 import { WritingInput } from './writing-input.mjs';
 import { paintChoice, chosen, naming, unnamed, sending } from './whisper-choice.mjs';
+import { showLine } from './lines.mjs';
 
 const node = (tag, text, className) => {
   const el = document.createElement(tag); if (text !== undefined) el.textContent = text;
@@ -35,7 +36,7 @@ export class InlineComposer {
         const uploads = this.callbacks.uploads(editor), token = uploads.reserve(p);
         this.imagePicker = { uploads, token, p, editor }; this.$('image-file').value = '';
         this.paintStatus(); this.$('image-file').click();
-      } catch (error) { this.notice(error.message, p, editor); }
+      } catch (error) { this.notice(error, p, editor); }
     };
     this.$('cancel-image').onclick = () => {
       if (!this.admits()) return;
@@ -46,7 +47,7 @@ export class InlineComposer {
       const picker = this.imagePicker, file = event.target.files?.[0]; this.imagePicker = null;
       if (!picker) return;
       try { await picker.uploads.choose(picker.token, file); }
-      catch (error) { this.notice(error.message, picker.p, picker.editor); }
+      catch (error) { this.notice(error, picker.p, picker.editor); }
       finally { this.paintStatus(); }
     };
     this.$('review-versions').onclick = () => { if (this.admits()) this.callbacks.review(this.editor, this.presentation, this.$('review-versions')); };
@@ -62,16 +63,16 @@ export class InlineComposer {
   caret() { return this.input.caret(); }
   show(p) {
     this.presentation = p; this.root.hidden = false;
-    this.field.disabled = false; this.$('notice').hidden = true;
+    this.field.disabled = false; showLine(this.$('notice'), '');
     this.$('destination').textContent = `To ${p.topic.title}`;
     this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice();
   }
-  fail(message) {
+  // The composer could not load: it says why until Retry composer loads it.
+  fail(error) {
     this.root.hidden = false;
     this.field.disabled = true;
     for (const name of ['recipient-input', 'add-image', 'send']) this.$(name).disabled = true;
-    this.$('notice').textContent = 'New message is unavailable. ' + message;
-    this.$('notice').hidden = false;
+    showLine(this.$('notice'), ['New message is unavailable.', error]);
     this.$('save-state').textContent = 'Writing is disabled until this composer can load.';
     this.$('retry').textContent = 'Retry composer'; this.$('retry').hidden = false;
   }
@@ -79,9 +80,10 @@ export class InlineComposer {
     this.field.value = this.editor.draft.body;
     const caret = this.editor.draft.caret; this.field.setSelectionRange(caret.start, caret.end);
   }
-  notice(text, p = this.presentation, editor = this.editor) {
+  // A failure goes to the notice as the error itself (lines.mjs).
+  notice(what, p = this.presentation, editor = this.editor) {
     if (this.presentation !== p || this.editor !== editor || !this.admits(p, editor)) return;
-    this.$('notice').textContent = text; this.$('notice').hidden = !text;
+    showLine(this.$('notice'), what);
   }
   cancelPicker() {
     const picker = this.imagePicker; this.imagePicker = null;
@@ -146,7 +148,7 @@ export class InlineComposer {
         // it was still there. Where the person has since put it, it stays.
         if (action.method === 'remove' && this.admits(p, editor) && [null, document.body, control].includes(document.activeElement)) this.$('add-image').focus();
       }
-      catch (error) { this.notice(error.message, p, editor); }
+      catch (error) { this.notice(error, p, editor); }
       finally { if (control.isConnected) control.disabled = !this.admits(p, editor) || this.state().readOnly; this.paintStatus(); }
     });
   }
@@ -181,8 +183,8 @@ export class InlineComposer {
         try { return uploads.choose(uploads.reserve(p), namedPastedImage(file)); } catch (error) { return Promise.reject(error); }
       }));
       const errors = results.filter(result => result.status === 'rejected');
-      if (errors.length) this.notice([...new Set(errors.map(result => result.reason.message))].join(' '), p, editor);
-    } catch (error) { this.notice(error.message, p, editor); }
+      if (errors.length) this.notice(errors.map(result => result.reason), p, editor);
+    } catch (error) { this.notice(error, p, editor); }
     finally { this.paintStatus(); }
   }
   async send() {
@@ -195,6 +197,6 @@ export class InlineComposer {
       const sent = this.callbacks.send(editor, p);
       if (this.admits(p, editor) && editor.draft !== draft) { this.drawEditor(); this.paintRecipients(); this.paintStatus(); this.paintChoice(); this.field.focus(); }
       await sent;
-    } catch (error) { this.notice(error.message, p, editor); }
+    } catch (error) { this.notice(error, p, editor); }
   }
 }

@@ -42,7 +42,7 @@ let chrome, socket, cdp, exitPromise;
 const results = [], pageErrors = [];
 const mutations = [], sourceHashes = {};
 const hash = text => createHash('sha256').update(text).digest('hex');
-for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/app-session.mjs', 'web/message-menu.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
+for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/lines.mjs', 'web/api.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/app-session.mjs', 'web/message-menu.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
   sourceHashes[filename] = hash(await readFile(path.join(root, filename)));
 }
 try {

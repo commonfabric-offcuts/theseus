@@ -1,7 +1,16 @@
 // Private saves are serialized. Public send confirmation never holds that queue.
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
+import { sessionRefused, Deadline } from './api.mjs';
 const copy = value => structuredClone(value);
+// What an attempt that got no recorded answer holds. A session's refusal says
+// retrying with that session cannot help; the page's next session can carry
+// the act, so it stays retryable, as a lost connection is.
+const attemptError = error => {
+  const found = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
+  if (sessionRefused(error)) found.retryable = true;
+  return found;
+};
 const writingFields = ['body', 'attachments', 'quotes', 'addressees', 'intent', 'whisper', 'caret', 'reply_to', 'exchange_id'];
 const authorityPair = value => value && typeof value.authority_id === 'string' && value.authority_id &&
   typeof value.authority_epoch === 'string' && value.authority_epoch
@@ -27,21 +36,17 @@ export class RuntimeAuthority {
     this.readTimeoutMs = readTimeoutMs;
     this.probes = new Map(); this.inflight = null;
   }
-  async read(operation) {
-    let timer;
-    const expired = new Promise((resolve, reject) => {
-      timer = setTimeout(() => reject(Object.assign(new Error('Recovery read timed out.'), { code: 'RECOVERY_READ_TIMEOUT' })), this.readTimeoutMs);
-    });
-    // Only reads use this deadline. A late read can settle its own promise but
-    // cannot replace a later review or authorize a write.
-    try { return await Promise.race([Promise.resolve().then(operation), expired]); }
-    finally { clearTimeout(timer); }
+  // Only reads use this deadline. A late read can settle its own promise but
+  // cannot replace a later review or authorize a write.
+  read(operation) {
+    const deadline = new Deadline(this.readTimeoutMs, 'Recovery read timed out.', 'RECOVERY_READ_TIMEOUT');
+    return deadline.bound(Promise.resolve().then(() => operation({ signal: deadline.signal })));
   }
   probe(failedPair, { retry = false } = {}) {
     if (this.inflight) return this.inflight;
     const key = JSON.stringify(authorityPair(failedPair));
     if (!retry && this.probes.has(key)) return this.probes.get(key);
-    const request = this.read(() => this.api.bootstrap()).then(answer => {
+    const request = this.read(options => this.api.bootstrap(options)).then(answer => {
       if (answer.instance_id !== this.instanceId || !validAuthority(answer.authority)) throw new Error('The current runtime authority could not be confirmed.');
       this.current = copy(answer.authority); return copy(answer.authority);
     });
@@ -166,7 +171,7 @@ export class EditorSession {
     try {
       const authority = await this.runtime.probe(failedPair, { retry });
       if (this.recovery !== review) return null;
-      const state = await this.runtime.read(() => this.api.view('editor_state', { source_ref: this.editor.sourceRef, topic_id: this.editor.context.topicId }));
+      const state = await this.runtime.read(options => this.api.view('editor_state', { source_ref: this.editor.sourceRef, topic_id: this.editor.context.topicId }, options));
       if (this.recovery !== review) return null;
       review.authority = copy(authority);
       review.remote = copy((this.editor.context.kind === 'note' ? state.note : state.draft) ?? null);
@@ -313,7 +318,7 @@ export class EditorSession {
       let answer;
       try { answer = await this.api.view('operation', { operation_id: entry.envelope.operation_id }); }
       catch (error) {
-        entry.error = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
+        entry.error = attemptError(error);
         await this.persist();
         return null;
       }
@@ -334,7 +339,15 @@ export class EditorSession {
     let receipt;
     try { receipt = await this.api.command(copy(entry.envelope)); }
     catch (error) {
-      entry.error = copy(error.details?.error ?? { code: 'CONNECTION_UNKNOWN', message: error.message });
+      entry.error = attemptError(error);
+      if (sessionRefused(error)) {
+        // A refused session is refused before Core reads the request, so the
+        // act is undelivered: it waits for the new session, as the same
+        // session would only be refused again.
+        entry.dispatched = false;
+        await this.persist();
+        return null;
+      }
       await this.persist();
       await this.authorityChanged(entry);
       return retries > 0 ? this.dispatch(entry, { retries: retries - 1, resumePreparation }) : null;
@@ -385,24 +398,41 @@ export class EditorSession {
 
   // Holds a send as under way until it ends, then tells the page, with it no
   // longer under way: a reply whose send ended unconfirmed is now in doubt.
+  // Returns the send.
   track(key, sending) {
     this.sends.set(key, sending);
     const settled = () => { if (this.sends.get(key) === sending) this.sends.delete(key); this.changed(this.editor); };
     sending.then(settled, settled);
+    return sending;
   }
 
   start(item, options, resume = false) {
     // Freeze at the person's act, before any queued save or network wait.
     const preparing = this.enqueue(() => this.prepare(item, resume));
-    const sending = preparing.then(async ready => {
+    return this.track(item.id, preparing.then(async ready => {
       if (!ready || item.detached) return item;
       // prepare() persisted the successor and A before this navigation hook.
       this.prepared(this.editor, item, options);
       await this.sendPrepared(item);
       return item;
-    });
-    this.track(item.id, sending);
-    return sending;
+    }));
+  }
+
+  // The page reaches Theseus again: its session renewed after a restart, its
+  // live feed back, or a new document. Every reply the person sent that is not
+  // yet published, and not under way, goes on under its own operations, as
+  // they asked when they pressed Send, whatever held it. Whether each act may
+  // go again is dispatch()'s rule alone: a private save or a resumed
+  // preparation after its operation is looked up, a public send only if it
+  // never reached Core, and nothing an error says no retry mends. Everything
+  // waits while a runtime change is under review. Acts under way finish
+  // first, so one held as the page reconnected is taken up too.
+  async resumeHeld() {
+    await Promise.allSettled([this.queue, ...this.sends.values()]);
+    if (this.recovery) return [];
+    return Promise.all(this.editor.submissions.flatMap(item => item.detached || this.sends.has(item.id) ? []
+      : item.status === 'preparing' ? [this.start(item, { stay: true }, true)]
+        : item.status === 'prepared' ? [this.track(item.id, this.sendPrepared(item).then(() => item))] : []));
   }
 
   async block(item, entry, conflict = null) {
@@ -468,7 +498,7 @@ export class EditorSession {
     const failure = () => new Error('The original publication could not be confirmed. Reconcile its original confirmation before preparing another reply.');
     let receipt;
     try {
-      receipt = await this.runtime.read(() => this.api.view('operation', { operation_id: item.sendOperationId }));
+      receipt = await this.runtime.read(options => this.api.view('operation', { operation_id: item.sendOperationId }, options));
     } catch { throw failure(); }
     // Only this exact scoped answer means absent. An error or malformed answer
     // must never become permission to publish another copy of the same writing.
