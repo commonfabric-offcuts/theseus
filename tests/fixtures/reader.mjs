@@ -18,7 +18,8 @@ let reader;
 const callbacks = {
   edit: editor => events.push({ type: 'edit', kind: editor.context.kind, body: editor.draft.body }),
   send: (editor, options) => events.push({ type: 'send', body: editor.draft.body, ...options }),
-  saveNote: async editor => { events.push({ type: 'note', body: editor.draft.body }); await reader.close(); },
+  // As the app's own: a note saved is true, and the Reader stays open.
+  saveNote: async editor => { events.push({ type: 'note', body: editor.draft.body }); return true; },
   close: async (_sessions, reason) => { events.push({ type: 'close', reason }); return true; },
   step: direction => events.push({ type: 'step', direction }),
   destination: topic => events.push({ type: 'destination', topic }),
@@ -27,7 +28,10 @@ const callbacks = {
 reader = new Reader(callbacks);
 const opener = document.createElement('button');
 opener.id = 'open-fixture'; opener.textContent = 'Read fixture message';
-document.querySelector('#main').replaceChildren(opener);
+// ?composer keeps the topic's new-message composer in view beside the opener,
+// as markup and style alone, for checks of its footer's layout.
+if (new URL(location.href).searchParams.has('composer')) { document.querySelector('#main').prepend(opener); document.querySelector('#inline-composer').hidden = false; }
+else document.querySelector('#main').replaceChildren(opener);
 opener.onclick = () => reader.show(source, { reply, note }, {
   opener, topics: [{ id: 'fixture-topic', title: 'Fixture topic' }], canPrevious: true, canNext: true,
 });

@@ -350,17 +350,20 @@ export class EditorRegistry {
     return this.current;
   }
 
+  // Done's answer, for the Reader: true when Theseus holds the note as it is
+  // written, and a note with nothing written is held as it is; false when
+  // Theseus does not; null when the note is no longer in front, which leaves
+  // nothing to say. A saved note leaves its Reader open, back on the reply.
   async saveNote(editor, presentation = this.current) {
     if (editor.context.kind !== 'note') throw Error('Only a private note may use Save note.');
     if (editor.unavailable) throw Error('The source is unavailable. Your note is kept on this device.');
     const version = editor.localVersion;
     const receipt = await this.flush(editor);
-    const confirmed = receipt?.status === 'committed' || (!receipt && editor.draft.revision > 0 &&
-      !editor.authorityRecovery && !editor.conflict && !this.sessionFor(editor).unsettledSave());
-    if (confirmed && editor.ackVersion >= version && !editor.dirty && this.isCurrent(presentation)) {
-      return this.close(presentation);
-    }
-    return false;
+    if (!this.isCurrent(presentation)) return null;
+    // No receipt: nothing was left to save, unless a save is unsettled or needs review.
+    const held = receipt ? receipt.status === 'committed'
+      : !editor.authorityRecovery && !editor.conflict && !this.sessionFor(editor).unsettledSave();
+    return held && editor.ackVersion >= version && !editor.dirty;
   }
 
   checkConfirmation(editor) { return this.sessionFor(editor).reconcile(); }

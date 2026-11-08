@@ -645,15 +645,41 @@ test('failed navigation leaves the displayed reader usable and closable', async 
   assert.equal(await f.registry.close(x), true, 'a failed open must not strand the prior reader token');
 });
 
-test('explicit note close recognizes an already confirmed current autosave', async t => {
+test('Done on a note recognizes an already confirmed current autosave and keeps the Reader open', async t => {
   const f = await fixture(t), p = await f.open(1);
-  f.registry.setMode('note');
+  const notePresentation = f.registry.setMode('note');
   const note = p.editors.note; note.edit({ body: 'Already autosaved private note' });
   await f.registry.edited(note); const receipt = await f.registry.flush(note);
   assert.equal(receipt.status, 'committed');
   assert.equal(await f.registry.saveNote(note), true);
-  assert.equal(f.registry.current, null);
+  assert.equal(f.registry.current, notePresentation); assert.deepEqual(f.closed, []);
   assert.equal(f.calls.filter(call => call.type === 'command' && call.envelope.kind === 'message.send').length, 0);
+});
+
+// Done's answer means one thing: whether Theseus holds the note as written.
+// A note with nothing written has nothing to save, so it is held; a note whose
+// save is lost is not; a note no longer in front gets no answer at all.
+test('Done on a note with nothing written answers saved, without a save', async t => {
+  const f = await fixture(t), p = await f.open(0);
+  const notePresentation = f.registry.setMode('note'), note = p.editors.note;
+  assert.deepEqual([note.draft.revision, note.dirty, note.draft.body], [0, false, ''], 'a message with no note: nothing written, nothing saved');
+  assert.equal(await f.registry.saveNote(note), true, 'nothing to save is not a failed save');
+  assert.equal(f.calls.filter(call => call.type === 'command' && call.envelope.kind === 'note.save').length, 0, 'nothing was sent to save');
+  assert.equal(f.registry.current, notePresentation); assert.deepEqual(f.closed, []);
+});
+
+test('Done on a written note whose save is lost answers not saved', async t => {
+  const f = await fixture(t), p = await f.open(0);
+  f.registry.setMode('note'); const note = p.editors.note;
+  f.transport.command = async envelope => {
+    f.calls.push({ type: 'command', envelope: copy(envelope) });
+    if (envelope.kind === 'note.save') throw Error('Lost HTTP response');
+    return f.api.command(envelope);
+  };
+  note.edit({ body: 'Words Theseus never got' }); await f.registry.edited(note);
+  assert.equal(await f.registry.saveNote(note), false, 'a save with no answer is not read as nothing to save');
+  assert.ok(f.calls.some(call => call.type === 'command' && call.envelope.kind === 'note.save'), 'the save was tried');
+  assert.equal(note.draft.body, 'Words Theseus never got');
 });
 
 async function fixture(t, options = {}) {
@@ -1427,7 +1453,8 @@ test('late note-save after switching to reply cannot close that reply or send it
   p.editors.reply.edit({ body: 'Unsent hidden reply' }); await f.registry.edited(p.editors.reply);
   const saving = f.registry.saveNote(p.editors.note, notePresentation); await entered.promise;
   f.registry.setMode('reply'); const replyPresentation = f.registry.current;
-  release.resolve(); await saving;
+  release.resolve();
+  assert.equal(await saving, null, 'the note is no longer in front: Done has nothing to say');
   assert.equal(f.registry.current, replyPresentation); assert.equal(f.closed.length, 0);
   assert.equal(p.editors.reply.draft.body, 'Unsent hidden reply');
   assert.equal((await f.state(0)).note.body, 'Private note only');

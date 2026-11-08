@@ -42,9 +42,8 @@ test('words that are not the save status carry no saving sign', () => {
 });
 
 // Each state has its own mark, drawn only from the palette's tokens, so it
-// follows light and dark; the hidden reserve carries the same mark, so the
-// footer never moves as the state changes.
-test('each saving state is drawn from a palette token, and the reserve keeps its room', () => {
+// follows light and dark.
+test('each saving state is drawn from a palette token', () => {
   const css = readFileSync(new URL('../web/aim.css', import.meta.url), 'utf8');
   assert.match(css, /\.save-status>span::before\{content:'';display:inline-block;width:\.5em;height:\.5em;/);
   for (const [state, token] of [['saving', 'muted'], ['device', 'muted'], ['saved', 'accent'], ['attention', 'warn']]) {

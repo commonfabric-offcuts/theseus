@@ -11,7 +11,7 @@ import { createHash } from 'node:crypto';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, mode] = process.argv.slice(2);
-assert.ok(mode === undefined || ['--mutations', '--review-gaps', '--anchor-control', '--keyboard'].includes(mode), 'only explicit evidence modes are accepted');
+assert.ok(mode === undefined || ['--mutations', '--review-gaps', '--anchor-control', '--keyboard', '--finished'].includes(mode), 'only explicit evidence modes are accepted');
 assert.ok(chromePath?.endsWith('/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'), 'explicit Chrome for Testing required');
 assert.ok(evidencePath && path.isAbsolute(evidencePath), 'an absolute evidence directory is required');
 await mkdir(evidencePath, { recursive: true });
@@ -42,7 +42,7 @@ let chrome, socket, cdp, exitPromise;
 const results = [], pageErrors = [];
 const mutations = [], sourceHashes = {};
 const hash = text => createHash('sha256').update(text).digest('hex');
-for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
+for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/app-session.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
   sourceHashes[filename] = hash(await readFile(path.join(root, filename)));
 }
 try {
@@ -143,12 +143,33 @@ try {
     await writeFile(path.join(evidencePath, `${results.length}.png`), Buffer.from(shot.data, 'base64'));
   };
 
+  // What the page holds when the Return that quotes has finished: a listener
+  // on the window hears the keydown after the Reader's own. The writing field
+  // must be focused with a caret at the end of its text; a browser draws the
+  // caret from the document's selection, so a selection cleared after the
+  // field took focus leaves no caret until the window is focused again.
+  const watchReturn = () => evaluate(`window.addEventListener('keydown', event => {
+    if (event.key !== 'Enter') return;
+    const field = document.querySelector('#writing-body'), selection = getSelection();
+    window.returnEnd = { active: document.activeElement.id, selection: selection.type, start: field.selectionStart, end: field.selectionEnd, length: field.value.length };
+  }, { once: true })`);
+  const caretAfterQuote = async label => {
+    const end = await evaluate('window.returnEnd');
+    observations.push({ label, ...end });
+    assert.equal(end.active, 'writing-body', `${label}: the field is focused when Return has finished`);
+    assert.equal(end.selection, 'Caret', `${label}: the document's selection is the field's caret when Return has finished`);
+    assert.deepEqual([end.start, end.end], [end.length, end.length], `${label}: the caret is at the end of the writing`);
+    const after = await evaluate(`(()=>{const f=document.querySelector('#writing-body');return {active:document.activeElement.id,selection:getSelection().type,start:f.selectionStart,length:f.value.length}})()`);
+    assert.deepEqual(after, { active: 'writing-body', selection: 'Caret', start: end.length, length: end.length }, `${label}: nothing after Return moves focus or the caret`);
+  };
+
   await check('hover Return quotes exact words and composer Return stays a newline', async () => {
     await point('#source-body [data-start="0"]', 'move');
+    await watchReturn();
     await key('Enter');
     let state = await snapshot();
     assert.equal(state.reply.draft.body, '> The first passage is for an exact quote. \n\n');
-    assert.equal(await evaluate('document.activeElement.id'), 'writing-body');
+    await caretAfterQuote('hover Return');
     await send('Input.insertText', { text: 'My response' });
     await point('#source-body [data-start="0"]', 'move');
     await key('Enter');
@@ -157,19 +178,36 @@ try {
     assert.equal(state.events.filter(event => event.type === 'send').length, 0);
     await key('Enter', 4);
     assert.equal((await snapshot()).events.filter(event => event.type === 'send').length, 1);
+    // A passage dragged over, then Return: the caret waits after the quote.
+    const words = await box('#source-body [data-start="0"]'), y = words.y + words.height / 2;
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: words.x + 2, y });
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: words.x + 2, y, button: 'left', buttons: 1, clickCount: 1 });
+    for (let step = 1; step <= 6; step++) await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: words.x + 2 + step * 25, y, button: 'left', buttons: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: words.x + 152, y, button: 'left', buttons: 0, clickCount: 1 });
+    const dragged = await evaluate('getSelection().toString()');
+    assert.ok(dragged.length > 5 && await evaluate('document.activeElement.id') === 'source-body', 'a native drag selected words of the message');
+    await watchReturn();
+    await key('Enter');
+    assert.ok((await snapshot()).reply.draft.body.endsWith(`> ${dragged}\n\n`));
+    await caretAfterQuote('dragged Return');
+    await send('Input.insertText', { text: 'Typed after' });
+    assert.ok((await snapshot()).reply.draft.body.endsWith(`> ${dragged}\n\nTyped after`));
   });
 
-  await check('note Cmd-Return saves only the note and restores opener focus', async () => {
+  await check('note Cmd-Return saves only the note and keeps the Reader open on the reply', async () => {
     await point('#writing-body'); await send('Input.insertText', { text: 'Unsent reply' });
     await point('#toggle-note'); await send('Input.insertText', { text: 'Private thought' });
     await key('Enter', 4);
+    await until(() => evaluate("document.querySelector('#toggle-note').textContent === 'Show note'"), 'the saved note hands back to the reply');
     const state = await snapshot();
     assert.equal(state.reply.draft.body, 'Unsent reply');
     assert.equal(state.note.draft.body, 'Private thought');
     assert.equal(state.events.filter(event => event.type === 'send').length, 0);
     assert.equal(state.events.filter(event => event.type === 'note').length, 1);
-    assert.equal(await evaluate('document.querySelector("#reader").open'), false);
-    assert.equal(await evaluate('document.activeElement.id'), 'open-fixture');
+    assert.equal(state.events.filter(event => event.type === 'close').length, 0, 'saving the note closes nothing');
+    assert.equal(await evaluate('document.querySelector("#reader").open'), true, 'the Reader stays open');
+    const field = await evaluate(`(()=>{const f=document.querySelector('#writing-body');return {active:document.activeElement.id,value:f.value,caret:[f.selectionStart,f.selectionEnd]}})()`);
+    assert.deepEqual(field, { active: 'writing-body', value: 'Unsent reply', caret: [12, 12] }, 'back on the reply as it was, the cursor where it was');
   });
 
   await check('default stacks, wide keeps writing full height, layout switch preserves typing', async () => {
@@ -289,9 +327,164 @@ try {
     await dragDivider(0, -60); await preserved('stacked drag');
   });
 
-  const selectedCases = mode === '--keyboard' ? cases.slice(0, 1) : mode === '--anchor-control' ? cases.slice(7) : mode === '--review-gaps' ? cases.slice(5) : cases.slice(0, 5);
+  // The Reader and reply box, finished (--finished): what the page shows and
+  // what real presses and keys do. Each case is broken below by a mutant.
+  await check('finished heading is the topic name and goes back to it; no Reply row; the hint says what Shift-click and Return do', async () => {
+    const page = await evaluate(`(()=>{const h=document.querySelector('#reader-title'),back=document.querySelector('#reader-parent');
+      return {heading:h.textContent,button:h.querySelector('button')?.textContent??null,origin:document.querySelector('#reader-origin').textContent,
+        back:back.textContent,backName:back.getAttribute('aria-label'),hint:document.querySelector('.source-actions .muted').textContent,
+        placeholder:document.querySelector('#writing-body').placeholder,
+        writingWords:[...document.querySelectorAll('.writing-pane h3,.writing-pane .writing-heading')].map(e=>e.textContent)}})()`);
+    observations.push({ label: 'page', ...page });
+    assert.deepEqual(page, { heading: 'Fixture topic', button: 'Fixture topic', origin: 'Fixture writer', back: '←', backName: 'Back to the topic',
+      hint: 'Shift-click extends the lit passage · Return inserts it as a quote', placeholder: 'Write a reply…', writingWords: [] },
+    'the topic\'s name heads the message, with no "Message" or "Topic" words and no Reply row');
+    await point('#reader-title button');
+    await until(() => evaluate('!document.querySelector("#reader").open'), 'a press on the heading closes the Reader');
+    assert.deepEqual((await snapshot()).events.filter(event => event.type === 'close').map(event => event.reason), ['parent'], 'the heading goes back to the topic, as the arrow does');
+  });
+
+  await check('finished the message wears no ring when the Reader focuses it, and shows one when Tabbed onto', async () => {
+    const ring = () => evaluate(`(()=>{const s=document.querySelector('#source-body'),c=getComputedStyle(s);return {active:document.activeElement.id,ring:c.outlineStyle,visible:s.matches(':focus-visible')}})()`);
+    // Opened from the keyboard, as a card is, so the browser would draw a ring.
+    await key('Escape');
+    await until(() => evaluate('!document.querySelector("#reader").open && document.activeElement.id === "open-fixture"'), 'closed, focus back on the opener');
+    await key('Enter');
+    await until(() => evaluate('document.querySelector("#reader").open && document.activeElement.id === "source-body"'), 'opened from the keyboard, focus on the message');
+    const opened = await ring();
+    observations.push({ label: 'opened by keyboard', ...opened });
+    assert.equal(opened.visible, true, 'the browser takes this focus as one to show');
+    assert.equal(opened.ring, 'none', 'the message wears no ring when the Reader puts focus on it');
+    await point('#reader-layout'); await point('#reader-layout');
+    await key('Tab'); await key('Tab');
+    const tabbed = await ring();
+    observations.push({ label: 'tabbed', ...tabbed });
+    assert.deepEqual([tabbed.active, tabbed.ring], ['source-body', 'solid'], 'a keyboard user who Tabs onto the message sees the ring');
+  });
+
+  await check('finished Add note sits before Add image and looks like it; Done keeps the Reader open; a note shows in yellow, light and dark', async () => {
+    const look = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),c=getComputedStyle(e),b=e.getBoundingClientRect();
+      return {text:e.textContent,x:b.x,right:b.right,y:Math.round(b.y),height:Math.round(b.height),font:c.fontSize+' '+c.fontWeight+' '+c.fontFamily,
+        padding:c.padding,border:c.borderTopWidth+' '+c.borderTopStyle,radius:c.borderRadius,background:c.backgroundColor,borderColor:c.borderTopColor}})()`);
+    // The Mac's own scheme can be either; each look says which it measures.
+    const scheme = value => send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value }] });
+    await scheme('light');
+    const plain = await look('#toggle-note'), image = await look('#add-image');
+    observations.push({ label: 'no note', plain, image });
+    assert.equal(plain.text, 'Add note');
+    assert.ok(plain.right <= image.x && image.x - plain.right < 16, 'Add note sits just before Add image');
+    for (const property of ['y', 'height', 'font', 'padding', 'border', 'radius', 'background', 'borderColor']) assert.equal(plain[property], image[property], `Add note has Add image's ${property}`);
+    await point('#toggle-note'); await send('Input.insertText', { text: 'Ask about the deploy' });
+    assert.equal(await evaluate("document.querySelector('#send-reply').textContent"), 'Done');
+    await point('#send-reply');
+    await until(() => evaluate("document.querySelector('#toggle-note').textContent === 'Show note'"), 'Done goes back to the reply');
+    assert.equal(await evaluate('document.querySelector("#reader").open'), true, 'Done keeps the Reader open');
+    const light = await look('#toggle-note');
+    await scheme('dark');
+    const dark = await look('#toggle-note'), darkImage = await look('#add-image');
+    await scheme('light');
+    observations.push({ label: 'with a note', light, dark, darkImage });
+    assert.equal(light.background, 'rgb(252, 239, 181)', 'a soft yellow in light');
+    assert.equal(dark.background, 'rgb(85, 74, 28)', 'a dim yellow in dark');
+    assert.notEqual(dark.background, darkImage.background, 'in dark it still stands apart from Add image');
+    for (const property of ['y', 'height', 'font', 'padding', 'radius']) assert.equal(light[property], image[property], `Show note keeps Add image's ${property}`);
+    await point('#toggle-note'); await key('a', 4, { commands: ['selectAll'] }); await key('Backspace', 0, { code: 'Backspace', windowsVirtualKeyCode: 8 });
+    assert.equal(await evaluate("document.querySelector('#writing-body').value"), '', 'the note is emptied');
+    await point('#send-reply');
+    await until(() => evaluate("document.querySelector('#toggle-note').textContent === 'Add note'"), 'an emptied note brings back Add note');
+    assert.equal((await look('#toggle-note')).background, image.background, 'and its plain look');
+    assert.equal((await snapshot()).events.filter(event => event.type === 'close').length, 0, 'nothing closed the Reader');
+    await send('Emulation.setEmulatedMedia', { features: [] });
+  });
+
+  await check('finished the arrows go up and down as the page does, by button and by key', async () => {
+    const arrows = await evaluate(`[...document.querySelectorAll('#reader-stepping button')].map(b=>({id:b.id,text:b.textContent,label:b.getAttribute('aria-label'),title:b.title,x:b.getBoundingClientRect().x}))`);
+    observations.push({ label: 'arrows', arrows });
+    assert.deepEqual(arrows.map(arrow => [arrow.id, arrow.text, arrow.label, arrow.title]),
+      [['next-message', '↑', 'Newer message (above)', 'Newer message (above)'], ['previous-message', '↓', 'Older message (below)', 'Older message (below)']], 'up is the newer message, and comes first');
+    assert.ok(arrows[0].x < arrows[1].x, 'up sits before down');
+    await point('#next-message'); await point('#previous-message');
+    await point('#source-body'); await key('ArrowUp', 4); await key('ArrowDown', 4); await key('ArrowLeft', 4); await key('ArrowRight', 4);
+    assert.deepEqual((await snapshot()).events.filter(event => event.type === 'step').map(event => event.direction), [1, -1, 1, -1],
+      '↑ and ⌘↑ open the newer message, ↓ and ⌘↓ the older; ⌘← and ⌘→ do nothing');
+  });
+
+  // The save status beside the buttons, wherever the writing column is
+  // narrow: a narrow window in either layout, the Wide layout with its divider
+  // anywhere, a phone, and the topic's new-message composer. The status is one
+  // line whatever it says, so its words are never measured against a guess:
+  // these are the longest it says today, words built elsewhere (an image's
+  // file name, the cleanup error) and words no status says yet. The writing
+  // and the buttons stay still for every one of them, "Saved to Theseus" reads
+  // whole wherever the footer has room to read in, and a tap on a status too
+  // long for its line shows all of it.
+  await check('finished the save status is one line whatever it says: no words move the writing, "Saved to Theseus" reads whole at every width and layout, and a tap shows all of a long status', async () => {
+    const long = 'Finish or remove the image Screenshot 2026-11-07 at 10.32.15 AM.png before sending.';
+    const words = ['Saved to Theseus', 'Saved', 'Source or destination unavailable — writing kept on this device',
+      'The image change is not saved on this device. Retry before sending.', 'Saved; recovery-copy cleanup could not finish. Retry from Review versions.',
+      long, `Finish or remove the image ${'IMG_0001-'.repeat(40)}.png before sending.`, 'Words no status says yet. '.repeat(12)];
+    const rem = 16, roomy = 12 * rem;
+    let opened = 0;
+    const measure = surface => evaluate(`(()=>{const at=s=>{const b=document.querySelector(s).getBoundingClientRect();return [b.x,b.y,b.width,b.height].map(n=>Math.round(n*2)/2)};
+      const lines=e=>{const r=document.createRange();r.selectNodeContents(e);return new Set([...r.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size};
+      const ids=${JSON.stringify(surface)}==='reader'?['#writing-body','#send-reply','#add-image','#toggle-note','#reader .writing-footer']:['#inline-writing-body','#inline-send','#inline-add-image','#inline-composer .writing-footer'];
+      const status=document.querySelector(${JSON.stringify(surface)}==='reader'?'#save-state':'#inline-save-state'),hint=document.querySelector(${JSON.stringify(surface)}==='reader'?'#writing-hint':'#inline-writing-hint');
+      return {boxes:ids.map(at),footer:at(ids.at(-1))[2],status:at('#'+status.id),statusLines:lines(status),whole:status.scrollWidth<=status.clientWidth,hintLines:lines(hint)}})()`);
+    const say = (status, text) => evaluate(`document.querySelector(${JSON.stringify(status)}).textContent = ${JSON.stringify(text)}`);
+    // The cases after this one run at the harness's own window size.
+    try {
+      for (const [width, height, mobile = false] of [[1440, 900], [1000, 800], [900, 800], [800, 800], [761, 800], [390, 844, true]]) {
+        for (const view of ['stacked', 'wide', 'wide, writing narrowest', 'wide, writing widest', 'composer']) {
+          await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+          const caseId = `${results.length}-sweep-${++opened}`;
+          await send('Page.navigate', { url: origin + '/?case=' + caseId + (view === 'composer' ? '&composer' : '') });
+          await until(() => evaluate(`document.body?.dataset.fixtureReady === "true" && document.body.dataset.fixtureCase === ${JSON.stringify(caseId)} && matchMedia("(max-width: 760px)").matches === ${width <= 760}`), 'fixture at its width');
+          const surface = view === 'composer' ? 'composer' : 'reader';
+          if (surface === 'reader') {
+            await point('#open-fixture'); await until(() => evaluate('document.querySelector("#reader").open'), 'open reader');
+            if (view.startsWith('wide')) {
+              if (await evaluate('document.querySelector("#reader-layout").hidden')) continue;
+              await point('#reader-layout'); await until(() => evaluate('document.querySelector("#reader").dataset.layout === "wide"'), 'wide layout');
+            }
+            if (view.includes('writing')) {
+              await point('#reader-divider');
+              for (let step = 0; step < 4; step++) await key(view.endsWith('narrowest') ? 'ArrowRight' : 'ArrowLeft', 8);
+              assert.equal(await share(), view.endsWith('narrowest') ? 20 : 80, `${view}: the divider is at its end`);
+            }
+          }
+          await until(() => evaluate('document.getAnimations().every(animation => animation.playState !== "running")'), 'settled layout');
+          const label = `${width}px ${view}`, status = surface === 'reader' ? '#save-state' : '#inline-save-state';
+          const shown = [];
+          for (const text of words) { await say(status, text); shown.push({ text, ...await measure(surface) }); }
+          const first = shown[0];
+          observations.push({ label, footer: first.footer, status: first.status, whole: Object.fromEntries(shown.map(item => [item.text.slice(0, 40), item.whole])), hintLines: first.hintLines });
+          for (const item of shown) assert.deepEqual(item.boxes, first.boxes, `${label}: "${item.text}" moves nothing: the writing and the buttons stay still`);
+          for (const item of shown) assert.equal(item.statusLines, 1, `${label}: "${item.text}" takes one line`);
+          if (first.footer < roomy) continue;
+          assert.equal(first.whole, true, `${label}: "Saved to Theseus" reads whole beside the buttons`);
+          assert.ok(first.hintLines <= 2, `${label}: the hint takes at most two lines`);
+          if (width !== 1440 || view !== 'stacked') continue;
+          // A tap on a status too long for its line shows all of it, in place;
+          // a tap back in the writing returns it to its line.
+          await say(status, long);
+          assert.equal((await measure(surface)).whole, false, `${label}: the long status ends in an ellipsis`);
+          await point(status);
+          const tapped = await measure(surface);
+          observations.push({ label: `${label} tapped`, lines: tapped.statusLines, whole: tapped.whole });
+          assert.ok(tapped.whole && tapped.statusLines > 1, `${label}: a tap shows all its words`);
+          await point('#writing-body');
+          assert.deepEqual((await measure(surface)).boxes, first.boxes, `${label}: back in the writing, the status is one line again`);
+        }
+      }
+    } finally { await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }); }
+  });
+
+  const selectedCases = mode === '--keyboard' ? cases.slice(0, 1) : mode === '--anchor-control' ? cases.slice(7, 8) : mode === '--review-gaps' ? cases.slice(5, 8)
+    : mode === '--finished' ? cases.slice(8) : cases.slice(0, 5);
   for (const item of selectedCases) await runCase(item);
-  if (['--mutations', '--review-gaps', '--anchor-control'].includes(mode) && results.every(result => result.passed)) {
+  if (['--mutations', '--review-gaps', '--anchor-control', '--finished'].includes(mode) && results.every(result => result.passed)) {
+    // Quoting, from letting go of the selection to scrolling the field (web/reader.mjs).
+    const quoteBlock = /    window\.getSelection\(\)\?\.removeAllRanges\(\);\n    this\.field\.focus\(\);[\s\S]*?    this\.field\.scrollTop = this\.field\.scrollHeight;\n/.exec(await readFile(path.join(root, 'web/reader.mjs'), 'utf8'))?.[0] ?? '';
     const definitions = mode === '--mutations' ? [
       { name: 'empty-gallery-falls-through-to-send', file: 'web/editor.mjs', index: 3,
         from: "if (event.metaKey && event.shiftKey && writingEmpty && ['reader', 'reply'].includes(context)) return 'return-gallery';",
@@ -301,6 +494,44 @@ try {
       { name: 'divider-ignores-real-pointer-movement', file: 'web/reader.mjs', index: 4,
         from: 'this.layout.setShare(drag.share + delta / drag.extent, drag.shape);',
         to: 'this.layout.setShare(drag.share, drag.shape);', expected: /native drag expands writing/ },
+      // The quote as the preview had it when the cursor did not show: the
+      // message's selection let go last, after the field had focus and its
+      // caret, which clears the caret it was drawing.
+      { name: 'quote-lets-go-of-the-selection-last', file: 'web/reader.mjs', index: 0,
+        from: quoteBlock, to: quoteBlock.replace('    window.getSelection()?.removeAllRanges();\n', '') + '    window.getSelection()?.removeAllRanges();\n',
+        expected: /the document's selection is the field's caret/ },
+    ] : mode === '--finished' ? [
+      { name: 'heading-stays-message', file: 'web/reader.mjs', index: 8,
+        from: 'this.paintTitle(source, topics);', to: "this.$('reader-title').textContent = source.title || 'Message';", expected: /the topic's name heads the message/ },
+      { name: 'ring-on-the-readers-own-focus', file: 'web/aim.css', index: 9,
+        from: '#source-body:focus-visible:not([data-tabbed]){outline:none}', to: '', expected: /no ring when the Reader puts focus on it/ },
+      { name: 'tab-not-told-apart', file: 'web/reader.mjs', index: 9,
+        from: "if (event.key === 'Tab') this.tabbing = true;", to: 'void event;', expected: /Tabs onto the message sees the ring/ },
+      { name: 'add-note-unlike-add-image', file: 'web/aim.css', index: 10,
+        from: '#toggle-note,#add-image,#cancel-image{', to: '#add-image,#cancel-image{', expected: /Add note has Add image's/ },
+      { name: 'done-closes-the-reader', file: 'web/reader.mjs', index: 10,
+        from: "if (saved) { this.notice(''); this.switchMode('reply'); }", to: "if (saved) { this.notice(''); this.finishClose(); }", expected: /Done goes back to the reply/ },
+      { name: 'no-yellow-for-a-note', file: 'web/aim.css', index: 10,
+        from: '#toggle-note[data-has-note]{background:var(--note);', to: '#toggle-note[data-has-note]{', expected: /a soft yellow in light/ },
+      { name: 'arrows-for-a-page-oldest-on-top', file: 'web/reader.mjs', index: 11,
+        from: 'const NEWEST_ON_TOP = true;', to: 'const NEWEST_ON_TOP = false;', expected: /up is the newer message, and comes first/ },
+      // The status's room as the branch first had it: only on a phone, so a
+      // narrow Wide layout squeezed "Saved to Theseus" to a word or two.
+      { name: 'status-room-only-on-a-phone', file: 'web/aim.css', index: 12,
+        from: '@container writing-footer (max-width:34rem){#reader', to: '@media(max-width:760px){#reader',
+        expected: /\d+px wide[^:]*: "Saved to Theseus" reads whole/ },
+      // The status's room as the last round had it: as tall as its words, so a
+      // long file name or the cleanup error grows the footer.
+      { name: 'status-as-tall-as-its-words', file: 'web/aim.css', index: 12,
+        from: '.save-status>span{display:block;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        to: '.save-status>span{display:block;font-size:.78rem;color:var(--muted)}',
+        expected: /"Finish or remove the image Screenshot 2026-11-07 at 10\.32\.15 AM\.png before sending\." moves nothing/ },
+      { name: 'tap-shows-nothing-more', file: 'web/aim.css', index: 12,
+        from: '.save-status>span:focus{white-space:normal;overflow-wrap:anywhere;outline:none}', to: '',
+        expected: /a tap shows all its words/ },
+      { name: 'composer-status-squeezed', file: 'web/aim.css', index: 12,
+        from: '@container writing-footer (max-width:28rem){#inline-composer .writing-footer>div{order:-1;flex:1 0 100%}#inline-composer .writing-footer>button:last-child{margin-left:auto}}', to: '',
+        expected: /px composer: "Saved to Theseus" reads whole/ },
     ] : [
       { name: 'nonempty-reply-misread-as-empty', file: 'web/reader.mjs', index: 5,
         from: 'writingEmpty: !reply.body.trim() && !reply.attachments.length', to: 'writingEmpty: true', expected: /nonempty Shift-Cmd-Return sends exactly once/ },

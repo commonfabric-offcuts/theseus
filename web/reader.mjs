@@ -22,6 +22,15 @@ const node = (tag, text, className) => {
 };
 const visible = el => el.getClientRects().length && !el.disabled && !el.hidden;
 
+// The topic page shows its newest message on top, so the message above the
+// one open is the next (newer) one and the one below is the previous
+// (older). The up and down buttons, their words and the ⌘↑/⌘↓ keys all read
+// this one rule: a page that put its newest message at the bottom flips
+// them together here.
+const NEWEST_ON_TOP = true;
+const neighborAt = where => (where === 'above') === NEWEST_ON_TOP ? 'next' : 'previous';
+const STEPPING = { above: { glyph: '↑', key: 'ArrowUp' }, below: { glyph: '↓', key: 'ArrowDown' } };
+
 export class Reader {
   constructor(callbacks) {
     this.callbacks = callbacks;
@@ -80,8 +89,13 @@ export class Reader {
       catch (error) { this.notice(error.message); }
       finally { this.paintStatus(); }
     };
-    this.$('previous-message').onclick = () => this.step(-1);
-    this.$('next-message').onclick = () => this.step(1);
+    for (const where of ['above', 'below']) {
+      const neighbor = neighborAt(where), button = this.$(`${neighbor}-message`);
+      const words = `${neighbor === 'next' ? 'Newer' : 'Older'} message (${where})`;
+      button.textContent = STEPPING[where].glyph; button.setAttribute('aria-label', words); button.title = words;
+      button.onclick = () => this.stepTo(where);
+      this.$('reader-stepping').append(button);
+    }
     this.$('recipient-input').addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.isComposing) { event.preventDefault(); event.stopPropagation(); this.addRecipient(); }
     });
@@ -107,7 +121,16 @@ export class Reader {
       if (event.pointerType !== 'touch' && event.button === 0 && this.source) this.light(event.target, event.shiftKey);
     });
     this.sourceBody.addEventListener('mousedown', event => { if (event.shiftKey && event.button === 0 && this.hover) event.preventDefault(); });
-    this.dialog.addEventListener('focusin', () => { if (!this.returnQuotes()) this.disarm(); });
+    // The message wears its focus ring only when a keyboard user Tabs onto it,
+    // not when the Reader puts focus there itself (see aim.css).
+    this.dialog.addEventListener('keydown', event => { if (event.key === 'Tab') this.tabbing = true; }, true);
+    this.dialog.addEventListener('pointerdown', () => { this.tabbing = false; }, true);
+    this.sourceBody.addEventListener('focusout', () => this.sourceBody.removeAttribute('data-tabbed'));
+    this.dialog.addEventListener('focusin', event => {
+      if (event.target === this.sourceBody) this.sourceBody.toggleAttribute('data-tabbed', Boolean(this.tabbing));
+      this.tabbing = false;
+      if (!this.returnQuotes()) this.disarm();
+    });
     this.sourceBody.addEventListener('pointermove', event => this.point(event));
     this.dialog.addEventListener('keydown', event => this.key(event));
   }
@@ -158,7 +181,7 @@ export class Reader {
     this.$('source-changes').hidden = true;
     this.opener = opener ?? this.opener ?? document.activeElement;
     this.disarm();
-    this.$('reader-title').textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message');
+    this.paintTitle(source, topics);
     this.paintOrigin(source);
     // Where the reply goes: the topic's name, or, for a message in an ordinary
     // topic, a choice of this topic or the outcome's conversation (outcome-conversation.mjs).
@@ -365,10 +388,20 @@ export class Reader {
     // The quote is writing like any other, so it goes through the editor's
     // edit, which brings in the author a reply is offered to.
     editor.edit({ quotes: [...editor.draft.quotes, { source: structuredClone(this.source.source_ref), excerpt }] });
+    // The message's selection is let go before the field takes focus: once
+    // the field is focused the document's selection is its caret, and
+    // clearing it then leaves no caret drawn until the window is refocused.
+    window.getSelection()?.removeAllRanges();
     this.field.focus();
     this.field.setSelectionRange(this.field.value.length, this.field.value.length);
     this.insertText(addition);
-    window.getSelection()?.removeAllRanges();
+    // The cursor sits after the quote and its blank line, ready to type, and
+    // the field shows it however tall the writing has grown: an engine may
+    // leave the caret drawn before a trailing newline, or short of the
+    // field's bottom padding.
+    const end = this.field.value.length;
+    this.field.setSelectionRange(end, end);
+    this.field.scrollTop = this.field.scrollHeight;
     this.disarm();
   }
 
@@ -397,9 +430,8 @@ export class Reader {
 
   drawEditor() {
     const note = this.mode === 'note';
-    this.$('writing-title').textContent = note ? 'Private note' : 'Reply';
     this.$('writing-label').textContent = note ? 'Private note' : 'Reply';
-    this.$('toggle-note').textContent = note ? 'Back to reply' : 'Private note';
+    this.paintNoteToggle();
     this.$('destination-label').hidden = note || (this.source.source_ref.kind === 'message' && !this.offered);
     this.callbacks.audiencePainted?.(note ? null : this.sessions?.reply?.context?.topicId ?? null);
     this.$('reply-audience').hidden = note;
@@ -409,12 +441,23 @@ export class Reader {
     if (note) this.$('send-reply').textContent = 'Done';
     else { const word = node('span', 'Send', 'send-word'), keys = node('span', '⌘↵'); keys.setAttribute('aria-hidden', 'true'); this.$('send-reply').replaceChildren(word, ' ', keys); }
     this.$('send-reply').classList.toggle('primary', !note);
-    this.field.placeholder = note ? 'Your private note…' : 'Write a reply…';
+    this.field.placeholder = note ? 'Write a private note only you can see…' : 'Write a reply…';
     this.field.value = this.editor.draft.body;
     this.paintImages();
     this.paintRecipients();
     this.paintChoice();
     this.paintStatus();
+  }
+
+  // The note's button says what a press does: write one, see the one you
+  // have, or go back to the reply. Beside the reply it wears the note's
+  // yellow while the message has a note, and its plain look once it has none.
+  paintNoteToggle() {
+    const toggle = this.$('toggle-note'), writing = this.mode === 'note';
+    const has = !writing && Boolean(this.sessions?.note?.draft.body.trim());
+    toggle.textContent = writing ? 'Back to reply' : has ? 'Show note' : 'Add note';
+    toggle.title = writing ? 'Back to your reply' : has ? 'Your private note on this message, which only you can see' : 'A private note on this message that only you can see';
+    toggle.toggleAttribute('data-has-note', has);
   }
 
   paintRecipients() {
@@ -570,9 +613,20 @@ export class Reader {
     else control.onclick = null;
   }
 
+  // A message's heading is its topic's name, and a press on it goes back to
+  // that topic, as the arrow beside it does.
+  paintTitle(source, topics) {
+    const title = this.$('reader-title');
+    const topic = source.source_ref.kind === 'message' && source.topic_id ? topics.find(item => item.id === source.topic_id) : null;
+    if (!topic?.title) { title.textContent = source.title || (source.source_ref.kind === 'memory' ? 'Notebook' : 'Message'); return; }
+    const open = node('button', topic.title, 'reader-topic'); open.type = 'button'; open.title = 'Open this topic';
+    open.onclick = () => this.close('parent');
+    title.replaceChildren(open);
+  }
+
   paintOrigin(source) {
     const provenance = source.source_ref.kind === 'memory' ? `Notebook · revision ${source.source_ref.revision}`
-      : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : 'Message';
+      : source.whisper ? `Whisper to ${source.private_to === this.callbacks.actor?.() ? 'you' : source.private_to}` : '';
     this.sourceBody.classList.toggle('whispering', Boolean(source.whisper));
     const sent = Number.isSafeInteger(source.sent_ms) ? [' · ', timeNode(source.sent_ms, document)] : [];
     this.$('reader-origin').replaceChildren([source.author, provenance].filter(Boolean).join(' · '), ...sent);
@@ -619,10 +673,21 @@ export class Reader {
 
   notice(text) { this.$('reader-notice').textContent = text; this.$('reader-notice').hidden = !text; }
 
-  // Save note, by its button or ⌘ Return, waits for a step as sending does.
-  saveNote() {
+  // Done, by its button or ⌘ Return, waits for a step as sending does. The
+  // note saves as it is written; Done confirms the save. A saved note leaves
+  // the Reader open and goes back to the reply as it was, where the note's
+  // button shows the note is there. A note not saved stays in front, its
+  // writing kept, and says so; a step or close that began meanwhile goes on
+  // undisturbed.
+  async saveNote() {
     if (!this.admits()) { if (this.writes()) this.notice(STEP_WAITS); return; }
-    this.callbacks.saveNote(this.editor);
+    const editor = this.editor, presentation = this.presentation;
+    const saved = await this.callbacks.saveNote(editor);
+    // true saved, false not saved; null leaves nothing to say: the note is
+    // no longer in front, or why it failed has already been said.
+    if (typeof saved !== 'boolean' || this.mode !== 'note' || this.editor !== editor || this.presentation !== presentation || !this.dialog.open || !this.admits(editor, presentation)) return;
+    if (saved) { this.notice(''); this.switchMode('reply'); }
+    else this.notice('Not saved yet. Your note is kept here; press Done to try again.');
   }
 
   async send(stay) {
@@ -667,6 +732,8 @@ export class Reader {
   }
 
   async step(direction) { this.rememberPlace(); await this.callbacks.step(direction); }
+  // Steps to the message above or below the open one, as the page shows them.
+  stepTo(where) { return this.step(neighborAt(where) === 'next' ? 1 : -1); }
   escape() {
     if (this.hover || !window.getSelection()?.isCollapsed) { this.disarm(); window.getSelection()?.removeAllRanges(); return; }
     this.close();
@@ -709,8 +776,9 @@ export class Reader {
     if (!inEditor && event.metaKey && event.shiftKey && event.code === 'KeyC' && this.source?.source_ref.kind === 'message') {
       event.preventDefault(); navigator.clipboard.writeText(this.source.body).catch(() => this.notice('Could not copy. Select the text and use Copy.')); return;
     }
-    if (!inEditor && event.metaKey && !event.shiftKey && ['ArrowLeft', 'ArrowRight'].includes(event.key)) {
-      event.preventDefault(); if (this.source.source_ref.kind === 'message') this.step(event.key === 'ArrowLeft' ? -1 : 1); return;
+    const where = Object.keys(STEPPING).find(at => STEPPING[at].key === event.key);
+    if (!inEditor && event.metaKey && !event.shiftKey && where) {
+      event.preventDefault(); if (this.source.source_ref.kind === 'message') this.stepTo(where); return;
     }
     const reply = this.sessions.reply.draft;
     const action = keyAction(event, { context: this.mode === 'note' && event.metaKey ? 'note' : inEditor ? this.mode : 'reader',

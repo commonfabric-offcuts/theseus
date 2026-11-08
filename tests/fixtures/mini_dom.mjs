@@ -56,6 +56,7 @@ export class Element {
   setAttribute(name, value) { this.attributes[name] = String(value); }
   getAttribute(name) { return Object.hasOwn(this.attributes, name) ? this.attributes[name] : null; }
   removeAttribute(name) { delete this.attributes[name]; }
+  toggleAttribute(name, force) { const on = force ?? !Object.hasOwn(this.attributes, name); if (on) this.attributes[name] = ''; else delete this.attributes[name]; return on; }
   addEventListener(type, listener) { this.listeners[type] = listener; }
   focus() { if (this.document) this.document.activeElement = this; else if (globalThis.document) globalThis.document.activeElement = this; }
   setSelectionRange() {}
