@@ -154,7 +154,12 @@ check for the same commit runs beside them rather than after them.
   foreground read stopping the background read in flight, or an image
   removed while it uploads. A read the page gives up waiting for (a Reader
   open's deadline, a background read that runs out) did get no answer, and
-  counts.
+  counts. Each attempt is judged from when it began, never from when the
+  wait around it was set: when a deadline passes, what it gives up on is the
+  attempts still out under it, so in **Retry access** a read begun after the
+  one before it was answered, and never answered, doubts the stream. A
+  deadline that passes with nothing out asked Theseus nothing and doubts
+  nothing.
   A failure is about reaching Theseus when the attempt got no answer of
   Theseus's own (nothing answered, or only something in front of it did, such
   as the 502 with an empty body Tailscale Serve gives while the server

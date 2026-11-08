@@ -842,6 +842,29 @@ const realPage = () => {
 const sessionRefusal = () => new Response(JSON.stringify({ recorded: false, error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.' } }), { status: 401 });
 const pageWith = token => new Response('<meta name="aim-next-session" content="' + token + '">', { status: 200 });
 
+// The reviewer's case (RVX-5): Retry access reads the source, which is
+// answered, and then the source's state, which never is: the network dropped
+// between the two. The page gives up on that read once the foreground deadline
+// passes. It began after the last answer and got none, so the feed that reads
+// live is doubted: it is opened again, and until it answers the page is not
+// connected.
+test('Retry access, its first read answered and its second never: the feed that reads live is opened again', async () => {
+  const { f, sockets, held, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  const source = { source_ref: { kind: 'message', id: 'm1' }, body: 'Original source' };
+  const modal = { source, sourceUnavailable: false, availabilityUnconfirmed: true, editors: { reply: { unavailable: true }, note: { unavailable: true } } };
+  f.registry.current = modal;
+  f.registry.cleanup = new RecoveryCleanup({ api: held.api, changed: () => {}, bootstrap: { transport: { read_admission: { version: 1, header: 'X-AIM-Read-Class', foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 }, background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } } } }, journal: {}, runtime: { readTimeoutMs: 80 } });
+  held.server = async (path, init) => {
+    if (JSON.parse(init.body).name === 'source') return new Response(JSON.stringify({ ...source, instance_id: 'fixture' }), { status: 200 });
+    return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
+  };
+  const before = sockets.length;
+  await f.retrySource(); await drain();
+  assert.deepEqual([sockets.length - before, held.live.state], [1, 'down'], `the source state read began after the last answer and got none, yet the feed was left reading live (access line ${JSON.stringify(modal.accessMessage)})`);
+});
+
 // The reviewer's case (round 5, RV5-A): the feed reads live after its last
 // message, a request gets no answer (on a network drop, Chrome rejects the
 // fetch before the WebSocket closes), then the socket closes and nothing

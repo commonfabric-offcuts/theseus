@@ -178,6 +178,12 @@ test('a read the page stopped waiting for leaves a line that goes when Theseus a
 const gated = answer => { const gate = { open: null }; const opened = new Promise(resolve => { gate.open = resolve; });
   return { gate, api: new Api('session', async () => { await opened; return answer(); }) }; };
 const ways = [['request', a => a.view('source', {})], ['upload', a => a.upload({ v: 1 }, new Blob(['x']))], ['media', a => a.media('instance', { id: 'm1' }, null)]];
+// A browser's fetch on a connection that has stopped answering: it ends only
+// when its request is aborted.
+const silent = (path, init) => new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(new DOMException('The operation was aborted.', 'AbortError')), { once: true }));
+// A Reader read the page bounds: an attempt under a deadline that gets no answer in time.
+const ranOutRead = (ms = 0) => { const deadline = new Deadline(ms, 'Reader request timed out. Your writing is kept.'), read = new Api('session', silent).view('source', {}, { signal: deadline.signal });
+  read.catch(() => {}); return { deadline, read, failure: () => deadline.bound(read) }; };
 
 test('every way the page makes an attempt says when Theseus answered it: what it asked for or a refusal of its own, not nothing, a proxy or a refused session', async () => {
   const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new Uint8Array([1])))].map(byte => byte.toString(16).padStart(2, '0')).join('');
@@ -266,10 +272,16 @@ test('Theseus has answered since an attempt began, for every way the page makes 
     const after = gated(nothing); after.gate.open();
     assert.equal(answeredSince(await failureOf(attempt(after.api))), false, `${name}: begun after`);
   }
-  const early = new Deadline(0, 'Reader request timed out. Your writing is kept.');
+  // A wait the page gave up on began when the attempt it gave up on did, not when the wait was set.
+  const early = ranOutRead();
   answered();
-  const ranOut = await failureOf(early.bound(new Promise(() => {}))), late = await failureOf(new Deadline(0, 'Reader request timed out. Your writing is kept.').bound(new Promise(() => {})));
-  assert.deepEqual([answeredSince(ranOut), answeredSince(late), unreached(ranOut)], [true, false, true], 'a deadline set before an answer, and one set after');
+  const ranOut = await failureOf(early.failure()), late = await failureOf(ranOutRead().failure());
+  assert.deepEqual([answeredSince(ranOut), answeredSince(late), unreached(ranOut)], [true, false, true], 'an attempt under a wait begun before an answer, and one begun after');
+  const waitBefore = new Deadline(0, 'Reader request timed out. Your writing is kept.');
+  answered();
+  const begunAfter = new Api('session', silent).view('source', {}, { signal: waitBefore.signal }); begunAfter.catch(() => {});
+  assert.equal(answeredSince(await failureOf(waitBefore.bound(begunAfter))), false,
+    'an attempt begun after an answer that came once its wait was set: nothing has answered since it began');
 });
 
 // A socket can read 'live' over a connection that is gone (a laptop that slept
@@ -286,7 +298,7 @@ test('an attempt that got no answer, with nothing answered since it began, makes
   follow(feed); feed.start();
   const up = () => { if (!feed.current) feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) }); };
   const line = element();
-  for (const [name, attempt] of [...ways, ['a wait the page bounds', () => new Deadline(0, 'Reader request timed out. Your writing is kept.').bound(new Promise(() => {}))]]) {
+  for (const [name, attempt] of [...ways, ['a wait the page bounds', () => ranOutRead().failure()]]) {
     for (const [what, answer] of [['nothing', nothing], ['the proxy', proxyDown], ['a refused session', () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance.' })]]) {
       if (name === 'a wait the page bounds' && what !== 'nothing') continue;
       up();
@@ -398,5 +410,70 @@ test('a request the page stopped itself leaves the live feed alone; one it gave 
     assert.deepEqual([sockets.length - before, doubted.closed, feed.state, said(line) !== ''], [1, true, 'down', true],
       `${what}: nothing answered in time, so the feed is opened again and the line shows`);
   }
+  follow(null);
+});
+
+// The reviewer's cases (round after the page's own stops). A wait the page
+// gives up on (a Deadline) got no answer for the attempts still out under it,
+// and for nothing else, and each is judged from when it began, not from when
+// the wait was set: Retry access reads the source state and then the source in
+// one foreground read, and a network that drops between the two leaves the
+// second unanswered after the first was answered. A wait that runs out before
+// anything was sent asked Theseus nothing.
+test('a wait the page gives up on doubts the feed for each attempt still out under it, from when that attempt began; with none out it doubts nothing', async () => {
+  const sockets = [];
+  const feed = new Live({ token: 'session', socket: () => { const socket = { closed: false, close() { this.closed = true; } }; sockets.push(socket); return socket; },
+    timers: { setTimeout: () => 1, clearTimeout() {} }, origin: 'https://fixture' });
+  follow(feed); feed.start();
+  const up = () => { if (!feed.current) feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) }); };
+  const line = element();
+  // A request that carries a signal and gets no answer, its signal never aborted.
+  up();
+  let before = sockets.length;
+  await failureOf(new Api('session', async () => nothing()).view('source', {}, { signal: new AbortController().signal }));
+  assert.deepEqual([sockets.length - before, feed.state], [1, 'down'], 'a request with a signal that got no answer left the feed alone');
+  // Two reads in one foreground: the first answered, the second begun after that answer and never answered.
+  up();
+  let n = 0;
+  const cleanup = cleanupWith((path, init) => ++n === 1 ? Promise.resolve(theseus(200, null)) : silent(path, init));
+  cleanup.runtime.readTimeoutMs = 60;
+  const access = cleanup.foreground();
+  await access.read(options => cleanup.api.view('editor_state', {}, options));
+  before = sockets.length;
+  const ranOut = await failureOf(access.read(options => cleanup.api.view('source', {}, options)));
+  access.release();
+  showLine(line, ranOut);
+  assert.deepEqual([sockets.length - before, feed.state, said(line)], [1, 'down', ranOut.message],
+    `the second read began after the last answer and got none, yet the feed was left reading live (line ${JSON.stringify(said(line))})`);
+  assert.equal(answeredSince(ranOut), false, 'nothing has answered since the read that got none began: what it held up waits for an answer');
+  // Two attempts out under one wait, an answer between their starts: the later one got none since it began.
+  up();
+  before = sockets.length;
+  const both = new Deadline(0, 'Reader request timed out. Your writing is kept.'), stalled = new Api('session', silent);
+  const first = stalled.view('source', {}, { signal: both.signal });
+  answered();
+  const second = stalled.view('editor_state', {}, { signal: both.signal });
+  [first, second].forEach(read => read.catch(() => {}));
+  const gaveUp = await failureOf(both.bound(Promise.all([first, second])));
+  assert.deepEqual([sockets.length - before, feed.state, answeredSince(gaveUp)], [1, 'down', false], 'the later of two attempts given up on began after the last answer');
+  // A wait whose read was answered and that then runs out with nothing out (the page's own work took the time).
+  up();
+  const answeredRead = new Deadline(20, 'Reader request timed out. Your writing is kept.');
+  await new Api('session', async () => theseus(200, null)).view('source', {}, { signal: answeredRead.signal });
+  before = sockets.length;
+  await new Promise(resolve => setTimeout(resolve, 25));
+  const overdue = answeredRead.failure();
+  assert.deepEqual([sockets.length - before, feed.state, answeredSince(overdue)], [0, 'live', false], 'a read answered under it is not given up on, and nothing answered after the wait ran out');
+  // A wait that runs out before anything is sent.
+  up();
+  before = sockets.length;
+  let sent = 0;
+  const idle = cleanupWith(() => { ++sent; return Promise.resolve(theseus(200, null)); });
+  idle.runtime.readTimeoutMs = 0;
+  const late = idle.foreground();
+  await new Promise(resolve => setTimeout(resolve, 5));
+  showLine(line, await failureOf(late.read(options => idle.api.view('source', {}, options))));
+  late.release();
+  assert.deepEqual([sent, sockets.length - before, feed.state, said(line)], [0, 0, 'live', ''], `nothing was sent, yet the page let its feed go (line ${JSON.stringify(said(line))})`);
   follow(null);
 });

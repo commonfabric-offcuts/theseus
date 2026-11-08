@@ -55,9 +55,14 @@ export function follow(live) {
 // noticed) reads live until the browser gives up on it. The page opens its
 // feed again, and the new socket says whether it is connected; until it
 // answers, it is not. One still out when something answered leaves it alone.
-function unansweredAttempt(error) {
-  if (contact.live && contact.answered <= error.began) followed.reopen();
+// Each attempt is judged once, from when it began: when it fails with no
+// answer (attempted), or when the page gives up waiting on it (Deadline).
+function unansweredAttempt(began) {
+  if (contact.live && contact.answered <= began) followed.reopen();
 }
+// The attempts out now under each signal, each with when it began: what a
+// Deadline gives up on when it passes.
+const out = new WeakMap();
 
 // The server refused this page's session, as a restarted server does, before
 // Core read the request.
@@ -96,17 +101,22 @@ export const notAnswering = () => new AttemptError('Theseus is not answering yet
 // answer, so the deadline is kept here, beside the rule that says so: when it
 // passes it aborts the requests made with its signal and ends the wait with a
 // failure of no answer, whether or not what was awaited heard the abort.
+// What it gave up on are the attempts out under its signal at that moment:
+// each got no answer, and the failure began when the latest of them did, so
+// what it held up is done again once Theseus answers after that
+// (answeredSince). With none out, Theseus was asked nothing: the failure
+// begins as it is made and doubts nothing.
 export class Deadline {
   constructor(ms, words, code = undefined) {
-    this.at = Date.now() + ms; this.words = words; this.code = code; this.controller = new AbortController(); this.began = clock;
+    this.at = Date.now() + ms; this.words = words; this.code = code; this.controller = new AbortController();
   }
   get signal() { return this.controller.signal; }
   get passed() { return Date.now() >= this.at; }
   failure() {
+    for (const attempt of out.get(this.signal) ?? []) this.began = Math.max(this.began ?? attempt.began, attempt.began);
+    if (this.began !== undefined) unansweredAttempt(this.began);
     this.controller.abort();
-    const failure = Object.assign(new AttemptError(this.words, 0, null), { began: this.began }, this.code ? { code: this.code } : {});
-    unansweredAttempt(failure);
-    return failure;
+    return Object.assign(new AttemptError(this.words, 0, null), this.began === undefined ? {} : { began: this.began }, this.code ? { code: this.code } : {});
   }
   // What the wait settles with, or this deadline's failure once it passes.
   async bound(wait) {
@@ -120,23 +130,25 @@ const answerOf = response => response.json().catch(() => null);
 // Every attempt an Api makes: when it began, and, when Theseus answered it
 // (what it asked for, or a refusal of Theseus's own), that it did (contact).
 // One that got no answer may say the feed is gone; one the server refused for
-// the Api's session is told to whoever holds that session (refused). One the
-// page stopped itself, through the signal it gave the attempt, says nothing
-// of the feed: Theseus was not left to answer it (a foreground read stopping
-// a background one, an image removed). A wait the page gave up on did get no
-// answer, and the Deadline that ended it says so itself (Deadline failure).
+// the Api's session is told to whoever holds that session (refused). While it
+// is out it is listed under its signal (out). One that ends because its signal
+// was aborted was judged already, or is not to be: a Deadline that gave up on
+// it judged it from when it began, and one the page stopped itself (a
+// foreground read stopping a background one, an image removed) was not left
+// to Theseus to answer.
 async function attempted(api, attempt, signal) {
-  const began = clock;
+  const began = clock, entry = { began };
+  if (signal) { if (!out.has(signal)) out.set(signal, new Set()); out.get(signal).add(entry); }
   try { const result = await attempt(); answered(); return result; }
   catch (error) {
     if (error instanceof AttemptError) {
       error.began = began;
       if (!unreached(error)) answered();
-      else if (!signal?.aborted) unansweredAttempt(error);
+      else if (!signal?.aborted) unansweredAttempt(began);
       if (sessionRefused(error)) api.refused(error);
     }
     throw error;
-  }
+  } finally { out.get(signal)?.delete(entry); }
 }
 
 export class Api {
