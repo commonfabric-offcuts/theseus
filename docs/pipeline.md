@@ -135,51 +135,68 @@ release check's `--report`, and which piece a candidate's readings name.
   or took back from a held release to build again: that item shipped, and both
   acts would have been refused after the record. An item's pieces, in the order
   they took it, are one line of work (combined into a release, gone back to
-  building) until it is dropped; a piece that takes it after a drop starts new
-  work, and a drop leaves its mark where the item was, in a piece or last left
-  one (dropped while no piece holds it, after its release shipped without it).
-  When a record is written, each item it names (an item ships in one release)
-  leaves every piece still building it, and a drop no piece took it after, its
-  last, counts for nothing: the item reads as shipped and is listed under its
-  release, not in Dropped, the piece it was dropped from has shipped it, and an
-  emptied release says it shipped there. The record of a release's own number
-  takes back into that release each item it names that left it by a drop or a
-  return to building, unless a piece took the item after a drop since or a piece
-  that finished still keeps it; whatever was building it again has shipped it.
-  With no release open, the record of the next release ships the release
-  emptied while it was the next one, if it takes back one of its items: that
-  release would still be open had the record come first, and a record naming
-  none of its items finds it emptied, as it is. With one open, the record ships
-  that one, the release being deployed. A record names no item another record
-  shipped, so what shipped in a release stays in that release.
-- **The end of a piece** is one rule (`_settle`), asked by every path that
-  changes what a piece holds or whether its items shipped: a release record, any
-  move of an item (a drop, putting it back, a move in its section, an Undo), a
-  return to building, `piece_start`, `combine`, `piece_finish`, and turning
-  releases on or off. Each changes only those facts; the rule then reads them,
-  and only them, for every piece the items were ever in, so the same facts end a
-  piece the same way whatever order they came in. A piece's work left to ship is
-  each item still in it, or combined from it into a release and not dropped
-  since, that no record names. A piece still under way ends once it has none: a
-  piece of work has shipped if any item it held shipped and was not dropped
-  since it left, "Shipped in release N" with N the newest record naming one, and
-  was dropped if none did; a release ships only by the record of its own
-  release, and ends emptied otherwise (above). Its topic is set Done, "Shipped
-  in release N" (D1), once no piece in it has work left and one of them shipped
-  an item or is the release a record ships, unless it is the outcome's
-  conversation or someone has said where it stands since. This is asked when one
-  of its pieces ends, or when an item one of its pieces held ships or is
-  dropped, so an item combined from a piece that went back to building keeps
-  that piece's topic open until the item ships or is dropped, whichever piece or
-  release shares the topic, and a later word on the topic stands. An end stays
-  as written, but for one fact that can come after it: a record overtaking a
-  drop or a return to building. While the outcome ships in releases, the end
-  the rule wrote (a piece of work's `shipped` or `dropped`, an emptied release's
-  `held` or `dropped`) and the Done it set are decided again from the facts, and
-  rewritten when they now
-  say the piece shipped, in a newer release, or say what took a release's items
-  differently; when the piece ended, and who left its stage, stay. The database
-  allows that rewrite and no other on a left stage entry.
+  building) until it is dropped or ships; a piece that takes it after a drop
+  starts new work, and a drop leaves its mark where the item was, in a piece or
+  last left one (dropped while no piece holds it, after its release shipped
+  without it). **A record naming an item ships it in that release**: the item is
+  listed under that release, and the record counts as if it had come before the
+  acts it makes impossible. A drop of the item that no piece took it after, its
+  last, counts for nothing, and so does the combine that drop kept it out of:
+  the item went on with the piece it was dropped from, into the release that
+  piece was combined into. For the release the record ships, so does a return to
+  building: the release takes the item back, and whatever was building it again
+  has shipped it. A piece that finished keeps its items, and a record names no
+  item another record shipped, so what shipped in a release stays there.
+- **What a release ships.** The record of the next release ships one release
+  piece: the one open, the release being deployed, or with none open the release
+  emptied while it was the next one, if it would hold an item the record names
+  had the record come first (a record naming none of its items finds it emptied,
+  as it is). That release holds each item its record names that it holds, or
+  would hold but for the acts the record overtakes; an item it held that the
+  record does not name has not shipped and goes back to building (`returned`).
+  So a release's contents are what its record names that came to it through its
+  pieces, and every item a record names, wherever it was, is listed under that
+  record's release.
+- **The derived state.** What each piece holds, how each piece ended and which
+  topics the pipeline holds Done are derived, not decided by whichever command
+  ran last. The facts are each outcome's log, in the order things happened
+  (`pipeline_facts`, which keeps its past): every `piece_start` (a return to
+  building among them), `combine`, drop (by a move or an Undo), `piece_finish`,
+  release record, and turning releases on or off; with each piece's kind and
+  topic and the items each record names. One pure function of the facts alone
+  (`pipeline_state.derive`) plays the log in order and applies the rules here
+  when it reaches each record, so facts that commute (a backfill, a drop, a move,
+  a combine, a start) give one state in every order. Every pipeline write
+  appends its fact and then writes only what differs between that state and
+  what is stored (`_settle`), in the same transaction.
+- **The end of a piece.** A piece of work still under way ends once it holds no
+  item: it has shipped if any of its work shipped (an item it held, or combined
+  from it into a release, that a record named before a drop ended its part),
+  "Shipped in release N" with N the newest such record, and was dropped
+  otherwise. A release ends shipped by its record (above), and otherwise once it
+  holds no item: `dropped` when every item was dropped, else `held`, saying what
+  took its items ("Every item went back to building", "Its last items shipped in
+  release N", or each of them: "Its items went back to building or were
+  dropped"). When it ended, and whose act it was (nobody's for a record), stay
+  as first written; a later record can change only how it ended, to `shipped` or
+  to what took a release's items, and the database allows that rewrite and no
+  other on a left stage entry. A combine (`combined`) and a finish (`done`) end
+  a piece by their own act.
+- **A topic the pipeline holds Done.** The pipeline holds an ordinary topic
+  (never the outcome's conversation) Done, "Shipped in release N" (D1), while
+  none of its pieces has work left (an item still in one, or combined from one
+  and still being built, that no record names and no drop ended), no release in
+  it is being put together, and some of its work shipped, N the newest release
+  that shipped any. Starting to hold it sets the topic Done by nobody, unless
+  someone has said it is done; holding it with a newer N rewrites the note while
+  the Done is still the pipeline's. Work for it appearing again (a piece started
+  or a release combined there, or an item going back to building from a piece
+  there) withdraws it: the topic goes back to active, by nobody, while its Done
+  is still the pipeline's own. A person's word, a Done or a reopen (a message in
+  a done topic reopens it), always stands.
+- Upgrading to version 30 writes version 29's pipeline as facts, in time
+  order; the first pipeline write after the upgrade (the deploy's record is one)
+  writes the state they derive.
 - The gate (D18) reads a release piece's readings at its commit: the newest
   commit checked for it, else the one `combine` was given.
 - Only the release check's own run of a candidate reads for the release:

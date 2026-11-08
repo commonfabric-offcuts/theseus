@@ -79,7 +79,10 @@ def step_back_by_hand(path, version):
         for table in ("outcome_reached", "outcome_kinds", "found_problems", "check_allowances", "check_readings", "check_runs",
                       "outcome_checks", "outcome_target_revisions", "outcome_targets"):
             db.execute("DROP TABLE " + table)
-        # It also lets a record overtaking a drop decide a piece's end again; before it, a left entry kept everything.
+        # It also keeps each outcome's pipeline facts and the topics the pipeline holds Done, and lets a record overtaking
+        # a drop decide a piece's end again; before it, a left entry kept everything.
+        db.execute("DROP TABLE pipeline_done_topics")
+        db.execute("DROP TABLE pipeline_facts")
         db.execute("DROP TRIGGER entries_keep_their_past")
         db.execute("CREATE TRIGGER entries_keep_their_past BEFORE UPDATE ON pipeline_stage_entries "
                    "WHEN OLD.left_ms IS NOT NULL OR NEW.seq IS NOT OLD.seq OR NEW.piece_id IS NOT OLD.piece_id OR NEW.stage_id IS NOT OLD.stage_id "
@@ -2542,6 +2545,40 @@ class ChecksStepCase(MigrationCase):
                     for table in tables:
                         db.execute("DELETE FROM " + table)
                 self.assertTrue(self.step_back()["migrated"])
+
+    def test_upgrade_writes_the_pipeline_as_facts_and_the_first_write_after_it_derives_the_state(self):
+        # Version 29: an outcome shipping in releases, whose piece p-1 (topic t1) took items 3 and 4; item 4 was dropped,
+        # then release 1's record named item 3. Version 29 never ended a piece by a record, so p-1 is still under way.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("PRAGMA foreign_keys=OFF")
+            db.execute("INSERT INTO pipelines VALUES ('w1',1,'Pipeline','item','items',1,1,'{}',1)")
+            db.execute("INSERT INTO pipeline_stages VALUES ('w1','build',1,'Build','','{}','none','piece','')")
+            db.executemany("INSERT INTO pipeline_items(workspace_id,number,title,description,section,position,version) VALUES ('w1',?,?,'',?,?,1)",
+                           [(3, "Three", "now", 1), (4, "Four", "dropped", 1)])
+            db.executemany("INSERT INTO pipeline_events(workspace_id,number,kind,by,ms,payload) VALUES ('w1',?,?,'owner',?,?)",
+                           [(None, "configured", 1000, json.dumps({"before": None, "after": {"enabled": True, "ships_in_releases": True}})),
+                            (4, "moved", 3000, json.dumps({"before": {"section": "now"}, "after": {"section": "dropped"}})),
+                            (3, "moved", 3500, json.dumps({"before": {"section": "now"}, "after": {"section": "now"}}))])
+            db.execute("INSERT INTO pipeline_pieces VALUES ('p-1','w1','piece','t1',NULL,NULL,1)")
+            db.executemany("INSERT INTO pipeline_piece_members VALUES ('p-1','w1',?,?,?)", [(3, None, None), (4, 3000, "dropped")])
+            db.execute("INSERT INTO pipeline_stage_entries(piece_id,workspace_id,stage_id,round,entered_ms,entered_by) VALUES ('p-1','w1','build',1,2000,'owner')")
+            db.execute("INSERT INTO releases VALUES (1,?,NULL,'2026-11-01T00:00:00Z',4000,'[3]',NULL,'backfill',NULL,4000)", ("a" * 40,))
+        self.assertTrue(self.upgrade()["migrated"])
+        with sqlite3.connect(str(self.path)) as db:
+            facts = [(kind, ms, by, json.loads(payload)) for kind, ms, by, payload in db.execute("SELECT kind,ms,by,payload FROM pipeline_facts ORDER BY seq")]
+        self.assertEqual(facts, [("ships", 1000, "owner", {"on": True}),
+                                 ("start", 2000, "owner", {"piece": "p-1", "numbers": [3, 4], "from_release": None}),
+                                 ("drop", 3000, "owner", {"number": 4}),
+                                 ("record", 4000, None, {"release": 1})])
+        # The first pipeline write after the upgrade, the next deploy's record, writes the state the facts derive: release
+        # 1 shipped item 3 after item 4 was dropped, so p-1 has shipped, ended by that record, and t1 is Done with it.
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        self.assertTrue(self.store.record_release({"release": 2, "commit": "b" * 40, "deployed_at": "2026-11-02T00:00:00-08:00", "items": [],
+                                                   "source": "deploy"})["recorded"])
+        with sqlite3.connect(str(self.path)) as db:
+            self.assertEqual(db.execute("SELECT left_outcome,left_note,left_ms,left_by FROM pipeline_stage_entries WHERE piece_id='p-1'").fetchall(),
+                             [("shipped", "Shipped in release 1", 4000, None)])
+            self.assertEqual(db.execute("SELECT state,state_note,state_by FROM topics WHERE id='t1'").fetchone(), ("done", "Shipped in release 1", None))
 
     def test_step_back_refuses_once_an_outcome_is_started_or_given_a_target_through_its_commands(self):
         self.upgrade()

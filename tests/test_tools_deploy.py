@@ -13,9 +13,11 @@ import tempfile
 import unittest
 from contextlib import closing, redirect_stderr, redirect_stdout
 import itertools
+import random
 from unittest import mock
 
-from aim_next import admin, cli, outcome_rules, supervisor as runner_supervisor
+from aim_next import admin, cli, outcome_rules, pipeline_state, supervisor as runner_supervisor
+from aim_next.contract import Refusal
 from tools import deploy, release_check
 import test_agent_cli
 from test_pipeline_steering import PipelineCase
@@ -1940,6 +1942,99 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                             lambda: self.end_of(piece, "t-p"),
                             (("build", "shipped", "Shipped in release 24"), (), (("t-p", "done", "Shipped in release 24"),)))
 
+    def test_combining_work_into_the_topic_of_a_shipped_piece_keeps_that_topic_open_whichever_came_first(self):
+        # Reviewer's case: piece P builds item 3 in t-p; release 5, recorded late, names item 3; approved piece Q (item 4)
+        # is combined as release 24 in t-p. Release 24 is being put together in t-p, so t-p is not Done, in either order;
+        # the record used to close t-p "Shipped in release 5" when it came first, and the combine never opened it again.
+        self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
+        three, four = (self.add("Item %d" % n, section="now", size="small") for n in (3, 4))
+        self.committed(self.start_of([three], "t-p"))
+        waiting = self.approved([four], self.topic_of_w1("t-q"))
+        self.assert_one_end({"release 5 names 3": lambda: self.backfill(5, [three]),
+                             "combine Q in t-p": lambda: self.committed(self.combine([waiting], topic_id="t-p"))},
+                            lambda: tuple(self.topics("t-p")), (("t-p", "active", ""),))
+
+    def test_new_work_in_the_topic_of_a_shipped_release_keeps_that_topic_open_whichever_came_first(self):
+        # Reviewer's case: release 24 holds Q's items 3 and 4 (Q in t-q); its record names both, and item 5 starts in t-q.
+        # Item 5 is being built in t-q, so t-q is not Done, in either order; the record used to close t-q when it came
+        # first, and the start never opened it again.
+        self.release_24_from_its_own_topic()
+        five = self.add("Item 5", section="now", size="small")
+        self.assert_one_end({"release 24 names 3 and 4": lambda: self.assertTrue(self.record(24, "a" * 40, [3, 4])["recorded"]),
+                             "start 5 in t-q": lambda: self.committed(self.command("pipeline.piece_start", {"numbers": [five], "topic_id": "t-q",
+                                                                                                             "stage_id": "build"},
+                                                                                     {"workspace_id": "w1"}, actor="agent-a"))},
+                            lambda: tuple(self.topics("t-q")), (("t-q", "active", ""),))
+
+    def test_a_record_naming_an_item_dropped_before_its_piece_was_combined_ships_it_in_that_release_whichever_came_first(self):
+        # Reviewer's case: Q (items 3 and 4, in t-q) is approved; item 3 is dropped and Q is combined as release 24 in
+        # t-24, in either order; then release 24's record names items 3 and 4. The record names item 3, so its drop counts
+        # for nothing, and nor does the combine it kept item 3 out of: release 24 shipped holding both, Q's items were
+        # both combined into it, in either order. Dropped first, release 24 used to ship holding item 4 alone.
+        self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
+        numbers = [self.add("Item %d" % n, section="now", size="small") for n in (3, 4)]
+        waiting = self.approved(numbers, self.topic_of_w1("t-q"))
+        self.topic_of_w1("t-24")
+        made = {}
+
+        def combine():
+            made["release"] = self.committed(self.combine([waiting], topic_id="t-24"))["piece_id"]
+
+        def recorded_then_the_end():
+            self.assertTrue(self.record(24, "a" * 40, numbers)["recorded"])
+            return self.end_of(made["release"], "t-24", "t-q"), tuple(self.members(waiting)), tuple(self.members(made["release"]))
+        self.assert_one_end({"drop 3": lambda: self.drop(3), "combine Q": combine}, recorded_then_the_end,
+                            ((("combine", "shipped", "Shipped in release 24"), (3, 4),
+                              (("t-24", "done", "Shipped in release 24"), ("t-q", "done", "Shipped in release 24"))),
+                             ((3, "combined"), (4, "combined")), ((3, None), (4, None))))
+
+    def test_an_older_record_naming_an_item_dropped_before_its_piece_was_combined_ships_it_from_that_release_whichever_came_first(self):
+        # The same, with release 5 recorded late naming item 3: it ships no release, so item 3 shipped from release 24,
+        # which holds item 4 and keeps t-24 and t-q open, and Q's part in item 3 went on into release 24, in either order.
+        self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
+        numbers = [self.add("Item %d" % n, section="now", size="small") for n in (3, 4)]
+        waiting = self.approved(numbers, self.topic_of_w1("t-q"))
+        self.topic_of_w1("t-24")
+        made = {}
+
+        def combine():
+            made["release"] = self.committed(self.combine([waiting], topic_id="t-24"))["piece_id"]
+
+        def recorded_then_the_end():
+            self.backfill(5, [3])
+            return self.end_of(made["release"], "t-24", "t-q"), tuple(self.members(waiting)), tuple(self.members(made["release"]))
+        self.assert_one_end({"drop 3": lambda: self.drop(3), "combine Q": combine}, recorded_then_the_end,
+                            ((("combine", None, ""), (4,), (("t-24", "active", ""), ("t-q", "active", ""))),
+                             ((3, "combined"), (4, "combined")), ((3, "returned"), (4, None))))
+
+    def test_the_state_is_one_whatever_order_starts_combines_a_record_a_drop_and_a_move_come_in(self):
+        # Release 23 has shipped. Piece P builds item 6 in t-p, and Q (items 3 and 4, in t-q) is approved. Q is combined as
+        # release 24 in t-24; item 5 starts in t-5; release 5, recorded late, names item 6; item 3 is dropped (from Q, or
+        # from release 24); item 5 is moved below item 6. In all 120 orders P has shipped in release 5 and t-p is Done with
+        # it, release 24 holds item 4 and keeps t-24 open, t-q stays open while item 4 is in release 24, and t-5 is open
+        # with item 5's work.
+        self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
+        numbers = [self.add("Item %d" % n, section="now", size="small") for n in (3, 4, 5, 6)]
+        self.assertEqual(numbers, [3, 4, 5, 6])
+        piece = self.committed(self.start_of([6], "t-p"))["piece_id"]
+        waiting = self.approved([3, 4], self.topic_of_w1("t-q"))
+        self.topic_of_w1("t-24")
+        self.topic_of_w1("t-5")
+        made = {}
+
+        def combine():
+            made["release"] = self.committed(self.combine([waiting], topic_id="t-24"))["piece_id"]
+
+        def move():
+            version = self.sql("SELECT version FROM pipeline_items WHERE workspace_id='w1' AND number=5")[0][0]
+            self.committed(self.command("pipeline.item_move", {"below": 6}, {"workspace_id": "w1", "number": 5}, {"item_revision": version}, actor="owner"))
+        facts = {"combine Q": combine, "release 5 names 6": lambda: self.backfill(5, [6]), "drop 3": lambda: self.drop(3), "move 5": move,
+                 "start 5 in t-5": lambda: self.committed(self.command("pipeline.piece_start", {"numbers": [5], "topic_id": "t-5", "stage_id": "build"},
+                                                                       {"workspace_id": "w1"}, actor="agent-a"))}
+        self.assert_one_end(facts, lambda: (self.end_of(piece, "t-p"), self.end_of(made["release"], "t-24", "t-q"), tuple(self.topics("t-5"))),
+                            ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)),
+                             (("combine", None, ""), (4,), (("t-24", "active", ""), ("t-q", "active", ""))), (("t-5", "active", ""),)))
+
     def test_an_item_dropped_and_put_back_before_its_piece_was_combined_is_still_that_pieces_work(self):
         # Item 3 was dropped and put back before Q built it with item 4; Q is combined as release 24 in t-24. Release 5,
         # recorded late, ships item 4, but item 3 is still in release 24, so Q's topic stays open: only a drop since Q
@@ -2247,6 +2342,134 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual((self.end_of(piece, "t-p"), self.open_entry(release)),
                          ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "active", ""),)), [("combine",)]))
 
+    # ---- what is stored is the state derived from the facts, after every write (docs/pipeline.md, "The derived state") --
+
+    # Each kind of write, and how often a random sequence tries it.
+    WRITES = {"record": 2, "drop": 2, "put back": 2, "move": 1, "undo": 2, "start": 3, "approve": 3, "combine": 3, "checks": 2, "return": 4,
+              "finish": 4, "releases on": 1, "releases off": 2, "topic done": 1, "topic reopened": 1}
+
+    def assert_stored_is_derived(self, said):
+        """The member rows, each piece's end, the topics the pipeline holds and their states, read from the store, are
+        pipeline_state.derive() of the outcome's facts computed again from nothing."""
+        with closing(sqlite3.connect(str(self.path))) as db:
+            db.row_factory = sqlite3.Row
+            state = pipeline_state.derive(pipeline_state.read_facts(db, "w1"))
+            members = sorted(tuple(row) for row in db.execute("SELECT piece_id,number,left_ms,left_reason FROM pipeline_piece_members WHERE workspace_id='w1'"))
+            self.assertEqual(members, sorted(state.members), said)
+            for piece, end in state.ends.items():
+                last = db.execute("SELECT left_outcome,left_note,left_ms,left_by FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq DESC LIMIT 1",
+                                  (piece,)).fetchone()
+                self.assertEqual(tuple(last) if end is not None else last["left_ms"], end, "%s: the end of %s" % (said, piece))
+            self.assertEqual(dict(db.execute("SELECT topic_id,release FROM pipeline_done_topics WHERE workspace_id='w1'").fetchall()), state.done_topics, said)
+            for topic in db.execute("SELECT t.* FROM topics t WHERE t.id IN (SELECT topic_id FROM pipeline_pieces WHERE workspace_id='w1')"):
+                its_own = topic["state"] == "done" and topic["state_by"] is None and topic["state_message_id"] is None
+                if topic["id"] in state.done_topics and topic["state_by"] is None and topic["state_message_id"] is None:
+                    # Nobody has said anything since the pipeline did: it is Done with the release that shipped the last of it.
+                    self.assertEqual((topic["state"], topic["state_note"]), ("done", "Shipped in release %d" % state.done_topics[topic["id"]]), said)
+                elif topic["id"] not in state.done_topics:
+                    self.assertFalse(its_own, "%s: %s is held Done by nobody with work left in it" % (said, topic["id"]))
+
+    def write_at_random(self, rng, kind, topics):
+        """One write of this kind with arguments chosen by rng; whether it was taken (a refusal is a write not taken)."""
+        items = self.sql("SELECT number,section,version FROM pipeline_items WHERE workspace_id='w1' ORDER BY number")
+        named = {n for (row,) in self.sql("SELECT items FROM releases") for n in json.loads(row)}
+        pieces = self.sql("SELECT p.id,p.kind,e.stage_id FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id AND e.left_ms IS NULL "
+                          "WHERE p.workspace_id='w1' ORDER BY p.rowid")
+
+        def taken(receipt):
+            return receipt.get("status") == "committed"
+
+        def move(number, version, args):
+            return taken(self.command("pipeline.item_move", dict(args, underway_confirmed=True), {"workspace_id": "w1", "number": number},
+                                      {"item_revision": version}, actor="owner"))
+        if kind == "record":
+            written = [row[0] for row in self.sql("SELECT number FROM releases")]
+            number = max(written) + 1 if rng.random() < 0.6 else rng.choice([n for n in range(1, 22) if n not in written] or [max(written) + 1])
+            free = [row[0] for row in items if row[0] not in named]
+            chosen = rng.sample(free, min(len(free), rng.randint(0, 3)))
+            try:
+                return self.record(number, "%040x" % rng.getrandbits(160), chosen, source="backfill")["recorded"]
+            except Refusal:
+                return False
+        if kind in ("drop", "put back"):
+            rows = [row for row in items if (row[1] == "dropped") == (kind == "put back")]
+            if not rows:
+                return False
+            row = rng.choice(rows)
+            return move(row[0], row[2], {"section": "dropped"} if kind == "drop" else {"section": rng.choice(("now", "now", "next"))})
+        if kind == "move":
+            row, other = rng.choice(items), rng.choice(items)[0]
+            return move(row[0], row[2], rng.choice(({"section": rng.choice(("now", "next", "later"))}, {"below": other}, {"above": other})))
+        if kind == "undo":
+            # The newest placement of an item, when it was a move.
+            moved = self.sql("SELECT e.number,e.seq,i.version FROM pipeline_events e JOIN pipeline_items i ON i.workspace_id=e.workspace_id AND i.number=e.number "
+                             "WHERE e.workspace_id='w1' AND e.kind='moved' AND e.seq=(SELECT max(seq) FROM pipeline_events WHERE workspace_id='w1' "
+                             "AND number=e.number AND kind IN ('added','moved'))")
+            if not moved:
+                return False
+            number, seq, version = rng.choice(moved)
+            return move(number, version, {"undo_of": seq})
+        if kind in ("start", "return"):
+            if kind == "start":
+                ready = [row[0] for row in items if row[1] == "now"]
+                args = {}
+            else:
+                release = next((piece for piece in pieces if piece[1] == "release"), None)
+                ready = [row[0] for row in self.sql("SELECT number FROM pipeline_piece_members WHERE piece_id=? AND left_ms IS NULL", (release[0],))] if release else []
+                args = {"from_release": True}
+            if not ready:
+                return False
+            return taken(self.command("pipeline.piece_start", dict({"numbers": rng.sample(ready, rng.randint(1, min(2, len(ready)))),
+                                                                    "topic_id": rng.choice(topics), "stage_id": "build"}, **args),
+                                      {"workspace_id": "w1"}, actor="agent-a"))
+        if kind == "approve":
+            building = [piece[0] for piece in pieces if piece[2] == "build"]
+            return bool(building) and taken(self.command("pipeline.stage_enter", {"stage_id": "wait", "left_outcome": "approved"},
+                                                         {"piece_id": rng.choice(building)}))
+        if kind == "combine":
+            waiting = [piece[0] for piece in pieces if piece[2] == "wait"]
+            return bool(waiting) and taken(self.combine(rng.sample(waiting, rng.randint(1, len(waiting))), topic_id=rng.choice(topics)))
+        if kind == "checks":
+            try:
+                return bool(self.recorded(rng.choice((SHA, "d" * 40)), units=rng.choice(("failed", "failed", "passed")),
+                                          at="2026-11-07T05:%02d:%02d-08:00" % (rng.randrange(60), rng.randrange(60))))
+            except Refusal:
+                return False
+        if kind == "finish":
+            open_work = [piece[0] for piece in pieces if piece[1] == "piece"]
+            return bool(open_work) and taken(self.command("pipeline.piece_finish", {}, {"piece_id": rng.choice(open_work)}))
+        if kind in ("releases on", "releases off"):
+            return taken(self.on(ships_in_releases=kind == "releases on"))
+        topic = rng.choice(topics)
+        version = self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]
+        args = {"state": "done", "note": "Wrapped up"} if kind == "topic done" else {"state": "active"}
+        return taken(self.command("topic.update", args, target={"topic_id": topic}, expected={"topic_revision": version}))
+
+    def test_after_every_write_what_is_stored_is_the_state_derived_from_the_facts(self):
+        # A seeded property check: 60 sequences of 40 writes, each write of any kind with arguments chosen at random, from
+        # release 23 (items 1 and 2) in checks with items 3 to 8 in Now. After every write, taken or refused, the store
+        # holds exactly the state derived again from the outcome's facts.
+        topics = ["t1"] + [self.topic_of_w1(topic) for topic in ("t-a", "t-b", "t-c", "t-d", "t-e", "t-f")]
+        for n in range(3, 9):
+            self.add("Item %d" % n, section="now", size="small")
+        start = Path(self.temp.name) / "before-the-writes.sqlite3"
+        with closing(sqlite3.connect(str(self.path))) as db, closing(sqlite3.connect(str(start))) as copy:
+            db.backup(copy)
+        taken = dict.fromkeys(self.WRITES, 0)
+        kinds = [kind for kind, weight in self.WRITES.items() for _ in range(weight)]
+        for seed in range(60):
+            with closing(sqlite3.connect(str(start))) as copy, closing(sqlite3.connect(str(self.path))) as db:
+                copy.backup(db)
+            rng = random.Random(seed)
+            done = []
+            for step in range(40):
+                kind = rng.choice(kinds)
+                if self.write_at_random(rng, kind, topics):
+                    taken[kind] += 1
+                    done.append(kind)
+                self.assert_stored_is_derived("seed %d, write %d (%s), after %s" % (seed, step, kind, " > ".join(done)))
+        self.assertEqual([kind for kind, count in taken.items() if count < 20], [], "every kind of write was taken: %r" % taken)
+
     def test_release_pieces_release_23_numbered_ship_by_the_next_release_one_at_a_time(self):
         # Release 23's combine stored a number, and could combine release 24 while 23 was open. Upgraded, the earlier is the
         # release; the record of 23 ships it and release 24's piece becomes the release, which the record of 24 ships.
@@ -2261,6 +2484,9 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
             db.execute("INSERT INTO pipeline_piece_members VALUES ('p-release-24','w1',3,NULL,NULL)")
             db.execute("INSERT INTO pipeline_stage_entries(piece_id,workspace_id,stage_id,round,entered_ms,entered_by) "
                        "VALUES ('p-release-24','w1','combine',1,?,'owner')", (ms,))
+            # The combine as the upgrade to version 30 writes it into the outcome's facts.
+            db.execute("INSERT INTO pipeline_facts(workspace_id,kind,ms,by,payload) VALUES ('w1','combine',?,'owner',?)",
+                       (ms, json.dumps({"release": "p-release-24", "pieces": [waiting], "numbers": [3]})))
         self.assertEqual(self.live_view()["release_piece"], {"id": self.release, "release": 23, "stage": "checks", "round": 1})
         self.assertTrue(self.record(23, "d" * 40, [1, 2])["recorded"])
         self.assertEqual((self.entries(self.release)[-1], self.open_entry("p-release-24")),
