@@ -242,7 +242,7 @@ class EffectsLoop:
     def _finish(self, claim, outcome, turn=None, reason=None):
         try:
             result = self._response(self._storage(lambda:self.store.finish_wake(
-                self.guard,self.token,claim['claim_token'],outcome,turn=turn)))
+                self.guard,self.token,claim['claim_token'],outcome,turn=turn,reason=reason)))
         except LoopFault:
             raise
         except Exception as error:
@@ -366,7 +366,7 @@ class EffectsLoop:
                 or (result.outcome=='queued' and result.exit_code != wake_adapter.QUEUED_EXIT)):
             raise LoopFault()
         settled = self._response(self._storage(lambda:self.store.finish_wake(
-            self.guard,self.token,claim['claim_token'],result.outcome)))
+            self.guard,self.token,claim['claim_token'],result.outcome,reason=result.reason)))
         stale = settled.get('status') == 'stale'
         if not stale and settled.get('status') != 'settled':
             raise LoopFault()

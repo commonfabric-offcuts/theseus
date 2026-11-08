@@ -10,6 +10,7 @@ from .authority import RunnerGuard
 from .contract import StoreError
 from . import work
 from .wake_health import ANSWERING
+from .health import REASON
 
 
 RUNNER_SCHEMA = [
@@ -161,8 +162,11 @@ class Runner:
             db.execute("BEGIN IMMEDIATE")
             guard.verify()
             self._check_instance(db)
-            result, changed = action(db, delivery._now_ms())
+            now = delivery._now_ms()
+            result, changed = action(db, now)
             if changed:
+                # What is red may have changed with this act (health.py).
+                self._health_settle(db, now)
                 self._advance_commit_seq(db)
                 guard.verify()
                 db.commit()
@@ -222,10 +226,9 @@ class Runner:
         token = "r-" + uuid.uuid4().hex
         until = now + lease_ms
         # How the run this one replaces ended, for the Health page (health.py).
-        prior = self._runner_prior(self._runner_state(db), now)
-        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=?,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL,"
-                   "prior_state=?,prior_reason=?,prior_ended_ms=? WHERE id=1",
-                   (token, guard.runner_id, guard.generation, until, reason, os.getpid(), now) + prior)
+        self._runner_took_role(db, now)
+        db.execute("UPDATE runner_state SET state='running',version=version+1,runner_token=?,runner_id=?,guard_generation=?,lease_until_ms=?,reason_code=?,runner_pid=?,runner_started_ms=?,child_pid=NULL,child_started_at=NULL,child_claim_token=NULL,ended_ms=NULL WHERE id=1",
+                   (token, guard.runner_id, guard.generation, until, reason, os.getpid(), now))
         return {"status": "acquired", "runner_token": token, "lease_until_ms": until}, True
 
     def acquire_runner(self, guard, lease_ms=30000):
@@ -285,7 +288,7 @@ class Runner:
                     raise RunnerError("RUNNER_STATE_INVALID", "A live claim appeared in the due index")
                 if row["claim_token"] is not None:
                     db.execute("INSERT INTO wake_results SELECT id,'expired',? FROM wake_attempts WHERE claim_token=?", (now, row["claim_token"]))
-                    self._wake_settled(db, row["recipient_id"], "expired", now)
+                    self._wake_settled(db, row["recipient_id"], "expired", now, "expired")
                 attempt, claim = "a-" + uuid.uuid4().hex, "c-" + uuid.uuid4().hex
                 db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms,handed_seq) "
                            "VALUES (?,?,?,?,?,?,?,?,?)", (attempt, claim, runner_token, row["recipient_id"], row["wake_generation"], row["last_seq"], now, until, row["handed_seq"]))
@@ -299,9 +302,14 @@ class Runner:
             return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims)
         return self._effect(guard, action)
 
-    def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None):
+    def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None, reason=None):
+        """Settle a claimed wake. reason is the runner's fixed code for how it went
+        ("broker_exit", "deadline", ...), never local text; Core keeps it for a
+        wake that did not get through, so the Health page can say why."""
         if not isinstance(outcome, str) or outcome not in OUTCOMES:
             raise RunnerError("INVALID_ARGUMENT", "Unsupported wake outcome")
+        if reason is not None and (not isinstance(reason, str) or not REASON.fullmatch(reason)):
+            raise RunnerError("INVALID_ARGUMENT", "A wake's reason is a short fixed code")
         if not isinstance(claim_token, str):
             raise RunnerError("INVALID_ARGUMENT", "Use a claim token")
         if (outcome == "handed") != (turn is not None):
@@ -327,7 +335,7 @@ class Runner:
             else:
                 due = now + delay
             db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], outcome, now))
-            self._wake_settled(db, row["recipient_id"], outcome, now)
+            self._wake_settled(db, row["recipient_id"], outcome, now, reason)
             db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,retry_count=? WHERE recipient_id=?", (due, retry, row["recipient_id"]))
             if outcome == "accepted" and row["pending_count"]:
                 # The notice reached the agent's chat; it stays unanswered until the agent acts.
@@ -585,6 +593,7 @@ class Runner:
                         return {"status": "not_holder", "instance_id": self.instance_id}
                     db.execute("UPDATE runner_state SET state='exited',version=version+1,reason_code=?,lease_until_ms=MIN(lease_until_ms,?),ended_ms=COALESCE(ended_ms,?) WHERE id=1",
                                (reason, now, now))
+                    self._health_settle(db, now)
                     self._advance_commit_seq(db)
                     db.commit()
                     return {"status": "recorded", "reason": reason, "ended_ms": now, "instance_id": self.instance_id}

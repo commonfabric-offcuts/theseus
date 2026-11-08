@@ -365,7 +365,10 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                 receipt = self._refusal(envelope, exc, recorded=True)
             db.execute("RELEASE effect")
             # Any recorded act is a sign of life: the actor's wakes are answered.
-            self._sign_of_life(db, actor, _delivery._now_ms())
+            now = _delivery._now_ms()
+            self._sign_of_life(db, actor, now)
+            # What is red may have changed with this act (health.py).
+            self._health_settle(db, now)
             db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op_id, fingerprint, kind, _json(receipt)))
             self._advance_commit_seq(db)
             db.commit()

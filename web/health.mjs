@@ -13,18 +13,18 @@ const at = (ms, now) => shownTime(ms, now);
 // Agents whose failures began this close together began failing for one reason.
 const TOGETHER_MS = 2 * 60 * 1000;
 
-const ENDED = { killed: 'was killed', lease_lost: 'lost its lease', failed: 'failed', stopped_unrecorded: 'stopped', ended: 'ended' };
-const PAUSED = { operator_pause: 'an operator paused it', cleanup_failed: 'it could not confirm a broker process was gone',
-  route_binding_changed: 'a route changed', storage_failure: 'of a storage fault' };
+// Why the runner ended or paused, and why a wake did not get through, are
+// Core's words (runner.why, failing.why; health.py), so the page, the agent
+// command line and the notices posted to the team all say the same.
 const ROUTE = { codex_queue: "the Codex app's queue", codex_hosted: 'a Codex turn this Theseus hosts', other: 'a route of its own' };
 
 // How the runner stands, as a phrase after "The agent runner".
 export function runnerPhrase(runner, now) {
   const since = Number.isInteger(runner.since_ms) ? at(runner.since_ms, now) : null;
   if (runner.live) return Number.isInteger(runner.started_ms) ? `has been running since ${at(runner.started_ms, now)}` : 'is running';
-  if (runner.state === 'paused') return `has been paused${since ? ` since ${since}` : ''} because ${PAUSED[runner.reason] ?? `of ${runner.reason ?? 'a reason it did not record'}`}`;
+  if (runner.state === 'paused') return `has been paused${since ? ` since ${since}` : ''} because ${runner.why ?? 'of a reason it did not record'}`;
   if (runner.state === 'stopped') return `was stopped${since ? ` at ${since}` : ''} and has not come back`;
-  if (runner.state === 'exited') return `${ENDED[runner.reason] ?? 'ended'}${since ? ` at ${since}` : ''} and has not come back`;
+  if (runner.state === 'exited') return `${runner.why ?? 'ended'}${since ? ` at ${since}` : ''} and has not come back`;
   if (runner.state === 'unrenewed') return `stopped answering${since ? ` at ${since}` : ''}`;
   return 'has never run here';
 }
@@ -32,20 +32,19 @@ export function runnerPhrase(runner, now) {
 // How the run before this one ended, as "after it was stopped at 2:30 PM".
 function priorPhrase(prior, now) {
   const when = Number.isInteger(prior.ended_ms) ? ` at ${at(prior.ended_ms, now)}` : '';
-  if (prior.state === 'paused') return `after a pause${when} because ${PAUSED[prior.reason] ?? 'of a recorded reason'}`;
+  if (prior.state === 'paused') return `after a pause${when} because ${prior.why ?? 'of a recorded reason'}`;
   if (prior.state === 'stopped') return `after it was stopped${when}`;
-  if (prior.state === 'exited') return `after it ${ENDED[prior.reason] ?? 'ended'}${when}`;
+  if (prior.state === 'exited') return `after it ${prior.why ?? 'ended'}${when}`;
   if (prior.state === 'unrenewed') return `after it stopped answering${when}`;
   return '';
 }
 
-function failedPhrase(failing, now, many) {
+// "every wake since 8:27 PM failed", and why, in Core's words.
+function failedPhrase(failing, now) {
   const since = Number.isInteger(failing.since_ms) ? ` since ${at(failing.since_ms, now)}` : '';
-  if (failing.outcome === 'error') return `every wake${since} failed`;
-  if (failing.outcome === 'unavailable') return `every wake${since} found ${many ? 'their' : 'its'} route unavailable`;
-  if (failing.outcome === 'busy') return `every wake${since} found ${many ? 'them' : 'it'} busy`;
-  return `no wake${since} has got through`;
+  return failing.outcome === 'error' ? `every wake${since} failed` : `no wake${since} has got through`;
 }
+const why = failing => `Why: ${failing.why}.`;
 
 // What is wrong, as sentences, most urgent first; [] when nothing is.
 export function healthProblems(answer, { now, feed } = {}) {
@@ -53,23 +52,25 @@ export function healthProblems(answer, { now, feed } = {}) {
   const agents = answer.agents ?? [];
   const routedWaiting = agents.filter(agent => agent.route && agent.waiting > 0);
   if (feed === 'down') problems.push('This page has lost its live connection to the server, so what it shows may be out of date.');
-  if (!answer.runner.live) {
+  // Red is Core's one rule (answer.red), which the Health link reads too.
+  const red = new Set(answer.red ?? []);
+  if (red.has('runner')) {
     const waiting = routedWaiting.length ? ` ${plural(routedWaiting.length, 'agent has', 'agents have')} work waiting.` : '';
     problems.push(`The agent runner ${runnerPhrase(answer.runner, now)}, so no wakes are going out.${waiting}`);
   }
-  // Agents that cannot be woken, grouped by when their failures began.
+  // Agents that cannot be woken, grouped by when their failures began and why.
   const failing = agents.filter(agent => agent.failing).sort((a, b) => (a.failing.since_ms ?? 0) - (b.failing.since_ms ?? 0));
   const groups = [];
   for (const agent of failing) {
     const group = groups[groups.length - 1];
-    if (group && Math.abs((agent.failing.since_ms ?? 0) - (group[0].failing.since_ms ?? 0)) <= TOGETHER_MS && agent.failing.outcome === group[0].failing.outcome) group.push(agent);
+    if (group && Math.abs((agent.failing.since_ms ?? 0) - (group[0].failing.since_ms ?? 0)) <= TOGETHER_MS && (agent.failing.reason ?? agent.failing.outcome) === (group[0].failing.reason ?? group[0].failing.outcome)) group.push(agent);
     else groups.push([agent]);
   }
   for (const group of groups) {
     const many = group.length > 1, names = group.map(agent => agent.actor_id).sort();
     const counts = group.map(agent => agent.failing.count), low = Math.min(...counts), high = Math.max(...counts);
     const times = low === high ? `${count(high)} ${high === 1 ? 'time' : 'times'}${many ? ' each' : ''}` : `${count(low)} to ${count(high)} times`;
-    let words = `${list(names)} can't be woken: ${failedPhrase(group[0].failing, now, many)} (${times}).`;
+    let words = `${list(names)} can't be woken: ${failedPhrase(group[0].failing, now)} (${times}). ${why(group[0].failing)}`;
     const waiting = group.filter(agent => agent.waiting > 0).sort((a, b) => b.waiting - a.waiting || a.actor_id.localeCompare(b.actor_id));
     if (waiting.length) {
       const [first, ...rest] = waiting;
@@ -100,7 +101,7 @@ function agentLines(agent, now, sending) {
   const state = agent.failing ? "can't be woken" : agent.not_answering ? 'not answering' : agent.waking ? 'being woken now'
     : !agent.route ? 'not woken here' : agent.waiting > 0 ? 'wakes going out' : 'all caught up';
   const details = [];
-  if (agent.failing) details.push(`${failedPhrase(agent.failing, now, false).replace(/^./, c => c.toUpperCase())} (${plural(agent.failing.count, 'time')}).`);
+  if (agent.failing) details.push(`${failedPhrase(agent.failing, now).replace(/^./, c => c.toUpperCase())} (${plural(agent.failing.count, 'time')}). ${why(agent.failing)}`);
   if (agent.not_answering) details.push(`Its last ${count(agent.not_answering.count)} wakes reached it and it has not answered since ${at(agent.not_answering.since_ms, now)}, so it is woken only for new work.`);
   if (agent.route) {
     details.push(`Woken through ${ROUTE[agent.route]}.`);
@@ -124,7 +125,7 @@ export function healthLines(answer, { now, feed } = {}) {
   if (!runner.live && runner.prior) runnerDetails.push(`Before that it had come back ${priorPhrase(runner.prior, now)}.`);
   if (runner.live && !runner.prior) runnerDetails.push('Core has no record of how its previous run ended.');
   if (!runner.live) runnerDetails.push('Wakes go out again once a runner takes the role; the supervisor brings it back on its own only after a crash it recorded.');
-  lines.push({ group: 'Theseus', key: 'runner', label: 'Agent runner', summary: runnerPhrase(runner, now).replace(/^./, c => c.toUpperCase()), details: runnerDetails, bad: !runner.live });
+  lines.push({ group: 'Theseus', key: 'runner', label: 'Agent runner', summary: runnerPhrase(runner, now).replace(/^./, c => c.toUpperCase()), details: runnerDetails, bad: (answer.red ?? []).includes('runner') });
   const server = answer.server;
   if (server) {
     const live = feed === 'down' ? 'live updates lost' : server.live_feed ? 'live updates on' : 'no live updates';

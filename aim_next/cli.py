@@ -18,6 +18,7 @@ from .effects_watch import NativeWatch, WatchError, WatchStopped
 from .topic_state import STATES
 from .profile import ProfileError, load_profile
 from .store import StoreOpenError
+from .health import report_lines
 
 
 class InvalidRequest(ValueError):
@@ -175,7 +176,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| inbox | post TOPIC [--asks A,B | --tells A,B] [--reply-to MESSAGE] TEXT|- | start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] "
+         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] | health "
          "| attachment ATTACHMENT --message MESSAGE --out FILE "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
@@ -276,6 +277,7 @@ def _parser():
     verb("watch")
     verb("retry").add_argument("operation")
     verb("releases").add_argument("--limit", type=int)
+    verb("health")
     attachment = verb("attachment")
     attachment.add_argument("attachment")
     attachment.add_argument("--message", required=True)
@@ -703,6 +705,12 @@ class Agent(PipelineVerbs):
                 "  (%s)" % ", ".join(shown) if shown else "", "  [recorded retroactively]" if item["source"] == "backfill" else ""))
         if not items:
             self.out.plain("no releases recorded")
+
+    def do_health(self):
+        """What is healthy and what is not, from Core's facts, in the Health page's words (docs/health.md)."""
+        answer = self.view("health", {})
+        for line in report_lines(answer, lambda ms: time.strftime("%Y-%m-%d %H:%M", time.localtime(ms / 1000.0))):
+            self.out.plain(line)
 
     def update_topic(self, args):
         topic = self.view("topic", {"topic_id": self.options.topic})["topic"]

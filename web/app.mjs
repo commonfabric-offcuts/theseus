@@ -46,6 +46,7 @@ import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
 import { HealthPage } from './health.mjs';
+import { HealthLight } from './health-light.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -55,6 +56,7 @@ const node = (tag, text, className) => {
 const button = (label, action) => { const element = node('button', label); element.type = 'button'; element.onclick = () => run(action); return element; };
 const status = message => { $('app-status').textContent = message; $('app-status').hidden = !message; };
 const run = action => { try { return Promise.resolve(action()).catch(error => { status(error.message); return null; }); } catch (error) { status(error.message); return Promise.resolve(null); } };
+let healthLight = null;
 let api, bootstrap, journal, registry, reader, inline, topic, opening = 0, freshness, views, updateState, live = null, attention = null, topicState = null, waitingHost = null;
 let localEffectVersion = 0;
 // The open page's outcome conversation: its view (the rail row reads it), and on the conversation page
@@ -1208,6 +1210,15 @@ async function initialize() {
     attention.listen(answer => { if (waitingHost) paintWaiting(waitingHost, answer, (id, title) => openDestination({ kind: 'topic', id }, title)); });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') attention.refresh(); });
     attention.refresh();
+  }
+  if (!healthLight) {
+    // The Health link lights on every page while Core says something is red,
+    // read again on every commit, as attention is (health-light.mjs).
+    healthLight = new HealthLight({ link: $('health-link'),
+      read: async () => checkedView(await api.view('health_light', {}, { readClass: 'background' }), bootstrap.instance_id) });
+    live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && document.visibilityState === 'visible') run(() => healthLight.load()); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(() => healthLight.load()); });
+    run(() => healthLight.load());
   }
   $('instance-label').textContent = `${bootstrap.actor} · ${bootstrap.instance_id}`;
   refreshDirectory();

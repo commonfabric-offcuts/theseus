@@ -50,6 +50,9 @@ SCHEMA_27 = (Path(__file__).parent / "fixtures" / "schema_27.sql").read_text().s
 # it is version 28's, read from a fresh instance of the conversation's code (32d5e0e).
 BEFORE_PIPELINE, PIPELINE_VERSION = "28", "29"
 SCHEMA_BEFORE_PIPELINE = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_PIPELINE)).read_text().splitlines()
+# The Health page's step keeps wake facts and the runner's previous end; the release train numbers it.
+BEFORE_HEALTH, HEALTH_VERSION = PIPELINE_VERSION, str(int(PIPELINE_VERSION) + 1)
+SCHEMA_BEFORE_HEALTH = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_HEALTH)).read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -69,6 +72,15 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The Health page's version keeps each recipient's wake facts, the runner's
+        # previous end, what Theseus last announced and its own member.
+        db.execute("DROP TABLE runner_prior")
+        db.execute("DROP TABLE wake_facts")
+        db.execute("DELETE FROM metadata WHERE key='health_announced'")
+        db.execute("DELETE FROM actors WHERE id='theseus'")
+        if version == BEFORE_HEALTH:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The pipeline's version keeps each outcome's pipeline, its stages, items,
         # pieces and their entries, every event, message subjects and release notes.
         for table in ("release_notes", "pipeline_events", "pipeline_item_sources", "message_subjects", "pipeline_stage_entries",
@@ -1746,7 +1758,8 @@ def fresh_schema(directory):
 # every step in between, each with its own frozen layout.
 RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("20", SCHEMA_20),
                      ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23), ("24", SCHEMA_24),
-                     ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27), (BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE))
+                     ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27), (BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE),
+                     (BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH))
 
 
 class Release19ChainCase(MigrationCase):
@@ -2013,7 +2026,7 @@ class LiveShapedChainCase(MigrationCase):
         self.assertEqual(migrate(self.path, "test-instance", self.binding, BEFORE_PIPELINE)["schema_version"], BEFORE_PIPELINE)
         before = everything(self.path)
         self.assertEqual(migrate(self.path, "test-instance", self.binding, PIPELINE_VERSION)["schema_version"], PIPELINE_VERSION)
-        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_HEALTH))
         self.assertEqual({k: v for k, v in everything(self.path).items() if k in before}, before)
         self.assertEqual(migrate(self.path, "test-instance", self.binding, BEFORE_PIPELINE)["schema_version"], BEFORE_PIPELINE)
         self.assertEqual(everything(self.path), before, "an empty pipeline step steps back to every row it had")
@@ -2350,7 +2363,7 @@ class PipelineStepCase(MigrationCase):
         return migrate(self.path, "test-instance", self.binding, BEFORE_PIPELINE)
 
     def at_head(self):
-        self.assertEqual(self.upgrade()["schema_version"], PIPELINE_VERSION)
+        self.assertEqual(self.upgrade()["schema_version"], SCHEMA_VERSION)
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
 
     def committed(self, receipt):
@@ -2359,12 +2372,11 @@ class PipelineStepCase(MigrationCase):
 
     def test_the_step_is_the_pipelines_and_the_head_is_its_version(self):
         self.assertIn((BEFORE_PIPELINE, PIPELINE_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, PIPELINE_VERSION)
 
     def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_the_pipeline_works(self):
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_PIPELINE,
-                                          "schema_version": PIPELINE_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         upgraded = everything(self.path)
         self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
@@ -2401,7 +2413,7 @@ class PipelineStepCase(MigrationCase):
                     self.step_back()
                 self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
                 self.assertEqual(self.unchanged(), before)
-                self.assertEqual(self.metadata()["schema_version"], PIPELINE_VERSION)
+                self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
                 # Cleared by hand (the records refuse a DELETE by trigger), the step back goes through.
                 with sqlite3.connect(str(self.path)) as db:
                     for table in ("pipelines", "message_subjects", "release_notes"):
@@ -2412,6 +2424,69 @@ class PipelineStepCase(MigrationCase):
     def test_step_back_refuses_once_the_pipeline_is_turned_on_through_its_command(self):
         self.at_head()
         self.committed(self.command("pipeline.configure", {"enabled": False}, {"workspace_id": "w1"}))
+        before = self.unchanged()
+        with self.assertRaises(MigrationError) as raised:
+            self.step_back()
+        self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
+        self.assertEqual(self.unchanged(), before)
+
+
+class HealthStepCase(MigrationCase):
+    """An instance at the version before the Health page: its step works out each
+    recipient's wake facts from the settlements kept, and steps back while Theseus
+    has posted no notice."""
+
+    VERSION, FIXTURE = BEFORE_HEALTH, SCHEMA_BEFORE_HEALTH
+
+    def step_back(self):
+        return migrate(self.path, "test-instance", self.binding, BEFORE_HEALTH)
+
+    def settled(self, outcomes, recipient="agent-a"):
+        """Settlements the older version kept: one attempt and result per outcome, a minute apart."""
+        with sqlite3.connect(str(self.path)) as db:
+            for n, outcome in enumerate(outcomes):
+                attempt = "a-%s-%d" % (recipient, n)
+                db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                           "VALUES (?,?,?,?,1,1,?,?)", (attempt, "c-" + attempt, "r-1", recipient, 60000 * n, 60000 * n + 20000))
+                db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt, outcome, 60000 * n + 1000))
+
+    def test_the_step_follows_the_pipelines_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_HEALTH, HEALTH_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, HEALTH_VERSION)
+
+    def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_works_out_the_wake_facts(self):
+        self.settled(["accepted", "error", "accepted", "error", "busy", "unavailable"])
+        self.settled(["handed"], recipient="agent-b")
+        stored = everything(self.path)
+        self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_HEALTH,
+                                          "schema_version": HEALTH_VERSION, "migrated": True})
+        self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
+        upgraded = everything(self.path)
+        self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
+        # The three wakes since the last that got through did not; why was never recorded.
+        self.assertEqual(sorted(upgraded["wake_facts"]), [("agent-a", 121000, 3, 181000, "unavailable", None), ("agent-b", 1000, 0, None, None, None)])
+        self.assertEqual(upgraded["runner_prior"], [])
+        self.assertNotIn("theseus", [row[0] for row in upgraded["actors"]], "Theseus's member comes with its first notice")
+
+    def test_step_back_restores_the_frozen_layout_and_every_row_while_no_notice_is_posted(self):
+        self.settled(["error", "error", "error"])
+        stored = everything(self.path)
+        self.upgrade()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO metadata VALUES ('health_announced','{}')")
+            db.execute("INSERT INTO runner_prior VALUES (1,'stopped',NULL,5)")
+        self.assertTrue(self.step_back()["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_HEALTH))
+        self.assertEqual(everything(self.path), stored)
+        self.assertEqual(self.sql("SELECT count(*) FROM metadata WHERE key='health_announced'"), [(0,)])
+        self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
+
+    def test_step_back_refuses_once_theseus_has_posted_a_notice_and_changes_nothing(self):
+        self.upgrade()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO actors(id,kind,name,enabled) VALUES ('theseus','agent','Theseus',0)")
+            db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,sent_ms) "
+                       "VALUES ('m-notice','t1','theseus','Health: a notice','[]','[]','[]','health-1',1)")
         before = self.unchanged()
         with self.assertRaises(MigrationError) as raised:
             self.step_back()
@@ -2459,6 +2534,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema27Case, _name, None)
     if _name.startswith("test_") and _name not in PipelineStepCase.__dict__:
         setattr(PipelineStepCase, _name, None)
+    if _name.startswith("test_") and _name not in HealthStepCase.__dict__:
+        setattr(HealthStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:

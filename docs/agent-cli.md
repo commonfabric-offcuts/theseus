@@ -157,6 +157,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `read-through TOPIC SEQ` | Sends `topic.read_through`. |
 | `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM (exit 0, even while blocked writing to a reader that is not draining); ends with a refusal when the authority changes, reported with its exit code even if a stop came too. |
 | `retry OPERATION` | Re-sends a saved request unchanged. |
+| `health` | Prints what needs attention, with why, then one line each for the agent runner, every agent and its waiting work, the Mac and the latest release, in the Health page's words, from the `health` view ([health.md](health.md)). With `--json` it prints the view itself. |
 | `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
 | `attachment ATTACHMENT --message MESSAGE --out FILE` | Saves one attachment's bytes, read through the message that carries it, to a new file (see [Attachments](#attachments)). |
 

@@ -90,6 +90,7 @@ VIEWS = {
     "source_topics": {"message_id", "cursor", "limit"},
     "wakes": set(),
     "health": set(),
+    "health_light": set(),
     "releases": {"cursor", "limit"},
     "conversation": {"workspace_id"},
     "pipeline": {"workspace_id", "section", "cursor", "limit"},

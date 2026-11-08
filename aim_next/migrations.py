@@ -103,10 +103,11 @@ STEPS = (
     # placement and edit, the messages whose subject is an item, and the release
     # notes written by hand. Stepping back is refused once any of them exists.
     ("28", "29", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
-    # The next version keeps, per recipient, when a wake last got through and
-    # how many have not since, and how the runner's previous run ended, for the
-    # Health page. Both are worked out from settlements, so stepping back loses
-    # no record.
+    # The next version keeps, per recipient, when a wake last got through, how
+    # many have not since and why the latest did not, and how the runner's
+    # previous run ended, for the Health page (health.py). They are worked out
+    # from settlements and exits, so stepping back loses no record; it is
+    # refused once Theseus has posted a health notice.
     ("29", "30", HEALTH_SCHEMA + HEALTH_BACKFILL, HEALTH_DOWN, HEALTH_OCCUPIED),
 )
 

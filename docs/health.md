@@ -2,26 +2,98 @@
 
 One page says whether Theseus is working, from Core's own facts: the agent
 runner, the server, each agent's waiting work and wakes, the Mac's load, and
-the latest release. Something unhealthy is said in plain words at the top. It
-exists because the runner stopped twice on 6 November and nobody saw it, and
-because every wake to the three Codex-queue agents failed for 18 hours after
-the ChatGPT app was closed, with 129 to 162 messages waiting for each, and
-nobody noticed.
+the latest release. Something unhealthy is said in plain words at the top,
+with why. It exists because the runner stopped twice on 6 November and nobody
+saw it, and because every wake to the three Codex-queue agents failed for 18
+hours after the ChatGPT app was closed, with 129 to 162 messages waiting for
+each, and nobody noticed.
 
 ## Where it is
 
 `?health`, from one quiet "Health" link under the instance label, which heads
-the rail on every page (the logo block on pages without a rail).
+the rail on every page (the logo block on pages without a rail). While
+anything is red the link says so: "Health · needs attention", in the alert
+colour, with no edge or box of its own. Agents read the same thing with
+`aim-next health` (docs/agent-cli.md).
 
-## The view
+## What is red
+
+One rule in Core (`_health_reds` in `health.py`) decides what is red; the page,
+the link and the notices all read it, so they cannot disagree:
+
+| key | red while |
+| --- | --- |
+| `runner` | no runner sends wakes: it paused, ended (killed, failed, lost its lease, or the server saw it go), was stopped and no runner has taken the role since, stopped renewing without saying so, or never ran here while a woken agent has work on the record |
+| `failing:<agent>` | `failing_after` (3) wakes in a row to that agent did not get through |
+| `parked:<agent>` | it has left its last three wakes unanswered (`wake_health.py`) and work on the record waits for it |
+
+The Mac's load is read when the page reads it, not recorded by any act, so it
+is said at the top of the page when it is above the core count but never
+lights the link or posts.
+
+## Why a wake did not get through
+
+A wake gets through when it settles `accepted`, `queued` or `handed`. Any
+other settlement (`error`, `unavailable`, `busy`, or `expired` with its claim)
+did not. The runner settles each wake with its own fixed code for how it went
+(`finish_wake(..., reason=)`: `broker_exit`, `deadline`, `route_unavailable`,
+`child_exited`, `start_failed` and the others in `wake_adapter.py` and
+`codex_host.py`; never local text), and a claim that expired with its runner
+is `expired`. Core keeps, per recipient, in `wake_facts`: `reached_ms`,
+`failed_wakes`, `failing_since_ms`, `failed_outcome` and `failed_reason` (the
+latest failure's code), updated by every settlement, so the page reads one row
+per agent however long a failure runs. `WHY` in `health.py` says each code in
+words ("the helper that puts a wake in the Codex app's queue failed (it exited
+with an error)"); the view sends those words as `failing.why`, and the page,
+the command line and the notices all say them. Failures from before Core kept
+the code say so.
+
+## Telling the team
+
+When what is red changes, Theseus posts one notice to the team, in the act
+that changed it; never on a timer, and never again while it stays red.
+
+- **When.** Every act that changes what the reds are read from runs
+  `_health_settle` in its own transaction: each recorded command, each runner
+  act (a settlement, a claim that finds an expired one, a pause, an
+  acquisition), and each recorded runner exit (the supervisor's, or the
+  server's when its live feed sees the runner process end). It compares what
+  is red now with what was last announced (metadata `health_announced`) and
+  posts only the difference: what went red, and what went green again.
+- **What.** Faults an act records: a pause, an exit, wakes failing, a parked
+  agent. A graceful stop (a deploy's) is red on the page and the link until a
+  runner takes the role again, but is never posted, so a deploy does not
+  post twice; a runner that stopped renewing is known gone only by the clock,
+  so it is not posted either, and the next runner's acquisition says what it
+  came back from on the page.
+- **Who.** Theseus itself, as the member `theseus` ("Theseus"), registered
+  disabled with its first notice: never on a team, in a list of people, or
+  woken, and never a person or agent who did not write the words. If someone
+  registered a member under that name first, no notice is posted as them.
+- **Where.** The conversation of each outcome the change concerns: an agent's
+  change, every outcome that agent is on the team of or coordinates; the
+  runner's, every outcome of an agent it wakes. One notice per outcome holds
+  every change that concerns it, says what went red and why in plain words
+  with no clock time in it, and points to the Health page and `aim-next
+  health`. It is nobody's request, so it is not an item of the conversation.
+- **Who is told.** The outcome's coordinator gets it as work, unless the
+  notice is about the coordinator; whoever a notice is about gets it settled
+  (it would only be more work that cannot reach them), and so do the people
+  in the conversation, who see the link light.
+
+## The views
+
+`health_light` (no arguments) returns `red`, the sorted keys of what is red.
+Every page reads it once and again on every commit, as attention is.
 
 `health` (no arguments) is one read. Every enabled member may read it. It
 returns:
 
 | field | meaning |
 | --- | --- |
-| `runner` | the `wakes` view's runner light (`live`, `state`, `reason`, `since_ms`), plus `started_ms` (when the current or last run took the role), `resumed_because` (`cleanup_confirmed` when the supervisor resumed a cleanup pause), and `prior`: `{state, reason, ended_ms}`, how the run before it ended (`stopped`, `exited`, `paused` or `unrenewed`). A pause now records `ended_ms`, so `since_ms` says since when it has been paused |
-| `agents` | every enabled agent (at most 100): `route` (`codex_queue`, `codex_hosted`, `other`, from its route pin, this binding's first; `null` with none), `waiting` and `waiting_since_ms` (pending deliveries in live groups and the oldest one's send time; another agent's whispers are not counted for the reader), and for a scheduled agent `next_due_ms`, `reached_ms` (when a wake last got through), `failing: {count, since_ms, outcome}` once `failing_after` wakes in a row have not got through, `not_answering: {count, since_ms}` when it is parked (`wake_health.py`), and `waking` while a claim is out |
+| `red` | the keys of what is red, as `health_light` gives them |
+| `runner` | the `wakes` view's runner light (`live`, `state`, `reason`, `since_ms`), plus `why` (an ended runner's verb, "was killed", or a pause's cause, "an operator paused it"), `started_ms` (when the current or last run took the role), `resumed_because` (`cleanup_confirmed` when the supervisor resumed a cleanup pause), and `prior`: `{state, reason, ended_ms, why}`, how the run before it ended (`stopped`, `exited`, `paused` or `unrenewed`), from `runner_prior`. A pause records `ended_ms`, so `since_ms` says since when it has been paused |
+| `agents` | every enabled agent (at most 100): `route` (`codex_queue`, `codex_hosted`, `other`, from its route pin, this binding's first; `null` with none), `waiting` and `waiting_since_ms` (pending deliveries in live groups and the oldest one's send time; another agent's whispers are not counted for the reader), and for a scheduled agent `next_due_ms`, `reached_ms` (when a wake last got through), `failing: {count, since_ms, outcome, reason, why}` while `failing:<agent>` is red, `not_answering: {count, since_ms}` while `parked:<agent>` is, and `waking` while a claim is out |
 | `failing_after` | the number of wakes in a row that did not get through before an agent is said to be failing (3) |
 | `release` | the latest release record: `release`, `commit`, `deployed_ms`, `items`, `source`, and `check` (the release check's `finished_ms`, `commit`, `python`, `node` and `native` counts), or `null` |
 | `machine` | `{load: [1, 5, 15 minute averages], cpus}`, read by `os.getloadavg()` when the view is read; never on a timer |
@@ -30,21 +102,17 @@ returns:
 Over HTTP the server adds `server: {started_ms, pid, live_feed}`, the one line
 Core cannot know.
 
-A wake **got through** when it settled `accepted`, `queued` or `handed`. Any
-other settlement (`error`, `unavailable`, `busy`, or `expired` with its claim)
-did not. Core keeps per recipient `reached_ms`, `failed_wakes`,
-`failing_since_ms` and `failed_outcome`, updated by every settlement, so the
-page reads one row per agent however long a failure runs. The database step
-that adds them works them out once from the settlements already kept. They
-and the runner's `prior_*` columns are derived, nobody's records, so stepping
-back drops them and is never refused.
+The database step that adds `wake_facts` and `runner_prior` works the counts
+out once from the settlements already kept. They are derived, nobody's
+records, so stepping back drops them, with what was announced; it is refused
+once Theseus has posted a notice, which is on the record.
 
 ## The page
 
 The top says what is wrong, most urgent first: a lost live connection, a
 runner that is not sending wakes (and how many agents have work waiting),
-agents whose wakes are failing (grouped when their failures began within two
-minutes of each other with the same outcome, since then the cause is
+agents whose wakes are failing and why (grouped when their failures began
+within two minutes of each other for the same reason, since then the cause is
 something they share; when they all go through the Codex app's queue the page
 says to look there first), parked agents, and a Mac whose 1-minute load is
 above its core count. With nothing wrong it says so in one line.
