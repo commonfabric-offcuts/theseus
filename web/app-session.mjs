@@ -92,7 +92,7 @@ export class EditorRegistry {
         if (state.note !== null) throw Error('A topic composer cannot hold a private note.');
         if (this.disposed) return null;
         const context = { instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId: topic.id, kind: 'reply' };
-        this.pages.set(editorKey(context), copy(state.submissions));
+        this.setPending(editorKey(context), copy(state.submissions));
         const reply = await this.register(context, state.draft);
         if (this.disposed) return null;
         reply.unavailable = !state.source_available || !state.destination_available;
@@ -159,6 +159,9 @@ export class EditorRegistry {
       } });
     this.sessions.set(key, session);
     session.registered = () => this.sessions.get(key) === session && !this.disposed;
+    // From here the departure guard reads what is in doubt for this writing,
+    // so the view is told now, as setPending tells it of every later list.
+    this.changed(editor);
     if (context.kind === 'reply') {
       editor.recoveryDiscovery = true;
       editor.recoveryServerDraft = copy(remote ?? null);
@@ -214,7 +217,8 @@ export class EditorRegistry {
         !same(sourceAnswer.source_ref, sourceRef))) throw Error('The full source identity could not be confirmed.');
     if (token !== this.generation || this.disposed) return null;
     const context = { instanceId: this.bootstrap.instance_id, actor: this.bootstrap.actor, sourceRef, topicId };
-    this.pages.set(editorKey({ ...context, kind: 'reply' }), copy(state.submissions));
+    // The fresh list stands even if this open is dropped below; the view is told.
+    this.setPending(editorKey({ ...context, kind: 'reply' }), copy(state.submissions));
     const reply = await this.register({ ...context, kind: 'reply' }, state.draft);
     const note = await this.register({ ...context, kind: 'note' }, state.note);
     if (token !== this.generation || this.disposed) return null;
@@ -584,8 +588,8 @@ export class EditorRegistry {
         (receipt.status === 'committed' && receipt.result?.submission_id !== id)) throw Error('The confirmation identity could not be established.');
     const page = this.pending(editor);
     this.rememberPendingReceipt(editor, item, receipt);
-    this.pages.set(editor.key, { ...page, items: page.items.map(entry => entry.id === id ? { ...entry, send_status: receipt.status } : entry) });
-    this.changed(editor); return receipt;
+    this.setPending(editor.key, { ...page, items: page.items.map(entry => entry.id === id ? { ...entry, send_status: receipt.status } : entry) });
+    return receipt;
   }
 
   rememberPendingReceipt(editor, item, receipt) {
@@ -614,7 +618,15 @@ export class EditorRegistry {
     if (this.pages.get(editor.key) !== previous) return this.pending(editor);
     const ids = new Set(previous.items.map(item => item.id));
     const result = { ...page, items: [...previous.items, ...page.items.filter(item => !ids.has(item.id))] };
-    this.pages.set(editor.key, result); this.changed(editor); return result;
+    this.setPending(editor.key, result); return result;
+  }
+  // The only write of the server's list of a writing's replies not sent. The
+  // Review button and the departure guard both read it through doubt(), so the
+  // writing registered under this key is told of every change, and writing
+  // registered later is told when it registers (createEditor).
+  setPending(key, page) {
+    this.pages.set(key, page);
+    const session = this.sessions.get(key); if (session) this.changed(session.editor);
   }
 
   // The one answer to which of this editor's replies are in doubt (each as

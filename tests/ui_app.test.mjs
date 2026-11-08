@@ -1576,6 +1576,71 @@ for (const composer of ['topic', 'message']) test(`a reply in doubt behind repli
   assert.equal(f.registry.doubt(reply).label, 'Review 1 reply');
 });
 
+// Item 118: an open of a message's Reader dropped after its fresh read, by
+// Escape or by choosing another message while the step keeps the writing in
+// front, may still change what is in doubt for that message, whether or not it
+// was opened here before. The Review button under the topic's title is told, so
+// it and the departure guard agree: a reply whose send never landed elsewhere
+// gets its button, and one the read shows went loses it.
+for (const doubtCase of ['never landed', 'never landed, first open here', 'answer lost']) for (const drop of ['Escape', 'another message']) test(`an open dropped after its read leaves the Review button and the departure guard agreeing: ${doubtCase}, ${drop}`, async t => {
+  // The page draws a message's button from what it was last told.
+  const painted = new Map();
+  const f = await fixture(t, { changed(editor) { painted.set(editor.key, this.doubt(editor).label); } });
+  const m1 = () => [...f.registry.sessions.values()].map(session => session.editor)
+    .find(editor => editor.context.kind === 'reply' && editor.context.sourceRef.id === f.facts.sources[0].id);
+  if (doubtCase !== 'never landed, first open here') await f.open(0);
+  if (doubtCase === 'answer lost') {
+    const command = f.transport.command;
+    f.transport.command = async envelope => {
+      const answer = await command(envelope);
+      if (envelope.kind === 'message.send') throw Error('Lost HTTP response after commit');
+      return answer;
+    };
+    m1().edit({ body: 'Went, answer lost' }); await f.registry.edited(m1());
+    await f.registry.send(m1(), { stay: true, presentation: f.registry.current });
+    f.transport.command = command;
+    assert.equal(painted.get(m1().key), 'Review 1 reply', 'shown while its answer is lost');
+  }
+  const second = await f.open(1);
+  second.editors.reply.edit({ body: 'Typing in m2' }); await f.registry.edited(second.editors.reply);
+  if (doubtCase !== 'answer lost') {
+    await serverReply(f, f.facts.sources[0], 'From the phone, never landed', { send: false });
+    assert.equal(m1() && painted.get(m1().key), m1() && null, 'nothing is in doubt for m1 here yet');
+  }
+  const entered = deferred(), held = deferred(), keep = f.registry.keepEditorsLocal.bind(f.registry);
+  let keeps = 0;
+  f.registry.keepEditorsLocal = async editors => { if (++keeps === 2) { entered.resolve(); await held.promise; } return keep(editors); };
+  const opening = f.open(0);
+  await entered.promise; // its fresh read is in; the step keeps m2's writing
+  const newer = drop === 'Escape' ? (assert.equal(f.registry.cancelOpen(), true), null) : f.open(1);
+  held.resolve();
+  assert.equal(await opening, null, 'the open was dropped');
+  await newer; await cleanupSettled(f, m1());
+  const answer = f.registry.doubt(m1()).label;
+  assert.equal(answer, doubtCase === 'answer lost' ? null : 'Review 1 reply', 'the fresh read answers');
+  assert.equal(painted.get(m1().key) ?? null, answer, 'the button under the title shows that answer');
+  const nav = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: () => {} });
+  const guard = await nav.open('other').then(() => null, error => error.message);
+  if (answer) assert.match(guard, new RegExp(`“${answer}”`)); else assert.equal(guard, null, 'leaving goes at once');
+});
+
+// An open that fails after the message's writing is registered here leaves
+// that writing in the departure guard's reach, so the button is told too.
+test('an open that fails after registering the message\'s writing leaves the Review button and the departure guard agreeing', async t => {
+  const painted = new Map();
+  const f = await fixture(t, { changed(editor) { painted.set(editor.key, this.doubt(editor).label); } });
+  await serverReply(f, f.facts.sources[0], 'From the phone, never landed', { send: false });
+  const candidates = f.journal.candidates.bind(f.journal);
+  f.journal.candidates = async () => { f.journal.candidates = candidates; throw Error('This device could not read its saved versions'); };
+  await assert.rejects(f.open(0), /could not read its saved versions/);
+  const m1 = [...f.registry.sessions.values()].map(session => session.editor).find(editor => editor.context.kind === 'reply');
+  assert.ok(m1, 'the writing stays registered');
+  assert.equal(f.registry.doubt(m1).label, 'Review 1 reply');
+  assert.equal(painted.get(m1.key), 'Review 1 reply', 'the button under the title shows it');
+  const nav = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: () => {} });
+  assert.match(await nav.open('other').then(() => null, error => error.message), /“Review 1 reply”/);
+});
+
 test('source access refusal still exposes authorized retained writing without old source text', async t => {
   const f = await fixture(t), first = await f.open(), editor = first.editors.reply;
   editor.edit({ body: 'My retained writing' }); await f.registry.edited(editor); await f.registry.flush(editor);

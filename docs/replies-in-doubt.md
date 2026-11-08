@@ -47,3 +47,10 @@ answers for it.
 - The departure guard: while a send is under way it waits; otherwise, while any
   reply is in doubt, it names each Review button by its words and leaves on a
   second choice of the same topic with the same replies in doubt.
+
+The button and the guard agree because the page is told whenever the answer's
+inputs change: `EditorRegistry.setPending` is the only write of the server's
+list and tells the writing registered for it, and a writing is told as soon as
+it is registered. An open of a message's Reader dropped after its read (Escape,
+or another message chosen while the step keeps the writing in front) still
+keeps that fresher list, and the button shows its answer.
