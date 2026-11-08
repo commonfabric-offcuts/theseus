@@ -195,6 +195,11 @@ output; the exit codes are those of `command`.
   (`AUTHORITY_CHANGED`, exit 2, or `AUTHORITY_BUSY`, exit 75, during the
   cutover), so its monitor can rebind; `WATCH_FAILED` reports an anchor
   replaced without a refusal.
+- `notes SCOPE [--topic]`, `note new SCOPE [--topic] --title TITLE FILE|-`,
+  `note revise ITEM --expected N [--title TITLE] FILE|-` and
+  `note read ITEM [--revision N]`: an outcome's or a topic's Notebook pages;
+  each write reads its revision back and fails loudly on a difference
+  ([agent-cli.md](agent-cli.md#notebook-pages)).
 - `retry OPERATION`: re-sends a saved request exactly.
 
 A refusal that was not recorded suggests `retry` only when it is retryable;

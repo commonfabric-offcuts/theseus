@@ -23,6 +23,11 @@ page look changed again.
 - Writing a revision (`memory.create`, `memory.revise`) reads it for its
   writer, so a person's own edit never marks a page changed for them. The
   write is its own change; it adds no `memory_read` change.
+- View `memory_current`: args `{item_id}`, a page as it stands, in the
+  `source` view's shape, its `source_ref` naming the current revision; the
+  same rule for who may read it (`FORBIDDEN` otherwise). A `source_ref`
+  without a revision still reads nothing, so a page is read at its latest
+  only when that is asked for by name.
 - View `memory_items`: each item carries `read_revision`, the viewer's own,
   `0` when they have not read it. A page is changed for the viewer when
   `0 < read_revision < revision`. A page never read is not marked: the light

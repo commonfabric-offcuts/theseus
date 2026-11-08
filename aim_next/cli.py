@@ -177,6 +177,8 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| archive TOPIC | unarchive TOPIC "
          "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] "
          "| attachment ATTACHMENT --message MESSAGE --out FILE "
+         "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE FILE|- | note revise ITEM --expected N [--title TITLE] FILE|- "
+         "| note read ITEM [--revision N] "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION | --undo EVENT) "
@@ -281,6 +283,33 @@ def _parser():
     attachment.add_argument("--message", required=True)
     attachment.add_argument("--out", required=True)
     post.add_argument("--subject")
+    # Notebook pages (docs/agent-cli.md, "Notebook pages"). SCOPE is an outcome,
+    # or with --topic a topic, whose Notebook holds the pages.
+    notes = verb("notes")
+    notes.add_argument("scope")
+    notes.add_argument("--topic", action="store_true")
+    note = verbs.add_parser("note", add_help=False)
+    pages = note.add_subparsers(dest="note_verb", parser_class=Parser)
+    pages.required = True
+
+    def page_verb(name):
+        sub = pages.add_parser(name, add_help=False)
+        sub.add_argument("--json", dest="json_after", action="store_true")
+        sub.add_argument("--outbox", dest="outbox_after")
+        return sub
+    new = page_verb("new")
+    new.add_argument("scope")
+    new.add_argument("--topic", action="store_true")
+    new.add_argument("--title", required=True)
+    new.add_argument("file")
+    revise = page_verb("revise")
+    revise.add_argument("item")
+    revise.add_argument("--expected", type=int, required=True)
+    revise.add_argument("--title")
+    revise.add_argument("file")
+    page_read = page_verb("read")
+    page_read.add_argument("item")
+    page_read.add_argument("--revision", type=int)
     register_pipeline(verb)
     return parser
 
@@ -547,10 +576,15 @@ class Agent(PipelineVerbs):
     def text(self):
         if self.options.text != "-":
             return self.options.text
+        return self.bounded_text(self.stdin)
+
+    @staticmethod
+    def bounded_text(source):
+        """UTF-8 words read from a byte stream, at most the body limit."""
         cap = LIMITS["body_utf8_bytes"]
         raw = bytearray()
         while len(raw) <= cap:
-            chunk = self.stdin.read(min(65536, cap + 1 - len(raw)))
+            chunk = source.read(min(65536, cap + 1 - len(raw)))
             if not isinstance(chunk, bytes):
                 raise InvalidRequest()
             if not chunk:
@@ -825,6 +859,98 @@ class Agent(PipelineVerbs):
         self.out.raw({"attachment": dict(attachment, id=descriptor["media_id"]), "message_id": options.message, "path": options.out})
         self.out.plain("saved %s (%s, %s bytes, sha256 %s) to %s" % (descriptor["name"], descriptor["content_type"],
                                                                     descriptor["size_bytes"], descriptor["sha256"], options.out))
+
+    # Notebook pages ------------------------------------------------------------
+
+    def notebook_scope(self):
+        return {"kind": "topic" if self.options.topic else "workspace", "id": self.options.scope}
+
+    @staticmethod
+    def scope_words(scope):
+        return ("topic " if scope["kind"] == "topic" else "outcome ") + scope["id"]
+
+    def page_words(self):
+        """A page's words from FILE, or from stdin for -, exactly as written."""
+        path = self.options.file
+        if path == "-":
+            return self.bounded_text(self.stdin)
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        except OSError as error:
+            self.refuse("FILE_UNAVAILABLE", "%s cannot be read (%s); nothing was sent" % (path, error.strerror))
+        with os.fdopen(fd, "rb") as source:
+            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                self.refuse("FILE_UNAVAILABLE", "%s is not a regular file; nothing was sent" % path)
+            return self.bounded_text(source)
+
+    def write_page(self, kind, target, expected, args):
+        """Writes one revision, then reads it back: a page that does not read back
+        as written fails loudly, naming the revision that was recorded."""
+        result = self.command(kind, target, args, {"item_revision": expected})
+        source = self.view("source", {"source_ref": result["source_ref"]})
+        differs = [name for name, same in (
+            ("title", source["title"] == args["title"]), ("body", source["body"] == args["body"]),
+            ("attachments", [item["id"] for item in source["attachments"]] == [item["id"] for item in args["attachments"]]),
+            ("evidence", source["references"] == args["references"]),
+            ("revision", source["source_ref"] == result["source_ref"]), ("author", source["author"] == self.actor)) if not same]
+        if differs:
+            _diagnostic(self.out.stderr, "READ_BACK_MISMATCH: revision %d of %s was recorded, but it reads back with a different %s; "
+                        "read it with `note read %s --revision %d` before writing again." % (
+                            result["revision"], result["item_id"], " and ".join(differs), result["item_id"], result["revision"]))
+            raise Failed(1, recorded=True)
+        return result
+
+    def do_note(self):
+        getattr(self, "note_" + self.options.note_verb)()
+
+    def note_new(self):
+        options = self.options
+        scope = self.notebook_scope()
+        args = {"title": options.title, "body": self.page_words(), "attachments": [], "references": []}
+        item = "n-" + uuid.uuid4().hex
+        result = self.write_page("memory.create", {"item_id": item, "owner_scope": scope}, 0, args)
+        self.out.plain('created %s "%s" in %s at revision %d; read back matches' % (
+            item, _one_line(options.title, 60), self.scope_words(result["owner_scope"]), result["revision"]))
+
+    def note_revise(self):
+        """A new revision: the words given, keeping the title (unless --title),
+        attachments and evidence of the page as it stands. Core refuses it unless
+        --expected is the revision it stands at."""
+        options = self.options
+        body = self.page_words()
+        current = self.view("memory_current", {"item_id": options.item})
+        args = {"title": current["title"] if options.title is None else options.title, "body": body,
+                "attachments": [{"id": item["id"]} for item in current["attachments"]], "references": current["references"]}
+        result = self.write_page("memory.revise", {"item_id": options.item}, options.expected, args)
+        self.out.plain('revised %s "%s" to revision %d; read back matches' % (result["item_id"], _one_line(args["title"], 60), result["revision"]))
+
+    def note_read(self):
+        """One revision of a page, the latest unless --revision names one. It records nothing."""
+        options = self.options
+        source = (self.view("memory_current", {"item_id": options.item}) if options.revision is None else
+                  self.view("source", {"source_ref": {"kind": "memory", "id": options.item, "revision": options.revision}}))
+        self.out.plain('%s  "%s"  revision %s of %s by %s  (%s)' % (
+            source["source_ref"]["id"], _one_line(source["title"]), source["version"], source["current_revision"],
+            source["author"], self.scope_words(source["owner_scope"])))
+        self.out.plain("")
+        for line in source["body"].split("\n") if source["body"] else ():
+            self.out.plain(line)
+        for attachment in source["attachments"]:
+            self.out.plain(_attachment_line(attachment))
+        for ref in source["references"]:
+            self.out.plain("  [evidence: %s]" % ("message " + ref["id"] if ref["kind"] == "message" else
+                                                 "page %s revision %s" % (ref["id"], ref["revision"])))
+
+    def do_notes(self):
+        """A Notebook's pages, oldest first, each marked when it changed since the actor read it."""
+        items = self.pages("memory_items", {"owner_scope": self.notebook_scope()})
+        for item in items:
+            line = '%s  "%s"  revision %s by %s' % (item["id"], _one_line(item["title"], 80), item["revision"], item["author"])
+            if 0 < item["read_revision"] < item["revision"]:
+                line += "  [changed since you read revision %s]" % item["read_revision"]
+            self.out.plain(line)
+        if not items:
+            self.out.plain("no Notebook pages")
 
     @staticmethod
     def delivery_line(item):
@@ -1117,7 +1243,7 @@ class Agent(PipelineVerbs):
                     "acknowledged %s" % identity if kind == "delivery" and version == 2 else "change %s %s v%s" % (kind, identity, version))
 
 
-PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out"}
+PATH_OPTIONS = {"profile", "outbox", "outbox_after", "out", "file"}
 
 
 def _utf8_arguments(options):

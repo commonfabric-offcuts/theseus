@@ -77,7 +77,7 @@ VIEWS = {
     "outcome_light": {"workspace_id"},
     "workspace_topics": {"workspace_id", "cursor", "limit", "archived", "done"}, "topic": {"topic_id"},
     "topic_messages": {"topic_id", "cursor", "limit", "audience", "direction", "items"}, "source": {"source_ref", "kind", "id", "revision"},
-    "memory_items": {"owner_scope", "cursor", "limit"},
+    "memory_items": {"owner_scope", "cursor", "limit"}, "memory_current": {"item_id"},
     "media": {"media_id", "source_ref"},
     "editor_state": {"source_ref", "topic_id", "cursor", "limit"},
     "submission": {"submission_id"}, "submissions": {"source_ref", "topic_id", "cursor", "limit"},

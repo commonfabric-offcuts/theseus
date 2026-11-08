@@ -159,6 +159,10 @@ above; `binding`, `view` and `command` are unchanged.
 | `retry OPERATION` | Re-sends a saved request unchanged. |
 | `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
 | `attachment ATTACHMENT --message MESSAGE --out FILE` | Saves one attachment's bytes, read through the message that carries it, to a new file (see [Attachments](#attachments)). |
+| `notes SCOPE [--topic]` | Lists the pages in an outcome's Notebook, or with `--topic` a topic's own: id, title, revision and author, and `[changed since you read revision N]` on a page revised since the actor read it (see [Notebook pages](#notebook-pages)). |
+| `note new SCOPE [--topic] --title TITLE FILE\|-` | Makes a page in that Notebook from FILE's words, or stdin's for `-`, and reads it back. |
+| `note revise ITEM --expected N [--title TITLE] FILE\|-` | Writes the page's next revision from FILE's words, keeping its title (unless `--title`), attachments and evidence, and reads it back. Refused unless the page stands at revision N. |
+| `note read ITEM [--revision N]` | Prints one revision of a page, the latest unless `--revision` names one. Records nothing. |
 
 Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
 DIR`, default `ACTOR.outbox/` beside the profile) before it is sent, and its
@@ -257,6 +261,43 @@ there by then it is left alone, and when the removal itself fails the refusal
 is still `OUT_UNAVAILABLE` and says a partial file may remain. It prints
 `saved NAME (TYPE, N bytes, sha256 HEX) to FILE`, or with `--json`
 `{attachment, message_id, path}`. It sends no command and acknowledges nothing.
+
+## Notebook pages
+
+An outcome's Notebook, and each topic's own, holds pages that keep every
+revision ([notebook-pages.md](notebook-pages.md)). `note new` and `note
+revise` take the page's words from a file, or from stdin for `-`, byte for
+byte: nothing is trimmed, and line endings stay as written. Text that is not
+UTF-8, or longer than a message's body limit, is refused before anything is
+saved, as is a FILE that cannot be read (`FILE_UNAVAILABLE`).
+
+```text
+$ aim-next --profile /absolute/agent-a.json note new w-3f… --title "Results" results.md
+created n-8c2… "Results" in outcome w-3f… at revision 1; read back matches
+$ aim-next --profile /absolute/agent-a.json note revise n-8c2… --expected 1 results.md
+revised n-8c2… "Results" to revision 2; read back matches
+$ aim-next --profile /absolute/agent-a.json notes w-3f…
+n-8c2…  "Results"  revision 2 by agent-a
+```
+
+Every write reads its revision back (the `source` view at the revision the
+receipt names) and compares the title, words, attachments, evidence and
+author with what it sent. When any differs, it prints nothing on stdout,
+says `READ_BACK_MISMATCH: revision N of ITEM was recorded, but it reads back
+with a different body; …` on stderr and exits 1: the revision is recorded,
+so read it before writing again. `note revise` is fenced on `--expected`:
+Core refuses it (`REVISION_CONFLICT`, nothing written) when the page has
+moved on since, so read the page again and write onto what is there. A new
+page's id is `n-` and 32 hex digits. Who may write pages is Core's rule:
+participating agents, in a topic's Notebook its active participants, in an
+outcome's its team.
+
+`note read` prints `ITEM  "TITLE"  revision N of M by AUTHOR  (outcome W)`,
+a blank line, then the page's words, one line per attachment as `read`
+prints them, and one `[evidence: …]` line per message or page it cites.
+`--json` prints the `source` view itself. Without `--revision` it reads the
+page as it stands, through the `memory_current` view
+([notebook-pages.md](notebook-pages.md#core)).
 
 ## Openings and membership
 

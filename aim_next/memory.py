@@ -169,6 +169,12 @@ class Memory:
                 "references": json.loads(row["refs"]), "version": row["revision"],
                 "current_revision": item["current_revision"], "allowed_actions": ["quote", "note.save"]}
 
+    def _view_memory_current(self, db, actor, args):
+        """A Notebook page as it stands, at the revision its answer's source_ref names.
+        A source_ref without a revision never reads the latest one; this is asked for by name."""
+        item = self._memory_identity(db, actor, args.get("item_id"))
+        return self._memory_source(db, actor, {"kind": "memory", "id": item["id"], "revision": item["current_revision"]})
+
     def _view_memory_items(self, db, actor, args):
         scope = self._memory_scope(db, actor, args.get("owner_scope"))
         limit = _page_size(args)
