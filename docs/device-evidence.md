@@ -54,6 +54,11 @@ Chrome, and how the harness handled it.
   that made it. Each screenshot waits two animation frames.
 - **Phone width.** A WebKit "phone" is a desktop window at phone width with
   touch, not iOS Safari. Its device scale stays at 1.
+- **Leaving a page.** WebKit reports each read a page still had out when it
+  navigates away as a page error ("... due to access control checks"), though
+  the page handles the failure; Chrome reports none. Such an error, arriving
+  between the main frame's navigation request and its arrival, is recorded as
+  an event of the leaving page, not an error (`tests/webkit_native.mjs`).
 
 Running these modes in WebKit found two faults, and both are fixed:
 

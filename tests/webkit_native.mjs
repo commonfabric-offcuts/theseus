@@ -99,7 +99,20 @@ try {
     const initScripts = [];
     const errors = [], calls = [], events = [];
     const attach = opened => {
-      opened.on('pageerror', error => errors.push({ message: error.message, stack: error.stack }));
+      // WebKit reports each read a page had out when it navigates away as a page
+      // error ("... due to access control checks"), though the page handles
+      // it; Chrome reports none. Such a read, reported between the main
+      // frame's navigation request and its arrival, is an event of the leaving
+      // page, not an error. Any other error, and any error at another time,
+      // stays an error.
+      let leaving = false;
+      opened.on('request', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = true; });
+      opened.on('framenavigated', frame => { if (frame === opened.mainFrame()) leaving = false; });
+      opened.on('requestfailed', request => { if (request.isNavigationRequest() && request.frame() === opened.mainFrame()) leaving = false; });
+      opened.on('pageerror', error => {
+        if (leaving && /^Fetch API cannot load \S+ due to access control checks\.$/.test(error.stack?.split('\n')[0] ?? '')) events.push({ method: 'leaving page read cancelled', message: error.message });
+        else errors.push({ message: error.message, stack: error.stack });
+      });
       opened.on('request', request => {
         if (!request.url().startsWith(facts.origin + '/api/')) return;
         let payload; try { payload = JSON.parse(request.postData() ?? 'null'); } catch { payload = null; }
