@@ -33,6 +33,22 @@ from .standing_conversation import partial
 from .whispers import private_source_refused
 
 
+# A stage entry keeps its past: once left, nothing in it changes, but (version 30) the end _settle wrote on a piece's last
+# entry when a record overtakes a drop: a piece of work's `dropped` or `shipped`, or an emptied release's `held` or
+# `dropped`, decided again as `shipped`, or as `held` saying what took the release's items. When and by whom it was left stay.
+_KEEPS_ITS_PAST = (
+    "CREATE TRIGGER entries_keep_their_past BEFORE UPDATE ON pipeline_stage_entries "
+    "WHEN %s OR NEW.seq IS NOT OLD.seq OR NEW.piece_id IS NOT OLD.piece_id OR NEW.stage_id IS NOT OLD.stage_id "
+    "OR NEW.round IS NOT OLD.round OR NEW.size IS NOT OLD.size OR NEW.entered_ms IS NOT OLD.entered_ms OR NEW.entered_by IS NOT OLD.entered_by "
+    "OR NEW.ask_message_id IS NOT OLD.ask_message_id BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END")
+_DECIDED_AGAIN = (
+    "(OLD.left_ms IS NOT NULL AND NOT (NEW.left_ms IS OLD.left_ms AND NEW.left_by IS OLD.left_by AND NEW.note IS OLD.note "
+    "AND NEW.progress IS OLD.progress AND NOT EXISTS (SELECT 1 FROM pipeline_stage_entries e WHERE e.piece_id=OLD.piece_id AND e.seq>OLD.seq) "
+    "AND (((SELECT kind FROM pipeline_pieces WHERE id=OLD.piece_id)='piece' AND OLD.left_outcome IN ('dropped','shipped') "
+    "AND NEW.left_outcome='shipped') OR ((SELECT kind FROM pipeline_pieces WHERE id=OLD.piece_id)='release' "
+    "AND OLD.left_outcome IN ('dropped','held') AND NEW.left_outcome IN ('held','shipped')))))")
+PIPELINE_DECIDED_AGAIN_UP = ("DROP TRIGGER entries_keep_their_past", _KEEPS_ITS_PAST % _DECIDED_AGAIN)
+PIPELINE_DECIDED_AGAIN_DOWN = ("DROP TRIGGER entries_keep_their_past", _KEEPS_ITS_PAST % "OLD.left_ms IS NOT NULL")
 PIPELINE_SCHEMA = [
     "CREATE TABLE pipelines (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id), "
     "enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), title TEXT NOT NULL, unit_one TEXT NOT NULL, unit_many TEXT NOT NULL, "
@@ -70,10 +86,7 @@ PIPELINE_SCHEMA = [
     "CREATE INDEX open_entries ON pipeline_stage_entries(workspace_id, piece_id) WHERE left_ms IS NULL",
     "CREATE INDEX stage_history ON pipeline_stage_entries(workspace_id, stage_id, size, round > 1, left_ms DESC) WHERE left_ms IS NOT NULL",
     "CREATE INDEX held_stage_asks ON pipeline_stage_entries(ask_message_id) WHERE ask_message_id IS NOT NULL AND left_ms IS NULL",
-    "CREATE TRIGGER entries_keep_their_past BEFORE UPDATE ON pipeline_stage_entries "
-    "WHEN OLD.left_ms IS NOT NULL OR NEW.seq IS NOT OLD.seq OR NEW.piece_id IS NOT OLD.piece_id OR NEW.stage_id IS NOT OLD.stage_id "
-    "OR NEW.round IS NOT OLD.round OR NEW.size IS NOT OLD.size OR NEW.entered_ms IS NOT OLD.entered_ms OR NEW.entered_by IS NOT OLD.entered_by "
-    "OR NEW.ask_message_id IS NOT OLD.ask_message_id BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END",
+    _KEEPS_ITS_PAST % "OLD.left_ms IS NOT NULL",
     "CREATE TRIGGER entries_stay BEFORE DELETE ON pipeline_stage_entries BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END",
     # D24: a stage that waits on the owner's word is entered only with an ask to the
     # owner by whoever enters it, in the piece's topic, and left only by the owner.
@@ -160,23 +173,35 @@ def _loads(text, default):
     return json.loads(text) if text else default
 
 
-# The facts _settle reads, each about one member row m (piece p) of the outcome. Member rows only ever leave, once, and
-# records and kept drop events are never taken back, so each fact, once true, stays true. :ships is whether the outcome ships in
+# The facts _settle reads, each about one member row m (piece p) of the outcome. Member rows leave once, and records and
+# kept events are never taken back, so each fact, once true, stays true; the one row that comes back is one the record of
+# its own release overtook (_OVERTAKEN, _ship_release), and it comes back named. :ships is whether the outcome ships in
 # releases: only then do the records, which name bare item numbers, name its items.
 _NAMED = "(:ships AND m.number IN (SELECT j.value FROM releases r, json_each(r.items) j))"
 # An item a piece combined into a release, dropped since (from the release, or once it went back to building), has left
 # that piece's work for good: putting it back starts new work, not the old piece's.
 _DROPPED_SINCE = ("EXISTS (SELECT 1 FROM pipeline_events v INDEXED BY item_events WHERE v.workspace_id=m.workspace_id AND v.number=m.number "
                   "AND v.kind='moved' AND v.ms>=m.left_ms AND json_extract(v.payload,'$.after.section')='dropped')")
+# Put back since the row left: moved out of Dropped, so whatever builds it now is new work.
+_PUT_BACK_SINCE = ("EXISTS (SELECT 1 FROM pipeline_events v INDEXED BY item_events WHERE v.workspace_id=m.workspace_id AND v.number=m.number "
+                   "AND v.kind='moved' AND v.ms>=m.left_ms AND json_extract(v.payload,'$.before.section')='dropped' "
+                   "AND json_extract(v.payload,'$.after.section')<>'dropped')")
+# A record overtakes a drop (D25): it names an item dropped from the row's piece and not put back since. The deploy takes a
+# record's items from its commits, so a record can name an item already dropped; the item shipped, and since a shipped
+# item is never dropped, the drop counts for nothing, as if the record had come first.
+_OVERTAKEN = "(m.left_reason='dropped' AND " + _NAMED + " AND NOT " + _PUT_BACK_SINCE + ")"
 # Work left to ship (D1): an item still in the piece, or combined from it into a release and not dropped since, that no
 # record names.
 _LEFT = "(m.left_ms IS NULL OR (m.left_reason='combined' AND NOT " + _DROPPED_SINCE + ")) AND NOT " + _NAMED
-# What a piece shipped: each item a record names that it holds, or, for a piece of work, that it combined into a release
-# (and was not dropped since) or that shipped while it was under way (`returned`). A release shipped only what it holds:
-# an item it returned went back to building or shipped in another release. With the record naming it, newest first.
+# What a piece shipped: each item a record names that it holds, or, for a piece of work, that it ever held and that was not
+# put back since it left: combined into a release (or dropped since, the record overtaking the drop), shipped while it was
+# under way (`returned`), or dropped from it (overtaken). A release shipped only what it holds: an item it returned went
+# back to building or shipped in another release. With the record naming it, newest first.
 _SHIPPED_FROM = ("SELECT max(r.number) FROM pipeline_pieces p JOIN pipeline_piece_members m ON m.piece_id=p.id, releases r, json_each(r.items) j "
-                 "WHERE j.value=m.number AND :ships AND (m.left_ms IS NULL OR (p.kind='piece' AND (m.left_reason='returned' "
-                 "OR (m.left_reason='combined' AND NOT " + _DROPPED_SINCE + "))))")
+                 "WHERE j.value=m.number AND :ships AND (m.left_ms IS NULL OR (p.kind='piece' AND NOT " + _PUT_BACK_SINCE + "))")
+# A piece's last entry that _settle wrote when the piece ended, and decides again when a record overtakes a drop: a piece of
+# work's `shipped` or `dropped`, an emptied release's `held` or `dropped`. A release left `shipped`, by its record, is final.
+_DECIDED = {"piece": ("shipped", "dropped"), "release": ("held", "dropped")}
 
 
 class Pipeline:
@@ -252,22 +277,38 @@ class Pipeline:
     def _ship_release(self, db, release, next_number):
         """7.2 step 11, in the transaction that writes a release record; next_number is _next_release as it was before it.
 
-        The record changes what pieces hold, then _settle decides every end. It ships an outcome's release (_the_release)
-        only when it is that release, its number the next one: an item the release holds that no record names has not
-        shipped and goes back to building (`returned`), and the release ends `shipped`, "Shipped in release N", whatever
-        stage it is in. What the record names leaves every other piece under way (_shipped_leave). Only the outcome that
-        ships in releases has its items named by records."""
+        The record changes what pieces hold, then _settle decides every end. It ships an outcome's release only when its
+        number is the next one: the release open (_the_release), or, with none open, a release emptied by drops this record
+        overtakes (_overtaken_release), which would still be open had the record come before them. An item that release dropped and the record names comes back into it (_OVERTAKEN: what shipped in a release
+        stays in it); an item it holds that no record names has not shipped and goes back to building (`returned`); and the
+        release ends `shipped`, "Shipped in release N", whatever stage it is in. What the record names leaves every other
+        piece under way (_shipped_leave). Only the outcome that ships in releases has its items named by records."""
         ms, number, named = release["recorded_ms"], release["release"], list(release["items"])
         for (workspace_id,) in db.execute("SELECT workspace_id FROM pipelines WHERE ships_in_releases=1").fetchall():
-            piece = self._the_release(db, workspace_id)
+            piece = self._the_release(db, workspace_id) or self._overtaken_release(db, workspace_id, number)
             shipping, numbers = None, list(named)
             if piece is not None and number == next_number:
+                db.execute("UPDATE pipeline_piece_members SET left_ms=NULL,left_reason=NULL WHERE rowid IN (SELECT m.rowid FROM "
+                           "pipeline_piece_members m WHERE m.piece_id=:piece AND " + _OVERTAKEN + ")", {"piece": piece["id"], "ships": 1})
                 db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND left_ms IS NULL "
                            "AND number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j)", (ms, piece["id"]))
                 shipping = (piece["id"], number)
                 numbers += [row[0] for row in db.execute("SELECT number FROM pipeline_piece_members WHERE piece_id=?", (piece["id"],))]
             self._shipped_leave(db, workspace_id, named, ms, shipping and shipping[0])
             self._settle(db, workspace_id, numbers, None, ms, decided=named, shipping=shipping)
+
+    def _overtaken_release(self, db, workspace_id, number):
+        """The release a record of this number would have shipped had it come before the drops that emptied it: the first
+        release piece left `dropped` or `held` that would have shipped as this number (one past the last record written
+        before it ended), one of whose drops the record overtakes (_OVERTAKEN). None without one. Asked only while no
+        release is open, so the release a deploy puts out is always the one it ships."""
+        row = db.execute("SELECT p.* FROM pipeline_pieces p JOIN pipeline_stage_entries e INDEXED BY piece_entries ON e.piece_id=p.id "
+                         "WHERE p.workspace_id=:workspace AND p.kind='release' AND e.left_outcome IN ('held','dropped') "
+                         "AND e.seq=(SELECT max(seq) FROM pipeline_stage_entries WHERE piece_id=p.id) "
+                         "AND (SELECT coalesce(max(r.number),0)+1 FROM releases r WHERE r.recorded_ms<=e.left_ms AND r.number<>:number)=:number "
+                         "AND EXISTS (SELECT 1 FROM pipeline_piece_members m WHERE m.piece_id=p.id AND " + _OVERTAKEN + ") "
+                         "ORDER BY p.rowid LIMIT 1", {"workspace": workspace_id, "number": number, "ships": 1}).fetchone()
+        return dict(row) if row else None
 
     def _shipped_leave(self, db, workspace_id, named, ms, shipping=None):
         """What a record names has shipped wherever it is still being built: it leaves every piece under way (`returned`),
@@ -286,19 +327,23 @@ class Pipeline:
         """THE END OF A PIECE (3.4, D1, D25): the one rule. Every path that changes what a piece holds or whether its items
         shipped calls it, in its own transaction, with the items it touched; it decides, for every piece those items were ever
         in, whether the piece has ended and how, and whether its topic is Done, from the facts alone: what each piece holds
-        and held (member rows only ever leave, once), the release records, and the drops. So the same facts give the same
-        ends in any order. An end, once written, stays.
+        and held, the release records, and the drops. So the same facts give the same ends in any order. A drop is refused
+        once a record names its item, so a record that names an item already dropped overtakes the drop (_OVERTAKEN): the end
+        is what it would have been had the record come first.
 
         - A piece still open ends once none of its work is left to ship (_LEFT). A piece of work has then shipped if it
           shipped any item, "Shipped in release N" with N the newest record naming one (_SHIPPED_FROM), and was dropped if
           not. A release ships only by the record of its own number (shipping: its id and that number, from _ship_release);
           emptied any other way it ends `dropped` when every item was dropped, else `held`, saying what took its items, and
           since no record spent its number the work combined next is that same release.
+        - An end this rule wrote (_DECIDED) is decided again from the facts while the outcome ships in releases, and
+          rewritten when they now say it shipped, or say what took an emptied release's items differently: only a record
+          overtaking a drop changes them. When it ended and who left it stay; every other end stays as written.
         - A topic is Done (D1), by nobody, "Shipped in release N", once none of its pieces has work left and one of them
           shipped an item (N the newest record naming one, or the release the record ships there), unless it is the
-          outcome's conversation, which never ends, or someone already said it is done. It is asked when one of its pieces
-          ends here, or when this call decided what became of an item one of its pieces held (decided: shipped or dropped),
-          the only facts that end a closed piece's work; a later word on the topic stands otherwise.
+          outcome's conversation, which never ends, or someone has said where it stands since. It is asked when one of
+          its pieces ends here, or when this call decided what became of an item one of its pieces held (decided: shipped or
+          dropped), the only facts that end a closed piece's work; a later word on the topic stands otherwise.
 
         actor is whoever's act this is (None for a record): the database keeps the owner's word on leaving a stage (D24)."""
         pipeline = self._pipeline_row(db, workspace_id)
@@ -312,28 +357,36 @@ class Pipeline:
                                                (workspace_id, _json(sorted(set(decided)))))}
         for piece in pieces:
             entry = self._open_entry(db, piece["id"])
-            if entry is None:
-                continue
+            ended = None if entry is not None else db.execute("SELECT * FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq DESC LIMIT 1",
+                                                              (piece["id"],)).fetchone()
             if shipping and piece["id"] == shipping[0]:
                 outcome, note = "shipped", "Shipped in release %d" % shipping[1]
-            elif db.execute("SELECT 1 FROM pipeline_piece_members m WHERE m.piece_id=:piece AND " + _LEFT, dict(facts, piece=piece["id"])).fetchone():
+            elif (ended is not None and not (facts["ships"] and ended["left_outcome"] in _DECIDED[piece["kind"]])) or db.execute(
+                    "SELECT 1 FROM pipeline_piece_members m WHERE m.piece_id=:piece AND " + _LEFT, dict(facts, piece=piece["id"])).fetchone():
                 continue
             else:
                 outcome, note = self._emptied(db, piece, facts)
-            self._leave(db, actor, entry, outcome, ms, note)
+            if ended is None:
+                self._leave(db, actor, entry, outcome, ms, note)
+            elif outcome in ("shipped", "held") and (outcome, note) != (ended["left_outcome"], ended["left_note"]):
+                self._entry_write(db, workspace_id, "UPDATE pipeline_stage_entries SET left_outcome=?,left_note=? WHERE seq=?",
+                                  (outcome, note, ended["seq"]))
+            else:
+                continue
             db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece["id"],))
             self._bump(db, workspace_id, piece["id"])
             asked.add(piece["id"])
         shipped_here = {piece["topic_id"]: shipping[1] for piece in pieces if shipping and piece["id"] == shipping[0]}
         for topic_id in dict.fromkeys(piece["topic_id"] for piece in pieces if piece["id"] in asked):
             topic = db.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone()
-            if topic["kind"] != "topic" or topic["state"] == "done" or db.execute(
+            # Done by nobody is this rule's own word, decided again as an end is; anyone's word since stands.
+            if topic["kind"] != "topic" or (topic["state"] == "done" and (topic["state_by"] is not None or topic["state_message_id"] is not None)) or db.execute(
                     "SELECT 1 FROM pipeline_pieces p JOIN pipeline_piece_members m ON m.piece_id=p.id WHERE p.topic_id=:topic AND " + _LEFT,
                     dict(facts, topic=topic_id)).fetchone():
                 continue
             shipped = [n for n in (db.execute(_SHIPPED_FROM + " AND p.topic_id=:topic", dict(facts, topic=topic_id)).fetchone()[0],
                                    shipped_here.get(topic_id)) if n]
-            if shipped:
+            if shipped and (topic["state"], topic["state_note"]) != ("done", "Shipped in release %d" % max(shipped)):
                 self._set_topic_state(db, topic, None, {"state": "done", "note": "Shipped in release %d" % max(shipped)})
 
     def _emptied(self, db, piece, facts):
@@ -342,11 +395,12 @@ class Pipeline:
             shipped = db.execute(_SHIPPED_FROM + " AND p.id=:piece", dict(facts, piece=piece["id"])).fetchone()[0]
             return ("shipped", "Shipped in release %d" % shipped) if shipped else ("dropped", "")
         # A release: each item went back to building or shipped in an older release (`returned`), or was dropped.
+        # An item dropped from it that a record names shipped there instead, the record overtaking the drop (_OVERTAKEN).
         went_back = shipped = dropped = None
-        for reason, number in db.execute("SELECT m.left_reason, (SELECT max(r.number) FROM releases r, json_each(r.items) j "
-                                         "WHERE :ships AND j.value=m.number) FROM pipeline_piece_members m WHERE m.piece_id=:piece",
-                                         dict(facts, piece=piece["id"])):
-            if reason == "dropped":
+        for reason, number, overtaken in db.execute("SELECT m.left_reason, (SELECT max(r.number) FROM releases r, json_each(r.items) j "
+                                                    "WHERE :ships AND j.value=m.number), " + _OVERTAKEN + " FROM pipeline_piece_members m "
+                                                    "WHERE m.piece_id=:piece", dict(facts, piece=piece["id"])):
+            if reason == "dropped" and not overtaken:
                 dropped = True
             elif number is None:
                 went_back = True
@@ -1302,7 +1356,8 @@ class Pipeline:
             return dict(answer, **self._shipped_groups(db, actor, workspace, pipeline, releases, offset, limit))
         rows = db.execute("SELECT * FROM pipeline_items INDEXED BY pipeline_order WHERE workspace_id=? AND section=? "
                           "ORDER BY candidate_group, position, number", (workspace["id"], section)).fetchall()
-        rows = [row for row in rows if section == "dropped" or not self._shipped(db, pipeline, row, releases)]
+        # What shipped is listed under its release, a dropped item a record overtook too, never in its section.
+        rows = [row for row in rows if not self._shipped(db, pipeline, row, releases)]
         items, size = [], 1024
         for row in rows[offset:offset + limit]:
             item = self._item_view(db, actor, workspace, pipeline, row, releases, asks, by_item, cache)

@@ -79,6 +79,12 @@ def step_back_by_hand(path, version):
         for table in ("outcome_reached", "outcome_kinds", "found_problems", "check_allowances", "check_readings", "check_runs",
                       "outcome_checks", "outcome_target_revisions", "outcome_targets"):
             db.execute("DROP TABLE " + table)
+        # It also lets a record overtaking a drop decide a piece's end again; before it, a left entry kept everything.
+        db.execute("DROP TRIGGER entries_keep_their_past")
+        db.execute("CREATE TRIGGER entries_keep_their_past BEFORE UPDATE ON pipeline_stage_entries "
+                   "WHEN OLD.left_ms IS NOT NULL OR NEW.seq IS NOT OLD.seq OR NEW.piece_id IS NOT OLD.piece_id OR NEW.stage_id IS NOT OLD.stage_id "
+                   "OR NEW.round IS NOT OLD.round OR NEW.size IS NOT OLD.size OR NEW.entered_ms IS NOT OLD.entered_ms OR NEW.entered_by IS NOT OLD.entered_by "
+                   "OR NEW.ask_message_id IS NOT OLD.ask_message_id BEGIN SELECT RAISE(ABORT, 'a stage entry keeps its past'); END")
         if version == BEFORE_CHECKS:
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
             return

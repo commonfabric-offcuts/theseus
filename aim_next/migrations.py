@@ -29,7 +29,7 @@ from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCH
 from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
 from .standing_conversation import STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
-from .pipeline import PIPELINE_DOWN, PIPELINE_OCCUPIED, PIPELINE_SCHEMA
+from .pipeline import PIPELINE_DECIDED_AGAIN_DOWN, PIPELINE_DECIDED_AGAIN_UP, PIPELINE_DOWN, PIPELINE_OCCUPIED, PIPELINE_SCHEMA
 from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
 from .outcome_kind import KINDS_DOWN, KINDS_SCHEMA
 
@@ -107,8 +107,11 @@ STEPS = (
     # Version 30 keeps each outcome's target and its checks, every run of them
     # and what it measured, the owner's allowances, the problems found before
     # a check caught them, and the outcome's kind and Reached (docs/targets.md).
-    # Stepping back is refused once any of them exists.
-    ("29", "30", CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA, KINDS_DOWN + CHECKS_DOWN, CHECKS_OCCUPIED),
+    # A piece's end can be decided again when a release record overtakes a drop
+    # (docs/pipeline.md, "The end of a piece"); stepping back keeps every end as
+    # it stands. Stepping back is refused once any of the rest exists.
+    ("29", "30", CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP),
+     PIPELINE_DECIDED_AGAIN_DOWN + KINDS_DOWN + CHECKS_DOWN, CHECKS_OCCUPIED),
 )
 
 

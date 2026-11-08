@@ -175,12 +175,13 @@ GLYPHS = ("building", "next", "idle", "decide", "shipped", "dropped")
 
 
 def glyph(section, shipped, open_asks, in_stage):
-    """An item's glyph for one reader (6.1): dropped, shipped, a question to the
-    reader about it, being built (its piece is in a stage), next, or idle."""
-    if section == "dropped":
-        return "dropped"
+    """An item's glyph for one reader (6.1): shipped, dropped, a question to the
+    reader about it, being built (its piece is in a stage), next, or idle. A
+    record naming an item already dropped overtakes the drop, so shipped wins."""
     if shipped:
         return "shipped"
+    if section == "dropped":
+        return "dropped"
     if open_asks:
         return "decide"
     if in_stage:

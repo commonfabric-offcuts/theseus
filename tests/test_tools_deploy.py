@@ -1962,6 +1962,190 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual(self.end_of(release, "t-24", "t-q"), (("combine", "shipped", "Shipped in release 24"), (),
                                                                (("t-24", "done", "Shipped in release 24"), ("t-q", "active", ""))))
 
+    # ---- a record overtakes a drop: what it names shipped, as if it had come before the drop (3.4, D25) --------------
+
+    def drop_unless_shipped(self, number):
+        """A drop, or its refusal once a record names the item, since a shipped item stays where it shipped. Either way the
+        record decides: the order checks below apply the record and the drop in every order, the drop refused after it."""
+        version = self.sql("SELECT version FROM pipeline_items WHERE workspace_id='w1' AND number=?", (number,))[0][0]
+        receipt = self.command("pipeline.item_move", {"section": "dropped", "underway_confirmed": True}, {"workspace_id": "w1", "number": number},
+                               {"item_revision": version}, actor="owner")
+        if receipt.get("status") == "committed":
+            self.applied.add(number)
+        else:
+            self.rejected(receipt, "ITEM_SHIPPED")
+            self.overtaken.add(number)
+
+    def assert_one_end_overtaken(self, facts, final, expected, orders=None):
+        """assert_one_end where a drop may come after the record naming its item: in some orders the drop applies and a
+        record overtakes it, in the others it is refused, and every order ends the same."""
+        self.applied, self.overtaken = set(), set()
+        if orders is None:
+            states = self.in_every_order(facts, final)
+        else:
+            before = Path(self.temp.name) / "before-the-facts.sqlite3"
+            with closing(sqlite3.connect(str(self.path))) as db, closing(sqlite3.connect(str(before))) as copy:
+                db.backup(copy)
+            states = {}
+            for order in orders:
+                with closing(sqlite3.connect(str(before))) as copy, closing(sqlite3.connect(str(self.path))) as db:
+                    copy.backup(db)
+                for name in order:
+                    facts[name]()
+                states.setdefault(final(), []).append(" > ".join(order))
+        self.assertEqual(list(states), [expected], "\n".join("%d orders end %r, e.g. %s" % (len(orders), state, orders[0])
+                                                             for state, orders in states.items()))
+        self.assertTrue(self.applied and self.overtaken, "some order drops before the record and some after it")
+
+    def test_a_record_naming_an_item_dropped_from_its_piece_ships_that_piece_and_closes_its_topic(self):
+        # Review case (a): the deploy takes a record's items from its commits' trailers, so a record can name an item
+        # already dropped. Piece P built item 3 alone in t-p; item 3 is dropped, and release 5, recorded late, names it.
+        # Item 3 shipped, so P has shipped and t-p is Done, as when the record came first and the drop was refused; the
+        # drop used to end P `dropped` for good and leave t-p open while item 3 read as shipped, and the page showed it
+        # in Dropped with the dropped glyph.
+        piece = self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-p"))["piece_id"]
+        self.ship_naming([1, 2])
+        self.assert_one_end_overtaken({"drop 3": lambda: self.drop_unless_shipped(3), "release 5 names 3": lambda: self.backfill(5, [3])},
+                                      lambda: (self.end_of(piece, "t-p"), self.item_shipped(3)),
+                                      ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)), (5, "shipped", False)))
+
+    def item_shipped(self, number):
+        """How the page reads an item: the release it shipped in, its glyph, and whether Dropped lists it."""
+        item = self.store.view("owner", "pipeline_item", {"workspace_id": "w1", "number": number})["item"]
+        dropped = self.store.view("owner", "pipeline", {"workspace_id": "w1", "section": "dropped"})["items"]
+        return item["shipped"] and item["shipped"].get("release"), item["glyph"], number in [row["number"] for row in dropped]
+
+    def test_the_record_of_a_release_naming_an_item_dropped_from_it_keeps_that_item_in_it_and_closes_its_topic(self):
+        # Review case (b): release 24 is combined from Q (item 4, t-q) and Q2 (item 3, t-q2) in t-24. Item 4 is dropped from
+        # the release, and release 24's record names items 3 and 4: item 4 shipped in release 24, so it stays in that
+        # release and Q's topic is Done, as when the record came first. t-q used to stay open with item 4 shipped.
+        self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
+        three, four = (self.add("Item %d" % n, section="now", size="small") for n in (3, 4))
+        pieces = [self.approved([four], self.topic_of_w1("t-q")), self.approved([three], self.topic_of_w1("t-q2"))]
+        release = self.committed(self.combine(pieces, release_number=24, topic_id=self.topic_of_w1("t-24")))["piece_id"]
+        shipped = "Shipped in release 24"
+        self.assert_one_end_overtaken({"drop 4": lambda: self.drop_unless_shipped(4),
+                                       "release 24 names 3 and 4": lambda: self.assertTrue(self.record(24, "a" * 40, [3, 4])["recorded"])},
+                                      lambda: self.end_of(release, "t-24", "t-q", "t-q2"),
+                                      (("combine", "shipped", shipped), (3, 4), (("t-24", "done", shipped), ("t-q", "done", shipped), ("t-q2", "done", shipped))))
+
+    def test_the_record_of_a_release_emptied_by_drops_it_overtakes_ships_that_release(self):
+        # Release 24 (items 3 and 4 from Q in t-q, put together in t-24) loses both items to drops, so it ended and never
+        # held its number; release 24's record then names them. It ships release 24 as it would have before the drops: the
+        # release is left `shipped` holding them, both topics are Done, and the next release is 25.
+        release = self.release_24_from_its_own_topic()
+        shipped = "Shipped in release 24"
+        self.assert_one_end_overtaken({"drop 3": lambda: self.drop_unless_shipped(3), "drop 4": lambda: self.drop_unless_shipped(4),
+                                       "release 24 names 3 and 4": lambda: self.assertTrue(self.record(24, "a" * 40, [3, 4])["recorded"])},
+                                      lambda: (self.end_of(release, "t-24", "t-q"), self.live_view()["release_piece"], self.live_view()["candidate_release"]),
+                                      ((("combine", "shipped", shipped), (3, 4), (("t-24", "done", shipped), ("t-q", "done", shipped))), None, 25))
+
+    def test_the_record_of_the_next_release_ships_the_release_open_though_it_overtakes_a_drop_from_one_emptied_before(self):
+        # Release 24's items 3 and 4 are both dropped, so it ended and passed its number on: item 5's piece is combined as
+        # release 24 and deployed, and its record names item 5 and, from an older trailer, item 3. The release deployed is
+        # the one it ships; the emptied release only learns where item 3 went, and Q's topic is Done. (Had the record come
+        # before the drops, the combine would have made release 25, refused here as release 24: not the same facts.)
+        release = self.release_24_from_its_own_topic()
+        five = self.approved([self.add("Item 5", section="now", size="small")], self.topic_of_w1("t-five"))
+        self.drop(3)
+        self.drop(4)
+        later = self.committed(self.combine([five], release_number=24, topic_id=self.topic_of_w1("t-25")))["piece_id"]
+        self.assertTrue(self.record(24, "a" * 40, [3, 5])["recorded"])
+        shipped = "Shipped in release 24"
+        self.assertEqual((self.end_of(release, "t-24", "t-q"), self.end_of(later, "t-25", "t-five")),
+                         ((("combine", "held", "Its items shipped in release 24 or were dropped"), (), (("t-24", "active", ""), ("t-q", "done", shipped))),
+                          (("combine", "shipped", shipped), (5,), (("t-25", "done", shipped), ("t-five", "done", shipped)))))
+        self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 25))
+
+    def test_a_release_emptied_by_drops_is_shipped_only_by_the_record_of_its_own_number(self):
+        # Release 24 loses items 3 and 4 to drops; release 24 is then recorded naming neither (a hotfix, with no release
+        # open), and release 25 names item 3. The emptied release would have been release 24, not 25, so release 25 does
+        # not ship it: it says item 3 shipped in release 25 and item 4 was dropped, and Q's topic is Done.
+        release = self.release_24_from_its_own_topic()
+        self.drop(3)
+        self.drop(4)
+        self.assertTrue(self.record(24, "a" * 40, [])["recorded"])
+        self.assertTrue(self.record(25, "e" * 40, [3])["recorded"])
+        self.assertEqual(self.end_of(release, "t-24", "t-q"), (("combine", "held", "Its items shipped in release 25 or were dropped"), (),
+                                                               (("t-24", "active", ""), ("t-q", "done", "Shipped in release 25"))))
+
+    def test_an_older_record_naming_items_dropped_from_the_release_says_where_they_went(self):
+        # Release 5, recorded late, names items 3 and 4, both dropped from release 24: they shipped in release 5, so the
+        # emptied release says so and Q's topic is Done, as when the record came first and they left it `returned`.
+        release = self.release_24_from_its_own_topic()
+        self.assert_one_end_overtaken({"drop 3": lambda: self.drop_unless_shipped(3), "drop 4": lambda: self.drop_unless_shipped(4),
+                                       "release 5 names 3 and 4": lambda: self.backfill(5, [3, 4])},
+                                      lambda: self.end_of(release, "t-24", "t-q"),
+                                      (("combine", "held", "Its last items shipped in release 5"), (),
+                                       (("t-24", "active", ""), ("t-q", "done", "Shipped in release 5"))))
+
+    def test_a_newer_record_naming_an_item_dropped_after_its_piece_shipped_is_the_release_it_shipped_in(self):
+        # P builds items 3 and 4 in t-p; release 5 names item 3, item 4 is dropped, and release 7 names item 4. Every order
+        # ends P "Shipped in release 7", the newest record naming one of its items, and t-p with it; the drop used to end P
+        # with release 5 for good when it came before release 7.
+        self.ship_naming([1, 2])
+        piece = self.committed(self.start_of([self.add("Item %d" % n, section="now", size="small") for n in (3, 4)], "t-p"))["piece_id"]
+        self.assert_one_end_overtaken({"release 5 names 3": lambda: self.backfill(5, [3]), "drop 4": lambda: self.drop_unless_shipped(4),
+                                       "release 7 names 4": lambda: self.backfill(7, [4])},
+                                      lambda: self.end_of(piece, "t-p"),
+                                      (("build", "shipped", "Shipped in release 7"), (), (("t-p", "done", "Shipped in release 7"),)))
+
+    def test_turning_releases_on_overtakes_a_drop_of_an_item_a_record_names(self):
+        # Out of releases, release 24's record names item 4 of piece P (items 3 and 4, t-p), which is then dropped, as is
+        # item 3. Turning releases on makes that record the outcome's, so item 4 shipped and P with it, whichever came first.
+        self.ship_naming([1, 2])
+        self.committed(self.on(ships_in_releases=False))
+        numbers = [self.add("Item %d" % n, section="now", size="small") for n in (3, 4)]
+        self.assertTrue(self.record(24, "a" * 40, [4], source="backfill")["recorded"])
+        piece = self.committed(self.start_of(numbers, "t-p"))["piece_id"]
+        self.assert_one_end_overtaken({"releases on": lambda: self.committed(self.on(ships_in_releases=True)),
+                                       "drop 4": lambda: self.drop_unless_shipped(4), "drop 3": lambda: self.drop_unless_shipped(3)},
+                                      lambda: self.end_of(piece, "t-p"),
+                                      (("build", "shipped", "Shipped in release 24"), (), (("t-p", "done", "Shipped in release 24"),)))
+
+    def test_turning_releases_back_on_never_takes_back_what_a_piece_shipped(self):
+        # P's item 3 shipped in release 5, so P has shipped and t-p is Done. Out of releases item 3 reads as unshipped and is
+        # dropped and put back; turning releases back on decides P's end again, which only a record overtaking a drop
+        # changes, and never from shipped: P and t-p stay as they were.
+        self.ship_naming([1, 2])
+        piece = self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-p"))["piece_id"]
+        self.backfill(5, [3])
+        self.committed(self.on(ships_in_releases=False))
+        self.drop(3)
+        version = self.sql("SELECT version FROM pipeline_items WHERE workspace_id='w1' AND number=3")[0][0]
+        self.committed(self.command("pipeline.item_move", {"section": "now"}, {"workspace_id": "w1", "number": 3}, {"item_revision": version}, actor="owner"))
+        self.committed(self.on(ships_in_releases=True))
+        self.assertEqual(self.end_of(piece, "t-p"), (("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)))
+
+    def test_an_item_put_back_after_its_drop_is_new_work_whatever_ships_it(self):
+        # Item 3 is dropped from P (t-p), put back and built again by P2 (t-p2), which release 5 ships. Only the drop the
+        # record overtakes, the item's last, is undone: P stays dropped and t-p open, P2 and t-p2 have shipped.
+        piece = self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-p"))["piece_id"]
+        self.ship_naming([1, 2])
+        self.drop(3)
+        version = self.sql("SELECT version FROM pipeline_items WHERE workspace_id='w1' AND number=3")[0][0]
+        self.committed(self.command("pipeline.item_move", {"section": "now"}, {"workspace_id": "w1", "number": 3}, {"item_revision": version}, actor="owner"))
+        again = self.committed(self.start_of([3], "t-p2"))["piece_id"]
+        self.backfill(5, [3])
+        self.assertEqual((self.end_of(piece, "t-p"), self.end_of(again, "t-p2")),
+                         ((("build", "dropped", ""), (), (("t-p", "active", ""),)),
+                          (("build", "shipped", "Shipped in release 5"), (), (("t-p2", "done", "Shipped in release 5"),))))
+
+    def test_an_item_put_back_after_its_drop_from_a_release_ships_as_new_work(self):
+        # Release 24 (items 3 and 4 from Q) loses both to drops; item 3 is put back and built by P2 in t-p2, and release
+        # 24's record names it. The drop was taken back before the record, so nothing is overtaken: P2 has shipped, the
+        # emptied release stays dropped and is not shipped as release 24, and Q's topic stays open.
+        release = self.release_24_from_its_own_topic()
+        self.drop(3)
+        self.drop(4)
+        version = self.sql("SELECT version FROM pipeline_items WHERE workspace_id='w1' AND number=3")[0][0]
+        self.committed(self.command("pipeline.item_move", {"section": "now"}, {"workspace_id": "w1", "number": 3}, {"item_revision": version}, actor="owner"))
+        again = self.committed(self.start_of([3], "t-p2"))["piece_id"]
+        self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])
+        self.assertEqual((self.end_of(release, "t-24", "t-q"), self.end_of(again, "t-p2")),
+                         ((("combine", "dropped", ""), (), (("t-24", "active", ""), ("t-q", "active", ""))),
+                          (("build", "shipped", "Shipped in release 24"), (), (("t-p2", "done", "Shipped in release 24"),))))
+
     def test_a_topic_whose_only_piece_was_dropped_stays_open_whatever_ships_after(self):
         # A piece none of whose items shipped has not shipped: its topic is no one's to close (review follow-up M16).
         piece = self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-d"))["piece_id"]
