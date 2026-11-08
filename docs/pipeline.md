@@ -130,17 +130,28 @@ release check's `--report`, and which piece a candidate's readings name.
   record names (`ITEM_SHIPPED`), whichever record named it, and what shipped in a
   release stays in that release. Dropping an item leaves only a piece under way
   (D25), and a shipped item is never dropped (`ITEM_SHIPPED`).
-- A record overtakes a drop. The deploy takes a record's items from its commits,
-  so a record can name an item already dropped: that item shipped, and since the
-  drop would have been refused after the record, it counts for nothing unless the
-  item was put back since (then whatever builds it is new work). Everything ends
-  as if the record had come first: the item reads as shipped and is listed under
-  its release, not in Dropped; the piece it was dropped from has shipped it; an
-  emptied release says it shipped there; and the record of a release's own
-  number keeps the item in that release. With no release open, the
-  record of the next release ships the release it overtakes a drop from, emptied
-  since the last record, which would still be open; with one open, the record
-  ships that one, the release being deployed.
+- A record overtakes the acts it makes impossible. The deploy takes a record's
+  items from its commits, so a record can name an item someone already dropped,
+  or took back from a held release to build again: that item shipped, and both
+  acts would have been refused after the record. An item's pieces, in the order
+  they took it, are one line of work (combined into a release, gone back to
+  building) until it is dropped; a piece that takes it after a drop starts new
+  work, and a drop leaves its mark where the item was, in a piece or last left
+  one (dropped while no piece holds it, after its release shipped without it).
+  When a record is written, each item it names (an item ships in one release)
+  leaves every piece still building it, and a drop no piece took it after, its
+  last, counts for nothing: the item reads as shipped and is listed under its
+  release, not in Dropped, the piece it was dropped from has shipped it, and an
+  emptied release says it shipped there. The record of a release's own number
+  takes back into that release each item it names that left it by a drop or a
+  return to building, unless a piece took the item after a drop since or a piece
+  that finished still keeps it; whatever was building it again has shipped it.
+  With no release open, the record of the next release ships the release
+  emptied while it was the next one, if it takes back one of its items: that
+  release would still be open had the record come first, and a record naming
+  none of its items finds it emptied, as it is. With one open, the record ships
+  that one, the release being deployed. A record names no item another record
+  shipped, so what shipped in a release stays in that release.
 - **The end of a piece** is one rule (`_settle`), asked by every path that
   changes what a piece holds or whether its items shipped: a release record, any
   move of an item (a drop, putting it back, a move in its section, an Undo), a
@@ -150,7 +161,7 @@ release check's `--report`, and which piece a candidate's readings name.
   piece the same way whatever order they came in. A piece's work left to ship is
   each item still in it, or combined from it into a release and not dropped
   since, that no record names. A piece still under way ends once it has none: a
-  piece of work has shipped if any item it held shipped and was not put back
+  piece of work has shipped if any item it held shipped and was not dropped
   since it left, "Shipped in release N" with N the newest record naming one, and
   was dropped if none did; a release ships only by the record of its own
   release, and ends emptied otherwise (above). Its topic is set Done, "Shipped
@@ -162,9 +173,10 @@ release check's `--report`, and which piece a candidate's readings name.
   that piece's topic open until the item ships or is dropped, whichever piece or
   release shares the topic, and a later word on the topic stands. An end stays
   as written, but for one fact that can come after it: a record overtaking a
-  drop. While the outcome ships in releases, the end the rule wrote (a piece of
-  work's `shipped` or `dropped`, an emptied release's `held` or `dropped`) and
-  the Done it set are decided again from the facts, and rewritten when they now
+  drop or a return to building. While the outcome ships in releases, the end
+  the rule wrote (a piece of work's `shipped` or `dropped`, an emptied release's
+  `held` or `dropped`) and the Done it set are decided again from the facts, and
+  rewritten when they now
   say the piece shipped, in a newer release, or say what took a release's items
   differently; when the piece ended, and who left its stage, stay. The database
   allows that rewrite and no other on a left stage entry.

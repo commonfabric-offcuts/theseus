@@ -108,8 +108,9 @@ STEPS = (
     # and what it measured, the owner's allowances, the problems found before
     # a check caught them, and the outcome's kind and Reached (docs/targets.md).
     # A piece's end can be decided again when a release record overtakes a drop
-    # (docs/pipeline.md, "The end of a piece"); stepping back keeps every end as
-    # it stands. Stepping back is refused once any of the rest exists.
+    # or a return to building (docs/pipeline.md, "The end of a piece"); stepping
+    # back keeps every end as it stands. Stepping back is refused once any of
+    # the rest exists.
     ("29", "30", CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP),
      PIPELINE_DECIDED_AGAIN_DOWN + KINDS_DOWN + CHECKS_DOWN, CHECKS_OCCUPIED),
 )
