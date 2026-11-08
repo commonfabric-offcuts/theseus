@@ -170,14 +170,16 @@ above; `binding`, `view` and `command` are unchanged.
 | `note read ITEM [--revision N]` | Prints one revision of a page, the latest unless `--revision` names one, then records that you read it (`memory.read`), so `notes` stops marking the page changed. |
 | `note link ITEM [--revision N] [--origin URL]` | Prints the page's link ([links.md](links.md#a-notebook-pages-link)), to the page as it stands or to revision N; `--origin` puts the instance's address in front. Records nothing. |
 
-Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
-DIR`, default `ACTOR.outbox/` beside the profile) before it is sent, and its
-recorded receipt as `OPERATION.receipt.json` after. A saved request is also a
-valid `command` request file. When an answer is not recorded (exit 75, or 1 if
+Each request a verb exists to send is saved as `OPERATION.request.json` in the
+outbox (`--outbox DIR`, default `ACTOR.outbox/` beside the profile) before it
+is sent, and its recorded receipt as `OPERATION.receipt.json` after. A saved
+request is also a valid `command` request file. When an answer is not recorded (exit 75, or 1 if
 storage or output was unconfirmed, or 130 if interrupted), the request stays,
 the diagnostic names its operation, and `retry OPERATION` sends exactly it
 again; Core returns the original receipt if it was recorded. A refusal that is
-final (exit 2) is not offered for retry.
+final (exit 2) is not offered for retry. An `--attach` upload only prepares
+the message or page, so it is not saved and a failed one names nothing to
+retry (see [Sending attachments](#sending-attachments)).
 
 An example session for an agent, `agent-a`, whose profile is
 `/absolute/agent-a.json`:
@@ -298,9 +300,15 @@ follow in the order given.
   other file, 64 MB together. Every file is read and held to them before
   anything is sent, so a missing file (`FILE_UNAVAILABLE`), a file too large
   (`ATTACHMENT_TOO_LARGE`) or too many (`TOO_MANY_ATTACHMENTS`) sends nothing.
-- If an upload is refused or not confirmed, the message or page is not sent,
-  and stderr says `NAME was not attached, so the message or page was not
-  sent; run the command again`. An upload already made is left unused.
+- An upload only prepares the message or page: retrying it could not send
+  them, and a publication cannot be retried without the file's bytes. So
+  uploads are not saved in the outbox, and however one ends (refused, busy,
+  unconfirmed, the store not answering, interrupted) the message or page is
+  not sent and the verb ends with one line on stderr, `ATTACHMENT_NOT_SENT:
+  NAME was not attached (WHY), so the message or page was not sent; run the
+  command again.`, exit 2, or 130 when interrupted; with `--json` the last
+  line is that refusal, not retryable. It names no operation: run the whole
+  command again. An upload already made is left unused.
 
 ## Notebook pages
 

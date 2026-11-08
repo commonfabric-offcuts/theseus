@@ -226,13 +226,15 @@ control characters in other actors' text (C0 except tab, DEL and C1) as `\xNN`
 escapes, so a body or title cannot drive the reader's terminal; `--json`
 escapes C1 controls as well as JSON's own.
 
-Every command request is written to the actor's outbox directory
-(`--outbox DIR`, absolute, default beside the profile as `ACTOR.outbox/`)
-before it is dispatched, as `OPERATION.request.json` in the same shape the
+Every command request a verb exists to send is written to the actor's outbox
+directory (`--outbox DIR`, absolute, default beside the profile as
+`ACTOR.outbox/`) before it is dispatched, as `OPERATION.request.json` in the same shape the
 `command` verb reads. After a recorded receipt the CLI writes
 `OPERATION.receipt.json` beside it. If the request cannot be saved, nothing is
 sent. A lost answer leaves the request, so `retry` can
-re-send it unchanged, and the original operation can be looked up.
+re-send it unchanged, and the original operation can be looked up. An
+`--attach` upload is not such a request: it is not saved, and when it fails the
+verb ends with `ATTACHMENT_NOT_SENT`, naming nothing to retry.
 
 ## Team setup
 

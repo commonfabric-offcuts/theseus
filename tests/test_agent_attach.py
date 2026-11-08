@@ -10,7 +10,7 @@ from unittest import mock
 
 from aim_next import Store
 from aim_next import cli
-from aim_next.contract import LIMITS
+from aim_next.contract import LIMITS, StoreError
 import test_agent_verbs
 
 
@@ -58,9 +58,10 @@ class AttachCase(test_agent_verbs.AgentVerbCase):
                          [("agent-a", "ready"), ("agent-a", "ready")])
         self.assertEqual(out, "attached screen.png (image/png, %s, inline) as %s\nattached results.log (text/plain, %s) as %s\n"
                               "posted %s in t1 (1 deliveries queued)\n" % (cli._size(len(PNG)), image["id"], cli._size(len(NOTES)), log["id"], message))
-        # Every request was saved before it was sent: two begins, two publications and the post.
+        # The outbox holds what `retry` can finish: the post. The uploads only prepare it, so
+        # they are not there for an agent to retry in its place.
         kinds = sorted(json.loads((self.outbox() / name).read_text())["command"]["kind"] for name in self.saved() if name.endswith(".request.json"))
-        self.assertEqual(kinds, ["media.begin", "media.begin", "media.publish", "media.publish", "message.post"])
+        self.assertEqual(kinds, ["message.post"])
 
     def test_a_post_of_attachments_alone_and_a_start_with_one(self):
         code, out, err = self.run_cli("post", "t1", "--attach", self.png, "")
@@ -147,18 +148,84 @@ class AttachCase(test_agent_verbs.AgentVerbCase):
         self.assertIn("TOO_MANY_ATTACHMENTS", err)
         self.assertEqual(self.records(), before)
 
-    def test_a_publication_that_fails_posts_nothing(self):
-        def refused(store, actor, envelope, byte_stream):
-            return {"instance_id": "test-instance", "operation_id": envelope["operation_id"], "status": "retryable", "recorded": False,
-                    "error": {"code": "MEDIA_UNCONFIRMED", "message": "Publication was not confirmed", "retryable": True}}
-        count = self.sql("SELECT count(*) FROM messages")
-        with mock.patch.object(Store, "publish_media", refused):
-            code, out, err = self.run_cli("post", "t1", "--attach", self.png, "Never posted")
-        self.assertEqual((code, out), (75, ""))
-        self.assertIn("MEDIA_UNCONFIRMED", err)
-        self.assertIn("screen.png was not attached, so the message or page was not sent; run the command again", err)
-        self.assertEqual(self.sql("SELECT count(*) FROM messages"), count)
+    def test_an_upload_that_fails_ends_the_verb_and_names_nothing_to_retry(self):
+        """Retrying an upload cannot send the message or page it was for (and a
+        publication cannot be retried without its bytes), so however an upload
+        ends (refused, busy, unconfirmed, the store not answering, interrupted),
+        the verb says the message or page was not sent and to run the command
+        again: exit 2, or 130 when interrupted, with no operation to `retry`
+        and nothing left in the outbox in its place."""
+        command, publish = Store.command, Store.publish_media
 
+        def answer(envelope, code, message, retryable=True, recorded=False):
+            return {"instance_id": "test-instance", "operation_id": envelope["operation_id"], "status": "retryable" if retryable else "rejected",
+                    "recorded": recorded, "error": {"code": code, "message": message, "retryable": retryable}}
+
+        def on_begin(effect):
+            return mock.patch.object(Store, "command", lambda store, actor, envelope: (
+                effect(envelope) if envelope["kind"] == "media.begin" else command(store, actor, envelope)))
+
+        def on_publish(effect):
+            return mock.patch.object(Store, "publish_media", lambda store, actor, envelope, stream: effect(envelope))
+
+        def raise_(error):
+            raise error
+
+        failures = [
+            ("begin busy", on_begin(lambda envelope: answer(envelope, "DATABASE_BUSY", "The database is busy")), 2,
+             "DATABASE_BUSY: The database is busy"),
+            ("begin refused", on_begin(lambda envelope: answer(envelope, "MEDIA_INVALID", "Not this file", retryable=False, recorded=True)), 2,
+             "MEDIA_INVALID: Not this file"),
+            ("begin unanswered", on_begin(lambda envelope: raise_(StoreError("gone"))), 2, "the store did not answer"),
+            ("publish unconfirmed", on_publish(lambda envelope: answer(envelope, "MEDIA_UNCONFIRMED", "Publication was not confirmed")), 2,
+             "MEDIA_UNCONFIRMED: Publication was not confirmed"),
+            ("publish unanswered", on_publish(lambda envelope: raise_(OSError("gone"))), 2, "the store did not answer"),
+            ("publish interrupted", on_publish(lambda envelope: raise_(KeyboardInterrupt())), 130, "interrupted"),
+        ]
+        page = self.file("page.md", b"Results")
+        self.assertEqual(self.run_cli("note", "new", "w1", "--title", "Kept", page)[0], 0)
+        item = self.sql("SELECT id FROM memory_items")[0][0]
+        verbs = [("post", ["post", "t1", "--attach", self.png, "Never posted"]),
+                 ("start", ["start", "w1", "--title", "Never started", "--attach", self.png, "Never started"]),
+                 ("note new", ["note", "new", "w1", "--title", "Never made", "--attach", self.png, page]),
+                 ("note revise", ["note", "revise", item, "--expected", "1", "--attach", self.png, page]),
+                 ("post --json", ["--json", "post", "t1", "--attach", self.png, "Never posted"])]
+
+        def written():
+            return self.sql("SELECT (SELECT count(*) FROM messages), (SELECT count(*) FROM openings), (SELECT count(*) FROM memory_revisions)")
+
+        for failure, patch, exit_code, reason in failures:
+            for verb, argv in verbs:
+                with self.subTest(failure=failure, verb=verb):
+                    before, outbox = written(), self.saved()
+                    with patch:
+                        code, out, err = self.run_cli(*argv)
+                    self.assertEqual((code, err), (exit_code, "ATTACHMENT_NOT_SENT: screen.png was not attached (%s), so the message or page "
+                                                              "was not sent; run the command again.\n" % reason))
+                    if verb.endswith("--json"):
+                        # The last line says it as well, retryable false: nothing is offered for `retry`.
+                        self.assertEqual(json.loads(out.splitlines()[-1])["error"], {
+                            "code": "ATTACHMENT_NOT_SENT", "retryable": False,
+                            "message": "screen.png was not attached (%s), so the message or page was not sent; run the command again." % reason})
+                    else:
+                        self.assertEqual(out, "")
+                    self.assertEqual(written(), before, "nothing the verb exists to write was written")
+                    self.assertEqual(self.saved(), outbox, "no request is left for `retry` in the verb's place")
+        # The guide's path for a retryable or unconfirmed answer, `retry` of the
+        # operation sent, cannot end in exit 0 with nothing posted.
+        sent = []
+        with on_begin(lambda envelope: sent.append(envelope["operation_id"]) or answer(envelope, "DATABASE_BUSY", "The database is busy")):
+            self.assertEqual(self.run_cli("post", "t1", "--attach", self.png, "Never posted")[0], 2)
+        before = written()
+        code, out, err = self.run_cli("retry", sent[0])
+        self.assertEqual((code, out), (2, ""))
+        self.assertNotIn("recorded", err)
+        self.assertEqual(written(), before)
+        # Run again, the command does what it says, once.
+        before = written()[0][0]
+        self.assertEqual(self.run_cli("post", "t1", "--attach", self.png, "Posted at last")[0], 0)
+        self.assertEqual(written()[0][0], before + 1)
+        self.assertEqual(self.latest()[3], "Posted at last")
 
 for _base in AttachCase.__mro__[1:]:
     for _name in list(vars(_base)):

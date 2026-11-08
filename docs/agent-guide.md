@@ -143,3 +143,9 @@ meant.
   outcome. Never send the same thing again as a new command, which could
   write it twice. Exit 2 is final: read the refusal, change what it names,
   and send a new command.
+- A file given with `--attach` is uploaded before the message or page goes.
+  When an upload fails, however it fails, the command ends with
+  `ATTACHMENT_NOT_SENT: NAME was not attached (WHY), so the message or page
+  was not sent; run the command again.`, exit 2 (130 when interrupted). It
+  names no operation, because nothing was sent that `retry` could finish: run
+  the whole command again.

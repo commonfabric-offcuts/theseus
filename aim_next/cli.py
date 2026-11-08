@@ -617,11 +617,16 @@ class Agent(PipelineVerbs):
             raise Failed(code, recorded=receipt.get("recorded") is True)
         return receipt["result"]
 
+    def envelope(self, kind, target, args, expected=None, operation=None):
+        return {"v": 1, "instance_id": self.profile.instance_id, "operation_id": operation or "cli-" + uuid.uuid4().hex,
+                "kind": kind, "target": target, "args": args,
+                "expected": dict(expected or {}, authority={key: self.binding[key] for key in ("authority_id", "authority_epoch")})}
+
     def command(self, kind, target, args, expected=None, operation=None, send=None):
+        """The verb's act: saved in the outbox, then sent. Every way it can end
+        unrecorded names its operation, since `retry` of it finishes the verb."""
         directory = self.outbox()
-        envelope = {"v": 1, "instance_id": self.profile.instance_id, "operation_id": operation or "cli-" + uuid.uuid4().hex,
-                    "kind": kind, "target": target, "args": args,
-                    "expected": dict(expected or {}, authority={key: self.binding[key] for key in ("authority_id", "authority_epoch")})}
+        envelope = self.envelope(kind, target, args, expected, operation)
         request = {"v": 1, "binding": self.binding, "command": envelope}
         try:
             self._save_request(directory, envelope["operation_id"], request)
@@ -976,21 +981,50 @@ class Agent(PipelineVerbs):
             if total > LIMITS["attachment_bytes"]:
                 self.refuse("TOO_MANY_ATTACHMENTS", "The attachments come to more than %s together; nothing was sent" % _size(LIMITS["attachment_bytes"]))
             files.append((name, content_type, data))
-        sent = []
-        for name, content_type, data in files:
-            media, publication = "media-" + uuid.uuid4().hex, "cli-" + uuid.uuid4().hex
-            try:
-                self.command("media.begin", {"media_id": media}, {"name": name, "content_type": content_type, "size_bytes": len(data),
-                             "sha256": hashlib.sha256(data).hexdigest(), "publish_operation_id": publication}, {"media_revision": 0})
-                ready = self.command("media.publish", {"media_id": media}, {}, {"media_revision": 1}, operation=publication,
-                                     send=lambda actor, envelope: self.store.publish_media(actor, envelope, io.BytesIO(data)))
-            except BaseException:
-                # Whatever ends an upload, what it was to go with is not sent.
-                _diagnostic(self.out.stderr, "%s was not attached, so the message or page was not sent; run the command again." % name)
-                raise
-            self.out.plain("attached %s (%s, %s%s) as %s" % (name, content_type, _size(len(data)), ", inline" if ready["inline"] else "", media))
-            sent.append({"id": media})
-        return sent
+        return [self.upload(name, content_type, data) for name, content_type, data in files]
+
+    def upload(self, name, content_type, data):
+        """One file, uploaded as people's uploads go: media.begin, then its bytes
+        through the verified stream. An upload only prepares the verb's act:
+        retrying it cannot send the message or page (and a publication cannot
+        be retried without the bytes). So neither request goes through
+        `command`, is saved in the outbox or is named for `retry`; however the
+        upload ends, the verb ends here, saying the message or page was not
+        sent and to run the command again, exit 2 (130 when interrupted)."""
+        media, publication = "media-" + uuid.uuid4().hex, "cli-" + uuid.uuid4().hex
+        steps = ((self.envelope("media.begin", {"media_id": media}, {
+                     "name": name, "content_type": content_type, "size_bytes": len(data), "sha256": hashlib.sha256(data).hexdigest(),
+                     "publish_operation_id": publication}, {"media_revision": 0}), self.store.command),
+                 (self.envelope("media.publish", {"media_id": media}, {}, {"media_revision": 1}, publication),
+                  lambda actor, envelope: self.store.publish_media(actor, envelope, io.BytesIO(data))))
+        code = 2
+        try:
+            for envelope, send in steps:
+                receipt = send(self.actor, envelope)
+                error = receipt.get("error")
+                if error:
+                    reason = "%s: %s" % (error.get("code"), error.get("message"))
+                    break
+                self.out.raw(receipt)
+            else:
+                self.out.plain("attached %s (%s, %s%s) as %s" % (name, content_type, _size(len(data)),
+                                                                  ", inline" if receipt["result"]["inline"] else "", media))
+                return {"id": media}
+        except (StoreError, OSError):
+            reason = "the store did not answer"
+        except OutputFailed:
+            reason = "its result could not be written out"
+        except KeyboardInterrupt:
+            reason, code = "interrupted", 130
+        message = "%s was not attached (%s), so the message or page was not sent; run the command again." % (name, reason)
+        _diagnostic(self.out.stderr, _shown("ATTACHMENT_NOT_SENT: " + message))
+        try:
+            # --json gets it as its last line too; stderr has said it already,
+            # so a line that cannot be written changes nothing.
+            self.out.raw(_attempt("ATTACHMENT_NOT_SENT", message))
+        except OutputFailed:
+            pass
+        raise Failed(code)
 
     def write_page(self, kind, target, expected, args):
         """Writes one revision, then reads it back: a page that does not read back
@@ -1180,14 +1214,13 @@ class Agent(PipelineVerbs):
         elif seen:
             self.refuse("INVALID_ARGUMENT", "--seen names topics started from the message --from names; nothing was sent")
         writing["attachments"] = self.attach()
-        uploaded = self.operation
         try:
             saved = self.command("opening.save", {"opening_id": opening}, writing, {"opening_revision": 0})
         except BaseException as stopped:
             # Once the save request is saved, any end but a final refusal may
             # leave the save recorded (or recordable by `retry`), so the
             # opening and its topic are named for `publish`.
-            if self.operation not in (None, uploaded) and not (isinstance(stopped, Failed) and stopped.code == 2):
+            if self.operation is not None and not (isinstance(stopped, Failed) and stopped.code == 2):
                 _diagnostic(self.out.stderr, "start: " + self.publish_hint(opening, topic))
             raise
         try:
