@@ -1669,6 +1669,8 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 24))
         self.assertEqual((self.entries(self.release)[-1], self.members(self.release)),
                          (("checks", "shipped", "Shipped in release 23"), [(1, "returned"), (2, "returned")]))
+        # Release 23 shares topic t1 with the piece of items 1 and 2, which went back to building, so t1 stays open.
+        self.assertEqual(self.topics("t1"), [("t1", "active", "")])
         # The items it names stay in it; the rest go back.
         later = self.committed(self.combine([self.approved([1, 2], self.topic_of_w1("t-again"))], commit_sha="a" * 40))
         self.assertTrue(self.record(24, "f" * 40, [1], source="backfill")["recorded"])
@@ -1750,14 +1752,43 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
     def topics(self, *ids):
         return self.sql("SELECT id,state,state_note FROM topics WHERE id IN (%s) ORDER BY id" % ",".join("?" * len(ids)), ids)
 
-    def release_24_from_its_own_topic(self):
-        """Release 23 ships; then piece Q (items 3 and 4, in topic t-q) is approved and combined as release 24, in topic t-24."""
+    def release_24_from_its_own_topic(self, topic="t-24"):
+        """Release 23 ships; then piece Q (items 3 and 4, in topic t-q) is approved and combined as release 24, in topic t-24
+        (or in Q's own topic, as release 23 shares t1 with its piece)."""
         self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
         numbers = [self.add("Item %d" % n, section="now", size="small") for n in (3, 4)]
         self.assertEqual(numbers, [3, 4])
-        release = self.committed(self.combine([self.approved(numbers, self.topic_of_w1("t-q"))], release_number=24,
-                                              topic_id=self.topic_of_w1("t-24")))["piece_id"]
+        piece = self.approved(numbers, self.topic_of_w1("t-q"))
+        release = self.committed(self.combine([piece], release_number=24,
+                                              topic_id=topic if topic == "t-q" else self.topic_of_w1(topic)))["piece_id"]
         return release
+
+    def test_a_release_sharing_its_topic_with_a_piece_whose_item_went_back_leaves_that_topic_open(self):
+        # 7.2 step 11 (D1): release 24 is put together in Q's own topic, t-q, and its record names only item 3. Release 24
+        # has shipped, but item 4, combined from Q, went back to building, so Q's topic is not Done while item 4 is built there.
+        release = self.release_24_from_its_own_topic("t-q")
+        self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])
+        self.assertEqual((self.entries(release)[-1], self.members(release)), (("combine", "shipped", "Shipped in release 24"), [(3, None), (4, "returned")]))
+        self.assertEqual(self.topics("t-q"), [("t-q", "active", "")])
+        again = self.committed(self.command("pipeline.piece_start", {"numbers": [4], "topic_id": "t-q", "stage_id": "build"}, {"workspace_id": "w1"},
+                                            actor="agent-a"))["piece_id"]
+        self.assertEqual(self.topics("t-q"), [("t-q", "active", "")])
+        self.assertTrue(self.record(25, "e" * 40, [4])["recorded"])
+        self.assertEqual((self.entries(again)[-1], self.topics("t-q")), (("build", "shipped", "Shipped in release 25"), [("t-q", "done", "Shipped in release 25")]))
+
+    def test_an_item_a_record_ships_from_a_piece_still_being_built_leaves_it_and_is_never_combined_again(self):
+        # Item 3 is built in piece P with item 4 when the record of release 23 names it (a trailer on release 23's commit):
+        # item 3 shipped in release 23, so it leaves P, which builds item 4 on, and combining P puts only item 4 in release 24.
+        piece = self.committed(self.start_of([self.add("Item %d" % n, section="now", size="small") for n in (3, 4)], "t-p"))["piece_id"]
+        self.ship_naming([1, 2, 3])
+        self.assertEqual((self.members(piece), self.open_entry(piece), self.topics("t-p")), ([(3, "returned"), (4, None)], [("build",)], [("t-p", "active", "")]))
+        self.committed(self.command("pipeline.stage_enter", {"stage_id": "wait", "left_outcome": "approved"}, {"piece_id": piece}))
+        later = self.committed(self.combine([piece]))
+        self.assertEqual((later["release_number"], later["numbers"]), (24, [4]))
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"]["items"], [4])
+        # Item 4 ships in release 24, and P with it.
+        self.assertTrue(self.record(24, "a" * 40, [4])["recorded"])
+        self.assertEqual(self.topics("t-p"), [("t-p", "done", "Shipped in release 24")])
 
     def test_a_piece_whose_combined_item_its_release_left_out_has_not_finished(self):
         # 7.2 step 11 (D1): items 3 and 4 left piece Q when it was combined, and release 24's record names only item 3, so

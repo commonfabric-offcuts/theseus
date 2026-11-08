@@ -12,7 +12,8 @@ stage entry.
 
 A release piece is closed by the events that end it, never read as ended: its
 last item going back, shipping in an older release or dropped, or the record of its release, the next number,
-being written (_ship_release, which record-release calls).
+being written (_ship_release, which record-release calls). A piece of work and a topic finish by one rule,
+_UNSHIPPED: none of their work is left to ship.
 """
 
 import json
@@ -155,6 +156,14 @@ def _loads(text, default):
     return json.loads(text) if text else default
 
 
+# A piece's work left to ship (3.4, D1): an item still in it, or combined from it into a release, that no release record
+# names and that was not dropped. A piece of work has finished, and a topic is Done, only when none is left; a piece under
+# way always has some, since an item a record names leaves it (_ship_release) and dropping the last item ends it.
+_UNSHIPPED = ("EXISTS (SELECT 1 FROM pipeline_piece_members m JOIN pipeline_items i ON i.workspace_id=m.workspace_id AND i.number=m.number "
+              "WHERE m.piece_id=p.id AND (m.left_ms IS NULL OR m.left_reason='combined') AND i.section!='dropped' "
+              "AND m.number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j))")
+
+
 class Pipeline:
     """Store mixin: pipeline commands (4.1), the `pipeline`, `pipeline_item` and `pipeline_row` views (5.1)."""
 
@@ -230,47 +239,49 @@ class Pipeline:
 
         A record ships an outcome's release (_the_release) only when it is that release: its number is the next one. The
         release then leaves its entry `shipped`, "Shipped in release N", whatever stage it is in, and an item it holds that
-        no record names has not shipped: it goes back to building (`returned`). A record of any other number (an older
-        release recorded late) ships no release; an item it names that shipped there leaves the release, and a release it
-        leaves with no item has ended as an emptied release ends (_end_if_emptied). Then each piece of work an item the
-        record names was ever in is finished once it has shipped: every item still in it, or combined from it into a
-        release, is named by a record or dropped (a release piece finishes only by its own record, above). Its open entry is left
-        `shipped` and its topic is Done (D1). Only the outcome that ships in releases has its items named by records."""
+        no record names has not shipped: it goes back to building (`returned`). Then each piece of work an item the record
+        names was ever in has finished once none of its work is left to ship (_UNSHIPPED): its open entry is left
+        `shipped`. What the record names has shipped wherever it is still being built, so it leaves every piece still
+        under way (a release of any other number, or a piece of work), and a release that leaves empty has ended as an
+        emptied release ends (_end_if_emptied): no piece under way ever holds a shipped item, and combine carries none.
+        A topic is Done (D1) once no piece in it has work left to ship, by the same rule, so a piece under way or an item
+        that went back to building keeps it open. Only the outcome that ships in releases has its items named by records."""
         ms, number = release["recorded_ms"], release["release"]
         note = "Shipped in release %d" % number
         named = _json(release["items"])
         for (workspace_id,) in db.execute("SELECT workspace_id FROM pipelines WHERE ships_in_releases=1").fetchall():
             piece = self._the_release(db, workspace_id)
             finished = []
-            if piece is not None:
-                if number == next_number:
-                    db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND left_ms IS NULL "
-                               "AND number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j)", (ms, piece["id"]))
-                    self._leave(db, None, self._open_entry(db, piece["id"]), "shipped", ms, note)
-                    finished.append(piece)
-                else:
-                    db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND left_ms IS NULL "
-                               "AND number IN (SELECT value FROM json_each(?))", (ms, piece["id"], named))
-                    self._end_if_emptied(db, None, piece, ms, "Its last items shipped in release %d" % number)
-                db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (piece["id"],))
-                self._bump(db, workspace_id, piece["id"])
+            if piece is not None and number == next_number:
+                db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND left_ms IS NULL "
+                           "AND number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j)", (ms, piece["id"]))
+                finished.append(piece)
             finished += db.execute(
                 "SELECT p.* FROM pipeline_pieces p WHERE p.kind='piece' AND p.id IN (SELECT m.piece_id FROM pipeline_piece_members m "
-                "INDEXED BY item_pieces WHERE m.workspace_id=? AND m.number IN (SELECT value FROM json_each(?))) AND NOT EXISTS ("
-                "SELECT 1 FROM pipeline_piece_members m JOIN pipeline_items i ON i.workspace_id=m.workspace_id AND i.number=m.number "
-                "WHERE m.piece_id=p.id AND (m.left_ms IS NULL OR m.left_reason='combined') AND i.section!='dropped' "
-                "AND m.number NOT IN (SELECT j.value FROM releases r, json_each(r.items) j))", (workspace_id, named)).fetchall()
+                "INDEXED BY item_pieces WHERE m.workspace_id=? AND m.number IN (SELECT value FROM json_each(?))) AND NOT " + _UNSHIPPED,
+                (workspace_id, named)).fetchall()
             for done in finished:
                 entry = self._open_entry(db, done["id"])
                 if entry is not None:
                     self._leave(db, None, entry, "shipped", ms, note)
                     db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (done["id"],))
                     self._bump(db, workspace_id, done["id"])
-                topic = db.execute("SELECT * FROM topics WHERE id=?", (done["topic_id"],)).fetchone()
-                # D1: the topic doing the work stays open until its items ship, and no longer, unless it holds work under way;
-                # the outcome's conversation never ends (standing_conversation.py).
-                if topic["kind"] == "topic" and topic["state"] != "done" and not db.execute("SELECT 1 FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id "
-                                                               "AND e.left_ms IS NULL WHERE p.topic_id=?", (topic["id"],)).fetchone():
+            under_way = db.execute(
+                "SELECT DISTINCT p.* FROM pipeline_stage_entries e INDEXED BY open_entries JOIN pipeline_pieces p ON p.id=e.piece_id "
+                "JOIN pipeline_piece_members m ON m.piece_id=p.id AND m.left_ms IS NULL WHERE e.workspace_id=? AND e.left_ms IS NULL "
+                "AND m.number IN (SELECT value FROM json_each(?))", (workspace_id, named)).fetchall()
+            for building in under_way:
+                db.execute("UPDATE pipeline_piece_members SET left_ms=?,left_reason='returned' WHERE piece_id=? AND left_ms IS NULL "
+                           "AND number IN (SELECT value FROM json_each(?))", (ms, building["id"], named))
+                self._end_if_emptied(db, None, building, ms, "Its last items shipped in release %d" % number)
+                db.execute("UPDATE pipeline_pieces SET version=version+1 WHERE id=?", (building["id"],))
+                self._bump(db, workspace_id, building["id"])
+            for topic_id in dict.fromkeys(done["topic_id"] for done in finished):
+                topic = db.execute("SELECT * FROM topics WHERE id=?", (topic_id,)).fetchone()
+                # D1: the topic doing the work stays open until its work ships, and no longer; the outcome's conversation
+                # never ends (standing_conversation.py), and a topic someone said is done keeps their word.
+                if topic["kind"] == "topic" and topic["state"] != "done" and not db.execute(
+                        "SELECT 1 FROM pipeline_pieces p WHERE p.topic_id=? AND " + _UNSHIPPED, (topic_id,)).fetchone():
                     self._set_topic_state(db, topic, None, {"state": "done", "note": note})
 
     def _end_if_emptied(self, db, actor, release, ms, note):
