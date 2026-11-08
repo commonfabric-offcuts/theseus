@@ -39,6 +39,11 @@ export async function workChecks({ check, page, until, control, view, shot }) {
       await q.send('Emulation.setTouchEmulationEnabled', { enabled: true });
     } });
     await until(async () => (await read(phone))?.dot, 'phone: the row has its ring');
+    // On a phone the topics are in the rail, folded behind "☰ Topics" until a tap opens it over the topic.
+    const opener = await phone.box('#rail-open');
+    await phone.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: opener.x + opener.width / 2, y: opener.y + opener.height / 2 }] });
+    await phone.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await until(() => phone.evaluate("document.getElementById('rail').classList.contains('open')"), 'phone: the rail opens over the topic');
     const small = await ring(phone);
     assert.deepEqual([small.fill, small.key, small.words], ['rgba(0, 0, 0, 0)', true, 'Posted in or worked on in the last hour, or waiting on an answer'], 'phone: the key says what the ring means, where no title shows: ' + JSON.stringify(small));
     await phone.evaluate("document.querySelector('#topics-key').scrollIntoView({block:'center'})");

@@ -106,9 +106,8 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await until(()=>p.events.some(e=>e.method==='Page.javascriptDialogOpening'&&e.params.type==='beforeunload'),'headless reload protection');
     assert.equal(await p.evaluate('performance.timeOrigin'),origin,'CDP dismisses reload and keeps document');
     p.intercept(null);await p.release(sending);await exact(p,sending,body);
-    await point(p,'#inline-pending button');
-    await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${sending.payload.args.submission_id}"] h3')?.textContent==='Sent to Theseus'`),'publication visibly confirmed');
-    await point(p,'#review-close');
+    // A reply that went leaves no Review button behind (item 118).
+    await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'publication confirmed, so no Review button');
     await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');await reveal(p,'t2');
 
     const unknown='A committed publication awaiting its original confirmation';
@@ -117,8 +116,10 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(null);await p.fail(held);
     const item=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.status==='prepared'&&i.snapshot.body===unknown);},'settled pending publication');
     await choose(p);await until(async()=>/unconfirmed/i.test(await notice(p)),'unconfirmed choice notice');
+    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has a Review button');
     await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button`);
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${item.id}"] h3')?.textContent==='Sent to Theseus'`),'Check confirms original publication');
+    await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'checked as sent, its Review button goes');
     await point(p,'#review-close');await choose(p);await ready(p,'t2');await exact(p,held,unknown);
     assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,1,'only the deliberate headless reload opened a prompt');
     p.departureExpectedReceipts=[sending.payload.operation_id,held.payload.operation_id];
@@ -212,6 +213,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     await stay('correction prepare');await p.release(preparing);
     const sending=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'),'held corrected publication');
     await stay('correction publication');p.intercept(null);await p.release(sending);await exact(p,sending,body);
+    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'only the refused original is still in doubt, not the correction that went');
     await point(p,'#inline-pending button');
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${sending.payload.args.submission_id}"] h3')?.textContent==='Sent to Theseus'`),'corrected publication visibly confirmed');
     assert.equal(await p.evaluate(`document.querySelector('#review-content [data-id="${original.id}"] h3').textContent`),'Not sent — writing kept');

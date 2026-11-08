@@ -2020,6 +2020,8 @@ window.addEventListener('pageshow', event => { if (event.persisted) location.rel
 // Every shown time follows the viewer's day: at midnight today's "4:40 AM"
 // becomes "Yesterday 4:40 AM", with a topic's list held where the reader was.
 watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
+// On a phone the topic comes first, and "☰ Topics" opens the rail over it.
+railDrawer(document, window);
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 function begin(starting = start) {
@@ -2030,5 +2032,4 @@ function begin(starting = start) {
     return false;
   });
 }
-railDrawer();
 begin();

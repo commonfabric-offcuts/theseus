@@ -96,7 +96,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     observe(target) { this.targets.push(target); }
   }
   const scope = { ...writing, ...times, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
-    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
+    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },
@@ -137,6 +137,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('Object.assign(globalThis, (()=>{' + menuSource + '; return {openMessageMenu,sayOn,copyText}; })())', context);
   const dismissSource = readFileSync(new URL('../web/dismiss.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + dismissSource + '; return {closeOnOutsideClick}; })())', context);
+  // The phone rail's drawer, wired by the page as it starts (web/rail-drawer.mjs).
+  const drawerSource = readFileSync(new URL('../web/rail-drawer.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + drawerSource + '; return {railDrawer}; })())', context);
   const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + marksSource + '; return {Marks,paintMarkButton,paintAuthor,marksWords}; })())', context);
   const foldSource = readFileSync(new URL('../web/fold.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -506,6 +509,41 @@ test('inline pending stays beside inline only; modal pending remains in the topi
   assert.equal(f.get('topic-pending').children.length, 1); assert.equal(f.get('topic-pending').children[0].dataset.key, 'modal');
 });
 
+
+// Item 118: a "Review N reply" button under a topic's title counts only
+// replies still in doubt, so a reply that went leaves no button behind.
+test('a Review button under the title shows only while a reply is in doubt: one confirmed sent, here or on the server, leaves none', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  modal.submissions = [{ id: 'went', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'a reply this device saw confirmed has no button');
+  modal.submissions = [{ id: 'held', status: 'prepared' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'a reply not yet confirmed has one');
+  modal.submissions = [{ id: 'held', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'once it is confirmed its button goes');
+  modal.submissions = [{ id: 'refused', status: 'refused' }, { id: 'unknown', status: 'unknown' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 2 replies'], 'refused and unconfirmed replies are both in doubt');
+  // The server's record of each send: one committed is sent, whatever this device last saw.
+  modal.submissions = [{ id: 'refused', status: 'refused' }, { id: 'late', status: 'prepared' }];
+  f.registry.pending = () => ({ items: [{ id: 'late', send_status: 'committed' }, { id: 'earlier', send_status: 'committed' }, { id: 'lost', send_status: 'unknown' }, { id: 'refused', send_status: 'rejected' }], next_cursor: null });
+  f.changed(modal);
+  assert.deepEqual(shown(), ['Review 2 replies'], 'the refused reply and the unconfirmed one from the server, not the two it records as sent');
+  f.registry.pending = () => ({ items: [{ id: 'late', send_status: 'committed' }], next_cursor: null });
+  modal.submissions = [{ id: 'late', status: 'prepared' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'a reply the server records as sent needs no button');
+});
+
+// Item 117: the page wires the phone rail's drawer as it starts.
+test('the page wires "☰ Topics" as it starts: a tap opens the rail over the topic, and the dimmed page closes it', () => {
+  const f = fixture(), rail = f.get('rail'), control = f.get('rail-open'), backdrop = f.get('rail-backdrop'), main = f.get('main');
+  assert.equal(typeof control.handlers.click, 'function', '"☰ Topics" answers a tap');
+  control.handlers.click();
+  assert.deepEqual([rail.classList.contains('open'), backdrop.hidden, main.inert, control['aria-expanded']], [true, false, true, 'true'], 'open over the topic');
+  backdrop.handlers.click();
+  assert.deepEqual([rail.classList.contains('open'), backdrop.hidden, main.inert, control['aria-expanded']], [false, true, false, 'false'], 'closed again');
+});
 
 test('every application route reloads a restored closed document before accepting input',async()=>{
   for(const suffix of ['', '?workspace=w1','?new=outcome&intent=i','?workspace=w1&opening=o&opening_topic=t','?topic=t1']){
@@ -1834,7 +1872,7 @@ test('pressing the older-below line while the page may not read stops at once an
 
 test('during a visit the New line holds as the person reads, fades once nothing above it is unread, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {
   const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false }) }, innerHeight: 800 });
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   const live = stream(); f.useLive(live);
@@ -1932,7 +1970,7 @@ test('during a visit the New line holds as the person reads, fades once nothing 
 
 test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {
   const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false }) }, innerHeight: 800 });
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   await f.initialize(); await settle();

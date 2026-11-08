@@ -1432,7 +1432,7 @@ try {
       await shot(p, 'after-delayed-send'); assert.deepEqual(p.errors, []);
     });
 
-    await check('lost public answer, real reload, explicit device recovery and lookup retain one A plus B', async () => {
+    await check('lost public answer, real reload, explicit device recovery and the server\'s record retain one A plus B', async () => {
       const p = await page('lost', null, true); await p.open(1); await replace(p, 'Native lost-answer A');
       p.intercept(payload => payload?.kind === 'message.send');
       await p.key('Enter', 12); assert.equal(await field(p), '');
@@ -1450,12 +1450,10 @@ try {
       assert.ok(selector, 'explicit candidate for retained B and original A'); await q.point(selector);
       await until(() => q.evaluate('!document.querySelector("#version-review").open'), 'adoption confirmed');
       assert.equal(await field(q), 'Native reload B');
-      await q.point('#pending-submissions button');
-      const card = `#review-content [data-id="${held.payload.args.submission_id}"]`;
-      await until(() => q.evaluate(`Boolean(document.querySelector(${JSON.stringify(card)}))`), 'original frozen A card');
-      assert.ok((await q.evaluate(`document.querySelector(${JSON.stringify(card)}).textContent`)).includes('Native lost-answer A'));
-      await q.point(card + ' button');
-      await until(() => q.evaluate(`document.querySelector(${JSON.stringify(card)}).textContent.includes('Sent to Theseus')`), 'original operation confirmation');
+      // The server's record of A's send says it went, so A is not in doubt and
+      // leaves no Review button behind (item 118); nothing else here was sent.
+      assert.equal((await view('operation', { operation_id: held.payload.operation_id })).status, 'committed');
+      assert.equal(await q.evaluate(`Boolean(document.querySelector('#pending-submissions button'))`), false, 'no Review button for a reply the server records as sent');
       const messages = await view('topic_messages', { topic_id: 't1', limit: 100 });
       assert.equal(messages.items.filter(item => item.body === 'Native lost-answer A').length, 1);
       assert.equal(q.calls.filter(call => ['message.send','submission.prepare'].includes(call.payload?.kind)).length, 0, 'recovery and check do not replay publication');

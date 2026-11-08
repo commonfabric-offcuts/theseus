@@ -514,8 +514,8 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem}
 .message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}
 
-/* On a phone the topic comes first: the rail folds away behind "☰ Topics" at the top of the topic and opens as a drawer over it (web/rail-drawer.mjs). Its notices stay above the topic while it is closed. Desktop keeps the rail beside the topic. */
-#rail-open,.rail-backdrop{display:none}
+/* On a phone the topic comes first: the rail folds away behind "☰ Topics" at the top of the topic and opens as a drawer over it (web/rail-drawer.mjs). Its notices stay above the topic while it is closed. Desktop keeps the rail beside the topic. A tap leaves no highlight, which would show over the drawer it opens. */
+#rail-open,.rail-backdrop{display:none;-webkit-tap-highlight-color:transparent}
 @media(max-width:760px){
 .workspace-layout:not(:has(>.rail[hidden])) .eyebrow-row{display:flex;align-items:center;gap:.6rem;margin-bottom:.3rem;min-width:0}
 .workspace-layout:not(:has(>.rail[hidden])) .eyebrow-row .eyebrow{margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

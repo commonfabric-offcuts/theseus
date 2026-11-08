@@ -54,8 +54,8 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
         width + ': to everyone, the person\'s own, one to them by name and one answering theirs stay cards');
       assert.ok(folded.lineRight <= folded.viewport && folded.scrollWidth <= folded.viewport, width + `: no sideways scroll (${folded.scrollWidth} of ${folded.viewport})`);
       if (width === 'phone') assert.deepEqual([folded.clipped, folded.ellipsis], [true, 'ellipsis'], 'phone: the long line ends in an ellipsis');
-      // On the phone the rail and the topic's header fill the first screen, so
-      // the person scrolls to the line before pressing it.
+      // The line is below the first screen, so the person scrolls to it
+      // before pressing it.
       const reach = () => p.evaluate(`document.querySelector(${JSON.stringify(line)}).scrollIntoView({block:'center'})`);
       await reach();
       await shot(p, 'fold-' + width + '-folded');

@@ -65,12 +65,14 @@ export async function headerChecks({ check, page, until, control, view, facts, s
       const t=document.querySelector('#topic-title'),g=document.querySelector('#settings-open'),tb=t.getBoundingClientRect(),gb=g.getBoundingClientRect(),ts=getComputedStyle(t);
       const leaves=[...document.querySelectorAll('body *')];
       return {parts:[...h.children].filter(e=>!e.hidden).map(e=>e.id||e.className),row:[...row.children].map(e=>e.id),
+        eyebrow:[...document.querySelector('.eyebrow-row').children].map(e=>[e.id,e.getClientRects().length>0]),
         gear:{name:g.getAttribute('aria-label'),title:g.title,popup:g.getAttribute('aria-haspopup'),hidden:g.hidden,size:[gb.width,gb.height],middle:gb.top+gb.height/2,left:gb.left},
         line:{top:tb.top+parseFloat(ts.paddingTop),height:parseFloat(ts.lineHeight),right:tb.right},
         hint:leaves.some(e=>e.textContent.trim()===${JSON.stringify(HINT)}),
         thisTopic:leaves.some(e=>e.textContent.trim()==='This topic'||e.getAttribute('aria-label')==='This topic'),
         stateInMain:Boolean(document.querySelector('main #topic-state')),stateInDialog:Boolean(document.querySelector('dialog#topic-settings #topic-state'))}})()`);
-    assert.deepEqual(top.parts, ['workspace-name', 'title-row', 'topic-description'], 'the outcome\'s name, the title row, then the subtitle');
+    assert.deepEqual(top.parts, ['eyebrow-row', 'title-row', 'topic-description'], 'the outcome\'s name, the title row, then the subtitle');
+    assert.deepEqual(top.eyebrow, [['rail-open', false], ['workspace-name', true]], 'the outcome\'s name, with "☰ Topics" before it shown only on a phone');
     assert.deepEqual(top.row, ['topic-title', 'settings-open'], 'the gear shares the title\'s row, after it');
     assert.deepEqual([top.gear.name, top.gear.title, top.gear.popup, top.gear.hidden, top.gear.size], ['Topic settings', 'Topic settings', 'dialog', false, [44, 44]]);
     assert.ok(top.gear.middle >= top.line.top && top.gear.middle <= top.line.top + top.line.height, 'the gear\'s middle is level with the title\'s first line: ' + JSON.stringify(top));

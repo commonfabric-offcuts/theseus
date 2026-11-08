@@ -46,59 +46,6 @@ export function placeBrand(host, doc = host.ownerDocument) {
   host.prepend(brand, ...notices);
 }
 
-// A row carrying a lit light: a topic waiting on the reader.
-const LIT = '.topic-state.mine';
-
-// At phone width a sideways strip scrolls itself so its open row sits in the
-// middle; then, when a lit row would be cut at either edge, it moves by the
-// least amount that shows that row whole while the open row stays whole. The
-// open row wins when both cannot be whole. Only the strip's own scrollLeft is
-// written, never the page's.
-export function showOpenInStrip(strip) {
-  const width = strip.clientWidth, room = strip.scrollWidth - width;
-  if (!(room > 0)) return;
-  const rows = [...strip.children].filter(row => !row.hidden);
-  const open = rows.find(row => row.getAttribute('aria-current') === 'page');
-  if (!open) return;
-  const base = strip.getBoundingClientRect().left - strip.scrollLeft;
-  const span = row => { const box = row.getBoundingClientRect(); return { start: box.left - base, end: box.right - base }; };
-  const clamp = value => Math.max(0, Math.min(room, value));
-  const here = span(open), whole = (part, at) => part.start >= at - 0.5 && part.end <= at + width + 0.5;
-  let at = clamp((here.start + here.end) / 2 - width / 2);
-  let best = null;
-  for (const row of rows) {
-    if (row === open || !row.querySelector(LIT)) continue;
-    const part = span(row);
-    const cut = part.start < at + width && part.end > at && !whole(part, at);
-    if (!cut) continue;
-    const move = part.start < at ? part.start - at : part.end - (at + width);
-    const next = clamp(at + move);
-    if (whole(part, next) && whole(here, next) && (best === null || Math.abs(move) < Math.abs(best - at))) best = next;
-  }
-  if (best !== null) at = best;
-  strip.scrollLeft = at;
-}
-
-// Keeps a strip's open row in view: when its rows or its open row change, and
-// when its size changes. A repaint that leaves the same rows leaves the
-// person's own scrolling alone.
-export function followStrip(strip, win = strip.ownerDocument.defaultView) {
-  const phone = win.matchMedia?.('(max-width: 760px)');
-  let shown = null;
-  const signature = () => JSON.stringify([...strip.children].map(row => [row.dataset.topicId ?? row.getAttribute('href'), row.getAttribute('aria-current'),
-    Boolean(row.querySelector(LIT))]));
-  const place = force => {
-    if (!phone?.matches) return;
-    const now = signature();
-    if (!force && now === shown) return;
-    shown = now; showOpenInStrip(strip);
-  };
-  new win.MutationObserver(() => place(false)).observe(strip, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-current', 'class'] });
-  if (win.ResizeObserver) new win.ResizeObserver(() => place(true)).observe(strip);
-  phone?.addEventListener?.('change', () => place(true));
-  place(true);
-}
-
 // One page inside an outcome. sections: [{name, node, load}] in any order;
 // they are placed in RAIL_ORDER under "← Outcomes" when the rail is shown,
 // and load() reads each. attention: the page's Attention, told which outcome
@@ -123,7 +70,6 @@ export class OutcomeScope {
       const ordered = RAIL_ORDER.flatMap(name => sections.filter(section => section.name === name));
       let after = doc.getElementById('topic-navigation-status') ?? home;
       for (const { node } of ordered) { if (node.parentNode === rail) { after.after(node); after = node; } }
-      for (const strip of rail.querySelectorAll('#topics, .topic-list, #outcome-references-list')) followStrip(strip);
     }
     if (attention) {
       // Only an answer read about this outcome says whether it is one of

@@ -177,7 +177,7 @@ test('a page read before and revised since carries its new revisions as a count 
 
 test('the Notebook pages sit in the sidebar beside the topics, with the failure said above their rows', () => {
   const html = readFileSync(new URL('../web/index.html', import.meta.url), 'utf8');
-  const rail = /<nav class="rail"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? '';
+  const rail = /<nav\b[^>]*\bclass="rail"[^>]*>([\s\S]*?)<\/nav>/.exec(html)?.[1] ?? '';
   const main = /<main[^>]*>([\s\S]*?)<\/main>/.exec(html)?.[1] ?? '';
   const section = /<section id="outcome-references"[^>]*>([\s\S]*?)<\/section>/.exec(rail)?.[1] ?? '';
   assert.ok(section, 'the Notebook is in the sidebar');

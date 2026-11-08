@@ -6,13 +6,16 @@ import assert from 'node:assert/strict';
 // with its presence dot, the workspace name and Turn on notifications) first
 // in its rail, or first in its main column where it has no rail, and no header
 // bar or Refresh button. On a topic page the rail lists no outcomes: "←
-// Outcomes" comes first, then the outcome's conversation and its own topics. The outcome's own page
-// has no rail. An ask to the reader in another outcome lights "← Outcomes"
-// live, with its words on a topic page; on the outcome page too when that
-// outcome is one the reader is not on the team of, so its "Also waiting on
-// you" line cannot name it.
-// At 390 the open topic shows whole in the strip, with a lit neighbour not
-// cut. What Refresh did is done without it: writes elsewhere show with no
+// Outcomes" comes first, then the outcome's conversation and its own topics.
+// On a phone (item 117) the topic comes first and the rail folds behind "☰
+// Topics" at its top, which opens it as a drawer over the topic. The
+// outcome's own page has no rail. An ask to the reader in another outcome
+// lights "← Outcomes" live, with its words on a topic page; on the outcome
+// page too when that outcome is one the reader is not on the team of, so its
+// "Also waiting on you" line cannot name it.
+// At 390 the drawer opens on the open topic, whole with a lit neighbour not
+// cut; the dimmed page beside it, Escape and a topic in it close it. What
+// Refresh did is done without it: writes elsewhere show with no
 // reload, an unconfirmed state change says where the topic stands, the
 // opening page follows a save made elsewhere while it holds no unsaved
 // writing, and a second tab on a new outcome form opens when the first
@@ -35,7 +38,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     const rail = document.querySelector('.rail'), main = document.querySelector('main'), brand = document.querySelector('.brand');
     return { headers: document.querySelectorAll('.app-header').length, refresh: Boolean(document.getElementById('refresh')),
       buttons: [...document.querySelectorAll('button')].filter(b => /\\brefresh\\b/i.test(b.textContent)).length,
-      railShown: shown(rail), railLabel: rail.getAttribute('aria-label'),
+      railShown: shown(rail), railLabel: rail.getAttribute('aria-label'), control: shown(document.getElementById('rail-open')),
+      title: Math.round(document.getElementById('topic-title').getBoundingClientRect().bottom), height: innerHeight,
       rail: [...rail.children].filter(shown).map(name), main: [...main.children].filter(shown).map(name),
       brandIn: brand.parentElement === rail ? 'rail' : brand.parentElement === main ? 'main' : 'elsewhere',
       brand: [...brand.children].map(name), dot: Boolean(brand.querySelector('.wordmark .presence-dot')),
@@ -43,6 +47,18 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       outcomes: document.querySelectorAll('#workspaces a').length, outcomesShown: shown(document.getElementById('outcome-navigation')),
       scroll: document.documentElement.scrollWidth, width: innerWidth, page: getComputedStyle(document.body).backgroundColor };
   })()`);
+  // A finger on the middle of what the selector names, once nothing covers it there.
+  const tap = async (p, selector) => {
+    const b = await p.box(selector);
+    assert.ok(b && b.width > 0 && b.height > 0, `${selector} is shown to tap`);
+    const x = b.x + b.width / 2, y = b.y + b.height / 2;
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${x}, ${y}))`), true, `nothing covers ${selector}`);
+    await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  const drawer = p => p.evaluate(`(()=>{const control=document.getElementById('rail-open');return {open:document.getElementById('rail').classList.contains('open'),
+    backdrop:!document.getElementById('rail-backdrop').hidden,inert:document.getElementById('main').inert,expanded:control.getAttribute('aria-expanded'),
+    focus:document.activeElement===control?'control':document.activeElement?.dataset?.topicId??document.activeElement?.id??null}})()`);
   const loaded = p => p.evaluate('performance.timeOrigin');
   const home = p => p.evaluate(`(()=>{const h=document.getElementById('outcomes-home'),l=h.querySelector('.outcome-light'),w=h.querySelector('.elsewhere-words');
     return {lit:Boolean(l)&&l.getClientRects().length>0,words:w&&w.getClientRects().length>0?w.textContent:null,said:w?.textContent??null,label:h.getAttribute('aria-label')}})()`);
@@ -53,7 +69,20 @@ export async function railChecks({ check, page, until, control, view, facts, sho
       // A topic page: the logo block, then "← Outcomes", then the outcome's topics.
       const t = await open(`rail-topic-${size}-${theme}`, '/?topic=t1', size, theme);
       await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), at + ': the topic rail is drawn');
+      if (SIZES[size].mobile) {
+        // On a phone the topic comes first: the rail is folded behind "☰ Topics" at the top of the topic.
+        const folded = await until(async () => { const seen = await top(t); return seen.main[0] === 'topic-header' && seen; }, at + ': the topic heads the page');
+        assert.deepEqual(folded.rail, [], at + ': the folded rail shows nothing above the topic');
+        assert.equal(folded.control, true, at + ': "☰ Topics" is shown');
+        assert.equal(await t.evaluate('document.getElementById("rail-open").textContent'), '☰ Topics');
+        assert.ok(folded.title < folded.height / 4, at + `: the topic's title is near the top of the screen (${folded.title} of ${folded.height})`);
+        assert.ok(folded.scroll <= folded.width, at + `: no sideways scroll on the folded topic page (${folded.scroll} of ${folded.width})`);
+        await shot(t, `rail-topic-${size}-${theme}-folded`);
+        await tap(t, '#rail-open');
+        await until(async () => (await drawer(t)).open, at + ': "☰ Topics" opens the rail over the topic');
+      }
       const topic = await until(async () => { const seen = await top(t); return seen.rail[0] === 'brand' && seen.rail[1] === 'outcomes-home' && seen; }, at + ': the logo block, then ← Outcomes');
+      if (!SIZES[size].mobile) assert.equal(topic.control, false, at + ': no "☰ Topics" beside the rail');
       assert.deepEqual([topic.headers, topic.refresh, topic.buttons], [0, false, 0], at + ': no header bar and no Refresh on the topic page');
       assert.equal(topic.brandIn, 'rail', at + ': the logo block is in the rail');
       assert.deepEqual(topic.rail.slice(0, 4), ['brand', 'outcomes-home', 'conversation-navigation', 'topic-navigation'],
@@ -90,7 +119,7 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
-  await check('rail the outcome\'s conversation row stands in its place while its read is out, so on a phone the topics and the page below do not move when it lands', async () => {
+  await check('rail the outcome\'s conversation row stands in its place while its read is out, so on a phone the topics in the open rail and the page below do not move when it lands', async () => {
     const t = await page('rail-conversation-held', null, true, { url: facts.origin + '/?topic=t1', beforeNavigate: async q => {
       await q.send('Emulation.setDeviceMetricsOverride', SIZES.phone);
       await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
@@ -98,6 +127,8 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     } });
     await until(() => t.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]"))'), 'the topic rail is drawn');
     await until(() => t.held.some(entry => entry.payload?.name === 'conversation'), 'the conversation\'s read is held');
+    await tap(t, '#rail-open');
+    await until(async () => (await drawer(t)).open, 'the rail is open over the topic');
     const where = () => t.evaluate(`(()=>{const top=s=>Math.round(document.querySelector(s).getBoundingClientRect().top);
       return {row:!document.querySelector('#conversation-navigation').hidden&&Boolean(document.querySelector('#conversation-row a.conversation-row')),topics:top('#topic-navigation'),title:top('#topic-title')}})()`);
     const before = await where();
@@ -233,31 +264,56 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('rail at 390 the open topic shows whole in the strip, and a lit neighbour beside it is not cut', async () => {
-    // Twelve topics, newest first in the strip; the open one is the ninth, and
+  await check('rail at 390 "☰ Topics" opens the rail over the topic on the open topic, whole with its lit neighbour; the dimmed page, Escape and a topic in it close it', async () => {
+    // Twelve topics, newest first in the rail; the open one is the ninth, and
     // the one after it waits on the reader.
-    const ids = Array.from({ length: 12 }, (_, n) => 'rail-strip-' + String(n).padStart(2, '0'));
+    const ids = Array.from({ length: 12 }, (_, n) => 'rail-drawer-' + String(n).padStart(2, '0'));
     for (const [n, id] of ids.entries()) {
-      await control({ method: 'navigation_topics', topics: [{ id, title: 'Strip topic ' + n }] });
-      if (n === 2) await control({ method: 'topic_state', operation_id: 'rail-strip-lit', topic_id: id, args: { state: 'waiting', waiting_on: [facts.actor] } });
+      await control({ method: 'navigation_topics', topics: [{ id, title: 'Drawer topic ' + n }] });
+      if (n === 2) await control({ method: 'topic_state', operation_id: 'rail-drawer-lit', topic_id: id, args: { state: 'waiting', waiting_on: [facts.actor] } });
     }
     for (const theme of ['light', 'dark']) {
-      const p = await open('rail-strip-' + theme, '/?topic=' + ids[3], 'phone', theme);
-      const strip = await until(() => p.evaluate(`(()=>{const s=document.getElementById('topics'),rows=[...s.children];const open=rows.find(r=>r.getAttribute('aria-current')==='page');
-        if(!open||!${JSON.stringify(ids)}.every(id=>rows.some(r=>r.dataset.topicId===id)))return null;const lit=rows[rows.indexOf(open)+1],b=s.getBoundingClientRect(),o=open.getBoundingClientRect(),l=lit?.getBoundingClientRect();
-        return {index:rows.indexOf(open),order:rows.map(r=>r.dataset.topicId),lit:Boolean(lit?.querySelector('.topic-state.mine')),litId:lit?.dataset.topicId,scrolled:s.scrollLeft,
-          strip:[b.left,b.right],open:[o.left,o.right],neighbour:l?[l.left,l.right]:null,pageX:scrollX,scroll:document.documentElement.scrollWidth,width:innerWidth}})()`), theme + ': the strip holds every topic');
-      assert.equal(strip.index, 8, theme + ': the open topic is the ninth: ' + strip.order.join(' '));
-      assert.deepEqual([strip.litId, strip.lit], [ids[2], true], theme + ': the topic after it waits on the reader');
-      const whole = ([left, right]) => left >= strip.strip[0] - 0.5 && right <= strip.strip[1] + 0.5;
-      const settled = await until(async () => {
-        const now = await p.evaluate(`(()=>{const s=document.getElementById('topics'),rows=[...s.children],open=rows.find(r=>r.getAttribute('aria-current')==='page'),lit=rows[rows.indexOf(open)+1];
-          const o=open.getBoundingClientRect(),l=lit.getBoundingClientRect();return {open:[o.left,o.right],neighbour:[l.left,l.right],scrolled:s.scrollLeft}})()`);
-        return whole(now.open) && whole(now.neighbour) && now;
-      }, theme + ': the open topic and its lit neighbour show whole');
-      assert.ok(settled.scrolled > 0, theme + ': the strip scrolled itself to the open topic');
-      assert.ok(strip.pageX === 0 && strip.scroll <= strip.width, theme + `: the page itself does not scroll sideways (${strip.scroll} of ${strip.width})`);
-      await shot(p, 'rail-strip-' + theme);
+      const p = await open('rail-drawer-' + theme, '/?topic=' + ids[3], 'phone', theme);
+      await until(() => p.evaluate(`${JSON.stringify(ids)}.every(id => document.querySelector('#topics > a[data-topic-id="' + id + '"]'))`), theme + ': the rail holds every topic');
+      const { focus: _unused, ...folded } = await drawer(p);
+      assert.deepEqual(folded, { open: false, backdrop: false, inert: false, expanded: 'false' }, theme + ': folded as the page opens');
+      await tap(p, '#rail-open');
+      await until(async () => (await drawer(p)).open, theme + ': "☰ Topics" opens it');
+      const seen = await p.evaluate(`(()=>{const r=document.getElementById('rail'),b=r.getBoundingClientRect(),rows=[...document.querySelectorAll('#topics > a')];
+        const open=rows.find(a=>a.getAttribute('aria-current')==='page'),lit=rows[rows.indexOf(open)+1],box=e=>{const x=e.getBoundingClientRect();return [x.top,x.bottom]};
+        return {index:rows.indexOf(open),litId:lit?.dataset.topicId,lit:Boolean(lit?.querySelector('.topic-state.mine')),drawer:[b.left,b.right,b.top,b.bottom],row:box(open),neighbour:box(lit),
+          scrolled:r.scrollTop,room:r.scrollHeight-r.clientHeight,cover:document.elementFromPoint(innerWidth-12,innerHeight/2)?.id??null,
+          flash:['rail-open','rail-backdrop'].map(id=>getComputedStyle(document.getElementById(id)).webkitTapHighlightColor),
+          width:innerWidth,height:innerHeight,pageX:scrollX,pageY:scrollY,scroll:document.documentElement.scrollWidth}})()`);
+      assert.equal(seen.index, 8, theme + ': the open topic is the ninth');
+      assert.deepEqual([seen.litId, seen.lit], [ids[2], true], theme + ': the topic after it waits on the reader');
+      assert.deepEqual(await drawer(p), { open: true, backdrop: true, inert: true, expanded: 'true', focus: ids[3] }, theme + ': open over the dimmed topic, the focus on the open topic');
+      assert.ok(seen.drawer[0] === 0 && seen.drawer[1] <= seen.width * 0.86 + 1 && seen.drawer[2] === 0 && seen.drawer[3] === seen.height, theme + ': the drawer runs down the left of the screen, ' + JSON.stringify(seen.drawer));
+      assert.equal(seen.cover, 'rail-backdrop', theme + ': the dimmed page covers the topic beside it');
+      assert.deepEqual(seen.flash, ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'], theme + ': a tap on "☰ Topics" or the dimmed page leaves no highlight over the drawer');
+      const whole = ([top, bottom]) => top >= seen.drawer[2] - 0.5 && bottom <= seen.drawer[3] + 0.5;
+      assert.ok(whole(seen.row) && whole(seen.neighbour), theme + ': the open topic and its lit neighbour show whole: ' + JSON.stringify(seen));
+      assert.ok(seen.room > 0 && seen.scrolled > 0, theme + `: the drawer scrolled itself to the open topic (${seen.scrolled} of ${seen.room})`);
+      assert.ok(seen.pageX === 0 && seen.pageY === 0 && seen.scroll <= seen.width, theme + `: the page itself did not scroll (${seen.pageX}, ${seen.pageY}; ${seen.scroll} of ${seen.width})`);
+      await shot(p, 'rail-drawer-' + theme);
+      // A tap on the dimmed page beside it closes it, and "☰ Topics" has the focus back.
+      await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: seen.width - 12, y: seen.height / 2 }] });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      await until(async () => !(await drawer(p)).open, theme + ': the dimmed page closes it');
+      assert.deepEqual(await drawer(p), { open: false, backdrop: false, inert: false, expanded: 'false', focus: 'control' }, theme + ': closed, the focus back on "☰ Topics"');
+      // Escape closes it too.
+      await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, theme + ': open again');
+      await p.key('Escape');
+      await until(async () => !(await drawer(p)).open, theme + ': Escape closes it');
+      assert.equal((await drawer(p)).focus, 'control', theme + ': the focus back on "☰ Topics"');
+      // A topic in it opens that topic, at the top of the screen, and the drawer is closed.
+      await tap(p, '#rail-open'); await until(async () => (await drawer(p)).open, theme + ': open once more');
+      await tap(p, `#topics > a[data-topic-id="${ids[2]}"]`);
+      await until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.get("topic")===${JSON.stringify(ids[2])} && document.querySelector("#topic-title").textContent==="Drawer topic 2"`).catch(() => false), theme + ': the topic tapped opens');
+      const after = await top(p);
+      assert.deepEqual([(await drawer(p)).open, after.rail, after.main[0]], [false, [], 'topic-header'], theme + ': with the rail folded again and the topic first');
+      assert.ok(after.title < after.height / 4, theme + `: its title near the top of the screen (${after.title} of ${after.height})`);
+      await shot(p, 'rail-drawer-chosen-' + theme);
       assert.deepEqual(p.errors, []); await p.close();
     }
   });

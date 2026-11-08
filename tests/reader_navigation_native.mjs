@@ -16,6 +16,14 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
   // the page is ready; a native choice waits for its actual rendered link.
   const rendered = (p, id) => until(() => p.evaluate(`(()=>{const all=document.querySelectorAll(${JSON.stringify(link(id))});if(all.length!==1)return false;const b=all[0].getBoundingClientRect();return b.width>0&&b.height>0;})()`), 'rendered topic link '+id);
   const click = async (p, id) => { await rendered(p, id); await p.evaluate(`document.querySelector(${JSON.stringify(link(id))}).scrollIntoView({block:'center',inline:'nearest'})`); await p.point(link(id)); };
+  // On a phone the topics are in the rail, folded behind "☰ Topics" until a tap opens it over the topic.
+  const openRail = async p => {
+    await p.evaluate("document.getElementById('rail-open').scrollIntoView({ block: 'center' })");
+    const b = await p.box('#rail-open'); assert.ok(b && b.width > 0 && b.y >= 0 && b.y + b.height <= b.viewportHeight, '"☰ Topics" is shown on the screen');
+    await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+    await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await until(() => p.evaluate("document.getElementById('rail').classList.contains('open')"), 'the rail opens over the topic');
+  };
   const noActs = p => assert.equal(p.calls.some(c => ['workspace.create','message.send','submission.prepare','delivery.ack','opening.save','opening.publish'].includes(c.payload?.kind)), false, 'navigation never sends, acknowledges or creates work');
   const noPrompt = p => assert.equal(p.events.some(e => e.method === 'Page.javascriptDialogOpening'), false, 'normal navigation never relies on beforeunload confirmation');
   const state = () => view('editor_state', { source_ref: { kind: 'topic', id: 't1' }, topic_id: 't1' });
@@ -162,6 +170,7 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
       const start=p.held.length;
       p.intercept((_payload,event)=>event.request.url.endsWith('/api/bootstrap'));
       if (mobile) {
+        await openRail(p);
         await rendered(p, 't2');
         await p.evaluate(`document.querySelector(${JSON.stringify(link('t2'))}).scrollIntoView({block:'center',inline:'center'})`);
         const b=await p.box(link('t2'));assert.equal(b.viewportWidth,390);
@@ -305,18 +314,20 @@ export async function navigationChecks({ check, page, until, root, evidencePath,
     await control({ method: 'mark', operation_id: 'navigation-paging-clear', message_ids: [marking.id], marked: false });
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await p.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await openRail(p);
     await p.evaluate(`document.querySelector(${JSON.stringify(link('t2'))}).scrollIntoView({block:'center',inline:'center'})`);
     const before = await p.evaluate('performance.timeOrigin'), b = await p.box(link('t2'));
-    assert.equal(b.viewportWidth,390, 'horizontal rail does not widen the mobile layout viewport');
+    assert.equal(b.viewportWidth,390, 'the open rail does not widen the mobile layout viewport');
     assert.ok(b.height >= 44 && b.width > 44, 'named link is at least44px tall');
     const touch = async (x,y) => { await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{x,y}] }); await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); };
     // Its neighbour is the link after it, whichever topic the activity order puts there.
     const after = await p.evaluate(`(links=>links[links.findIndex(a=>a.dataset.topicId==='t2')+1]?.dataset.topicId??null)([...document.querySelectorAll('#topics a')])`);
     assert.ok(after, 'a link follows t2 in the rail');
-    const neighbor = await p.box(link(after)); const gap = b.x+b.width+Math.max(1,(neighbor.x-b.x-b.width)/2);
-    assert.ok(gap < neighbor.x && gap < b.viewportWidth, 'measured actual gap between topic links');
+    // In the open rail the links stand one under another: the gap is below t2, above its neighbour.
+    const neighbor = await p.box(link(after)); const gap = b.y+b.height+Math.max(1,(neighbor.y-b.y-b.height)/2);
+    assert.ok(gap < neighbor.y && gap < b.viewportHeight, 'measured actual gap between topic links');
     await p.evaluate(`(()=>{for(const type of ['touchstart','touchend','click'])document.addEventListener(type,e=>console.log('navigation-touch',JSON.stringify({type,target:e.target.closest('a')?.dataset.topicId??e.target.id,x:e.changedTouches?.[0]?.clientX??e.clientX,y:e.changedTouches?.[0]?.clientY??e.clientY,rawTarget:document.elementFromPoint(e.changedTouches?.[0]?.clientX??e.clientX,e.changedTouches?.[0]?.clientY??e.clientY)?.id})),true)})()`);
-    await touch(gap,b.y+b.height/2);
+    await touch(b.x+b.width/2,gap);
     observations.push({ name: 'actual gap touch', b, neighbor, gap, events: p.events.filter(e=>e.method==='Runtime.consoleAPICalled') });
     assert.equal(await p.evaluate('performance.timeOrigin'),before,'gap touch must do nothing');
     await touch(b.x+b.width/2,b.y+b.height/2); await ready(p,'t2');

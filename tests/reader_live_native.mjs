@@ -255,15 +255,16 @@ export async function liveChecks({ check, page, until, control, observations, or
     await p.close();
   });
 
-  // On a small phone at the top of a topic whose note under its title fills
-  // the first screen, with no card on the screen, a message arriving below
-  // moves nothing the person is reading. The note is near its 1024-byte limit,
-  // and with no header bar the screen is the small phone's.
+  // On the smallest phone (320 by 568) at the top of a topic whose note under
+  // its title fills the first screen, with no card on the screen, a message
+  // arriving below moves nothing the person is reading. The note is near its
+  // 1024-byte limit; with no header bar, and the rail folded behind "☰ Topics",
+  // the topic starts at the top of the screen.
   await check('live with no card on the screen, a message arriving scrolls nothing', async () => {
     const note = Array.from({ length: 16 }, (_, n) => `Step ${n + 1} of the plan is written out here in full words.`).join(' ');
     await control({ method: 'topic_state', operation_id: 'live-no-card-note', topic_id: 't1', args: { state: 'active', note } });
     const p = await page('live-no-card', null, true);
-    await p.send('Emulation.setDeviceMetricsOverride', { width: 375, height: 667, deviceScaleFactor: 1, mobile: true });
+    await p.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true });
     await settled(p);
     await p.evaluate(`(() => { document.activeElement.blur(); scrollTo(0, 0);
       return new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))); })()`);
