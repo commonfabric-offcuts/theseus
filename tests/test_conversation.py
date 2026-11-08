@@ -474,15 +474,40 @@ class WaitsCase(ConversationCase):
         self.assertEqual(self.sql("SELECT state,archived FROM topics WHERE id=?", (self.conversation,)), [("done", 1)])
         self.assertEqual((self.waiting(), self.found()["waits"]), ([], []))
 
-    def test_an_answerers_ask_back_on_an_item_waits_on_its_author_and_leaves_the_item_new(self):
+    def test_an_answerers_ask_back_on_an_item_answers_it_and_waits_on_its_author_until_they_reply_to_that_ask(self):
         asked = self.posted("Can you move the launch?")
         back = self.posted("@owner to which day?", actor="agent-a", reply_to=asked, addressees=["owner"], intent="ask")
-        self.assertEqual(self.item(asked), {"state": "new", "takes": []})
-        [wait] = self.found()["waits"]
-        self.assertEqual((wait["ask_message_id"], wait["on"], wait["item_id"]), (back, "owner", asked))
-        self.posted("Friday.", reply_to=back)
-        self.assertEqual(self.found()["waits"], [])
-        self.assertEqual(self.item(asked)["state"], "new", "the person answering the ask back did not answer the item")
+        state = self.item(asked)
+        self.assertEqual((state["state"], [(take["kind"], take["ref"], take["actor_id"], take["part"]) for take in state["takes"]]),
+                         ("settled", [("answer", back, "agent-a", False)]), "the reply answers the item even though it asks back")
+        self.assertEqual(self.found()["new_items"], 0)
+        self.assertEqual([(wait["ask_message_id"], wait["on"], wait["item_id"]) for wait in self.found()["waits"]], [(back, "owner", asked)],
+                         "and its ask waits on the author")
+        self.assertEqual(self.waiting(), [("owner", back)])
+        # Writing that is not a reply to that ask clears nothing.
+        self.posted("Unrelated: the venue is booked.")
+        self.assertEqual(self.waiting(), [("owner", back)])
+        reply = self.posted("Friday.", reply_to=back)
+        self.assertEqual((self.waiting(), self.found()["waits"]), ([], []), "the author's reply to the ask clears it")
+        self.assertIsNone(self.page()[reply]["item"], "a person's reply to an open ask to them is not an item")
+        self.assertEqual([take["ref"] for take in self.item(asked)["takes"]], [back], "and it writes no take of its own")
+
+    def test_an_answerers_ask_back_that_takes_part_leaves_the_item_new_and_still_waits(self):
+        asked = self.posted("Two things: move the launch, and the press kit.")
+        back = self.posted("@owner to which day?", actor="agent-a", reply_to=asked, addressees=["owner"], intent="ask", part=True)
+        state = self.item(asked)
+        self.assertEqual((state["state"], [(take["ref"], take["part"]) for take in state["takes"]]), ("new", [(back, True)]))
+        self.assertEqual(self.found()["new_items"], 1)
+        self.assertEqual(self.waiting(), [("owner", back)])
+
+    def test_a_reply_that_asks_the_author_back_answers_nothing_when_its_writer_does_not_answer_the_item(self):
+        self.committed(self.command("workspace.member_set", {"actor_id": "other-reader", "present": True}, target={"workspace_id": "w1"},
+                                    expected={"workspace_revision": self.versions()[0]}))
+        asked = self.posted("Can you move the launch?")
+        back = self.posted("@owner which launch?", actor="other-reader", reply_to=asked, addressees=["owner"], intent="ask")
+        self.assertEqual(self.item(asked), {"state": "new", "takes": []}, "a person who does not answer it settles nothing")
+        self.assertEqual(self.item(back)["state"], "new", "their reply is an item of its own")
+        self.assertEqual(self.waiting(), [("owner", back)])
 
     def test_the_coordinators_asks_on_two_items_wait_apart_and_a_new_post_clears_neither(self):
         item_a, item_b = self.posted("Item A"), self.posted("Item B")
@@ -494,7 +519,8 @@ class WaitsCase(ConversationCase):
         self.assertEqual(self.waiting(), [("owner", ask_a)], "a new post answers no ask")
         self.assertEqual([wait["ask_message_id"] for wait in self.found()["waits"]], [ask_a, ask_b])
         state = self.item(item_a)
-        self.assertEqual((state["state"], [take["kind"] for take in state["takes"]]), ("settled", ["answer"]))
+        # Its answer and the ask back each answered it.
+        self.assertEqual((state["state"], [take["kind"] for take in state["takes"]]), ("settled", ["answer", "answer"]))
         self.assertEqual([wait["item_id"] for wait in self.found()["waits"]], [item_a, item_b], "item A is Answered and Waiting together")
         self.posted("Yes.", reply_to=ask_a)
         self.assertEqual(self.waiting(), [("owner", ask_b)])

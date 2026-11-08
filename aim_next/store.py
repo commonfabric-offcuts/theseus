@@ -40,7 +40,7 @@ from .outcome_kind import OutcomeKind, KINDS_SCHEMA
 from .outcome_rules import KIND_BEFORE_R21
 
 
-SCHEMA_VERSION = "30"
+SCHEMA_VERSION = "31"
 
 
 def commit_identity_intact(metadata):

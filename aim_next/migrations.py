@@ -28,7 +28,7 @@ from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
 from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
-from .standing_conversation import STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
+from .standing_conversation import SETTLE_ASKED_BACK, STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
 from .pipeline import (PIPELINE_DECIDED_AGAIN_DOWN, PIPELINE_DECIDED_AGAIN_UP, PIPELINE_DOWN, PIPELINE_FACTS_BACKFILL, PIPELINE_FACTS_COUNT,
                        PIPELINE_FACTS_DOWN, PIPELINE_FACTS_SCHEMA, PIPELINE_OCCUPIED, PIPELINE_SCHEMA)
 from .checks import CHECKS_DOWN, CHECKS_OCCUPIED, CHECKS_SCHEMA, PROBLEMS_SCHEMA
@@ -118,6 +118,10 @@ STEPS = (
     ("29", "30", CHECKS_SCHEMA + PROBLEMS_SCHEMA + KINDS_SCHEMA + list(PIPELINE_DECIDED_AGAIN_UP) + PIPELINE_FACTS_SCHEMA
      + [PIPELINE_FACTS_BACKFILL, PIPELINE_FACTS_COUNT],
      list(PIPELINE_FACTS_DOWN) + list(PIPELINE_DECIDED_AGAIN_DOWN) + list(KINDS_DOWN) + list(CHECKS_DOWN), CHECKS_OCCUPIED),
+    # Version 31 settles each conversation item an answerer answered by asking
+    # its author back, which before it wrote no take and so stayed New. It
+    # changes no layout; stepping back keeps the takes, which version 30 reads.
+    ("30", "31", SETTLE_ASKED_BACK, (), "SELECT 0"),
 )
 
 
