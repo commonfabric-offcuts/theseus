@@ -42,6 +42,17 @@ const browserClick = (detail = 1) => {
   return !event.stopped && !event.prevented;
 };
 
+// A finger's lift (touchend), which the browser dispatches after its
+// pointerup to what the finger went down on, wherever that now is: whether
+// the page cancelled it, so that the browser sends no mousedown, mouseup or
+// click for the tap to whatever is under the finger.
+const lift = target => {
+  const event = { type: 'touchend', prevented: false, preventDefault() { this.prevented = true; } };
+  for (const l of page) if (l.type === 'touchend') l.listener(event);
+  for (const l of target?.listeners ?? []) if (l.type === 'touchend') l.listener(event);
+  return event.prevented;
+};
+
 const REMOVE = { label: 'Remove', method: 'remove' }, RETRY = { label: 'Retry upload', method: 'retry' };
 const choice = (id, state, actions = [REMOVE]) => ({ id, text: `${id}.png · ${state}`, view: JSON.stringify([state, actions.map(a => a.label)]), actions });
 const buttons = row => row.children.slice(1);
@@ -134,6 +145,23 @@ test('a press that went down on Remove and comes up where Remove was presses it 
   assert.equal(browserClick(), false, 'the click the browser sends to whatever is now under the pointer is this press\'s and is dropped');
   assert.equal(browserClick(), true, 'and only that one');
   presses[0].settle();
+});
+
+test('a finger that went down on Remove and lifts where Remove was presses it once, and its tap\'s mousedown, mouseup and click are cancelled, so nothing under the finger is pressed or focused', () => {
+  const { presses, remove, words } = pressedRemove();
+  pointer('pointerdown', remove, { x: 157, y: 3 });
+  remove.place = { left: 100, top: 38, right: 160, bottom: 78 }; under = words;
+  pointer('pointerup', words, { x: 157, y: 3 });
+  assert.equal(presses.length, 1, 'Remove is pressed, as the person pressed it');
+  assert.equal(lift(remove), true, 'the lift is cancelled, so the browser sends the tap\'s mouse events and click to nothing');
+  presses[0].settle();
+  pointer('pointerdown', words, { x: 50, y: 50 }); under = words;
+  pointer('pointerup', words, { x: 50, y: 50 });
+  assert.equal(lift(words), false, 'the next tap, on anything else, is left alone');
+  assert.equal(browserClick(), true, 'and its click reaches what it was on');
+  pointer('pointerdown', remove, { x: 130, y: 50 }); under = remove;
+  pointer('pointerup', remove, { x: 130, y: 50 });
+  assert.equal(lift(remove), false, 'a tap over Remove at both ends is left to the browser');
 });
 
 test('a press over Remove at both ends is left to the browser\'s own click, so it presses once', () => {

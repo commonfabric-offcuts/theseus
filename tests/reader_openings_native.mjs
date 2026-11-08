@@ -14,7 +14,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { namedImages, LONG_NAME } from './reader_images_native.mjs';
+import { namedImages, LONG_NAME, recordTap, tapReached } from './reader_images_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, caseFilter] = process.argv.slice(2);
@@ -449,17 +449,19 @@ try {
     await p.shot('touch-topic-reader');
   });
 
-  // Two images on the opening page at the phone's width, pressed by mouse:
-  // Remove is held on the second while the first's upload fails. Retry upload
+  // Two images on the opening page at the phone's width, pressed by mouse and
+  // by a finger: Remove is held on the second while the first's upload fails. Retry upload
   // coming in before the first row's Remove squeezes its long name onto more
   // lines; that row grows with its own Remove still on its first line, and
   // the row and the failure's notice above the rows push the second row's
   // Remove from under the press, which still removes the second image and
-  // only that (item 116).
-  await check('openings images Remove held below a row whose upload fails removes its own image', async own => {
-    const workspace = await outcome('openings-images');
-    const p = await own('images');
-    await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+  // only that (item 116). A finger's tap sends its mouse events and click to
+  // nothing under the finger, and focus lands on Add image.
+  for (const touch of [false, true]) await check(`openings images Remove held${touch ? ' by a finger' : ''} below a row whose upload fails removes its own image`, async own => {
+    const workspace = await outcome(touch ? 'openings-images-tap' : 'openings-images');
+    const p = await own(touch ? 'images-tap' : 'images');
+    if (touch) await p.metrics(true);
+    else await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await p.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(p, workspace);
     await newOpening(p, workspace);
     const names = await namedImages(root);
@@ -480,8 +482,12 @@ try {
       const before = await place('[data-held]'), above = await inRow('[data-above]'), x = before.x + before.width - 3, y = before.y + 3;
       const over = () => p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held]')`);
       assert.equal(await over(), true, 'the press is aimed at the second image\'s Remove');
-      await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-      await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      await recordTap(p);
+      if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      else {
+        await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+        await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      }
       await p.send('Fetch.failRequest', { requestId: first.requestId, errorReason: 'ConnectionClosed' });
       await until(() => p.evaluate(`(()=>{const r=${rowOf(LONG_NAME)};return Boolean(r&&!r.querySelector('button').hidden)})()`), 'the first upload failed and its row offers Retry upload');
       const after = await place('[data-held]');
@@ -490,9 +496,14 @@ try {
       assert.deepEqual({ ...aboveAfter, row: above.row }, above, 'the first row\'s own Remove stayed on its first line, where it was in its row');
       assert.ok(Math.abs(after.y - before.y) > 3, `the first row grew and moved the held Remove from under the press (${before.y} to ${after.y})`);
       assert.equal(await over(), false, 'the press comes up over something else, so the browser\'s own click cannot press Remove');
-      await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+      if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      else await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
       await until(async () => await words('screen.png') === null, 'the held Remove removed the second image');
       assert.match(await words(LONG_NAME), /Not uploaded/, 'the first image\'s row stays');
+      if (touch) {
+        assert.deepEqual(await tapReached(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger');
+        assert.equal(await p.evaluate('document.activeElement?.id'), 'opening-add-image', 'focus lands on Add image, not on what slid under the finger');
+      }
     } finally { await names.done(); }
   });
 } finally {

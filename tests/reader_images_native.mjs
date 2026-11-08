@@ -19,20 +19,29 @@ export const imageInstrumentation = `(()=>{
 // (place: 'kept'). Where something does (place: 'moved': a row above grows;
 // 'either': the Reader's reply field gives up or takes back room as the row
 // and the status under it change height), Remove may be pushed from under
-// the pointer, and the press is still Remove's. Returns where Remove was.
-export async function holdRemoveThroughUpload(p, host, held, until, { name = 'screen.png', finishing = name, place: expected = 'kept' } = {}) {
+// the pointer, and the press is still Remove's. With touch, the press is a
+// finger (the page has touch emulation on): the tap's mousedown, mouseup and
+// click, which the browser sends once the finger lifts to whatever is then
+// under it, reach nothing, so nothing that slid under the finger takes focus.
+// With fail, the held upload fails instead of finishing. Returns where
+// Remove was, and where focus is once the image is removed.
+export async function holdRemoveThroughUpload(p, host, held, until, { name = 'screen.png', finishing = name, place: expected = 'kept', touch = false, fail = false } = {}) {
   const rowOf = n => `[...document.querySelectorAll(${JSON.stringify(host + ' .image-choice')})].find(r=>r.firstElementChild.textContent.startsWith(${JSON.stringify(n + ' · ')}))`;
   const running = `JSON.parse(${rowOf(finishing)}?.dataset.view||'[]')[4]`;
   await until(() => p.evaluate(`${running}===true&&[...(${rowOf(name)}?.querySelectorAll('button')??[])].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'an uploading image and the Remove to press');
   await p.evaluate(`[...${rowOf(name)}.querySelectorAll('button')].find(b=>b.textContent==='Remove').dataset.heldRemove=''`);
-  await p.point('[data-held-remove]', 'move');
+  if (!touch) await p.point('[data-held-remove]', 'move');
   const place = () => p.evaluate(`(()=>{const b=document.querySelector('[data-held-remove]');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,words:b.parentElement.firstElementChild.textContent,removes:[...b.parentElement.querySelectorAll('button')].filter(x=>x.textContent==='Remove').length}})()`);
   const before = await place(), x = before.x + before.width - 3, y = before.y + 3;
   const over = () => p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held-remove]')`);
   assert.equal(await over(), true, 'the press is aimed at Remove');
-  await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
-  await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
-  p.intercept(null); await p.release(held);
+  await recordTap(p);
+  if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+  else {
+    await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await p.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+  }
+  p.intercept(null); await (fail ? p.fail(held) : p.release(held));
   await until(() => p.evaluate(`${running}===false`), 'the row repainted as its upload finished');
   const after = await place();
   assert.ok(after, 'the Remove held down is still in the row after it repainted');
@@ -42,9 +51,22 @@ export async function holdRemoveThroughUpload(p, host, held, until, { name = 'sc
     assert.ok(Math.abs(after.y - before.y) > 3, `the row above moved Remove from under the press (${before.y} to ${after.y})`);
     assert.equal(overAtRelease, false, 'the press comes up over something else, so the browser\'s own click cannot press Remove');
   } else if (expected === 'kept') assert.deepEqual({ ...after, words: before.words }, before, `Remove kept its place under the pointer as the row went from "${before.words}" to "${after.words}"`);
-  await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  else await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
   await until(() => p.evaluate(`!${rowOf(name)}`), 'the held Remove removed the image');
-  return { before, after, overAtRelease };
+  if (touch) assert.deepEqual(await tapReached(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger');
+  return { before, after, overAtRelease, focus: await p.evaluate('document.activeElement?.id||document.activeElement?.tagName') };
+}
+// What a tap's mousedown, mouseup and click reached from here on: each one the
+// browser sends (a trusted one), with what it went to.
+export const recordTap = p => p.evaluate(`(()=>{window.tapReached=[];if(!window.tapRecorded){window.tapRecorded=true;for(const t of ['mousedown','mouseup','click','mousemove'])addEventListener(t,e=>{if(e.isTrusted)tapReached.push(t==='mousemove'?(e.clientX===1&&e.clientY===1?'moved to the corner':null):[t,e.target.id||e.target.tagName,(e.target.textContent||'').slice(0,20)])},true)}return true})()`);
+// The browser sends a tap's mouse events after the finger lifts, ahead of any
+// input that comes after it: a mouse moved to the page's corner afterwards
+// arrives after them, so what reached the page before it is the whole tap.
+export async function tapReached(p, until) {
+  await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 1, y: 1 });
+  await until(() => p.evaluate(`tapReached.includes('moved to the corner')`), 'a mouse moved after the tap reached the page');
+  return p.evaluate(`tapReached.slice(0,tapReached.indexOf('moved to the corner')).filter(Boolean)`);
 }
 // A copy of the fixture image under a name a person's file has: a long one,
 // and the name macOS gives a screenshot. Their words wrap where screen.png's
@@ -642,6 +664,31 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
         const held = await until(() => uploading(p)[0], 'held upload');
         const { before, after, overAtRelease } = await holdRemoveThroughUpload(p, '#writing-attachments', held, until, { name, place: 'either' });
         observations.push({ name: 'held Remove in the Reader', width, file: name, before: before.y, after: after.y, overAtRelease });
+        await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
+        assert.deepEqual(p.errors, []);
+      } finally { await names.done(); }
+    });
+  }
+
+  // The same on a phone, pressed with a finger: the Reader's reply field
+  // takes up the difference and moves Remove from under it, and the finger
+  // lifts over the reply field. Remove removes the image, the tap's mouse
+  // events and click reach nothing under the finger, and focus lands on Add
+  // image, so the reply field never takes focus and a phone's keyboard stays
+  // shut.
+  for (const name of [LONG_NAME, SCREENSHOT_NAME]) {
+    await check(`images Remove held by a finger while its upload finishes removes the image and nothing under the finger is pressed, with the name ${name}`, async () => {
+      const names = await namedImages(root);
+      try {
+        const p = await page(`remove-tap-${name.length}`, null, true);
+        await p.open(1);
+        await narrow(p);
+        await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+        await choose(p, names.file(name));
+        const held = await until(() => uploading(p)[0], 'held upload');
+        const { focus } = await holdRemoveThroughUpload(p, '#writing-attachments', held, until, { name, place: 'moved', touch: true });
+        assert.equal(focus, 'add-image', 'focus lands on Add image, not on what slid under the finger');
         await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
         assert.deepEqual(p.errors, []);
       } finally { await names.done(); }

@@ -15,11 +15,16 @@ const busy = new WeakSet();
 // from under it: a button coming in before it on a narrow screen, a row above
 // it growing as that row's own upload finishes, or the Reader's reply field,
 // which fills the height its image rows and the status under them leave,
-// giving up or taking back room as they change height. The browser clicks only what is under both ends of a
-// press, so such a press would otherwise click nothing, or, for a tap,
-// whatever slid under the finger; that click belongs to this press and is
-// dropped. A press dragged away from where it went down lets go without
-// pressing, as any button's does.
+// giving up or taking back room as they change height. The browser clicks
+// only what is under both ends of a press, so such a press would otherwise
+// click nothing. What the browser then sends for the press belongs to it and
+// reaches nothing: a mouse's click is dropped, and a finger's lift (its
+// touchend, which the button gets wherever it now is, even taken out of the
+// page) is cancelled, so the browser sends the tap's mousedown, mouseup and
+// click to nothing. Otherwise they would go to whatever slid under the
+// finger, which would take focus (a reply field opening a phone's keyboard)
+// or be pressed. A press dragged away from where it went down lets go
+// without pressing, as any button's does.
 let held = null, claimed = false;
 function follow() {
   addEventListener('pointerdown', () => { held = null; claimed = false; }, true);
@@ -43,6 +48,7 @@ export function holdsItsPress(button) {
   button.addEventListener('pointerdown', event => {
     if (event.isPrimary && event.button === 0) held = { button, pointerId: event.pointerId, place: button.getBoundingClientRect() };
   });
+  button.addEventListener('touchend', event => { if (claimed) { claimed = false; event.preventDefault(); } }, { passive: false });
 }
 
 export function paintImageRows(host, choices, enabled, press) {
