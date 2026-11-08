@@ -302,10 +302,13 @@ class Runner:
             return {"status": "ok", "claims": claims, "scanned": len(rows), "next_due_ms": self._next_due(db, routed)}, bool(claims)
         return self._effect(guard, action)
 
-    def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None, reason=None):
+    def finish_wake(self, guard, runner_token, claim_token, outcome, turn=None, reason=None, from_turn=None):
         """Settle a claimed wake. reason is the runner's fixed code for how it went
         ("broker_exit", "deadline", ...), never local text; Core keeps it for a
-        wake that did not get through, so the Health page can say why."""
+        wake that did not get through, so the Health page can say why. A hosted
+        wake that was not handed may name the running turn it came from
+        (from_turn: its thread_id and turn_id), as the Codex host knows it, so
+        Health counts it with that turn (health.py)."""
         if not isinstance(outcome, str) or outcome not in OUTCOMES:
             raise RunnerError("INVALID_ARGUMENT", "Unsupported wake outcome")
         if reason is not None and (not isinstance(reason, str) or not REASON.fullmatch(reason)):
@@ -315,6 +318,10 @@ class Runner:
         if (outcome == "handed") != (turn is not None):
             raise RunnerError("INVALID_ARGUMENT", "A handed wake names its turn, and no other outcome does")
         turn = _turn(turn) if turn is not None else None
+        if from_turn is not None and (outcome not in ("busy", "error", "unavailable") or type(from_turn) is not dict
+                                      or set(from_turn) != {"thread_id", "turn_id"}):
+            raise RunnerError("INVALID_ARGUMENT", "Only a wake that failed names the running turn it came from, by its thread and turn")
+        from_turn = dict(thread_id=_thread(from_turn["thread_id"]), turn_id=_text(from_turn["turn_id"], "turn_id")) if from_turn else None
         def action(db, now):
             state = self._runner_state(db)
             attempt = db.execute("SELECT * FROM wake_attempts WHERE claim_token=?", (claim_token,)).fetchone()
@@ -336,7 +343,7 @@ class Runner:
                 due = now + delay
             db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], outcome, now))
             # One attempt to reach the agent (health.py): an accepted notice with work waiting stays unanswered until it acts.
-            self._claim_settled(db, attempt["id"], outcome, now, reason, work=row["pending_count"])
+            self._claim_settled(db, attempt["id"], outcome, now, reason, work=row["pending_count"], from_turn=from_turn)
             db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,retry_count=? WHERE recipient_id=?", (due, retry, row["recipient_id"]))
             if outcome == "accepted" and row["pending_count"]:
                 # The notice reached the agent's chat; it stays unanswered until the agent acts.

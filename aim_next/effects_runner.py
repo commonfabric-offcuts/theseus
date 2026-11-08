@@ -239,10 +239,10 @@ class EffectsLoop:
         if hint: self.last_hint_read = self.clock.monotonic()
         self.dirty_at = None
 
-    def _finish(self, claim, outcome, turn=None, reason=None):
+    def _finish(self, claim, outcome, turn=None, reason=None, from_turn=None):
         try:
             result = self._response(self._storage(lambda:self.store.finish_wake(
-                self.guard,self.token,claim['claim_token'],outcome,turn=turn,reason=reason)))
+                self.guard,self.token,claim['claim_token'],outcome,turn=turn,reason=reason,from_turn=from_turn)))
         except LoopFault:
             raise
         except Exception as error:
@@ -260,9 +260,9 @@ class EffectsLoop:
         self.read_needed = True
         self._event('settled',outcome=outcome,**({'stale':True} if stale else {}))
 
-    def _hosted_settled(self, outcome, turn, reason):
+    def _hosted_settled(self, outcome, turn, reason, from_turn=None):
         if self.outstanding is not None:
-            self._finish(self.outstanding,outcome,turn,reason)
+            self._finish(self.outstanding,outcome,turn,reason,from_turn)
 
     def _pending(self, config):
         """The recipient's pending deliveries through its own binding, which acknowledges nothing."""

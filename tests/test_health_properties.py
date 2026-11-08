@@ -284,35 +284,36 @@ for _seed in SEEDS:
 @own_cases
 class AttemptPropertyCase(HealthCase):
     """Random hosted turns with 0 to 5 steers (read or not, some handed after their turn ended),
-    claims the runner settles every way, claims left to expire, work withdrawn between a claim
-    and its hand, and agent-a acting at every point, with Core's clock moving between every act.
-    While a turn runs, claims also settle every way but handed, each by a path the Codex host
-    takes: from the turn itself (Codex cannot take more work, refuses the steer, its process exits
-    or answers in a way Theseus does not understand and is ended, which ends the turn lost too, or
-    the claim is left to expire), or never reaching the thread (Codex will not resume or load it,
-    resumes it with other settings, will not start a turn or cannot be started, or a notice goes
-    to the agent's chat). And the host may detach from the thread while the turn runs (Codex
-    closed it, or its status went notLoaded or systemError) without ending the turn, so Core lists
-    it as running while every later claim of that run fails before it reaches the thread, until
-    the turn ends lost. Core's clock passing a runner's lease puts a new runner in its place, so
-    some of those claims are a run's that handed the turn work and some are not.
+    claims the runner settles every way, some naming the turn that last ended, claims left to
+    expire, work withdrawn between a claim and its hand, and agent-a acting at every point, with
+    Core's clock moving between every act. While a turn runs, claims also settle every way but
+    handed, each by a path the Codex host takes: named from the turn itself (Codex said it cannot
+    take more work, or its process exits or answers in a way Theseus does not understand and is
+    ended, which ends the turn lost too), or naming none (Codex refused the steer without saying
+    the turn runs, the claim is left to expire, or it never reached the thread: Codex will not
+    resume or load it, resumes it with other settings, will not start a turn or cannot be started,
+    or a notice goes to the agent's chat). And the host may detach from the thread while the turn
+    runs (Codex closed it, or its status went notLoaded or systemError) without ending the turn, so
+    Core lists it as running while every later claim fails before it reaches the thread and names
+    none, until the turn ends lost. Core's clock passing a runner's lease puts a new runner in its
+    place.
 
-    The test keeps its own list of attempts to reach agent-a, each as it came out, and agent-a's
-    acts, and after every step:
+    The test keeps its own list of attempts to reach agent-a, each as it came out with the moment
+    it happened, and agent-a's acts, and after every step:
     - what Core keeps (failed_wakes, failed_outcome, unanswered_wakes) is the pure function of
-      that list and the acts: the failures since the last attempt that got through, and the
-      attempts left unanswered since agent-a last acted; a claim that came from a turn running
-      that the same run of the runner handed work to is not on the list but joins the turn, and
-      every claim that never reached the turn is on it, whatever Core lists as running;
+      that list and the acts: the failures that happened since the last attempt that got through,
+      the latest of them saying why, and the attempts left unanswered since agent-a last acted; a
+      turn gets through when agent-a first acts while it runs (or while the claim that hands it is
+      out) and when it completes; a claim that names the running turn is not on the list but joins
+      it, and every other claim is on it, whatever Core lists as running;
     - what is told about agent-a is what that function says, so a told key about agent-a
       changes only in a step that settled an attempt (or, for not answering, one where agent-a
       acted): no notice pair repeats while attempt outcomes do not change."""
 
-    # How the Codex host settles a claim that does not hand while a turn runs: (outcome, its code,
-    # whether it came from the running turn, whether its process then ends and the turn ends lost).
-    FROM_TURN_PATHS = [("busy", "not_steerable", False), ("error", "steer_failed", False),
-                       ("unavailable", "child_exited", True), ("error", "protocol_error", True)]
-    UNREACHED_PATHS = [("unavailable", "resume_failed"), ("unavailable", "settings_not_applied"),
+    # How the Codex host settles a claim that does not hand while a turn runs, naming the running turn:
+    # (outcome, its code, whether its process then ends and the turn ends lost).
+    FROM_TURN_PATHS = [("busy", "not_steerable", False), ("unavailable", "child_exited", True), ("error", "protocol_error", True)]
+    UNREACHED_PATHS = [("error", "steer_failed"), ("unavailable", "resume_failed"), ("unavailable", "settings_not_applied"),
                        ("unavailable", "thread_notLoaded"), ("unavailable", "thread_systemError"),
                        ("unavailable", "spawn_failed"), ("error", "start_failed"), ("accepted", None), ("queued", None)]
 
@@ -336,28 +337,25 @@ class AttemptPropertyCase(HealthCase):
             expired = self.sql("SELECT outcome,finished_ms FROM wake_results WHERE attempt_id=?", (self.outstanding["attempt_id"],))
             if expired:
                 self.assertEqual(expired[0][0], "expired")
-                if self.joins(self.outstanding["runner"]):
-                    self.from_turn += 1
-                else:
-                    self.attempt(through=False, outcome="expired", unanswered=False, ended=expired[0][1])
+                # Nobody said where it came from: an attempt of its own, when its lease ended.
+                self.attempt(through=False, outcome="expired", unanswered=False, ended=self.outstanding["lease_until_ms"])
                 self.outstanding = None
         self.tick()
         return claims[0] if claims else None
-
-    def joins(self, runner):
-        """Whether a claim of runner's that came from the running turn joins it: the same run handed it
-        work (a runner's Codex processes end with it, so another run's claim came from none of them)."""
-        return self.turn is not None and runner in self.turn["runners"]
 
     def attempt(self, through, outcome, unanswered, ended=None):
         self.attempts.append({"through": through, "outcome": outcome, "unanswered": unanswered, "ended": self.now if ended is None else ended})
 
     def acted(self):
-        """Whether agent-a recorded a command since the step began, noting when."""
+        """Whether agent-a recorded a command since the step began, noting when. One while its turn runs
+        not yet acted in got that turn through, then."""
         count = self.sql("SELECT count(*) FROM operations WHERE actor_id='agent-a'")[0][0]
         if count > self.operations:
             self.operations = count
             self.acts.append(self.now)
+            if self.turn is not None and not self.turn["acted"]:
+                self.turn["acted"] = True
+                self.attempt(through=True, outcome="acted", unanswered=False)
         self.tick()
 
     def act_now(self, rng):
@@ -379,24 +377,25 @@ class AttemptPropertyCase(HealthCase):
         return result
 
     def expected(self):
-        """(failed_wakes, failed_outcome, unanswered_wakes) as a pure function of the attempts and acts."""
-        failed = 0
-        for attempt in reversed(self.attempts):
-            if attempt["through"]:
-                break
-            failed += 1
+        """(failed_wakes, failed_outcome, unanswered_wakes) as a pure function of the attempts and acts:
+        the failures that happened since the last attempt that got through, the latest saying why."""
+        last = max((index for index, attempt in enumerate(self.attempts) if attempt["through"]), default=-1)
+        reached = self.attempts[last]["ended"] if last >= 0 else None
+        failed = [(attempt["ended"], index, attempt["outcome"]) for index, attempt in enumerate(self.attempts)
+                  if index > last and not attempt["through"] and (reached is None or attempt["ended"] >= reached)]
         last_act = self.acts[-1] if self.acts else -1
         unanswered = sum(1 for attempt in self.attempts if attempt["unanswered"] and attempt["ended"] > last_act)
-        return failed, self.attempts[-1]["outcome"] if failed else None, unanswered
+        return len(failed), max(failed)[2] if failed else None, unanswered
 
     def end_turn(self, status):
         """The running turn ends: one attempt, decided by how it ended and whether agent-a acted."""
         self.fresh_lease()
         result = self.end(status, turn_id=self.turn["id"], **({} if status == "completed" else {"error_code": "serverOverloaded"}))
         self.assertEqual(result["status"], "ended", result)
-        acted = any(self.turn["began"] <= at <= self.now for at in self.acts)
-        self.attempt(through=status == "completed" or acted, outcome="completed" if status == "completed" or acted else status,
-                     unanswered=status == "completed" and self.turn["carried"] and not acted)
+        acted = self.turn["acted"]
+        if status == "completed" or not acted:
+            # One acted in already got through when agent-a acted, so its end adds nothing unless it completed.
+            self.attempt(through=status == "completed", outcome=status, unanswered=status == "completed" and self.turn["carried"] and not acted)
         self.ended, self.turn = self.turn["id"], None
         self.tick()
 
@@ -420,7 +419,10 @@ class AttemptPropertyCase(HealthCase):
             claim = self.claim_one()
             if claim is not None:
                 outcome = rng.choice(["accepted", "queued", "busy", "error", "unavailable"])
-                result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome,
+                # Naming a turn that has ended joins nothing.
+                named = ({"thread_id": THREAD, "turn_id": self.ended} if outcome in ("busy", "error", "unavailable")
+                         and self.ended is not None and rng.random() < 0.5 else None)
+                result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome, from_turn=named,
                                                 reason=None if outcome in ("accepted", "queued") else rng.choice(["broker_exit", "deadline"]))
                 self.assertEqual(result["status"], "settled", result)
                 self.attempt(through=outcome in ("accepted", "queued"), outcome=outcome,
@@ -433,13 +435,17 @@ class AttemptPropertyCase(HealthCase):
                     # The owner takes agent-a off its topic between the claim and the hand, then puts it back.
                     self.part(False)
                     self.tick()
+                acts = len(self.acts)
                 if rng.random() < 0.3:
                     self.act_now(rng)  # agent-a acts once Codex started the turn, before the hand is recorded
                 self.turns += 1
+                handed = self.now
                 result = self.hand(claim, "turn-%d" % self.turns, "start")
-                self.turn = {"id": "turn-%d" % self.turns, "began": claim["lease_until_ms"] - 20000,
-                             "carried": result["handed_seq"] is not None, "steers": [], "unseen": [], "runners": {self.runner},
-                             "detached": False}
+                self.turn = {"id": "turn-%d" % self.turns, "carried": result["handed_seq"] is not None, "steers": [], "unseen": [],
+                             "detached": False, "acted": len(self.acts) > acts}
+                if self.turn["acted"]:
+                    # The act was in the turn this claim started: it got through when its hand was recorded.
+                    self.attempt(through=True, outcome="acted", unanswered=False, ended=handed)
                 if choice == "withdrawn":
                     self.part(True)
                     self.tick()
@@ -450,7 +456,6 @@ class AttemptPropertyCase(HealthCase):
             if claim is not None:
                 result = self.hand(claim, self.turn["id"], "steer")
                 self.turn["carried"] = self.turn["carried"] or result["handed_seq"] is not None
-                self.turn["runners"].add(self.runner)
                 self.turn["steers"].append(claim["attempt_id"])
                 self.turn["unseen"].append(claim["attempt_id"])
         elif choice == "detach":
@@ -463,7 +468,7 @@ class AttemptPropertyCase(HealthCase):
             claim = self.claim_one()
             if claim is not None:
                 if self.turn["detached"]:
-                    path = rng.choice(self.UNREACHED_PATHS[:6])
+                    path = rng.choice(self.UNREACHED_PATHS[:7])
                 else:
                     path = rng.choice(self.FROM_TURN_PATHS + self.UNREACHED_PATHS + [("expire",)])
                 if path == ("expire",):
@@ -478,17 +483,17 @@ class AttemptPropertyCase(HealthCase):
                     if withdrawn:
                         self.part(False)
                         self.tick()
-                    result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome, reason=reason)
+                    result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome, reason=reason,
+                                                    from_turn={"thread_id": THREAD, "turn_id": self.turn["id"]} if from_turn else None)
                     self.assertEqual(result["status"], "settled", result)
                     if withdrawn:
                         self.part(True)
-                    if not (from_turn and self.joins(self.runner)):
+                    if from_turn:
+                        self.from_turn += 1
+                    else:
                         self.attempt(through=outcome in ("accepted", "queued"), outcome=outcome,
                                      unanswered=outcome == "accepted" and bool(result["pending_count"]))
-                        if self.turn["detached"] or self.joins(self.runner):
-                            self.unreached += 1
-                    else:
-                        self.from_turn += 1
+                        self.unreached += 1
                     self.tick()
                     if from_turn and path[2] and rng.random() < 0.7:
                         # The host ends the process, and with it the turn.

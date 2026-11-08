@@ -1065,6 +1065,134 @@ class UnloadedThreadCase(ClosedThreadCase):
     reason = "settings_not_applied"
 
 
+class ActedThenClosedCase(HostCase):
+    """The reviewer's r5 order probe: the agent acts in its turn, then Codex closes the thread and
+    every later claim fails before it reaches it. The runner then stops (a deploy): its Codex process
+    exits and the host ends the turn lost. The turn got through when the agent acted, before the
+    outage, so its end clears nothing: the team is not told the agent can be woken again."""
+    turns = [{"hold": "close"}]
+
+    def test_a_turn_the_agent_acted_in_ending_after_an_outage_began_clears_none_of_it(self):
+        runner = self.runner()
+        self.open_topic("First request")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        self.serial += 1
+        receipt = self.store.command(AGENT, {"v": 1, "instance_id": INSTANCE, "operation_id": "op-agent-%d" % self.serial,
+                                             "kind": "message.post", "target": {"topic_id": "t1"}, "args": {"body": "On it"},
+                                             "expected": {"authority": dict(self.pin)}})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        for number in range(FAILING_AFTER):
+            self.post("Follow-up %d" % number)
+            self.assertEqual(runner.event("host_dispatch", outcome="unavailable")["reason"], "resume_failed")
+        facts = "SELECT failed_wakes,failed_outcome,failed_reason FROM wake_facts WHERE recipient_id=?"
+        self.assertEqual(self.sql(facts, (AGENT,)), [(FAILING_AFTER, "unavailable", "resume_failed")])
+        self.stopped_cleanly(runner)
+        self.assertEqual([row["final_status"] for row in self.turns_rows()], ["lost"], "the process exited and the turn ended lost")
+        self.assertEqual(self.sql(facts, (AGENT,)), [(FAILING_AFTER, "unavailable", "resume_failed")])
+        notices = [row[0] for row in self.sql("SELECT body FROM messages WHERE author_id='theseus'")]
+        self.assertEqual(len(notices), 1, notices)
+        self.assertIn("can't be woken", notices[0])
+
+
+class SteerIntoReviewTurnCase(HostCase):
+    """The reviewer's P1, end to end: a message arrives while the agent's turn is one Codex cannot
+    steer (a review), so three steers into it are refused as not steerable; the turn then completes.
+    The host names the turn each refusal came from, so they join it: the turn ran and completed, and
+    nothing is told."""
+    turns = [{"hold": "steer", "steer": "busy", "refusals": FAILING_AFTER, "reply": "first"}, {"reply": "second"}]
+
+    def test_steers_a_running_turn_refuses_as_not_steerable_join_it_and_tell_nothing(self):
+        runner = self.runner()
+        self.open_topic("First request")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        self.post("Second")
+        for number in range(FAILING_AFTER):
+            self.assertEqual(runner.event("host_dispatch", outcome="busy")["reason"], "not_steerable")
+        runner.event("host_turn_end", status="completed")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        runner.event("host_turn_end", status="completed")
+        self.assertEqual(self.sql("SELECT failed_wakes FROM wake_facts WHERE recipient_id=?", (AGENT,)), [(0,)])
+        self.assertEqual(self.sql("SELECT body FROM messages WHERE author_id='theseus'"), [], "nothing is told")
+        self.stopped_cleanly(runner)
+
+
+class SteerRefusedCase(HostCase):
+    """Codex refuses every steer into the running turn for a reason that does not say the turn runs
+    (steer_failed): the host names no turn, so each counts, and the agent is red while the turn
+    stays open in Core."""
+    turns = [{"hold": "steer", "steer": "refuse"}]
+
+    def test_steers_refused_without_saying_the_turn_runs_are_each_an_attempt(self):
+        runner = self.runner()
+        self.open_topic("First request")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        self.post("Second")
+        for number in range(FAILING_AFTER):
+            self.assertEqual(runner.event("host_dispatch", outcome="error")["reason"], "steer_failed")
+        self.assertEqual([row["final_status"] for row in self.turns_rows()], [None], "the turn still runs")
+        self.assertEqual(self.sql("SELECT failed_wakes,failed_reason FROM wake_facts WHERE recipient_id=?", (AGENT,)),
+                         [(FAILING_AFTER, "steer_failed")])
+        self.assertEqual(self.store.view("lead", "health_light", {})["red"], ["failing:" + AGENT])
+        self.stopped_cleanly(runner)
+
+
+class SteerInFlightDeathCase(HostCase):
+    """The reviewer's P2, end to end: Codex's process dies with a steer in flight. The steer's claim
+    settles child_exited naming the turn the process ran, and the host ends that turn lost: one
+    fault, one attempt that did not get through."""
+    turns = [{"hold": "steer", "steer": "die"}, {"reply": "again"}]
+
+    def test_a_process_that_dies_with_a_steer_in_flight_is_one_attempt(self):
+        runner = self.runner()
+        self.open_topic("First request")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        self.post("Second")
+        self.assertEqual(runner.event("host_dispatch", outcome="unavailable")["reason"], "child_exited")
+        runner.event("host_turn_end", status="lost")
+        self.assertEqual(self.sql("SELECT failed_wakes,failed_outcome FROM wake_facts WHERE recipient_id=?", (AGENT,)), [(1, "lost")])
+        self.stopped_cleanly(runner)
+
+
+class LostTurnCase(HostCase):
+    """The reviewer's r5 lost-turn probe: Codex's app-server loses the turn it started (no
+    turn/completed), so the host's next steer into it is refused and it starts a new turn, which
+    completes; the lost turn stays open in Core, the same run. Then Codex never answers turn/start,
+    so every claim expires. No running turn refused them, so each is an attempt that did not get
+    through: the agent is red and told once."""
+    turns = [{"lose": True}, {"reply": "second"}] + [{"vanish": True}] * 8
+
+    def test_claims_that_expire_while_a_lost_turn_stays_open_are_red_and_told(self):
+        runner = self.runner()
+        self.open_topic("First request")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        self.post("Second")
+        runner.event("host_steer_refused")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        runner.event("host_turn_end", status="completed")
+        self.assertEqual(self.replies(), ["second"])
+        # The agent acknowledges the first request too, from its history, so nothing waits before the next.
+        pending = self.store.view(AGENT, "deliveries", {})["items"]
+        self.assertEqual(len(pending), 1, pending)
+        self.serial += 1
+        receipt = self.store.command(AGENT, {"v": 1, "instance_id": INSTANCE, "operation_id": "op-agent-%d" % self.serial,
+                                             "kind": "delivery.ack", "target": {"delivery_id": pending[0]["id"]}, "args": {},
+                                             "expected": {"authority": dict(self.pin)}})
+        self.assertEqual(receipt["status"], "committed", receipt)
+        self.assertEqual([row["final_status"] for row in self.turns_rows()].count(None), 1, "Core still lists the lost turn as open")
+        self.post("Third")
+        for number in range(FAILING_AFTER):
+            runner.event("host_dispatch_abandoned")
+        # The claim after the last abandoned one finds it expired.
+        runner.until(lambda event: event.get("event") in ("host_dispatch", "host_dispatch_abandoned", "host_steer_refused"), "the next claim")
+        self.assertEqual(self.sql("SELECT count(DISTINCT runner_token) FROM wake_attempts"), [(1,)], "one run of the runner")
+        self.assertEqual(self.sql("SELECT failed_wakes,failed_outcome,failed_reason FROM wake_facts WHERE recipient_id=?", (AGENT,)),
+                         [(FAILING_AFTER, "expired", "expired")])
+        self.assertEqual(self.store.view("lead", "health_light", {})["red"], ["failing:" + AGENT])
+        notices = [row[0] for row in self.sql("SELECT body FROM messages WHERE author_id='theseus'")]
+        self.assertEqual(len(notices), 1, notices)
+        self.stopped_cleanly(runner)
+
+
 class ProvisionCase(HostCase):
     def test_provisioning_pins_the_thread_and_writes_an_exact_private_config(self):
         self.assertEqual(self.provisioned["exit_code"], 0)

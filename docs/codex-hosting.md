@@ -42,6 +42,13 @@ otherwise it refuses with `RECORDS_WOULD_BE_LOST` and changes nothing.
 result is `{"status": "settled", "wake_status": "handed", "next_due_ms",
 "pending_count", "handed_seq"}`, or `{"status": "stale"}`.
 
+A claim that settles `busy`, `error` or `unavailable` may name the running
+turn it came from, `from_turn={"thread_id", "turn_id"}`: the host names the
+turn whose steer Codex refused as not steerable, or the turn the thread's
+Codex process was running when it exited or was ended (`child_exited`,
+`protocol_error`). Health counts such a claim with that turn while Core lists
+it as running (docs/health.md); it changes nothing in the schedule.
+
 Schedule effect, in the same transaction as the `wake_results` row and the
 `hosted_turns` row:
 

@@ -17,7 +17,8 @@ from unittest import mock
 from aim_next import cli
 from aim_next.health import FAILING_AFTER, HANDOVER_MS, WHY, machine_load as _real_machine_load, report_lines, why_words
 from aim_next.profile import write_profile
-from test_hosted_schedule import OTHER_THREAD
+from aim_next.runner import RunnerError
+from test_hosted_schedule import OTHER_THREAD, THREAD
 from test_wake_contract import HostedFixture, own_cases
 
 
@@ -349,11 +350,8 @@ class ParkedNoticeCase(HealthCase):
         self.assertEqual(self.notices()[-1][1], "Health: agent-b was disabled, so it is no longer woken." + NOTICE_TAIL)
 
 
-@own_cases
-class AttemptCase(HealthCase):
-    """One attempt to reach agent-a is one claim the runner settles, or one hosted turn with every
-    hand it took (its start and each steer), settled once, when its turn ends. How many messages
-    were steered into a turn never changes what it says about whether agent-a can be woken."""
+class AttemptFixture(HealthCase):
+    """Helpers for attempts to reach agent-a: hosted turns, claims settled the runner's ways, and Core's clock."""
 
     def facts(self):
         rows = self.sql("SELECT failed_wakes,failed_outcome,unanswered_wakes FROM wake_facts WHERE recipient_id='agent-a'")
@@ -371,6 +369,51 @@ class AttemptCase(HealthCase):
             self.hand(claim, turn_id=turn_id, mode="steer")
             if see:
                 self.assertEqual(self.store.hosted_turn_seen(self.hosting, self.runner, "theseus:" + claim["attempt_id"])["status"], "recorded")
+
+    def settle(self, claim, outcome, reason=None, from_turn=None):
+        """Settle claim as the runner does; from_turn names the running turn the Codex host says it came from."""
+        named = None if from_turn is None else {"thread_id": THREAD, "turn_id": from_turn}
+        result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome, reason=reason, from_turn=named)
+        self.assertEqual(result["status"], "settled", result)
+        return result
+
+    def traffic_during(self, turn_id, outcomes):
+        """While turn_id runs, one more message arrives and each claim for it, all of the same run of the
+        runner, settles as outcomes say ((outcome, code) or (outcome, code, the turn the host names)),
+        on the scheduler's backoff."""
+        self.now += 1000
+        self.send_next("More for %s" % turn_id)
+        for outcome in outcomes:
+            self.keep_role_until(max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"]))
+            self.settle(self.claim_now(), *outcome)
+
+    def keep_role_until(self, when):
+        """Core's clock moves on to when, while the same run of the runner keeps renewing its lease."""
+        while self.now < when:
+            self.now = min(when, self.now + 15000)
+            self.assertEqual(self.store.renew_runner(self.hosting, self.runner)["status"], "renewed")
+
+    def fail_unreached(self, codes, count):
+        """count claims of this run for agent-a, each settled with the next of codes: the runner's codes
+        for a claim that never reached agent-a's thread, on the scheduler's backoff."""
+        for number in range(count):
+            self.keep_role_until(max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"]))
+            self.settle(self.claim_now(), *codes[number % len(codes)])
+
+    def expire(self, count):
+        """count claims of this run for agent-a that the runner never settles (Codex never answered
+        turn/start): each is found expired by the next claim, which is left out too."""
+        for _ in range(count + 1):
+            self.keep_role_until(max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"]))
+            self.claim_now()
+
+
+@own_cases
+class AttemptCase(AttemptFixture):
+    """One attempt to reach agent-a is one claim the runner settles, or one hosted turn with every
+    hand it took (its start and each steer), which got through when agent-a first acted while it ran
+    or when it completed, and otherwise did not, when it ended. How many messages were steered into
+    a turn never changes what it says about whether agent-a can be woken."""
 
     def test_one_failed_turn_with_steers_is_one_wake_that_did_not_get_through_and_tells_nothing(self):
         """The reviewer's P2: a busy agent's turn takes two steers and Codex fails it once; then a
@@ -474,38 +517,29 @@ class AttemptCase(HealthCase):
         self.end("completed", turn_id="turn-1")
         self.assertEqual(self.facts(), (0, None, 1))
 
-    def settle(self, claim, outcome, reason=None):
-        result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome, reason=reason)
-        self.assertEqual(result["status"], "settled", result)
-        return result
-
-    def traffic_during(self, turn_id, outcomes):
-        """While turn_id runs, one more message arrives and each claim for it, all of the same run of the
-        runner, settles as outcomes say, on the scheduler's backoff."""
-        self.now += 1000
-        self.send_next("More for %s" % turn_id)
-        for outcome, reason in outcomes:
-            self.keep_role_until(max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"]))
-            self.settle(self.claim_now(), outcome, reason)
-
     def test_claims_that_fail_while_the_runners_turn_runs_join_that_turn_and_its_end_decides_them(self):
         """The reviewer's P1: a message arrives while Codex cannot take more work (a compact or review
-        turn) or refuses the steer, so claims settle busy, error and unavailable while agent-a's turn
-        runs; the turn then completes and agent-a acts. Twice. Every turn ran and completed, so nothing
-        is told; and while the turn runs the page says what the settled attempts said."""
+        turn), so steers into agent-a's running turn settle busy, and Codex's process exits with one
+        in flight; the turn then completes and agent-a acts. Twice. The host names the turn each came
+        from, so nothing is told; while the turn runs the page says what the settled attempts said.
+        A steer Codex refused for a reason it did not say is the turn being busy (steer_failed) never
+        reached a turn Codex said is running, so it counts, and the turn's end clears it."""
         for round_ in range(2):
-            self.steered_turn("turn-b%d" % round_, 0)
-            self.traffic_during("turn-b%d" % round_, [("busy", "not_steerable"), ("busy", "not_steerable"),
-                                                      ("error", "steer_failed"), ("unavailable", "child_exited")])
+            turn = "turn-b%d" % round_
+            self.steered_turn(turn, 0)
+            self.traffic_during(turn, [("busy", "not_steerable", turn), ("busy", "not_steerable", turn),
+                                       ("unavailable", "child_exited", turn)])
             self.assertEqual(self.facts(), (0, None, 0), "round %d: the turn still runs, so nothing settled" % round_)
+            self.traffic_during(turn, [("error", "steer_failed")])
+            self.assertEqual(self.facts(), (1, "error", 0), "round %d: Codex never said the turn runs" % round_)
             self.assertEqual(self.light(), [])
             for item in self.pending()["items"]:
                 self.ack(item["id"])
-            self.end("completed", turn_id="turn-b%d" % round_)
+            self.end("completed", turn_id=turn)
             self.assertEqual(self.facts(), (0, None, 0), "round %d: one wake, and it got through" % round_)
         self.assertEqual(self.notices(), [])
-        # Once no turn runs, each claim that fails is an attempt of its own.
-        self.traffic_during("after", [("busy", "not_steerable")] * FAILING_AFTER)
+        # Once no turn runs, each claim that fails is an attempt of its own, whatever turn it names.
+        self.traffic_during("after", [("busy", "not_steerable", "turn-b1")] * FAILING_AFTER)
         self.assertEqual(self.facts(), (FAILING_AFTER, "busy", 0))
         self.assertEqual(self.light(), ["failing:agent-a"])
 
@@ -517,26 +551,14 @@ class AttemptCase(HealthCase):
         turn's own why."""
         faults = [("unavailable", "child_exited"), ("error", "protocol_error"), ("unavailable", "child_exited")]
         for number, fault in enumerate(faults):
-            self.steered_turn("turn-x%d" % number, 0)
-            self.traffic_during("turn-x%d" % number, [fault])
-            self.end("lost", turn_id="turn-x%d" % number)
+            turn = "turn-x%d" % number
+            self.steered_turn(turn, 0)
+            self.traffic_during(turn, [fault + (turn,)])
+            self.end("lost", turn_id=turn)
             self.assertEqual(self.facts(), (number + 1, "lost", 0), "exit %d" % number)
             self.assertEqual(self.notices() != [], number + 1 == FAILING_AFTER, "exit %d" % number)
         self.assertEqual([body for _, body in self.notices()],
                          ["Health: agent-a can't be woken: its last 3 wakes did not get through. Why: its Codex turn was lost." + NOTICE_TAIL])
-
-    def keep_role_until(self, when):
-        """Core's clock moves on to when, while the same run of the runner keeps renewing its lease."""
-        while self.now < when:
-            self.now = min(when, self.now + 15000)
-            self.assertEqual(self.store.renew_runner(self.hosting, self.runner)["status"], "renewed")
-
-    def fail_unreached(self, codes, count):
-        """count claims of this run for agent-a, each settled with the next of codes: the runner's codes
-        for a claim that never reached agent-a's thread, on the scheduler's backoff."""
-        for number in range(count):
-            self.keep_role_until(max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"]))
-            self.settle(self.claim_now(), *codes[number % len(codes)])
 
     def test_claims_that_never_reach_the_thread_while_its_turn_stays_open_are_attempts_of_their_own(self):
         """The reviewer's r4 blocker: Codex closes agent-a's thread mid-turn (thread/closed, or a
@@ -572,41 +594,94 @@ class AttemptCase(HealthCase):
         self.assertEqual(len(self.notices()), 1)
 
     def test_a_claim_from_the_running_turn_joins_it_and_one_that_never_reached_the_thread_does_not(self):
-        """While the same run's turn runs, each claim from the turn itself (Codex cannot take more work,
-        refuses the steer, its process exits or answers in a way Theseus does not understand) joins
-        it, and each that never reached the thread is an attempt of its own, in any order."""
+        """While the turn runs, each claim the host says came from it (Codex said it cannot take more
+        work, or its process exited or answered in a way Theseus does not understand) joins it, and
+        each that names no turn is an attempt of its own, in any order: one that never reached the
+        thread, and a steer Codex refused without saying the turn runs."""
         self.steered_turn("turn-m", 0)
-        self.traffic_during("turn-m", [("busy", "not_steerable"), ("unavailable", "resume_failed"), ("error", "steer_failed"),
-                                       ("error", "start_failed"), ("unavailable", "child_exited"), ("error", "protocol_error")])
-        self.assertEqual(self.facts(), (2, "error", 0), "two of the six never reached the thread")
+        self.traffic_during("turn-m", [("busy", "not_steerable", "turn-m"), ("unavailable", "resume_failed"), ("error", "steer_failed"),
+                                       ("error", "start_failed"), ("unavailable", "child_exited", "turn-m"),
+                                       ("error", "protocol_error", "turn-m")])
+        self.assertEqual(self.facts(), (3, "error", 0), "three of the six named no running turn")
         for item in self.pending()["items"]:
             self.ack(item["id"])
+        self.assertEqual(self.facts(), (0, None, 0), "agent-a acted while the turn ran: a wake got through, then")
         self.end("completed", turn_id="turn-m")
         self.assertEqual(self.facts(), (0, None, 0), "the turn got through and agent-a acted")
 
-    def test_a_steer_claim_left_to_expire_joins_its_turn_even_when_the_next_runner_finds_it(self):
-        """A steer's claim is never settled (its runner stopped); the next claim finds it expired while
-        the turn is still open, and the next runner ends the turn lost: one attempt that did not get
-        through, once the same runner finds it and once the next one does."""
+    def test_a_claim_left_to_expire_is_an_attempt_of_its_own_when_its_lease_ended(self):
+        """A steer's claim is never settled (its runner stopped, or Codex never answered): nobody said
+        it came from a turn, so it is an attempt that did not get through, at its lease's end, whether
+        the same runner or the next one finds it. The turn's end is one more."""
         for number, wait in enumerate([21000, 61000]):
             self.steered_turn("turn-e%d" % number, 0)
             self.now += 1000
             self.send_next("More for turn-e%d" % number)
             before = self.runner
-            self.claim_now()
+            lease_end = self.claim_now()["lease_until_ms"]
             self.now += wait
             claim = self.claim_now()
             self.assertEqual(self.runner == before, wait < 30000, "the runner taking the next claim")
-            self.assertEqual(self.facts(), (0, None, 0), "the expired claim joined the running turn")
+            self.assertEqual(self.facts(), (1, "expired", 0))
+            self.assertEqual(self.sql("SELECT failing_since_ms FROM wake_facts WHERE recipient_id='agent-a'"), [(lease_end,)])
             self.end("lost", turn_id="turn-e%d" % number)
-            self.assertEqual(self.facts(), (1, "lost", 0))
+            self.assertEqual(self.facts(), (2, "lost", 0))
             self.settle(claim, "unavailable", "abandoned")
-            self.assertEqual(self.facts(), (2, "unavailable", 0), "a claim after the turn ended is its own")
+            self.assertEqual(self.facts(), (3, "unavailable", 0))
             self.now += 61000
             self.hand(self.claim_now(), turn_id="turn-ok%d" % number)
             self.ack(self.pending()["items"][0]["id"])
             self.end("completed", turn_id="turn-ok%d" % number)
             self.assertEqual(self.facts(), (0, None, 0))
+
+    def test_an_expired_claim_found_after_a_wake_got_through_is_not_counted_after_it(self):
+        """A runner hands agent-a a turn and stops; the next runner's claim is never settled, and agent-a
+        acts in its running turn after that claim's lease ended, so a wake got through then. Found
+        later, the expired claim happened before that, so it is not one of the failures since."""
+        self.steered_turn("turn-o", 0)
+        first = self.runner
+        self.now += 61000
+        self.send_next("More for turn-o")
+        lease_end = self.claim_now()["lease_until_ms"]
+        self.assertNotEqual(self.runner, first)
+        self.now = lease_end + 1000
+        self.ack(self.pending()["items"][0]["id"])
+        self.assertEqual(self.facts(), (0, None, 0))
+        self.now += 1000
+        self.send_next("Later")
+        self.claim_now()
+        self.assertEqual(self.sql("SELECT outcome FROM wake_results WHERE outcome='expired'"), [("expired",)])
+        self.assertEqual(self.facts(), (0, None, 0), "it expired before the wake that got through")
+
+    def test_an_expired_claim_found_after_a_later_failure_counts_from_when_it_happened_and_does_not_say_why(self):
+        """A steer's claim expires, then its turn ends lost; the next claim finds the expired one. Both
+        did not get through: the run began when the claim's lease ended, and the latest failure, the
+        turn's end, says why."""
+        self.steered_turn("turn-q", 0)
+        self.now += 1000
+        self.send_next("More for turn-q")
+        lease_end = self.claim_now()["lease_until_ms"]
+        self.now = lease_end + 1000
+        self.fresh_lease()
+        self.end("lost", turn_id="turn-q")
+        self.assertEqual(self.facts(), (1, "lost", 0))
+        self.now += 1000
+        self.claim_now()
+        self.assertEqual(self.facts(), (2, "lost", 0))
+        self.assertEqual(self.sql("SELECT failing_since_ms FROM wake_facts WHERE recipient_id='agent-a'"), [(lease_end,)])
+
+    def test_a_turn_the_agent_acted_in_that_completes_after_failures_got_through_when_it_completed(self):
+        """agent-a acts in its turn, three claims that never reached the thread fail, then Codex
+        completes the turn: Codex ran it to its end, so a wake got through then."""
+        self.steered_turn("turn-c", 0)
+        self.ack(self.pending()["items"][0]["id"])
+        self.now += 1000
+        self.send_next("More for turn-c")
+        self.fail_unreached([("unavailable", "resume_failed")], FAILING_AFTER)
+        self.assertEqual(self.light(), ["failing:agent-a"])
+        self.end("completed", turn_id="turn-c")
+        self.assertEqual((self.facts(), self.light()), ((0, None, 0), []))
+        self.assertEqual(self.agent()["reached_ms"], self.now)
 
     def test_claims_of_a_runner_that_never_handed_work_to_the_running_turn_are_attempts_of_their_own(self):
         """A runner stops with its turn open, and the next one cannot reach agent-a (its Codex process
@@ -644,8 +719,8 @@ class AttemptCase(HealthCase):
 
     def test_a_claim_the_running_turn_could_not_take_gives_it_no_work(self):
         """A turn handed nothing pending (the owner took the work away before its hand) runs while a
-        claim with work waiting settles busy: it joins the turn, but the turn never took its work,
-        so the turn got through and was given nothing to answer."""
+        claim with work waiting settles busy from it: it joins the turn, but the turn never took its
+        work, so the turn got through and was given nothing to answer."""
         self.now += 61000
         self.send_next("Work 3")
         claim = self.claim_now()
@@ -655,10 +730,99 @@ class AttemptCase(HealthCase):
         self.now += 1000
         self.send_next("More 3")
         self.now = max(self.now, self.store.runner_schedule(["agent-a"])["next_due_ms"])
-        self.assertTrue(self.settle(self.claim_now(), "busy", "not_steerable")["pending_count"])
+        self.assertTrue(self.settle(self.claim_now(), "busy", "not_steerable", "turn-3")["pending_count"])
         self.assertEqual(self.facts(), (0, None, 0), "the claim joined the running turn")
         self.end("completed", turn_id="turn-3")
         self.assertEqual(self.facts(), (0, None, 0), "the turn got through and was given nothing to answer")
+
+    def test_only_a_failed_wake_names_the_turn_it_came_from(self):
+        claim = self.claim_now()
+        for outcome, named in [("accepted", {"thread_id": THREAD, "turn_id": "t"}), ("busy", {"turn_id": "t"}),
+                               ("busy", {"thread_id": THREAD, "turn_id": "t", "mode": "steer"}), ("busy", {"thread_id": "x", "turn_id": "t"})]:
+            with self.subTest(outcome=outcome, named=named), self.assertRaises(RunnerError) as raised:
+                self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome, reason="not_steerable", from_turn=named)
+            self.assertEqual(raised.exception.code, "INVALID_ARGUMENT")
+
+
+@own_cases
+class StaleTurnCase(AttemptFixture):
+    """The reviewer's r5 blockers. Core lists a turn as open that the host has stopped running: the
+    app-server lost it after starting it (the host's steer into it was refused, so it started turn-2),
+    or Codex ended it with a status the host does not know, or the host's re-read found it ended.
+    It stays open in Core, the same run throughout, until the runner's process exits. agent-a acted
+    in turn-2, while both were open."""
+
+    def stale_turn(self):
+        self.now += 61000
+        self.fresh_lease()
+        self.run = self.runner
+        self.send_next("First")
+        self.hand(self.claim_now(), turn_id="turn-L")
+        self.keep_role_until(self.now + 30000)
+        self.send_next("Second")
+        self.hand(self.claim_now(), turn_id="turn-2")
+        for item in self.pending()["items"]:
+            self.ack(item["id"])
+        self.end("completed", turn_id="turn-2")
+        self.assertEqual(self.facts(), (0, None, 0))
+        self.now += 1000
+        self.send_next("Third")
+
+    def outage_told(self, count, outcome):
+        self.assertEqual(self.runner, self.run, "one run throughout")
+        self.assertEqual(self.sql("SELECT turn_id FROM wake_turns"), [("turn-L",)], "Core still lists the lost turn as open")
+        self.assertEqual(self.facts(), (count, outcome, 0))
+        self.assertEqual(self.light(), ["failing:agent-a"])
+        self.assertEqual(len(self.notices()), 1)
+
+    def test_turn_starts_codex_refuses_while_a_stale_turn_is_open_are_each_an_attempt(self):
+        """Codex refuses every turn/start as activeTurnNotSteerable (a review or compact turn of its
+        own): no turn the host runs refused them, so the host names none, and each counts."""
+        self.stale_turn()
+        self.fail_unreached([("busy", "not_steerable")], 8)
+        self.outage_told(8, "busy")
+
+    def test_claims_naming_a_turn_that_ended_join_nothing_while_a_stale_turn_is_open(self):
+        """A claim names turn-2, which has ended: it joins nothing, though Core still lists turn-L."""
+        self.stale_turn()
+        self.fail_unreached([("busy", "not_steerable", "turn-2"), ("unavailable", "child_exited", "turn-2")], 4)
+        self.outage_told(4, "unavailable")
+
+    def test_turn_starts_codex_never_answers_while_a_stale_turn_is_open_are_each_an_attempt(self):
+        self.stale_turn()
+        self.expire(5)
+        self.outage_told(5, "expired")
+
+    def test_the_stale_turn_ending_when_the_process_exits_clears_no_outage_after_it(self):
+        """agent-a's act in turn-2 got the stale turn through too, then: its end when the process exits
+        is no news, so the outage after that act stays red and is told once."""
+        self.stale_turn()
+        self.fail_unreached([("unavailable", "resume_failed")], 4)
+        self.outage_told(4, "unavailable")
+        self.end("lost", turn_id="turn-L")
+        self.assertEqual(self.facts(), (4, "unavailable", 0))
+        self.assertEqual((self.light(), len(self.notices())), (["failing:agent-a"], 1))
+
+    def test_a_turn_the_agent_acted_in_before_an_outage_clears_none_of_it_when_it_ends(self):
+        """The reviewer's order probe: agent-a acts in turn-T, then Codex closes the thread and every
+        later claim fails; the process exits and turn-T ends lost. turn-T got through before the
+        outage began, at agent-a's act, so its end clears none of the failures after it."""
+        self.now += 61000
+        self.fresh_lease()
+        self.send_next("First")
+        self.hand(self.claim_now(), turn_id="turn-T")
+        self.now += 2000
+        self.ack(self.pending()["items"][0]["id"])
+        acted = self.now
+        self.now += 1000
+        self.send_next("More")
+        self.fail_unreached([("unavailable", "resume_failed")], 6)
+        self.assertEqual((self.facts(), self.light(), len(self.notices())), ((6, "unavailable", 0), ["failing:agent-a"], 1))
+        self.end("lost", turn_id="turn-T")
+        self.assertEqual((self.facts(), self.light(), len(self.notices())), ((6, "unavailable", 0), ["failing:agent-a"], 1))
+        self.assertEqual(self.agent()["reached_ms"], acted, "a wake last got through when agent-a acted")
+        self.fail_unreached([("unavailable", "resume_failed")], 3)
+        self.assertEqual((self.facts(), len(self.notices())), ((9, "unavailable", 0), 1))
 
 
 @own_cases

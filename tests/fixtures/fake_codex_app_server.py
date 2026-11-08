@@ -46,12 +46,16 @@ A turn behaviour (consumed in order across restarts) may hold:
   steer      "race": on a steer, finish the turn first and refuse the steer as having
              no active turn; "race_fail": the same, but the turn fails; "late": finish
              the turn first, then accept the steer; "drop": accept the steer but never
-             surface its input
+             surface its input; "busy": refuse each steer as activeTurnNotSteerable, and
+             complete the turn after `refusals` (default 1) of them; "refuse": refuse each
+             steer as "input rejected" while the turn goes on; "die": SIGKILL itself
+             with the steer unanswered
   fail       a codexErrorInfo key: the turn fails without acting
   busy       refuse turn/start as activeTurnNotSteerable
   silent     start the turn but never answer turn/start or announce the turn
   vanish     the same, and the turn is gone at once while the thread's history
              still lists it in progress (a turn its app-server lost)
+  lose       answer turn/start and surface its input, then lose the turn the same way
   garble     answer turn/start with a line that is not JSON, then wait
   server_request  a server request method sent mid-turn; the turn waits for its answer
   bad_notification  before answering turn/start, notify turn/started with a threadId that is a list
@@ -285,6 +289,11 @@ class Fake:
         self.notify("thread/status/changed", {"threadId": thread_id, "status": {"type": "active", "activeFlags": []}})
         self.notify("turn/started", {"threadId": thread_id, "turn": {"id": turn["id"], "status": "inProgress", "items": []}})
         self.accept(thread_id, turn, params)
+        if behaviour.get("lose"):
+            # The app-server loses the turn once its input is seen: no turn/completed, and the
+            # thread's history still lists it in progress.
+            del self.active[thread_id]
+            return
         self.advance(thread_id)
 
     def on_turn_steer(self, request, params):
@@ -299,6 +308,19 @@ class Fake:
             # The turn ended a moment before the steer arrived.
             self.finish(thread_id, "completed" if mode == "race" else "failed")
             return self.error(request, -32600, "no active turn to steer")
+        if mode == "busy":
+            # A review turn: each steer is refused as not steerable, and after `refusals` of them it completes.
+            turn["refused"] = turn.get("refused", 0) + 1
+            self.error(request, -32600, "cannot steer now", {"codexErrorInfo": {"activeTurnNotSteerable": {"turnKind": "review"}}})
+            if turn["refused"] >= turn["behaviour"].get("refusals", 1):
+                self.finish(thread_id, "completed")
+            return
+        if mode == "refuse":
+            # Each steer is refused for a reason that does not say whether the turn runs; the turn goes on.
+            return self.error(request, -32600, "input rejected")
+        if mode == "die":
+            # The process dies with the steer in flight, unanswered.
+            os.kill(os.getpid(), signal.SIGKILL)
         if mode == "late":
             # The turn ends first; the steer's answer follows, and its input is never seen.
             self.finish(thread_id, "completed")
