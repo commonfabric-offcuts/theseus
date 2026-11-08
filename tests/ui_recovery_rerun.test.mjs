@@ -25,7 +25,7 @@ const busy = cleanup => cleanup.read(async () => { throw new AttemptError('busy'
 
 // `check` answers each journal call; a check that is not deferred retires its row.
 // The journal holds every row it was asked about, unless `current` says otherwise.
-function fixture({ check, stopped = () => false, current } = {}) {
+function fixture({ check, stopped = () => false, paused = () => false, current } = {}) {
   const rechecks = [], calls = [], checked = [], held = new Map();
   const journal = {
     retireImageCandidate: async (key, row) => { calls.push(row.id); checked.push(row); held.set(row.id, row); await check(cleanup, row); return { retired: true }; },
@@ -33,7 +33,7 @@ function fixture({ check, stopped = () => false, current } = {}) {
     own: async () => { calls.push('own'); await check(cleanup, null); return null; },
     current: async (key, ids) => current ? current(ids) : ids.map(id => held.get(id)).filter(Boolean),
   };
-  const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal, runtime: { readTimeoutMs: 5000 }, changed: () => {}, stopped });
+  const cleanup = new RecoveryCleanup({ api: {}, bootstrap, journal, runtime: { readTimeoutMs: 5000 }, changed: () => {}, stopped, paused });
   cleanup.resumeListeners.add((session, ids, page) => rechecks.push({ session, ids, kept: page.items.map(row => row.id) }));
   const session = { editor: { key, context } };
   return { cleanup, session, rechecks, calls, checked };
@@ -281,6 +281,45 @@ test('no recheck runs between discovery reading its page and checking it', async
   read.resolve(); await found; await tick();
   assert.deepEqual(calls, ['r1', 'own', 'read', 'applied', 'r1']);
   assert.deepEqual(rechecks, [{ session, ids: ['r1'], kept: [] }]);
+});
+
+// A park (writing waiting on a review of a runtime change) stops the
+// cleanup's own reads. What it defers waits for the park to end, whatever
+// releases come meanwhile, and is then checked once: a check deferred by the
+// park and checked again during it would only be deferred again, round and
+// round for as long as the review lasts.
+test('a park landing mid-check holds the deferred rows and the own copy until it ends, then checks each once', async () => {
+  let parked = false, currents = 0, looks = 0;
+  const rows = { r1: imageRow, [acknowledgedRow.id]: acknowledgedRow };
+  // The caps end a recheck that would otherwise go round for as long as the
+  // park lasts: the park lifts after 200 looks at it.
+  const { cleanup, session, rechecks, calls } = fixture({ paused: () => parked && ++looks <= 200,
+    current: ids => { if (++currents > 20) throw Error('rechecked 20 times during the park'); return ids.map(id => rows[id]); },
+    check: cleanup => { if (calls.length === 1) parked = true; return cleanup.read(async () => null, true); } });
+  const page = await cleanup.candidates(session, { items: [imageRow, acknowledgedRow], nextCursor: null });
+  cleanup.request(session); await cleanup.idle(key); await tick();
+  assert.deepEqual(page.items.map(row => row.id), ['r1', acknowledgedRow.id], 'both copies stay listed');
+  assert.deepEqual([calls, currents, rechecks], [['r1'], 0, []], 'nothing is checked again during the park');
+  cleanup.foreground().release(); await tick();
+  assert.deepEqual([calls, currents], [['r1'], 0], 'a foreground release during the park checks nothing');
+  parked = false; cleanup.foreground().release(); await tick();
+  assert.deepEqual(calls, ['r1', 'own', 'r1', acknowledgedRow.id]);
+  assert.deepEqual(rechecks, [{ session, ids: ['r1', acknowledgedRow.id], kept: [] }]);
+  cleanup.foreground().release(); await tick();
+  assert.equal(calls.length, 4, 'each is checked once');
+});
+
+test('a page checked during a park starts no row and lists every one, and the rows are checked once the park ends', async () => {
+  let parked = true, currents = 0, looks = 0;
+  const rows = { r1: imageRow, [acknowledgedRow.id]: acknowledgedRow };
+  const { cleanup, session, rechecks, calls } = fixture({ paused: () => parked && ++looks <= 200, check: cleanup => cleanup.read(async () => null, true),
+    current: ids => { if (++currents > 20) throw Error('rechecked 20 times during the park'); return ids.map(id => rows[id]); } });
+  const page = await cleanup.candidates(session, { items: [imageRow, acknowledgedRow], nextCursor: null }); await tick();
+  assert.deepEqual(page.items.map(row => row.id), ['r1', acknowledgedRow.id]);
+  assert.deepEqual([calls, rechecks], [[], []], 'no journal retirement starts during the park');
+  parked = false; cleanup.foreground().release(); await tick();
+  assert.deepEqual(calls, ['r1', acknowledgedRow.id]);
+  assert.deepEqual(rechecks, [{ session, ids: ['r1', acknowledgedRow.id], kept: [] }]);
 });
 
 test('a saved copy whose reply asks or tells is recognized; one holding any other intent is not', () => {

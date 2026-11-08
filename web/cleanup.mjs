@@ -58,7 +58,10 @@ export function eligible(row, context) {
 // paused() is true while writing waits on a review of a runtime change: no
 // copy is checked against an authority in question then, so the cleanup's own
 // reads stop at once, a check already under way included, and a park brings
-// no bootstrap. Reads it carries for others (freshness) go on.
+// no bootstrap. Reads it carries for others (freshness) go on. A park starts
+// no check, of the own copy or of a listed row, and checks nothing again: what
+// it deferred waits for the first resume after it ends, since a check run
+// during the park would only be deferred again, for as long as the review lasts.
 export class RecoveryCleanup {
   constructor({ api, bootstrap, journal, runtime, changed, stopped = () => false, paused = () => false, yieldBatch = () => new Promise(resolve => setTimeout(resolve, 0)) }) {
     Object.assign(this, { api, bootstrap, journal, runtime, changed, stopped, paused, yieldBatch });
@@ -69,7 +72,8 @@ export class RecoveryCleanup {
     // The row IDs (and own copy) whose check a read deferred, per editor and
     // bound to the session that deferred them. They are checked again once no
     // foreground read remains and the editor's queue has drained; rows deferred
-    // only by a busy server wait for the next foreground release. A later check
+    // only by a busy server wait for the next foreground release, and nothing
+    // is checked again while a park lasts. A later check
     // of a row answers for it, and a session that is no longer registered
     // leaves nothing to check.
     this.waiting = new Map(); this.resumeListeners = new Set();
@@ -88,9 +92,9 @@ export class RecoveryCleanup {
     if (rowId === undefined) entry.own = false; else entry.ids.delete(rowId);
     if (!entry.own && !entry.ids.size) this.waiting.delete(key);
   }
-  // A recheck of a stopped cleanup does nothing, so only foreground reads hold this.
+  // A recheck of a stopped cleanup does nothing, so only foreground reads and a park hold this.
   resume() {
-    if (this.foregroundCount) return;
+    if (this.foregroundCount || this.paused()) return;
     for (const [key, entry] of [...this.waiting]) {
       if (entry.session.registered?.() === false) { this.waiting.delete(key); continue; }
       if (!entry.ready || this.queues.has(key)) continue;
@@ -215,9 +219,8 @@ export class RecoveryCleanup {
     this.changed(session.editor);
   }
   async retireOwn(session) {
-    // Paused, it starts nothing: a check its read deferred comes back here and
-    // ends, rather than deferring again for as long as the review lasts.
-    if (this.stopped() || this.paused()) return false;
+    if (this.stopped()) return false;
+    if (this.paused()) { this.defer(session, this.deferred()); return false; }
     this.checking(session);
     try {
       let row = await this.journal.own(session.editor.key), projected;
@@ -263,6 +266,7 @@ export class RecoveryCleanup {
     const retained = [];
     for (const row of page.items) {
       this.checking(session, row.id);
+      if (this.paused() && row.availability === 'available') { retained.push(row); this.defer(session, this.deferred(), row); continue; }
       if (row.availability === 'available' && row.snapshot?.format === 2 && this.journal.retireImageCandidate) {
         try {
           const result = await this.journal.retireImageCandidate(session.editor.key, row, async captured => {

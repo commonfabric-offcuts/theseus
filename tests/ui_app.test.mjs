@@ -744,6 +744,44 @@ test('a cleanup under way when the runtime parks reads nothing more, so a park n
   assert.equal(await q.journal.own(other.key), undefined);
 });
 
+test('during a park, Review versions lists an older saved copy as it is and checks it no more while the park lasts', async t => {
+  // An older copy from a closed tab, which Core already acknowledged. Review
+  // versions lists it; a cleanup check confirms it against Core and retires it.
+  const seed = async f => {
+    const older = { ...copy(f.row), writerId: 'closed-tab', id: JSON.stringify([f.editor.key, 'closed-tab']), stamp: 'older', availability: 'available' };
+    f.rows.set(older.id, older);
+    const counts = { currents: 0, retirements: 0 }, current = f.backend.currentCandidates;
+    f.backend.forEditor = async () => ({ items: [copy(f.rows.get(older.id))], nextCursor: null });
+    // The caps end a check that would otherwise go round for as long as the
+    // park lasts: the park lifts after 500 looks at it.
+    let looks = 0; const paused = f.registry.cleanup.paused;
+    f.registry.cleanup.paused = () => ++looks <= 500 && paused();
+    f.backend.currentCandidates = async (key, ids) => {
+      if (++counts.currents > 50) throw Error('rechecked 50 times during the park');
+      return (await current(key, ids)).map(row => ({ ...row, availability: 'available' }));
+    };
+    f.backend.retireAcknowledged = async (key, candidate, confirm) => {
+      ++counts.retirements;
+      if (!await confirm(copy(f.rows.get(candidate.id)))) return false;
+      f.rows.delete(candidate.id); return true;
+    };
+    return { older, counts };
+  };
+  const f = await retainedAcknowledgement(t), { older, counts } = await seed(f);
+  await f.registry.parkAuthority({ instance_id: f.bootstrap.instance_id, actor_id: f.bootstrap.actor,
+    authority_id: f.bootstrap.authority.authority_id, authority_epoch: f.bootstrap.authority.authority_epoch }, 'INVALID_BINDING');
+  const page = await f.registry.recoveryCandidates(f.editor); await cleanupSettled(f, f.editor);
+  assert.deepEqual(counts, { currents: 0, retirements: 0 }, 'a park starts no check of a listed copy and none again');
+  assert.deepEqual(page.items.map(row => row.id), [older.id], 'the copy is listed for the review');
+  assert.ok(f.rows.has(older.id));
+  assert.equal(f.editor.authorityRecovery.phase, 'parked');
+  // Without a park the same discovery checks the copy once and retires it.
+  const q = await retainedAcknowledgement(t), other = await seed(q);
+  const kept = await q.registry.recoveryCandidates(q.editor); await cleanupSettled(q, q.editor);
+  assert.deepEqual(other.counts, { currents: 0, retirements: 1 });
+  assert.deepEqual(kept.items, []); assert.equal(q.rows.has(other.older.id), false);
+});
+
 test('cleanup retires exact real private acknowledgements without recreating on close or caret movement', async t => {
   const f = await fixture(t), p = await f.open(1);
   for (const editor of Object.values(p.editors)) {
