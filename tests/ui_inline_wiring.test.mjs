@@ -180,7 +180,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
-    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload}; } };`, context);
+    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload,topicNavigation}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
     edit: editor => events.push(['inline-edit',editor.key]),
     needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
@@ -2560,4 +2560,66 @@ test('the version review closes on a press outside it, as Keep both for now does
   press(50, 400);
   assert.equal(review.open, false, 'a press on the backdrop closes it');
   assert.equal(f.document.activeElement, f.get('opener'), 'the focus goes back to what opened it');
+});
+
+// A reply in doubt has its Review button where the page draws it, and the
+// departure guard names only buttons the page shows. The topic's own writing
+// is the composer's: drawn there once the composer shows, loaded or failed.
+function doubtful(f, { composer = 'shown' } = {}) {
+  f.registry.inline = null;
+  f.registry.pending = () => ({ items: [{ id: 'from-phone', send_status: 'unknown' }], next_cursor: null, through: 1 });
+  Object.defineProperty(f.registry, 'inDoubt', { get() { return Object.getOwnPropertyDescriptor(EditorRegistry.prototype, 'inDoubt').get.call(this); } });
+  f.registry.keepEditorsLocal = async () => {}; f.registry.flush = async () => null; f.editor.dirty = false;
+  // The page's own HTML hides the composer until it loads or fails.
+  if (composer === 'loading') f.get('inline-composer').hidden = true;
+}
+const reviewLabels = el => el.children.flatMap(c => [c.textContent, ...reviewLabels(c)]).filter(t => /^Review/.test(t ?? ''));
+const leaving = f => f.owners().topicNavigation.openTarget({ kind: 'topic', id: 't2' }, 'Second').then(() => null, error => error.message);
+const named = words => [...(words ?? '').matchAll(/“(Review [^”]+)”/g)].map(m => m[1]);
+
+test('a topic composer that failed after registering shows its reply\'s Review button in the composer, and leaving names that button', async () => {
+  const f = fixture(); doubtful(f);
+  f.registry.initializeInline = async () => { throw Error('This device could not read its saved versions'); };
+  await f.initialize();
+  assert.match(f.get('inline-notice').textContent, /New message is unavailable/);
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply'], 'the button is beside the failed composer');
+  assert.deepEqual(reviewLabels(f.get('topic-pending')), [], 'and only there');
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names the button that is there');
+});
+
+test('while the topic composer is still loading, leaving names no Review button for it, since none is drawn', async () => {
+  const f = fixture(); doubtful(f, { composer: 'loading' });
+  const held = defer(), asked = defer();
+  f.registry.initializeInline = () => { asked.resolve(); return held.promise; };
+  const started = f.initialize(); await asked.promise;
+  f.changed(f.editor); // registered, so the page is told; the composer is not there yet
+  assert.deepEqual([...reviewLabels(f.get('inline-pending')), ...reviewLabels(f.get('topic-pending'))], []);
+  assert.equal(await leaving(f), null, 'leaving goes at once');
+  assert.ok(f.events.some(e => e[0] === 'navigate'));
+  // A message's writing in doubt has its button under the title; leaving names that one alone.
+  const message = { ...f.editor, key: 'm1', context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm1' } } };
+  f.registry.sessions.set(message.key, { editor: message }); f.changed(message);
+  assert.deepEqual(reviewLabels(f.get('topic-pending')), ['Review 1 reply']);
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'the message\'s button, once');
+  held.resolve(f.p); await started;
+});
+
+test('a loaded topic composer and a message\'s writing each show their Review button, and leaving names both', async () => {
+  const f = fixture(); doubtful(f);
+  const message = { ...f.editor, key: 'm1', context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm1' } } };
+  f.registry.sessions.set(message.key, { editor: message });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize(); f.changed(message);
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
+  assert.deepEqual(reviewLabels(f.get('topic-pending')), ['Review 1 reply']);
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply', 'Review 1 reply']);
+});
+
+test('leaving names a Review button by the words it shows, even when the page was not told to redraw it', async () => {
+  const f = fixture(); doubtful(f);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize();
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
+  f.registry.pending = () => ({ items: [{ id: 'a', send_status: 'unknown' }, { id: 'b', send_status: 'unknown' }], next_cursor: null, through: 2 });
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'the page still shows “Review 1 reply”, so that is the button named');
 });

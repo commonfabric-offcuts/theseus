@@ -159,8 +159,8 @@ export class EditorRegistry {
       } });
     this.sessions.set(key, session);
     session.registered = () => this.sessions.get(key) === session && !this.disposed;
-    // From here the departure guard reads what is in doubt for this writing,
-    // so the view is told now, as setPending tells it of every later list.
+    // From here this writing can be in doubt, so the view is told now, as
+    // setPending tells it of every later list, and can draw its Review button.
     this.changed(editor);
     if (context.kind === 'reply') {
       editor.recoveryDiscovery = true;

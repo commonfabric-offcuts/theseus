@@ -338,7 +338,7 @@ async function correctionDepartureFixture(t) {
     pages: new Map([[f.editor.key, { instance_id: 'ux-fixture', items: [], next_cursor: null, through: 0 }]]),
     inline: { editors: { reply: f.editor } }, current: null, disposed: false,
     flush: () => f.session.save(), keepEditorsLocal: () => f.session.persist() });
-  const visits = [], navigation = new TopicNavigation({ registry, topicId: 't1', navigate: id => visits.push(id) });
+  const visits = [], navigation = new TopicNavigation({ registry, shown: editor => registry.inDoubt.find(entry => entry.editor === editor)?.label, topicId: 't1', navigate: id => visits.push(id) });
   return { ...f, registry, visits, navigation, refused, reviewed: (await f.state()).draft };
 }
 

@@ -296,6 +296,7 @@ function pendingButton(host, editor, presentation = presentationFor(editor)) {
   const { label } = registry.doubt(editor);
   let control = host.firstElementChild;
   if (!label) { host.replaceChildren(); return; }
+  host.dataset.key = editor.key;
   if (!control) { control = button(label, () => showPending(editor, control, presentation)); host.append(control); }
   control.textContent = label; control.onclick = () => run(() => showPending(editor, control, presentation));
 }
@@ -343,18 +344,25 @@ async function showPending(editor, opener, presentation = presentationFor(editor
   }; draw();
 }
 
+// The words of the Review button this page shows for a writing, or null. The
+// departure guard names a reply in doubt only by such a button.
+const reviewShown = editor => [...$('topic-pending').children, $('inline-pending')]
+  .find(host => host.dataset.key === editor.key && host.firstElementChild)?.firstElementChild.textContent ?? null;
 function changed(editor) {
   if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
     reader.paintStatus(); reader.paintPending();
     $('review-versions').hidden = !needsReview(reader.editor);
   }
+  // The topic's own writing has its Review button in the composer whenever
+  // the composer shows: loaded, or failed and offering Retry composer.
   if (inline?.editor === editor) inline.paintStatus();
+  else if (editor.context.kind === 'reply' && editor.context.sourceRef.kind === 'topic' && !$('inline-composer').hidden) pendingButton($('inline-pending'), editor);
   invalidateComparison(editor);
   if (editor.context.kind === 'reply' && editor.context.sourceRef.kind !== 'topic') {
     let host = [...$('topic-pending').children].find(child => child.dataset.key === editor.key);
     if (!registry.doubt(editor).label) host?.remove();
     else {
-      if (!host) { host = node('div'); host.dataset.key = editor.key; $('topic-pending').append(host); }
+      if (!host) { host = node('div'); $('topic-pending').append(host); }
       pendingButton(host, editor);
     }
   }
@@ -1064,7 +1072,10 @@ async function checkInlineAvailability(read, current) {
 }
 async function initializeInlineComposer() {
   try { await registry.initializeInline(topic); }
-  catch (error) { inline.fail(error.message); return; }
+  catch (error) {
+    // Writing registered before the failure keeps its place on the page.
+    inline.fail(error.message); for (const { editor } of registry.sessions.values()) changed(editor); return;
+  }
   // Recovery discovery reads in the background lane, which any foreground read
   // defers. The optional rail reads that follow wait for it, so a saved copy
   // that Core already acknowledges is retired rather than left for review.
@@ -1394,7 +1405,7 @@ async function initialize() {
   window.addEventListener('focus', noteRead);
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
-  topicNavigation = new TopicNavigation({ registry, current: route,
+  topicNavigation = new TopicNavigation({ registry, current: route, shown: reviewShown,
     navigateTarget: target => { marks.leave(); location.assign(routeHref(target)); } });
   await initializeInlineComposer();
   // The conversation has its own row, never one among the topics.

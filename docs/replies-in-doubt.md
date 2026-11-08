@@ -44,13 +44,21 @@ answers for it.
 - The Review button under the topic's title, in the composer and in the Reader.
 - The Review list, which lists the replies in doubt (and keeps those it showed,
   so a reply checked as sent says so in place).
-- The departure guard: while a send is under way it waits; otherwise, while any
-  reply is in doubt, it names each Review button by its words and leaves on a
-  second choice of the same topic with the same replies in doubt.
+- The departure guard: while a send is under way it waits; otherwise, while a
+  reply is in doubt and the page shows its Review button, it names each such
+  button by its words and leaves on a second choice of the same topic with the
+  same replies in doubt.
 
-The button and the guard agree because the page is told whenever the answer's
-inputs change: `EditorRegistry.setPending` is the only write of the server's
-list and tells the writing registered for it, and a writing is told as soon as
-it is registered. An open of a message's Reader dropped after its read (Escape,
-or another message chosen while the step keeps the writing in front) still
-keeps that fresher list, and the button shows its answer.
+The guard asks the page which buttons it shows (`TopicNavigation`'s `shown`),
+so its words never point at a button that is not there. Each writing's button
+has one place: a message's under the topic's title, whether or not its Reader
+opened; the topic's own in the composer, whenever the composer shows, loaded
+or failed with Retry composer. While the composer is still loading nothing is
+drawn for it, and leaving names nothing for it.
+
+The page draws each button when the answer's inputs change:
+`EditorRegistry.setPending` is the only write of the server's list and tells
+the writing registered for it, and a writing is told as soon as it is
+registered. An open of a message's Reader dropped after its read (Escape, or
+another message chosen while the step keeps the writing in front) still keeps
+that fresher list, and the button shows its answer.

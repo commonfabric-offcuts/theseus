@@ -56,7 +56,7 @@ function departure() {
   const registry={sessions:new Map([['writing',owner]]),inline:{editors:{reply:editor}},current:null,
     disposed:false,hasInFlightSend:false,inDoubt:[],hasUnprotectedWriting:false,
     flush:async()=>{editor.ackVersion=editor.localVersion;return {recorded:true,status:'committed'};},keepEditorsLocal:async()=>{}};
-  const navigation=new nav.TopicNavigation({registry,current:{kind:'topic',id:'same'},navigateTarget:route=>visits.push(route)});
+  const navigation=new nav.TopicNavigation({registry,shown:editor=>registry.inDoubt.find(entry=>entry.editor===editor)?.label,current:{kind:'topic',id:'same'},navigateTarget:route=>visits.push(route)});
   return {navigation,registry,editor,visits};
 }
 test('typed outcome/root departures use the same save/send guard and do not alias a topic', async () => {

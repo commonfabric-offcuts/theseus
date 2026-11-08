@@ -16,7 +16,7 @@ function guarded(page = complete) {
   const session = Object.assign(Object.create(EditorSession.prototype), { editor, sends: new Map() });
   registry.sessions.set(editor.key, session);
   if (page) registry.pages.set(editor.key, page);
-  const visits = [], navigation = new TopicNavigation({ registry, topicId: 't', navigate: id => visits.push(id) });
+  const visits = [], navigation = new TopicNavigation({ registry, shown: editor => registry.inDoubt.find(entry => entry.editor === editor)?.label, topicId: 't', navigate: id => visits.push(id) });
   // What leaving says: null when it left.
   const leave = async () => { try { await navigation.open('b'); return null; } catch (error) { return error.message; } };
   return { registry, editor, session, visits, leave, label: () => registry.doubt(editor).label };
