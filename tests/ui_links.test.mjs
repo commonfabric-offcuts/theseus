@@ -4,7 +4,8 @@
 // native checks in tests/links_native.mjs press them in a real browser.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { webLinks, wordNodes, linkWords, openLinksWith } from '../web/links.mjs';
+import { webLinks, wordNodes, linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink } from '../web/links.mjs';
+import { parseRoute, routeHref } from '../web/topic-navigation.mjs';
 import { closeOnOutsideClick } from '../web/dismiss.mjs';
 import { foldCard } from '../web/fold.mjs';
 
@@ -12,8 +13,9 @@ import { foldCard } from '../web/fold.mjs';
 class Element {
   constructor(tag) { Object.assign(this, { tagName: tag.toUpperCase(), children: [], handlers: {}, dataset: {}, attributes: {}, textContent: '', className: '', href: '', target: '', rel: '' }); }
   addEventListener(name, fn) { (this.handlers[name] ??= []).push(fn); }
-  replaceChildren(...nodes) { this.children = nodes; }
-  append(...nodes) { this.children.push(...nodes.map(node => typeof node === 'string' ? doc.createTextNode(node) : node)); }
+  replaceChildren(...nodes) { this.children = nodes; for (const node of nodes) node.parentNode = this; }
+  append(...nodes) { for (const node of nodes.map(node => typeof node === 'string' ? doc.createTextNode(node) : node)) { node.parentNode = this; this.children.push(node); } }
+  replaceChild(node, old) { this.children[this.children.indexOf(old)] = node; node.parentNode = this; old.parentNode = null; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   get ownerDocument() { return doc; }
   get text() { return this.children.length ? this.children.map(child => child.text ?? child.data).join('') : this.textContent; }
@@ -30,7 +32,7 @@ const click = (element, fields = {}) => {
 const here = (t, origin = 'https://theseus.example:5211') => {
   const previous = globalThis.location;
   globalThis.location = new URL(origin + '/?topic=t1');
-  t.after(() => { globalThis.location = previous; openLinksWith(null); });
+  t.after(() => { globalThis.location = previous; openLinksWith(null); nameTopicsWith(() => null); shareLinksFrom(null); });
 };
 
 test('only an http or https address is a link, and one written inside a word is not', () => {
@@ -199,4 +201,91 @@ test('a folded message\'s line shows its first line\'s web addresses as links, a
       'an excerpt of one line may end inside its address, so the address is words');
     assert.deepEqual(folded({ body: 'Logs: https://ci.example/run/7-and-the-rest', preview: false }).links, ['https://ci.example/run/7-and-the-rest']);
   } finally { globalThis.document = previous; }
+});
+
+// docs/links.md, "A message's link" and "Topics named in a message".
+const T1 = 't-' + '1'.repeat(32), T2 = 't-' + 'a'.repeat(32), NOWHERE = 't-' + 'f'.repeat(32);
+const names = new Map([[T1, 'Launch copy'], [T2, 'Where the plan carried on']]);
+// What wordNodes drew: each node as its words, or an anchor as [shown, title, href].
+const drawn = nodes => nodes.map(node => node.tagName === 'A' ? [node.textContent, node.title ?? '', node.href] : node.data);
+
+test('a message\'s link names its topic and the message, and opens that message from this address or the tailnet one', t => {
+  here(t, 'http://127.0.0.1:5210');
+  const route = { kind: 'topic', id: T1, message: 'm-1' };
+  assert.equal(routeHref(route), `?topic=${T1}&message=m-1`);
+  assert.deepEqual(parseRoute(new URL(`http://127.0.0.1:5210/?topic=${T1}&message=m-1`)), route);
+  assert.deepEqual(parseRoute(new URL(`http://127.0.0.1:5210/?message=m-1&topic=${T1}`)), route, 'in either order');
+  assert.throws(() => parseRoute(new URL('http://127.0.0.1:5210/?message=m-1')), /incomplete or ambiguous/, 'a message names its topic');
+  assert.throws(() => routeHref({ kind: 'topic', id: T1, message: '' }), /incomplete or ambiguous/);
+  // Copied with no tailnet address: this page's own.
+  assert.equal(messageLink(T1, 'm-1'), `http://127.0.0.1:5210/?topic=${T1}&message=m-1`);
+  const phone = `https://mac.example.ts.net:5210/?topic=${T1}&message=m-1`;
+  assert.equal(wordNodes(phone, { doc })[0].target, '_blank', 'another origin is elsewhere while the instance names none');
+  shareLinksFrom('https://mac.example.ts.net:5210');
+  assert.equal(messageLink(T1, 'm-1'), phone, 'copied on the Mac, it names the address a phone reaches');
+  const opened = [];
+  openLinksWith((target, title, link) => opened.push([target, title, link]));
+  const [a] = wordNodes(phone, { doc });
+  assert.deepEqual([a.href, a.target], [`?topic=${T1}&message=m-1`, ''], 'the tailnet address is one of this Theseus\'s places, here too');
+  click(a);
+  assert.deepEqual(opened.map(([target]) => target), [route]);
+  assert.equal(opened[0][2], a, 'the page hears which link was pressed, to give it the focus back');
+  shareLinksFrom('');
+  assert.equal(messageLink(T1, 'm-1'), `http://127.0.0.1:5210/?topic=${T1}&message=m-1`, 'an empty origin names none');
+});
+
+test('a link to an outcome\'s conversation, its pipeline or one of its items opens here', t => {
+  here(t);
+  const opened = [];
+  openLinksWith(target => opened.push(target));
+  for (const address of ['https://theseus.example:5211/?conversation=w1', 'https://theseus.example:5211/?pipeline=w1', 'https://theseus.example:5211/?pipeline=w1&item=24']) {
+    const [a] = wordNodes(address, { doc });
+    assert.equal(a.target, '', address + ' opens here');
+    click(a);
+  }
+  assert.deepEqual(opened, [{ kind: 'conversation', id: 'w1' }, { kind: 'pipeline', id: 'w1' }, { kind: 'item', id: 'w1', item: '24' }]);
+});
+
+test('a topic\'s id standing on its own is a link that shows the topic\'s name and opens it; one run into a word or the page cannot name stays words', t => {
+  here(t);
+  nameTopicsWith(id => names.get(id) ?? null);
+  const opened = [];
+  openLinksWith((target, title) => opened.push([target, title]));
+  const text = `See ${T1}, then x${T2} and ${T2}x and ${T2}-2 and ${NOWHERE}.`;
+  assert.deepEqual(drawn(wordNodes(text, { doc })), ['See ', ['Launch copy', T1, `?topic=${T1}`],
+    `, then x${T2} and ${T2}x and ${T2}-2 and `, NOWHERE, '.'], 'the id no topic answers to is words, in its own text node');
+  assert.deepEqual(words(`(${T2})`), [T2], 'a bracket is not part of a word');
+  assert.deepEqual(words('t-' + '1'.repeat(31) + ' t-' + 'A'.repeat(32)), [], 'only the ids Theseus makes: 32 lowercase hex digits');
+  const [, link] = wordNodes(text, { doc });
+  assert.equal(link.dataset.words, String(T1.length), 'the Reader counts the words the link stands for');
+  click(link);
+  assert.deepEqual(opened, [[{ kind: 'topic', id: T1 }, 'Launch copy']]);
+  // An id inside an address is the address's, drawn once.
+  assert.deepEqual(webLinks(`https://theseus.example:5211/?topic=${T1}`).length, 1);
+});
+
+test('a link to a topic shows its name, a link to a message shows "Message in" and its topic\'s name, and one the page cannot name shows its address', t => {
+  here(t);
+  nameTopicsWith(id => names.get(id) ?? null);
+  const topic = `https://theseus.example:5211/?topic=${T1}`, message = `https://theseus.example:5211/?topic=${T2}&message=m-9`;
+  const unnamed = `https://theseus.example:5211/?topic=${NOWHERE}`;
+  assert.deepEqual(drawn(wordNodes(`${topic} ${message} ${unnamed}`, { doc })), [['Launch copy', topic, `?topic=${T1}`], ' ',
+    ['Message in Where the plan carried on', message, `?topic=${T2}&message=m-9`], ' ', [unnamed, '', `?topic=${NOWHERE}`]]);
+  // A namer that fails is a name not known.
+  nameTopicsWith(() => { throw Error('no read'); });
+  assert.deepEqual(drawn(wordNodes(`${T1} ${topic}`, { doc })), [T1, ' ', [topic, '', `?topic=${T1}`]]);
+});
+
+test('a name the page must read first arrives in place: a bare id becomes its link then, and one that cannot be named stays words', async t => {
+  here(t);
+  const reads = new Map([[T1, Promise.resolve('Launch copy')], [NOWHERE, Promise.resolve(null)], [T2, Promise.reject(Error('offline'))]]);
+  nameTopicsWith(id => reads.get(id));
+  const host = new Element('span');
+  linkWords(host, `${T1} ${NOWHERE} ${T2} https://theseus.example:5211/?topic=${T1}`);
+  assert.deepEqual(host.children.map(node => node.tagName ?? '#text'), ['#text', '#text', '#text', '#text', '#text', '#text', 'A'],
+    'until the names arrive, a bare id is words and an address is its link');
+  await Promise.allSettled(reads.values()); await null;
+  assert.deepEqual(drawn(host.children), [['Launch copy', T1, `?topic=${T1}`], ' ', NOWHERE, ' ', T2, ' ',
+    ['Launch copy', `https://theseus.example:5211/?topic=${T1}`, `?topic=${T1}`]]);
+  assert.equal(host.text, `Launch copy ${NOWHERE} ${T2} Launch copy`);
 });

@@ -202,6 +202,10 @@ export class EditorRegistry {
       this.api.view('source', sourceRef, options),
       this.api.view('editor_state', { source_ref: sourceRef, topic_id: topicId ?? null, limit: this.pendingPageSize }, options),
     ]));
+    // A message the person may not read, such as a whisper they are not in, is
+    // refused exactly as one that is not there (docs/whispers.md): a link to
+    // either opens nothing of it, and says so in plain words (docs/links.md).
+    if (sourceAnswer?.error?.code === 'FORBIDDEN' && state?.error?.code === 'FORBIDDEN') throw Error('This message is not available to you.');
     this.validateState(state, sourceRef, topicId);
     const sourceUnavailable = sourceAnswer?.error?.code === 'FORBIDDEN' && state.source_available === false && Boolean(state.draft || state.note);
     if (!sourceUnavailable && (sourceAnswer?.error || sourceAnswer?.instance_id !== this.bootstrap.instance_id ||

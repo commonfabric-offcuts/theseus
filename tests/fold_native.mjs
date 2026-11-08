@@ -77,9 +77,12 @@ export async function foldCheck({ check, page, until, view, control, shot, obser
       await press();
       await until(async () => !(await state()).cardShown, width + ': pressed again, it folds away');
 
-      // From the keyboard: Tab from the newer card above reaches the line; Enter opens and folds it.
+      // From the keyboard: Tab from the newer card above reaches its ⋯ (docs/links.md),
+      // then the line; Enter opens and folds it.
       const above = (await state()).kinds.map(([id]) => id), newer = above[above.indexOf(between) - 1];
       await p.evaluate(`document.querySelector('#messages > [data-id="${newer}"]').focus()`);
+      await p.key('Tab');
+      assert.equal(await p.evaluate(`document.activeElement === document.querySelector('#messages > [data-id="${newer}"] .message-menu')`), true, width + ': Tab reaches the newer card\'s ⋯');
       await p.key('Tab');
       assert.equal(await p.evaluate(`document.activeElement === document.querySelector(${JSON.stringify(line)})`), true, width + ': Tab reaches the line');
       await p.key('Enter');

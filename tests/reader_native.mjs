@@ -42,7 +42,7 @@ let chrome, socket, cdp, exitPromise;
 const results = [], pageErrors = [];
 const mutations = [], sourceHashes = {};
 const hash = text => createHash('sha256').update(text).digest('hex');
-for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
+for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/message-menu.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
   sourceHashes[filename] = hash(await readFile(path.join(root, filename)));
 }
 try {
@@ -92,6 +92,15 @@ try {
     await send('Input.dispatchKeyEvent', { type: name === 'Enter' && !modifiers ? 'keyDown' : 'rawKeyDown', ...data,
       ...(name === 'Enter' && !modifiers ? { text: '\r', unmodifiedText: '\r' } : {}) });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
+  };
+  // Wide or Stacked is an item in the Reader's ⋯ (docs/links.md): a native
+  // press on the ⋯, then on the item it lists.
+  const switchLayout = async () => {
+    await point('#reader-menu');
+    const label = await until(() => evaluate(`document.querySelector('.message-menu-list [role=menuitem]')?.textContent`), "the Reader's menu");
+    assert.match(label, /^(Wide|Stacked) layout$/);
+    await point('.message-menu-list [role=menuitem]');
+    await until(() => evaluate(`!document.querySelector('.message-menu-list')`), 'the menu closed');
   };
   const snapshot = () => evaluate('window.fixtureSnapshot()');
   const share = () => evaluate('Number(document.querySelector("#reader-divider").getAttribute("aria-valuenow"))');
@@ -176,14 +185,14 @@ try {
     const source = await box('.reading-pane'), writing = await box('.writing-pane');
     assert.ok(writing.y >= source.y + source.height - 2, 'default reading pane must be above writing');
     await point('#writing-body'); await send('Input.insertText', { text: 'Keep my writing' });
-    await point('#reader-layout');
+    await switchLayout();
     const dialog = await box('#reader'), wide = await box('.writing-pane'), field = await box('#writing-body');
     assert.ok(wide.x > (await box('.reading-pane')).x);
     assert.ok(Math.abs(wide.y - dialog.y) < 3, 'source header cannot shorten the wide writing column');
     assert.ok(wide.height > dialog.height * .94);
     assert.ok(field.height > dialog.height * .5, 'full-height column must leave useful writing space');
     assert.equal((await snapshot()).reply.draft.body, 'Keep my writing');
-    await point('#reader-layout');
+    await switchLayout();
     assert.equal((await snapshot()).reply.draft.body, 'Keep my writing');
   });
 
@@ -229,7 +238,7 @@ try {
   await check('wide pointer, both-axis keyboard steps and double-click reset preserve writing', async () => {
     const body = 'Keep this text through every kind of divider movement.';
     await point('#writing-body'); await send('Input.insertText', { text: body });
-    await point('#reader-layout');
+    await switchLayout();
     const before = await box('.writing-pane');
     await dragDivider(-80, 0);
     assert.ok((await box('.writing-pane')).width > before.width + 60, 'wide native drag expands writing');
@@ -242,7 +251,7 @@ try {
     await doubleClickDivider();
     assert.equal(await share(), 45, 'wide double-click resets its share');
     assert.ok(Math.abs((await box('.writing-pane')).width - before.width) < 1);
-    await point('#reader-layout');
+    await switchLayout();
     await point('#reader-divider');
     await key('ArrowUp'); assert.equal(await share(), 50, 'stacked arrow changes share two points');
     await key('ArrowDown', 8); assert.equal(await share(), 40, 'stacked Shift arrow changes share ten points');
@@ -283,9 +292,9 @@ try {
       assert.equal(current.anchor, original.anchor, `${label}: visible source anchor is preserved`);
       assert.ok(Math.abs(current.offset - original.offset) < 1, `${label}: source anchor offset is preserved`);
     };
-    await point('#reader-layout'); await preserved('switch to wide');
+    await switchLayout(); await preserved('switch to wide');
     await dragDivider(-70, 0); await preserved('wide drag');
-    await point('#reader-layout'); await preserved('switch to stacked');
+    await switchLayout(); await preserved('switch to stacked');
     await dragDivider(0, -60); await preserved('stacked drag');
   });
 

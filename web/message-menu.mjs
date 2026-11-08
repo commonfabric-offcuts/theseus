@@ -67,16 +67,18 @@ export function openMessageMenu({ anchor, at = null, items, label = 'Message', d
 }
 
 // Says on the ⋯ button what was just done ("Link copied") until the next press
-// or key anywhere, when it shows ⋯ again.
+// or key anywhere, when it shows ⋯ again. A press changes it back once it has
+// landed (its click), not as it starts: the words are wider than ⋯, so a
+// press on the button itself would otherwise end beside it and open nothing.
 export function sayOn(button, words, doc = globalThis.document) {
   const before = button.dataset.said ?? button.textContent;
   button.dataset.said = before; button.textContent = words; button.classList.add('said');
   const back = () => {
-    doc.removeEventListener('pointerdown', back, true); doc.removeEventListener('keydown', back, true);
+    doc.removeEventListener('click', back, true); doc.removeEventListener('keydown', back, true);
     if (button.textContent === words) { button.textContent = before; button.classList.remove('said'); }
     delete button.dataset.said;
   };
-  doc.addEventListener('pointerdown', back, true); doc.addEventListener('keydown', back, true);
+  doc.addEventListener('click', back, true); doc.addEventListener('keydown', back, true);
 }
 
 // Puts text on the clipboard. Settles true when it is there.

@@ -1343,6 +1343,9 @@ async function initialize() {
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     people: whisperPeople, actor: () => bootstrap.actor,
   });
+  // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so
+  // a window that crosses a phone's width shows or hides it again.
+  reader.narrow.addEventListener('change', paintReaderMark);
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });

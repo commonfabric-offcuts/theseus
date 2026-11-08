@@ -67,7 +67,9 @@ always shown. It opens a short menu, and a right-click anywhere on a message
 is; on a link or a selection the browser's own menu stays. The items:
 
 - Copy Link puts the message's link on the clipboard, and the ⋯ says
-  "Link copied" until the next press or key.
+  "Link copied" until the next press lands or a key is pressed, so a press
+  on the ⋯ itself still opens its menu. Where the clipboard refuses, the page
+  gives the link to select instead.
 - Mark unread, or Mark read on a message marked unread, for a message by
   someone else. Mark read places the New line afresh, as the Reader's button
   does. A card never opened may have a mark the page has not seen; a refusal

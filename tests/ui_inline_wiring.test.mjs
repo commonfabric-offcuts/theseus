@@ -88,7 +88,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
       list: action => action({ readClass: 'foreground' }) },
     runtime: { current: bootstrap.authority },
   };
-  const reader = { notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
+  const reader = { narrow: { addEventListener() {} }, layoutChoice: null, notice: text => events.push(['reader-notice', text]), paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin: source => events.push(['origin', source]) };
   const views = { scope: {}, retain() {}, messagesPage() { paints.push('messages'); }, memoryPage() { paints.push('memory'); }, readUnread: async () => true, readState: async () => true, placeAfresh() {}, refreshKeys: () => [], refresh: async () => {}, keys: () => [], runOf: () => 1 };
   const fresh = { enabled: true, invalidate: (...args) => events.push(['invalidate', ...args]), request: async () => events.push(['request']), setVisible: () => events.push(['freshness-enabled']), schedule() {} };
   class IntersectionObserver {
@@ -131,7 +131,10 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('Object.assign(globalThis, (()=>{' + navigationSource + '; return {TopicPages,TopicNavigation,TopicRail,WorkspacePages,parseRoute,routeHref,paintUnread,paintChanged,changedSince,reread,PAGE}; })())', context);
   // Links in a message's words, and a click outside a pop-up, in the page's own scope (docs/links.md).
   const linksSource = readFileSync(new URL('../web/links.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
-  vm.runInContext('Object.assign(globalThis, (()=>{' + linksSource + '; return {webLinks,wordNodes,linkWords,openLinksWith}; })())', context);
+  vm.runInContext('Object.assign(globalThis, (()=>{' + linksSource + '; return {webLinks,wordNodes,linkWords,openLinksWith,nameTopicsWith,shareLinksFrom,messageLink}; })())', context);
+  // A message's ⋯ menu (docs/links.md, "A message's menu").
+  const menuSource = readFileSync(new URL('../web/message-menu.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function|async function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + menuSource + '; return {openMessageMenu,sayOn,copyText}; })())', context);
   const dismissSource = readFileSync(new URL('../web/dismiss.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + dismissSource + '; return {closeOnOutsideClick}; })())', context);
   const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -1042,7 +1045,8 @@ test('a card in the topic log says when its message was sent, and a message from
   f.views.messages.set('m3', { id: 'm3', seq: 3, author_id: 'fable', body: 'Last night', topic_id: 't1', sent_ms: new Date(2026, 10, 4, 21, 12).getTime() });
   f.views.messages.set('m4', { id: 'm4', seq: 4, author_id: 'fable', body: 'Earlier', topic_id: 't1', sent_ms: new Date(2026, 10, 3, 7, 41).getTime() });
   f.paintViews('messages');
-  const author = id => f.get('messages').children.find(card => card.dataset.id === id).children[0];
+  // The author line follows the card's ⋯ (docs/links.md).
+  const author = id => f.get('messages').children.find(card => card.dataset.id === id).children.find(node => node.className === 'message-author');
   const text = node => typeof node === 'string' ? node : node.textContent || node.children.map(text).join('');
   const parts = id => author(id).children.map(text);
   assert.deepEqual(parts('m1'), ['tony', ' · 5:44 AM'], 'sent today: the time alone');
@@ -1062,7 +1066,7 @@ test('the page watches the viewer\'s day once, and at a new day repaints every s
   await f.initialize();
   f.views.messages.set('m1', { id: 'm1', seq: 1, author_id: 'tony', body: 'Timed', topic_id: 't1', sent_ms: new Date(2026, 10, 5, 5, 44).getTime() });
   f.paintViews('messages');
-  const time = f.get('messages').children[0].children[0].children[1].children[1];
+  const time = f.get('messages').children[0].children.find(node => node.className === 'message-author').children[1].children[1];
   assert.equal(time.textContent, '5:44 AM');
   const query = f.document.querySelectorAll;
   f.document.querySelectorAll = selector => selector === 'time[data-ms]' ? [time] : query(selector);
@@ -1086,7 +1090,7 @@ test('a reply card says quietly which message it answers, and a message answerin
   const lines = id => card(id).children.filter(node => node.className === 'message-reply-to').map(node => node.children.map(child => child.textContent).join(''));
   assert.deepEqual(lines('m2'), ['Replying to fable: Ship the table']);
   assert.deepEqual(lines('m1'), []);
-  assert.deepEqual(card('m2').children.map(node => node.className), ['message-author', 'message-reply-to', 'message-preview'], 'between the author and the words');
+  assert.deepEqual(card('m2').children.map(node => node.className), ['message-menu', 'message-author', 'message-reply-to', 'message-preview'], 'the card\'s ⋯ first, then the line between the author and the words');
 });
 
 test('a reply to someone else\'s message in this topic is offered to its author, once; one to anything else is not', () => {
@@ -1592,7 +1596,7 @@ test('clicking an agent\'s name on its card opens its color picker, not the mess
   add(1, 'fable', 'agent'); add(2, 'fixture-person', 'human'); add(3, 'fable', 'agent'); add(4, 'dan', 'human');
   f.paintViews('messages');
   const card = id => f.get('messages').children.find(child => child.dataset.id === id);
-  const name = id => card(id).children[0].children[0];
+  const name = id => card(id).children.find(node => node.className === 'message-author').children[0];
   const opens = () => f.calls.filter(c => c.name === 'source' || c.name === 'editor_state').length;
   const before = opens();
   await card('m3').onclick({ target: name('m3') }); await settle();

@@ -341,6 +341,10 @@ class ReadPathCase(WhisperCase):
         asked = self.whisper()
         hidden, absent = {"kind": "message", "id": asked}, {"kind": "message", "id": UNKNOWN}
         self.assertEqual(self.store.view("agent-b", "source", {"source_ref": hidden})["error"], self.store.view("agent-b", "source", {"source_ref": absent})["error"])
+        # What the Reader reads beside the source to open a message, as a link to it does (docs/links.md).
+        self.assertEqual(self.store.view("agent-b", "editor_state", {"source_ref": hidden, "topic_id": "t1"})["error"],
+                         self.store.view("agent-b", "editor_state", {"source_ref": absent, "topic_id": "t1"})["error"])
+        self.assertEqual(self.store.view("agent-b", "editor_state", {"source_ref": hidden, "topic_id": "t1"})["error"]["code"], "FORBIDDEN")
         self.assertEqual(self.refusal(self.draft("hidden", hidden, "Hello", actor="agent-b")),
                          self.refusal(self.draft("absent", absent, "Hello", actor="agent-b")))
         self.assertEqual(self.store.view("agent-b", "media", {"media_id": "media-x", "source_ref": hidden})["error"],

@@ -656,6 +656,18 @@ test('explicit note close recognizes an already confirmed current autosave', asy
   assert.equal(f.calls.filter(call => call.type === 'command' && call.envelope.kind === 'message.send').length, 0);
 });
 
+// docs/links.md, "A message's link": Core refuses a message the person may not
+// read (a whisper they are not in among them) exactly as one that is not there.
+test('a message the person may not read opens nothing and says so in plain words, as one that is not there', async t => {
+  const f = await fixture(t), x = await f.open(0);
+  await assert.rejects(f.registry.open({ kind: 'message', id: 'm-' + '0'.repeat(32) }, { topicId: f.facts.topic_id }),
+    { message: 'This message is not available to you.' });
+  assert.equal(f.registry.current, x, 'the Reader keeps the message it shows');
+  assert.equal(f.shown.length, 1, 'nothing else was shown');
+  // A message the person may read still opens.
+  assert.equal((await f.open(1)).source.source_ref.id, f.facts.sources[1].id);
+});
+
 async function fixture(t, options = {}) {
   const { noReadAdmission = false, ...registryOptions } = options;
   const child = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py'], { cwd: new URL('..', import.meta.url) });
