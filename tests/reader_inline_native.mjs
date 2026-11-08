@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import { holdRemoveThroughUpload, namedImages, LONG_NAME, recordTap, tapReached } from './reader_images_native.mjs';
 
 // One selected real HTTP/Store flow. No product controller is replaced. File
 // selection uses a native Add image click and a fixture file supplied through
@@ -246,9 +247,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#add-image');
     const chooser = await until(() => p.events.find(e => e.method === 'Page.fileChooserOpened'), 'Reader native image chooser');
     await p.send('DOM.setFileInputFiles', { backendNodeId: chooser.params.backendNodeId, files: [path.join(root, 'tests/fixtures/media/screen.png')] });
-    // The row says Ready while its upload is still finishing, and is drawn again,
-    // with new buttons, once it has finished: Remove is pressed only after that.
-    await until(() => p.evaluate('(()=>{const r=document.querySelector("#writing-attachments .image-choice");if(!r?.dataset.view)return false;const v=JSON.parse(r.dataset.view);return v[0]==="Ready"&&v[4]===false})()'), 'Reader image ready, its upload finished');
+    // Remove is pressed once the row says Ready, as a person would. Its upload
+    // may still be finishing; the row's repaint then keeps the Remove pressed.
+    await until(() => p.evaluate('document.querySelector("#writing-attachments .image-choice span")?.textContent === "screen.png · Ready"'), 'Reader image ready');
     await p.evaluate('(()=>{const b=[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove");b.id="reader-remove-fixture-image"})()');
     await p.point('#reader-remove-fixture-image');
     await until(() => p.evaluate('document.querySelector("#writing-attachments").children.length===0'), 'native image-row removal');
@@ -405,5 +406,106 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
     assert.equal(await inlineBody(), '');
     await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'emptied topic draft saved');
     assert.deepEqual(p.errors, []);
+  });
+  // The inline composer's image row, with the fixture's short name at the
+  // desktop width, and on the phone with a long name whose words wrap.
+  for (const [width, name] of [[1440, 'screen.png'], [390, LONG_NAME]]) {
+    await check(`inline Remove held down while its upload finishes removes the image at ${width} wide with the name ${name}`, async () => {
+      const names = await namedImages(root);
+      try {
+        const p = await page(`inline-remove-held-${width}`, null, true);
+        if (width === 390) await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+        await p.evaluate('document.querySelector("#inline-add-image").scrollIntoView({block:"center"})');
+        p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+        const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#inline-add-image');
+        const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), 'inline chooser');
+        await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [name === 'screen.png' ? path.join(root, 'tests/fixtures/media/screen.png') : names.file(name)] });
+        const held = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'held inline upload');
+        await holdRemoveThroughUpload(p, '#inline-attachments', held, until, { name });
+        await until(async () => { const draft = (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft; return draft?.body === '' && draft.attachments.length === 0; }, 'the topic draft saved with no image');
+        assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+        assert.deepEqual(p.errors, []);
+      } finally { await names.done(); }
+    });
+  }
+  // On a phone, with a finger: Remove is held on the second image while the
+  // first's upload fails, and the first row, growing as Retry upload comes in
+  // and its long name wraps, pushes the second row's Remove from under the
+  // finger, with focus in the message field. Remove removes the second image
+  // only, the tap's mouse events and click reach nothing under the finger,
+  // and focus leaves the message field for Add image.
+  await check('inline Remove held by a finger below a row whose upload fails removes its own image and nothing under the finger is pressed', async () => {
+    const names = await namedImages(root);
+    try {
+      const p = await page('inline-remove-tap-below', null, true);
+      await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+      await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      const center = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+      p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+      const choose = async (file, upload) => {
+        await center('#inline-add-image');
+        const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#inline-add-image');
+        const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), upload);
+        await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [file] });
+      };
+      await choose(names.file(LONG_NAME), 'first inline chooser');
+      const first = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'first held inline upload');
+      await choose(path.join(root, 'tests/fixtures/media/screen.png'), 'second inline chooser');
+      // The second image's upload waits its turn behind the first's.
+      await until(() => p.evaluate('[...document.querySelectorAll("#inline-attachments .image-choice span")].some(s=>s.textContent==="screen.png · Ready to continue upload")'), 'the second image waiting to upload');
+      await center('#inline-attachments');
+      const { focus, ring } = await holdRemoveThroughUpload(p, '#inline-attachments', first, until, { name: 'screen.png', finishing: LONG_NAME, place: 'moved', touch: true, fail: true, from: '#inline-writing-body' });
+      assert.deepEqual({ focus, ring }, { focus: 'inline-add-image', ring: false }, 'focus leaves the message field for Add image, with no ring, not for what slid under the finger');
+      assert.equal(await p.evaluate('[...document.querySelectorAll("#inline-attachments .image-choice")].map(r=>r.firstElementChild.textContent.split(" · ")[0]).join("|")'), LONG_NAME, 'the first image\'s row stays');
+      await until(async () => (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft?.attachments.length === 0, 'the topic draft saved with no image, the first one\'s upload having failed');
+      assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);
+      assert.deepEqual(p.errors, []);
+    } finally { await names.done(); }
+  });
+
+  // The inverse, on a phone: a finger goes down on the composer just below
+  // the second image's row, on no image button, while the first's upload
+  // fails. The first row grows and moves the second row's Remove down under
+  // the finger, so the browser now aims the tap at that Remove. Nothing is
+  // pressed: both images stay, and focus stays in the message field.
+  await check('inline a finger that goes down below the image rows presses no Remove the row above moves under it', async () => {
+    const names = await namedImages(root);
+    try {
+      const p = await page('inline-field-tap-below', null, true);
+      await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+      await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      const center = selector => p.evaluate(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center'})`);
+      p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+      const chooser = () => p.events.filter(e => e.method === 'Page.fileChooserOpened').length;
+      const choose = async (file, upload) => {
+        await center('#inline-add-image');
+        const n = p.events.length; await p.send('Page.setInterceptFileChooserDialog', { enabled: true }); await p.point('#inline-add-image');
+        const event = await until(() => p.events.slice(n).find(e => e.method === 'Page.fileChooserOpened'), upload);
+        await p.send('DOM.setFileInputFiles', { backendNodeId: event.params.backendNodeId, files: [file] });
+      };
+      await choose(names.file(LONG_NAME), 'first inline chooser');
+      const first = await until(() => p.held.find(x => x.event.request.url.endsWith('/api/media/upload')), 'first held inline upload');
+      await choose(path.join(root, 'tests/fixtures/media/screen.png'), 'second inline chooser');
+      await until(() => p.evaluate('[...document.querySelectorAll("#inline-attachments .image-choice span")].some(s=>s.textContent==="screen.png · Ready to continue upload")'), 'the second image waiting to upload');
+      await center('#inline-attachments');
+      await p.evaluate('[...[...document.querySelectorAll("#inline-attachments .image-choice")].find(r=>r.firstElementChild.textContent.startsWith("screen.png · ")).querySelectorAll("button")].find(b=>b.textContent==="Remove").dataset.slid=""');
+      const remove = await p.box('[data-slid]'), x = remove.x + remove.width / 2, y = remove.y + remove.height + 30;
+      const under = () => p.evaluate(`(e=>e?.closest('[data-slid]')?'Remove':e?.closest('[data-holds-press]')?'an image button':e?.id||e?.tagName)(document.elementFromPoint(${x},${y}))`);
+      assert.notEqual(await under(), 'Remove'); assert.notEqual(await under(), 'an image button', 'the finger goes down on no image button');
+      assert.equal(await p.evaluate('(()=>{const f=document.querySelector("#inline-writing-body");f.focus();return document.activeElement===f})()'), true, 'focus is in the message field');
+      const opened = chooser();
+      await recordTap(p);
+      await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      p.intercept(null); await p.fail(first);
+      await until(() => p.evaluate(`JSON.parse([...document.querySelectorAll('#inline-attachments .image-choice')].find(r=>r.firstElementChild.textContent.startsWith(${JSON.stringify(LONG_NAME)}))?.dataset.view||'[]')[4]===false`), 'the first row repainted as its upload failed');
+      assert.equal(await under(), 'Remove', 'the first row grew and moved the second image\'s Remove under the finger');
+      await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      assert.deepEqual(await tapReached(p, until), [], 'the tap reaches nothing: the Remove slid under the finger is not pressed');
+      assert.deepEqual(await p.evaluate('({rows:[...document.querySelectorAll("#inline-attachments .image-choice")].map(r=>r.firstElementChild.textContent.split(" · ")[0]),remove:!document.querySelector("[data-slid]").disabled,focus:document.activeElement?.id})'), { rows: [LONG_NAME, 'screen.png'], remove: true, focus: 'inline-writing-body' }, 'both images stay, Remove was never pressed, and focus stays in the message field');
+      assert.equal(chooser(), opened, 'and nothing else was pressed');
+      assert.deepEqual(p.errors, []);
+      // The topic draft is shared with any case that follows: leave it empty.
+      await control({ method: 'reset_drafts' });
+    } finally { await names.done(); }
   });
 }

@@ -161,6 +161,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const pipelineSource = ['pipeline-words.mjs', 'pipeline.mjs'].map(name => readFileSync(new URL('../web/' + name, import.meta.url), 'utf8')
     .replace(/^import [^;]*;\n/gm, '').replace(/^export (const|class|function|async function) /gm, '$1 ')).join('\n');
   vm.runInContext('Object.assign(globalThis, (()=>{' + pipelineSource + '; return {PipelinePage,PipelineRow,paintPipelineLine,pipelineHref,titleLine,firstLine}; })())', context);
+  // A reply's image rows, painted in place for the Reader and the inline composer.
+  const imageRowsSource = readFileSync(new URL('../web/image-rows.mjs', import.meta.url), 'utf8').replace(/^export function /gm, 'function ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + imageRowsSource + '; return {paintImageRows}; })())', context);
   const inlineSource = readFileSync(new URL('../web/inline-composer.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace('export class InlineComposer', 'class InlineComposer');
   vm.runInContext('globalThis.InlineComposer = (()=>{' + inlineSource + '; return InlineComposer; })()', context);
   let source = readFileSync(new URL('../web/app.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');

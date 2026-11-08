@@ -3,9 +3,12 @@ import { routeHref } from './topic-navigation.mjs';
 
 const el=(tag,text)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;return node;};
 const button=(text,action)=>{const node=el('button',text);node.type='button';node.onclick=action;return node;};
+// A finger lifted off a button or link taps nothing. A button that holds its
+// own press (an image row's, image-rows.mjs) is left to the browser: the page
+// may have moved it from under a finger that never moved.
 export function protectTouchBounds(host) {
   host.addEventListener('touchend',event=>{
-    const target=event.target.closest('button,a'),touch=event.changedTouches?.[0];if(!target||!touch)return;
+    const target=event.target.closest('button,a'),touch=event.changedTouches?.[0];if(!target||!touch||'holdsPress' in target.dataset)return;
     const b=target.getBoundingClientRect();if(touch.clientX<b.left||touch.clientX>b.right||touch.clientY<b.top||touch.clientY>b.bottom)event.preventDefault();
   },{passive:false});
 }
