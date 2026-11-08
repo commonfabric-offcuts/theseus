@@ -353,6 +353,93 @@ export async function linksChecks({ check, page, until, control, view, facts, sh
     assert.deepEqual(p.errors, []);
   });
 
+  await check('header in the Reader a selection that ends inside a topic\'s name takes the name\'s passage, so a light extended from it keeps that passage', async () => {
+    const long = 't-' + 'a'.repeat(32), name = 'A name that opens its own passage';
+    // A topic of its own, so the cards later checks press in Links menu stay where they were.
+    await topics({ id: long, title: name }, { id: 'links-q', title: 'Quoting links' });
+    const id = await post('links-reader-name-end', 'links-q', `First words here.\n${long} is next.\nLast sentence.`);
+    const p = await page('links-reader-name-end', null, true, { url: facts.origin + '/?topic=links-q' });
+    const preview = `#messages [data-id="${id}"] .message-preview`;
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(preview + ' a.words-link')})?.textContent === ${JSON.stringify(name)}`), 'the card shows the name');
+    await p.evaluate(`document.querySelector(${JSON.stringify(preview)}).scrollIntoView({block:'center'})`);
+    await p.point(preview);
+    await until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body a.words-link')?.textContent === ${JSON.stringify(name)}`), 'the Reader shows the name');
+    await settled(p);
+    const passages = await p.evaluate(`[...document.querySelector('#source-body').children].map(s=>s.textContent)`);
+    assert.deepEqual(passages, ['First words here.\n', `${name} is next.\n`, 'Last sentence.']);
+    // A selection from the first word into the name, then a native Shift-click on the first passage.
+    await p.evaluate(`(()=>{getSelection().setBaseAndExtent(document.querySelector('#source-body').firstChild.firstChild,0,document.querySelector('#source-body a.words-link').firstChild,3);return true})()`);
+    const [x, y] = await centre(p, '#source-body > span:first-child');
+    await mouse(p, 'mouseMoved', x, y, { button: 'none', clickCount: 0, modifiers: 8 });
+    await mouse(p, 'mousePressed', x, y, { modifiers: 8 });
+    await mouse(p, 'mouseReleased', x, y, { modifiers: 8 });
+    let lit;
+    try { await until(async () => (lit = await p.evaluate(`[...document.querySelectorAll('#source-body .hover-quote')].map(s=>s.textContent)`)).length === 2, 'two passages light'); }
+    catch (error) { assert.deepEqual(lit, passages.slice(0, 2), error.message); }
+    assert.deepEqual(lit, passages.slice(0, 2), 'the first passage and the name\'s');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header quoting a selection in the Reader that holds a topic\'s name, a topic\'s address or a message\'s link quotes the words the source holds, and the reply lands', async () => {
+    const named = 't-' + 'e'.repeat(32);
+    await topics({ id: named, title: 'Named topic for quoting' }, { id: 'links-q', title: 'Quoting links' });
+    const body = `See ${named} for more. Then ${facts.origin}/?topic=links-o goes on. And ${facts.origin}/?topic=links-m&message=${menuId} last.`;
+    const id = await post('links-quote-names', 'links-q', body);
+    const p = await page('links-quote-names', null, true, { url: facts.origin + '/?topic=links-q' });
+    const preview = `#messages [data-id="${id}"] .message-preview`;
+    await until(() => p.evaluate(`document.querySelectorAll(${JSON.stringify(preview + ' a.words-link')}).length === 3`), 'the card draws its three links');
+    await p.evaluate(`document.querySelector(${JSON.stringify(preview)}).scrollIntoView({block:'center'})`);
+    await p.point(preview);
+    const shows = ['Named topic for quoting', 'Other links', 'Message in Links menu'];
+    await until(() => p.evaluate(`document.querySelector('#reader').open && JSON.stringify([...document.querySelectorAll('#source-body a.words-link')].map(a=>a.textContent)) === ${JSON.stringify(JSON.stringify(shows))}`), 'the Reader shows each link by its name');
+    await settled(p);
+    const from = p.calls.length, quoted = [];
+    // Each selection is quoted with the button; the writing then holds the source's own words for it.
+    const quote = async (select, excerpt) => {
+      await select();
+      await p.point('#quote-selection');
+      quoted.push(excerpt);
+      const writing = quoted.map(words => `> ${words}`).join('\n\n') + '\n\n';
+      await until(() => p.evaluate(`document.querySelector('#writing-body').value === ${JSON.stringify(writing)}`), 'the writing quotes ' + excerpt)
+        .catch(async error => assert.equal(await p.evaluate(`document.querySelector('#writing-body').value`), writing, error.message));
+    };
+    const select = (start, startOffset, end, endOffset) => () => p.evaluate(`(()=>{const links=document.querySelectorAll('#source-body a.words-link');
+      const at=(which,offset)=>which==='first'?document.querySelector('#source-body').firstChild.firstChild:which==='last'?document.querySelector('#source-body').lastChild.lastChild:links[which].firstChild;
+      getSelection().setBaseAndExtent(at(${JSON.stringify(start)}),${startOffset},at(${JSON.stringify(end)}),${endOffset});return true})()`);
+    // From the first word to the last, across all three links.
+    await quote(select('first', 0, 'last', ' last.'.length), body);
+    // From inside one name to inside another: each link a boundary falls in is quoted whole.
+    const second = `${facts.origin}/?topic=links-o`;
+    await quote(select(0, 3, 1, 2), body.slice(body.indexOf(named), body.indexOf(second) + second.length));
+    // Select All, by the keyboard, in the Reader's text.
+    await p.evaluate(`(()=>{document.querySelector('#source-body').focus();return true})()`);
+    await p.key('a', 4);
+    await quote(async () => {}, body);
+    await p.point('#send-reply');
+    const call = await until(() => p.calls.slice(from).find(c => c.payload?.kind === 'message.send'), 'message.send call');
+    let last;
+    const receipt = await until(async () => { last = await view('operation', { operation_id: call.payload.operation_id }); return last.status === 'committed' && last; }, 'the reply lands')
+      .catch(error => assert.fail(error.message + ': ' + JSON.stringify(last)));
+    const sent = await view('source', { source_ref: { kind: 'message', id: receipt.result.message_id } });
+    assert.deepEqual(sent.quotes.map(q => q.excerpt), quoted, 'each quote holds the source\'s words');
+    assert.deepEqual(p.errors, []);
+  });
+
+  await check('header the Reader\'s ⋯ Copy Link names the message\'s own topic, even on a page of another', async () => {
+    const conversation = (await view('conversation', { workspace_id: 'w1' })).conversation;
+    await control({ method: 'agent_message', operation_id: 'links-copy-about', topic_id: conversation.topic_id, sender: 'person', reply_to: menuId, body: 'About the menu message.' });
+    const p = await page('links-copy-about', null, true, { url: facts.origin + '/?conversation=w1' });
+    const about = '#messages .about-line .item-link';
+    await until(() => p.evaluate(`document.querySelector(${JSON.stringify(about)})?.textContent === 'Links menu'`), 'the About line names the message\'s topic');
+    await p.evaluate(`document.querySelector(${JSON.stringify(about)}).scrollIntoView({block:'center'})`);
+    await p.point(about);
+    await readerShows(p, menuWords); await settled(p);
+    await clipboard(p);
+    await p.point('#reader-menu'); await menuOpen(p, ['Copy Link', 'Mark unread', 'Wide layout']); await choose(p, 'Copy Link');
+    assert.deepEqual(await p.evaluate('window.copied'), [`${facts.origin}/?topic=links-m&message=${menuId}`], 'the link opens the message in its own topic');
+    assert.deepEqual(p.errors, []);
+  });
+
   await check('header the Reader\'s ⋯ holds Copy Link, the mark and Wide or Stacked layout, and at a phone\'s width no layout', async () => {
     const p = await page('links-reader-menu', null, true, { url: facts.origin + '/?topic=links-m' });
     await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(menuCard + ' .message-preview')}))`), 'the card is drawn');

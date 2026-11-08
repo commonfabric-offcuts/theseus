@@ -314,7 +314,7 @@ export class Reader {
     const selection = window.getSelection();
     if (!selection?.rangeCount || selection.isCollapsed) return;
     const range = selection.getRangeAt(0);
-    const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset);
+    const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset, true);
     if (from === null || to === null) return;
     const parts = [...this.sourceBody.children].filter(part => Number(part.dataset.start) < to && Number(part.dataset.end) > from);
     if (!parts.length) return;
@@ -325,7 +325,9 @@ export class Reader {
 
   // Where a selection boundary falls in the source text: in a passage's text
   // (a link's among it), on a passage, or between passages; null outside the source.
-  sourceOffset(container, offset) {
+  // A boundary inside a link showing a topic's name falls at the start of the
+  // words it stands for, or at their end when end is set, so the link is whole.
+  sourceOffset(container, offset, end = false) {
     if (container === this.sourceBody) return Number(this.sourceBody.children[offset]?.dataset.start ?? this.source.body.length);
     let span = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
     while (span && span.parentElement !== this.sourceBody) span = span.parentElement;
@@ -334,14 +336,14 @@ export class Reader {
     before.setStart(span, 0); before.setEnd(container, offset);
     let length = before.toString().length;
     // A link showing a topic's name counts as the words it stands for: wholly
-    // before the boundary, by their length; holding it, from its start.
+    // before the boundary, by their length; holding it, from its start or end.
     for (const link of span.querySelectorAll('a[data-words]')) {
       const words = Number(link.dataset.words), whole = document.createRange();
       whole.selectNodeContents(link);
       if (before.compareBoundaryPoints(Range.END_TO_END, whole) >= 0) length += words - link.textContent.length;
       else if (before.compareBoundaryPoints(Range.START_TO_END, whole) > 0) {
         const into = document.createRange(); into.setStart(whole.startContainer, whole.startOffset); into.setEnd(container, offset);
-        length -= into.toString().length;
+        length += (end ? words : 0) - into.toString().length;
       }
     }
     return Number(span.dataset.start) + length;
@@ -353,11 +355,16 @@ export class Reader {
     for (const span of this.sourceBody.querySelectorAll('.hover-quote')) span.classList.remove('hover-quote');
   }
 
+  // The source's own words a selection covers, never what the page shows for
+  // them: a link showing a topic's name is quoted as the words it stands for.
   selectedPassage() {
     const selection = window.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) {
       const range = selection.getRangeAt(0);
-      if (this.sourceBody.contains(range.startContainer) && this.sourceBody.contains(range.endContainer)) return selection.toString();
+      if (this.sourceBody.contains(range.startContainer) && this.sourceBody.contains(range.endContainer)) {
+        const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset, true);
+        return this.source.body.slice(from, to);
+      }
     }
     return this.hover ? this.source.body.slice(this.hover.start, this.hover.end) : '';
   }

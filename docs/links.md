@@ -33,8 +33,9 @@ hex digits, as Theseus makes them) is a link that shows the topic's name and
 opens it, by pointer, keyboard or touch. A link to a topic, written as its
 address, shows the topic's name too, and a link to a message shows
 "Message in" and its topic's name. The words it stands for stay the link's
-title, and a selection in the Reader counts them, not the name, so quoting
-is unchanged.
+title, and a selection in the Reader counts and quotes them, not the name: a
+quote holds the source's own words, with a link a selection only partly
+covers taken whole.
 
 The name comes from what the page already holds (the open topic, the topic
 list) or else from one read of the topic, kept for the page; a read that
@@ -66,7 +67,8 @@ always shown. It opens a short menu, and a right-click anywhere on a message
 (its card, or a folded message's line) opens the same menu where the pointer
 is; on a link or a selection the browser's own menu stays. The items:
 
-- Copy Link puts the message's link on the clipboard, and the ⋯ says
+- Copy Link puts the message's link on the clipboard, naming the message's
+  own topic (in the Reader, a message from another topic names that one), and the ⋯ says
   "Link copied" until the next press lands or a key is pressed, so a press
   on the ⋯ itself still opens its menu. Where the clipboard refuses, the page
   gives the link to select instead.

@@ -867,7 +867,7 @@ function messageMenuButton(item) {
 }
 // say: the ⋯ that says "Link copied", or null where none shows.
 function messageMenuItems(item, say) {
-  const items = [{ label: 'Copy Link', act: () => run(() => copyLink(item.id, say)) }];
+  const items = [{ label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
   if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
     const marked = marks.state(item.id)?.marked === true;
     items.push({ label: marked ? 'Mark read' : 'Mark unread', act: () => run(() => markFromMenu(item.id, !marked)) });
@@ -885,8 +885,9 @@ function messageContextMenu(event) {
   const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null;
   openMessageMenu({ anchor, at, items: messageMenuItems(item, shown ? card.querySelector('.message-menu') : null), label: 'This message' });
 }
-async function copyLink(messageId, say) {
-  const link = messageLink(topic.id, messageId);
+// The link names the message's own topic, which the Reader may show on a page of another.
+async function copyLink(topicId, messageId, say) {
+  const link = messageLink(topicId, messageId);
   if (!await copyText(link)) { status(`The link could not be copied here. Select it to copy it: ${link}`); return; }
   if (say?.getClientRects().length) sayOn(say, 'Link copied'); else status('Link copied.');
 }
@@ -913,7 +914,7 @@ async function markFromMenu(messageId, marked) {
 function openReaderMenu() {
   const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
   const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
-  if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(ref.id, button)) });
+  if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
   const state = message && p.mark ? marks.state(ref.id) : null;
   if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
   if (reader.layoutChoice) items.push({ label: reader.layoutChoice, act: () => reader.toggleLayout() });
