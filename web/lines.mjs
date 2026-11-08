@@ -1,4 +1,4 @@
-import { unreached } from './api.mjs';
+import { unreached, overtaken } from './api.mjs';
 
 // The lines the page writes what went wrong into: its status line, the
 // Reader's notice and the composer's. A writer hands a line the failure itself
@@ -11,7 +11,10 @@ import { unreached } from './api.mjs';
 // every failure was about reaching Theseus is over once the page reaches it
 // again (clearUnreached): words beside a failure say what it stopped, and the
 // page does that again or the person asks again. Words with no failure, a
-// failure Theseus answered, or a control the line offers stay.
+// failure Theseus answered, or a control the line offers stay. Such a line
+// written after the page has reached Theseus again, for attempts that began
+// before it did (api.mjs overtaken), is over as it is written: nothing later
+// would clear it, since a quiet live feed says nothing more.
 const parts = what => [what].flat().filter(part => part !== '' && part !== null && part !== undefined);
 const failure = part => typeof part?.message === 'string';
 const words = part => typeof part === 'string' || failure(part);
@@ -19,11 +22,13 @@ const words = part => typeof part === 'string' || failure(part);
 export const lineText = what => [...new Set(parts(what).filter(words).map(part => failure(part) ? part.message : part))].join(' ');
 
 export function showLine(element, what) {
-  const shown = parts(what), controls = shown.filter(part => !words(part)), failures = shown.filter(failure);
+  const given = parts(what), controls = given.filter(part => !words(part)), failures = given.filter(failure);
+  const reaching = failures.length > 0 && !controls.length && failures.every(unreached);
+  const shown = reaching && failures.every(overtaken) ? [] : given;
   element.textContent = lineText(shown);
   if (controls.length) element.append(' ', ...controls);
   element.hidden = !shown.length;
-  if (failures.length && !controls.length && failures.every(unreached)) element.dataset.unreached = '';
+  if (reaching && shown.length) element.dataset.unreached = '';
   else delete element.dataset.unreached;
 }
 

@@ -11,8 +11,22 @@ export class AttemptError extends Error {
     this.recorded = false;
     this.status = status;
     this.details = details;
+    // When the attempt began, counted in the times the page has reached
+    // Theseus (overtaken). Its maker stamps the start when it knows it.
+    this.began = reaches;
   }
 }
+
+// Each time the page reaches Theseus again (a renewal, or the live feed back
+// up), it says so here, and each attempt is stamped with how many times it had
+// when the attempt began. A failure about reaching Theseus whose attempt began
+// before the page last reached it is over as it settles: the page has reached
+// Theseus since, so whatever it held up is done now rather than at the next
+// reconnection, and a line it would write is already over (lines.mjs). The
+// attempt made then began after, so its own failure waits for the next time.
+let reaches = 0;
+export function reachedTheseus() { reaches += 1; }
+const began = (error, at) => { if (error instanceof AttemptError) error.began = Math.min(error.began, at); return error; };
 
 // The server refused this page's session, as a restarted server does, before
 // Core read the request.
@@ -23,12 +37,18 @@ export const sessionRefused = error => error instanceof AttemptError && error.st
 // Deadline), or the server refused this page's session. A failure a caller put into words of its own carries the
 // attempt's error as its cause and is judged by it. The one place a failure is
 // known to be about reaching Theseus; reaching it again ends it (lines.mjs).
-export function unreached(error) {
+const attemptOf = error => {
   for (let at = error, seen = new Set(); typeof at === 'object' && at !== null && !seen.has(at); seen.add(at), at = at.cause) {
-    if (at instanceof AttemptError) return at.details === null || sessionRefused(at);
+    if (at instanceof AttemptError) return at;
   }
-  return false;
+  return null;
+};
+export function unreached(error) {
+  const at = attemptOf(error);
+  return Boolean(at) && (at.details === null || sessionRefused(at));
 }
+// A failure about reaching Theseus whose attempt the page has reached Theseus since.
+export function overtaken(error) { return unreached(error) && attemptOf(error).began < reaches; }
 // The connection itself failed: no answer came.
 const interrupted = (message, error) => new AttemptError(message, 0, null, { cause: error });
 // Reconnect found no server to give this page a session.
@@ -40,18 +60,18 @@ export const notAnswering = () => new AttemptError('Theseus is not answering yet
 // failure of no answer, whether or not what was awaited heard the abort.
 export class Deadline {
   constructor(ms, words, code = undefined) {
-    this.at = Date.now() + ms; this.words = words; this.code = code; this.controller = new AbortController();
+    this.at = Date.now() + ms; this.words = words; this.code = code; this.controller = new AbortController(); this.began = reaches;
   }
   get signal() { return this.controller.signal; }
   get passed() { return Date.now() >= this.at; }
   failure() {
     this.controller.abort();
-    return Object.assign(new AttemptError(this.words, 0, null), this.code ? { code: this.code } : {});
+    return Object.assign(began(new AttemptError(this.words, 0, null), this.began), this.code ? { code: this.code } : {});
   }
   // What the wait settles with, or this deadline's failure once it passes.
   async bound(wait) {
     let timer;
-    const passed = new Promise((_, reject) => { timer = setTimeout(() => reject(this.failure()), this.at - Date.now()); });
+    const passed = new Promise((_, reject) => { timer = setTimeout(() => reject(this.failure()), Math.max(0, this.at - Date.now())); });
     try { return await Promise.race([wait, passed]); } finally { clearTimeout(timer); }
   }
 }
@@ -64,7 +84,11 @@ export class Api {
     this.fetcher = fetcher;
   }
 
-  async request(path, data, { signal, readClass } = {}) {
+  async request(path, data, options) {
+    const at = reaches;
+    try { return await this.attempt(path, data, options); } catch (error) { throw began(error, at); }
+  }
+  async attempt(path, data, { signal, readClass } = {}) {
     let response;
     try {
       response = await this.fetcher(path, {
@@ -90,7 +114,11 @@ export class Api {
   command(envelope) { return this.request('/api/command', envelope); }
   view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
 
-  async upload(envelope, blob, { signal } = {}) {
+  async upload(envelope, blob, options) {
+    const at = reaches;
+    try { return await this.sendUpload(envelope, blob, options); } catch (error) { throw began(error, at); }
+  }
+  async sendUpload(envelope, blob, { signal } = {}) {
     const command = JSON.stringify(envelope).replace(/[\u007f-\uffff]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
     let response;
     try {
@@ -108,6 +136,10 @@ export class Api {
   }
 
   async media(instanceId, attachment, sourceRef) {
+    const at = reaches;
+    try { return await this.readMedia(instanceId, attachment, sourceRef); } catch (error) { throw began(error, at); }
+  }
+  async readMedia(instanceId, attachment, sourceRef) {
     let response;
     try {
       response = await this.fetcher('/api/media/read', {

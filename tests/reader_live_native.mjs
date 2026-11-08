@@ -1267,4 +1267,54 @@ export async function liveChecks({ check, page, until, control, observations, or
       await p.close();
     });
   }
+
+  // The page reaches Theseus again while a message's read is still out on the
+  // connection that stalled: the server restarts and the page renews its
+  // session, or a network change drops only the live feed, which comes back on
+  // a fresh connection. The read then runs out of time. The live feed stays up
+  // and quiet, so nothing later would clear a line, and none is left: the page
+  // has reached Theseus since that read began.
+  for (const how of ['restart', 'socket']) for (const where of ['card', 'reader']) {
+    await check(`live restart: a message whose read is still out when the page reaches Theseus again leaves no connection line once the read runs out (${where}, ${how})`, async () => {
+      const p = await page(`live-restart-overtaken-${where}-${how}`, null, true);
+      await settled(p);
+      const line = where === 'card' ? '#app-status' : '#reader-notice';
+      const says = () => p.evaluate(`(e => e.hidden ? '' : e.textContent)(document.querySelector(${JSON.stringify(line)}))`);
+      if (where === 'reader') {
+        await p.open(1);
+        await until(() => p.evaluate("!document.querySelector('#next-message').disabled || !document.querySelector('#previous-message').disabled"), 'the Reader offers another message');
+      }
+      const before = await p.evaluate('document.querySelector(\'meta[name="aim-next-session"]\').content');
+      const opens = await p.evaluate('freshEvidence.opens.length'), opened = await p.evaluate('observedFreshness.live.opened');
+      p.intercept(payload => payload?.name === 'source');
+      if (where === 'card') {
+        const card = await p.evaluate("(c => c && c.dataset.id)([...document.querySelectorAll('#messages .message-card')].find(c => { const b = c.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; }))");
+        assert.ok(card, 'a card is in view');
+        await p.point(`#messages [data-id="${card}"]`);
+      } else await p.point(await p.evaluate("document.querySelector('#next-message').disabled ? '#previous-message' : '#next-message'"));
+      await until(() => p.held.find(h => h.payload?.name === 'source'), 'the source read is held');
+      if (how === 'restart') {
+        await control({ method: 'server_stop' });
+        await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
+        const restarted = await control({ method: 'server_start' });
+        assert.notEqual(restarted.token, before);
+        facts.token = restarted.token;
+        await until(() => p.evaluate(`document.querySelector('meta[name="aim-next-session"]').content === ${JSON.stringify(restarted.token)} && observedFreshness.live.connected`), 'the page took the new session and its live feed is connected again', 30000);
+      } else {
+        await p.evaluate('observedFreshness.live.current.socket.close()');
+        await until(() => p.evaluate(`observedFreshness.live.opened > ${opened} && observedFreshness.live.connected`), 'the live feed is connected again on a new socket', 30000);
+      }
+      const reconnected = await says();
+      const ended = await until(() => p.evaluate(`(o => o?.end !== undefined && o)(freshEvidence.opens[${opens}])`), 'the open has ended', 15000);
+      assert.match(ended.error ?? '', /timed out/, 'the read got no answer and the page stopped waiting for it after it reached Theseus');
+      p.intercept(null);
+      for (const held of p.held.splice(0)) await p.release(held).catch(() => {});
+      await settled(p);
+      const left = { reconnected, after: await says(), unreached: await p.evaluate(`document.querySelector(${JSON.stringify(line)}).hasAttribute('data-unreached')`), connected: await p.evaluate('observedFreshness.live.connected') };
+      assert.deepEqual(left, { reconnected: '', after: '', unreached: false, connected: true }, `the page reached Theseus while the read was out, and ${line} still says what the stall did`);
+      observations.push({ name: 'read out when the page reached Theseus again', where, how });
+      assert.deepEqual(p.errors, []);
+      await p.close();
+    });
+  }
 }

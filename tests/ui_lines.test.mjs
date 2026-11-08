@@ -3,7 +3,7 @@
 // again (web/lines.mjs, web/api.mjs unreached).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Api, AttemptError, unreached, sessionRefused } from '../web/api.mjs';
+import { Api, AttemptError, Deadline, unreached, sessionRefused, overtaken, reachedTheseus } from '../web/api.mjs';
 import { PageReads } from '../web/page-reads.mjs';
 import { showLine, clearUnreached, lineText } from '../web/lines.mjs';
 import { RecoveryCleanup } from '../web/cleanup.mjs';
@@ -165,4 +165,45 @@ test('a read the page stopped waiting for leaves a line that goes when the page 
   clearUnreached(page(...Object.values(lines), kept));
   assert.deepEqual(Object.entries(lines).map(([name, line]) => [name, line.hidden ? '' : line.textContent]), Object.keys(lines).map(name => [name, '']));
   assert.equal(kept.textContent, 'This topic is closed.', 'Core\'s answer stays');
+});
+
+// The page reaches Theseus again while an attempt is out (the live feed back
+// on a fresh connection, or a renewed session). The attempt's failure, when it
+// settles, says nothing newer than that, and a quiet live feed would never
+// clear its line, so the line is over as it is written. Every way the page
+// makes an attempt says when it began: a request, an image upload, an
+// attachment read, and a wait the page bounds.
+test('a failure about reaching Theseus whose attempt began before the page last reached it leaves no line; one begun after, or one Theseus answered, does', async () => {
+  const gated = answer => { const gate = { open: null }; const opened = new Promise(resolve => { gate.open = resolve; });
+    return { gate, api: new Api('session', async (path, init) => { await opened; return answer(); }) }; };
+  const ways = [['request', a => a.view('source', {})], ['upload', a => a.upload({ v: 1 }, new Blob(['x']))], ['media', a => a.media('instance', { id: 'm1' }, null)]];
+  for (const [name, attempt] of ways) {
+    for (const [answered, answer] of [['nothing answered', nothing], ['the proxy answered', proxyDown], ['a late session refusal', () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.' })]]) {
+      const before = gated(answer), out = failureOf(attempt(before.api));
+      reachedTheseus(); before.gate.open();
+      const failure = await out, line = element();
+      showLine(line, ['Could not open.', Error('In words of its own.', { cause: failure })]);
+      assert.deepEqual([overtaken(failure), line.hidden, line.textContent, 'unreached' in line.dataset], [true, true, '', false], `${name}, ${answered}: begun before the page reached Theseus`);
+      const after = gated(answer); after.gate.open();
+      const fresh = await failureOf(attempt(after.api)), kept = element();
+      showLine(kept, fresh);
+      assert.deepEqual([overtaken(fresh), kept.hidden, 'unreached' in kept.dataset], [false, false, true], `${name}, ${answered}: begun after, it says so until the next time`);
+    }
+    const refusing = gated(() => theseus(409, { code: 'CONFLICT', message: 'This topic is closed.' })), out = failureOf(attempt(refusing.api));
+    reachedTheseus(); refusing.gate.open();
+    const refused = await out, line = element();
+    showLine(line, refused);
+    assert.deepEqual([overtaken(refused), line.hidden], [false, false], `${name}: an answer Theseus gave stays`);
+  }
+  // A wait the page bounds began when its deadline was set, whenever it passes.
+  const early = new Deadline(0, 'Reader request timed out. Your writing is kept.');
+  reachedTheseus();
+  const ranOut = await failureOf(early.bound(deaf())), late = await failureOf(new Deadline(0, 'Reader request timed out. Your writing is kept.').bound(deaf()));
+  assert.deepEqual([overtaken(ranOut), overtaken(late)], [true, false], 'a deadline set before the page reached Theseus, and one set after');
+  // The attempt a deadline ended began before it too.
+  const request = gated(nothing), bounded = new Deadline(0, 'Reader request timed out. Your writing is kept.'), waiting = request.api.view('source', {}, { signal: bounded.signal });
+  reachedTheseus();
+  assert.equal(overtaken(await failureOf(bounded.bound(waiting))), true);
+  request.gate.open(); await waiting.catch(() => {});
+  assert.equal(overtaken(lost()), false, 'an attempt made just now');
 });

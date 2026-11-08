@@ -141,6 +141,16 @@ check for the same commit runs beside them rather than after them.
   since, the topic's composer) or the person asks again (a mark, an
   attachment). A line that carries an answer Theseus gave, words with no
   failure, or a control of its own (Reload this page) stays.
+- A failure to reach Theseus can settle after the page has already reached
+  it again: a read still out on a stalled connection when the live stream
+  comes back on a fresh one, or the session is renewed, then runs out of
+  time. A quiet live stream says nothing more, so nothing later would clear
+  what that failure leaves. Every attempt is stamped with when it began
+  (`web/api.mjs` `overtaken`), and one that began before the page last
+  reached Theseus is over as it settles: it leaves no line, and what it held
+  up (a Notebook page's read, the topic's composer) is done again at once.
+  The attempt made again began after, so if it fails too it waits for the
+  next time the page reaches Theseus.
 - **Review saved writing** handles a changed runtime authority. Automatic
   updates pause; recovery proceeds through the existing review controls.
 - If a topic becomes unavailable, its lists are hidden and sending to it is

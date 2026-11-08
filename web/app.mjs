@@ -1,4 +1,4 @@
-import { Api, notAnswering, unreached } from './api.mjs';
+import { Api, notAnswering, unreached, overtaken, reachedTheseus } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -1203,10 +1203,16 @@ function enableFreshness(checkpoint, actorCheckpoint = null) {
 // it has confirmed, or the live feed up again. Whatever a line said about not
 // reaching it is over, replies it did not take go on, and what could not be
 // done for want of it is done again.
-// Each is named, so the latest of one kind is the one done.
+// Each is named, so the latest of one kind is the one done. One whose attempt
+// began before the page last reached Theseus is done at once (api.mjs
+// overtaken): a quiet live feed may not reconnect again.
 const untilReached = new Map();
-const owe = (error, name, again) => { if (unreached(error)) untilReached.set(name, again); };
+const owe = (error, name, again) => {
+  if (overtaken(error)) run(again);
+  else if (unreached(error)) untilReached.set(name, again);
+};
 function reached() {
+  reachedTheseus();
   clearUnreached(document);
   registry?.resumeHeld();
   const again = [...untilReached.values()]; untilReached.clear();
