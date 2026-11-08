@@ -108,9 +108,10 @@ release check's `--report`, and which piece a candidate's readings name.
   record is a release record whose number is the next one, since that is the
   number the release ships as.
   Any deploy that records the next release ships it, from whatever stage it is
-  in: the release being put together, even a hotfix of another commit naming
-  none of its items. `record-release` then leaves its entry `shipped` ("Shipped
-  in release N") in the transaction that writes the record; an item it holds that
+  in, a stage that waits on the owner's word among them (the end is the
+  record's, nobody's): the release being put together, even a hotfix of
+  another commit naming none of its items. `record-release` then leaves its
+  entry `shipped` ("Shipped in release N") in the transaction that writes the record; an item it holds that
   no record names has not shipped and goes back to building (`returned`). A
   record written again ends nothing. A piece that ended never held a number, so
   the work combined next is that same release.
@@ -156,7 +157,10 @@ release check's `--report`, and which piece a candidate's readings name.
   record does not name has not shipped and goes back to building (`returned`).
   So a release's contents are what its record names that came to it through its
   pieces, and every item a record names, wherever it was, is listed under that
-  record's release.
+  record's release. A release combined after the record was not open when it
+  was written, so a record made while none was open (a hotfix, a deploy's
+  record of the commit already live) ships none, and the release combined next
+  is the number after it.
 - **The derived state.** What each piece holds, how each piece ended and which
   topics the pipeline holds Done are derived, not decided by whichever command
   ran last. The facts are each outcome's log, in the order things happened
@@ -177,8 +181,11 @@ release check's `--report`, and which piece a candidate's readings name.
   holds no item: `dropped` when every item was dropped, else `held`, saying what
   took its items ("Every item went back to building", "Its last items shipped in
   release N", or each of them: "Its items went back to building or were
-  dropped"). When it ended, and whose act it was (nobody's for a record), stay
-  as first written; a later record can change only how it ended, to `shipped` or
+  dropped"). When it ended, and whose act it was (nobody's for a record, and for
+  the records turning releases on takes), stay as first written; an end that is
+  nobody's leaves even a stage that waits on the owner's word, and the database
+  allows that only at a record, or at turning releases on, in the outcome's
+  facts; a later record can change only how it ended, to `shipped` or
   to what took a release's items, and the database allows that rewrite and no
   other on a left stage entry. A combine (`combined`) and a finish (`done`) end
   a piece by their own act.

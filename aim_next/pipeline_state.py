@@ -86,6 +86,8 @@ class _Play(object):
         self.act_end, self.combined_into, self.combine_ms = {}, {}, {}
         self.ended, self.shipped_by, self.emptied_next, self.shipped_in = {}, {}, {}, {}
         self.ships = False
+        # The releases whose combine has been played: a release that a later fact combines is not there yet.
+        self.begun = set()
         # Records the log does not mention were written before the outcome had a pipeline: the first turn on takes them.
         logged = {fact.payload["release"] for fact in facts.log if fact.kind == "record"}
         self.written = sorted(number for number in facts.records if number not in logged)
@@ -133,6 +135,7 @@ class _Play(object):
     def _combine(self, fact):
         release = fact.payload["release"]
         self._known(release, "release")
+        self.begun.add(release)
         for piece in fact.payload["pieces"]:
             self.act_end[piece], self.combined_into[piece], self.combine_ms[piece] = "combined", release, fact.ms
             for row in self._held(piece):
@@ -167,11 +170,12 @@ class _Play(object):
     def _shipping(self, number, next_number):
         """The release piece a record ships: only the record of the next number does, and it ships the release open (one
         at a time), or with none open the first release emptied while it was the next one (number) that would hold an
-        item the record names had the acts the record makes impossible not happened."""
+        item the record names had the acts the record makes impossible not happened. A release combined after the record
+        was not open when it was written, so the record never ships it."""
         if number != next_number:
             return None
         for piece in self.order:
-            if self.pieces[piece].kind == "release" and piece not in self.ended:
+            if self.pieces[piece].kind == "release" and piece in self.begun and piece not in self.ended:
                 return piece
         items = self.facts.records[number]
         for piece in self.order:
@@ -289,12 +293,14 @@ class _Play(object):
         return [row for row in self.rows_of[piece] if row.held]
 
     def _close_emptied(self, fact):
-        """A piece under way that holds nothing has ended, at this fact, by whoever's act it was; a release remembers the
-        number it would have shipped as."""
+        """A piece under way that holds nothing has ended, at this fact, by whoever's act it was: nobody's when a record
+        emptied it, whether written now or taken when releases were turned on; a release remembers the number it would
+        have shipped as."""
+        by = None if fact.kind in ("record", "ships") else fact.by
         for piece in sorted(self.touched, key=self.order.index):
             if self.holding[piece] or piece in self.ended or piece in self.act_end:
                 continue
-            self.ended[piece] = (fact.ms, fact.by)
+            self.ended[piece] = (fact.ms, by)
             if self.pieces[piece].kind == "release":
                 self.emptied_next[piece] = max(self.written, default=0) + 1
 

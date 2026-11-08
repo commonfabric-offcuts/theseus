@@ -49,6 +49,18 @@ _DECIDED_AGAIN = (
     "AND OLD.left_outcome IN ('dropped','held') AND NEW.left_outcome IN ('held','shipped')))))")
 PIPELINE_DECIDED_AGAIN_UP = ("DROP TRIGGER entries_keep_their_past", _KEEPS_ITS_PAST % _DECIDED_AGAIN)
 PIPELINE_DECIDED_AGAIN_DOWN = ("DROP TRIGGER entries_keep_their_past", _KEEPS_ITS_PAST % "OLD.left_ms IS NOT NULL")
+# D24: a stage that waits on the owner's word is left only by the owner. From version 30 a release record also leaves
+# it: what a record names has shipped wherever it is, so the end it writes is nobody's, at the moment of a record or of
+# turning releases on (which takes the records already written) in that outcome's facts; nothing else leaves by nobody.
+_LEAVES_BY_THE_OWNER = (
+    "CREATE TRIGGER entries_leave_by_the_owner BEFORE UPDATE OF left_ms ON pipeline_stage_entries "
+    "WHEN NEW.left_ms IS NOT NULL "
+    "AND (SELECT json_extract(gate,'$.owner') FROM pipeline_stages WHERE workspace_id=OLD.workspace_id AND stage_id=OLD.stage_id) "
+    "AND NEW.left_by IS NOT (SELECT owner_id FROM workspaces WHERE id=OLD.workspace_id) "
+    "%sBEGIN SELECT RAISE(ABORT, 'STAGE_GATED'); END")
+_BY_A_RECORD = (
+    "AND NOT (NEW.left_by IS NULL AND EXISTS (SELECT 1 FROM pipeline_facts f WHERE f.workspace_id=OLD.workspace_id AND f.ms=NEW.left_ms "
+    "AND (f.kind='record' OR (f.kind='ships' AND json_extract(f.payload,'$.on'))))) ")
 # Version 30: each outcome's pipeline facts, in the order they happened, which the derived state is computed from
 # (pipeline_state), and the topics the pipeline holds Done (derived, like the member rows and a piece's end).
 PIPELINE_FACTS_SCHEMA = [
@@ -60,6 +72,8 @@ PIPELINE_FACTS_SCHEMA = [
     "CREATE TRIGGER facts_stay_d BEFORE DELETE ON pipeline_facts BEGIN SELECT RAISE(ABORT, 'a fact keeps its past'); END",
     "CREATE TABLE pipeline_done_topics (topic_id TEXT PRIMARY KEY REFERENCES topics(id), workspace_id TEXT NOT NULL, release INTEGER NOT NULL)",
     "CREATE INDEX done_topics_of ON pipeline_done_topics(workspace_id, topic_id)",
+    "DROP TRIGGER entries_leave_by_the_owner",
+    _LEAVES_BY_THE_OWNER % _BY_A_RECORD,
 ]
 # Upgrading writes version 29's pipeline as facts, in time order: each piece's start and each release's combine (from
 # their first stage entry and member rows), every move into Dropped, each finish, each change to shipping in releases,
@@ -87,7 +101,8 @@ PIPELINE_FACTS_BACKFILL = (
     ") ORDER BY ms, rank, tie")
 # An instance with no pipeline has nothing to write, and keeps no count of facts a fresh instance lacks.
 PIPELINE_FACTS_COUNT = "DELETE FROM sqlite_sequence WHERE name='pipeline_facts' AND seq=0"
-PIPELINE_FACTS_DOWN = ("DROP TABLE pipeline_done_topics", "DROP TABLE pipeline_facts")
+PIPELINE_FACTS_DOWN = ("DROP TRIGGER entries_leave_by_the_owner", _LEAVES_BY_THE_OWNER % "", "DROP TABLE pipeline_done_topics",
+                       "DROP TABLE pipeline_facts")
 PIPELINE_SCHEMA = [
     "CREATE TABLE pipelines (workspace_id TEXT PRIMARY KEY REFERENCES workspaces(id), "
     "enabled INTEGER NOT NULL CHECK(enabled IN (0,1)), title TEXT NOT NULL, unit_one TEXT NOT NULL, unit_many TEXT NOT NULL, "
@@ -137,11 +152,7 @@ PIPELINE_SCHEMA = [
     "AND w.id=p.workspace_id AND m.topic_id=p.topic_id AND m.author_id=NEW.entered_by AND m.intent='ask' "
     "AND EXISTS (SELECT 1 FROM json_each(m.addressees) a WHERE a.value=w.owner_id)) "
     "BEGIN SELECT RAISE(ABORT, 'ASK_REQUIRED'); END",
-    "CREATE TRIGGER entries_leave_by_the_owner BEFORE UPDATE OF left_ms ON pipeline_stage_entries "
-    "WHEN NEW.left_ms IS NOT NULL "
-    "AND (SELECT json_extract(gate,'$.owner') FROM pipeline_stages WHERE workspace_id=OLD.workspace_id AND stage_id=OLD.stage_id) "
-    "AND NEW.left_by IS NOT (SELECT owner_id FROM workspaces WHERE id=OLD.workspace_id) "
-    "BEGIN SELECT RAISE(ABORT, 'STAGE_GATED'); END",
+    _LEAVES_BY_THE_OWNER % "",
     "CREATE TABLE message_subjects (message_id TEXT NOT NULL REFERENCES messages(id), workspace_id TEXT NOT NULL, "
     "kind TEXT NOT NULL CHECK(kind IN ('item','check')), ref TEXT NOT NULL, PRIMARY KEY(message_id, kind, ref))",
     "CREATE INDEX subject_ref ON message_subjects(workspace_id, kind, ref, message_id)",
@@ -305,7 +316,8 @@ class Pipeline:
         A topic the pipeline newly holds Done is set Done by nobody, "Shipped in release N", unless someone has already
         said it is done; one it no longer holds (work for it appeared again) goes back to active only while its Done is
         the pipeline's own. A person's own word, a Done or a reopen, always stands. The database keeps the owner's word
-        on leaving a stage (D24): an end written by an act that cannot leave it refuses the write."""
+        on leaving a stage (D24): an end written by someone's act that cannot leave it refuses the write, and an end a
+        record wrote (nobody's) leaves any stage."""
         state = pipeline_state.derive(pipeline_state.read_facts(db, workspace_id))
         stored = {(row[0], row[1]): (row[2], row[3]) for row in db.execute(
             "SELECT piece_id,number,left_ms,left_reason FROM pipeline_piece_members WHERE workspace_id=?", (workspace_id,))}

@@ -2361,6 +2361,14 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                                   (piece,)).fetchone()
                 self.assertEqual(tuple(last) if end is not None else last["left_ms"], end, "%s: the end of %s" % (said, piece))
             self.assertEqual(dict(db.execute("SELECT topic_id,release FROM pipeline_done_topics WHERE workspace_id='w1'").fetchall()), state.done_topics, said)
+            # Read from the log itself, not derive(): a release ships only by a record written after it was combined.
+            combined = {json.loads(row[1])["release"]: row[0] for row in db.execute("SELECT seq,payload FROM pipeline_facts WHERE workspace_id='w1' AND kind='combine'")}
+            recorded = {json.loads(row[1])["release"]: row[0] for row in db.execute("SELECT seq,payload FROM pipeline_facts WHERE workspace_id='w1' AND kind='record'")}
+            for piece, note in db.execute("SELECT p.id,e.left_note FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id "
+                                          "WHERE p.workspace_id='w1' AND p.kind='release' AND e.left_outcome='shipped'"):
+                number = int(note.rsplit(" ", 1)[1])
+                if piece in combined:
+                    self.assertLess(combined[piece], recorded[number], "%s: %s shipped in release %d, recorded before it was combined" % (said, piece, number))
             for topic in db.execute("SELECT t.* FROM topics t WHERE t.id IN (SELECT topic_id FROM pipeline_pieces WHERE workspace_id='w1')"):
                 its_own = topic["state"] == "done" and topic["state_by"] is None and topic["state_message_id"] is None
                 if topic["id"] in state.done_topics and topic["state_by"] is None and topic["state_message_id"] is None:
@@ -2503,6 +2511,83 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                                             commit_sha=SHA))
         self.assertEqual(self.live_view()["release_piece"], {"id": later["piece_id"], "release": 24, "stage": "combine", "round": 1})
         self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"]["items"], [3])
+
+    def combined_after_a_record_is_still_being_put_together(self, pieces, number, numbers):
+        """The release combined after a record of the next number, written while none was open, is release number,
+        holding these items, still in combine; its own record then ships it."""
+        later = self.committed(self.combine(pieces))
+        self.assertEqual((later["release_number"], self.live_view()["release_piece"]),
+                         (number, {"id": later["piece_id"], "release": number, "stage": "combine", "round": 1}))
+        self.assertEqual((self.open_entry(later["piece_id"]), self.members(later["piece_id"])), ([("combine",)], [(n, None) for n in numbers]))
+        self.assertEqual(self.store.view("owner", "pipeline", {"workspace_id": "w1"})["facts"]["next_release"]["items"], list(numbers))
+        self.assertTrue(self.record(number, "f" * 40, numbers)["recorded"])
+        self.assertEqual((self.entries(later["piece_id"])[-1], self.live_view()["release_piece"]),
+                         (("combine", "shipped", "Shipped in release %d" % number), None))
+
+    def test_a_record_written_while_no_release_is_open_ships_no_release_combined_after_it(self):
+        # A hotfix, or a deploy's record of the commit already live, written after release 23 shipped and before anything
+        # was combined: the release combined next is release 25 and is being put together, never shipped by that record.
+        self.ship_naming([1, 2])
+        self.assertTrue(self.record(24, "1234" * 10, [], source="deploy")["recorded"])
+        self.combined_after_a_record_is_still_being_put_together(
+            [self.approved([self.add("Item 3", section="now", size="small")], self.topic_of_w1("t-q"))], 25, [3])
+
+    def test_a_record_written_after_the_release_emptied_ships_no_release_combined_after_it(self):
+        # Release 23's items all went back to building; release 23 is recorded naming none of them, so the emptied release
+        # finds nothing to ship, and the rebuilt work combined after it is release 24, being put together.
+        self.recorded("d" * 40, units="failed")
+        rebuilt = self.approved((1, 2), self.topic_of_w1("t-fix"), from_release=True)
+        self.assertEqual(self.live_view()["release_piece"], None)
+        self.assertTrue(self.record(23, "e" * 40, [], source="deploy")["recorded"])
+        self.combined_after_a_record_is_still_being_put_together([rebuilt], 24, [1, 2])
+
+    def with_stages_on_the_owners_word(self):
+        """Stage sign (a piece's) and stage approve (a release's) wait on the owner's word (D24)."""
+        self.stages({"stage_id": "build", "name": "Build"}, {"stage_id": "wait", "name": "Wait"},
+                    {"stage_id": "sign", "name": "Sign off", "gate": {"owner": True}},
+                    {"stage_id": "combine", "name": "Combine", "scope": "release"},
+                    {"stage_id": "checks", "name": "Browser checks", "scope": "release", "rounds": "together", "gate": {"checks": ["units", "browser-checks"]}},
+                    {"stage_id": "approve", "name": "Approve", "scope": "release", "gate": {"owner": True}},
+                    {"stage_id": "deploy", "name": "Deploy", "scope": "release"})
+
+    def on_the_owners_word(self, piece, topic, stage, **args):
+        """agent-a asks the owner in the piece's topic and moves it into stage, which only the owner leaves."""
+        ask = self.committed(self.command("message.post", {"body": "@owner would you look?", "addressees": ["owner"], "intent": "ask"},
+                                          {"topic_id": topic}, actor="agent-a"))["message_id"]
+        self.committed(self.command("pipeline.stage_enter", dict({"stage_id": stage, "ask_message_id": ask}, **args), {"piece_id": piece}, actor="agent-a"))
+        self.rejected(self.command("pipeline.stage_enter", {"stage_id": "deploy" if stage == "approve" else "wait", "left_outcome": "passed"},
+                                   {"piece_id": piece}, actor="agent-a"), "STAGE_GATED")
+
+    def last_left(self, piece):
+        return self.sql("SELECT stage_id,left_outcome,left_note,left_by FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq DESC LIMIT 1", (piece,))[0]
+
+    def test_a_record_ships_what_it_names_from_a_stage_on_the_owners_word(self):
+        # What a record names has shipped wherever it is (docs/pipeline.md): the record leaves a stage only the owner
+        # leaves, by nobody, while every act of a member is still refused there.
+        self.with_stages_on_the_owners_word()
+        piece = self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-sign"))["piece_id"]
+        self.on_the_owners_word(piece, "t-sign", "sign", left_outcome="approved")
+        self.assertTrue(self.record(5, "e" * 40, [3], source="backfill", at="2026-10-01T09:00:00-07:00")["recorded"])
+        self.assertEqual(self.last_left(piece), ("sign", "shipped", "Shipped in release 5", None))
+        # Release 23 waits for the owner's approval; the deploy's record of release 23 ships it from there.
+        self.recorded("d" * 40)
+        self.on_the_owners_word(self.release, "t1", "approve", left_outcome="passed")
+        self.assertTrue(self.record(23, "d" * 40, [1, 2])["recorded"])
+        self.assertEqual(self.last_left(self.release), ("approve", "shipped", "Shipped in release 23", None))
+        self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 24))
+
+    def test_turning_releases_on_ships_what_the_records_name_from_a_stage_on_the_owners_word(self):
+        # Records written while releases were off become the outcome's when the owner turns them on, and what they name
+        # leaves a stage that waits on the owner by nobody: it is the record's act (docs/pipeline.md, "The end of a piece").
+        self.with_stages_on_the_owners_word()
+        self.ship_naming([1, 2])
+        self.committed(self.on(ships_in_releases=False))
+        piece = self.committed(self.start_of([self.add("Item 3", section="now", size="small")], "t-sign"))["piece_id"]
+        self.on_the_owners_word(piece, "t-sign", "sign", left_outcome="approved")
+        self.assertTrue(self.record(24, "e" * 40, [3], source="backfill")["recorded"])
+        self.assertEqual(self.open_entry(piece), [("sign",)], "out of releases, the record is not the outcome's yet")
+        self.committed(self.on(ships_in_releases=True))
+        self.assertEqual(self.last_left(piece), ("sign", "shipped", "Shipped in release 24", None))
 
     def test_an_item_that_shipped_stays_in_its_release_and_is_never_built_again(self):
         # Release 23 ships items 1 and 2. Item 1 is still in Now (shipped is never stored on the item).

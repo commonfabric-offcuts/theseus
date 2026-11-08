@@ -312,6 +312,28 @@ class StagesCase(PipelineCase):
                     db.execute("UPDATE pipeline_stage_entries SET left_ms=4,left_outcome='combined',left_by=? WHERE piece_id=? AND left_ms IS NULL",
                                (actor, piece))
             db.execute("UPDATE pipeline_stage_entries SET left_ms=4,left_outcome='passed',left_by='owner' WHERE piece_id=? AND left_ms IS NULL", (piece,))
+        # A release record's end is nobody's and leaves the stage, but only at a record, or at turning releases on, in this
+        # outcome's own facts and at that moment: nobody leaves at any other fact, at another moment or at another outcome's record.
+        with sqlite3.connect(str(self.path)) as elsewhere:
+            elsewhere.execute("INSERT INTO pipeline_facts(workspace_id,kind,ms,by,payload) VALUES ('w-elsewhere','record',8,NULL,'{\"release\": 1}')")
+        fact = "INSERT INTO pipeline_facts(workspace_id,kind,ms,by,payload) VALUES ('w1',?,?,NULL,?)"
+        leave = "UPDATE pipeline_stage_entries SET left_ms=?,left_outcome='shipped',left_by=NULL WHERE piece_id=? AND left_ms IS NULL"
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("PRAGMA foreign_keys=ON")
+            db.execute(insert, (piece, "agent-a", ask))
+            db.execute(fact, ("record", 2, '{"release": 1}'))
+            db.execute(fact, ("drop", 5, '{"number": 1}'))
+            db.execute(fact, ("ships", 6, '{"on": false}'))
+            for ms in (5, 6, 7, 8):
+                with self.subTest(left_by_nobody_at=ms), self.assertRaisesRegex(sqlite3.IntegrityError, "STAGE_GATED"):
+                    db.execute(leave, (ms, piece))
+            db.execute(fact, ("record", 9, '{"release": 1}'))
+            db.execute(fact, ("ships", 10, '{"on": true}'))
+            db.execute(leave, (9, piece))
+            db.execute(insert, (piece, "agent-a", ask))
+            db.execute(leave, (10, piece))
+        self.assertEqual(self.sql("SELECT left_ms,left_by FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq", (piece,))[-2:],
+                         [(9, None), (10, None)])
 
     def test_changing_the_stages_keeps_past_entries_with_the_stage_they_were_in(self):
         piece = self.committed(self.start())["piece_id"]

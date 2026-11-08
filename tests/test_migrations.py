@@ -79,8 +79,15 @@ def step_back_by_hand(path, version):
         for table in ("outcome_reached", "outcome_kinds", "found_problems", "check_allowances", "check_readings", "check_runs",
                       "outcome_checks", "outcome_target_revisions", "outcome_targets"):
             db.execute("DROP TABLE " + table)
-        # It also keeps each outcome's pipeline facts and the topics the pipeline holds Done, and lets a record overtaking
-        # a drop decide a piece's end again; before it, a left entry kept everything.
+        # It also keeps each outcome's pipeline facts and the topics the pipeline holds Done, lets a record overtaking
+        # a drop decide a piece's end again, and lets a record leave a stage on the owner's word; before it, a left entry
+        # kept everything and only the owner left such a stage.
+        db.execute("DROP TRIGGER entries_leave_by_the_owner")
+        db.execute("CREATE TRIGGER entries_leave_by_the_owner BEFORE UPDATE OF left_ms ON pipeline_stage_entries "
+                   "WHEN NEW.left_ms IS NOT NULL "
+                   "AND (SELECT json_extract(gate,'$.owner') FROM pipeline_stages WHERE workspace_id=OLD.workspace_id AND stage_id=OLD.stage_id) "
+                   "AND NEW.left_by IS NOT (SELECT owner_id FROM workspaces WHERE id=OLD.workspace_id) "
+                   "BEGIN SELECT RAISE(ABORT, 'STAGE_GATED'); END")
         db.execute("DROP TABLE pipeline_done_topics")
         db.execute("DROP TABLE pipeline_facts")
         db.execute("DROP TRIGGER entries_keep_their_past")
