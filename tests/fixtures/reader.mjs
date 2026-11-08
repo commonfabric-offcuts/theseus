@@ -1,5 +1,6 @@
 import { Editor } from '/editor.mjs';
 import { Reader } from '/reader.mjs';
+import { openMessageMenu } from '/message-menu.mjs';
 
 // Browser interaction fixture only. No API, delivery, runtime or persistence
 // claim is made by the callback receipts recorded below.
@@ -35,6 +36,11 @@ else document.querySelector('#main').replaceChildren(opener);
 opener.onclick = () => reader.show(source, { reply, note }, {
   opener, topics: [{ id: 'fixture-topic', title: 'Fixture topic' }], canPrevious: true, canNext: true,
 });
+// The Reader's ⋯ holds Wide or Stacked where the window can choose, as the
+// page's does (docs/links.md, "A message's menu").
+const menu = document.querySelector('#reader-menu');
+menu.onclick = () => openMessageMenu({ anchor: menu, label: 'This message',
+  items: reader.layoutChoice ? [{ label: reader.layoutChoice, act: () => reader.toggleLayout() }] : [] });
 // Read-only observations for the test, never invoked to perform an interaction.
 window.fixtureSnapshot = () => ({ events: structuredClone(events), reply: reply.snapshot(), note: note.snapshot() });
 document.body.dataset.fixtureReady = 'true';

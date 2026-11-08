@@ -40,7 +40,8 @@ import { PageHere } from './page-here.mjs';
 import { TITLE as CONVERSATION_TITLE, subtitle as conversationSubtitle, placeholder as conversationPlaceholder, CONVERSATION_NOTE, paintOnlyNew, paintEmpty, paintItemTags, paintAbout, paintAsksYou, paintConversationRow, conversationDestination, paintAnswerers, switchWriting } from './outcome-conversation.mjs';
 import { WakeLights } from './wake-lights.mjs';
 import { OutcomeScope, placeBrand } from './outcome-scope.mjs';
-import { linkWords, openLinksWith } from './links.mjs';
+import { linkWords, openLinksWith, nameTopicsWith, shareLinksFrom, messageLink } from './links.mjs';
+import { openMessageMenu, sayOn, copyText } from './message-menu.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
@@ -610,7 +611,7 @@ function paintViews(kind) {
       };
       // On its card first, so a whisper's words name the card for a screen reader.
       const author = node('span', undefined, 'message-author');
-      card.append(author);
+      card.append(messageMenuButton(item), author);
       paintCardAuthor(author, item);
       const answers = replyLine(item);
       // The line a reply quotes is cut, so an address at its end is left as words.
@@ -821,6 +822,7 @@ function paintReaderMark() {
   if (pipelineAddFor !== null && pipelineAddFor !== ref?.id) closePipelineAdd(false);
   const state = p && !p.sourceUnavailable && p.mark && ref.kind === 'message' ? marks.state(ref.id) : null;
   paintMarkButton($('mark-unread'), state && { ...state, busy: marks.busy(ref.id) });
+  $('reader-menu').hidden = !(p && !p.sourceUnavailable && ref?.kind === 'message' && topic) && !reader?.layoutChoice;
 }
 // Every page of the person's marks in this topic.
 function loadMarks() {
@@ -854,6 +856,69 @@ async function toggleMark() {
   if (receipt?.error?.code === 'REVISION_CONFLICT') {
     reader.notice(`This message's mark changed in another tab or device: it is ${marks.state(ref.id)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
   } else if (receipt?.status !== 'committed') reader.notice(receipt?.error?.message ?? 'The mark was not confirmed. Press again to send the same request.');
+}
+// A message's ⋯ menu and right-click menu (docs/links.md, "A message's menu").
+function messageMenuButton(item) {
+  const more = node('button', '⋯', 'message-menu'); more.type = 'button';
+  more.setAttribute('aria-haspopup', 'menu'); more.setAttribute('aria-expanded', 'false');
+  more.setAttribute('aria-label', 'More for this message'); more.title = 'More';
+  more.onclick = event => { event.stopPropagation(); openMessageMenu({ anchor: more, items: messageMenuItems(item, more), label: 'This message' }); };
+  return more;
+}
+// say: the ⋯ that says "Link copied", or null where none shows.
+function messageMenuItems(item, say) {
+  const items = [{ label: 'Copy Link', act: () => run(() => copyLink(item.topic_id, item.id, say)) }];
+  if (marks && item.author_id !== bootstrap.actor && !topicUnavailable) {
+    const marked = marks.state(item.id)?.marked === true;
+    items.push({ label: marked ? 'Mark read' : 'Mark unread', act: () => run(() => markFromMenu(item.id, !marked)) });
+  }
+  return items;
+}
+// A right-click on a message opens the same menu where the pointer is. On a
+// link or a selection the browser's own menu stays, to copy what it offers.
+function messageContextMenu(event) {
+  if (event.target.closest('a') || window.getSelection()?.isCollapsed === false) return;
+  const entry = event.target.closest('#messages > [data-id]'), item = entry && views?.messages.get(entry.dataset.id);
+  if (!item) return;
+  event.preventDefault();
+  const card = cardIn(entry), shown = !card.hidden, anchor = shown ? card : entry.querySelector('.fold-line') ?? entry;
+  const at = event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : null;
+  openMessageMenu({ anchor, at, items: messageMenuItems(item, shown ? card.querySelector('.message-menu') : null), label: 'This message' });
+}
+// The link names the message's own topic, which the Reader may show on a page of another.
+async function copyLink(topicId, messageId, say) {
+  const link = messageLink(topicId, messageId);
+  if (!await copyText(link)) { status(`The link could not be copied here. Select it to copy it: ${link}`); return; }
+  if (say?.getClientRects().length) sayOn(say, 'Link copied'); else status('Link copied.');
+}
+// Mark unread or Mark read from a menu, on a card that may never have been
+// opened. The marks read lists every marked message, so one the page knows
+// nothing of is not marked, at a revision it may not know (0 if never marked):
+// a refusal that names the revision is answered once more at it, as
+// setPresence does. Mark read places the New line afresh, as in the Reader.
+async function markFromMenu(messageId, marked) {
+  if (marks.busy(messageId)) return;
+  const state = marks.state(messageId);
+  let receipt;
+  try {
+    receipt = await marks.send(messageId, marked, state?.mark_revision ?? 0);
+    const now = marks.state(messageId);
+    if (receipt?.error?.code === 'REVISION_CONFLICT' && now?.marked === marked) return;
+    if (!state && receipt?.error?.code === 'REVISION_CONFLICT' && now) receipt = await marks.send(messageId, marked, now.mark_revision);
+  } catch { status('Connection interrupted; whether the mark was saved is unknown. Choose it again to send the same request.'); return; }
+  if (receipt?.status === 'committed' && !marked) { views.placeAfresh(); if (commitReload) run(commitReload); }
+  if (receipt?.error?.code === 'REVISION_CONFLICT') status(`This message's mark changed in another tab or device: it is ${marks.state(messageId)?.marked ? 'marked unread' : 'not marked unread'} now. Nothing was changed.`);
+  else if (receipt?.status !== 'committed') status(receipt?.error?.message ?? 'The mark was not confirmed. Choose it again to send the same request.');
+}
+// The Reader's ⋯: Copy Link and the mark for a message, and Wide or Stacked.
+function openReaderMenu() {
+  const p = registry.current, ref = p?.source?.source_ref, button = $('reader-menu'), items = [];
+  const message = Boolean(p && !p.sourceUnavailable && ref?.kind === 'message' && topic);
+  if (message) items.push({ label: 'Copy Link', act: () => run(() => copyLink(p.source.topic_id, ref.id, button)) });
+  const state = message && p.mark ? marks.state(ref.id) : null;
+  if (state) items.push({ label: state.marked ? 'Mark read' : 'Mark unread', act: () => run(toggleMark) });
+  if (reader.layoutChoice) items.push({ label: reader.layoutChoice, act: () => reader.toggleLayout() });
+  openMessageMenu({ anchor: button, items, label: 'This message' });
 }
 function authorityReviewPending() {
   return updateState?.kind === 'authority' ||
@@ -1124,6 +1189,7 @@ async function initialize() {
   if (!token || token === '__AIM_SESSION_TOKEN__') throw Error('This page needs a session from the Theseus server.');
   api = new Api(token); bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  shareLinksFrom(bootstrap.links?.origin);
   if (liveOffered(bootstrap) && !live) {
     live = new Live({ token });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') live.wake(); });
@@ -1157,6 +1223,9 @@ async function initialize() {
   }
   // An outcome's conversation is its one topic of kind conversation (outcome-conversation.mjs).
   let topicId = route.id;
+  // A message's link names the message to open once the page is up (docs/links.md).
+  const anchored = route.kind === 'topic' ? route.message ?? null : null;
+  if (anchored) { route = { kind: 'topic', id: topicId }; history.replaceState(history.state, '', routeHref(route) + location.hash); }
   if (route.kind === 'conversation') {
     const found = validate(await api.view('conversation', { workspace_id: route.id })).conversation;
     if (!found) throw Error('This outcome has no conversation yet.');
@@ -1277,6 +1346,9 @@ async function initialize() {
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
     people: whisperPeople, actor: () => bootstrap.actor,
   });
+  // The Reader's ⋯ offers Wide or Stacked only where the window can choose, so
+  // a window that crosses a phone's width shows or hides it again.
+  reader.narrow.addEventListener('change', paintReaderMark);
   registry = new EditorRegistry({ api, bootstrap, journal, present: presentation => run(() => present(presentation)), changed,
     activity: () => { inline.paintStatus(); reader.paintStatus(); },
     closed: presentation => { if (reader.presentation === presentation) { reader.finishClose?.(); revokeMedia(); views.retain(null, null); } noteRead(); } });
@@ -1293,6 +1365,8 @@ async function initialize() {
   } });
   $('mark-unread').onclick = () => run(toggleMark);
   $('add-to-pipeline').onclick = () => (pipelineAddFor === null ? openPipelineAdd() : closePipelineAdd(true));
+  $('reader-menu').onclick = () => openReaderMenu();
+  $('messages').addEventListener('contextmenu', messageContextMenu);
   $('start-from-message').setAttribute('aria-expanded', 'false');
   $('start-from-message').onclick = () => openStartLine();
   $('read-mark').onclick = () => run(() => {
@@ -1373,6 +1447,12 @@ async function initialize() {
   views.messagesPage(messageAnswer, { initial: true }); views.memoryPage(memoryAnswer, { initial: true });
   run(loadMarks);
   document.body.dataset.ready = 'true'; enableFreshness(checkpoint, actorCheckpoint);
+  // A message's link opens its topic, or its outcome's conversation, with that
+  // message in the Reader; the address then names the page alone, as any does.
+  if (anchored) {
+    const entry = [...$('messages').children].find(child => child.dataset.id === anchored);
+    run(() => openSource({ kind: 'message', id: anchored }, entry ? cardIn(entry) : $('main')));
+  }
 }
 // A message sent by name opens its topic, or, where the reader has lost the
 // topic, the outcomes page that lists it to be marked read.
@@ -1611,8 +1691,34 @@ function topicFolds() {
 // Rows a reload may ask for at once, from the server's own limits.
 const pageMax = () => Number.isSafeInteger(bootstrap.limits?.page_max) ? bootstrap.limits.page_max : undefined;
 // A link in a message's words to one of this Theseus's places opens it here.
-openLinksWith((target, title) => openDestination(target, title));
-async function openDestination(target, title) {
+openLinksWith((target, title, link) => openDestination(target, title, link));
+// A topic's name for a link in a message's words: the open topic's, a listed
+// topic's, or else one read of the topic, kept for the page. A topic the
+// reader may not see stays unnamed; a read that failed is tried again the
+// next time a message names it.
+const topicNames = new Map();
+function topicName(id) {
+  if (topic?.id === id) return topic.title || null;
+  const listed = topicRail?.title(id);
+  if (listed && listed !== id) return listed;
+  if (!api || !bootstrap) return null;
+  if (!topicNames.has(id)) {
+    topicNames.set(id, api.view('topic', { topic_id: id }, { readClass: 'background' }).then(answer => {
+      const found = checkedView(answer, bootstrap.instance_id).topic;
+      return found?.id === id && typeof found.title === 'string' && found.title ? found.title : null;
+    }).catch(error => { if (readFailure(error).kind !== 'forbidden') topicNames.delete(id); return null; }));
+  }
+  return topicNames.get(id);
+}
+nameTopicsWith(topicName);
+// from: the link pressed, which takes the focus back when the Reader closes.
+async function openDestination(target, title, from = null) {
+  // A link to a message in the open topic opens it in the Reader, here.
+  if (target.kind === 'topic' && target.message && topic && views && target.id === topic.id) {
+    // From the Reader's own text, closing gives the focus to what opened the Reader.
+    const opener = from?.closest?.('dialog') ? registry.current?.opener : from;
+    return run(() => openSource({ kind: 'message', id: target.message }, opener?.isConnected ? opener : document.activeElement));
+  }
   // A page whose start failed has no navigation; leave it for the destination.
   if (!topicNavigation) { location.assign(routeHref(target)); return; }
   const notice=$('topic-navigation-status');notice.hidden=true;

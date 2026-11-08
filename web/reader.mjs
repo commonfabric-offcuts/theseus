@@ -61,10 +61,6 @@ export class Reader {
     // A click outside closes as × does: the writing, quotes and images are kept.
     closeOnOutsideClick(this.dialog, () => this.close(), window);
     this.$('reader-parent').onclick = () => this.close('parent');
-    this.$('reader-layout').onclick = () => {
-      this.layout.setMode(this.layout.mode === 'wide' ? 'stacked' : 'wide');
-      this.applyLayout();
-    };
     this.bindDivider();
     this.$('toggle-note').onclick = () => this.switchMode();
     this.$('quote-selection').onpointerdown = event => event.preventDefault();
@@ -212,6 +208,12 @@ export class Reader {
   }
 
   get layoutShape() { return this.narrow.matches ? 'stacked' : this.layout.mode; }
+  // Wide or Stacked, from the ⋯ menu; a phone is always stacked, so it has no choice.
+  get layoutChoice() { return this.narrow.matches || !this.layout ? null : this.layout.mode === 'wide' ? 'Stacked layout' : 'Wide layout'; }
+  toggleLayout() {
+    this.layout.setMode(this.layout.mode === 'wide' ? 'stacked' : 'wide');
+    this.applyLayout();
+  }
 
   applyLayout() {
     const place = this.captureVisiblePlace();
@@ -221,10 +223,6 @@ export class Reader {
     // still takes all that is left: shares that sum to under 1fr would leave a gap.
     this.dialog.style.setProperty('--reading-share', `${(1 - share) * 100}fr`);
     this.dialog.style.setProperty('--writing-share', `${share * 100}fr`);
-    this.$('reader-layout').textContent = shape === 'wide' ? 'Stacked' : 'Wide';
-    this.$('reader-layout').setAttribute('aria-pressed', String(shape === 'wide'));
-    this.$('reader-layout').setAttribute('aria-label', shape === 'wide' ? 'Use stacked reader layout' : 'Use wide reader layout');
-    this.$('reader-layout').hidden = this.narrow.matches;
     this.$('reader-divider').setAttribute('aria-orientation', shape === 'wide' ? 'vertical' : 'horizontal');
     this.$('reader-divider').setAttribute('aria-valuenow', String(Math.round(share * 100)));
     this.$('reader-divider').setAttribute('aria-valuetext', `${Math.round(share * 100)} percent writing space`);
@@ -339,7 +337,7 @@ export class Reader {
     const selection = window.getSelection();
     if (!selection?.rangeCount || selection.isCollapsed) return;
     const range = selection.getRangeAt(0);
-    const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset);
+    const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset, true);
     if (from === null || to === null) return;
     const parts = [...this.sourceBody.children].filter(part => Number(part.dataset.start) < to && Number(part.dataset.end) > from);
     if (!parts.length) return;
@@ -350,14 +348,28 @@ export class Reader {
 
   // Where a selection boundary falls in the source text: in a passage's text
   // (a link's among it), on a passage, or between passages; null outside the source.
-  sourceOffset(container, offset) {
+  // A boundary inside a link showing a topic's name falls at the start of the
+  // words it stands for, or at their end when end is set, so the link is whole.
+  sourceOffset(container, offset, end = false) {
     if (container === this.sourceBody) return Number(this.sourceBody.children[offset]?.dataset.start ?? this.source.body.length);
     let span = container.nodeType === Node.ELEMENT_NODE ? container : container.parentElement;
     while (span && span.parentElement !== this.sourceBody) span = span.parentElement;
     if (!span) return null;
     const before = document.createRange();
     before.setStart(span, 0); before.setEnd(container, offset);
-    return Number(span.dataset.start) + before.toString().length;
+    let length = before.toString().length;
+    // A link showing a topic's name counts as the words it stands for: wholly
+    // before the boundary, by their length; holding it, from its start or end.
+    for (const link of span.querySelectorAll('a[data-words]')) {
+      const words = Number(link.dataset.words), whole = document.createRange();
+      whole.selectNodeContents(link);
+      if (before.compareBoundaryPoints(Range.END_TO_END, whole) >= 0) length += words - link.textContent.length;
+      else if (before.compareBoundaryPoints(Range.START_TO_END, whole) > 0) {
+        const into = document.createRange(); into.setStart(whole.startContainer, whole.startOffset); into.setEnd(container, offset);
+        length += (end ? words : 0) - into.toString().length;
+      }
+    }
+    return Number(span.dataset.start) + length;
   }
 
   disarm() {
@@ -366,11 +378,16 @@ export class Reader {
     for (const span of this.sourceBody.querySelectorAll('.hover-quote')) span.classList.remove('hover-quote');
   }
 
+  // The source's own words a selection covers, never what the page shows for
+  // them: a link showing a topic's name is quoted as the words it stands for.
   selectedPassage() {
     const selection = window.getSelection();
     if (selection?.rangeCount && !selection.isCollapsed) {
       const range = selection.getRangeAt(0);
-      if (this.sourceBody.contains(range.startContainer) && this.sourceBody.contains(range.endContainer)) return selection.toString();
+      if (this.sourceBody.contains(range.startContainer) && this.sourceBody.contains(range.endContainer)) {
+        const from = this.sourceOffset(range.startContainer, range.startOffset), to = this.sourceOffset(range.endContainer, range.endOffset, true);
+        return this.source.body.slice(from, to);
+      }
     }
     return this.hover ? this.source.body.slice(this.hover.start, this.hover.end) : '';
   }

@@ -38,11 +38,10 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   // The narrow layout is applied by the Reader's media-query listener in the
   // next rendered frame. Until then its panes keep the wide columns, so wait
   // for the Reader's own layout before measuring a target. A Reader already
-  // stacked shows that layout before the listener runs; the listener alone
-  // hides the layout switch, so the wait holds from either starting layout.
+  // stacked has nothing for the listener to change.
   const narrow = async p => {
     await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-    await until(() => p.evaluate('matchMedia("(max-width: 760px)").matches && document.querySelector("#reader").dataset.layout === "stacked" && document.querySelector("#reader-layout").hidden === true'), 'Reader in its narrow layout');
+    await until(() => p.evaluate('matchMedia("(max-width: 760px)").matches && document.querySelector("#reader").dataset.layout === "stacked"'), 'Reader in its narrow layout');
   };
   const png = (await readFile(path.join(root, 'tests/fixtures/media/screen.png'))).toString('base64');
   // Page-owned clipboard payload only: never read/write the OS pasteboard or
@@ -117,7 +116,13 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
   await check('images restoration footer controls stay fixed through real typing and save confirmation', async () => {
     const p = await page('footer-stability', null, true); await p.open(1);
     for (const layout of ['stacked', 'wide', 'narrow']) {
-      if (layout === 'wide') await p.point('#reader-layout');
+      // Wide is an item in the Reader's ⋯ (docs/links.md).
+      if (layout === 'wide') {
+        await p.point('#reader-menu');
+        await until(() => p.evaluate(`document.querySelector('.message-menu-list [role=menuitem]:last-child')?.textContent === 'Wide layout'`), "the Reader's menu offers Wide");
+        await p.point('.message-menu-list [role=menuitem]:last-child');
+        await until(() => p.evaluate(`document.querySelector('#reader').dataset.layout === 'wide'`), 'the Reader is wide');
+      }
       if (layout === 'narrow') await narrow(p);
       await until(() => p.evaluate('document.getAnimations().every(a=>a.playState!=="running")'), 'settled layout');
       p.intercept(payload => payload?.kind === 'draft.save');

@@ -3,19 +3,34 @@
 // https address is ever a link. A link to a place in this Theseus opens here,
 // through the page's own navigation; any other opens in a new tab. Clicking a
 // link is only that: the card, fold or passage around it is not pressed.
+// A topic's id in the words (t-…) is a link too, and a link to a topic or to a
+// message in one shows the topic's name once the page knows it.
 import { parseRoute, routeHref } from './topic-navigation.mjs';
 
 // An address runs from its scheme to the first space, angle bracket, quote
 // mark or ellipsis; what it ends with is then trimmed (see trimmed).
 const ADDRESS = /https?:\/\/[^\s<>"'`“”‘’…]+/giu;
+// A topic's id as Theseus makes them: t- and 32 lowercase hex digits.
+const TOPIC_ID = /t-[0-9a-f]{32}/g;
 const WORD = /[\p{L}\p{N}_]/u;
 const CLOSERS = { ')': '(', ']': '[', '}': '{' };
-const IN_APP = new Set(['root', 'topic', 'workspace']);
+const IN_APP = new Set(['root', 'topic', 'workspace', 'conversation', 'pipeline', 'item']);
 
-let opener = null;
-// open(route, title): how the page opens one of its own places. Without it an
-// in-app link navigates this tab.
+let opener = null, namer = () => null, shareOrigin = null;
+// open(route, title, link): how the page opens one of its own places. Without
+// it an in-app link navigates this tab.
 export function openLinksWith(open) { opener = open; }
+// name(topicId): the topic's name, null when it is unknown or cannot be read,
+// or a promise of either.
+export function nameTopicsWith(name) { namer = name; }
+// The origin a copied link names: the instance's tailnet address when it has
+// one, so a link copied on the Mac opens on a phone too. A link naming it is
+// one of this Theseus's own places wherever the page is open.
+export function shareLinksFrom(origin) { shareOrigin = typeof origin === 'string' && origin ? origin : null; }
+// The link that opens one message in the Reader, from any device that reaches the instance.
+export function messageLink(topicId, messageId) {
+  return new URL(routeHref({ kind: 'topic', id: topicId, message: messageId }), shareOrigin ?? globalThis.location.origin).href;
+}
 
 const count = (text, char) => text.split(char).length - 1;
 // Sentence punctuation after an address stays outside it, and so does a
@@ -31,7 +46,7 @@ function trimmed(address) {
 // One of this Theseus's own places, or null for anywhere else.
 function ownPlace(url) {
   const here = globalThis.location;
-  if (!here || url.origin !== here.origin || url.pathname !== '/') return null;
+  if (!here || ![here.origin, shareOrigin].includes(url.origin) || url.pathname !== '/') return null;
   try { const route = parseRoute(url); return IN_APP.has(route.kind) ? route : null; } catch { return null; }
 }
 
@@ -50,8 +65,21 @@ export function webLinks(text, { partial = false } = {}) {
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) continue;
     found.push({ start: match.index, end, href: url.href, route: ownPlace(url) });
   }
-  return found;
+  // A topic's id standing on its own: not inside an address or a longer word.
+  for (const match of text.matchAll(TOPIC_ID)) {
+    const start = match.index, end = start + match[0].length;
+    if (start > 0 && (WORD.test(text[start - 1]) || text[start - 1] === '-') || end < text.length && (WORD.test(text[end]) || text[end] === '-')) continue;
+    if (found.some(link => link.start < end && start < link.end)) continue;
+    const route = { kind: 'topic', id: match[0] };
+    found.push({ start, end, href: routeHref(route), route, bare: true });
+  }
+  return found.sort((a, b) => a.start - b.start);
 }
+
+// What a link to a topic, or to a message in one, shows given the topic's name.
+const shown = (route, name) => route.message ? `Message in ${name}` : name;
+// Whether a link shows its topic's name: a topic's id or address, or a message's.
+const named = link => link.route?.kind === 'topic';
 
 function anchor(doc, words, link) {
   const a = doc.createElement('a');
@@ -61,13 +89,39 @@ function anchor(doc, words, link) {
     a.addEventListener('click', event => {
       event.stopPropagation();
       if (!opener || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      event.preventDefault(); opener(link.route, words);
+      event.preventDefault(); opener(link.route, a.textContent, a);
     });
   } else {
     a.href = link.href; a.target = '_blank'; a.rel = 'noopener noreferrer';
     a.addEventListener('click', event => event.stopPropagation());
   }
   return a;
+}
+// The link shows its topic's name in place of the words it stands for, which
+// stay its title; data-words keeps their length, so a selection in the Reader
+// still counts the words the source holds.
+function showName(a, words, link, name) {
+  if (typeof name !== 'string' || !name) return false;
+  a.textContent = shown(link.route, name); a.title = words; a.dataset.words = String(words.length);
+  return true;
+}
+// A topic's id or address as a link with the topic's name. A bare id the page
+// cannot name stays words: as a link it would show only the id; once a read
+// names it, it becomes one. An address stays a link either way.
+function topicLink(doc, words, link) {
+  let name;
+  try { name = namer(link.route.id); } catch { name = null; }
+  const pending = name && typeof name.then === 'function';
+  if (!pending) {
+    if (link.bare && !(typeof name === 'string' && name)) return doc.createTextNode(words);
+    const a = anchor(doc, words, link); showName(a, words, link, name); return a;
+  }
+  const a = anchor(doc, words, link), held = link.bare ? doc.createTextNode(words) : a;
+  name.then(title => {
+    if (!showName(a, words, link, title) || held === a || !held.parentNode) return;
+    held.parentNode.replaceChild(a, held);
+  }, () => {});
+  return held;
 }
 
 // text as nodes: its words, with each link an anchor.
@@ -77,7 +131,8 @@ export function wordNodes(text, { doc = globalThis.document, partial = false } =
   let at = 0;
   for (const link of webLinks(text, { partial })) {
     if (link.start > at) nodes.push(doc.createTextNode(text.slice(at, link.start)));
-    nodes.push(anchor(doc, text.slice(link.start, link.end), link));
+    const words = text.slice(link.start, link.end);
+    nodes.push(named(link) ? topicLink(doc, words, link) : anchor(doc, words, link));
     at = link.end;
   }
   if (at < text.length || !nodes.length) nodes.push(doc.createTextNode(text.slice(at)));

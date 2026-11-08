@@ -505,3 +505,11 @@ textarea.pl-words-box{flex:1 1 30rem;width:100%;max-width:40rem;min-width:0;min-
 .pipeline-add .pl-line{margin:0}
 .pipeline-add a{margin-left:.3rem}
 @media(max-width:760px){.pl-details{margin-left:0}.pl-line-hint{display:none}}
+/* A message's ⋯ (docs/links.md, "A message's menu"): always shown in the card's top right corner, quiet until pointed at, in the card's own text colors, so it reads on every card color in light and dark. Its menu is a short list as wide as its words. */
+.message-card .message-author{padding-right:2.4rem}.message-card>.message-menu{position:absolute;top:.35rem;right:.35rem}
+.message-menu{min-height:2.25rem;min-width:2.25rem;padding:0 .45rem;border-color:transparent;background:transparent;color:var(--muted);font-size:1.15rem;font-weight:700;line-height:1;-webkit-tap-highlight-color:transparent}
+.message-menu:hover,.message-menu[aria-expanded=true]{border-color:var(--muted);background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}
+.message-menu.said{font-size:.78rem;font-weight:650;color:var(--accent)}
+.message-menu-list{z-index:20;display:flex;flex-direction:column;width:max-content;max-width:calc(100vw - 16px);padding:.3rem;border:1px solid var(--line);border-radius:.6rem;background:var(--panel);color:var(--ink);box-shadow:0 6px 24px rgb(0 0 0 / .18)}
+.message-menu-list button{min-height:2.5rem;padding:.3rem .85rem;border:0;border-radius:.4rem;background:transparent;text-align:left;font-size:.9rem}
+.message-menu-list button:hover,.message-menu-list button:focus-visible{background:var(--soft)}

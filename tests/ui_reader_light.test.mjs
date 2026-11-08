@@ -18,6 +18,8 @@ function fixture(passages) {
     const span = { nodeType: 1, dataset: { start: String(start), end: String(start + text.length) }, textContent: text, parentElement: body, lit: false,
       classList: { toggle(name, on) { assert.equal(name, 'hover-quote'); span.lit = on; } }, texts: [] };
     span.closest = () => span;
+    // No piece here is a link showing a topic's name (data-words); links_native.mjs covers those.
+    span.querySelectorAll = selector => { assert.equal(selector, 'a[data-words]'); return []; };
     for (const piece of pieces) {
       const linked = typeof piece !== 'string';
       const node = { nodeType: 3, data: words(piece), parentElement: linked ? { nodeType: 1, parentElement: span } : span };

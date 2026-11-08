@@ -88,6 +88,22 @@ class TailnetHTTPTests(unittest.TestCase):
                 self.assertEqual(json.loads(raw)['status'], 'committed')
         self.assertTrue(all(call[1] == 'test-owner' for call in self.store.calls))
 
+    def test_bootstrap_names_the_tailnet_address_a_copied_link_opens_on(self):
+        # docs/links.md, "A message's link": a link copied on the Mac names the
+        # address a phone reaches, from either address the page was opened on.
+        self.start()
+        for host in (self.server.authority, HOST):
+            with self.subTest(host=host):
+                status, _, raw = self.request('/api/bootstrap', host=host)
+                self.assertEqual(status, 200, raw)
+                self.assertEqual(json.loads(raw).get('links'), {'origin': ORIGIN})
+
+    def test_without_a_tailnet_address_the_bootstrap_names_none_for_links(self):
+        self.start(external=False)
+        status, _, raw = self.request('/api/bootstrap', host=self.server.authority)
+        self.assertEqual(status, 200, raw)
+        self.assertNotIn('links', json.loads(raw))
+
     def test_default_remains_loopback_only(self):
         self.start(external=False)
         self.assertEqual(self.request()[0], 403)

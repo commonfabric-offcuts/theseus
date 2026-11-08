@@ -697,6 +697,10 @@ class Handler(BaseHTTPRequestHandler):
             attention = capabilities.get("attention")
             if isinstance(attention, dict) and type(attention.get("after")) is int:
                 result["attention"] = {"after": attention["after"]}
+            # The origin a copied link names, so a link copied on the Mac opens
+            # on a phone too (docs/links.md, "A message's link").
+            if self.server.tailnet_origin is not None:
+                result["links"] = {"origin": self.server.tailnet_origin}
             if self.server.read_admission is not None:
                 result["transport"] = {"read_admission": self.server.read_admission.capability()}
             # Offered only while the feed runs: an ended feed would only say so.
