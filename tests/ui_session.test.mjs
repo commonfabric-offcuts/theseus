@@ -163,6 +163,32 @@ test('lost send reply reconciles exactly one public message and cannot replace B
   assert.equal(messages.items.length, 2, 'only source plus A');
 });
 
+// Item 118: the page shows a Review button only for a reply in doubt, and a
+// reply whose send is under way is not; so the session says which sends are
+// under way, and tells the page again once one ends, with it no longer under way.
+test('a send is under way until it ends, and its end is told with it no longer under way', async t => {
+  const f = await fixture(t), sending = deferred(), release = deferred(), told = [];
+  f.transport.command = async envelope => {
+    f.calls.push(copy(envelope));
+    if (envelope.kind === 'message.send') { sending.resolve(); await release.promise; throw new Error('lost response'); }
+    return f.api.command(envelope);
+  };
+  f.editor.edit({ body: 'A whose answer is lost' });
+  // Every word to the page, from the press on: the reply's state and whether it is under way.
+  f.session.changed = editor => { assert.equal(editor, f.editor); const item = f.editor.submissions[0]; told.push(item ? [item.status, f.session.underWay(item.id)] : null); };
+  const submitting = f.session.send(), item = f.editor.submissions[0];
+  assert.deepEqual(told.filter(Boolean)[0], ['preparing', true], 'the page first hears of the reply already under way, so it never shows it in doubt: ' + JSON.stringify(told));
+  assert.equal(f.session.underWay(item.id), true, 'under way from the press');
+  await sending.promise;
+  assert.equal(f.session.underWay(item.id), true, 'and while its send is out');
+  assert.equal(f.session.underWay('another'), false, 'another reply is not');
+  release.resolve(); await submitting;
+  assert.equal(item.status, 'prepared', 'its confirmation is unknown');
+  assert.equal(f.session.underWay(item.id), false, 'no longer under way');
+  assert.deepEqual(told.at(-1), ['prepared', false], 'the last word to the page is the send ended, unconfirmed: ' + JSON.stringify(told));
+  assert.deepEqual(told.slice(0, -1).filter(word => word && !word[1]), [], 'until then every word has it under way: ' + JSON.stringify(told));
+});
+
 test('recorded prepare conflict keeps A and B without manufacturing a send refusal or overwriting remote', async t => {
   const f = await fixture(t);
   f.transport.command = async envelope => {
@@ -307,7 +333,9 @@ async function correctionDepartureFixture(t) {
   const refused = f.editor.submissions[0]; assert.equal(refused.status, 'refused');
   assert.equal(refused.receipt.error.code, 'REVISION_CONFLICT');
   const registry = Object.create(EditorRegistry.prototype);
-  Object.assign(registry, { sessions: new Map([[f.editor.key, f.session]]), localWrites: new Map(),
+  // As at an open, the server's list of replies not sent was read before the writing was registered.
+  Object.assign(registry, { sessions: new Map([[f.editor.key, f.session]]), localWrites: new Map(), bootstrap: { instance_id: 'ux-fixture' },
+    pages: new Map([[f.editor.key, { instance_id: 'ux-fixture', items: [], next_cursor: null, through: 0 }]]),
     inline: { editors: { reply: f.editor } }, current: null, disposed: false,
     flush: () => f.session.save(), keepEditorsLocal: () => f.session.persist() });
   const visits = [], navigation = new TopicNavigation({ registry, topicId: 't1', navigate: id => visits.push(id) });
@@ -328,9 +356,16 @@ test('correction departure protects synchronous validation prepare and publicati
   const correction = f.session.correctPreparation(f.refused, f.reviewed, f.editor.localVersion);
   try {
     assert.ok([...f.session.sends.values()].includes(correction), 'whole returned chain is registered synchronously');
+    let corrected = null;
     for (const [stage, release] of [[validation,releaseValidation],[prepare,releasePrepare],[publication,releasePublication]]) {
       await stage.promise;
       assert.equal(f.registry.hasInFlightSend, true); assert.equal(f.registry.hasUnprotectedWriting, true);
+      if (stage === validation) assert.deepEqual([...f.registry.doubt(f.editor).ids], [f.refused.id], 'until its correction exists, the refusal is in doubt');
+      else {
+        corrected = f.editor.submissions.find(item => item.id === f.refused.correctedBy);
+        assert.equal(f.session.underWay(corrected.id), true, 'the corrected reply is under way');
+        assert.deepEqual([...f.registry.doubt(f.editor).ids], [], 'so neither it nor the refusal it carries is in doubt');
+      }
       await assert.rejects(f.navigation.open('t2'), /Wait for the send/); assert.deepEqual(f.visits, []);
       if (stage !== publication) release.resolve();
     }
@@ -338,7 +373,9 @@ test('correction departure protects synchronous validation prepare and publicati
     releasePublication.resolve(); const result = await correction;
     assert.equal(result.status, 'confirmed'); assert.deepEqual(f.refused.receipt, originalReceipt);
     assert.deepEqual([...f.session.sends], [[f.refused.id, unrelated]], 'only the correction marker is removed');
+    assert.equal(f.session.underWay(corrected.id), false, 'the corrected reply went, so it is no longer under way');
     f.session.sends.delete(f.refused.id); assert.equal(f.registry.hasUnprotectedWriting, false);
+    assert.deepEqual([...f.registry.doubt(f.editor).ids], [], 'the correction went, so the refusal it carries is not in doubt');
     assert.equal(await f.navigation.open('t2'), true); assert.deepEqual(f.visits, ['t2']);
     const messages = await f.api.view('topic_messages', { topic_id: 't1' });
     assert.equal(messages.items.filter(m => m.body === 'Exact correction original').length, 1);

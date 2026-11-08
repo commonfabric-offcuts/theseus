@@ -42,7 +42,8 @@ export const audit = `(() => {
   // under its backdrop, blurred and dimmed on purpose, or covered by the
   // dialog itself: its pills keep their shape and place, judged as ever, but
   // their colours are judged where the person can see them, with no dialog open.
-  const modal = document.querySelector('dialog:modal');
+  // The phone rail open as a drawer over the topic (item 117) is one too.
+  const modal = document.querySelector('dialog:modal') ?? document.querySelector('.rail.open');
   // The outcome light's peek (item 86) floats over the page while its row is
   // hovered: the pills it covers keep their shape and place, judged as ever,
   // and their colours are judged where the person sees them, with it closed.
@@ -89,9 +90,8 @@ export const audit = `(() => {
       pills.push({ at: where(element), left: box.left, top: box.top, width: box.width, height: box.height, border: parseFloat(style.borderTopWidth) });
     }
   }
-  // A box that scrolls upright, as the wide rail does, holds its rows inside
-  // its width; a strip laid out in one row, as the phone rail is, scrolls
-  // sideways on purpose.
+  // A box that scrolls upright, as the rail does, holds its rows inside its
+  // width; a strip laid out in one row scrolls sideways on purpose.
   for (const element of document.querySelectorAll('body *')) {
     if (element.closest('[hidden]') || !element.getBoundingClientRect().width) continue;
     const scroller = clippers(element).find(({ style }) => ['auto', 'scroll'].includes(style.overflowX))?.at;
@@ -239,6 +239,18 @@ export async function renderChecks({ check, page, until, control, origin, eviden
               // without it the page offers what only a mouse gets, such as the outcome light's peek.
               if (metrics.mobile) await q.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
             } });
+          // On a phone the rail is folded behind "☰ Topics" over the topic: it is
+          // opened for what is pressed or judged in it, and closed for the topic.
+          const drawer = metrics.mobile && route !== 'outcomes';
+          const inRail = row => /^#(topics|done-topic-list)\b/.test(row ?? '');
+          const railOpen = () => p.evaluate("document.getElementById('rail').classList.contains('open')");
+          const setRail = async open => {
+            if (!drawer || await railOpen() === open) return;
+            if (open) { await p.evaluate("document.getElementById('rail-open').scrollIntoView({ block: 'center' })"); await p.point('#rail-open'); }
+            else await p.key('Escape');
+            await until(async () => await railOpen() === open, open ? '"☰ Topics" opens the rail' : 'Escape folds the rail away');
+          };
+          await setRail(true);
           // Every row named here carries its count, and its state where it has
           // one. Topics left by earlier checks may sort before these, past the
           // rail's first page: the person asks for more until every row is drawn,
@@ -256,9 +268,9 @@ export async function renderChecks({ check, page, until, control, origin, eviden
             let box = null;
             const placed = `(() => { const row = document.querySelector(${JSON.stringify(row)}); if (!row) return null; const b = row.getBoundingClientRect(); return { left: b.left, top: b.top, right: b.right, bottom: b.bottom, hovered: row.matches(':hover') }; })()`;
             // At rest the page stands where it opened, and the pointer is off
-            // its content. On a phone a rail with this many rows (the key, the
-            // Done line and the outcome's Notebook pages among them) fills the
-            // first screen, and the person scrolls on to the topic's header.
+            // its content; the topic's own state is brought into view when the
+            // first screen does not hold it.
+            await setRail(inRail(row));
             if (row === null) await p.evaluate(`scrollTo(${arrived[0]}, ${arrived[1]})`);
             if (row === null && route === 'topic') await p.evaluate(`(state => state.getBoundingClientRect().bottom > innerHeight && state.scrollIntoView({ block: 'center' }))(document.querySelector('#topic-description'))`);
             if (row === null) await p.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
@@ -296,6 +308,7 @@ export async function renderChecks({ check, page, until, control, origin, eviden
           // The Reader's Mark unread button, not pressed and then pressed, on a
           // message the person had not marked; pressed again, it is as it was.
           if (route === 'topic') {
+            await setRail(false);
             const card = `#messages [data-id="${unmarked}"]`, button = "document.querySelector('#mark-unread')";
             await p.evaluate(`document.querySelector(${JSON.stringify(card)}).scrollIntoView({ block: 'center' })`);
             await p.point(card);

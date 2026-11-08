@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 // pages sit in the sidebar after its topics; a page the reader has read and
 // an agent revised since wears its new revisions as a count, live, with no
 // reload; opening it shows what changed since, as marked words, and puts the
-// light out; a page in the topic's own Notebook wears the same light; at 390 wide, in light and in dark, nothing leaves the screen and
-// the changed words stay readable; on the outcome's own page the pages
+// light out; a page in the topic's own Notebook wears the same light; at 390 wide, in light and in dark, the pages are in the
+// rail "☰ Topics" opens over the topic, nothing leaves the screen and the changed words stay readable; on the outcome's own page the pages
 // follow the topics and open in place; and a page's link opens the page, as
 // it stands or at a revision, in the Reader or in place, from the address bar
 // or from a message's words, and the Reader's ⋯ copies it.
@@ -110,12 +110,17 @@ export async function notebookChecks({ check, page, until, control, view, facts,
       await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(row)}))`), 'the page is listed');
       await revise(`Ship on ${scheme === 'light' ? 'Tuesday' : 'Wednesday'}.\nDan reviews the notes, and Warp signs off.\n`);
       await until(() => light(p), 'the light comes on');
-      const fit = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(row)}).getBoundingClientRect();return {page:document.documentElement.scrollWidth,height:r.height,width:r.width}})()`);
+      // On a phone the pages are in the rail, folded behind "☰ Topics" over the topic.
+      await p.point('#rail-open');
+      await until(() => p.evaluate("document.getElementById('rail').classList.contains('open')"), 'the rail opens over the topic');
+      const fit = await p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(row)}).getBoundingClientRect(),d=document.getElementById('rail').getBoundingClientRect();
+        return {page:document.documentElement.scrollWidth,height:r.height,left:r.left,right:r.right,drawer:[d.left,d.right]}})()`);
       assert.ok(fit.page <= 390, `no sideways page scroll: ${fit.page}`);
-      assert.ok(fit.height >= 44 && fit.width <= 15 * 16 + 1, `a touch-sized row no wider than a topic's: ${JSON.stringify(fit)}`);
+      assert.ok(fit.height >= 44 && fit.left >= fit.drawer[0] && fit.right <= fit.drawer[1] + 0.5, `a touch-sized row inside the open rail: ${JSON.stringify(fit)}`);
       assert.ok(await contrast(p, row) >= 4.5, 'the row title is readable');
       await shot(p, `notebook-phone-${scheme}-sidebar`);
       await openRow(p);
+      assert.equal(await p.evaluate("document.getElementById('rail').classList.contains('open')"), false, 'opening the page folds the rail away');
       await until(() => p.evaluate("!document.querySelector('#source-changes').hidden"), 'what changed shows');
       const box = await p.evaluate(`(()=>{const c=document.querySelector('#source-changes').getBoundingClientRect(),b=document.querySelector('#source-body').getBoundingClientRect();return {left:c.left,right:c.right,body:b.height}})()`);
       assert.ok(box.left >= 0 && box.right <= 390, `the changes stay inside the screen: ${JSON.stringify(box)}`);

@@ -2,7 +2,7 @@
 // block that tops every page now that there is no header bar.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { OutcomeScope, RAIL_ORDER, railShown, elsewhereWaiting, elsewhereWords, wordsShown, placeBrand, showOpenInStrip } from '../web/outcome-scope.mjs';
+import { OutcomeScope, RAIL_ORDER, railShown, elsewhereWaiting, elsewhereWords, wordsShown, placeBrand } from '../web/outcome-scope.mjs';
 import { Attention } from '../web/attention.mjs';
 
 // A small tree: enough of the DOM for the rail's nodes to move, never copy.
@@ -25,9 +25,7 @@ function page() {
   }
   const matches = (node, selector) => selector.startsWith('#') ? node.id === selector.slice(1) : selector.startsWith('.') ? node.className.split(' ').includes(selector.slice(1)) : false;
   const body = new Node('body');
-  const doc = { body, getElementById: id => byId.get(id) ?? null, querySelector: selector => body.querySelector(selector), createElement: tag => new Node(tag),
-    // A laptop-width window: the strips follow their open row only at phone width.
-    defaultView: { matchMedia: () => ({ matches: false, addEventListener() {} }), MutationObserver: class { observe() {} } } };
+  const doc = { body, getElementById: id => byId.get(id) ?? null, querySelector: selector => body.querySelector(selector), createElement: tag => new Node(tag) };
   const el = (tag, id, className, host) => { const node = new Node(tag, id, className); host.append(node); return node; };
   const rail = el('nav', '', 'rail', body), main = el('main', 'main', '', body);
   rail.setAttribute('aria-label', 'Outcomes and topics');
@@ -247,52 +245,4 @@ test('the one logo block, then the page\'s notices, move to the top of the rail 
   assert.equal(p.rail.querySelectorAll('.brand').length + p.main.querySelectorAll('.brand').length, 1, 'one block, moved, never copied');
   assert.equal(p.main.querySelector('#notify'), notify); assert.equal(p.main.querySelector('#app-status'), status);
   p.main.querySelector('#notify').onclick(); assert.equal(pressed, 1, 'its handlers still fire');
-});
-
-// A sideways strip whose rows have fixed boxes: each row is 100px wide with
-// no gap, the strip shows 250px.
-function strip(count, { open, lit = [], width = 250 }) {
-  const rows = Array.from({ length: count }, (_, i) => ({ i, hidden: false, getAttribute: name => name === 'aria-current' && i === open ? 'page' : null,
-    querySelector: selector => lit.includes(i) && selector.includes('.topic-state.mine') ? {} : null,
-    getBoundingClientRect() { return { left: i * 100 - host.scrollLeft, right: i * 100 + 100 - host.scrollLeft }; },
-    scrollIntoView() { host.pageMoved = true; } }));
-  const host = { children: rows, clientWidth: width, scrollWidth: count * 100, scrollLeft: 0, pageMoved: false, getBoundingClientRect: () => ({ left: 0 }) };
-  return host;
-}
-const shows = (host, i) => i * 100 >= host.scrollLeft - 0.5 && i * 100 + 100 <= host.scrollLeft + host.clientWidth + 0.5;
-
-test('a phone strip shows its open row whole near the middle, and never cuts a lit neighbour when it can show both', () => {
-  let s = strip(12, { open: 8 }); showOpenInStrip(s);
-  assert.equal(s.scrollLeft, 725, 'the open row centred'); assert.ok(shows(s, 8));
-  // The lit row before it is cut at the left edge once centred: the least move shows it whole, the open row still whole.
-  s = strip(12, { open: 8, lit: [7] }); showOpenInStrip(s);
-  assert.ok(shows(s, 7) && shows(s, 8), 'both whole'); assert.equal(s.scrollLeft, 700, 'by the least move');
-  s = strip(12, { open: 8, lit: [9] }); showOpenInStrip(s);
-  assert.ok(shows(s, 9) && shows(s, 8)); assert.equal(s.scrollLeft, 750);
-  // Lit rows wholly out of view are not cut, so the strip stays centred.
-  s = strip(12, { open: 8, lit: [6, 10] }); showOpenInStrip(s);
-  assert.equal(s.scrollLeft, 725);
-  // A strip too narrow for a lit neighbour beside the open row: the open row wins.
-  s = strip(12, { open: 8, lit: [7], width: 150 }); showOpenInStrip(s);
-  assert.equal(s.scrollLeft, 775, 'the open row stays whole and centred'); assert.ok(shows(s, 8));
-  s = strip(12, { open: 0 }); showOpenInStrip(s); assert.equal(s.scrollLeft, 0, 'the first row clamps to the start');
-  s = strip(12, { open: 11 }); showOpenInStrip(s); assert.equal(s.scrollLeft, 950, 'the last row clamps to the end');
-  assert.equal(s.pageMoved, false, 'only the strip\'s own scrollLeft is written, never the page');
-  assert.deepEqual(s.children.map(row => row.i), [...Array(12).keys()], 'the order of the rows is unchanged');
-});
-
-test('in Safari, which keeps scrollLeft in whole pixels, a lit neighbour cut by under a pixel is still shown whole', () => {
-  // Rows of fractional width, as fonts lay them out; the strip truncates what is written to scrollLeft.
-  const widths = [200, 100.2, 234.7, 100], left = i => widths.slice(0, i).reduce((a, b) => a + b, 0);
-  let offset = 0;
-  const rows = widths.map((w, i) => ({ hidden: false, getAttribute: name => name === 'aria-current' && i === 1 ? 'page' : null,
-    querySelector: selector => i === 2 && selector.includes('.topic-state.mine') ? {} : null,
-    getBoundingClientRect: () => ({ left: left(i) - offset, right: left(i) + w - offset }) }));
-  const host = { children: rows, clientWidth: 335, scrollWidth: Math.ceil(left(4)), getBoundingClientRect: () => ({ left: 0 }),
-    get scrollLeft() { return offset; }, set scrollLeft(value) { offset = Math.trunc(value); } };
-  showOpenInStrip(host);
-  const whole = i => left(i) >= offset - 0.5 && left(i) + widths[i] <= offset + 335 + 0.5;
-  assert.ok(whole(1), 'the open row is whole');
-  assert.ok(whole(2), `the lit row after it is whole at ${offset}`);
-  assert.equal(offset, Math.trunc(offset), 'a whole pixel');
 });

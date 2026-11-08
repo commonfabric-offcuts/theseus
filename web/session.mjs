@@ -373,8 +373,22 @@ export class EditorSession {
     }
     const item = this.editor.beginPrepare({ prepareOperationId: this.id(), sendOperationId: this.id(), submissionId: this.id() });
     item.authority = authorityPair(this.authority);
+    // The page hears of the reply once it is under way, so it is never shown in doubt.
+    const sending = this.start(item, options);
     this.changed(this.editor);
-    return this.start(item, options);
+    return sending;
+  }
+
+  // Whether the reply with this id is on its way: being prepared, or sent and
+  // not yet answered.
+  underWay(id) { return this.sends.has(id); }
+
+  // Holds a send as under way until it ends, then tells the page, with it no
+  // longer under way: a reply whose send ended unconfirmed is now in doubt.
+  track(key, sending) {
+    this.sends.set(key, sending);
+    const settled = () => { if (this.sends.get(key) === sending) this.sends.delete(key); this.changed(this.editor); };
+    sending.then(settled, settled);
   }
 
   start(item, options, resume = false) {
@@ -387,8 +401,7 @@ export class EditorSession {
       await this.sendPrepared(item);
       return item;
     });
-    this.sends.set(item.id, sending);
-    sending.then(() => this.sends.delete(item.id), () => this.sends.delete(item.id));
+    this.track(item.id, sending);
     return sending;
   }
 
@@ -525,6 +538,8 @@ export class EditorSession {
       delete item.detached;
       refused.correctedBy = item.id;
       this.editor.submissions.push(item);
+      // The corrected reply is on its way from here until the act ends.
+      this.track(item.id, sending);
       if (this.editor.uploadState) {
         const link = this.editor.uploadState.submission_links[refused.id];
         if (link) this.editor.uploadState.submission_links[item.id] = copy(link);
@@ -550,9 +565,7 @@ export class EditorSession {
     });
     // Track the entire act, including queued validation, without colliding with
     // start()'s submission keys or changing the promise returned to its caller.
-    this.sends.set(marker, sending);
-    const settled = () => this.sends.delete(marker);
-    sending.then(settled, settled);
+    this.track(marker, sending);
     return sending;
   }
 

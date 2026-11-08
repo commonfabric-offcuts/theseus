@@ -7,7 +7,8 @@ import vm from 'node:vm';
 import * as writing from '../web/writing-helpers.mjs';
 import { readFailure, checkedView, bindingOf, Freshness } from '../web/freshness.mjs';
 import { currentImages } from '../web/upload-state.mjs';
-import { WRITING_FIELDS, noWriting } from '../web/editor.mjs';
+import { WRITING_FIELDS, noWriting, Editor } from '../web/editor.mjs';
+import { RecoveryJournal } from '../web/journal.mjs';
 import { WritingInput } from '../web/writing-input.mjs';
 import { ReadThrough } from '../web/read-through.mjs';
 import { Live, liveOffered, reloader } from '../web/live.mjs';
@@ -26,6 +27,7 @@ times.clock.now = () => TODAY;
 import { PageReads } from '../web/page-reads.mjs';
 import { PageHere } from '../web/page-here.mjs';
 import { hasTitle } from '../web/creation.mjs';
+import { EditorRegistry } from '../web/app-session.mjs';
 const defer = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
 // overrides: names the app imports, replaced in its scope for one test.
 function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
@@ -52,7 +54,12 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     get lastChild() { return this.children[this.children.length - 1] ?? null; }
     getAttributeNames() { return []; }
     hasAttribute(name) { return name in this; }
-    querySelector(selector) { return get(selector.slice(1)); }
+    // A bare tag name finds the first such element inside; any other selector names an element by id.
+    querySelector(selector) {
+      if (!/^[a-z][a-z0-9]*$/.test(selector)) return get(selector.slice(1));
+      for (const child of this.children) { if (child.tagName === selector.toUpperCase()) return child; const inner = child.querySelector?.(selector); if (inner) return inner; }
+      return null;
+    }
     // The rail's sideways strips are a phone layout this fixture does not draw.
     querySelectorAll(selector = '') { return selector.includes('#topics') ? [] : [...elements.values()].filter(el => el.id.startsWith('inline-') && el.id !== 'inline-composer'); }
     setAttribute(name, value) { this[name] = value; }
@@ -88,12 +95,15 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   const editor = { key: 'inline', dirty: true, submissions: [], draft: { body: 'kept', addressees: [], attachments: [], caret: { start: 0, end: 0 } }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'topic', id: 't1' } } };
   const p = { surface: 'inline', initialized: true, topic, mode: 'reply', editors: { reply: editor } };
   const uploads = { current: () => [], running: new Map(), status: () => 'Ready' };
-  const registry = { inline: p, current: null, sessions: new Map([[editor.key, { editor }]]), disposed: false,
+  const registry = { inline: p, current: null, sessions: new Map([[editor.key, { editor, underWay: () => false }]]), disposed: false,
     get interactive() { return this.current ?? this.inline; },
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
     cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); },
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
     pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
+    // Which replies are in doubt, and the Review buttons, are the registry's own answers, read over this fake's registered writings and pages.
+    doubt(editor) { return EditorRegistry.prototype.doubt.call({ pages: { get: () => this.pending(editor) }, sessions: this.sessions }, editor); },
+    get inDoubt() { return Object.getOwnPropertyDescriptor(EditorRegistry.prototype, 'inDoubt').get.call(this); },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
       list: action => action({ readClass: 'foreground' }) },
@@ -107,7 +117,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     observe(target) { this.targets.push(target); }
   }
   const scope = { ...writing, ...times, watchDays: options => { days.push(options); return () => {}; }, replyLine, placeNewLine, cardClass, agentColor, AgentColors, openColorPicker, PageReads, PageHere, WritingInput, ReadThrough, Live, liveOffered, reloader, Attention, paintSent, IntersectionObserver, crypto, setImmediate, readFailure, checkedView, bindingOf, currentImages, WRITING_FIELDS, noWriting, document, URL, URLSearchParams, TextEncoder, structuredClone, console,
-    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
+    window: { addEventListener(name,fn) { events.push(['window-handler',name,fn]); }, matchMedia: () => ({ matches: false, addEventListener() {} }) }, location: { href,assign:url=>events.push(['navigate',url]),reload:()=>events.push(['reload']) },
     Api: class { constructor() { return api; } }, openJournal: async () => { events.push(['journal']); return {}; },
     EditorRegistry: class { constructor(options) { events.push(['registry']); registry.options = options; return registry; } },
     Reader: class { constructor() { return reader; } },
@@ -148,6 +158,9 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
   vm.runInContext('Object.assign(globalThis, (()=>{' + menuSource + '; return {openMessageMenu,sayOn,copyText}; })())', context);
   const dismissSource = readFileSync(new URL('../web/dismiss.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + dismissSource + '; return {closeOnOutsideClick}; })())', context);
+  // The phone rail's drawer, wired by the page as it starts (web/rail-drawer.mjs).
+  const drawerSource = readFileSync(new URL('../web/rail-drawer.mjs', import.meta.url), 'utf8').replace(/^export (const|class|function) /gm, '$1 ');
+  vm.runInContext('Object.assign(globalThis, (()=>{' + drawerSource + '; return {railDrawer}; })())', context);
   const marksSource = readFileSync(new URL('../web/marks.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
   vm.runInContext('Object.assign(globalThis, (()=>{' + marksSource + '; return {Marks,paintMarkButton,paintAuthor,marksWords}; })())', context);
   const foldSource = readFileSync(new URL('../web/fold.mjs', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '').replace(/^export (const|class|function) /gm, '$1 ');
@@ -187,7 +200,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     inject(value) { ({api,bootstrap,registry,reader,inline,topic,views,freshness}=value); marks = value.marks ?? marks; if ('outcomeMembers' in value) outcomeMembers = value.outcomeMembers; },
     useLive(value) { live = value; },
     inline(callbacks, options) { return new InlineComposer(callbacks, options); },
-    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload}; } };`, context);
+    get() { return {registry,inline,freshness,candidates,attention,outcomeRail,topicRail,outcomeScope,marks,commitReload,topicNavigation}; } };`, context);
   const inline = context.wiring.inline({ admits: p => registry.isCurrent(p), status: () => 'Saved', uploads: () => uploads,
     edit: editor => events.push(['inline-edit',editor.key]),
     needsReview: () => false, renderPending: (host, e) => { if (e.submissions.length) host.replaceChildren(new Element('inline-review')); } });
@@ -405,7 +418,7 @@ test('the first page of a review is drawn when the registry applied it and its s
 test('actual home wordmark, Outcomes and topic links preserve dirty writing before same-tab departure',async()=>{
   const f=fixture(),read=f.api.view;
   f.registry.initializeInline=async()=>{f.registry.inline=f.p;return f.p;};
-  f.registry.keepEditorsLocal=async()=>{};f.registry.unconfirmedSends=[];
+  f.registry.keepEditorsLocal=async()=>{};
   Object.assign(f.editor,{localVersion:1,ackVersion:0});Object.defineProperty(f.editor,'dirty',{get:()=>f.editor.ackVersion<f.editor.localVersion});
   f.registry.flush=async()=>({recorded:false,status:'unknown'});
   f.api.view=async(name,args)=>name==='workspace_topics'?{instance_id:'fixture',items:[{id:'t2',title:'Second',workspace_id:'w1',activity_ms:1}],next_cursor:null}:read(name,args);
@@ -513,6 +526,9 @@ test('superseded inline check cannot clear a newer check or accept for a replace
   assert.equal(f.events.some(e => ['schedule','invalidate'].includes(e[0])), false);
 });
 
+// The writing registered under its key, as the registry holds it.
+const registered = (f, editor, underWay = () => false) => f.registry.sessions.set(editor.key, { editor, underWay });
+
 test('inline pending stays beside inline only; modal pending remains in the topic summary', () => {
   const f = fixture(); f.editor.submissions.push({ id: 'inline-submission' });
   f.registry.inline = null; f.changed(f.editor);
@@ -520,10 +536,166 @@ test('inline pending stays beside inline only; modal pending remains in the topi
   f.registry.inline = f.p; f.changed(f.editor);
   assert.equal(f.get('inline-pending').children.length, 1); assert.equal(f.get('topic-pending').children.length, 0);
   const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [{ id: 'modal-submission' }] };
-  f.registry.current = { editors: { reply: modal } }; f.changed(modal);
+  registered(f, modal); f.registry.current = { editors: { reply: modal } }; f.changed(modal);
   assert.equal(f.get('topic-pending').children.length, 1); assert.equal(f.get('topic-pending').children[0].dataset.key, 'modal');
 });
 
+
+// Item 118: a "Review N reply" button under a topic's title counts only
+// replies still in doubt, so a reply that went leaves no button behind.
+test('a Review button under the title shows only while a reply is in doubt: one confirmed sent, here or on the server, leaves none', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  registered(f, modal); f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  modal.submissions = [{ id: 'went', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'a reply this device saw confirmed has no button');
+  modal.submissions = [{ id: 'held', status: 'prepared' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'a reply not yet confirmed has one');
+  modal.submissions = [{ id: 'held', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'once it is confirmed its button goes');
+  modal.submissions = [{ id: 'refused', status: 'refused' }, { id: 'unknown', status: 'unknown' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 2 replies'], 'refused and unconfirmed replies are both in doubt');
+  // The server's record of each send: one committed is sent, whatever this device last saw.
+  modal.submissions = [{ id: 'refused', status: 'refused' }, { id: 'late', status: 'prepared' }];
+  f.registry.pending = () => ({ items: [{ id: 'late', send_status: 'committed' }, { id: 'earlier', send_status: 'committed' }, { id: 'lost', send_status: 'unknown' }, { id: 'refused', send_status: 'rejected' }], next_cursor: null });
+  f.changed(modal);
+  assert.deepEqual(shown(), ['Review 2 replies'], 'the refused reply and the unconfirmed one from the server, not the two it records as sent');
+  f.registry.pending = () => ({ items: [{ id: 'late', send_status: 'committed' }], next_cursor: null });
+  modal.submissions = [{ id: 'late', status: 'prepared' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'a reply the server records as sent needs no button');
+});
+
+// Item 118: a reply still on its way is not in doubt. Its button would come
+// and go on every reply, moving the composer, and the page under a Reader's
+// title, twice; only a send that ended unconfirmed, or a refusal, leaves one.
+test('a reply on its way has no Review button; one whose send ended without a confirmation does', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  const going = new Set();
+  registered(f, modal, id => going.has(id)); f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  going.add('next'); modal.submissions = [{ id: 'next', status: 'preparing' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'a reply being prepared to go has none');
+  modal.submissions = [{ id: 'next', status: 'prepared' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'nor while its send is out');
+  f.registry.pending = () => ({ items: [{ id: 'next', send_status: 'prepared' }], next_cursor: null }); f.changed(modal);
+  assert.deepEqual(shown(), [], 'nor when the server lists it as prepared while it goes');
+  going.delete('next'); f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'its send ended unconfirmed: now it is in doubt');
+  // One going beside one in doubt: the button counts only the one in doubt.
+  going.add('another'); modal.submissions = [{ id: 'next', status: 'prepared' }, { id: 'another', status: 'preparing' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'a second reply on its way leaves the count at one');
+  modal.submissions = [{ id: 'next', status: 'confirmed' }, { id: 'another', status: 'preparing' }];
+  f.registry.pending = () => ({ items: [], next_cursor: null }); f.changed(modal);
+  assert.deepEqual(shown(), [], 'the first confirmed and the second on its way: no button');
+});
+
+// Item 118: a refusal that was prepared again is carried by its correction, so
+// the two are one reply: in doubt while the correction is, and not once it went.
+test('a refused reply prepared again shows a Review button only while its correction is in doubt, here or from an earlier runtime', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  const going = new Set();
+  registered(f, modal, id => going.has(id)); f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  const refused = { id: 'orig', status: 'refused', receipt: { kind: 'submission.prepare', status: 'rejected' } };
+  modal.submissions = [refused]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'the refusal alone is in doubt');
+  going.add('fix'); modal.submissions = [{ ...refused, correctedBy: 'fix' }, { id: 'fix', status: 'preparing' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'its correction is on its way, so its words are');
+  going.delete('fix'); modal.submissions = [{ ...refused, correctedBy: 'fix' }, { id: 'fix', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'the correction went, so the refusal leaves no button');
+  modal.submissions = [{ id: 'old', status: 'prepared', detached: true, correctedBy: 'fix' }, { id: 'fix', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'nor does an earlier runtime\'s reply whose correction went');
+  f.registry.pending = () => ({ items: [{ id: 'old', send_status: 'unknown' }], next_cursor: null }); f.changed(modal);
+  assert.deepEqual(shown(), [], 'even while the server lists that earlier reply unconfirmed');
+  f.registry.pending = () => ({ items: [], next_cursor: null });
+  modal.submissions = [{ ...refused, correctedBy: 'fix' }, { id: 'fix', status: 'refused', correctedBy: 'again' }, { id: 'again', status: 'prepared' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'a twice-corrected reply whose last correction ended unconfirmed is one reply in doubt');
+  modal.submissions = [{ ...refused, correctedBy: 'fix' }, { id: 'fix', status: 'refused', receipt: { kind: 'message.send', status: 'rejected' } }, { id: 'other', status: 'unknown' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 2 replies'], 'a correction refused in its turn is in doubt, beside another reply');
+  modal.submissions = [{ ...refused, correctedBy: 'missing' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'a correction this device does not hold answers for nothing: the refusal stays in doubt');
+  modal.submissions = [{ id: 'other', status: 'confirmed' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'and the button goes once none is');
+});
+
+// Item 118: the server's list of replies not sent answers for the replies it
+// could see only once it is read to its end. A list not read to its end, or
+// not read at all, is never an answer of none.
+test('a Review button counts a reply prepared here as sent only from a complete read that could see it, and an unread list keeps a button', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  registered(f, modal); f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  const page = (items, next_cursor, through) => { f.registry.pending = () => ({ items, next_cursor, through }); f.changed(modal); return shown(); };
+  const held = { id: 'held', status: 'prepared', preparationConfirmed: true, prepareReceipt: { result: { seq: 5 } } };
+  modal.submissions = [held];
+  assert.deepEqual(page([], null, 5), [], 'the whole list of replies not sent was read after it was prepared and does not hold it: it went');
+  assert.deepEqual(page([], null, 9), [], 'a read later still');
+  assert.deepEqual(page([], null, 4), ['Review 1 reply'], 'a read that could not see it answers nothing for it');
+  assert.deepEqual(page([{ id: 'held', send_status: 'unknown' }], null, 5), ['Review 1 reply'], 'listed as not sent, it is in doubt');
+  assert.deepEqual(page([], 3, 5), ['Review 1+ replies'], 'a list not read to its end answers nothing, and more may be in doubt');
+  modal.submissions = [{ ...held, prepareReceipt: { result: {} } }];
+  assert.deepEqual(page([], null, 5), ['Review 1 reply'], 'a prepare answer with no place in the list answers nothing');
+  modal.submissions = [{ ...held, status: 'preparing', preparationConfirmed: false, prepareReceipt: undefined }];
+  assert.deepEqual(page([], null, 5), ['Review 1 reply'], 'a reply whose preparation is not confirmed is in doubt');
+  modal.submissions = [];
+  assert.deepEqual(page([{ id: 'x', send_status: 'unknown' }], 21, 40), ['Review 1+ replies'], 'one known, more unread');
+  assert.deepEqual(page([], 21, 40), ['Review more replies'], 'none known, more unread');
+  f.registry.pending = () => undefined; f.changed(modal);
+  assert.deepEqual(shown(), ['Review more replies'], 'a list never read is not an answer of none');
+  assert.deepEqual(page([], null, 40), [], 'a whole list with nothing in it is');
+});
+
+// Item 118: "Review 2 replies" opens those two. A reply checked as sent
+// while the list is open says so in its place.
+test('the Review list shows the replies its button counts, and keeps one checked as sent while it is open', async () => {
+  const f = fixture(), settle = async () => { for (let n = 0; n < 6; n++) await new Promise(setImmediate); };
+  f.get('version-review').showModal = function () { this.open = true; };
+  const kept = (id, status) => ({ id, status, topicId: 't1', snapshot: { body: id, attachments: [] } });
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [kept('went', 'confirmed'), kept('held', 'prepared')] };
+  registered(f, modal); f.registry.current = { editors: { reply: modal } }; f.registry.pendingReason = () => null;
+  f.registry.pending = () => ({ items: [{ id: 'old', send_status: 'committed', topic_id: 't1' }, { id: 'lost', send_status: 'unknown', topic_id: 't1' }], next_cursor: null, through: 9 });
+  f.registry.checkPending = async (editor, id) => { editor.submissions.find(item => item.id === id).status = 'confirmed'; f.changed(editor); };
+  f.changed(modal);
+  const control = f.get('topic-pending').children[0].firstElementChild;
+  assert.equal(control.textContent, 'Review 2 replies');
+  await control.onclick(); await settle();
+  const cards = () => f.get('review-content').children.filter(card => card.dataset.id).map(card => [card.dataset.id, card.querySelector('h3').textContent]);
+  assert.deepEqual(cards(), [['held', 'Confirmation unknown'], ['lost', 'Confirmation unknown']], 'the two in doubt, not the two that went');
+  await f.get('review-content').children[0].children.find(child => child.textContent === 'Check confirmation').onclick(); await settle();
+  assert.equal(control.textContent, 'Review 1 reply', 'checked as sent, it is no longer counted');
+  assert.deepEqual(cards(), [['held', 'Sent to Theseus'], ['lost', 'Confirmation unknown']], 'but its card stays, and says so in place');
+});
+
+// The Review list belongs to the writing registered under its button's key:
+// a writing replaced while the list is open is not the one it acts on.
+test('the Review list acts on the writing registered under its key, even one replaced while the list is open', async () => {
+  const f = fixture(), settle = async () => { for (let n = 0; n < 6; n++) await new Promise(setImmediate); };
+  f.get('version-review').showModal = function () { this.open = true; };
+  const kept = (id, status) => ({ id, status, topicId: 't1', snapshot: { body: id, attachments: [] } });
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [kept('held', 'prepared')] };
+  registered(f, modal); f.registry.pendingReason = () => null; f.registry.pending = () => ({ items: [], next_cursor: null, through: 0 });
+  const checked = []; f.registry.checkPending = async editor => { checked.push(editor); };
+  f.changed(modal);
+  await f.get('topic-pending').children[0].firstElementChild.onclick(); await settle();
+  const replacement = { ...modal, submissions: [kept('held', 'prepared')] };
+  registered(f, replacement); f.changed(modal);
+  await f.get('review-content').children[0].children.find(child => child.textContent === 'Check confirmation').onclick(); await settle();
+  assert.deepEqual(checked.map(editor => editor === replacement), [true], 'Check confirmation goes to the registered writing');
+});
+
+// Item 117: the page wires the phone rail's drawer as it starts.
+test('the page wires "☰ Topics" as it starts: a tap opens the rail over the topic, and the dimmed page closes it', () => {
+  const f = fixture(), rail = f.get('rail'), control = f.get('rail-open'), backdrop = f.get('rail-backdrop'), main = f.get('main');
+  assert.equal(typeof control.handlers.click, 'function', '"☰ Topics" answers a tap');
+  control.handlers.click();
+  assert.deepEqual([rail.classList.contains('open'), backdrop.hidden, main.inert, control['aria-expanded']], [true, false, true, 'true'], 'open over the topic');
+  backdrop.handlers.click();
+  assert.deepEqual([rail.classList.contains('open'), backdrop.hidden, main.inert, control['aria-expanded']], [false, true, false, 'false'], 'closed again');
+});
 
 test('every application route reloads a restored closed document before accepting input',async()=>{
   for(const suffix of ['', '?workspace=w1','?new=outcome&intent=i','?workspace=w1&opening=o&opening_topic=t','?topic=t1']){
@@ -1852,7 +2024,7 @@ test('pressing the older-below line while the page may not read stops at once an
 
 test('during a visit the New line holds as the person reads, fades once nothing above it is unread, moves to show more, and only Mark read places it afresh, the card being read held still', async () => {
   const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false }) }, innerHeight: 800 });
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   const live = stream(); f.useLive(live);
@@ -1950,7 +2122,7 @@ test('during a visit the New line holds as the person reads, fades once nothing 
 
 test('at the top of a topic a new message comes into view; read further down, the page holds still', async () => {
   const scrolls = [];
-  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false }) }, innerHeight: 800 });
+  const f = fixture(undefined, { window: { addEventListener() {}, scrollBy: (x, y) => scrolls.push(y), matchMedia: () => ({ matches: false, addEventListener() {} }) }, innerHeight: 800 });
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
   await f.initialize(); await settle();
@@ -2389,7 +2561,7 @@ test('a link to a place in this Theseus opens it as the rail does, keeping writi
   const f = fixture('https://fixture/?topic=t1', { location });
   // As the topic rows' check does: writing not yet confirmed saved holds the move.
   f.registry.initializeInline = async () => { f.registry.inline = f.p; return f.p; };
-  f.registry.keepEditorsLocal = async () => {}; f.registry.unconfirmedSends = [];
+  f.registry.keepEditorsLocal = async () => {};
   Object.assign(f.editor, { localVersion: 1, ackVersion: 0 }); Object.defineProperty(f.editor, 'dirty', { get: () => f.editor.ackVersion < f.editor.localVersion });
   f.registry.flush = async () => ({ recorded: false, status: 'unknown' });
   Object.assign(f.views, { messages: new Map(), memory: new Map(), olderCursor: null, memoryCursor: null, newest: 0 });
@@ -2427,4 +2599,434 @@ test('the version review closes on a press outside it, as Keep both for now does
   press(50, 400);
   assert.equal(review.open, false, 'a press on the backdrop closes it');
   assert.equal(f.document.activeElement, f.get('opener'), 'the focus goes back to what opened it');
+});
+
+// The Review buttons are drawn from the registry alone: one for each
+// registered writing with a reply in doubt. The topic's own writing has its
+// button in the composer while the composer shows, loaded or failed, and under
+// the title until then; leaving names exactly the buttons drawn.
+function doubtful(f, { composer = 'shown' } = {}) {
+  f.registry.inline = null;
+  f.registry.pending = () => ({ items: [{ id: 'from-phone', send_status: 'unknown' }], next_cursor: null, through: 1 });
+  f.registry.keepEditorsLocal = async () => {}; f.registry.flush = async () => null; f.editor.dirty = false;
+  // The page's own HTML hides the composer until it loads or fails.
+  if (composer === 'loading') f.get('inline-composer').hidden = true;
+}
+const reviewLabels = el => el.children.flatMap(c => [c.textContent, ...reviewLabels(c)]).filter(t => /^Review/.test(t ?? ''));
+const leaving = f => f.owners().topicNavigation.openTarget({ kind: 'topic', id: 't2' }, 'Second').then(() => null, error => error.message);
+const named = words => [...(words ?? '').matchAll(/“(Review [^”]+)”/g)].map(m => m[1]);
+
+test('a topic composer that failed after registering shows its reply\'s Review button in the composer, and leaving names that button', async () => {
+  const f = fixture(); doubtful(f);
+  f.registry.initializeInline = async () => { throw Error('This device could not read its saved versions'); };
+  await f.initialize();
+  assert.match(f.get('inline-notice').textContent, /New message is unavailable/);
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply'], 'the button is beside the failed composer');
+  assert.deepEqual(reviewLabels(f.get('topic-pending')), [], 'and only there');
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names the button that is there');
+});
+
+test('while the topic composer is still loading, its reply in doubt has its Review button under the title, then in the composer, and leaving names it', async () => {
+  const f = fixture(); doubtful(f, { composer: 'loading' });
+  const held = defer(), asked = defer();
+  f.registry.initializeInline = () => { asked.resolve(); return held.promise; };
+  const started = f.initialize(); await asked.promise;
+  f.changed(f.editor); // registered, so the page is told; the composer is not there yet
+  assert.deepEqual(reviewLabels(f.get('topic-pending')), ['Review 1 reply'], 'under the title while the composer loads');
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), []);
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names it');
+  // A message's writing in doubt has its button under the title too, after the topic's.
+  const message = { ...f.editor, key: 'm1', context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm1' } } };
+  registered(f, message); f.changed(message);
+  assert.deepEqual(f.get('topic-pending').children.map(host => host.dataset.key), ['inline', 'm1']);
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply', 'Review 1 reply'], 'both buttons, as drawn');
+  // The composer shows: the topic's button moves into it, and is in one place only.
+  f.registry.inline = f.p; f.owners().inline.show(f.p);
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
+  assert.deepEqual(f.get('topic-pending').children.map(host => host.dataset.key), ['m1']);
+  held.resolve(f.p); await started;
+});
+
+test('a loaded topic composer and a message\'s writing each show their Review button, and leaving names both', async () => {
+  const f = fixture(); doubtful(f);
+  const message = { ...f.editor, key: 'm1', context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm1' } } };
+  registered(f, message);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize(); f.changed(message);
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
+  assert.deepEqual(reviewLabels(f.get('topic-pending')), ['Review 1 reply']);
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply', 'Review 1 reply']);
+});
+
+test('leaving draws the Review buttons again from the registry and names them as drawn, even when the page was not told of the change', async () => {
+  const f = fixture(); doubtful(f);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize();
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
+  f.registry.pending = () => ({ items: [{ id: 'a', send_status: 'unknown' }, { id: 'b', send_status: 'unknown' }], next_cursor: null, through: 2 });
+  assert.deepEqual(named(await leaving(f)), ['Review 2 replies'], 'the registry says two, so leaving names “Review 2 replies”');
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 2 replies'], 'and that is the button the page now shows');
+});
+
+// The registry holds one writing per key. A notice about any other editor
+// (one a recovered version replaced, say) draws the registered writing's
+// buttons, and an editor never registered draws none.
+test('a notice about an editor that is not the registered writing draws the registered writing\'s Review button', async () => {
+  const f = fixture(); doubtful(f);
+  f.registry.pending = () => ({ items: [], next_cursor: null, through: 0 });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize();
+  const restored = { ...f.editor, draft: { ...f.editor.draft }, submissions: [{ id: 'refused-1', status: 'refused', snapshot: { body: 'earlier reply' } }] };
+  registered(f, restored); f.p.editors.reply = restored;
+  const stranger = { ...f.editor, key: 'm9', submissions: [{ id: 'x', status: 'refused' }], context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm9' } } };
+  const replacedWithDoubt = { ...f.editor, submissions: [{ id: 'kept-there', status: 'refused' }] };
+  assert.deepEqual([replacedWithDoubt, stranger].map(editor => f.registry.doubt(editor).label), [null, null], 'an editor not registered, under its key or none, is in doubt about nothing');
+  for (const told of [f.editor, stranger, restored]) {
+    f.changed(told);
+    assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply'], 'the recovered writing\'s refused reply keeps its button');
+    assert.deepEqual(reviewLabels(f.get('topic-pending')), [], 'and an editor never registered draws none');
+  }
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply']);
+});
+
+
+test('a notice about writing whose registration failed, still in the composer, draws only the buttons and throws nothing', async () => {
+  const f = fixture(); doubtful(f);
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize();
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply']);
+  const { uploads } = f.registry.sessionFor(f.editor);
+  f.registry.sessionFor = editor => { if (f.registry.sessions.get(editor.key)?.editor !== editor) throw Error('This writing is not registered in this document.'); return { uploads }; };
+  f.registry.sessions.delete(f.editor.key); // Recover this version took it out, and the recovered copy could not register
+  assert.doesNotThrow(() => f.changed(f.editor), 'the notice changes nothing about writing no longer registered');
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), [], 'and nothing registered there has a button');
+});
+
+// The Reader draws its writing's button as it shows, before any notice.
+test('a message\'s Reader shows its writing\'s Review button as it opens', async () => {
+  const reader = { narrow: { addEventListener() {} }, dialog: { open: false }, notice() {}, paintOffer() {}, paintStatus() {}, paintOrigin() {}, drawSource() {}, drawAttachments() {}, hideUnavailableSource() {},
+    show(source, sessions) { this.sessions = sessions; this.paintPending(); }, paintPending() { this.callbacks.renderPending(this.host, this.sessions.reply); } };
+  const f = fixture('https://fixture/?topic=t1', { Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } } });
+  reader.host = f.get('pending-submissions');
+  await f.initialize();
+  const modal = { ...f.editor, key: 'm1', submissions: [{ id: 'refused-1', status: 'refused' }], context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm1' } } };
+  registered(f, modal);
+  const reading = { token: 1, source: { instance_id: 'fixture', source_ref: { kind: 'message', id: 'm1' }, topic_id: 't1', title: 'm1', body: '', attachments: [] },
+    editors: { reply: modal }, mode: 'reply', opener: null, mark: null };
+  f.registry.current = reading;
+  f.registry.options.present(reading);
+  assert.equal(f.get('pending-submissions').firstElementChild?.textContent, 'Review 1 reply');
+});
+
+// Recover this version (EditorRegistry.adoptCandidate, its real call order:
+// the restored writing registers and the page is told, the presentation
+// shows it, and then the page is told about the editor it replaced). The
+// recovered copy holds a refused reply, so its button stays, and leaving
+// names it.
+function recovering(f, old) {
+  const R = f.registry, uploads = { current: () => [], running: new Map(), status: () => 'Ready' };
+  const restored = { ...old, draft: { ...old.draft }, submissions: [{ id: 'refused-1', status: 'refused', snapshot: { body: 'earlier reply' } }] };
+  Object.assign(R.sessions.get(old.key), { attempts: [], uploads });
+  R.sessionFor = editor => R.sessions.get(editor.key);
+  R.isCurrent = p => !!p && R.interactive === p;
+  R.api = { view: async () => ({}) }; R.validateState = () => {}; R.journal = { adopt: async () => {} };
+  R.changed = R.options.changed;
+  R.register = async () => { R.sessions.set(old.key, { editor: restored, attempts: [], uploads, underWay: () => false }); R.changed(restored); return restored; };
+  return restored;
+}
+
+test('Recover this version in the topic composer keeps the Review button of the refused reply it brings back, and leaving names it', async () => {
+  const f = fixture(); doubtful(f);
+  f.registry.pending = () => ({ items: [], next_cursor: null, through: 0 });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize();
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), [], 'nothing in doubt before the recovery');
+  const restored = recovering(f, f.editor);
+  f.registry.present = f.registry.options.present;
+  assert.equal(await EditorRegistry.prototype.adoptCandidate.call(f.registry, f.editor, { id: 'c1', stamp: 's1' }, f.p), restored);
+  await new Promise(setImmediate);
+  assert.deepEqual(reviewLabels(f.get('inline-pending')), ['Review 1 reply'], 'the refused reply in the recovered writing shows its Review button');
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names it');
+});
+
+test('Recover this version in a message\'s Reader keeps the refused reply\'s Review button under the title once the Reader closes', async () => {
+  const f = fixture(); doubtful(f);
+  f.registry.pending = () => ({ items: [], next_cursor: null, through: 0 });
+  f.registry.initializeInline = async () => { f.registry.inline = f.p; f.owners().inline.show(f.p); return f.p; };
+  await f.initialize();
+  const old = { ...f.editor, key: 'm1', submissions: [], draft: { ...f.editor.draft }, context: { kind: 'reply', topicId: 't1', sourceRef: { kind: 'message', id: 'm1' } } };
+  registered(f, old); f.changed(old);
+  const reading = { surface: 'reader', editors: { reply: old }, source: { source_ref: old.context.sourceRef } };
+  f.registry.current = reading;
+  recovering(f, old); f.registry.present = () => {};
+  await EditorRegistry.prototype.adoptCandidate.call(f.registry, old, { id: 'c1', stamp: 's1' }, reading);
+  f.registry.current = null; // the Reader closes
+  assert.deepEqual(reviewLabels(f.get('topic-pending')), ['Review 1 reply'], 'the refused reply in the recovered writing shows its Review button under the title');
+  assert.deepEqual(named(await leaving(f)), ['Review 1 reply'], 'leaving names it');
+});
+
+// The property behind item 118's Review buttons (docs/replies-in-doubt.md):
+// after every step of a random run, the buttons the page draws, and the
+// departure guard's rule and words, are EditorRegistry.inDoubt over what the
+// registry holds at that moment. It runs the page's own app.mjs, its composer
+// and its guard, over a real EditorRegistry and EditorSession, an in-memory
+// recovery journal, and the small Core below; only the Reader is a stand-in
+// that draws its writing's button as the real one does.
+
+// The server's record for the run: each source's draft and replies, and every
+// recorded operation. Each prepare and send waits for the run to answer it,
+// and a named read can be made to fail once.
+function smallCore(instanceId) {
+  const sources = new Map(), operations = new Map(), held = [], failing = new Set();
+  let seq = 0, made = 0;
+  const fresh = prefix => `${prefix}-${++made}`;
+  const source = ref => {
+    const key = JSON.stringify([ref.kind, ref.id]);
+    if (!sources.has(key)) sources.set(key, { ref: structuredClone(ref), draft: null, replies: [] });
+    return sources.get(key);
+  };
+  const recorded = (envelope, status, body) => ({ recorded: true, instance_id: instanceId, operation_id: envelope.operation_id, kind: envelope.kind, status, ...body });
+  // The replies not sent, oldest first and paged, and the highest place of any.
+  const page = (s, { cursor = null, limit = 20 } = {}) => {
+    const unsent = s.replies.filter(reply => reply.send_status !== 'committed' && (cursor === null || reply.seq > cursor)), items = unsent.slice(0, limit);
+    return { instance_id: instanceId, items: structuredClone(items), next_cursor: unsent.length > limit ? items.at(-1).seq : null,
+      through: s.replies.reduce((top, reply) => Math.max(top, reply.seq), 0) };
+  };
+  const reply = id => [...sources.values()].flatMap(s => s.replies).find(item => item.id === id);
+  function apply(envelope, outcome) {
+    const { kind, target, expected, args } = envelope;
+    let receipt;
+    if (kind === 'draft.save') {
+      const s = source(args.source_ref), revision = (expected.draft_revision ?? 0) + 1;
+      s.draft = { id: target.draft_id, generation: args.generation, revision, source_ref: structuredClone(args.source_ref), topic_id: args.topic_id };
+      receipt = recorded(envelope, 'committed', { result: { draft_id: target.draft_id, generation: args.generation, draft_revision: revision } });
+    } else if (kind === 'submission.prepare') {
+      const s = [...sources.values()].find(s => s.draft?.id === args.draft_id);
+      if (outcome === 'refuse' || !s) receipt = recorded(envelope, 'rejected', { error: { code: 'FORBIDDEN', message: 'Not allowed here.' } });
+      else {
+        const item = { id: args.submission_id, seq: ++seq, send_status: 'unknown', source_ref: structuredClone(s.ref), topic_id: target.topic_id,
+          send_operation_id: args.send_operation_id, prepare_operation_id: envelope.operation_id, authority: structuredClone(expected.authority) };
+        s.replies.push(item);
+        const next = { id: fresh('draft'), generation: fresh('generation'), revision: 1 };
+        s.draft = { ...next, source_ref: structuredClone(s.ref), topic_id: target.topic_id };
+        receipt = recorded(envelope, 'committed', { result: { submission_id: item.id, send_operation_id: item.send_operation_id, next_draft: next, seq: item.seq } });
+      }
+    } else if (kind === 'message.send') {
+      const item = reply(args.submission_id);
+      item.send_status = outcome === 'refuse' ? 'rejected' : 'committed';
+      receipt = outcome === 'refuse' ? recorded(envelope, 'rejected', { error: { code: 'FORBIDDEN', message: 'Not sent.' } })
+        : recorded(envelope, 'committed', { result: { submission_id: item.id } });
+    } else throw Error(`The small Core has no ${kind}.`);
+    operations.set(envelope.operation_id, receipt);
+    return structuredClone(receipt);
+  }
+  const api = {
+    bootstrap: async () => ({ instance_id: instanceId, authority: structuredClone(BOOT.authority) }),
+    view: async (name, args) => {
+      if (failing.delete(name)) throw Error(`The ${name} read failed.`);
+      if (name === 'editor_state') {
+        const s = source(args.source_ref);
+        return { instance_id: instanceId, source_ref: structuredClone(args.source_ref), destination: { topic_id: args.topic_id ?? null }, source_available: true,
+          destination_available: true, draft: structuredClone(s.draft), note: null, mark: null, submissions: page(s, args) };
+      }
+      if (name === 'submissions') return page(source(args.source_ref), args);
+      if (name === 'source') return { instance_id: instanceId, source_ref: structuredClone(args), topic_id: 't1', title: args.id, body: '', attachments: [] };
+      if (name === 'operation') return structuredClone(operations.get(args.operation_id) ?? { instance_id: instanceId, operation_id: args.operation_id, status: 'unknown', recorded: false });
+      return { instance_id: instanceId, items: [], next_cursor: null };
+    },
+    command: async envelope => {
+      if (envelope.kind === 'draft.save') return apply(envelope);
+      const answer = {}; answer.promise = new Promise((resolve, reject) => Object.assign(answer, { resolve, reject }));
+      held.push({ envelope, answer }); return answer.promise;
+    },
+  };
+  // The run answers the oldest act waiting: recorded and answered, refused,
+  // recorded with its answer lost, or lost before Core recorded it.
+  const answer = outcome => {
+    const { envelope, answer } = held.shift();
+    if (outcome === 'lost before') return answer.reject(Error('The answer was lost.'));
+    const receipt = apply(envelope, outcome === 'refuse' ? 'refuse' : 'commit');
+    if (outcome === 'lost after') answer.reject(Error('The answer was lost.')); else answer.resolve(receipt);
+  };
+  // A reply from another device: never landed, sent, or refused.
+  const phone = (ref, sendStatus) => {
+    const s = source(ref);
+    s.replies.push({ id: fresh('phone'), seq: ++seq, send_status: sendStatus, source_ref: structuredClone(s.ref), topic_id: 't1',
+      send_operation_id: fresh('send'), prepare_operation_id: fresh('prepare'), authority: structuredClone(BOOT.authority) });
+  };
+  return { api, held, failing, answer, phone, fresh };
+}
+const BOOT = { instance_id: 'fixture', actor: 'fixture-person', actor_kind: 'human',
+  authority: { authority_id: 'runtime-1', authority_epoch: 'epoch-1', continuity: 'initial' } };
+
+// Mulberry32: the same seed is the same run.
+const seeded = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let x = Math.imul(seed ^ (seed >>> 15), 1 | seed); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+
+async function reviewRun(seed, tally, steps = 30) {
+  const random = seeded(seed), pick = list => list[Math.floor(random() * list.length)], chance = p => random() < p;
+  const core = smallCore(BOOT.instance_id), rows = new Map(), failingOwn = new Set();
+  const journal = new RecoveryJournal({
+    put: async row => { rows.set(row.id, structuredClone(row)); },
+    get: async id => { if (failingOwn.delete(id)) throw Error('This device could not read its saved writing.'); return structuredClone(rows.get(id)); },
+    forEditor: async key => { if (key === topicKey && gate) await gate.promise; return [...rows.values()].filter(row => row.editorKey === key).map(row => structuredClone(row)); },
+    currentCandidates: async (key, ids) => ids.map(id => rows.get(id)).filter(row => row?.editorKey === key).map(row => structuredClone(row)),
+    removeExact: async (id, stamp) => rows.get(id)?.stamp === stamp ? rows.delete(id) : false,
+    adopt: async (key, candidate) => {
+      const adopted = { ...structuredClone(rows.get(candidate.id)), id: journal.id(key), writerId: journal.writerId, stamp: core.fresh('adopted') };
+      rows.set(adopted.id, adopted); return structuredClone(adopted);
+    },
+  }, 'this-tab');
+  const topicKey = JSON.stringify([BOOT.instance_id, BOOT.actor, 'reply', 'topic', 't1', 't1']);
+  // The composer's first read of its saved versions waits for the run, so the
+  // topic's writing is registered while the composer is still loading.
+  let gate = { promise: null }; gate.promise = new Promise((resolve, reject) => Object.assign(gate, { resolve, reject }));
+  const reader = { narrow: { addEventListener() {} }, dialog: { open: false }, sessions: null, presentation: null, layoutChoice: null, host: null,
+    notice() {}, paintOffer() {}, paintStatus() {}, hideUnavailableSource() {}, drawSource() {}, drawAttachments() {}, paintOrigin() {},
+    get editor() { return this.sessions?.[this.presentation?.mode ?? 'reply']; },
+    show(source, sessions, { presentation } = {}) { this.sessions = sessions; this.presentation = presentation; this.dialog.open = true; this.paintPending(); },
+    paintPending() { this.callbacks.renderPending(this.host, this.sessions.reply); this.paintStatus(); },
+    finishClose() { this.dialog.open = false; this.sessions = null; } };
+  let registry;
+  const made = defer();
+  const f = fixture('https://fixture/?topic=t1', {
+    EditorRegistry: class { constructor(options) { registry = new EditorRegistry({ ...options, api: core.api, bootstrap: BOOT, journal, pendingPageSize: 2,
+      timers: { setTimeout: () => 0, clearTimeout() {}, now: () => 0 } }); made.resolve(); return registry; } },
+    Reader: class { constructor(callbacks) { reader.callbacks = callbacks; return reader; } },
+  });
+  reader.host = f.get('pending-submissions');
+  // The page's own HTML hides the composer until it loads or fails.
+  f.get('inline-composer').hidden = true;
+  const started = f.initialize();
+  const trail = [], replaced = [];
+  const settle = async () => { for (let n = 0; n < 4; n++) await new Promise(setImmediate); };
+  const attempt = async (name, act) => { try { await act(); trail.push(name); } catch (error) { trail.push(`${name} (refused: ${error.message})`); } };
+  const writings = () => [...registry.sessions.values()].map(session => session.editor).filter(editor => editor.context.kind === 'reply');
+  const front = () => registry.current ? [registry.current, registry.current.editors.reply] : registry.inline ? [registry.inline, registry.inline.editors.reply] : [];
+  await Promise.race([made.promise, started]);
+  assert.ok(registry, `seed ${seed}: the page made its registry`);
+  await settle();
+  let leaves = 0;
+  const check = async () => {
+    await settle();
+    const why = `seed ${seed} after: ${trail.join(' → ')}`;
+    const entries = registry.inDoubt, composer = !f.get('inline-composer').hidden;
+    const inComposer = entry => composer && entry.editor.context.sourceRef.kind === 'topic';
+    const button = host => host.firstElementChild?.textContent ?? null;
+    assert.deepEqual(f.get('topic-pending').children.map(host => [host.dataset.key, button(host)]),
+      entries.filter(entry => !inComposer(entry)).map(entry => [entry.editor.key, entry.label]), `under the title: ${why}`);
+    assert.equal(button(f.get('inline-pending')), entries.find(inComposer)?.label ?? null, `in the composer: ${why}`);
+    // The open Reader shows its writing's button too.
+    const reading = registry.current?.editors.reply?.key;
+    if (reading) assert.equal(button(f.get('pending-submissions')), entries.find(entry => entry.editor.key === reading)?.label ?? null, `in the Reader: ${why}`);
+    // The guard, to a topic it was not asked about before, so a refusal never leaves on a second choice.
+    const going = registry.hasInFlightSend, title = `Topic ${++leaves}`;
+    const words = await f.owners().topicNavigation.openTarget({ kind: 'topic', id: `t-${leaves}` }, title).then(() => null, error => error.message);
+    await settle();
+    const now = registry.inDoubt;
+    const question = `Not every reply here is confirmed sent; each is kept. Use ${now.map(entry => `“${entry.label}”`).join(' or ')} to check, or choose “${title}” again to leave without resolving it.`;
+    if (going) assert.equal(words, 'Wait for the send to finish before changing topics.', `leaving waits: ${why}`);
+    else if (words === null || /^Not every reply/.test(words)) {
+      // Free to leave, it asks exactly when a reply is in doubt, naming every button drawn.
+      assert.equal(words, now.length ? question : null, `leaving: ${why}`);
+      tally[now.length ? 'asked' : 'left']++;
+    } else {
+      // Writing not yet safe on this device or in Theseus holds the move first, and names no button.
+      assert.doesNotMatch(words, /Review/, `leaving held for the writing: ${why}`);
+      tally.held++;
+    }
+    assert.deepEqual(f.get('topic-pending').children.map(host => [host.dataset.key, button(host)]),
+      now.filter(entry => !inComposer(entry)).map(entry => [entry.editor.key, entry.label]), `under the title once leaving asked: ${why}`);
+  };
+  await check();
+  for (let n = 0; n < steps; n++) {
+    const kind = pick(['open', 'open', 'close', 'send', 'send', 'answer', 'answer', 'answer', 'phone', 'phone', 'phone', 'check', 'more', 'more', 'replace', 'stale', 'load']);
+    if (kind === 'open') {
+      const id = pick(['m1', 'm2', 'm3']), fail = chance(0.2);
+      if (fail) core.failing.add('editor_state');
+      await attempt(`open ${id}${fail ? ' (its read fails)' : ''}`, () => registry.open({ kind: 'message', id }, { topicId: 't1' }));
+      core.failing.delete('editor_state');
+    } else if (kind === 'close') {
+      if (registry.current) await attempt('close', () => registry.close(registry.current, { explicit: true }));
+    } else if (kind === 'send') {
+      const [p, editor] = front();
+      if (p) await attempt(`send from ${editor.context.sourceRef.id}`, () => {
+        editor.edit({ body: `Reply ${n}` });
+        registry.send(editor, { presentation: p, stay: true }).catch(error => trail.push(`(its send ended: ${error.message})`));
+      });
+    } else if (kind === 'answer') {
+      if (core.held.length) { const outcome = pick(['commit', 'commit', 'refuse', 'lost after', 'lost before']); trail.push(`${core.held[0].envelope.kind} ${outcome}`); core.answer(outcome); }
+    } else if (kind === 'phone') {
+      const ref = pick([{ kind: 'topic', id: 't1' }, { kind: 'message', id: 'm1' }, { kind: 'message', id: 'm2' }]), status = pick(['unknown', 'unknown', 'committed', 'rejected']);
+      core.phone(ref, status); trail.push(`a reply from the phone to ${ref.id}, ${status}`);
+    } else if (kind === 'check') {
+      const editor = pick(writings()), fail = chance(0.2);
+      const ids = editor ? [...registry.pending(editor).items.map(item => item.id), ...editor.submissions.map(item => item.id)] : [];
+      if (ids.length) {
+        if (fail) core.failing.add('operation');
+        // A check of a reply still going waits behind its send, as on the page.
+        const name = `check confirmation in ${editor.context.sourceRef.id}${fail ? ' (its read fails)' : ''}`;
+        await attempt(name, () => { registry.checkPending(editor, pick(ids)).catch(error => trail.push(`(${name} ended: ${error.message})`)).finally(() => core.failing.delete('operation')); });
+      }
+    } else if (kind === 'more') {
+      const editor = writings().find(editor => registry.pending(editor).next_cursor !== null), fail = chance(0.2);
+      if (editor) {
+        if (fail) core.failing.add('submissions');
+        await attempt(`more replies in ${editor.context.sourceRef.id}${fail ? ' (its read fails)' : ''}`, () => registry.morePending(editor));
+        core.failing.delete('submissions');
+      }
+    } else if (kind === 'replace') {
+      // Recover this version: a saved copy from another tab holding a refused
+      // reply replaces the writing in front; or its registration fails, and
+      // nothing is registered under that key.
+      const [p, editor] = front();
+      if (p && registry.sessions.get(editor.key)?.editor === editor) {
+        const copy = new Editor(editor.context, { id: core.fresh('draft'), revision: 0, generation: core.fresh('generation') });
+        copy.edit({ body: 'Earlier reply' });
+        const refused = copy.beginPrepare({ prepareOperationId: core.fresh('prepare'), sendOperationId: core.fresh('send'), submissionId: core.fresh('refused') });
+        copy.acceptPreparation({ recorded: true, instance_id: BOOT.instance_id, operation_id: refused.prepareOperationId, kind: 'submission.prepare', status: 'rejected', error: { code: 'FORBIDDEN', message: 'Not allowed here.' } });
+        const row = { id: JSON.stringify([editor.key, 'other-tab']), editorKey: editor.key, writerId: 'other-tab', scope: JSON.stringify([BOOT.instance_id, BOOT.actor]),
+          active: 1, stamp: core.fresh('stamp'), snapshot: copy.snapshot() };
+        rows.set(row.id, row);
+        const unregister = chance(0.3);
+        if (unregister) failingOwn.add(journal.id(editor.key));
+        await attempt(`replace ${editor.context.sourceRef.id}${unregister ? ' (and its registration fails)' : ''}`, () => registry.adoptCandidate(editor, { id: row.id, stamp: row.stamp }, p));
+        failingOwn.delete(journal.id(editor.key));
+        if (registry.sessions.get(editor.key)?.editor !== editor) replaced.push(editor);
+      }
+    } else if (kind === 'stale') {
+      // An editor no longer registered: a notice about it, and acts through it, change nothing.
+      const old = pick(replaced);
+      if (old) {
+        assert.doesNotThrow(() => registry.changed(old), `a notice about a replaced writing: seed ${seed}`);
+        await assert.rejects(registry.checkPending(old, registry.pending(old).items[0]?.id ?? old.submissions[0]?.id ?? 'none'), /not registered/, `Check confirmation through a replaced writing: seed ${seed}`);
+        await assert.rejects(registry.morePending(old), /not registered/, `More through a replaced writing: seed ${seed}`);
+        trail.push(`a notice, Check confirmation and More through a replaced ${old.context.sourceRef.id}`);
+      }
+    } else if (kind === 'load' && gate) {
+      const fail = chance(0.25), opening = gate; gate = null;
+      trail.push(fail ? 'the composer fails to load' : 'the composer loads');
+      if (fail) opening.reject(Error('This device could not read its saved versions.')); else opening.resolve();
+    }
+    await check();
+  }
+  // Every act still waiting is answered, so nothing is left running.
+  if (gate) gate.resolve();
+  while (core.held.length) { core.answer('commit'); await settle(); }
+  await started; await settle();
+  registry.dispose();
+  return trail;
+}
+
+test('after every step of a random run, the Review buttons and the departure guard\'s rule and words are the registry\'s one answer', async () => {
+  const seen = [], tally = { asked: 0, left: 0, held: 0 };
+  // A writing whose registration failed cannot be kept by a step or a close: the page says so, and the registry's console warning is quiet here.
+  const warn = console.warn; console.warn = () => {};
+  try { for (let seed = 1; seed <= 60; seed++) seen.push(...await reviewRun(seed, tally)); } finally { console.warn = warn; }
+  // The runs reach every kind of step, the refusals and failures among them, and leaving both asks and goes.
+  console.log('# leaving:', JSON.stringify(tally));
+  for (const kind of ['open m1', 'close', 'send from', 'submission.prepare commit', 'submission.prepare refuse', 'submission.prepare lost', 'message.send commit',
+    'message.send refuse', 'message.send lost', 'a reply from the phone', 'check confirmation', 'more replies', 'replace m1', 'replace t1', 'a notice',
+    'the composer loads', 'the composer fails']) assert.ok(seen.some(step => step.startsWith(kind)), `no run reached ${kind}`);
+  for (const part of ['(its read fails)', '(and its registration fails)', '(refused: Return to this writing before sending.)']) assert.ok(seen.some(step => step.includes(part)), `no run reached ${part}`);
+  assert.ok(tally.asked > 100 && tally.left > 100, 'leaving asks, and goes, many times');
 });

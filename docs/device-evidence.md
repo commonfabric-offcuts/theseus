@@ -21,7 +21,7 @@ whose check no longer exists fails the run.
 | `native-webkit-colors` | `tests/reader_colors_native.mjs` | Reading colours in light and dark: own and agent cards at rest, on hover and with keyboard focus; the hovered passage against a native selection; quoting a selection; colours at phone width with touch |
 | `native-webkit-whispers` | `tests/whisper_native.mjs` | Every whisper check, including the phone-width layout and the dashed line in both schemes |
 | `native-webkit-notebook` | `tests/notebook_pages_native.mjs` | Every Notebook page check, including 390 wide in light and dark |
-| `native-webkit-rail` | `tests/outcome_rail_native.mjs` | The rail at 1280 and 390 wide, Tab order, lit outcomes, and the topic strip at 390 wide |
+| `native-webkit-rail` | `tests/outcome_rail_native.mjs` | The rail at 1280 and 390 wide, Tab order, lit outcomes, and the "☰ Topics" drawer at 390 wide |
 | `native-webkit-pipeline` | `tests/pipeline_native.mjs` | Every pipeline page check, including the page and an item's record at 1280 and 390 wide |
 | `native-webkit-device` | `tests/device_native.mjs` | The phone check page itself, below |
 
@@ -60,7 +60,10 @@ Running these modes in WebKit found two faults, and both are fixed:
 - **Topic strip.** Safari stores `scrollLeft` in whole pixels, so a lit topic
   beside the open one could stay cut by under a pixel. The strip is now always
   placed on a whole pixel, rounded towards the row it is showing
-  (`web/outcome-scope.mjs`).
+  (`web/outcome-scope.mjs`). On a phone the strip has since given way to the
+  "☰ Topics" drawer (`web/rail-drawer.mjs`), which lists the topics top to
+  bottom; the rail mode checks there that the open topic and a lit neighbour
+  show whole.
 - **Pipeline Turn on.** A live change could arrive while Turn on was still
   reading the pipeline. Focus then never reached the pipeline's title. Now a
   read overtaken by a newer one finishes when the newer one has painted

@@ -12,7 +12,7 @@ export function assertDepartureTrace(trace, expectedReceipts) {
     assert.equal(click?.target.topic,entry.destination.id,'actual native target matches the navigation decision');
     assert.ok(trace.some(e=>e.act===entry.act&&['openTarget settled','openTarget refused'].includes(e.event)),'navigation decision settled in retained trace');
     assert.equal(typeof entry.state.hasInFlightSend,'boolean');
-    assert.ok(Array.isArray(entry.state.unconfirmed)&&Array.isArray(entry.state.sessions));
+    assert.ok(Array.isArray(entry.state.inDoubt)&&Array.isArray(entry.state.sessions));
     assert.equal(typeof entry.state.notice.hidden,'boolean');
     for(const session of entry.state.sessions)assert.ok(Array.isArray(session.activeSends)&&Array.isArray(session.submissions));
   }
@@ -74,7 +74,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
       links:[...document.querySelectorAll('#topics a')].map(a=>({id:a.dataset.topicId,href:a.href})),
       visibleCards:[...document.querySelectorAll('#review-content [data-id]')].map(n=>({id:n.dataset.id,text:n.textContent})),
       notice:{text:document.querySelector('#topic-navigation-status')?.textContent,hidden:document.querySelector('#topic-navigation-status')?.hidden},
-      hasInFlightSend:r?.hasInFlightSend,unconfirmed:r?.unconfirmedSends.map(({editor,item})=>({key:editor.key,source:editor.sourceRef,id:item.id,status:item.status,receipt:item.receipt})),
+      hasInFlightSend:r?.hasInFlightSend,inDoubt:r?.inDoubt.map(({editor,ids,unread,label})=>({key:editor.key,source:editor.sourceRef,ids:[...ids],unread,label})),
       sessions:r?[...r.sessions.values()].map(s=>({key:s.editor.key,source:s.editor.sourceRef,activeSends:[...s.sends.keys()],submissions:s.editor.submissions.map(i=>({id:i.id,status:i.status,receipt:i.receipt,blocked:i.blocked})),attempts:s.attempts.map(a=>({id:a.envelope.operation_id,kind:a.envelope.kind,error:a.error,receipt:a.receipt}))})):[]};};
     document.addEventListener('click',e=>{const t=e.target.closest('a,button')??e.target;departureClick=performance.timeOrigin+':'+(++departureAct);departureTrace({event:'native click',act:departureClick,target:{tag:t.tagName,text:t.textContent?.slice(0,100),id:t.id,href:t.href,topic:t.dataset.topicId,submission:t.closest('[data-id]')?.dataset.id},state:departureState()});},true);
     document.addEventListener('DOMContentLoaded',()=>{const n=document.querySelector('#topic-navigation-status');if(n)new MutationObserver(()=>departureTrace({event:'notice mutation',text:n.textContent,hidden:n.hidden,state:departureState()})).observe(n,{subtree:true,childList:true,attributes:true,characterData:true});});
@@ -92,23 +92,34 @@ export async function departureChecks({check,page,until,facts,view,control,obser
   await check('navigation correction active prepare publication reload and settled confirmation',async()=>{
     await setup();const p=await page('departure-active',null,true,{beforeNavigate:observeDeparture}),body='One exact message before switching';
     await reveal(p,'t2');
+    // A reply on its way is not in doubt (item 118): no Review button is painted
+    // at any point of an ordinary send, so the composer never jumps.
+    await p.evaluate(`(()=>{window.reviewPaints=0;new MutationObserver(records=>{for(const r of records)for(const n of r.addedNodes)if(n.nodeType===1&&(n.matches('button')||n.querySelector('button')))window.reviewPaints++;})
+      .observe(document.querySelector('#inline-pending'),{childList:true,subtree:true});})()`);
+    const composer=()=>p.evaluate(`({button:document.querySelector('#inline-pending button')?.textContent??null,paints:window.reviewPaints,height:document.querySelector('#inline-composer').getBoundingClientRect().height})`);
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await write(p,body);await p.key('Enter',4);
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held prepare');
+    const whilePreparing=await composer();
+    assert.deepEqual([whilePreparing.button,whilePreparing.paints],[null,0],'no Review button while the reply is prepared to go: '+JSON.stringify(whilePreparing));
     await choose(p);await until(async()=>/send/i.test(await notice(p)),'active prepare keeps page with guidance');
+    assert.equal(await notice(p),'Wait for the send to finish before changing topics.','the wait names no Review button, as none shows');
     assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
     assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,0,'sidebar does not fall back to beforeunload');
     await p.release(preparing);
     const sending=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'),'held publication');
+    const whileSending=await composer();
+    assert.deepEqual([whileSending.button,whileSending.paints,whileSending.height],[null,0,whilePreparing.height],'nor while its send is out, and the composer keeps its height: '+JSON.stringify(whileSending));
     await choose(p);await until(async()=>/send/i.test(await notice(p)),'active publication keeps page with guidance');
     assert.match(await notice(p),/send/i);
     const origin=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');
     await until(()=>p.events.some(e=>e.method==='Page.javascriptDialogOpening'&&e.params.type==='beforeunload'),'headless reload protection');
     assert.equal(await p.evaluate('performance.timeOrigin'),origin,'CDP dismisses reload and keeps document');
     p.intercept(null);await p.release(sending);await exact(p,sending,body);
-    await point(p,'#inline-pending button');
-    await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${sending.payload.args.submission_id}"] h3')?.textContent==='Sent to Theseus'`),'publication visibly confirmed');
-    await point(p,'#review-close');
+    // A reply that went leaves no Review button behind (item 118).
+    await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'publication confirmed, so no Review button');
+    const went=await composer();
+    assert.deepEqual([went.button,went.paints,went.height],[null,0,whilePreparing.height],'the whole send painted no Review button and never moved the composer: '+JSON.stringify(went));
     await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');await reveal(p,'t2');
 
     const unknown='A committed publication awaiting its original confirmation';
@@ -116,9 +127,11 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const held=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'&&h.payload.operation_id!==sending.payload.operation_id),'unknown publication response');
     p.intercept(null);await p.fail(held);
     const item=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.status==='prepared'&&i.snapshot.body===unknown);},'settled pending publication');
-    await choose(p);await until(async()=>/unconfirmed/i.test(await notice(p)),'unconfirmed choice notice');
+    await choose(p);await until(async()=>/Use “Review 1 reply” to check/.test(await notice(p)),'unconfirmed choice notice names the Review button');
+    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the unconfirmed reply, and only it, has the Review button the notice names');
     await point(p,'#inline-pending button');await point(p,`#review-content [data-id="${item.id}"] button`);
     await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${item.id}"] h3')?.textContent==='Sent to Theseus'`),'Check confirms original publication');
+    await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'checked as sent, its Review button goes');
     await point(p,'#review-close');await choose(p);await ready(p,'t2');await exact(p,held,unknown);
     assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,1,'only the deliberate headless reload opened a prompt');
     p.departureExpectedReceipts=[sending.payload.operation_id,held.payload.operation_id];
@@ -152,8 +165,9 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(null);await p.fail(held);
     const original=await until(async()=>{const all=await rows(p);return all.flatMap(r=>r.snapshot.submissions).find(i=>i.blocked&&i.snapshot.body===body);},'durable blocked-before-prepare item');
     assert.equal(p.calls.some(c=>c.payload?.kind==='submission.prepare'),false,'preparation was never issued');
-    await choose(p);await until(async()=>/unconfirmed/i.test(await notice(p)),'first blocked departure stays');
-    assert.match(await notice(p),/device.*Design discussion/is);
+    await choose(p);await until(async()=>/Use “Review 1 reply” to check/.test(await notice(p)),'first blocked departure stays');
+    assert.match(await notice(p),/kept.*“Design discussion” again/is);
+    assert.equal(await p.evaluate(`document.querySelector('#inline-pending button')?.textContent`),'Review 1 reply','the notice names the Review button the page shows');
     assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
     await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');
     const retained=(await rows(p)).flatMap(r=>r.snapshot.submissions).find(i=>i.id===original.id);
@@ -194,15 +208,21 @@ export async function departureChecks({check,page,until,facts,view,control,obser
       await until(()=>p.evaluate(`(()=>{const b=[...document.querySelectorAll('#review-content button')].find(b=>b.textContent===${JSON.stringify(text)});if(!b||b.disabled)return false;b.dataset.nativeCorrection='';return true;})()`),'available '+text);
       await point(p,'[data-native-correction]');
     };
+    // Its Review button shows once the send that was refused has ended (item 118).
+    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the refused original has its Review button');
     await point(p,'#inline-pending button');await reviewButton('Prepare this reply again');
     await until(()=>p.evaluate('Boolean(document.querySelector("#review-content input[type=checkbox]"))'),'explicit correction review');
     await point(p,'#review-content input[type=checkbox]');
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await reviewButton('Prepare this reply again');
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held corrected preparation');
+    // The correction carries the refused reply's words (item 118): while it goes, they are on their way, not in doubt.
+    const inDoubt=()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent??null`);
+    await until(async()=>await inDoubt()===null,'while the correction is prepared, no Review button');
     await point(p,'#review-close');
     const stay=async stage=>{
       await choose(p);await until(async()=>/Wait for the send/.test(await notice(p)),stage+' uses active send guidance');
+      assert.doesNotMatch(await notice(p),/Review/,stage+': the wait names no Review button, as none shows');
       assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
       const before=p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length;
       const origin=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');
@@ -211,13 +231,20 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     };
     await stay('correction prepare');await p.release(preparing);
     const sending=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'),'held corrected publication');
+    assert.equal(await inDoubt(),null,'nor while the correction is sent');
     await stay('correction publication');p.intercept(null);await p.release(sending);await exact(p,sending,body);
-    await point(p,'#inline-pending button');
-    await until(()=>p.evaluate(`document.querySelector('#review-content [data-id="${sending.payload.args.submission_id}"] h3')?.textContent==='Sent to Theseus'`),'corrected publication visibly confirmed');
-    assert.equal(await p.evaluate(`document.querySelector('#review-content [data-id="${original.id}"] h3').textContent`),'Not sent — writing kept');
+    // The correction went, so the refused reply it carries leaves no Review button, now or when the page is opened again.
+    const kept=async()=>{const all=(await rows(p)).flatMap(r=>r.snapshot.submissions);return [all.find(i=>i.id===original.id),all.find(i=>i.id===sending.payload.args.submission_id)];};
+    const settled=async()=>{const [refused,corrected]=await kept();return refused?.correctedBy===corrected?.id&&corrected?.status==='confirmed'&&[refused.status,corrected.status];};
+    assert.deepEqual(await until(settled,'corrected publication confirmed, the refusal kept'),['refused','confirmed']);
+    await until(async()=>await inDoubt()===null,'the correction went, so no Review button');
     assert.deepEqual(await view('operation',{operation_id:original.prepareOperationId}),originalReceipt,'original refusal is immutable');
     assert.equal(p.calls.filter(c=>c.payload?.kind==='message.send').length,1,'one correction publication, no original replay');
-    await point(p,'#review-close');await choose(p);await ready(p,'t2');
+    await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');
+    await until(()=>p.evaluate(`Boolean(document.querySelector('#inline-writing-body')?.getBoundingClientRect().height)`),'the composer is restored');
+    assert.deepEqual(await settled(),['refused','confirmed'],'the page opened again with the kept refusal and its confirmed correction');
+    assert.equal(await inDoubt(),null,'and shows no Review button for them');
+    await choose(p);await ready(p,'t2');
     assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,2,'only the two deliberate reloads prompted');
     assert.deepEqual(p.errors,[]);observations.push({name:'native correction original refusal',originalReceipt,otherReceipt});
   });

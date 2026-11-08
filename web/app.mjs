@@ -47,6 +47,7 @@ import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine }
 import { firstLine } from './pipeline-words.mjs';
 import { phoneCheck } from './phone-check.mjs';
 import { MeasurementsPage, OutcomeTargets, paintTopicTarget } from './targets.mjs';
+import { railDrawer } from './rail-drawer.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -294,24 +295,49 @@ async function showCorrection(editor, item, opener, presentation = presentationF
   $('review-content').append(prepare);
 }
 
-function pendingCount(editor) {
-  return new Set([...editor.submissions.map(item => item.id), ...registry.pending(editor).items.map(item => item.id)]).size;
+// The Review buttons, drawn from the registry alone (docs/replies-in-doubt.md):
+// one for each registered writing with a reply in doubt, in the order the
+// writings registered, in doubt()'s words. A message's goes under the topic's
+// title; the topic's own goes in the composer while the composer shows, and
+// under the title until then; the Reader shows its writing's as well. Whatever
+// told the page of a change, all are drawn again from what the registry holds
+// now, so no editor an event hands in draws or erases one. Returns what it
+// drew, which is what the departure guard names.
+function paintReview() {
+  const entries = registry?.inDoubt ?? [], composer = !$('inline-composer').hidden;
+  const inComposer = entry => composer && entry.editor.context.sourceRef.kind === 'topic';
+  const title = $('topic-pending'), hosts = new Map([...title.children].map(host => [host.dataset.key, host]));
+  const rows = entries.filter(entry => !inComposer(entry)).map(entry => {
+    const host = hosts.get(entry.editor.key) ?? node('div'); host.dataset.key = entry.editor.key; reviewControl(host, entry); return host;
+  });
+  if (rows.length !== title.children.length || rows.some((host, n) => title.children[n] !== host)) title.replaceChildren(...rows);
+  reviewControl($('inline-pending'), entries.find(inComposer));
+  const reading = registry?.current?.editors.reply?.key;
+  reviewControl($('pending-submissions'), entries.find(entry => entry.editor.key === reading));
+  return entries;
 }
-function pendingButton(host, editor, presentation = presentationFor(editor)) {
-  const count = pendingCount(editor), label = `Review ${count} ${count === 1 ? 'reply' : 'replies'}`;
+function reviewControl(host, entry) {
+  if (!entry) { host.replaceChildren(); return; }
   let control = host.firstElementChild;
-  if (!count) { host.replaceChildren(); return; }
-  if (!control) { control = button(label, () => showPending(editor, control, presentation)); host.append(control); }
-  control.textContent = label; control.onclick = () => run(() => showPending(editor, control, presentation));
+  if (!control) { control = node('button'); control.type = 'button'; host.append(control); }
+  control.textContent = entry.label; control.onclick = () => run(() => showPending(entry.editor.key, control));
 }
-async function showPending(editor, opener, presentation = presentationFor(editor)) {
+// The replies in doubt of the writing registered under this key, read again
+// from the registry at each draw and each act.
+async function showPending(key, opener) {
   const serial = beginReview('Your replies', opener), current = () => serial === reviewSerial && review.open;
+  const writing = () => registry.sessions.get(key)?.editor;
   const host = $('review-content');
   const names = { preparing: 'Preparing — writing kept', prepared: 'Confirmation unknown', confirmed: 'Sent to Theseus', refused: 'Not sent — writing kept', unknown: 'Confirmation unknown', committed: 'Sent to Theseus', rejected: 'Not sent — writing kept' };
+  // The replies in doubt, and those that were while the list is open, so a
+  // reply checked as sent says so in place.
+  const shown = new Set();
   const draw = () => {
-    if (!current()) return;
+    const editor = writing();
+    if (!current() || !editor) return;
+    for (const id of registry.doubt(editor).ids) shown.add(id);
     const local = new Map(editor.submissions.map(item => [item.id, item]));
-    const entries = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))];
+    const entries = [...local.values(), ...registry.pending(editor).items.filter(item => !local.has(item.id))].filter(item => shown.has(item.id));
     for (const item of entries) {
       const statusKey = item.status ?? item.send_status;
       let card = [...host.children].find(child => child.dataset.id === item.id);
@@ -321,13 +347,17 @@ async function showPending(editor, opener, presentation = presentationFor(editor
         if (local.has(item.id)) { card.append(node('pre', item.snapshot.body));
           if (item.snapshot.attachments.length) card.append(node('p', 'Included in this reply · ' + imageSummary(editor, item.snapshot.attachments), 'muted')); }
         else card.append(button('Read submitted writing', async () => {
-          const detail = await registry.inspectPending(editor, item.id);
+          const detail = await registry.inspectPending(writing(), item.id);
           if (current() && !card.querySelector('pre')) card.append(node('pre', detail.body));
           draw();
         }));
-        card.append(button('Check confirmation', async () => { await registry.checkPending(editor, item.id); draw(); }));
+        card.append(button('Check confirmation', async () => { await registry.checkPending(writing(), item.id); draw(); }));
         if (local.has(item.id) && statusKey !== 'confirmed' && (item.detached || item.receipt?.kind === 'submission.prepare')) {
-          const again = button('Prepare this reply again', () => showCorrection(editor, item, opener, presentation)); card.append(again);
+          card.append(button('Prepare this reply again', () => {
+            const now = writing(), kept = now?.submissions.find(entry => entry.id === item.id);
+            if (!kept) throw Error('This writing changed. Review it again.');
+            return showCorrection(now, kept, opener);
+          }));
         }
       }
       card.querySelector('h3').textContent = (item.detached ? 'Earlier runtime · ' : '') + (names[statusKey] ?? 'Confirmation unknown');
@@ -338,24 +368,24 @@ async function showPending(editor, opener, presentation = presentationFor(editor
     }
     host.querySelector('[data-more]')?.remove();
     if (registry.pending(editor).next_cursor !== null) {
-      const more = button('More pending replies', async () => { more.disabled = true; await registry.morePending(editor); draw(); });
+      const more = button('More pending replies', async () => { more.disabled = true; await registry.morePending(writing()); draw(); });
       more.dataset.more = ''; host.append(more);
     }
   }; draw();
 }
 
+// The registry tells the page of every change. The Review buttons are drawn
+// again from the registry; the rest is painted only for writing it holds, so a
+// notice about writing it no longer holds changes nothing else.
 function changed(editor) {
+  paintReview();
+  if (registry.sessions.get(editor.key)?.editor !== editor) return;
   if (reader?.sessions && Object.values(reader.sessions).includes(editor)) {
-    reader.paintStatus(); reader.paintPending();
+    reader.paintStatus();
     $('review-versions').hidden = !needsReview(reader.editor);
   }
   if (inline?.editor === editor) inline.paintStatus();
   invalidateComparison(editor);
-  if (editor.context.kind === 'reply' && editor.context.sourceRef.kind !== 'topic' && pendingCount(editor)) {
-    let host = [...$('topic-pending').children].find(child => child.dataset.key === editor.key);
-    if (!host) { host = node('div'); host.dataset.key = editor.key; $('topic-pending').append(host); }
-    pendingButton(host, editor);
-  }
   for (const item of editor.submissions) {
     const version = item.status === 'confirmed' && item.receipt?.result?.topic?.version;
     if (version > localEffectVersion) { localEffectVersion = version; freshness?.invalidate('topic', version); freshness?.request(); }
@@ -1082,7 +1112,10 @@ async function checkInlineAvailability(read, current) {
 }
 async function initializeInlineComposer() {
   try { await registry.initializeInline(topic); }
-  catch (error) { inline.fail(error.message); return; }
+  catch (error) {
+    // The failed composer shows: writing registered before the failure has its button there.
+    inline.fail(error.message); paintReview(); return;
+  }
   // Recovery discovery reads in the background lane, which any foreground read
   // defers. The optional rail reads that follow wait for it, so a saved copy
   // that Core already acknowledges is retired rather than left for review.
@@ -1337,7 +1370,7 @@ async function initialize() {
     status: editor => registry.status(editor), sign: editor => registry.saveSign(editor).state, needsReview,
     send: (editor, p) => registry.send(editor, { presentation: p, stay: true }),
     review: (editor, p, opener) => run(() => showVersions(editor, opener, p)),
-    renderPending: (host, editor, p) => pendingButton(host, editor, p),
+    renderPending: () => paintReview(),
     retry: () => run(retryInline),
     people: whisperPeople,
     conversation: () => Boolean(here?.page),
@@ -1374,7 +1407,7 @@ async function initialize() {
     audiencePainted: topicId => paintReaderAudience(topicId),
     recipientsPainted: (names, topicId) => paintReaderAudience(topicId, names),
     reconcile: editor => run(() => registry.checkConfirmation(editor)),
-    renderPending: (host, editor) => pendingButton(host, editor, reader.presentation),
+    renderPending: () => paintReview(),
     recover: (editor, item) => run(() => showCorrection(editor, item, document.activeElement, reader.presentation)),
     error: error => reader.notice(error.message),
     paneClass: source => paneClass(source, bootstrap.actor, agentShown),
@@ -1422,7 +1455,7 @@ async function initialize() {
   window.addEventListener('focus', noteRead);
   document.addEventListener('visibilitychange', notePageRead);
   window.addEventListener('focus', notePageRead);
-  topicNavigation = new TopicNavigation({ registry, current: route,
+  topicNavigation = new TopicNavigation({ registry, current: route, review: paintReview,
     navigateTarget: target => { marks.leave(); location.assign(routeHref(target)); } });
   await initializeInlineComposer();
   // The conversation has its own row, never one among the topics.
@@ -2090,6 +2123,8 @@ window.addEventListener('pageshow', event => { if (event.persisted) location.rel
 // Every shown time follows the viewer's day: at midnight today's "4:40 AM"
 // becomes "Yesterday 4:40 AM", with a topic's list held where the reader was.
 watchDays({ doc: document, win: window, repaint: () => registry ? keepListAnchor(() => repaintTimes(document)) : repaintTimes(document) });
+// On a phone the topic comes first, and "☰ Topics" opens the rail over it.
+railDrawer(document, window);
 // A start that fails says why, with a way to start again from nothing: the
 // reload runs start afresh. Settles true when the page started.
 function begin(starting = start) {

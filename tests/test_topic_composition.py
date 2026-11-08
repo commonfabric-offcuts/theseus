@@ -66,7 +66,8 @@ class TopicCompositionCase(ReaderCase):
         self.assertIs(state["destination_available"], True)
         self.assertIsNone(state["draft"])
         self.assertIsNone(state["note"])
-        self.assertEqual(state["submissions"], {"instance_id": "test-instance", "items": [], "next_cursor": None})
+        # through: the read could see no reply (docs/replies-in-doubt.md).
+        self.assertEqual(state["submissions"], {"instance_id": "test-instance", "items": [], "next_cursor": None, "through": 0})
         self.assertEqual(self.records(), before)
 
     def test_round_trip_preserves_reply_and_sends_exact_attachment_only_once(self):
