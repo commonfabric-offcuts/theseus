@@ -14,7 +14,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { namedImages, LONG_NAME, recordTap, tapReached } from './reader_images_native.mjs';
+import { namedImages, LONG_NAME, recordTap, tapReachedElsewhere } from './reader_images_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, caseFilter] = process.argv.slice(2);
@@ -503,7 +503,7 @@ try {
       else await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
       await until(async () => await words('screen.png') === null, 'the held Remove removed the second image');
       assert.match(await words(LONG_NAME), /Not uploaded/, 'the first image\'s row stays');
-      if (touch) assert.deepEqual(await tapReached(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger');
+      if (touch) assert.deepEqual(await tapReachedElsewhere(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger but the Remove it went down on');
       assert.deepEqual(await p.evaluate('({focus:document.activeElement?.id,ring:document.activeElement?.matches(":focus-visible")})'), { focus: 'opening-add-image', ring: false }, 'focus leaves the opening message for Add image, with no ring, as a press on a Remove left in place does, not for what slid under the pointer');
     } finally { await names.done(); }
   });

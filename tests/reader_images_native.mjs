@@ -22,7 +22,8 @@ export const imageInstrumentation = `(()=>{
 // the pointer, and the press is still Remove's. With touch, the press is a
 // finger (the page has touch emulation on): the tap's mousedown, mouseup and
 // click, which the browser sends once the finger lifts to whatever is then
-// under it, reach nothing, so nothing that slid under the finger takes focus.
+// under the point it went down on, reach nothing in the page but that Remove,
+// so nothing that slid under the finger takes focus or is pressed.
 // With fail, the held upload fails instead of finishing. With from, focus is
 // in that field before the press, as when a person pasted the image there or
 // went back to typing. Returns where Remove was, and where focus is once the
@@ -57,12 +58,14 @@ export async function holdRemoveThroughUpload(p, host, held, until, { name = 'sc
   if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   else await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
   await until(() => p.evaluate(`!${rowOf(name)}`), 'the held Remove removed the image');
-  if (touch) assert.deepEqual(await tapReached(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger');
+  if (touch) assert.deepEqual(await tapReachedElsewhere(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger but the Remove it went down on');
   return { before, after, overAtRelease, ...await p.evaluate('({focus:document.activeElement?.id||document.activeElement?.tagName,ring:document.activeElement?.matches(":focus-visible")})') };
 }
-// What a tap's mousedown, mouseup and click reached from here on: each one the
-// browser sends (a trusted one), with what it went to.
-export const recordTap = p => p.evaluate(`(()=>{window.tapReached=[];if(!window.tapRecorded){window.tapRecorded=true;for(const t of ['mousedown','mouseup','click','mousemove'])addEventListener(t,e=>{if(e.isTrusted)tapReached.push(t==='mousemove'?(e.clientX===1&&e.clientY===1?'moved to the corner':null):[t,e.target.id||e.target.tagName,(e.target.textContent||'').slice(0,20)])},true)}return true})()`);
+// What a tap's mousedown, mouseup and click reached in the page from here on:
+// each one the browser sends (a trusted one) that the page did not stop, with
+// what it went to ('pressed' for the button the press went down on, marked
+// data-held-remove or data-held).
+export const recordTap = p => p.evaluate(`(()=>{window.tapReached=[];if(!window.tapRecorded){window.tapRecorded=true;for(const t of ['mousedown','mouseup','click','mousemove'])document.addEventListener(t,e=>{if(e.isTrusted)tapReached.push(t==='mousemove'?(e.clientX===1&&e.clientY===1?'moved to the corner':null):[t,e.target.closest?.('[data-held-remove],[data-held]')?'pressed':e.target.id||e.target.tagName,(e.target.textContent||'').slice(0,20)])},true)}return true})()`);
 // The browser sends a tap's mouse events after the finger lifts, ahead of any
 // input that comes after it: a mouse moved to the page's corner afterwards
 // arrives after them, so what reached the page before it is the whole tap.
@@ -71,6 +74,8 @@ export async function tapReached(p, until) {
   await until(() => p.evaluate(`tapReached.includes('moved to the corner')`), 'a mouse moved after the tap reached the page');
   return p.evaluate(`tapReached.slice(0,tapReached.indexOf('moved to the corner')).filter(Boolean)`);
 }
+// What of the tap reached anything but the button it went down on.
+export const tapReachedElsewhere = async (p, until) => (await tapReached(p, until)).filter(([, target]) => target !== 'pressed');
 // A copy of the fixture image under a name a person's file has: a long one,
 // and the name macOS gives a screenshot. Their words wrap where screen.png's
 // never do.
@@ -697,6 +702,34 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
         await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
         assert.deepEqual(p.errors, []);
       } finally { await names.done(); }
+    });
+  }
+
+  // A quick finger tap on a Ready image's Remove that rolls a few pixels off
+  // its edge before lifting, as fingers do, with nothing on the page moving.
+  // The browser counts it a tap on Remove (it does the same for Add image,
+  // beside it), and Remove removes the image: a reviewer found this tap did
+  // nothing while the page judged taps itself.
+  for (const radius of [1, 12]) {
+    await check(`images a finger tap that rolls off Remove before lifting removes the image, with a touch radius of ${radius}`, async () => {
+      const p = await page(`remove-roll-${radius}`, null, true);
+      await p.open(1);
+      await narrow(p);
+      await choose(p, path.join(root, 'tests/fixtures/media/screen.png'));
+      await until(() => p.evaluate(`[...document.querySelectorAll('#writing-attachments .image-choice')].some(r=>r.firstElementChild.textContent==='screen.png · Ready'&&JSON.parse(r.dataset.view||'[]')[4]===false&&[...r.querySelectorAll('button')].some(b=>b.textContent==='Remove'&&!b.disabled))`), 'a ready image with Remove');
+      await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+      await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.heldRemove=""');
+      const b = await p.box('[data-held-remove]'), x = b.x + b.width / 2, y = b.y + b.height - 2, lift = y + 6;
+      assert.equal(await p.evaluate(`document.elementFromPoint(${x},${lift})?.closest('[data-held-remove]')??null`), null, 'the finger lifts off Remove');
+      await recordTap(p);
+      await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, radiusX: radius, radiusY: radius }] });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: lift, radiusX: radius, radiusY: radius }] });
+      await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      assert.deepEqual(await tapReachedElsewhere(p, until), [], 'the tap reaches nothing but Remove');
+      await until(() => p.evaluate('document.querySelector("#writing-attachments").children.length===0'), 'the tap removed the image');
+      assert.equal(await p.evaluate('document.activeElement?.id'), 'add-image', 'focus lands on Add image, as a tap on Remove leaves it');
+      await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
+      assert.deepEqual(p.errors, []);
     });
   }
 

@@ -10,47 +10,54 @@
 // the button stays disabled until it settles, whatever repaints meanwhile.
 const busy = new WeakSet();
 
-// A pointer press on such a button is the button's own, from the moment it
-// goes down to the moment it comes up, whatever the page does meanwhile: a
-// button coming in before it on a narrow screen, a row above it growing as
-// that row's own upload finishes, or the Reader's reply field, which fills
-// the height its image rows and the status under them leave, giving up or
-// taking back room as they change height. Left to the browser, such a press
-// goes to whatever is under the pointer as it comes up, and on a phone the
-// whole of a tap (its mousedown, which moves focus, its mouseup and its click)
-// is sent only then; so the button never leaves its press to the browser,
-// moved or not. It keeps what the browser sends for every press of its own
-// from reaching anything: a finger's lift (its touchend, which the button
-// gets wherever it now is, even taken out of the page) is cancelled, so the
-// browser sends the tap nowhere, and a mouse's click is dropped. Then, as the
-// press comes up on the button or where the button was when it went down, it
-// presses the button as a key would: focus on it, then its click. One way
-// for every press, so a press the page moved does just what one it left in
-// place does. A press dragged away from where it went down lets go without
-// pressing, as any button's does.
-let held = null, ended = null;
+// The page can move such a button while a press is held on it: a button
+// coming in before it on a narrow screen, a row above it growing as that row's
+// own upload finishes, or the Reader's reply field, which fills the height its
+// image rows and the status under them leave, giving up or taking back room as
+// they change height. Whether a press was a press stays the browser's own
+// decision, and its click is the one thing that presses the button; moving the
+// button changes only where the browser sends that click, so only that is set
+// right here, by the button the press went down on.
+// - A mouse or pen press is captured: its mouseup and click come to the button
+//   wherever it now is. Moved off where the button is and where it was, the
+//   press goes back to the browser's own aim, so a press dragged away lets go,
+//   as any button's does.
+// - A finger's tap is sent once the finger lifts, and only if the browser took
+//   it for a tap, to whatever is then under the point it went down on. The
+//   tap's mousedown, mouseup and click that land elsewhere belong to the
+//   button the finger went down on: the mousedown focuses it, as a tap on it
+//   does, and the click presses it. A scroll, a long press, or the next press
+//   sends no tap, and the finger's press is forgotten. The button says it
+//   holds its press (data-holds-press), so a page's own touch guard
+//   (protectTouchBounds) leaves its taps to the browser too.
+let finger = null;
 function follow() {
-  addEventListener('pointerdown', () => { held = null; ended = null; }, true);
-  addEventListener('pointercancel', () => { held = null; }, true);
-  addEventListener('pointerup', event => {
-    if (!held || event.pointerId !== held.pointerId) return;
-    const { button, place: was } = held, x = event.clientX, y = event.clientY;
-    held = null; ended = button;
+  addEventListener('pointerdown', () => { finger = null; }, true);
+  addEventListener('pointercancel', () => { finger = null; }, true);
+  for (const type of ['mousedown', 'mouseup', 'click']) addEventListener(type, event => {
+    const button = finger;
+    if (!button || event.detail === 0) return;
+    if (type === 'click') finger = null;
+    if (button.contains(event.target)) return;
+    event.preventDefault(); event.stopImmediatePropagation();
     if (!button.isConnected) return;
-    if (!button.contains(document.elementFromPoint(x, y)) && (x < was.left || x > was.right || y < was.top || y > was.bottom)) return;
-    button.focus({ preventScroll: true }); button.click();
-  }, true);
-  addEventListener('click', event => {
-    if (ended && event.detail > 0) { ended = null; event.preventDefault(); event.stopPropagation(); }
+    if (type === 'mousedown') button.focus({ preventScroll: true });
+    if (type === 'click') button.click();
   }, true);
 }
 let following = false;
 export function holdsItsPress(button) {
   if (!following) { following = true; follow(); }
+  button.dataset.holdsPress = '';
   button.addEventListener('pointerdown', event => {
-    if (event.isPrimary && event.button === 0) held = { button, pointerId: event.pointerId, place: button.getBoundingClientRect() };
+    if (!event.isPrimary || event.button !== 0) return;
+    if (event.pointerType === 'touch') { finger = button; return; }
+    const was = button.getBoundingClientRect(), on = (r, e) => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    button.setPointerCapture(event.pointerId);
+    const away = e => { if (!on(was, e) && !on(button.getBoundingClientRect(), e)) button.releasePointerCapture(e.pointerId); };
+    button.addEventListener('pointermove', away);
+    button.addEventListener('lostpointercapture', () => button.removeEventListener('pointermove', away), { once: true });
   });
-  button.addEventListener('touchend', event => { if (ended === button) event.preventDefault(); }, { passive: false });
 }
 
 export function paintImageRows(host, choices, enabled, press) {

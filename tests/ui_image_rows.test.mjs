@@ -3,14 +3,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { paintImageRows } from '../web/image-rows.mjs';
+import { protectTouchBounds } from '../web/creation-view.mjs';
 
 // Just enough of the DOM to see what a repaint does to a held button: a node
 // taken out of its row, even to be put back at once, counts as a move, and a
 // press held on a moved or replaced button clicks nothing.
 class Node {
-  constructor(tag) { this.tagName = tag; this.children = []; this.parent = null; this.dataset = {}; this.textContent = ''; this.disabled = false; this.onclick = null; this.moves = 0; this.listeners = []; this.place = { left: 0, top: 0, right: 0, bottom: 0 }; }
-  addEventListener(type, listener) { this.listeners.push({ type, listener }); }
+  constructor(tag) { this.tagName = tag; this.children = []; this.parent = null; this.dataset = {}; this.textContent = ''; this.disabled = false; this.onclick = null; this.moves = 0; this.listeners = []; this.place = { left: 0, top: 0, right: 0, bottom: 0 }; this.captured = null; }
+  addEventListener(type, listener, options) { this.listeners.push({ type, listener, once: Boolean(options?.once) }); }
+  removeEventListener(type, listener) { this.listeners = this.listeners.filter(l => l.type !== type || l.listener !== listener); }
+  fire(type, event) { for (const l of [...this.listeners]) if (l.type === type) { if (l.once) this.removeEventListener(type, l.listener); l.listener(event); } }
   getBoundingClientRect() { return { ...this.place }; }
+  setPointerCapture(pointerId) { this.captured = pointerId; }
+  releasePointerCapture(pointerId) { if (this.captured === pointerId) { this.captured = null; this.fire('lostpointercapture', { pointerId }); } }
   contains(node) { for (let n = node; n; n = n.parent) if (n === this) return true; return false; }
   click() { if (!this.disabled) this.onclick?.(); }
   // A disabled button or one out of the page takes no focus.
@@ -24,36 +29,10 @@ class Node {
   after(node) { node.detach(); this.parent.children.splice(this.parent.children.indexOf(this) + 1, 0, node); node.parent = this.parent; }
   remove() { this.detach(); }
 }
-// The page's own listeners (capture, on the window) and what is under a point.
+// The page's own listeners (capture, on the window), and what is under a point.
 const page = [];
-let under = null;
 globalThis.addEventListener = (type, listener) => page.push({ type, listener });
-globalThis.document = { createElement: tag => new Node(tag), elementFromPoint: () => under, activeElement: null };
-// A pointer event as the browser dispatches it: the window sees it first, then
-// the element it is over (a press goes down on the button it is aimed at).
-const pointer = (type, target, { x = 10, y = 10, pointerId = 1, button = 0, isPrimary = true } = {}) => {
-  const event = { type, clientX: x, clientY: y, pointerId, button, isPrimary };
-  for (const l of page) if (l.type === type) l.listener(event);
-  for (const l of target?.listeners ?? []) if (l.type === type) l.listener(event);
-};
-// A click the browser sends after a pointer's release (detail 1) or for a key
-// (detail 0): whether the page let it through to its target.
-const browserClick = (detail = 1) => {
-  const event = { type: 'click', detail, stopped: false, prevented: false, stopPropagation() { this.stopped = true; }, preventDefault() { this.prevented = true; } };
-  for (const l of page) if (l.type === 'click') l.listener(event);
-  return !event.stopped && !event.prevented;
-};
-
-// A finger's lift (touchend), which the browser dispatches after its
-// pointerup to what the finger went down on, wherever that now is: whether
-// the page cancelled it, so that the browser sends no mousedown, mouseup or
-// click for the tap to whatever is under the finger.
-const lift = target => {
-  const event = { type: 'touchend', prevented: false, preventDefault() { this.prevented = true; } };
-  for (const l of page) if (l.type === 'touchend') l.listener(event);
-  for (const l of target?.listeners ?? []) if (l.type === 'touchend') l.listener(event);
-  return event.prevented;
-};
+globalThis.document = { createElement: tag => new Node(tag), activeElement: null, elementFromPoint: (x, y) => document.at?.(x, y) ?? null };
 
 const REMOVE = { label: 'Remove', method: 'remove' }, RETRY = { label: 'Retry upload', method: 'retry' };
 const choice = (id, state, actions = [REMOVE]) => ({ id, text: `${id}.png · ${state}`, view: JSON.stringify([state, actions.map(a => a.label)]), actions });
@@ -126,99 +105,153 @@ test('rows follow the chosen images: a removed image\'s row goes, an unchanged r
   assert.deepEqual(host.children.map(r => r.dataset.selection), ['b']);
 });
 
+
+// What the browser does with a press, as far as these checks need it. A
+// pointer event goes to the window first, then to its target. A mouse's
+// mouseup and click go to the button that captured it, else to what the
+// pointer is over. A finger's lift (touchend) goes to what it went down on,
+// and unless the page cancelled it the browser decides whether the finger
+// made a tap; a tap's mousedown, mouseup and click go to whatever is then
+// under the point the finger went down on. A mouse event goes to the window,
+// then, unless stopped there, to its target: a mousedown not cancelled
+// focuses what it lands on, and a click presses it.
+const pointer = (type, target, { x = 10, y = 10, pointerId = 1, button = 0, isPrimary = true, pointerType = 'mouse' } = {}) => {
+  const event = { type, target, clientX: x, clientY: y, pointerId, button, isPrimary, pointerType };
+  for (const l of page) if (l.type === type) l.listener(event);
+  target?.fire(type, event);
+};
+// What a mouse event reached: 'stopped', or its target by name.
+const name = node => node.id ?? node.dataset.action ?? node.tagName;
+const mouse = (type, target, detail = 1) => {
+  const event = { type, target, detail, stopped: false, halted: false, prevented: false, stopPropagation() { this.stopped = true; }, stopImmediatePropagation() { this.stopped = this.halted = true; }, preventDefault() { this.prevented = true; } };
+  for (const l of page) if (l.type === type && !event.halted) l.listener(event);
+  if (event.stopped) return 'stopped';
+  if (type === 'mousedown' && !event.prevented) target.focus();
+  if (type === 'click') target.click();
+  return name(target);
+};
+// A mouse press: down on the button it is aimed at, the page moving things
+// meanwhile, a move to `to`, and up over `over`. Returns where its click went.
+const mousePress = (button, over, { x = 130, y = 20, to = null } = {}, meanwhile = () => {}) => {
+  pointer('pointerdown', button, { x, y }); mouse('mousedown', button);
+  meanwhile();
+  if (to) pointer('pointermove', button.captured === 1 ? button : over, { x: to.x, y: to.y });
+  const up = button.captured === 1 ? button : over;
+  pointer('pointerup', up, to ?? { x, y });
+  const captured = button.captured === 1; button.captured = null;
+  mouse('mouseup', up);
+  return mouse('click', captured ? button : over);
+};
+// A finger press: down on the button, the page moving things meanwhile, up;
+// if the browser takes it for a tap, its mouse events go to `under`. Returns
+// what the tap's mousedown, mouseup and click reached, or null if no tap was sent.
+const fingerPress = (button, under, { cancel = false } = {}, meanwhile = () => {}) => {
+  pointer('pointerdown', button, { x: 130, y: 20, pointerType: 'touch' });
+  meanwhile();
+  if (cancel) { pointer('pointercancel', button, { pointerType: 'touch' }); return null; }
+  pointer('pointerup', button, { x: 130, y: 20, pointerType: 'touch' });
+  const lift = { prevented: false, preventDefault() { this.prevented = true; } };
+  for (const l of page) if (l.type === 'touchend') l.listener(lift);
+  button.fire('touchend', lift);
+  if (lift.prevented) return null;
+  return ['mousedown', 'mouseup', 'click'].map(type => mouse(type, under));
+};
+
 // The page moved Remove from under a still pointer between the press going
-// down and coming up (its row's words wrapped, or a row above it grew): the
-// point it comes up at is over something else, but where Remove was.
+// down and coming up (its row's words wrapped, or a row above it grew).
 const pressedRemove = () => {
   const { host, presses, paint } = rows();
   paint([choice('a', 'Uploading')]);
   const row = host.children[0], remove = buttons(row)[0], words = row.firstElementChild;
   remove.place = { left: 100, top: 0, right: 160, bottom: 40 };
+  const moved = () => { remove.place = { left: 100, top: 38, right: 160, bottom: 78 }; };
   // Focus is in the reply field, where a person who pasted an image keeps typing.
-  document.activeElement = { id: 'writing-body' };
-  return { presses, paint, row, remove, words };
+  const field = new Node('textarea'); field.page = true; field.id = 'writing-body';
+  document.activeElement = field;
+  const r = () => remove.place;
+  document.at = (x, y) => x >= r().left && x <= r().right && y >= r().top && y <= r().bottom ? remove : field;
+  return { presses, paint, row, remove, words, field, moved };
 };
 
-test('a press that went down on Remove and comes up where Remove was presses it once, though the page moved Remove from under it, focused as a key would, and the click the browser sends after it reaches nothing', () => {
-  const { presses, remove, words } = pressedRemove();
-  pointer('pointerdown', remove, { x: 157, y: 3 });
-  remove.place = { left: 100, top: 38, right: 160, bottom: 78 }; under = words;
-  pointer('pointerup', words, { x: 157, y: 3 });
+test('a mouse press on Remove is captured, so the browser\'s own click comes to Remove though the page moves it from under the pointer, and presses it once', () => {
+  const { presses, remove, words, moved } = pressedRemove();
+  assert.equal(mousePress(remove, words, {}, moved), 'Remove', 'the browser\'s click came to Remove');
   assert.equal(presses.length, 1, 'Remove is pressed, as the person pressed it');
   assert.equal(presses[0].action, REMOVE);
-  assert.equal(presses[0].focus, remove, 'focus is on Remove as it is pressed, as with a press the page left in place');
-  assert.deepEqual(remove.focusedWith, { preventScroll: true }, 'focused without scrolling the page');
-  assert.equal(browserClick(0), true, 'a key\'s click is never taken for it');
-  assert.equal(browserClick(), false, 'the click the browser sends to whatever is now under the pointer is this press\'s and is dropped');
-  assert.equal(browserClick(), true, 'and only that one');
-  presses[0].settle();
+  assert.equal(presses[0].focus, remove, 'focused by the browser\'s own mousedown on it');
 });
 
-test('a finger that went down on Remove and lifts where Remove was presses it once with focus on it, and its tap\'s mousedown, mouseup and click are cancelled, so nothing under the finger is pressed or focused', () => {
-  const { presses, remove, words } = pressedRemove();
-  pointer('pointerdown', remove, { x: 157, y: 3 });
-  remove.place = { left: 100, top: 38, right: 160, bottom: 78 }; under = words;
-  pointer('pointerup', words, { x: 157, y: 3 });
+test('a mouse press that moves only within where Remove is or was stays Remove\'s; one dragged away from both goes back to the browser\'s aim and presses nothing', () => {
+  const { presses, remove, words, moved } = pressedRemove();
+  assert.equal(mousePress(remove, words, { to: { x: 132, y: 22 } }, moved), 'Remove', 'a pointer that shook where Remove was is still Remove\'s');
+  presses[0].settle();
+  const other = pressedRemove();
+  assert.equal(mousePress(other.remove, other.words, { to: { x: 132, y: 60 } }, other.moved), 'Remove', 'and one that followed Remove to where it now is');
+  other.presses[0].settle();
+  const away = pressedRemove();
+  assert.equal(mousePress(away.remove, away.words, { to: { x: 40, y: 20 } }), 'span', 'dragged away: the click goes where the browser aims it, not to Remove');
+  assert.equal(away.presses.length, 0, 'and Remove is not pressed');
+  assert.equal(away.remove.captured, null);
+});
+
+test('a finger\'s tap that lands on Remove is the browser\'s alone: its lift is never cancelled and nothing is taken from it, so a tap rolled off Remove that the browser still counts presses it', () => {
+  const { presses, remove, field } = pressedRemove();
+  assert.deepEqual(fingerPress(remove, remove), ['Remove', 'Remove', 'Remove'], 'the tap\'s mousedown, mouseup and click reached Remove');
+  assert.equal(presses.length, 1, 'pressed once, by the browser\'s click');
+  assert.equal(presses[0].focus, remove, 'focused by the tap\'s own mousedown');
+  assert.equal(remove.captured, null, 'a finger is never captured');
+  presses[0].settle();
+  document.activeElement = field;
+  assert.equal(mouse('click', field), 'writing-body', 'the next click, on anything else, reaches what it is on');
+});
+
+test('a finger\'s tap whose Remove the page moved is taken from what slid under it: its mousedown focuses Remove, its click presses Remove once, and nothing else is pressed or focused', () => {
+  const { presses, remove, field, moved } = pressedRemove();
+  assert.deepEqual(fingerPress(remove, field, {}, moved), ['stopped', 'stopped', 'stopped'], 'the tap\'s mousedown, mouseup and click reach nothing under the finger');
   assert.equal(presses.length, 1, 'Remove is pressed, as the person pressed it');
-  assert.equal(presses[0].focus, remove, 'focus left the reply field for Remove, as a tap the page left in place moves it');
-  assert.equal(lift(remove), true, 'the lift is cancelled, so the browser sends the tap\'s mouse events and click to nothing');
+  assert.equal(presses[0].focus, remove, 'focus left the reply field for Remove, as a tap on a Remove left in place moves it');
+  assert.deepEqual(remove.focusedWith, { preventScroll: true }, 'focused without scrolling the page');
   presses[0].settle();
-  pointer('pointerdown', words, { x: 50, y: 50 }); under = words;
-  pointer('pointerup', words, { x: 50, y: 50 });
-  assert.equal(lift(words), false, 'the next tap, on anything else, is left alone');
-  assert.equal(browserClick(), true, 'and its click reaches what it was on');
+  assert.equal(mouse('click', field), 'writing-body', 'and only that tap: the next click reaches what it is on');
 });
 
-// A press the page left in place goes the one way a moved one does, so the
-// two can never differ in what they press, focus or let through.
-test('a press over Remove at both ends, by finger or mouse, is pressed the same way as one the page moved: focused, pressed once as it comes up, and what the browser sends for it reaches nothing', async () => {
-  const { presses, paint, remove } = pressedRemove();
-  pointer('pointerdown', remove, { x: 130, y: 20 }); under = remove;
-  pointer('pointerup', remove, { x: 130, y: 20 });
-  assert.equal(presses.length, 1, 'pressed as the finger lifts');
-  assert.equal(presses[0].focus, remove, 'with focus on Remove');
-  assert.equal(lift(remove), true, 'and the browser\'s own tap is cancelled, so it cannot press or focus anything a second time');
-  presses[0].settle(); await new Promise(resolve => setImmediate(resolve));
-  paint([choice('a', 'Ready')]);
-  document.activeElement = { id: 'writing-body' };
-  pointer('pointerdown', remove, { x: 130, y: 20 });
-  pointer('pointerup', remove, { x: 130, y: 20 });
-  assert.equal(presses.length, 2, 'a mouse press is pressed as it comes up');
-  assert.equal(presses[1].focus, remove);
-  assert.equal(browserClick(), false, 'and the browser\'s own click is dropped, so it presses once');
-});
-
-test('a press dragged away from where Remove was, a cancelled press, another pointer, and a press on something else do not press Remove', () => {
-  const { presses, remove, words } = pressedRemove();
-  pointer('pointerdown', remove, { x: 130, y: 20 }); under = words;
-  pointer('pointerup', words, { x: 60, y: 20 });
-  assert.equal(presses.length, 0, 'released outside where Remove was: let go');
-  assert.equal(document.activeElement.id, 'writing-body', 'focus stays where it was');
-  assert.equal(browserClick(), false, 'and what the browser sends for it, a click to what it came up on, reaches nothing');
-  pointer('pointerdown', remove, { x: 130, y: 20 }); pointer('pointercancel', null);
-  pointer('pointerup', words, { x: 130, y: 20 });
+test('a finger press the browser sends no tap for (a scroll took it, a long press) presses nothing and takes nothing from what comes next; a key\'s click is never taken', () => {
+  const { presses, remove, field } = pressedRemove();
+  assert.equal(fingerPress(remove, field, { cancel: true }), null);
+  assert.equal(mouse('mousedown', field), 'writing-body', 'a cancelled finger press takes no later mousedown');
+  assert.equal(mouse('click', field), 'writing-body');
   assert.equal(presses.length, 0, 'a cancelled press (a scroll took it) presses nothing');
-  pointer('pointerdown', remove, { x: 130, y: 20 });
-  pointer('pointerup', words, { x: 130, y: 20, pointerId: 2 });
-  assert.equal(presses.length, 0, 'a second finger lifting is not this press');
-  pointer('pointerdown', remove, { x: 130, y: 20, button: 2 });
-  pointer('pointerup', words, { x: 130, y: 20, button: 2 });
-  assert.equal(presses.length, 0, 'a right-button press presses nothing');
-  pointer('pointerdown', remove, { x: 130, y: 20 }); pointer('pointerdown', words, { x: 130, y: 20 });
-  pointer('pointerup', words, { x: 130, y: 20 });
-  assert.equal(presses.length, 0, 'a press whose release was lost is forgotten when the next press goes down elsewhere');
+  pointer('pointerdown', remove, { pointerType: 'touch' }); pointer('pointerup', remove, { pointerType: 'touch' });
+  assert.equal(mouse('click', field, 0), 'writing-body', 'a key\'s click (detail 0) is never taken for a tap');
+  pointer('pointerdown', field); assert.equal(mouse('mousedown', field), 'writing-body', 'a finger press with no tap is forgotten when the next press goes down');
+  assert.equal(mouse('click', field), 'writing-body');
+  assert.equal(presses.length, 0);
+  pointer('pointerdown', remove, { button: 2 }); assert.equal(remove.captured, null, 'a right-button press is not captured');
+  pointer('pointerdown', remove, { isPrimary: false, pointerType: 'touch' }); assert.equal(mouse('click', field), 'writing-body', 'nor is a second finger\'s press Remove\'s');
 });
 
-test('a press on Remove whose row went, or whose Remove was disabled meanwhile, presses nothing', () => {
+test('a press on Remove whose row went, or whose Remove was disabled meanwhile, presses nothing, and a moved tap\'s click still reaches nothing else', () => {
   const disabled = pressedRemove();
-  pointer('pointerdown', disabled.remove, { x: 130, y: 20 }); under = disabled.words;
-  disabled.paint([choice('a', 'Ready', [REMOVE])], false);
-  pointer('pointerup', disabled.words, { x: 130, y: 20 });
+  assert.equal(fingerPress(disabled.remove, disabled.field, {}, () => disabled.paint([choice('a', 'Ready', [REMOVE])], false))[2], 'stopped');
   assert.equal(disabled.presses.length, 0, 'disabled: not pressed');
   const gone = pressedRemove();
-  pointer('pointerdown', gone.remove, { x: 130, y: 20 }); under = gone.words;
-  gone.paint([]);
-  assert.equal(gone.remove.disabled, false, 'the button that went was not disabled');
-  pointer('pointerup', gone.words, { x: 130, y: 20 });
+  assert.deepEqual(fingerPress(gone.remove, gone.field, {}, () => gone.paint([])), ['stopped', 'stopped', 'stopped'], 'the tap of a Remove that went presses nothing under the finger');
   assert.equal(gone.presses.length, 0, 'its row is gone: not pressed');
+  assert.equal(document.activeElement, gone.field, 'and focus stays where it was');
+});
+
+test('the new-topic page\'s touch guard leaves a tap on a button that holds its press to the browser, though the page moved it from under the finger, and still cancels a finger lifted off any other button', () => {
+  const { remove, moved } = pressedRemove();
+  const host = new Node('div'), other = new Node('button');
+  other.place = { left: 100, top: 0, right: 160, bottom: 40 };
+  protectTouchBounds(host);
+  const lift = button => {
+    const event = { target: { closest: () => button }, changedTouches: [{ clientX: 130, clientY: 20 }], prevented: false, preventDefault() { this.prevented = true; } };
+    host.fire('touchend', event); return event.prevented;
+  };
+  moved();
+  assert.equal(lift(remove), false, 'the moved Remove\'s tap is left to the browser');
+  assert.equal(lift(other), false, 'a finger lifted on another button taps it');
+  other.place = { left: 100, top: 38, right: 160, bottom: 78 };
+  assert.equal(lift(other), true, 'a finger lifted off another button is cancelled, as before');
 });
