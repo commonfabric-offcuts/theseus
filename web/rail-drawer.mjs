@@ -3,12 +3,15 @@
 // rail's notices stay above the topic while it is closed. It opens on the
 // open topic, in the middle of the drawer, so a lit topic beside it shows
 // whole. Anything in the rail that goes somewhere (a topic, a Notebook page,
-// "← Outcomes", the logo, New topic) closes the drawer as it goes; so do a
-// tap on the dimmed page beside it and Escape. At desktop width the rail
+// "← Outcomes", the logo) closes the drawer as it goes; so do a tap on the
+// dimmed page beside it and Escape. What opens in the drawer itself (New
+// topic's title line, More topics, Retry, the Done group) leaves it open, so
+// what the tap opened shows, with the focus on it. At desktop width the rail
 // stays beside the topic and the control is not shown (aim.css), so the
 // drawer is never open there.
 
-const GOES = 'a[href], .nav-item, #new-topic';
+// Where a tap goes somewhere: a link or a row.
+const GOES = 'a[href], .nav-item';
 
 export function railDrawer(doc = document, win = doc.defaultView) {
   const rail = doc.getElementById('rail'), control = doc.getElementById('rail-open');

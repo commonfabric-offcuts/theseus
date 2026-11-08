@@ -92,14 +92,23 @@ export async function departureChecks({check,page,until,facts,view,control,obser
   await check('navigation correction active prepare publication reload and settled confirmation',async()=>{
     await setup();const p=await page('departure-active',null,true,{beforeNavigate:observeDeparture}),body='One exact message before switching';
     await reveal(p,'t2');
+    // A reply on its way is not in doubt (item 118): no Review button is painted
+    // at any point of an ordinary send, so the composer never jumps.
+    await p.evaluate(`(()=>{window.reviewPaints=0;new MutationObserver(records=>{for(const r of records)for(const n of r.addedNodes)if(n.nodeType===1&&(n.matches('button')||n.querySelector('button')))window.reviewPaints++;})
+      .observe(document.querySelector('#inline-pending'),{childList:true,subtree:true});})()`);
+    const composer=()=>p.evaluate(`({button:document.querySelector('#inline-pending button')?.textContent??null,paints:window.reviewPaints,height:document.querySelector('#inline-composer').getBoundingClientRect().height})`);
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await write(p,body);await p.key('Enter',4);
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held prepare');
+    const whilePreparing=await composer();
+    assert.deepEqual([whilePreparing.button,whilePreparing.paints],[null,0],'no Review button while the reply is prepared to go: '+JSON.stringify(whilePreparing));
     await choose(p);await until(async()=>/send/i.test(await notice(p)),'active prepare keeps page with guidance');
     assert.equal(await p.evaluate('new URL(location.href).searchParams.get("topic")'),'t1');
     assert.equal(p.events.filter(e=>e.method==='Page.javascriptDialogOpening').length,0,'sidebar does not fall back to beforeunload');
     await p.release(preparing);
     const sending=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'),'held publication');
+    const whileSending=await composer();
+    assert.deepEqual([whileSending.button,whileSending.paints,whileSending.height],[null,0,whilePreparing.height],'nor while its send is out, and the composer keeps its height: '+JSON.stringify(whileSending));
     await choose(p);await until(async()=>/send/i.test(await notice(p)),'active publication keeps page with guidance');
     assert.match(await notice(p),/send/i);
     const origin=await p.evaluate('performance.timeOrigin');await p.send('Page.reload');
@@ -108,6 +117,8 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     p.intercept(null);await p.release(sending);await exact(p,sending,body);
     // A reply that went leaves no Review button behind (item 118).
     await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')`),'publication confirmed, so no Review button');
+    const went=await composer();
+    assert.deepEqual([went.button,went.paints,went.height],[null,0,whilePreparing.height],'the whole send painted no Review button and never moved the composer: '+JSON.stringify(went));
     await choose(p);await ready(p,'t2');await choose(p,'t1');await ready(p,'t1');await reveal(p,'t2');
 
     const unknown='A committed publication awaiting its original confirmation';
@@ -195,12 +206,17 @@ export async function departureChecks({check,page,until,facts,view,control,obser
       await until(()=>p.evaluate(`(()=>{const b=[...document.querySelectorAll('#review-content button')].find(b=>b.textContent===${JSON.stringify(text)});if(!b||b.disabled)return false;b.dataset.nativeCorrection='';return true;})()`),'available '+text);
       await point(p,'[data-native-correction]');
     };
+    // Its Review button shows once the send that was refused has ended (item 118).
+    await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'the refused original has its Review button');
     await point(p,'#inline-pending button');await reviewButton('Prepare this reply again');
     await until(()=>p.evaluate('Boolean(document.querySelector("#review-content input[type=checkbox]"))'),'explicit correction review');
     await point(p,'#review-content input[type=checkbox]');
     p.intercept(payload=>['submission.prepare','message.send'].includes(payload?.kind));
     await reviewButton('Prepare this reply again');
     const preparing=await until(()=>p.held.find(h=>h.payload?.kind==='submission.prepare'),'held corrected preparation');
+    // The corrected reply is on its way, not in doubt: while it goes, only the refused original has a Review button.
+    const inDoubt=()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent??null`);
+    assert.equal(await inDoubt(),'Review 1 reply','while the correction is prepared, only the refused original is in doubt');
     await point(p,'#review-close');
     const stay=async stage=>{
       await choose(p);await until(async()=>/Wait for the send/.test(await notice(p)),stage+' uses active send guidance');
@@ -212,6 +228,7 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     };
     await stay('correction prepare');await p.release(preparing);
     const sending=await until(()=>p.held.find(h=>h.payload?.kind==='message.send'),'held corrected publication');
+    assert.equal(await inDoubt(),'Review 1 reply','while the correction is sent, only the refused original is in doubt');
     await stay('correction publication');p.intercept(null);await p.release(sending);await exact(p,sending,body);
     await until(()=>p.evaluate(`document.querySelector('#inline-pending button')?.textContent==='Review 1 reply'`),'only the refused original is still in doubt, not the correction that went');
     await point(p,'#inline-pending button');

@@ -318,6 +318,38 @@ export async function railChecks({ check, page, until, control, view, facts, sho
     }
   });
 
+  await check('rail at 390 New topic in the open drawer shows its title line at once, focused, in the drawer; Escape closes the line, and Return starts the topic', async () => {
+    for (const theme of ['light', 'dark']) {
+      const p = await open('rail-new-topic-' + theme, '/?topic=t1', 'phone', theme);
+      await until(() => p.evaluate('Boolean(document.querySelector("#topics a[data-topic-id=t1]")) && !document.querySelector("#new-topic").disabled'), theme + ': the rail is ready');
+      await tap(p, '#rail-open');
+      await until(async () => (await drawer(p)).open, theme + ': "☰ Topics" opens it');
+      // One tap: the line shows in the open drawer, under the Topics heading, with the focus in it.
+      const line = () => p.evaluate(`(()=>{const l=document.getElementById('new-topic-title'),r=document.getElementById('rail'),b=l?.getBoundingClientRect(),d=r.getBoundingClientRect();
+        return {shown:Boolean(l)&&l.getClientRects().length>0&&b.top>=d.top&&b.bottom<=d.bottom&&b.left>=d.left&&b.right<=d.right,focused:document.activeElement===l,open:r.classList.contains('open'),active:document.activeElement?.id??null}})()`);
+      const tapped = () => until(() => p.evaluate('document.getElementById("new-topic").getAttribute("aria-expanded")==="true"'), theme + ': the tap reached New topic');
+      await tap(p, '#new-topic'); await tapped();
+      assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'new-topic-title' }, theme + ': one tap shows the line, focused, in the open drawer');
+      const seen = await p.evaluate('({scroll:document.documentElement.scrollWidth,width:innerWidth})');
+      assert.ok(seen.scroll <= seen.width, theme + `: no sideways scroll (${seen.scroll} of ${seen.width})`);
+      await shot(p, 'rail-new-topic-' + theme);
+      // Escape closes the line and gives New topic the focus; the drawer stays open.
+      await p.key('Escape');
+      await until(() => p.evaluate('!document.getElementById("new-topic-title")'), theme + ': Escape closes the line');
+      assert.deepEqual(await drawer(p), { open: true, backdrop: true, inert: true, expanded: 'true', focus: 'new-topic' }, theme + ': the drawer stays open, the focus on New topic');
+      // Again, and Return starts the topic: it opens first on the page, the drawer folded.
+      await tap(p, '#new-topic'); await tapped();
+      assert.deepEqual(await line(), { shown: true, focused: true, open: true, active: 'new-topic-title' }, theme + ': the line again');
+      const title = 'Started from the drawer ' + theme;
+      await p.send('Input.insertText', { text: title }); await p.key('Enter');
+      await until(() => p.evaluate(`document.body.dataset.ready==="true" && new URL(location.href).searchParams.has("topic") && document.querySelector("#topic-title").textContent===${JSON.stringify(title)}`).catch(() => false), theme + ': the new topic opens');
+      const after = await top(p);
+      assert.deepEqual([(await drawer(p)).open, after.rail, after.main[0]], [false, [], 'topic-header'], theme + ': with the rail folded and the new topic first');
+      await shot(p, 'rail-new-topic-started-' + theme);
+      assert.deepEqual(p.errors, []); await p.close();
+    }
+  });
+
   await check('rail a write elsewhere shows with no reload, and an unconfirmed state change says where the topic stands', async () => {
     const p = await open('rail-writes', '/?topic=t1');
     const before = await loaded(p);

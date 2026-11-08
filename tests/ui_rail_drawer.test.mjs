@@ -43,8 +43,12 @@ function page({ current = 't2' } = {}) {
   const heading = new El('h2'), newTopic = new El('button', { id: 'new-topic' });
   const notebookPage = new El('button', { classes: ['nav-item'] });
   const topics = ['t1', 't2', 't3'].map(topic);
+  // What opens in the drawer itself: New topic's title line, More topics, Retry, the Done group.
+  const topicLine = new El('input', { id: 'new-topic-title' }), moreTopics = new El('button', { id: 'more-topics' });
+  const retryTopics = new El('button', { id: 'retry-topics' }), done = new El('summary');
+  const section = new El('section').add(heading, newTopic, topicLine, ...topics, moreTopics, retryTopics, new El('details').add(done));
   const rail = new El('nav', { id: 'rail', classes: ['rail'] }).add(new El('div', { classes: ['brand'] }).add(wordmark), home,
-    new El('section').add(heading, newTopic, ...topics), new El('section').add(notebookPage));
+    section, new El('section').add(notebookPage));
   const control = new El('button', { id: 'rail-open', attrs: { 'aria-expanded': 'false' } });
   const backdrop = new El('div', { id: 'rail-backdrop' }); backdrop.hidden = true;
   const main = new El('main', { id: 'main' }).add(new El('header').add(control));
@@ -56,7 +60,7 @@ function page({ current = 't2' } = {}) {
   const state = () => ({ open: rail.classList.contains('open'), backdrop: !backdrop.hidden, inert: main.inert, expanded: control.attrs['aria-expanded'] });
   const tap = target => rail.handlers.click({ target });
   const key = (name, taken = false) => { const event = { key: name, defaultPrevented: taken, prevented: false, preventDefault() { this.prevented = true; } }; doc.handlers.keydown(event); return event; };
-  return { doc, drawer, rail, control, backdrop, main, topics, wordmark, home, heading, newTopic, notebookPage, phone, state, tap, key };
+  return { doc, drawer, rail, control, backdrop, main, topics, wordmark, home, heading, newTopic, topicLine, moreTopics, retryTopics, done, notebookPage, phone, state, tap, key };
 }
 const OPEN = { open: true, backdrop: true, inert: true, expanded: 'true' }, SHUT = { open: false, backdrop: false, inert: false, expanded: 'false' };
 
@@ -83,7 +87,7 @@ test('a tap on anything in the drawer that goes somewhere closes it and gives "�
   p.control.handlers.click();
   p.tap(p.heading);
   assert.deepEqual(p.state(), OPEN, 'a heading goes nowhere, so the drawer stays');
-  for (const [name, target] of [['a topic, pressed on its words', p.topics[2].children[0]], ['the logo', p.wordmark], ['← Outcomes', p.home], ['New topic', p.newTopic], ['a Notebook page', p.notebookPage]]) {
+  for (const [name, target] of [['a topic, pressed on its words', p.topics[2].children[0]], ['the logo', p.wordmark], ['← Outcomes', p.home], ['a Notebook page', p.notebookPage]]) {
     if (!p.state().open) p.control.handlers.click();
     target.focus();
     p.tap(target);
@@ -93,6 +97,22 @@ test('a tap on anything in the drawer that goes somewhere closes it and gives "�
   }
   p.tap(p.topics[0]);
   assert.deepEqual(p.state(), SHUT, 'a tap in a closed drawer changes nothing');
+});
+
+// New topic's one line opens in the drawer, under the Topics heading, and takes
+// the focus (release 23's lineFromButton): the same tap closing the drawer
+// would hide the line and move the focus to "☰ Topics", so the tap would seem
+// to do nothing. So with everything that opens in the drawer itself.
+test('a tap on what opens in the drawer itself (New topic, More topics, Retry, Done) leaves it open with the focus where that tap put it', () => {
+  const p = page();
+  p.control.handlers.click();
+  for (const [name, target, focused] of [['New topic', p.newTopic, p.topicLine], ['its title line', p.topicLine, p.topicLine], ['More topics', p.moreTopics, p.moreTopics],
+    ['Retry topics', p.retryTopics, p.retryTopics], ['the Done group', p.done, p.done]]) {
+    focused.focus();
+    p.tap(target);
+    assert.deepEqual(p.state(), OPEN, name + ' leaves the drawer open');
+    assert.equal(p.doc.activeElement, focused, name + ': the focus stays where the tap put it');
+  }
 });
 
 test('a tap on the dimmed page beside the drawer closes it and gives "☰ Topics" the focus back', () => {

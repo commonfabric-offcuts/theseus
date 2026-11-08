@@ -82,7 +82,7 @@ function fixture(href = 'https://fixture/?topic=t1', overrides = {}) {
     isCurrent(p) { return !!p && this.interactive === p; }, isSourceCurrent(p) { return !!p && this.current?.source === p.source; },
     cancelSave(e) { events.push(['cancel', e.key]); }, schedule(e) { events.push(['schedule', e.key]); },
     validateState(state, ref, topicId) { assert.equal(state.source_ref.id, ref.id); assert.equal(state.destination.topic_id, topicId); },
-    pending() { return { items: [], next_cursor: null }; }, cancelOpen() { return false; },
+    pending() { return { items: [], next_cursor: null }; }, sending() { return false; }, cancelOpen() { return false; },
     sessionFor() { return { uploads }; }, status() { return 'Saved'; }, saveSign() { return { state: 'saved', text: 'Saved' }; },
     cleanup: { foregroundListeners: new Set(), resumeListeners: new Set(), foreground() { return { read: action => action({}), release() { events.push(['release']); } }; },
       list: action => action({ readClass: 'foreground' }) },
@@ -533,6 +533,32 @@ test('a Review button under the title shows only while a reply is in doubt: one 
   f.registry.pending = () => ({ items: [{ id: 'late', send_status: 'committed' }], next_cursor: null });
   modal.submissions = [{ id: 'late', status: 'prepared' }]; f.changed(modal);
   assert.deepEqual(shown(), [], 'a reply the server records as sent needs no button');
+});
+
+// Item 118: a reply still on its way is not in doubt. Its button would come
+// and go on every reply, moving the composer, and the page under a Reader's
+// title, twice; only a send that ended unconfirmed, or a refusal, leaves one.
+test('a reply on its way has no Review button; one whose send ended without a confirmation does', () => {
+  const f = fixture();
+  const modal = { ...f.editor, key: 'modal', context: { ...f.editor.context, sourceRef: { kind: 'message', id: 'm1' } }, submissions: [] };
+  f.registry.current = { editors: { reply: modal } };
+  const shown = () => f.get('topic-pending').children.map(host => host.firstElementChild?.textContent);
+  const going = new Set();
+  f.registry.sending = (editor, id) => { assert.equal(editor, modal); return going.has(id); };
+  going.add('next'); modal.submissions = [{ id: 'next', status: 'preparing' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'a reply being prepared to go has none');
+  modal.submissions = [{ id: 'next', status: 'prepared' }]; f.changed(modal);
+  assert.deepEqual(shown(), [], 'nor while its send is out');
+  f.registry.pending = () => ({ items: [{ id: 'next', send_status: 'prepared' }], next_cursor: null }); f.changed(modal);
+  assert.deepEqual(shown(), [], 'nor when the server lists it as prepared while it goes');
+  going.delete('next'); f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'its send ended unconfirmed: now it is in doubt');
+  // One going beside one in doubt: the button counts only the one in doubt.
+  going.add('another'); modal.submissions = [{ id: 'next', status: 'prepared' }, { id: 'another', status: 'preparing' }]; f.changed(modal);
+  assert.deepEqual(shown(), ['Review 1 reply'], 'a second reply on its way leaves the count at one');
+  modal.submissions = [{ id: 'next', status: 'confirmed' }, { id: 'another', status: 'preparing' }];
+  f.registry.pending = () => ({ items: [], next_cursor: null }); f.changed(modal);
+  assert.deepEqual(shown(), [], 'the first confirmed and the second on its way: no button');
 });
 
 // Item 117: the page wires the phone rail's drawer as it starts.

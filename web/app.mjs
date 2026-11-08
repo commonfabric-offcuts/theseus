@@ -292,11 +292,13 @@ async function showCorrection(editor, item, opener, presentation = presentationF
 }
 
 // Replies still in doubt: not confirmed sent, by this device or by the
-// server's record of the send. A reply that went needs no Review button.
+// server's record of the send, and not on their way now. A reply that went,
+// or is still going, needs no Review button.
 function pendingCount(editor) {
   const sent = new Set([...editor.submissions.filter(item => item.status === 'confirmed').map(item => item.id),
     ...registry.pending(editor).items.filter(item => item.send_status === 'committed').map(item => item.id)]);
-  return new Set([...editor.submissions.map(item => item.id), ...registry.pending(editor).items.map(item => item.id)].filter(id => !sent.has(id))).size;
+  return new Set([...editor.submissions.map(item => item.id), ...registry.pending(editor).items.map(item => item.id)]
+    .filter(id => !sent.has(id) && !registry.sending(editor, id))).size;
 }
 function pendingButton(host, editor, presentation = presentationFor(editor)) {
   const count = pendingCount(editor), label = `Review ${count} ${count === 1 ? 'reply' : 'replies'}`;

@@ -616,6 +616,8 @@ export class EditorRegistry {
     this.pages.set(editor.key, result); this.changed(editor); return result;
   }
 
+  // Whether this editor's reply with that id is on its way, so not in doubt.
+  sending(editor, id) { return this.sessions.get(editor.key)?.underWay(id) === true; }
   get hasInFlightSend() { return [...this.sessions.values()].some(session => session.sends.size > 0); }
   get unconfirmedSends() {
     return [...this.sessions.values()].flatMap(session => {

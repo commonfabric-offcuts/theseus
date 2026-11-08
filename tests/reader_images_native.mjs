@@ -631,7 +631,10 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     await p.point('#writing-body'); await p.key('Enter', 12);
     const refused = await until(() => p.calls.find(c => c.payload?.kind === 'message.send' && c.payload.operation_id !== firstSend.payload.operation_id), 'recorded R1a refusal');
     const rejected = await view('operation', { operation_id: refused.payload.operation_id }); assert.equal(rejected.error.code, 'REPLY_PATH_UNAVAILABLE');
-    await replace(p, 'Successor B is untouched'); await p.point('#pending-submissions button');
+    // The refused reply has its Review button once its send has ended: a reply on its way has none (item 118).
+    await replace(p, 'Successor B is untouched');
+    await until(() => p.evaluate('Boolean(document.querySelector("#pending-submissions button"))'), 'the refused reply has its Review button');
+    await p.point('#pending-submissions button');
     const card = '#review-content [data-id="' + refused.payload.args.submission_id + '"]';
     await until(() => p.evaluate(`document.querySelector(${JSON.stringify(card)})?.textContent.includes(${JSON.stringify(rejected.error.message)})`), 'local recorded explanation');
     assert.equal(await field(p), 'Successor B is untouched');
