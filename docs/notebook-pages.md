@@ -22,6 +22,12 @@ page look changed again.
   (`actor`) changes; one that moves nothing tells nobody. The CLI's
   `note read` sends it for the revision it prints
   ([agent-cli.md](agent-cli.md#notebook-pages)).
+- Who writes: a topic's pages are its active participants' to create and
+  revise, and an outcome's are its team's, the owner among them, people and
+  agents alike. Each revision is kept with its author, so an edit never
+  loses what was there; the Reader shows any revision and what changed.
+  Anyone else, including someone on the team who does not take part in the
+  topic, is refused (`FORBIDDEN`) and nothing is written.
 - Writing a revision (`memory.create`, `memory.revise`) reads it for its
   writer, so a person's own edit never marks a page changed for them. The
   write is its own change; it adds no `memory_read` change.

@@ -337,8 +337,8 @@ write to send again. `retry OP` returns the recorded receipt. `stages OUTCOME
 way. `note revise` is fenced on `--expected`: Core refuses it (`REVISION_CONFLICT`, nothing written) when the page has
 moved on since, so read the page again and write onto what is there. A new
 page's id is `n-` and 32 hex digits. Who may write pages is Core's rule:
-participating agents, in a topic's Notebook its active participants, in an
-outcome's its team.
+in a topic's Notebook its active participants, in an outcome's its team
+(the owner among them), people and agents alike; every revision is kept.
 
 `note read` prints `ITEM  "TITLE"  revision N of M by AUTHOR  (outcome W)`,
 a blank line, then the page's words, one line per attachment as `read`

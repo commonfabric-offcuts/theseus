@@ -38,8 +38,9 @@ class Memory:
         else:
             self._workspace(db, actor, scope_id)
         if write:
-            if self._actor(db, actor)["kind"] != "agent":
-                raise Refusal("FORBIDDEN", "Only participating agents edit this Notebook")
+            # A topic's pages are its active participants' to edit, and an
+            # outcome's are its team's (the owner always among them), people
+            # and agents alike; every revision is kept.
             if scope["kind"] == "topic":
                 allowed = db.execute("SELECT 1 FROM topic_participants WHERE topic_id=? AND actor_id=? AND active=1", (scope_id, actor)).fetchone()
             else:
