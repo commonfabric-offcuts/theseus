@@ -170,9 +170,16 @@ release check's `--report`, and which piece a candidate's readings name.
   topic and the items each record names. One pure function of the facts alone
   (`pipeline_state.derive`) plays the log in order and applies the rules here
   when it reaches each record, so facts that commute (a backfill, a drop, a move,
-  a combine, a start) give one state in every order. Every pipeline write
-  appends its fact and then writes only what differs between that state and
-  what is stored (`_settle`), in the same transaction.
+  a combine, a start) give one state in every order. Two families of orders
+  differ by design, because in them the later act is not one the record
+  overtakes: a drop that empties the open release before the next release's
+  record names none of its items leaves that release emptied, where the record
+  written first ships it; and a return to building is taken only while the
+  release is held, so where the record comes first the return is refused and an
+  item the record does not name has gone back to building with no piece holding
+  it. Every
+  pipeline write appends its fact and then writes only what differs between
+  that state and what is stored (`_settle`), in the same transaction.
 - **The end of a piece.** A piece of work still under way ends once it holds no
   item: it has shipped if any of its work shipped (an item it held, or combined
   from it into a release, that a record named before a drop ended its part),

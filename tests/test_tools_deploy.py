@@ -2342,34 +2342,77 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.assertEqual((self.end_of(piece, "t-p"), self.open_entry(release)),
                          ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "active", ""),)), [("combine",)]))
 
+    def test_a_persons_reopen_or_done_of_a_topic_the_pipeline_closed_stands_against_a_later_record(self):
+        # P builds items 3 and 4 in t-p, Q builds 5 and 6 in t-q; 3 and 5 are dropped. Release 5, recorded late, names 4 and
+        # 6, so both pieces have shipped and the pipeline holds both topics Done. The owner reopens t-p and says t-q is done
+        # in their own words. Release 6, recorded late, names 3 and 5: the drops count for nothing, both pieces shipped in
+        # release 6 and the pipeline holds both topics with it, yet each topic keeps the person's word (docs/pipeline.md,
+        # "A topic the pipeline holds Done"; review follow-up 1).
+        self.ship_naming([1, 2])
+        p = self.committed(self.start_of([self.add("Item %d" % n, section="now", size="small") for n in (3, 4)], "t-p"))["piece_id"]
+        q = self.committed(self.start_of([self.add("Item %d" % n, section="now", size="small") for n in (5, 6)], "t-q"))["piece_id"]
+        self.drop(3)
+        self.drop(5)
+        self.backfill(5, [4, 6])
+        self.assertEqual((self.end_of(p, "t-p"), self.end_of(q, "t-q")),
+                         ((("build", "shipped", "Shipped in release 5"), (), (("t-p", "done", "Shipped in release 5"),)),
+                          (("build", "shipped", "Shipped in release 5"), (), (("t-q", "done", "Shipped in release 5"),))))
+        for topic, args in (("t-p", {"state": "active"}), ("t-q", {"state": "done", "note": "Wrapped up"})):
+            version = self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]
+            self.committed(self.command("topic.update", args, {"topic_id": topic}, {"topic_revision": version}, actor="owner"))
+        self.backfill(6, [3, 5])
+        self.assertEqual((self.entries(p)[-1], self.entries(q)[-1]),
+                         (("build", "shipped", "Shipped in release 6"), ("build", "shipped", "Shipped in release 6")))
+        self.assertEqual(dict(self.sql("SELECT topic_id,release FROM pipeline_done_topics WHERE workspace_id='w1'")), {"t1": 23, "t-p": 6, "t-q": 6})
+        self.assertEqual(self.sql("SELECT id,state,state_note,state_by FROM topics WHERE id IN ('t-p','t-q') ORDER BY id"),
+                         [("t-p", "active", "", "owner"), ("t-q", "done", "Wrapped up", "owner")])
+
     # ---- what is stored is the state derived from the facts, after every write (docs/pipeline.md, "The derived state") --
 
-    # Each kind of write, and how often a random sequence tries it.
-    WRITES = {"record": 2, "drop": 2, "put back": 2, "move": 1, "undo": 2, "start": 3, "approve": 3, "combine": 3, "checks": 2, "return": 4,
-              "finish": 4, "releases on": 1, "releases off": 2, "topic done": 1, "topic reopened": 1}
+    # Each kind of write, and how often a random sequence tries it. Outcome w2 keeps a pipeline too, so every record is a
+    # fact of both, and it takes the records as its own while it ships in releases, which only one outcome does at a time
+    # (RELEASES_TAKEN); "ask" and "release move" enter stages that wait on the owner's word, and the acts that leave
+    # them, or would end a piece there, are made by the owner or the coordinator at random.
+    WRITES = {"record": 2, "drop": 3, "put back": 3, "move": 2, "undo": 2, "add": 3, "start": 4, "approve": 5, "ask": 6, "combine": 6,
+              "release move": 4, "checks": 2, "return": 5, "finish": 6, "releases on": 1, "releases off": 2, "topic done": 1,
+              "topic reopened": 2, "topic message": 1, "w2 start": 2, "w2 drop": 1, "w2 finish": 2, "w2 releases on": 3, "w2 releases off": 1}
+    # Who acts where the owner's word may be needed.
+    ACTORS = ("owner", "agent-a")
 
-    def assert_stored_is_derived(self, said):
+    def assert_stored_is_derived(self, said, workspace="w1"):
         """The member rows, each piece's end, the topics the pipeline holds and their states, read from the store, are
-        pipeline_state.derive() of the outcome's facts computed again from nothing."""
+        pipeline_state.derive() of the outcome's facts computed again from nothing; and every stage that waits on the
+        owner's word was left by the owner or by a record."""
         with closing(sqlite3.connect(str(self.path))) as db:
             db.row_factory = sqlite3.Row
-            state = pipeline_state.derive(pipeline_state.read_facts(db, "w1"))
-            members = sorted(tuple(row) for row in db.execute("SELECT piece_id,number,left_ms,left_reason FROM pipeline_piece_members WHERE workspace_id='w1'"))
+            state = pipeline_state.derive(pipeline_state.read_facts(db, workspace))
+            members = sorted(tuple(row) for row in db.execute("SELECT piece_id,number,left_ms,left_reason FROM pipeline_piece_members WHERE workspace_id=?",
+                                                              (workspace,)))
             self.assertEqual(members, sorted(state.members), said)
             for piece, end in state.ends.items():
                 last = db.execute("SELECT left_outcome,left_note,left_ms,left_by FROM pipeline_stage_entries WHERE piece_id=? ORDER BY seq DESC LIMIT 1",
                                   (piece,)).fetchone()
                 self.assertEqual(tuple(last) if end is not None else last["left_ms"], end, "%s: the end of %s" % (said, piece))
-            self.assertEqual(dict(db.execute("SELECT topic_id,release FROM pipeline_done_topics WHERE workspace_id='w1'").fetchall()), state.done_topics, said)
+            self.assertEqual(dict(db.execute("SELECT topic_id,release FROM pipeline_done_topics WHERE workspace_id=?", (workspace,)).fetchall()),
+                             state.done_topics, said)
             # Read from the log itself, not derive(): a release ships only by a record written after it was combined.
-            combined = {json.loads(row[1])["release"]: row[0] for row in db.execute("SELECT seq,payload FROM pipeline_facts WHERE workspace_id='w1' AND kind='combine'")}
-            recorded = {json.loads(row[1])["release"]: row[0] for row in db.execute("SELECT seq,payload FROM pipeline_facts WHERE workspace_id='w1' AND kind='record'")}
+            combined = {json.loads(row[1])["release"]: row[0] for row in db.execute("SELECT seq,payload FROM pipeline_facts WHERE workspace_id=? AND kind='combine'",
+                                                                                    (workspace,))}
+            recorded = {json.loads(row[1])["release"]: row[0] for row in db.execute("SELECT seq,payload FROM pipeline_facts WHERE workspace_id=? AND kind='record'",
+                                                                                    (workspace,))}
             for piece, note in db.execute("SELECT p.id,e.left_note FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id "
-                                          "WHERE p.workspace_id='w1' AND p.kind='release' AND e.left_outcome='shipped'"):
+                                          "WHERE p.workspace_id=? AND p.kind='release' AND e.left_outcome='shipped'", (workspace,)):
                 number = int(note.rsplit(" ", 1)[1])
                 if piece in combined:
                     self.assertLess(combined[piece], recorded[number], "%s: %s shipped in release %d, recorded before it was combined" % (said, piece, number))
-            for topic in db.execute("SELECT t.* FROM topics t WHERE t.id IN (SELECT topic_id FROM pipeline_pieces WHERE workspace_id='w1')"):
+            # A stage that waits on the owner's word was left by the owner, or by nobody at a record or at turning releases on (D24).
+            for stage, piece, left_ms, left_by in db.execute(
+                    "SELECT e.stage_id,e.piece_id,e.left_ms,e.left_by FROM pipeline_stage_entries e JOIN pipeline_stages s ON s.workspace_id=e.workspace_id "
+                    "AND s.stage_id=e.stage_id WHERE e.workspace_id=? AND e.left_ms IS NOT NULL AND json_extract(s.gate,'$.owner')", (workspace,)):
+                by_a_record = left_by is None and db.execute("SELECT 1 FROM pipeline_facts WHERE workspace_id=? AND ms=? AND (kind='record' OR "
+                                                             "(kind='ships' AND json_extract(payload,'$.on')))", (workspace, left_ms)).fetchone()
+                self.assertTrue(left_by == "owner" or by_a_record, "%s: %s left %s by %s" % (said, piece, stage, left_by))
+            for topic in db.execute("SELECT t.* FROM topics t WHERE t.id IN (SELECT topic_id FROM pipeline_pieces WHERE workspace_id=?)", (workspace,)):
                 its_own = topic["state"] == "done" and topic["state_by"] is None and topic["state_message_id"] is None
                 if topic["id"] in state.done_topics and topic["state_by"] is None and topic["state_message_id"] is None:
                     # Nobody has said anything since the pipeline did: it is Done with the release that shipped the last of it.
@@ -2377,34 +2420,88 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                 elif topic["id"] not in state.done_topics:
                     self.assertFalse(its_own, "%s: %s is held Done by nobody with work left in it" % (said, topic["id"]))
 
-    def write_at_random(self, rng, kind, topics):
-        """One write of this kind with arguments chosen by rng; whether it was taken (a refusal is a write not taken)."""
+    def words(self):
+        """Every topic's (state, note, who said it, the message that reopened it), and the topics the pipeline holds."""
+        return ({row[0]: tuple(row[1:]) for row in self.sql("SELECT id,state,state_note,state_by,state_message_id FROM topics")},
+                {row[0] for row in self.sql("SELECT topic_id FROM pipeline_done_topics")})
+
+    def assert_a_persons_word_stands(self, said, before, after):
+        """A person's word on a topic (docs/pipeline.md, "A topic the pipeline holds Done"): what they said is what the topic
+        says, and nothing but another person's word changes it afterwards. A Done stands against every write; a reopen
+        stands while the pipeline goes on holding the topic (a record naming more of its work, review follow-up 1), lets
+        it go, or never held it, and gives way only when the pipeline starts to hold the topic again."""
+        (was, held_before), (now, held_after) = before, after
+        for topic, expected in self.said.items():
+            self.assertEqual(now[topic], expected, "%s: %s does not say what was said" % (said, topic))
+        for topic, words in was.items():
+            if topic in self.said or (words[2] is None and words[3] is None):
+                continue
+            if words[0] == "done" or topic in held_before or topic not in held_after:
+                self.assertEqual(now[topic], words, "%s: %s lost a person's word" % (said, topic))
+
+    def write_at_random(self, rng, kind, topics, w2_topics):
+        """One write of this kind with arguments chosen by rng; whether it was taken (a refusal is a write not taken).
+        What a person said of a topic in it, and so what the topic must say afterwards, goes in self.said."""
+        self.said = {}
         items = self.sql("SELECT number,section,version FROM pipeline_items WHERE workspace_id='w1' ORDER BY number")
+        theirs = self.sql("SELECT number,section,version FROM pipeline_items WHERE workspace_id='w2' ORDER BY number")
         named = {n for (row,) in self.sql("SELECT items FROM releases") for n in json.loads(row)}
-        pieces = self.sql("SELECT p.id,p.kind,e.stage_id FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id AND e.left_ms IS NULL "
-                          "WHERE p.workspace_id='w1' ORDER BY p.rowid")
+        pieces = self.sql("SELECT p.id,p.kind,e.stage_id,p.topic_id FROM pipeline_pieces p JOIN pipeline_stage_entries e ON e.piece_id=p.id AND e.left_ms IS NULL "
+                          "WHERE p.workspace_id=? ORDER BY p.rowid", ("w2" if kind.startswith("w2 ") else "w1",))
 
         def taken(receipt):
             return receipt.get("status") == "committed"
 
-        def move(number, version, args):
-            return taken(self.command("pipeline.item_move", dict(args, underway_confirmed=True), {"workspace_id": "w1", "number": number},
-                                      {"item_revision": version}, actor="owner"))
+        def move(number, version, args, workspace="w1", actor=None):
+            return taken(self.command("pipeline.item_move", dict(args, underway_confirmed=True), {"workspace_id": workspace, "number": number},
+                                      {"item_revision": version}, actor=actor or rng.choice(self.ACTORS)))
+
+        def message(topic, ask):
+            """agent-a writes in topic (an ask to the owner when ask); a done topic is reopened by it, said by agent-a."""
+            before = self.sql("SELECT state,state_note,state_by,state_message_id FROM topics WHERE id=?", (topic,))[0]
+            args = {"body": "@owner would you look?", "addressees": ["owner"], "intent": "ask"} if ask else {"body": "Still on it"}
+            receipt = self.command("message.post", args, {"topic_id": topic}, actor="agent-a")
+            if not taken(receipt):
+                return None
+            sent = receipt["result"]["message_id"]
+            self.said[topic] = ("active", "Reopened by a new message", "agent-a", sent) if before[0] == "done" else tuple(before)
+            return sent
+
+        def enter(piece, stage, left_outcome, actor):
+            args = {"stage_id": stage, "left_outcome": left_outcome}
+            if stage in ("sign", "approve"):
+                ask = message(piece[3], True)
+                if ask is None:
+                    return False
+                args["ask_message_id"] = ask
+            return taken(self.command("pipeline.stage_enter", args, {"piece_id": piece[0]}, actor=actor))
         if kind == "record":
             written = [row[0] for row in self.sql("SELECT number FROM releases")]
-            number = max(written) + 1 if rng.random() < 0.6 else rng.choice([n for n in range(1, 22) if n not in written] or [max(written) + 1])
-            free = [row[0] for row in items if row[0] not in named]
+            draw = rng.random()
+            # The next number, a gap past it, or an older one recorded late.
+            number = (max(written) + 1 if draw < 0.5 else max(written) + rng.randint(2, 3) if draw < 0.65 else
+                      rng.choice([n for n in range(1, 22) if n not in written] or [max(written) + 1]))
+            free = sorted({row[0] for row in items + theirs if row[0] not in named})
             chosen = rng.sample(free, min(len(free), rng.randint(0, 3)))
+            # Often one dropped item too: a record that overtakes a drop is where a closed piece and its topic change.
+            dropped = [row[0] for row in items if row[1] == "dropped" and row[0] not in named and row[0] not in chosen]
+            if dropped and rng.random() < 0.5:
+                chosen.append(rng.choice(dropped))
             try:
                 return self.record(number, "%040x" % rng.getrandbits(160), chosen, source="backfill")["recorded"]
             except Refusal:
                 return False
-        if kind in ("drop", "put back"):
-            rows = [row for row in items if (row[1] == "dropped") == (kind == "put back")]
+        if kind in ("drop", "put back", "w2 drop"):
+            rows = [row for row in (theirs if kind == "w2 drop" else items) if (row[1] == "dropped") == (kind == "put back")]
+            # A drop mostly takes an item from a piece, which a later record can overtake.
+            building = {row[0] for row in self.sql("SELECT number FROM pipeline_piece_members WHERE workspace_id=? AND left_ms IS NULL",
+                                                   ("w2" if kind == "w2 drop" else "w1",))}
+            rows = [row for row in rows if row[0] in building] if kind != "put back" and building & {row[0] for row in rows} and rng.random() < 0.7 else rows
             if not rows:
                 return False
             row = rng.choice(rows)
-            return move(row[0], row[2], {"section": "dropped"} if kind == "drop" else {"section": rng.choice(("now", "now", "next"))})
+            return move(row[0], row[2], {"section": "dropped"} if kind != "put back" else {"section": rng.choice(("now", "now", "next"))},
+                        workspace="w2" if kind == "w2 drop" else "w1", actor="owner" if kind == "w2 drop" else None)
         if kind == "move":
             row, other = rng.choice(items), rng.choice(items)[0]
             return move(row[0], row[2], rng.choice(({"section": rng.choice(("now", "next", "later"))}, {"below": other}, {"above": other})))
@@ -2417,49 +2514,91 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                 return False
             number, seq, version = rng.choice(moved)
             return move(number, version, {"undo_of": seq})
-        if kind in ("start", "return"):
-            if kind == "start":
-                ready = [row[0] for row in items if row[1] == "now"]
-                args = {}
-            else:
+        if kind == "add":
+            return bool(self.add("Item added later", section=rng.choice(("now", "now", "next")), size="small", actor=rng.choice(self.ACTORS)))
+        if kind in ("start", "return", "w2 start"):
+            if kind == "return":
                 release = next((piece for piece in pieces if piece[1] == "release"), None)
                 ready = [row[0] for row in self.sql("SELECT number FROM pipeline_piece_members WHERE piece_id=? AND left_ms IS NULL", (release[0],))] if release else []
                 args = {"from_release": True}
+            else:
+                # Mostly items no piece holds, so work keeps flowing towards the owner's word; now and then any item in Now.
+                held = {row[0] for row in self.sql("SELECT number FROM pipeline_piece_members WHERE workspace_id=? AND left_ms IS NULL",
+                                                   ("w2" if kind == "w2 start" else "w1",))} if rng.random() < 0.8 else set()
+                ready = [row[0] for row in (theirs if kind == "w2 start" else items) if row[1] == "now" and row[0] not in held]
+                args = {}
             if not ready:
                 return False
-            return taken(self.command("pipeline.piece_start", dict({"numbers": rng.sample(ready, rng.randint(1, min(2, len(ready)))),
-                                                                    "topic_id": rng.choice(topics), "stage_id": "build"}, **args),
-                                      {"workspace_id": "w1"}, actor="agent-a"))
+            return taken(self.command("pipeline.piece_start", dict({"numbers": rng.sample(ready, min(len(ready), rng.choice((1, 2, 2, 3)))),
+                                                                    "topic_id": rng.choice(w2_topics if kind == "w2 start" else topics), "stage_id": "build"}, **args),
+                                      {"workspace_id": "w2" if kind == "w2 start" else "w1"}, actor=rng.choice(self.ACTORS)))
         if kind == "approve":
-            building = [piece[0] for piece in pieces if piece[2] == "build"]
-            return bool(building) and taken(self.command("pipeline.stage_enter", {"stage_id": "wait", "left_outcome": "approved"},
-                                                         {"piece_id": rng.choice(building)}))
+            building = [piece for piece in pieces if piece[2] == "build"]
+            return bool(building) and enter(rng.choice(building), "wait", "approved", "agent-a")
+        if kind == "ask":
+            # Into the last stage a piece goes through, which waits on the owner's word: only the owner leaves it.
+            waiting = [piece for piece in pieces if piece[2] == "wait"]
+            return bool(waiting) and enter(rng.choice(waiting), "sign", "approved", "agent-a")
         if kind == "combine":
-            waiting = [piece[0] for piece in pieces if piece[2] == "wait"]
-            return bool(waiting) and taken(self.combine(rng.sample(waiting, rng.randint(1, len(waiting))), topic_id=rng.choice(topics)))
+            signed = [piece[0] for piece in pieces if piece[2] == "sign"]
+            return bool(signed) and taken(self.command("pipeline.combine", {"piece_ids": rng.sample(signed, rng.randint(1, len(signed))),
+                                                                            "topic_id": rng.choice(topics)}, {"workspace_id": "w1"},
+                                                       actor=rng.choice(("owner", "owner", "owner", "agent-a"))))
+        if kind == "release move":
+            release = next((piece for piece in pieces if piece[1] == "release"), None)
+            following = {"combine": "checks", "checks": "approve", "approve": "deploy"}
+            if release is None or release[2] not in following:
+                return False
+            return enter(release, following[release[2]], "passed", "agent-a" if following[release[2]] == "approve" else rng.choice(self.ACTORS))
         if kind == "checks":
             try:
-                return bool(self.recorded(rng.choice((SHA, "d" * 40)), units=rng.choice(("failed", "failed", "passed")),
+                return bool(self.recorded(rng.choice((SHA, "d" * 40)), units=rng.choice(("failed", "passed")),
                                           at="2026-11-07T05:%02d:%02d-08:00" % (rng.randrange(60), rng.randrange(60))))
             except Refusal:
                 return False
-        if kind == "finish":
+        if kind in ("finish", "w2 finish"):
             open_work = [piece[0] for piece in pieces if piece[1] == "piece"]
-            return bool(open_work) and taken(self.command("pipeline.piece_finish", {}, {"piece_id": rng.choice(open_work)}))
+            return bool(open_work) and taken(self.command("pipeline.piece_finish", {}, {"piece_id": rng.choice(open_work)},
+                                                          actor="owner" if kind == "w2 finish" else rng.choice(self.ACTORS)))
         if kind in ("releases on", "releases off"):
             return taken(self.on(ships_in_releases=kind == "releases on"))
-        topic = rng.choice(topics)
+        if kind in ("w2 releases on", "w2 releases off"):
+            version = self.store.view("owner", "pipeline", {"workspace_id": "w2", "limit": 1})["pipeline"]["version"]
+            return taken(self.command("pipeline.configure", {"enabled": True, "ships_in_releases": kind == "w2 releases on"}, {"workspace_id": "w2"},
+                                      {"pipeline_revision": version}))
+        # Mostly a topic the pipeline holds Done, where a person's word meets the pipeline's.
+        held = [row[0] for row in self.sql("SELECT topic_id FROM pipeline_done_topics ORDER BY topic_id")]
+        topic = rng.choice(held if held and rng.random() < 0.7 else topics + w2_topics)
+        if kind == "topic message":
+            return message(topic, False) is not None
         version = self.store.view("owner", "topic", {"topic_id": topic})["topic"]["version"]
         args = {"state": "done", "note": "Wrapped up"} if kind == "topic done" else {"state": "active"}
-        return taken(self.command("topic.update", args, target={"topic_id": topic}, expected={"topic_revision": version}))
+        if not taken(self.command("topic.update", args, target={"topic_id": topic}, expected={"topic_revision": version})):
+            return False
+        self.said[topic] = ("done", "Wrapped up", "owner", None) if kind == "topic done" else ("active", "", "owner", None)
+        return True
 
     def test_after_every_write_what_is_stored_is_the_state_derived_from_the_facts(self):
-        # A seeded property check: 60 sequences of 40 writes, each write of any kind with arguments chosen at random, from
-        # release 23 (items 1 and 2) in checks with items 3 to 8 in Now. After every write, taken or refused, the store
-        # holds exactly the state derived again from the outcome's facts.
-        topics = ["t1"] + [self.topic_of_w1(topic) for topic in ("t-a", "t-b", "t-c", "t-d", "t-e", "t-f")]
+        # A seeded property check: 60 sequences of 60 writes, each write of any kind with arguments chosen at random, from
+        # release 23 (items 1 and 2) in checks with items 3 to 8 in Now, under stages where a piece's last stage and the
+        # release's approval wait on the owner's word, beside outcome w2, which keeps a pipeline of its own items 1 to 8
+        # in Now and ships in releases whenever w1 does not. After every write, taken or refused, the store holds exactly
+        # the state derived again from each outcome's facts, and every topic keeps the word a person last said of it.
+        self.with_stages_on_the_owners_word()
+        conversation = self.store.view("owner", "conversation", {"workspace_id": "w1"})["conversation"]["topic_id"]
+        topics = ["t1", conversation] + [self.topic_of_w1(topic) for topic in ("t-a", "t-b", "t-c", "t-d", "t-e", "t-f")]
         for n in range(3, 9):
-            self.add("Item %d" % n, section="now", size="small")
+            # agent-a placed the odd ones, so it can move and drop them; the owner placed the others.
+            self.add("Item %d" % n, section="now", size="small", actor="agent-a" if n % 2 else "owner")
+        self.committed(self.command("workspace.create", {"id": "w2", "title": "Another", "purpose": "", "team": ["agent-a"]}))
+        self.committed(self.command("pipeline.configure", {"enabled": True}, {"workspace_id": "w2"}, {"pipeline_revision": 0}))
+        version = self.store.view("owner", "pipeline", {"workspace_id": "w2", "limit": 1})["pipeline"]["version"]
+        self.committed(self.command("pipeline.stages_set", {"stages": [{"stage_id": "build", "name": "Build"}]}, {"workspace_id": "w2"},
+                                    {"pipeline_revision": version}))
+        theirs = [self.committed(self.command("pipeline.item_add", {"title": "Theirs %d" % n, "section": "now", "size": "small", "sources": [{"note": "a test"}]},
+                                              {"workspace_id": "w2"}))["number"] for n in range(1, 9)]
+        self.assertEqual(theirs, list(range(1, 9)), "w2 numbers its items as w1 does, so a record names both outcomes' items")
+        w2_topics = [self.topic_of_w1(topic, workspace="w2") for topic in ("t-w2a", "t-w2b")]
         start = Path(self.temp.name) / "before-the-writes.sqlite3"
         with closing(sqlite3.connect(str(self.path))) as db, closing(sqlite3.connect(str(start))) as copy:
             db.backup(copy)
@@ -2470,13 +2609,19 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
                 copy.backup(db)
             rng = random.Random(seed)
             done = []
-            for step in range(40):
+            for step in range(60):
                 kind = rng.choice(kinds)
-                if self.write_at_random(rng, kind, topics):
+                before = self.words()
+                if self.write_at_random(rng, kind, topics, w2_topics):
                     taken[kind] += 1
                     done.append(kind)
-                self.assert_stored_is_derived("seed %d, write %d (%s), after %s" % (seed, step, kind, " > ".join(done)))
-        self.assertEqual([kind for kind, count in taken.items() if count < 20], [], "every kind of write was taken: %r" % taken)
+                said = "seed %d, write %d (%s), after %s" % (seed, step, kind, " > ".join(done))
+                for workspace in ("w1", "w2"):
+                    self.assert_stored_is_derived(said, workspace)
+                self.assert_a_persons_word_stands(said, before, self.words())
+        # Combining needs a piece through three stages and the owner's word while no release is open, so it is the rarest.
+        self.assertEqual([kind for kind, count in taken.items() if count < (10 if kind == "combine" else 20)], [],
+                         "every kind of write was taken: %r" % taken)
 
     def test_release_pieces_release_23_numbered_ship_by_the_next_release_one_at_a_time(self):
         # Release 23's combine stored a number, and could combine release 24 while 23 was open. Upgraded, the earlier is the
