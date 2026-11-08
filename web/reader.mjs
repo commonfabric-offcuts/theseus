@@ -683,7 +683,8 @@ export class Reader {
     if (!this.admits()) { if (this.writes()) this.notice(STEP_WAITS); return; }
     const editor = this.editor, presentation = this.presentation;
     const saved = await this.callbacks.saveNote(editor);
-    // true saved, false not saved; anything else has already said why.
+    // true saved, false not saved; null leaves nothing to say: the note is
+    // no longer in front, or why it failed has already been said.
     if (typeof saved !== 'boolean' || this.mode !== 'note' || this.editor !== editor || this.presentation !== presentation || !this.dialog.open || !this.admits(editor, presentation)) return;
     if (saved) { this.notice(''); this.switchMode('reply'); }
     else this.notice('Not saved yet. Your note is kept here; press Done to try again.');

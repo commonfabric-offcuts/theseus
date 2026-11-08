@@ -42,7 +42,7 @@ let chrome, socket, cdp, exitPromise;
 const results = [], pageErrors = [];
 const mutations = [], sourceHashes = {};
 const hash = text => createHash('sha256').update(text).digest('hex');
-for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
+for (const filename of ['web/index.html', 'web/aim.css', 'web/reader.mjs', 'web/writing-helpers.mjs', 'web/upload-state.mjs', 'web/layout.mjs', 'web/editor.mjs', 'web/app-session.mjs', 'tests/fixtures/reader.mjs', 'tests/reader_native.mjs']) {
   sourceHashes[filename] = hash(await readFile(path.join(root, filename)));
 }
 try {
@@ -409,6 +409,59 @@ try {
       '↑ and ⌘↑ open the newer message, ↓ and ⌘↓ the older; ⌘← and ⌘→ do nothing');
   });
 
+  // The save status beside the buttons, wherever the writing column is
+  // narrow: a narrow window in either layout, the Wide layout with its divider
+  // anywhere, a phone, and the topic's new-message composer. Every words the
+  // status can say (app-session.mjs's saveSign) are shown in turn: the writing
+  // and the buttons stay still, and while the footer has room to read in, the
+  // usual words take one line and the longest at most three.
+  await check('finished the save status keeps room to read beside the buttons at every width and layout, and a change of words never moves the writing', async () => {
+    const words = [...(await readFile(path.join(root, 'web/app-session.mjs'), 'utf8')).matchAll(/sign\('[a-z]*', '([^']+)'\)/g)].map(match => match[1]);
+    assert.ok(words.length >= 9 && words.includes('Saved to Theseus'), 'every words of the saving sign are read from the page\'s own code');
+    const rem = 16, roomy = 12 * rem;
+    let opened = 0;
+    const measure = surface => evaluate(`(()=>{const at=s=>{const b=document.querySelector(s).getBoundingClientRect();return [b.x,b.y,b.width,b.height].map(n=>Math.round(n*2)/2)};
+      const lines=e=>{const r=document.createRange();r.selectNodeContents(e);return new Set([...r.getClientRects()].filter(b=>b.width>0).map(b=>Math.round(b.top))).size};
+      const ids=${JSON.stringify(surface)}==='reader'?['#writing-body','#send-reply','#add-image','#toggle-note','#reader .writing-footer']:['#inline-writing-body','#inline-send','#inline-add-image','#inline-composer .writing-footer'];
+      const status=document.querySelector(${JSON.stringify(surface)}==='reader'?'#save-state':'#inline-save-state'),hint=document.querySelector(${JSON.stringify(surface)}==='reader'?'#writing-hint':'#inline-writing-hint');
+      return {boxes:ids.map(at),footer:at(ids.at(-1))[2],status:at('#'+status.id),statusLines:lines(status),hintLines:lines(hint)}})()`);
+    // The cases after this one run at the harness's own window size.
+    try {
+      for (const [width, height, mobile = false] of [[1440, 900], [1000, 800], [900, 800], [800, 800], [761, 800], [390, 844, true]]) {
+        for (const view of ['stacked', 'wide', 'wide, writing narrowest', 'wide, writing widest', 'composer']) {
+          await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile });
+          const caseId = `${results.length}-sweep-${++opened}`;
+          await send('Page.navigate', { url: origin + '/?case=' + caseId + (view === 'composer' ? '&composer' : '') });
+          await until(() => evaluate(`document.body?.dataset.fixtureReady === "true" && document.body.dataset.fixtureCase === ${JSON.stringify(caseId)} && matchMedia("(max-width: 760px)").matches === ${width <= 760}`), 'fixture at its width');
+          const surface = view === 'composer' ? 'composer' : 'reader';
+          if (surface === 'reader') {
+            await point('#open-fixture'); await until(() => evaluate('document.querySelector("#reader").open'), 'open reader');
+            if (view.startsWith('wide')) {
+              if (await evaluate('document.querySelector("#reader-layout").hidden')) continue;
+              await point('#reader-layout'); await until(() => evaluate('document.querySelector("#reader").dataset.layout === "wide"'), 'wide layout');
+            }
+            if (view.includes('writing')) {
+              await point('#reader-divider');
+              for (let step = 0; step < 4; step++) await key(view.endsWith('narrowest') ? 'ArrowRight' : 'ArrowLeft', 8);
+              assert.equal(await share(), view.endsWith('narrowest') ? 20 : 80, `${view}: the divider is at its end`);
+            }
+          }
+          await until(() => evaluate('document.getAnimations().every(animation => animation.playState !== "running")'), 'settled layout');
+          const label = `${width}px ${view}`, status = surface === 'reader' ? '#save-state' : '#inline-save-state';
+          const shown = [];
+          for (const text of words) { await evaluate(`document.querySelector(${JSON.stringify(status)}).textContent = ${JSON.stringify(text)}`); shown.push({ text, ...await measure(surface) }); }
+          const first = shown[0];
+          observations.push({ label, footer: first.footer, status: first.status, lines: Object.fromEntries(shown.map(item => [item.text, item.statusLines])), hintLines: first.hintLines });
+          for (const item of shown) assert.deepEqual(item.boxes, first.boxes, `${label}: "${item.text}" moves nothing: the writing and the buttons stay still`);
+          if (first.footer < roomy) continue;
+          assert.equal(shown.find(item => item.text === 'Saved to Theseus').statusLines, 1, `${label}: "Saved to Theseus" takes one line, never a word to a line`);
+          assert.ok(Math.max(...shown.map(item => item.statusLines)) <= 3, `${label}: the longest status takes at most three lines`);
+          assert.ok(first.hintLines <= 2, `${label}: the hint takes at most two lines`);
+        }
+      }
+    } finally { await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false }); }
+  });
+
   const selectedCases = mode === '--keyboard' ? cases.slice(0, 1) : mode === '--anchor-control' ? cases.slice(7, 8) : mode === '--review-gaps' ? cases.slice(5, 8)
     : mode === '--finished' ? cases.slice(8) : cases.slice(0, 5);
   for (const item of selectedCases) await runCase(item);
@@ -445,6 +498,18 @@ try {
         from: '#toggle-note[data-has-note]{background:var(--note);', to: '#toggle-note[data-has-note]{', expected: /a soft yellow in light/ },
       { name: 'arrows-for-a-page-oldest-on-top', file: 'web/reader.mjs', index: 11,
         from: 'const NEWEST_ON_TOP = true;', to: 'const NEWEST_ON_TOP = false;', expected: /up is the newer message, and comes first/ },
+      // The status's room as the branch first had it: only on a phone, so a
+      // narrow Wide layout squeezed it to a word a line and it moved the writing.
+      { name: 'status-room-only-on-a-phone', file: 'web/aim.css', index: 12,
+        from: '@container writing-footer (max-width:34rem){#reader', to: '@media(max-width:760px){#reader',
+        expected: /\d+px wide[^:]*: .*(moves nothing|takes one line|at most three lines|at most two lines)/ },
+      { name: 'reserve-shorter-than-a-status', file: 'web/index.html', index: 12,
+        from: '<span id="save-state" role="status">Saved</span><span class="save-reserve" aria-hidden="true">Source or destination unavailable — writing kept on this device</span>',
+        to: '<span id="save-state" role="status">Saved</span><span class="save-reserve" aria-hidden="true">Saved on this device — not yet saved to Theseus</span>',
+        expected: /"Source or destination unavailable — writing kept on this device" moves nothing/ },
+      { name: 'composer-status-squeezed', file: 'web/aim.css', index: 12,
+        from: '@container writing-footer (max-width:28rem){#inline-composer .writing-footer>div{order:-1;flex:1 0 100%}#inline-composer .writing-footer>button:last-child{margin-left:auto}}', to: '',
+        expected: /px composer: .*(moves nothing|takes one line|at most three lines|at most two lines)/ },
     ] : [
       { name: 'nonempty-reply-misread-as-empty', file: 'web/reader.mjs', index: 5,
         from: 'writingEmpty: !reply.body.trim() && !reply.attachments.length', to: 'writingEmpty: true', expected: /nonempty Shift-Cmd-Return sends exactly once/ },

@@ -28,7 +28,10 @@ const callbacks = {
 reader = new Reader(callbacks);
 const opener = document.createElement('button');
 opener.id = 'open-fixture'; opener.textContent = 'Read fixture message';
-document.querySelector('#main').replaceChildren(opener);
+// ?composer keeps the topic's new-message composer in view beside the opener,
+// as markup and style alone, for checks of its footer's layout.
+if (new URL(location.href).searchParams.has('composer')) { document.querySelector('#main').prepend(opener); document.querySelector('#inline-composer').hidden = false; }
+else document.querySelector('#main').replaceChildren(opener);
 opener.onclick = () => reader.show(source, { reply, note }, {
   opener, topics: [{ id: 'fixture-topic', title: 'Fixture topic' }], canPrevious: true, canNext: true,
 });

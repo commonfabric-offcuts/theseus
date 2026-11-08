@@ -1352,6 +1352,16 @@ try {
       await until(async () => (await privateState()).draft?.body === await field(p), 'actual draft save');
       assert.equal(await p.evaluate('document.querySelector("#save-state").textContent'), 'Saved to Theseus');
       const reply = await field(p);
+      // Done on a note with nothing written has nothing to save: it goes back
+      // to the reply, saying nothing, and sends no save.
+      const noteSaves = () => p.calls.filter(call => call.payload?.kind === 'note.save').length, savesBefore = noteSaves();
+      await p.point('#toggle-note');
+      assert.deepEqual(await p.evaluate("[document.querySelector('#writing-body').value, document.querySelector('#send-reply').textContent]"), ['', 'Done'], 'a message with no note');
+      await p.point('#send-reply');
+      await until(() => p.evaluate("document.querySelector('#toggle-note').textContent === 'Add note'"), 'Done on an empty note goes back to the reply');
+      assert.deepEqual(await p.evaluate("({notice:document.querySelector('#reader-notice').hidden?'':document.querySelector('#reader-notice').textContent,body:document.querySelector('#writing-body').value})"),
+        { notice: '', body: reply }, 'back on the reply as it was, with no word of a failed save');
+      assert.equal(noteSaves(), savesBefore, 'nothing was sent to save');
       await p.point('#toggle-note'); await p.send('Input.insertText', { text: 'Private native note' }); await p.key('Enter', 4);
       // A confirmed note leaves the Reader open, back on the reply as it was.
       await until(() => p.evaluate("document.querySelector('#toggle-note').textContent === 'Show note'"), 'confirmed note hands back to the reply');
