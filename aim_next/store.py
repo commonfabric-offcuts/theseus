@@ -37,7 +37,7 @@ from .standing_conversation import StandingConversation, STANDING_SCHEMA
 from .pipeline import Pipeline, PIPELINE_SCHEMA, import_seed
 
 
-SCHEMA_VERSION = "29"
+SCHEMA_VERSION = "30"
 
 
 def commit_identity_intact(metadata):

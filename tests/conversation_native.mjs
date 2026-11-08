@@ -4,8 +4,8 @@ import { readFile } from 'node:fs/promises';
 // An outcome's conversation (item 82, docs/conversation.md) in the real
 // browser against the real server: the page at ?conversation=w1 is a topic
 // page, messages above the writing box; a card arrives New and turns Answered
-// live; an ask brings "Asks you" and "Waiting on you", and a reply in the
-// Reader clears both; Answered by in the writing box is one tap on a name; the
+// live; an ask back answers the item and brings "Asks you" and "Waiting on
+// you", and a reply in the Reader clears both; Answered by in the writing box is one tap on a name; the
 // Reader on a message in a topic sends the writing to the conversation by one
 // tap on To; a link to the conversation's topic opens as ?conversation=;
 // Only new leaves out what is settled; and the page at 390 wide, light and
@@ -73,12 +73,12 @@ export async function conversationChecks({ check, page, until, control, view, fa
     assert.deepEqual(p.errors, []); await p.close();
   });
 
-  await check('conversation an ask back brings "Asks you" and "Waiting on you", and replying to it in the Reader clears both', async () => {
+  await check('conversation an ask back answers the item and brings "Asks you" and "Waiting on you", and replying to it in the Reader clears both', async () => {
     const p = await open('conversation-ask', '/?conversation=w1');
     const item = await post('conversation-ask-item', 'Can we move the launch?');
     const ask = await answer('conversation-ask-back', `@${person} to which day?`, { reply_to: item, addressees: [person], intent: 'ask' });
     const waiting = await until(async () => { const t = await tags(p, item); return t?.mine.length && t; }, 'the item waits on the reader');
-    assert.deepEqual([waiting.tags, waiting.mine], [['New', 'Waiting on you'], ['Waiting on you']], 'the ask back answers nothing; it waits');
+    assert.deepEqual([waiting.tags, waiting.mine], [['Answered', 'Waiting on you'], ['Waiting on you']], 'the ask back answers the item, and its ask waits');
     assert.equal((await tags(p, ask)).asks, 'Asks you');
     assert.equal((await until(async () => { const r = await row(p); return r?.waiting && r; }, 'the row says so')).waiting, 'Waiting on you');
     await shot(p, 'conversation-waiting');
@@ -90,7 +90,7 @@ export async function conversationChecks({ check, page, until, control, view, fa
     await until(async () => { const t = await tags(p, item); return t && !t.mine.length; }, 'Waiting on you goes');
     await until(async () => (await tags(p, ask))?.asks === null, 'Asks you goes');
     await until(async () => (await row(p))?.waiting === null, 'the row stops waiting');
-    assert.deepEqual((await tags(p, item)).tags, ['New'], 'still New: nobody answered the item itself');
+    assert.deepEqual((await tags(p, item)).tags, ['Answered'], 'still Answered: the reply to the ask settles nothing more');
     assert.deepEqual(p.errors, []); await p.close();
   });
 

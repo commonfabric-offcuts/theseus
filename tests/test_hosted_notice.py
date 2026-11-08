@@ -118,6 +118,11 @@ class NoticeCase(unittest.TestCase):
         self.assertIn("Your CLI: /usr/bin/python3 -I /abs/bin/aim-next --profile /abs/agent-x.json", text.splitlines())
         self.assertIn("never rebind", text)
 
+    def test_developer_instructions_say_an_ask_back_answers_the_item_and_part_keeps_what_is_still_owed_new(self):
+        words = " ".join(hosted_notice.developer_instructions("agent-x", "aim-next", "/abs/agent-x.json").split())
+        self.assertIn("Your reply answers an item even when it asks its author back; when you take only part of an item, "
+                      "or will still owe the rest once they reply, add --part (post, start --from) so it stays New.", words)
+
 
 if __name__ == "__main__":
     unittest.main()

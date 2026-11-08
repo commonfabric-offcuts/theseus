@@ -13,10 +13,10 @@ act that did it.
 first, with the same cards, New line and counts, and the writing box below
 them ("Write to OUTCOME…"). The heading is "Conversation", with what it is for
 and who answers under it. A card's tags say New, Answered (with the reply),
-Taken into a topic (with the topic), On the pipeline, or Waiting on someone
-(with the ask). One filter chip, "Only new (N)", leaves out every card but the
-items nothing has settled. Any link to the conversation's topic opens this
-page.
+Taken into a topic (with the topic) or On the pipeline, and, beside any of
+them, Waiting on someone (with the ask). One filter chip, "Only new (N)",
+leaves out every card but the items nothing has settled. Any link to the
+conversation's topic opens this page.
 
 ## Who is in it
 
@@ -51,7 +51,7 @@ open ask to them. A take records what became of an item:
 
 | Kind | Written when | `ref` |
 | --- | --- | --- |
-| `answer` | an answerer replies to the item, unless the reply asks the item's author | the reply's id |
+| `answer` | an answerer replies to the item, whether or not the reply asks the item's author back | the reply's id |
 | `topic` | `opening.publish` starts a topic whose `source_message_id` is the item | the new topic's id |
 | `pipeline` | `pipeline.item_add` adds an item with the item as a source (`added: false`, "as 92"), or `pipeline.source_add` adds it to an item (`added: true`, "added to 92"); only for this outcome's own pipeline | the item numbers |
 
@@ -59,6 +59,17 @@ A take settles the item unless it took only part of it: `part: true` on
 `message.post`, `draft.save` (`--part` on `post`), `opening.save` (`--part`
 on `start --from`), `pipeline.item_add` or `pipeline.source_add` (each needs a
 message source). `part` anywhere else is refused.
+
+A reply that asks the item's author back answers the item like any other: the
+card reads Answered, and the ask's own wait reads Waiting on them beside it
+until they reply to that ask. An answerer who will still owe the rest once the
+author replies sends the ask with `part`, which leaves the item New. Before
+version 30 such a reply wrote no take, so its item stayed New for good. The
+step to version 30 writes the take that each agent's reply to an item writes
+now, where it has none, at the time the reply was sent, as a whole answer,
+since whether it took only part was not kept. An agent's reply to an item was
+always its answerer's; a person's was only while they coordinated, which is
+not kept, so a person's reply is left as it was.
 
 An ask there waits on each person it asks until that person replies to that
 ask (`reply_to` = the ask), or leaves the team and so can no longer read the

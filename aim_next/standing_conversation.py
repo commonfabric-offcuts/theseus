@@ -67,6 +67,30 @@ STANDING_DOWN = (
 # Items, takes, waits, about links and replaced topics exist only with a conversation.
 STANDING_OCCUPIED = "SELECT EXISTS (SELECT 1 FROM topics WHERE kind <> 'topic')"
 
+# Before this step an answerer's reply that asked the item's author back wrote
+# no take, so the item stayed New for good; every other answerer's reply wrote
+# one. The step writes the answer take that each agent's reply to an item
+# writes today, where it has none, at the time it was sent, and settles the
+# item. It changes no layout and writes nothing twice, so it can run again.
+# An agent's reply to an item was always its answerer's, since Core refuses any
+# other (NOT_THE_ANSWERER), and never a whisper, since an agent whispers only
+# in answer to a whisper. A person answers only as the coordinator, and who
+# coordinated then is not kept, so a person's reply is left as it was. Whether
+# a reply took only part was never kept either, so each is a whole answer. The
+# takes stay on a step back, where the older code reads them as any take.
+SETTLE_ASKED_BACK = (
+    "INSERT INTO conversation_takes(item_id,kind,ref,added,part,actor_id,at_ms) "
+    "SELECT i.message_id,'answer',r.id,0,0,r.author_id,coalesce(r.sent_ms,0) FROM conversation_items i "
+    "JOIN messages r ON r.reply_to=i.message_id JOIN actors a ON a.id=r.author_id "
+    "WHERE a.kind='agent' "
+    "AND NOT EXISTS (SELECT 1 FROM conversation_takes k WHERE k.item_id=i.message_id AND k.kind='answer' AND k.ref=r.id) "
+    "ORDER BY r.seq",
+    "UPDATE conversation_items SET settled=1 WHERE settled=0 AND EXISTS "
+    "(SELECT 1 FROM conversation_takes k WHERE k.item_id=conversation_items.message_id AND k.part=0)",
+    # An INSERT that wrote no row still leaves a counter at 0; with nothing stuck, the step leaves no trace.
+    "DELETE FROM sqlite_sequence WHERE name='conversation_takes' AND seq=0",
+)
+
 TITLE = "Conversation"
 REPLACED_NOTE = "Replaced by the conversation"
 RULE = "CONVERSATION_RULE"
@@ -324,10 +348,9 @@ class StandingConversation:
         if actor != coordinator and not answering and not answers_ask:
             db.execute("INSERT INTO conversation_items(message_id) VALUES (?)", (message_id,))
         if answering:
-            parent_author = db.execute("SELECT author_id FROM messages WHERE id=?", (parent_id,)).fetchone()[0]
-            # An ask back to the item's author waits on them; it does not answer the item.
-            if not (intent == "ask" and parent_author in addressees):
-                self._record_take(db, parent_id, "answer", message_id, actor, part=partial(snapshot))
+            # An answer even when it asks the item's author back: its ask waits on them apart (below).
+            # An answerer who still owes the rest says so with part, which leaves the item New.
+            self._record_take(db, parent_id, "answer", message_id, actor, part=partial(snapshot))
         touched = []
         if answers_ask:
             db.execute("DELETE FROM conversation_waits WHERE ask_id=? AND actor_id=?", (parent_id, actor))

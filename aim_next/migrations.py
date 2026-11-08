@@ -28,7 +28,7 @@ from .sources import SOURCE_DOWN, SOURCE_OCCUPIED, SOURCE_SCHEMA
 from .wake_health import WAKE_HEALTH_DOWN, WAKE_HEALTH_OCCUPIED, WAKE_HEALTH_SCHEMA
 from .releases import RELEASE_DOWN, RELEASE_OCCUPIED, RELEASE_SCHEMA
 from .whispers import WHISPER_DOWN, WHISPER_OCCUPIED, WHISPER_SCHEMA
-from .standing_conversation import STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
+from .standing_conversation import SETTLE_ASKED_BACK, STANDING_DOWN, STANDING_OCCUPIED, STANDING_SCHEMA
 from .pipeline import PIPELINE_DOWN, PIPELINE_OCCUPIED, PIPELINE_SCHEMA
 
 
@@ -102,6 +102,10 @@ STEPS = (
     # placement and edit, the messages whose subject is an item, and the release
     # notes written by hand. Stepping back is refused once any of them exists.
     ("28", "29", PIPELINE_SCHEMA, PIPELINE_DOWN, PIPELINE_OCCUPIED),
+    # Version 30 settles each conversation item an answerer answered by asking
+    # its author back, which before it wrote no take and so stayed New. It
+    # changes no layout; stepping back keeps the takes, which version 29 reads.
+    ("29", "30", SETTLE_ASKED_BACK, (), "SELECT 0"),
 )
 
 

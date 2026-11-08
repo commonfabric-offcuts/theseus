@@ -11,6 +11,7 @@ import unittest
 from unittest import mock
 
 from aim_next import admin, conversation, migrations, recovery_io
+from aim_next import standing_conversation as standing
 from aim_next import store as store_module
 from aim_next.authority import Authority, AuthorityError
 from aim_next.contract import StoreError
@@ -50,6 +51,13 @@ SCHEMA_27 = (Path(__file__).parent / "fixtures" / "schema_27.sql").read_text().s
 # it is version 28's, read from a fresh instance of the conversation's code (32d5e0e).
 BEFORE_PIPELINE, PIPELINE_VERSION = "28", "29"
 SCHEMA_BEFORE_PIPELINE = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_PIPELINE)).read_text().splitlines()
+# The step that settles each conversation item an answerer's asking reply left
+# New: the version it starts from and the one it makes, named here once, so a
+# renumbering of the step changes only these two and the fixture's file name.
+# It changes no layout, so the layout before it is the pipeline's, read from a
+# fresh instance of release 24's code (8ab5162).
+BEFORE_SETTLE, SETTLE_VERSION = "29", "30"
+SCHEMA_BEFORE_SETTLE = (Path(__file__).parent / "fixtures" / ("schema_%s.sql" % BEFORE_SETTLE)).read_text().splitlines()
 TABLES = ("actors", "workspaces", "workspace_members", "topics", "topic_participants", "topic_summaries",
           "messages", "deliveries", "delivery_reasons", "delivery_groups", "operations", "changes",
           "drafts", "submissions", "metadata")
@@ -69,6 +77,10 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
+        # The settling step changes no layout and keeps every row.
+        if version == BEFORE_SETTLE:
+            db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
+            return
         # The pipeline's version keeps each outcome's pipeline, its stages, items,
         # pieces and their entries, every event, message subjects and release notes.
         for table in ("release_notes", "pipeline_events", "pipeline_item_sources", "message_subjects", "pipeline_stage_entries",
@@ -1746,7 +1758,8 @@ def fresh_schema(directory):
 # every step in between, each with its own frozen layout.
 RELEASE_20_LADDER = (("17", SCHEMA_17), ("18", SCHEMA_18), ("19", SCHEMA_19), ("20", SCHEMA_20),
                      ("21", SCHEMA_21), ("22", SCHEMA_22), ("23", SCHEMA_23), ("24", SCHEMA_24),
-                     ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27), (BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE))
+                     ("25", SCHEMA_25), ("26", SCHEMA_26), ("27", SCHEMA_27), (BEFORE_PIPELINE, SCHEMA_BEFORE_PIPELINE),
+                     (BEFORE_SETTLE, SCHEMA_BEFORE_SETTLE))
 
 
 class Release19ChainCase(MigrationCase):
@@ -2350,21 +2363,20 @@ class PipelineStepCase(MigrationCase):
         return migrate(self.path, "test-instance", self.binding, BEFORE_PIPELINE)
 
     def at_head(self):
-        self.assertEqual(self.upgrade()["schema_version"], PIPELINE_VERSION)
+        self.assertEqual(self.upgrade()["schema_version"], SCHEMA_VERSION)
         self.store = Store(self.path, "test-instance", expected_binding=self.binding)
 
     def committed(self, receipt):
         self.assertEqual(receipt["status"], "committed", receipt)
         return receipt["result"]
 
-    def test_the_step_is_the_pipelines_and_the_head_is_its_version(self):
+    def test_the_step_is_the_pipelines(self):
         self.assertIn((BEFORE_PIPELINE, PIPELINE_VERSION), [step[:2] for step in migrations.STEPS])
-        self.assertEqual(SCHEMA_VERSION, PIPELINE_VERSION)
 
     def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_the_pipeline_works(self):
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_PIPELINE,
-                                          "schema_version": PIPELINE_VERSION, "migrated": True})
+                                          "schema_version": SCHEMA_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         upgraded = everything(self.path)
         self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
@@ -2401,7 +2413,7 @@ class PipelineStepCase(MigrationCase):
                     self.step_back()
                 self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
                 self.assertEqual(self.unchanged(), before)
-                self.assertEqual(self.metadata()["schema_version"], PIPELINE_VERSION)
+                self.assertEqual(self.metadata()["schema_version"], SCHEMA_VERSION)
                 # Cleared by hand (the records refuse a DELETE by trigger), the step back goes through.
                 with sqlite3.connect(str(self.path)) as db:
                     for table in ("pipelines", "message_subjects", "release_notes"):
@@ -2418,6 +2430,102 @@ class PipelineStepCase(MigrationCase):
         self.assertEqual(raised.exception.code, "RECORDS_WOULD_BE_LOST")
         self.assertEqual(self.unchanged(), before)
 
+
+class SettleStepCase(MigrationCase):
+    """An instance at the version before the settling step, holding conversation
+    items as release 24 left them: an answerer's reply that asked the item's
+    author back wrote no take, so the item stayed New after the author replied.
+    The step writes the answer take each such reply would write today."""
+
+    VERSION, FIXTURE = BEFORE_SETTLE, SCHEMA_BEFORE_SETTLE
+
+    def create_topic(self):
+        source = super().create_topic()
+        self.write_as_release_24_left()
+        return source
+
+    def posted(self, body, actor="owner", **args):
+        topic = self.store.view("owner", "conversation", {"workspace_id": "w1"})["conversation"]["topic_id"]
+        receipt = self.command("message.post", dict({"body": body}, **args), {"topic_id": topic}, actor=actor)
+        self.assertEqual(receipt["status"], "committed", receipt)
+        return receipt["result"]["message_id"]
+
+    def write_as_release_24_left(self):
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO actors(id,kind,name) VALUES ('reader-two','human','Reader Two')")
+        workspace = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        self.assertEqual(self.command("workspace.member_set", {"actor_id": "reader-two", "present": True}, {"workspace_id": "w1"},
+                                      {"workspace_revision": workspace})["status"], "committed")
+        self.stuck = self.posted("Can you move the launch?")
+        self.back = self.posted("@owner to which day?", "agent-a", reply_to=self.stuck, addressees=["owner"], intent="ask")
+        self.posted("Friday.", reply_to=self.back)
+        # Asked back by agent-a while it coordinated; agent-b coordinates now.
+        self.earlier = self.posted("Is the copy final?")
+        self.earlier_back = self.posted("@owner which copy?", "agent-a", reply_to=self.earlier, addressees=["owner"], intent="ask")
+        workspace = self.store.view("owner", "workspace", {"workspace_id": "w1"})["workspace"]["version"]
+        self.assertEqual(self.command("workspace.coordinator_set", {"actor_id": "agent-b"}, {"workspace_id": "w1"},
+                                      {"workspace_revision": workspace})["status"], "committed")
+        # Never answered; asked back only by a person who does not answer it; answered in part.
+        self.quiet = self.posted("What about the press kit?")
+        self.other = self.posted("Who books the venue?")
+        self.other_back = self.posted("@owner which venue?", "reader-two", reply_to=self.other, addressees=["owner"], intent="ask")
+        self.partly = self.posted("Two things: pricing, and the FAQ.")
+        self.posted("Pricing is set.", "agent-b", reply_to=self.partly, part=True)
+        # Release 24 wrote no take for an answerer's reply that asked the item's author back.
+        trigger = next(statement for statement in standing.STANDING_SCHEMA if "immutable_takes_delete" in statement)
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("DROP TRIGGER immutable_takes_delete")
+            db.execute("DELETE FROM conversation_takes WHERE ref IN (?,?)", (self.back, self.earlier_back))
+            db.execute("UPDATE conversation_items SET settled=0 WHERE message_id IN (?,?)", (self.stuck, self.earlier))
+            db.execute(trigger)
+
+    def items(self):
+        return {key: (settled, self.sql("SELECT kind,ref,actor_id,part,at_ms FROM conversation_takes WHERE item_id=? ORDER BY id", (key,)))
+                for key, settled in self.sql("SELECT message_id,settled FROM conversation_items")}
+
+    def sent(self, message_id):
+        return self.sql("SELECT sent_ms FROM messages WHERE id=?", (message_id,))[0][0]
+
+    def test_the_step_settles_and_the_head_is_its_version(self):
+        self.assertIn((BEFORE_SETTLE, SETTLE_VERSION), [step[:2] for step in migrations.STEPS])
+        self.assertEqual(SCHEMA_VERSION, SETTLE_VERSION)
+
+    def test_upgrade_answers_each_item_an_answerer_asked_its_author_back_on_and_leaves_the_rest_as_they_were(self):
+        before, stored = self.items(), everything(self.path)
+        self.assertEqual({key: before[key] for key in (self.stuck, self.earlier)}, {self.stuck: (0, []), self.earlier: (0, [])},
+                         "release 24 left them New with no take")
+        self.assertEqual(migrate(self.path, "test-instance", self.binding, SETTLE_VERSION)["schema_version"], SETTLE_VERSION)
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_SETTLE), "no layout changes")
+        after = self.items()
+        self.assertEqual(after[self.stuck], (1, [("answer", self.back, "agent-a", 0, self.sent(self.back))]),
+                         "the item reads Answered, by the asking reply, at the time it was sent")
+        self.assertEqual(after[self.earlier], (1, [("answer", self.earlier_back, "agent-a", 0, self.sent(self.earlier_back))]),
+                         "an agent's reply to an item was its answerer's, whoever coordinates now")
+        self.assertEqual({key: value for key, value in after.items() if key not in (self.stuck, self.earlier)},
+                         {key: value for key, value in before.items() if key not in (self.stuck, self.earlier)},
+                         "an unanswered item, one a person who does not answer it asked back, and one answered in part stay as they were")
+        self.assertEqual([after[key][0] for key in (self.quiet, self.other, self.other_back, self.partly)], [0, 0, 0, 0])
+        changed = {table for table, rows in everything(self.path).items() if rows != stored[table]}
+        self.assertEqual(changed, {"conversation_takes", "conversation_items", "sqlite_sequence"}, "nothing but them and the takes' counter")
+        self.store = Store(self.path, "test-instance", expected_binding=self.binding)
+        found = self.store.view("owner", "conversation", {"workspace_id": "w1"})["conversation"]
+        self.assertEqual(found["new_items"], 4)
+        page = {item["id"]: item["item"] for item in self.store.view("owner", "topic_messages", {"topic_id": found["topic_id"], "limit": 50})["items"]}
+        self.assertEqual((page[self.stuck]["state"], [take["ref"] for take in page[self.stuck]["takes"]]), ("settled", [self.back]))
+
+    def test_the_step_runs_again_without_writing_twice_and_steps_back_keeping_what_it_wrote(self):
+        self.upgrade()
+        settled = everything(self.path)
+        up = next(step[2] for step in migrations.STEPS if step[:2] == (BEFORE_SETTLE, SETTLE_VERSION))
+        with sqlite3.connect(str(self.path)) as db:
+            for statement in up:
+                db.execute(statement)
+        self.assertEqual(everything(self.path), settled, "run again, it writes nothing")
+        self.assertTrue(migrate(self.path, "test-instance", self.binding, BEFORE_SETTLE)["migrated"])
+        self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_SETTLE))
+        self.assertEqual(everything(self.path), settled, "stepping back keeps the takes, which the older code reads as any take")
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(everything(self.path), settled, "and up again writes no second take")
 
 # Do not rerun the inherited StoreCase tests during module discovery.
 for _name in list(fixtures.StoreCase.__dict__):
@@ -2459,6 +2567,8 @@ for _name in list(MigrationCase.__dict__):
         setattr(Schema27Case, _name, None)
     if _name.startswith("test_") and _name not in PipelineStepCase.__dict__:
         setattr(PipelineStepCase, _name, None)
+    if _name.startswith("test_") and _name not in SettleStepCase.__dict__:
+        setattr(SettleStepCase, _name, None)
     if _name.startswith("test_") and _name not in Schema20Case.__dict__:
         setattr(Schema20Case, _name, None)
     if _name.startswith("test_") and _name not in Schema21Case.__dict__:
