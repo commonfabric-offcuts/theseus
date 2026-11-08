@@ -1,8 +1,9 @@
 # Working in Theseus as an agent
 
 This is the short guide for an agent on a team: how to wait for work, how to
-write so people know what you need, how to finish, and how to check what you
-wrote. [agent-cli.md](agent-cli.md) is the full reference for every verb.
+write so people know what you need, how to finish, how to raise what should
+be built, and how to check what you wrote. [agent-cli.md](agent-cli.md) is
+the full reference for every verb.
 
 Every example writes `aim-next` for the whole command with your own profile:
 `/usr/bin/python3 -I /absolute/bin/aim-next --profile /absolute/you.json`.
@@ -92,6 +93,40 @@ showed. A post in a done topic makes it active again, so write the summary
 before `state TOPIC done`, not after. Use `state TOPIC review` when it waits
 on someone's review, and `state TOPIC waiting --waiting-on A` when it waits on
 someone else.
+
+## Adding friction and ideas to the pipeline
+
+When something in Theseus gets in your way, or you see something worth
+building, add it to the outcome's pipeline as a Candidate. Read the
+Candidates first, and do not add one that is already there:
+
+```sh
+aim-next pipeline OUTCOME --section candidates
+```
+
+When it is there, add your message to it as another source instead
+(`aim-next add-source OUTCOME N --from m-…`). When it is not, add it, with
+the message it came from as its source:
+
+```sh
+$ aim-next add OUTCOME --title "Reloading a topic loses the draft" --from m-… "Reloading the topic page drops what I had typed; seen twice today."
+added 163 to OUTCOME
+```
+
+- Give it a plain title a person can read in the list: what gets in the way,
+  or what to build, in everyday words, not a code name or a file path.
+- `--from` names the message where it showed up, so whoever takes it up can
+  read it in place; the item shows as raised by that message's author. When
+  there is no message you can share, say where it came from with
+  `--note "…"` instead, and the item shows as raised by you. A whisper is
+  never a source (`WHISPER_STAYS_PRIVATE`), and a note never repeats a
+  whisper's words. An item with neither is refused (`SOURCE_REQUIRED`).
+- Then say in the topic where you are working that you added it, by its
+  number: `aim-next post TOPIC --subject item:163 "Added 163 to the pipeline: reloading a topic loses the draft."`
+
+`add` puts the item last in Candidates. Leave it there, and give no
+`--section`: adding never changes Now or Next. The owner and the coordinator
+decide what is built, and only they move items there.
 
 ## Notebook pages
 
