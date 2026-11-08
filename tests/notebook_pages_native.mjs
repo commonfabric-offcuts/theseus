@@ -5,8 +5,10 @@ import assert from 'node:assert/strict';
 // an agent revised since wears its new revisions as a count, live, with no
 // reload; opening it shows what changed since, as marked words, and puts the
 // light out; a page in the topic's own Notebook wears the same light; at 390 wide, in light and in dark, nothing leaves the screen and
-// the changed words stay readable; and on the outcome's own page the pages
-// follow the topics and open in place.
+// the changed words stay readable; on the outcome's own page the pages
+// follow the topics and open in place; and a page's link opens the page, as
+// it stands or at a revision, in the Reader or in place, from the address bar
+// or from a message's words, and the Reader's ⋯ copies it.
 export async function notebookChecks({ check, page, until, control, view, facts, shot }) {
   const id = 'notebook-release-plan', row = `#outcome-references-list .reference[data-id="${id}"]`;
   const light = p => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(row + ' .unread-count')});return b?{text:b.textContent,className:b.className,said:document.querySelector(${JSON.stringify(row + ' .sr-only')})?.textContent}:null})()`);
@@ -148,5 +150,67 @@ export async function notebookChecks({ check, page, until, control, view, facts,
     await p.point('#page-here button');
     assert.equal(await p.evaluate(`document.activeElement===document.querySelector(${JSON.stringify(row)})`), true, 'Close gives the focus back to the row');
     assert.deepEqual(p.errors, []);
+  });
+
+  await check('notebook a page\'s link opens the page as it stands or at a revision, in the Reader on a topic\'s page and in place on its outcome\'s, opens here from a message, and the Reader\'s ⋯ copies it', async () => {
+    const linked = (await control({ method: 'seed', memory_items: 1 })).item_ids[0];
+    const first = await view('source', { source_ref: { kind: 'memory', id: linked, revision: 1 } });
+    const revised = await control({ method: 'memory_revise', operation_id: `${linked}-link`, item_id: linked, expected_revision: 1, title: 'Linked page', body: 'The linked page, revised.' });
+    assert.equal(revised.status, 'committed', JSON.stringify(revised));
+    const shows = (p, title, body) => until(() => p.evaluate(`document.querySelector('#reader').open && document.querySelector('#reader-title').textContent === ${JSON.stringify(title)} && document.querySelector('#source-body').textContent === ${JSON.stringify(body)}`), `the Reader shows ${title}`);
+    const items = p => p.evaluate(`[...document.querySelectorAll('.message-menu-list [role=menuitem]')].map(b=>b.textContent)`);
+    const choose = async (p, label) => {
+      await p.point('#reader-menu');
+      await until(async () => (await items(p)).includes(label), 'the Reader\'s ⋯ offers ' + label);
+      await p.point(`.message-menu-list [role=menuitem]:nth-child(${(await items(p)).indexOf(label) + 1})`);
+      await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the menu closed');
+    };
+    // As it stands, in the Reader on its topic's page; the address then names the topic alone.
+    let p = await page('notebook-link-latest', null, true, { url: `${facts.origin}/?topic=t1&page=${linked}` });
+    await shows(p, 'Linked page', 'The linked page, revised.');
+    assert.equal(await p.evaluate('location.search'), '?topic=t1');
+    await until(() => p.evaluate("document.getAnimations().every(a=>a.playState!=='running')"), 'the Reader settled');
+    // The page's own clipboard, never the Mac's.
+    await p.evaluate(`(()=>{window.copied=[];Object.defineProperty(navigator.clipboard,'writeText',{configurable:true,value:async text=>{window.copied.push(text)}});return true})()`);
+    await p.point('#reader-menu');
+    await until(async () => JSON.stringify((await items(p)).slice(0, 2)) === JSON.stringify(['Copy Link', 'Copy Link to Revision 2']), 'the ⋯ offers the page\'s two links');
+    await p.point('.message-menu-list [role=menuitem]:nth-child(1)');
+    await until(() => p.evaluate(`!document.querySelector('.message-menu-list')`), 'the menu closed');
+    await choose(p, 'Copy Link to Revision 2');
+    assert.deepEqual(await p.evaluate('window.copied'), [`${facts.origin}/?topic=t1&page=${linked}`, `${facts.origin}/?topic=t1&page=${linked}&revision=2`]);
+    await shot(p, 'notebook-link-reader');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // At a revision.
+    p = await page('notebook-link-revision', null, true, { url: `${facts.origin}/?topic=t1&page=${linked}&revision=1` });
+    await shows(p, first.title, first.body);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // An outcome's page opens on the outcome's own page, in place, at its revision.
+    const plan = 'notebook-linked-plan';
+    for (const [n, body] of ['Ship on Friday.\nDan reviews the notes.\n', 'Ship on Monday.\nDan reviews the notes.\n'].entries()) {
+      const answer = n === 0 ? await control({ method: 'outcome_reference', operation_id: `${plan}-create`, item_id: plan, title: 'Linked plan', body })
+        : await control({ method: 'memory_revise', operation_id: `${plan}-revise`, item_id: plan, expected_revision: 1, title: 'Linked plan', body });
+      assert.equal(answer.status, 'committed', JSON.stringify(answer));
+    }
+    p = await page('notebook-link-outcome', null, true, { url: `${facts.origin}/?workspace=w1&page=${plan}&revision=1` });
+    await until(() => p.evaluate("!document.querySelector('#page-here').hidden && Boolean(document.querySelector('#page-here .page-here-body'))"), 'the page opens in place');
+    assert.deepEqual(await p.evaluate(`({title:document.querySelector('#page-here h2').textContent,revision:document.querySelector('#page-here .muted').textContent,
+      body:document.querySelector('#page-here .page-here-body').textContent,at:location.search})`),
+      { title: 'Linked plan', revision: 'Notebook · revision 1', body: 'Ship on Friday.\nDan reviews the notes.\n', at: '?workspace=w1' });
+    assert.deepEqual(p.errors, []);
+    await p.close();
+    // Pasted into a message, the outcome page's link opens the page in the Reader, here.
+    const message = (await control({ method: 'agent_message', operation_id: 'notebook-link-message', topic_id: 't1', body: `The plan: ${facts.origin}/?workspace=w1&page=${plan} as it stands.` })).result.message_id;
+    p = await page('notebook-link-message', null, true);
+    const anchor = `#messages [data-id="${message}"] a.words-link`;
+    await until(() => p.evaluate(`Boolean(document.querySelector(${JSON.stringify(anchor)}))`), 'the message shows the link');
+    assert.equal(await p.evaluate(`document.querySelector(${JSON.stringify(anchor)}).getAttribute('href')`), `?workspace=w1&page=${plan}`);
+    await p.evaluate(`document.querySelector(${JSON.stringify(anchor)}).scrollIntoView({block:'center'})`);
+    await p.point(anchor);
+    await shows(p, 'Linked plan', 'Ship on Monday.\nDan reviews the notes.\n');
+    assert.equal(await p.evaluate('location.search'), '?topic=t1', 'opened here, without leaving the topic');
+    assert.deepEqual(p.errors, []);
+    await p.close();
   });
 }

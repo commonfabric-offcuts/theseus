@@ -117,6 +117,12 @@ opening it reads it as the Reader does. One page shows at a time; one opened
 while another is still opening replaces it, and Close gives the focus back
 to its row. The list is read again with the topics after every commit.
 
+## A page's link
+
+Each page has a link, latest or at a revision, that opens it in the Reader on
+its topic's page or in place on its outcome's page
+([links.md](links.md#a-notebook-pages-link)); the Reader's ⋯ copies it.
+
 ## Checks
 
 Core: `tests/test_memory_reads.py` and the 19→20 step in
@@ -126,5 +132,7 @@ Core: `tests/test_memory_reads.py` and the 19→20 step in
 `tests/reader_persistence_native.mjs` (`tests/notebook_pages_native.mjs`):
 the light coming on live and going out on opening, in the sidebar and in
 the topic's own Notebook, the changes in the Reader and none of them on the
-page opened next, 390 wide in light and dark with contrast measured, and the outcome
-page.
+page opened next, 390 wide in light and dark with contrast measured, the outcome
+page, and a page's link opening the page as it stands and at a revision, in
+the Reader and in place, from the address and from a message, with the
+Reader's ⋯ copying both links.

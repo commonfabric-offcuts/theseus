@@ -60,6 +60,37 @@ bootstrap's `links.origin`), so a link copied on the Mac opens on a phone. A
 link naming either that origin or the page's own is one of this Theseus's
 places.
 
+## A Notebook page's link
+
+A Notebook page has a link of the same family, naming its Notebook's place
+and the page, and, for one revision, that revision:
+
+- `?topic=T&page=P` opens topic T with page P of its own Notebook in the
+  Reader, as the page stands; `?topic=T&page=P&revision=N` opens revision N.
+- `?workspace=W&page=P` (and `&revision=N`) opens outcome W's page, with page
+  P of the outcome's Notebook open in place below its lists, as its row
+  opens it there.
+
+Once it is open the address names the topic or the outcome alone, as a
+message's link does. As it stands is read through the `memory_current` view
+([notebook-pages.md](notebook-pages.md#core)); a revision that does not exist,
+or a page the reader may not read, is refused and nothing of it is shown. A
+page and a message are never named together, and a revision only with its
+page (a positive whole number).
+
+In a message's words such a link is one of this Theseus's places. Pressed on
+a topic's page, a page of that topic's Notebook or of its outcome's opens in
+the Reader in place (from the Reader's own text too); pressed on an outcome's
+page, a page of that outcome's Notebook opens in place; any other opens its
+place. A link to a page in a topic's Notebook shows "Notebook page in" and
+the topic's name; an outcome page's link shows its address.
+
+The Reader's ⋯, on a Notebook page, offers Copy Link (the page as it stands,
+so it keeps opening the latest revision) and Copy Link to Revision N (the
+revision shown), naming the tailnet origin as a message's link does. An
+agent prints the same link with `note link ITEM [--revision N] [--origin
+URL]` ([agent-cli.md](agent-cli.md#notebook-pages)).
+
 ## A message's menu
 
 Every message card on the topic page has a ⋯ button in its top right corner,

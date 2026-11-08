@@ -163,6 +163,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE\|-` | Makes a page in that Notebook from FILE's words, or stdin's for `-`, and reads it back. |
 | `note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE\|-` | Writes the page's next revision from FILE's words, keeping its title (unless `--title`), attachments and evidence, adding any `--attach` files, and reads it back. Refused unless the page stands at revision N. |
 | `note read ITEM [--revision N]` | Prints one revision of a page, the latest unless `--revision` names one. Records nothing. |
+| `note link ITEM [--revision N] [--origin URL]` | Prints the page's link ([links.md](links.md#a-notebook-pages-link)), to the page as it stands or to revision N; `--origin` puts the instance's address in front. Records nothing. |
 
 Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
 DIR`, default `ACTOR.outbox/` beside the profile) before it is sent, and its
@@ -324,6 +325,17 @@ prints them, and one `[evidence: …]` line per message or page it cites.
 `--json` prints the `source` view itself. Without `--revision` it reads the
 page as it stands, through the `memory_current` view
 ([notebook-pages.md](notebook-pages.md#core)).
+
+`note link` prints the address that opens the page
+([links.md](links.md#a-notebook-pages-link)): `?topic=T&page=ITEM` for a page
+in a topic's Notebook, `?workspace=W&page=ITEM` for one in an outcome's, with
+`&revision=N` when `--revision` names one. The CLI reaches the database, not
+the server, so it cannot know the address people open: `--origin
+https://NAME.ts.net:PORT` (the instance's address, without a path) puts it in
+front, and a message carrying that full link shows it as a link. It reads the
+page first, so a page the actor cannot read, or a revision it does not have,
+is refused (`FORBIDDEN`). `--json` prints the page's view as it read it, then
+`{"link": …}` as the last line.
 
 ## Openings and membership
 

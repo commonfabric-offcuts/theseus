@@ -13,6 +13,7 @@ import re
 import stat
 import sys
 import time
+import urllib.parse
 import uuid
 
 from .authority import AuthorityError
@@ -183,7 +184,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| attachment ATTACHMENT --message MESSAGE --out FILE "
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
-         "| note read ITEM [--revision N] "
+         "| note read ITEM [--revision N] | note link ITEM [--revision N] [--origin URL] "
          "| pipeline OUTCOME [--section S] | item OUTCOME N | pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off] "
          "| stages OUTCOME [--set FILE] | add OUTCOME --title T [--size S] [--section S] [--group G] [--from m-…] [--note TEXT] TEXT|- "
          "| add-source OUTCOME N (--from m-… | --page ID | --note TEXT) | move OUTCOME N (--above M | --below M | --to SECTION | --undo EVENT) "
@@ -342,6 +343,10 @@ def _parser():
     page_read = page_verb("read")
     page_read.add_argument("item")
     page_read.add_argument("--revision", type=int)
+    link = page_verb("link")
+    link.add_argument("item")
+    link.add_argument("--revision", type=int)
+    link.add_argument("--origin")
     register_pipeline(verb)
     return parser
 
@@ -1026,6 +1031,27 @@ class Agent(PipelineVerbs):
         for ref in source["references"]:
             self.out.plain("  [evidence: %s]" % ("message " + ref["id"] if ref["kind"] == "message" else
                                                  "page %s revision %s" % (ref["id"], ref["revision"])))
+
+    def note_link(self):
+        """The address that opens a page (docs/links.md, "A Notebook page's link"):
+        its Notebook's topic or outcome, the page, and the revision when one is
+        named. --origin puts the instance's address in front. It records nothing."""
+        options = self.options
+        origin = options.origin
+        if origin is not None:
+            parts = urllib.parse.urlsplit(origin)
+            if parts.scheme not in ("http", "https") or not parts.hostname or parts.path not in ("", "/") or parts.query or parts.fragment or "@" in parts.netloc:
+                self.refuse("INVALID_ARGUMENT", "--origin is the instance's address alone, such as https://NAME.ts.net:PORT")
+            origin = "%s://%s" % (parts.scheme, parts.netloc)
+        source = (self.view("memory_current", {"item_id": options.item}) if options.revision is None else
+                  self.view("source", {"source_ref": {"kind": "memory", "id": options.item, "revision": options.revision}}))
+        scope = source["owner_scope"]
+        params = [("topic" if scope["kind"] == "topic" else "workspace", scope["id"]), ("page", source["source_ref"]["id"])]
+        if options.revision is not None:
+            params.append(("revision", str(source["source_ref"]["revision"])))
+        link = (origin + "/" if origin else "") + "?" + urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
+        self.out.raw({"link": link})
+        self.out.plain(link)
 
     def do_notes(self):
         """A Notebook's pages, oldest first, each marked when it changed since the actor read it."""

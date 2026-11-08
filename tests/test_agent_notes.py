@@ -174,6 +174,36 @@ class NoteCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual(self.saved(), [])
 
 
+class PageLinkCase(test_agent_verbs.AgentVerbCase):
+    """`note link`: the address that opens a page, as docs/links.md shapes it."""
+
+    def test_a_page_link_names_its_notebook_and_the_page_latest_or_at_a_revision(self):
+        self.committed(self.memory(item="topic-page"))
+        self.committed(self.memory(item="topic-page", revision=1))
+        self.committed(self.memory(item="results", scope={"kind": "workspace", "id": "w1"}))
+        self.assertEqual(self.run_cli("note", "link", "topic-page"), (0, "?topic=t1&page=topic-page\n", ""))
+        self.assertEqual(self.run_cli("note", "link", "topic-page", "--revision", "1"), (0, "?topic=t1&page=topic-page&revision=1\n", ""))
+        self.assertEqual(self.run_cli("note", "link", "results", "--origin", "https://mac.example.ts.net:5192"),
+                         (0, "https://mac.example.ts.net:5192/?workspace=w1&page=results\n", ""))
+        self.assertEqual(self.run_cli("note", "link", "results", "--revision", "1", "--origin", "http://127.0.0.1:5210", actor="agent-b"),
+                         (0, "http://127.0.0.1:5210/?workspace=w1&page=results&revision=1\n", ""))
+        code, out, _ = self.run_cli("--json", "note", "link", "topic-page", "--origin", "http://127.0.0.1:5210")
+        self.assertEqual((code, json.loads(out.splitlines()[-1])), (0, {"link": "http://127.0.0.1:5210/?topic=t1&page=topic-page"}))
+        self.assertEqual(self.saved(), [], "a link records nothing")
+
+    def test_a_link_is_refused_for_a_page_the_reader_cannot_read_a_missing_revision_or_an_origin_that_is_not_one(self):
+        self.committed(self.memory(item="results", scope={"kind": "workspace", "id": "w1"}))
+        for argv, actor, code in ((["results"], "outsider", "FORBIDDEN"), (["missing"], "agent-a", "FORBIDDEN"),
+                                  (["results", "--revision", "2"], "agent-a", "FORBIDDEN"),
+                                  (["results", "--origin", "https://mac.example.ts.net:5192/path"], "agent-a", "INVALID_ARGUMENT"),
+                                  (["results", "--origin", "ftp://mac.example"], "agent-a", "INVALID_ARGUMENT"),
+                                  (["results", "--origin", "mac.example"], "agent-a", "INVALID_ARGUMENT")):
+            with self.subTest(argv=argv):
+                result = self.run_cli("note", "link", *argv, actor=actor)
+                self.assertEqual(result[:2], (2, ""))
+                self.assertIn(code, result[2])
+
+
 class CurrentPageViewCase(test_agent_verbs.AgentVerbCase):
     def test_memory_current_reads_a_page_as_it_stands_and_names_its_revision(self):
         self.committed(self.memory(item="results", scope={"kind": "workspace", "id": "w1"}, body="One"))
@@ -189,7 +219,7 @@ class CurrentPageViewCase(test_agent_verbs.AgentVerbCase):
         self.assertIn("error", self.store.view("agent-b", "source", {"source_ref": {"kind": "memory", "id": "results"}}))
 
 
-for _case in (NoteCase, CurrentPageViewCase):
+for _case in (NoteCase, PageLinkCase, CurrentPageViewCase):
     for _base in _case.__mro__[1:]:
         for _name in list(vars(_base)):
             if _name.startswith("test_") and _name not in _case.__dict__:
