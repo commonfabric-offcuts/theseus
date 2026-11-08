@@ -118,7 +118,11 @@ check for the same commit runs beside them rather than after them.
   page reloaded meanwhile does the same when the writing is opened there. A
   reply held for a reason no retry mends (Core refused it, a send whose answer
   was lost, or a runtime change under review) waits for the person.
-  A refused live stream starts the same renewal. **Reconnect** does it on
+  Anything the page asks that is refused for its session (a read, a save, the
+  live stream, the updates) starts the same renewal at once. A renewed session
+  opens the live stream again under it, even one that still reads as up: a
+  socket opened under the old session can stay half-open across a restart (a
+  laptop asleep through a deploy) and carry nothing. **Reconnect** does it on
   demand; while the server is not answering, the page says so. It never
   reloads itself or erases its journal.
 - A line whose every failure was about reaching Theseus (a connection line)
@@ -126,15 +130,26 @@ check for the same commit runs beside them rather than after them.
   live stream is down) and nothing has answered since the failure it
   describes. Anything Theseus answers counts: a request it answered, a refusal
   of its own included, the live stream coming up or naming a commit, or the
-  server handing out its session; so does the live stream having been up
-  after the failure. The page keeps those facts in one place (`web/api.mjs`
+  server handing out its session. The stream reading as up after the failure
+  is no answer. The page keeps those facts in one place (`web/api.mjs`
   `contact`, each stamped from one clock that only goes forward) and every
   connection line is worked out from them afresh whenever they change
   (`web/lines.mjs`): the status line, the Reader's notice, the composer's
-  notice and the navigation line. Nothing counts reconnections. So a read that
-  runs out on a stalled connection while the live stream is up leaves no
-  line, a line written while the stream was down goes at the first answer of
-  any kind, and a line that has gone never comes back.
+  notice and the navigation line. Nothing counts reconnections. So a read
+  still out when the stream came back that then runs out on a stalled
+  connection leaves no line while the stream is up; a line written while the
+  stream was down goes at the first answer of any kind; a line hidden while
+  the stream was up shows again if the stream goes down before anything
+  answers; and once something has answered since its failure, a line never
+  comes back.
+  A socket can read as up after its connection is gone (a laptop that slept,
+  a network that dropped before the browser noticed). An attempt that got no
+  answer, when nothing has answered since it began, is the page's reason to
+  doubt it: the page lets that socket go and opens another at once
+  (`web/live.mjs` `reopen`), and until the new one answers the stream is
+  down, so the line says what happened. An attempt still out when something
+  answered, one Theseus answered, or one made while the stream is already
+  down leaves the stream alone, so nothing reopens it in a loop.
   A failure is about reaching Theseus when the attempt got no answer of
   Theseus's own (nothing answered, or only something in front of it did, such
   as the 502 with an empty body Tailscale Serve gives while the server

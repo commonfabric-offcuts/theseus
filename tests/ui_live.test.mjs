@@ -173,6 +173,38 @@ test('a socket that ends before its first number is announced as refused; one th
   assert.deepEqual(events, [], 'a stopped feed announces nothing');
 });
 
+// A socket can read 'live' after its connection is gone: a laptop that slept
+// through a restart, a network that dropped before the browser noticed. When
+// the page has reason to doubt it, it lets that socket go and opens another
+// at once, under the session it holds now; until that one answers, the feed
+// is down.
+test('reopen lets the socket go, says the feed is down and opens another at once under the current session, whatever state it was in', () => {
+  const { live, sockets, events, times } = fixture();
+  live.start();
+  sockets[0].send({ seq: 1 });
+  events.length = 0;
+  live.token = 'renewed';
+  live.reopen();
+  assert.equal(sockets[0].closed, true, 'the doubted socket is closed');
+  assert.deepEqual([events, live.connected, sockets.length, sockets[1].protocols], [[{ kind: 'state', state: 'down' }], false, 2, ['theseus-live.v1', 'bearer.renewed']]);
+  events.length = 0;
+  sockets[0].send({ seq: 9 }); sockets[0].drop();
+  assert.deepEqual(events, [], 'the socket let go of says nothing more');
+  sockets[1].send({ seq: 1 });
+  assert.deepEqual(events, [{ kind: 'state', state: 'live' }], 'the new socket answers: up again');
+  // Down and waiting out a back-off: it does not wait.
+  sockets[1].drop();
+  assert.equal(times.jobs.size, 1);
+  live.reopen();
+  assert.deepEqual([sockets.length, times.jobs.size], [3, 0], 'opened at once, the back-off timer cleared');
+  // Still connecting: the socket that has not answered is replaced too.
+  live.reopen();
+  assert.deepEqual([sockets[2].closed, sockets.length], [true, 4]);
+  live.stop();
+  live.reopen();
+  assert.equal(sockets.length, 4, 'a stopped feed opens nothing');
+});
+
 // Freshness with a live stream: no timer while it is up, a pass on each commit, the timer again when it drops.
 const authority = { authority_id: 'a1', authority_epoch: 'e1', continuity: 'initial' };
 const admission = { version: 1, header: 'X-AIM-Read-Class', foreground: { slots: 1, max_waiters: 8, queue_timeout_ms: 5000 }, background: { slots: 1, max_waiters: 2, queue_timeout_ms: 500 } };

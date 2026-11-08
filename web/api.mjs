@@ -22,19 +22,18 @@ export class AttemptError extends Error {
 // - answered: when Theseus last answered: a request it answered (a refusal of
 //   its own too, but not of the page's session), the live feed coming up or
 //   naming a commit, or the server handing out its session (session-renewal.mjs).
-// - live: whether the live feed is up now; liveUntil: when it last went down.
+// - live: whether the live feed is up now.
 // Whatever depends on these listens (heard) and works its answer out from
 // them afresh each time: a connection line (lines.mjs), and what waits on
 // Theseus (app.mjs owe).
 let clock = 0;
 const tick = () => ++clock;
-export const contact = { answered: 0, live: false, liveUntil: 0 };
+export const contact = { answered: 0, live: false };
 const listeners = new Set();
 export const heard = listener => { listeners.add(listener); return () => listeners.delete(listener); };
 const learned = () => { for (const listener of [...listeners]) listener(); };
 export function answered() { contact.answered = tick(); learned(); }
 function liveIs(up) {
-  if (contact.live && !up) contact.liveUntil = tick();
   contact.live = up;
   if (up) answered(); else learned();
 }
@@ -49,6 +48,15 @@ export function follow(live) {
     if (event.kind === 'state') liveIs(event.state === 'live');
     else if (event.kind === 'commit') answered();
   });
+}
+// An attempt that got no answer, when nothing has answered since it began, is
+// a reason to doubt a feed that reads live: a socket left half-open (a laptop
+// that slept through a restart, a network that dropped before the browser
+// noticed) reads live until the browser gives up on it. The page opens its
+// feed again, and the new socket says whether it is connected; until it
+// answers, it is not. One still out when something answered leaves it alone.
+function unansweredAttempt(error) {
+  if (contact.live && contact.answered <= error.began) followed.reopen();
 }
 
 // The server refused this page's session, as a restarted server does, before
@@ -70,10 +78,13 @@ export function unreached(error) {
   const at = attemptOf(error);
   return Boolean(at) && (at.details === null || sessionRefused(at));
 }
+// Something has answered since the failure at at. The clock only goes
+// forward, so this stays true: what that failure said is over for good.
+export const answeredAfter = (at, { answered } = contact) => answered > at;
 // A connection line shows while it says something true now: the page is not
 // connected (its live feed is down) and nothing has answered since the failure
-// it describes (at), not even while the live feed was last up.
-export const unanswered = (at, { answered, live, liveUntil } = contact) => !live && at > answered && at > liveUntil;
+// it describes (at).
+export const unanswered = (at, facts = contact) => !facts.live && !answeredAfter(at, facts);
 // Theseus has answered since the attempt that failed began: what it held up can be done again.
 export const answeredSince = error => contact.answered > attemptOf(error).began;
 // The connection itself failed: no answer came.
@@ -93,7 +104,9 @@ export class Deadline {
   get passed() { return Date.now() >= this.at; }
   failure() {
     this.controller.abort();
-    return Object.assign(new AttemptError(this.words, 0, null), { began: this.began }, this.code ? { code: this.code } : {});
+    const failure = Object.assign(new AttemptError(this.words, 0, null), { began: this.began }, this.code ? { code: this.code } : {});
+    unansweredAttempt(failure);
+    return failure;
   }
   // What the wait settles with, or this deadline's failure once it passes.
   async bound(wait) {
@@ -104,15 +117,19 @@ export class Deadline {
 }
 // Theseus's JSON answer to a response, or null when what answered was not Theseus.
 const answerOf = response => response.json().catch(() => null);
-// Every attempt the page makes: when it began, and, when Theseus answered it
+// Every attempt an Api makes: when it began, and, when Theseus answered it
 // (what it asked for, or a refusal of Theseus's own), that it did (contact).
-async function attempted(attempt) {
+// One that got no answer may say the feed is gone; one the server refused for
+// the Api's session is told to whoever holds that session (refused).
+async function attempted(api, attempt) {
   const began = clock;
   try { const result = await attempt(); answered(); return result; }
   catch (error) {
     if (error instanceof AttemptError) {
       error.began = began;
       if (!unreached(error)) answered();
+      else unansweredAttempt(error);
+      if (sessionRefused(error)) api.refused(error);
     }
     throw error;
   }
@@ -122,9 +139,12 @@ export class Api {
   constructor(token, fetcher = globalThis.fetch.bind(globalThis)) {
     this.token = token;
     this.fetcher = fetcher;
+    // Told when the server refused this Api's session, as a restarted server
+    // does: the page renews its session then (app.mjs).
+    this.refused = () => {};
   }
 
-  request(path, data, options) { return attempted(() => this.attempt(path, data, options)); }
+  request(path, data, options) { return attempted(this, () => this.attempt(path, data, options)); }
   async attempt(path, data, { signal, readClass } = {}) {
     let response;
     try {
@@ -151,7 +171,7 @@ export class Api {
   command(envelope) { return this.request('/api/command', envelope); }
   view(name, args = {}, options) { return this.request('/api/view', { name, args }, options); }
 
-  upload(envelope, blob, options) { return attempted(() => this.sendUpload(envelope, blob, options)); }
+  upload(envelope, blob, options) { return attempted(this, () => this.sendUpload(envelope, blob, options)); }
   async sendUpload(envelope, blob, { signal } = {}) {
     const command = JSON.stringify(envelope).replace(/[\u007f-\uffff]/g, ch => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
     let response;
@@ -169,7 +189,7 @@ export class Api {
     return body;
   }
 
-  media(instanceId, attachment, sourceRef) { return attempted(() => this.readMedia(instanceId, attachment, sourceRef)); }
+  media(instanceId, attachment, sourceRef) { return attempted(this, () => this.readMedia(instanceId, attachment, sourceRef)); }
   async readMedia(instanceId, attachment, sourceRef) {
     let response;
     try {

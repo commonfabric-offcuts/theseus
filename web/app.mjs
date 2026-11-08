@@ -1215,16 +1215,19 @@ heard(settleOwed);
 // it has confirmed, or the live feed up again. Replies it did not take go on.
 function reached() { registry?.resumeHeld(); }
 // A restarted server (every deploy) refuses this page's session. The page
-// reads the server's new one (session-renewal.mjs) when the live feed is
-// refused, or a read is, and goes on in place: the writing, the lists and the
-// Reader stay, waiting saves and held replies go out, and stopped updates resume once.
+// reads the server's new one (session-renewal.mjs) when anything it asks is
+// refused for its session (api.mjs refused), its live feed or its updates
+// among them, and goes on in place: the writing, the lists and the Reader
+// stay, the live feed opens again under the new session (a socket opened
+// under the old one can still read live, half-open), waiting saves and held
+// replies go out, and stopped updates resume once.
 let renewal = null, reconnectRetried = null;
 async function reconnect() {
   const result = await renewal?.renew();
   if (!result) return false;
   reached();
   if (result === 'renewed') {
-    live?.wake(); attention?.refresh();
+    live?.reopen(); attention?.refresh();
     for (const { editor } of registry?.sessions.values() ?? []) {
       if (editor.dirty && !editor.authorityRecovery && !editor.conflict && !editor.unavailable) registry.schedule(editor);
     }
@@ -1244,7 +1247,8 @@ function start() {
 async function initialize() {
   const token = document.querySelector('meta[name="aim-next-session"]')?.content;
   if (!token || token === '__AIM_SESSION_TOKEN__') throw Error('This page needs a session from the Theseus server.');
-  api = new Api(token); bootstrap = await api.bootstrap();
+  api = new Api(token); api.refused = () => run(reconnect);
+  bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
   shareLinksFrom(bootstrap.links?.origin);
   renewal ??= new SessionRenewal({ api, bootstrap, live: () => live, makeApi: fresh => new Api(fresh),

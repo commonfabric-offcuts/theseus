@@ -527,7 +527,8 @@ test('a topic painted again after access returns clears the paused note and brin
 // A restarted server refuses the page's session; the page takes the new one
 // in place and goes on (docs/scoped-updates.md).
 const restartable = renewals => {
-  const live = { ...stream(), wakes: 0, token: null, start() {}, wake() { this.wakes++; } };
+  // reopen: the real one lets its socket go and says the feed is down until a new one answers.
+  const live = { ...stream(), wakes: 0, reopens: 0, token: null, start() {}, wake() { this.wakes++; }, reopen() { this.reopens++; this.emit({ kind: 'state', state: 'down' }); } };
   const answers = [];
   const f = fixture('https://fixture/?topic=t1', {
     Live: class { constructor({ token }) { live.token = token; return live; } },
@@ -539,7 +540,7 @@ const restartable = renewals => {
   return { f, live, answers };
 };
 
-test('a live feed refused for its session renews it in place: the feed wakes, waiting saves go out, and the lost connection\'s message clears', async () => {
+test('a live feed refused for its session renews it in place: the feed opens again, waiting saves go out, and the lost connection\'s message clears', async () => {
   const renewals = [], { f, live, answers } = restartable(renewals);
   await f.initialize(); await drain();
   assert.equal(renewals.length, 1);
@@ -549,15 +550,15 @@ test('a live feed refused for its session renews it in place: the feed wakes, wa
   assert.equal(f.get('app-status').textContent, lost);
   // The server is not back yet: nothing changes.
   f.events.length = 0; live.emit({ kind: 'refused' }); await drain();
-  assert.deepEqual([live.wakes, f.events.filter(e => e[0] === 'schedule').length, f.get('app-status').textContent], [0, 0, lost]);
+  assert.deepEqual([live.reopens, f.events.filter(e => e[0] === 'schedule').length, f.get('app-status').textContent], [0, 0, lost]);
   // Back, with a new session.
   answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
-  assert.equal(live.wakes, 1, 'the feed tries again at once');
+  assert.equal(live.reopens, 1, 'the feed opens again at once, under the new session');
   assert.deepEqual(f.events.filter(e => e[0] === 'schedule'), [['schedule', 'inline']], 'the waiting save goes out');
   assert.equal(f.get('app-status').hidden, true);
   // Back with the same session (it was not a restart): nothing to resume.
   f.events.length = 0; answers.push('current'); live.emit({ kind: 'refused' }); await drain();
-  assert.deepEqual([live.wakes, f.events.filter(e => e[0] === 'schedule').length], [1, 0]);
+  assert.deepEqual([live.reopens, f.events.filter(e => e[0] === 'schedule').length], [1, 0]);
   // Access a check could not confirm while the session was refused is checked again.
   f.registry.current = { source: { source_ref: { kind: 'message', id: 'm1' } }, availabilityUnconfirmed: true, editors: { reply: {}, note: {} } };
   f.events.length = 0; answers.push('renewed'); live.emit({ kind: 'refused' }); await drain();
@@ -731,14 +732,16 @@ test('a line a caller put into words goes once the page reaches Theseus, and a p
   }
 });
 
-// The reviewer's case (round 4): the live feed is back and quiet. A read that
-// then runs out on a stalled connection, or a request that gets no answer,
-// leaves no line while the page is connected, and none comes back when the
-// feed goes down later. A failure while it is down says so until anything
-// answers, a request as much as the feed. What a failure held up is done again
-// once Theseus has answered since its attempt began: at once for one still out
-// when the feed came back; for one begun after, at the next answer of any
-// kind, never only at a reconnection.
+// The reviewer's cases (rounds 4 and 5). The live feed is back and quiet. A
+// read still out when it came back that then runs out on a stalled connection
+// leaves no line while the page is connected, and the feed is left alone; if
+// the feed then goes down with nothing answered since, the line says so. A
+// read or request begun after the feed's last answer that gets none is a
+// reason to doubt the feed: the page opens it again and says what happened
+// until anything answers, a request as much as the feed. What a failure held
+// up is done again once Theseus has answered since its attempt began: at once
+// for one still out when the feed came back; for one begun after, at the next
+// answer of any kind, never only at a reconnection.
 test('a connection line shows only while the page is not connected and nothing has answered since; what it held up goes at the next answer', async () => {
   const timedOut = 'Reader request timed out. Your writing is kept.', lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
   const renewals = [], { f, live } = restartable(renewals);
@@ -753,15 +756,25 @@ test('a connection line shows only while the page is not connected and nothing h
   f.registry.open = () => { const deadline = new Deadline(0, timedOut), request = stalled.view('source', {}, { signal: deadline.signal }); return gate.promise.then(() => deadline.bound(request)); };
   const open = async (current, id) => { gate = defer(); f.registry.current = current; const opened = f.openSource({ kind: 'message', id }); await drain(); gate.resolve(); await opened; await drain(); };
   const inReader = { source: {}, editors: {}, mode: 'reply' };
-  await feed(true);
-  await open(inReader, 'm2');
-  assert.equal(said('reader-notice'), '', `the Reader's next message ran out while the live feed was up, yet reader-notice says: ${said('reader-notice')}`);
-  await open(null, 'm1');
-  assert.equal(said('app-status'), '', `a tapped message ran out while the live feed was up, yet app-status says: ${said('app-status')}`);
-  await f.run(() => nothing.view('topic', {})); await drain();
-  assert.equal(said('app-status'), '', 'a request that got no answer while the live feed was up');
+  // Still out when the feed came back: no line while connected, and the feed is left alone.
+  const still = async (current, id) => { gate = defer(); f.registry.current = current; const opened = f.openSource({ kind: 'message', id }); await drain(); await feed(true); gate.resolve(); await opened; await drain(); };
+  await still(inReader, 'm2');
+  assert.deepEqual([said('reader-notice'), live.reopens], ['', 0], `the Reader's next message, out when the feed came back, ran out while it was up, yet reader-notice says: ${said('reader-notice')}`);
+  await feed(false); await still(null, 'm1');
+  assert.deepEqual([said('app-status'), live.reopens], ['', 0], `a tapped message, out when the feed came back, ran out while it was up, yet app-status says: ${said('app-status')}`);
   await feed(false);
-  assert.deepEqual([said('app-status'), said('reader-notice')], ['', ''], 'nor when the feed goes down later');
+  assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [timedOut, true], 'the feed went down with nothing answered since the failure: the line says so');
+  await feed(true);
+  assert.equal(said('app-status'), '', 'the feed came up: an answer');
+  // Begun after the feed's last answer, and no answer: the feed is opened again and the line says so.
+  await open(inReader, 'm2');
+  assert.deepEqual([said('reader-notice'), live.reopens], [timedOut, 1], 'a read begun while the feed was up and quiet ran out: the page doubts the feed');
+  await feed(true);
+  assert.equal(said('reader-notice'), '', 'the feed opened again answered');
+  await f.run(() => nothing.view('topic', {})); await drain();
+  assert.deepEqual([said('app-status'), live.reopens], [lost, 2], 'a request that got no answer while the feed was up and quiet');
+  await feed(true); await feed(false);
+  assert.deepEqual([said('app-status'), said('reader-notice')], ['', ''], 'answered since: nothing comes back when the feed goes down later');
   // Down: each failure says so, and goes at the first answer, which is no reconnection.
   await f.run(() => nothing.view('topic', {})); await drain();
   assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [lost, true], 'a request that got no answer while the feed was down');
@@ -796,6 +809,131 @@ test('a connection line shows only while the page is not connected and nothing h
   await feed(false);
 });
 
+// The app with the real Api for its own requests, the real Live and the real
+// SessionRenewal. The fixture's server answers through the real Api unless a
+// case answers the page's requests itself (held.server); each socket the feed
+// opens and each read of the page's address (the renewal) are the case's to
+// settle.
+const realPage = () => {
+  const sockets = [], pages = [], held = { live: null, server: null };
+  const f = fixture('https://fixture/?topic=t1', {
+    Api: class extends RealApi { constructor(token) { super(token, async (path, init) => {
+      if (held.server) return held.server(path, init);
+      const body = init.body ? JSON.parse(init.body) : null;
+      const answer = path === '/api/bootstrap' ? await f.api.bootstrap() : path === '/api/view' ? await f.api.view(body.name, body.args) : await f.api.command(body);
+      return new Response(JSON.stringify(answer), { status: 200 });
+    }); held.api = this; } },
+    Live: class extends Live { constructor(options) {
+      super({ ...options, origin: 'https://fixture', timers: { setTimeout: () => 0, clearTimeout() {} },
+        socket: (url, protocols) => { const socket = { protocols, closed: false, close() { this.closed = true; } }; sockets.push(socket); return socket; } });
+      held.live = this;
+    } },
+    SessionRenewal: class extends SessionRenewal { constructor(options) {
+      super({ ...options, fetcher: () => { const page = defer(); pages.push(page); return page.promise; },
+        makeApi: token => new RealApi(token, async () => new Response(JSON.stringify(f.bootstrap), { status: 200 })) });
+    } } });
+  f.bootstrap.transport = { ...f.bootstrap.transport, live: { version: 2, path: '/api/live', protocol: 'theseus-live.v1' } };
+  const said = id => f.get(id).hidden ? '' : f.get(id).textContent;
+  const socket = () => sockets.at(-1);
+  // The newest socket gives its first number, or a commit: Theseus answering over the feed.
+  const number = seq => { socket().onmessage({ data: JSON.stringify({ seq }) }); };
+  return { f, sockets, pages, held, said, socket, number };
+};
+const sessionRefusal = () => new Response(JSON.stringify({ recorded: false, error: { code: 'SESSION_REQUIRED', message: 'Open this instance to establish a session.' } }), { status: 401 });
+const pageWith = token => new Response('<meta name="aim-next-session" content="' + token + '">', { status: 200 });
+
+// The reviewer's case (round 5, RV5-A): the feed reads live after its last
+// message, a request gets no answer (on a network drop, Chrome rejects the
+// fetch before the WebSocket closes), then the socket closes and nothing
+// answers. The page is not connected and nothing has answered since the
+// failure, so the line says so, from the failure on and after the close.
+test('a request that gets no answer while the feed still reads live says so, and keeps saying so after the socket closes with nothing answered', async () => {
+  const { f, sockets, pages, said, socket, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  f.registry.open = () => new RealApi('fixture-session', async () => { throw new TypeError('Failed to fetch'); }).view('source', {});
+  f.registry.current = null;
+  await f.openSource({ kind: 'message', id: 'm1' }); await drain();
+  assert.equal(said('app-status'), lost, `not connected now, nothing answered since the failure (the feed's last message came before it), yet the line says ${JSON.stringify(said('app-status'))}`);
+  assert.deepEqual([sockets.length, sockets[0].closed], [2, true], 'the feed that read live is opened again');
+  socket().onclose(); await drain();
+  pages.forEach(page => page.resolve(new Response('', { status: 502 }))); await drain();
+  assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [lost, true], 'the socket closed and nothing answered: still so');
+});
+
+// A line hidden only because the page was connected is not dropped: when the
+// feed goes down with nothing answered since its failure, it shows again; a
+// line something answered after never comes back.
+test('a connection line hidden while the feed was up shows again when it goes down with nothing answered since, and never after an answer', async () => {
+  const { f, sockets, held, said, socket, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  const lost = 'Connection interrupted. Confirmation is unknown; your writing is kept.';
+  // A request still out when the feed named a commit (and the reads the commit
+  // asked for were answered), which then gets no answer.
+  const gate = defer();
+  f.registry.open = () => new RealApi('fixture-session', async () => { await gate.promise; throw new TypeError('Failed to fetch'); }).view('source', {});
+  f.registry.current = null;
+  const opening = f.openSource({ kind: 'message', id: 'm1' }); await drain();
+  number(2); await drain();
+  gate.resolve(); await opening; await drain();
+  assert.deepEqual([said('app-status'), sockets.length], ['', 1], 'something answered while it was out and the feed is up: no line, and the feed is left alone');
+  socket().onclose(); await drain();
+  assert.deepEqual([said('app-status'), 'unreached' in f.get('app-status').dataset], [lost, true], 'the feed went down and nothing has answered since that failure');
+  // Up again: the line goes, and does not come back when the feed goes down again.
+  held.live.start();
+  number(2); await drain();
+  assert.equal(said('app-status'), '', 'the feed came up again: an answer after the failure');
+  socket().onclose(); await drain();
+  assert.equal(said('app-status'), '', 'answered after it: the line never comes back');
+});
+
+// The reviewer's case (round 5, RV5-C and RV5-B): a laptop sleeps through a
+// deploy. The socket stays half-open and reads live; a tapped message is
+// refused for the page's session. The refusal proves the server restarted: the
+// line says so, the page renews its session at once and opens its feed again;
+// once renewed, the feed runs under the new session and messages arrive again.
+test('a refusal of the page\'s session while the feed reads live says so, renews the session and reopens the feed under the new one', async () => {
+  const { f, sockets, pages, held, said, socket, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  const refused = 'Open this instance to establish a session.';
+  held.server = async () => sessionRefusal();
+  f.registry.open = () => held.api.view('source', {});
+  f.registry.current = null;
+  await f.openSource({ kind: 'message', id: 'm1' }); await drain();
+  assert.deepEqual([said('app-status'), pages.length], [refused, 1], `the open was refused for the page's session, yet the status line says ${JSON.stringify(said('app-status'))} and the renewal was asked ${pages.length} times`);
+  assert.deepEqual([sockets.length, sockets[0].closed, held.live.state], [2, true, 'down'], 'the socket opened under the refused session is let go, and the feed opened again');
+  // The new socket is refused too (the old session): the renewal under way is the one.
+  socket().onclose(); await drain();
+  assert.equal(pages.length, 1, 'renewals asked while one is under way share it');
+  // The server hands out its new session: the line goes, and the feed opens under it.
+  const before = sockets.length;
+  held.server = null;
+  pages[0].resolve(pageWith('restarted-session')); await drain(); await drain();
+  assert.equal(said('app-status'), '', 'the server answered with its session');
+  assert.deepEqual([held.api.token, sockets.length > before, socket().protocols], ['restarted-session', true, ['theseus-live.v1', 'bearer.restarted-session']],
+    `renewed after a restart, yet the feed opened no socket under the new session (sockets ${before} -> ${sockets.length})`);
+  number(2); await drain();
+  assert.equal(held.live.state, 'live', 'messages arrive again');
+});
+
+// Renewed while the feed still reads live (here the updates were refused for
+// the session): the socket opened under the old session is replaced.
+test('a renewed session replaces a socket that still reads live with one under the new session', async () => {
+  const { f, sockets, pages, held, socket, number } = realPage();
+  await f.initialize(); await drain();
+  number(1); await drain();
+  f.updateStatus({ kind: 'reconnect' }); await drain();
+  assert.deepEqual([pages.length, sockets.length], [1, 1]);
+  pages[0].resolve(pageWith('restarted-session')); await drain(); await drain();
+  assert.deepEqual([sockets.length, sockets[0].closed, held.live.state, socket().protocols], [2, true, 'down', ['theseus-live.v1', 'bearer.restarted-session']],
+    `renewed after a restart, yet the page keeps the socket opened under the refused session (sockets 1 -> ${sockets.length}, state ${held.live.state})`);
+  number(1); await drain();
+  assert.equal(held.live.state, 'live');
+});
+
 // A small seeded random source, so a failing interleaving can be run again by its seed.
 const seeded = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 
@@ -803,10 +941,13 @@ const seeded = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul
 // what the page knows now, after any interleaving: it shows while the page is
 // not connected (its live feed is down) and nothing has answered since that
 // failure (a request Theseus answered, the live feed coming up or naming a
-// commit, a session handed out again), not even while the feed was last up.
-// The app's own code (run, the status line, reconnect, its live wiring) with
-// the real Api, Deadline, Live and SessionRenewal; the expected line is worked
-// out from the steps alone.
+// commit, a session handed out again). Nothing else: the feed having read live
+// after the failure is no answer. The feed is down from the moment the page
+// doubts it (an attempt that got no answer with nothing answered since it
+// began) or renews its session, until a socket answers. The app's own code
+// (run, the status line, reconnect, its live wiring) with the real Api,
+// Deadline, Live and SessionRenewal; the expected line is worked out from the
+// steps alone.
 test('property: after every step of any interleaving of requests, the live feed and renewals, a connection line shows exactly while the page is not connected and nothing has answered since its failure', async () => {
   const timedOut = 'Reader request timed out. Your writing is kept.';
   const endings = {
@@ -819,7 +960,7 @@ test('property: after every step of any interleaving of requests, the live feed 
   const words = { refusal: 'This topic is closed.', nothing: 'Connection interrupted. Confirmation is unknown; your writing is kept.',
     proxy: 'AIM returned an unreadable response. Confirmation is unknown.', session: 'Open this instance to establish a session.', ranOut: timedOut };
   const SEEDS = 40, STEPS = 60;
-  let checked = 0, shown = 0, hidden = 0;
+  let checked = 0, shown = 0, hidden = 0, doubted = 0, renewed = 0;
   const seen = new Set();
   for (let seed = 1; seed <= SEEDS; seed++) {
     const random = seeded(seed), pick = list => list[Math.floor(random() * list.length)];
@@ -836,8 +977,8 @@ test('property: after every step of any interleaving of requests, the live feed 
     await f.initialize(); await drain();
     const live = held.live, said = () => f.get('app-status').hidden ? '' : f.get('app-status').textContent;
     // The model: each fact stamped with its step.
-    const model = { answered: 0, live: false, liveUntil: 0, text: said(), at: null };
-    const expected = () => model.at === null ? model.text : (!model.live && model.at > model.answered && model.at > model.liveUntil ? model.text : '');
+    const model = { answered: 0, live: false, text: said(), at: null, token: 'fixture-session' };
+    const expected = () => model.at === null ? model.text : (!model.live && model.at > model.answered ? model.text : '');
     const pending = [], history = [];
     let seq = 0;
     for (let step = 1; step <= STEPS; step++) {
@@ -845,7 +986,7 @@ test('property: after every step of any interleaving of requests, the live feed 
       const kind = pick(kinds);
       let did = kind;
       if (kind === 'start') {
-        const entry = { gate: defer(), bounded: random() < 0.3 };
+        const entry = { gate: defer(), bounded: random() < 0.3, began: step };
         if (entry.bounded) {
           const deadline = new Deadline(0, timedOut);
           const request = new RealApi('fixture-session', (path, init) => new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }))).view('source', {}, { signal: deadline.signal });
@@ -859,6 +1000,7 @@ test('property: after every step of any interleaving of requests, the live feed 
         if (entry.bounded) await new Promise(resolve => setTimeout(resolve, 2));
         await entry.done; await drain();
         if (entry.ending === 'success' || entry.ending === 'refusal') model.answered = step;
+        else if (model.live && model.answered <= entry.began) { model.live = false; doubted++; }
         if (entry.ending !== 'success') Object.assign(model, { text: words[entry.ending], at: entry.ending === 'refusal' ? null : step });
         did = `end: ${entry.ending}`;
       } else if (kind === 'up') {
@@ -870,13 +1012,15 @@ test('property: after every step of any interleaving of requests, the live feed 
         model.answered = step;
       } else if (kind === 'down') {
         live.current.socket.onclose();
-        Object.assign(model, { live: false, liveUntil: step });
+        model.live = false;
       } else {
-        const answers = random() < 0.6;
-        held.page = answers ? async () => new Response('<meta name="aim-next-session" content="session-' + seed + '-' + (random() < 0.5 ? step : 0) + '">', { status: 200 }) : async () => { throw new TypeError('Failed to fetch'); };
+        const answers = random() < 0.6, token = answers ? 'session-' + seed + '-' + (random() < 0.5 ? step : 0) : null;
+        held.page = answers ? async () => new Response('<meta name="aim-next-session" content="' + token + '">', { status: 200 }) : async () => { throw new TypeError('Failed to fetch'); };
         f.updateStatus({ kind: 'reconnect' });
         await drain(); await drain();
         if (answers) model.answered = step;
+        // A newer session: the feed opens again under it.
+        if (answers && token !== model.token) { Object.assign(model, { token, live: false }); renewed++; }
         did = answers ? 'renewal answered' : 'renewal not answered';
       }
       await drain();
@@ -893,6 +1037,7 @@ test('property: after every step of any interleaving of requests, the live feed 
   assert.deepEqual([...seen].sort(), ['down', 'end: nothing', 'end: proxy', 'end: ranOut', 'end: refusal', 'end: session', 'end: success', 'message',
     'renewal answered', 'renewal not answered', 'start a bounded read', 'start a request', 'up']);
   assert.ok(shown > 50 && hidden > 50, `connection lines shown at ${shown} steps and hidden at ${hidden}`);
+  assert.ok(doubted > 20 && renewed > 20, `the feed doubted ${doubted} times and opened again under a renewed session ${renewed} times`);
 });
 
 test('a renewed session leaves a message that was not about the connection, and writing that cannot be saved', async () => {

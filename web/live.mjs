@@ -88,16 +88,30 @@ export class Live {
     const delay = clean ? 1000 : Math.min(LONGEST_WAIT, 1000 * 2 ** Math.min(this.failures++, 5));
     this.timer = this.timers.setTimeout(() => { this.timer = null; this.start(); }, delay + Math.floor(this.random() * 250));
   }
+  // Stop listening to the socket under way and close it.
+  drop() {
+    const socket = this.current?.socket; this.current = null;
+    if (socket) { socket.onmessage = socket.onclose = socket.onerror = null; try { socket.close(); } catch { /* closing */ } }
+  }
   stop() {
     this.stopped = true;
     if (this.timer !== null) this.timers.clearTimeout(this.timer);
     this.timer = null;
-    const socket = this.current?.socket; this.current = null;
-    if (socket) { socket.onmessage = socket.onclose = socket.onerror = null; try { socket.close(); } catch { /* closing */ } }
+    this.drop();
     this.setState('down');
   }
   // A page that becomes visible or comes back online tries at once.
   wake() { if (!this.stopped && this.state !== 'live' && !this.current) this.start(); }
+  // The page doubts the socket it holds, whatever it reads: an attempt got no
+  // answer, or the session it was opened under was renewed. It lets that
+  // socket go and opens another at once, under the session it holds now; until
+  // the new one answers, the feed is down.
+  reopen() {
+    if (this.stopped) return;
+    this.drop();
+    this.setState('down');
+    this.start();
+  }
 }
 
 // A load asked for while one runs is run once more after it, so a commit that

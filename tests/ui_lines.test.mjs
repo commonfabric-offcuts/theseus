@@ -203,26 +203,35 @@ test('a connection line shows only while the page is not connected and nothing h
   assert.equal(said(line), lost().message, 'a request that got no answer is no answer');
   await answers();
   assert.deepEqual([said(line), line.hidden, 'unreached' in line.dataset, said(other)], ['', true, false, ''], 'a request Theseus answered');
-  // The live feed: up now hides every connection line, and one it hid stays hidden when it goes down again.
+  // The live feed: up now hides every connection line; one it hid shows again
+  // when it goes down if nothing has answered since its failure, and one that
+  // something answered after never comes back.
   const feed = new Live({ token: 'session', socket: () => ({ close() {} }), timers: { setTimeout: () => 1, clearTimeout() {} }, origin: 'https://fixture' });
   follow(feed); feed.start();
   showLine(line, lost());
   assert.equal(said(line), lost().message, 'a feed that has not come up says nothing');
   feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) });
-  assert.deepEqual([contact.live, said(line)], [true, ''], 'the live feed came up');
+  assert.deepEqual([contact.live, said(line), 'unreached' in line.dataset], [true, '', false], 'the live feed came up');
   showLine(line, lost());
-  assert.equal(said(line), '', 'a failure while the live feed is up');
-  feed.current.socket.onmessage({ data: JSON.stringify({ seq: 2 }) });
-  const whileUp = lost();
+  assert.deepEqual([said(line), 'unreached' in line.dataset], ['', false], 'a failure while the live feed is up');
   feed.current.socket.onclose();
-  assert.deepEqual([contact.live, said(line)], [false, ''], 'what the feed hid while up does not come back when it goes down');
+  assert.deepEqual([contact.live, said(line), 'unreached' in line.dataset], [false, lost().message, true], 'the feed goes down and nothing has answered since that failure: the line shows again');
+  feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) });
+  assert.equal(said(line), '', 'the feed came up: an answer after it');
+  feed.current.socket.onclose();
+  assert.equal(said(line), '', 'answered after it: it never comes back');
+  feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: 2 }) });
+  const whileUp = lost();
+  feed.current.socket.onmessage({ data: JSON.stringify({ seq: 3 }) });
+  const afterCommit = lost();
+  feed.current.socket.onclose();
   showLine(line, ['Could not open.', whileUp]);
-  assert.equal(said(line), '', 'a failure from while the feed was up, written after it went down');
-  showLine(line, lost());
-  assert.equal(said(line), lost().message, 'a failure after the feed went down');
+  assert.equal(said(line), '', 'a commit the feed named came after it');
+  showLine(line, ['Could not open.', afterCommit]);
+  assert.equal(said(line), 'Could not open. ' + lost().message, 'a failure while the feed was up, after its last message, written once it went down');
   // A refused session is no answer; the session handed out again is (session-renewal.mjs).
   await failureOf(new Api('session', async () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance.' })).view('x', {}));
-  assert.equal(said(line), lost().message, 'a refused session');
+  assert.equal(said(line), 'Could not open. ' + lost().message, 'a refused session');
   follow(null);
 });
 
@@ -239,11 +248,10 @@ test('a line\'s latest failure decides it, and a line with a control of its own 
   const stale = lost(); answered();
   showLine(line, ['Could not open.', stale]);
   assert.deepEqual([line.hidden, line.textContent, 'unreached' in line.dataset], [true, '', false]);
-  // The pure rule itself.
-  assert.equal(unanswered(5, { answered: 4, live: false, liveUntil: 3 }), true);
-  assert.equal(unanswered(5, { answered: 6, live: false, liveUntil: 3 }), false, 'answered since');
-  assert.equal(unanswered(5, { answered: 4, live: true, liveUntil: 3 }), false, 'connected now');
-  assert.equal(unanswered(5, { answered: 4, live: false, liveUntil: 6 }), false, 'the feed was up after it');
+  // The pure rule itself: not connected now, and nothing answered since. Nothing else.
+  assert.equal(unanswered(5, { answered: 4, live: false }), true);
+  assert.equal(unanswered(5, { answered: 6, live: false }), false, 'answered since');
+  assert.equal(unanswered(5, { answered: 4, live: true }), false, 'connected now');
 });
 
 // What a failure held up is done again once Theseus has answered since its
@@ -262,4 +270,67 @@ test('Theseus has answered since an attempt began, for every way the page makes 
   answered();
   const ranOut = await failureOf(early.bound(new Promise(() => {}))), late = await failureOf(new Deadline(0, 'Reader request timed out. Your writing is kept.').bound(new Promise(() => {})));
   assert.deepEqual([answeredSince(ranOut), answeredSince(late), unreached(ranOut)], [true, false, true], 'a deadline set before an answer, and one set after');
+});
+
+// A socket can read 'live' over a connection that is gone (a laptop that slept
+// through a restart, a network that dropped before the browser noticed). An
+// attempt that got no answer, when nothing has answered since it began, is the
+// page's reason to doubt it: it opens its feed again, and until the new socket
+// answers the page is not connected, so the line says what happened. An
+// attempt still out when something answered, one Theseus answered, or one made
+// while the feed is already down leaves the feed alone.
+test('an attempt that got no answer, with nothing answered since it began, makes the page open its live feed again; nothing else does', async () => {
+  const sockets = [];
+  const feed = new Live({ token: 'session', socket: () => { const socket = { closed: false, close() { this.closed = true; } }; sockets.push(socket); return socket; },
+    timers: { setTimeout: () => 1, clearTimeout() {} }, origin: 'https://fixture' });
+  follow(feed); feed.start();
+  const up = () => { if (!feed.current) feed.start(); feed.current.socket.onmessage({ data: JSON.stringify({ seq: 1 }) }); };
+  const line = element();
+  for (const [name, attempt] of [...ways, ['a wait the page bounds', () => new Deadline(0, 'Reader request timed out. Your writing is kept.').bound(new Promise(() => {}))]]) {
+    for (const [what, answer] of [['nothing', nothing], ['the proxy', proxyDown], ['a refused session', () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance.' })]]) {
+      if (name === 'a wait the page bounds' && what !== 'nothing') continue;
+      up();
+      const before = sockets.length, doubted = sockets.at(-1);
+      showLine(line, await failureOf(attempt(new Api('session', async () => answer()))));
+      assert.deepEqual([sockets.length - before, doubted.closed, feed.state, said(line) !== ''], [1, true, 'down', true],
+        `${name}, ${what}: the feed reads live, nothing answered since the attempt began, yet it got no answer: the feed is opened again and the line shows`);
+      up();
+      assert.equal(said(line), '', `${name}, ${what}: the new socket answered`);
+    }
+  }
+  // Theseus answered: a refusal of its own.
+  up();
+  let before = sockets.length;
+  await failureOf(new Api('session', async () => theseus(409, { code: 'CONFLICT', message: 'Closed.' })).view('x', {}));
+  assert.equal(sockets.length, before, 'Theseus answered: the feed is left alone');
+  // Still out when the feed named a commit: something answered since it began.
+  const out = gated(nothing), failing = failureOf(out.api.view('x', {}));
+  feed.current.socket.onmessage({ data: JSON.stringify({ seq: 2 }) });
+  out.gate.open();
+  showLine(line, await failing);
+  assert.deepEqual([sockets.length, feed.state, said(line)], [before, 'live', ''], 'answered while it was out: the feed is left alone, and the page is connected');
+  // Down already: the feed's own retry is not hurried.
+  feed.current.socket.onclose();
+  before = sockets.length;
+  await failureOf(new Api('session', async () => nothing()).view('x', {}));
+  assert.equal(sockets.length, before, 'the feed is down: nothing is opened');
+  follow(null);
+});
+
+// A refusal of the page's session, as a restarted server gives, is told to
+// whoever holds the session (app.mjs renews it), from that Api alone.
+test('an Api tells its holder when the server refused its session, and on nothing else', async () => {
+  for (const [what, answer, told] of [['a refused session', () => theseus(401, { code: 'SESSION_REQUIRED', message: 'Open this instance.' }), 1],
+    ['another 401', () => theseus(401, { code: 'OTHER', message: 'No.' }), 0], ['a refusal of its own', () => theseus(409, { code: 'CONFLICT', message: 'Closed.' }), 0],
+    ['nothing', nothing, 0], ['the proxy', proxyDown, 0], ['an answer', () => theseus(200, null), 0]]) {
+    for (const [name, attempt] of ways) {
+      const api = new Api('session', async () => answer()), other = new Api('session', async () => answer());
+      let heardOf = 0;
+      api.refused = () => { heardOf++; };
+      await attempt(api).catch(() => {});
+      assert.equal(heardOf, told, `${name}: ${what}`);
+      await attempt(other).catch(() => {});
+      assert.equal(heardOf, told, `${name}: ${what}, through another Api`);
+    }
+  }
 });
