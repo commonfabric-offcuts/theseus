@@ -42,8 +42,12 @@ page could read at all. WebSockets are kept apart from those six.
 
 The server watches its database file; every commit writes that file, so each new
 commit number is sent as one text message, `{"seq": N}`, the first being the
-current number. The stream names no records: the page reads the open topic's
-changes through the usual views, so the stream adds no new way to see anything.
+current number. When Core kept what is red with that commit, the message also
+carries it, `{"seq": N, "health": {"red": [...], "seq": N}}`, for the Health
+link ([health.md](health.md)); a page that does not know the field ignores it.
+The stream names no records: the page reads the open topic's changes through
+the usual views, and what is red is what every page may read already, so the
+stream adds no new way to see anything.
 A last message `{"end": reason}`, followed by a close, says the server stopped
 (`stopped`), the database or authority anchor moved (`database_moved`,
 `binding_changed`), or the commit number could not be read (`unconfirmed`). The

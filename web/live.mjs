@@ -20,13 +20,16 @@ export class Live {
     this.connected = false; this.seq = null; this.state = 'idle';
     this.failures = 0; this.timer = null; this.current = null; this.stopped = false; this.opened = 0;
   }
-  // listener({ kind: 'commit', seq }) on each new number, and
-  // listener({ kind: 'state', state }) with 'live' or 'down'.
+  // listener({ kind: 'commit', seq, health }) on each new number, and
+  // listener({ kind: 'state', state }) with 'live' or 'down'; 'live' also names
+  // the number the feed came back with, and health. health is what is red at
+  // that commit, {red, seq}, when the server sends it (docs/health.md), else
+  // undefined.
   listen(listener) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   emit(event) { for (const listener of [...this.listeners]) listener(event); }
-  setState(state) {
+  setState(state, detail = {}) {
     this.connected = state === 'live';
-    if (state !== this.state) { this.state = state; this.emit({ kind: 'state', state }); }
+    if (state !== this.state) { this.state = state; this.emit({ kind: 'state', state, ...detail }); }
   }
   start() {
     if (this.stopped || this.current) return;
@@ -60,8 +63,9 @@ export class Live {
         // ending backs off from one second again. One that ends after only its
         // first number keeps counting, so a broken feed is not asked in a loop.
         if (++attempt.lines === 2) this.failures = 0;
-        this.setState('live');
-        if (message.seq !== this.seq) { this.seq = message.seq; this.emit({ kind: 'commit', seq: message.seq }); }
+        const said = message.health === undefined ? { seq: message.seq } : { seq: message.seq, health: message.health };
+        this.setState('live', said);
+        if (message.seq !== this.seq) { this.seq = message.seq; this.emit({ kind: 'commit', ...said }); }
       } else {
         attempt.clean = attempt.lines > 0 && message?.end === 'stopped';
         finish();

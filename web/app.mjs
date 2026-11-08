@@ -1212,15 +1212,14 @@ async function initialize() {
     attention.refresh();
   }
   if (!healthLight) {
-    // The Health link lights on every page while Core says something is red,
-    // read again on every commit, as attention is, and says it could not
-    // check while the live feed is down (health-light.mjs).
+    // The Health link lights on every page while Core says something is red.
+    // The live feed says what is red with every commit; a commit that comes
+    // without it, the page opening and the page coming back into view read
+    // it, and it says it could not check while the feed is down
+    // (health-light.mjs).
     healthLight = new HealthLight({ link: $('health-link'), feed: () => live?.state ?? null,
       read: async () => checkedView(await api.view('health_light', {}, { readClass: 'background' }), bootstrap.instance_id) });
-    live?.listen(event => {
-      if (event.kind === 'state') healthLight.paint();
-      if ((event.kind === 'commit' || event.state === 'live') && document.visibilityState === 'visible') run(() => healthLight.load());
-    });
+    live?.listen(event => run(() => healthLight.heard(event)));
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(() => healthLight.load()); });
     run(() => healthLight.load());
   }
@@ -1919,7 +1918,7 @@ async function initializeHealthPage() {
   const page=new HealthPage({host:$('health-page'),feed:()=>live?.state??null,
     read:async()=>checkedView(await api.view('health',{},{readClass:'foreground'}),bootstrap.instance_id)});
   $('health-page').hidden=false;
-  live?.listen(event=>{if(event.kind==='state')page.paint();});
+  live?.listen(event=>page.heard(event));
   await followCommits(()=>page.load())();
   document.body.dataset.ready='true';
 }

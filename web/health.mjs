@@ -57,12 +57,14 @@ function failedPhrase(failing, now) {
 const why = failing => `Why: ${failing.why}.`;
 
 // What is wrong, as sentences, most urgent first; [] when nothing is.
-export function healthProblems(answer, { now, feed } = {}) {
+// behind: the answer is from before the live feed last came back, and the read after it has not answered.
+export function healthProblems(answer, { now, feed, behind = false } = {}) {
   const problems = [];
   const agents = answer.agents ?? [];
   const routedWaiting = agents.filter(agent => agent.route && agent.waiting > 0);
-  // The Health link says it could not check by the same rule (health-light.mjs).
+  // The Health link says it could not check, or is checking, by the same rules (health-light.mjs).
   if (feedLost(feed)) problems.push('This page has lost its live connection to the server, so what it shows may be out of date.');
+  else if (behind) problems.push('This page is reading Health again now that its live connection is back, so what it shows may be out of date.');
   // Red is Core's one rule (answer.red), which the Health link reads too.
   const red = new Set(answer.red ?? []);
   if (red.has('runner')) {
@@ -140,8 +142,9 @@ export function healthLines(answer, { now, feed } = {}) {
   const server = answer.server;
   if (server) {
     const live = feedLost(feed) ? 'live updates lost' : server.live_feed ? 'live updates on' : 'no live updates';
-    lines.push({ group: 'Theseus', key: 'server', label: 'Server', summary: `Answering since ${at(server.started_ms, now)} · ${live}`,
-      details: [`It serves database version ${answer.schema_version}.`], bad: feedLost(feed) });
+    const details = [`It serves database version ${answer.schema_version}.`];
+    if (!server.live_feed) details.push('Without live updates, this page and the Health link read again only when opened or shown, and a runner that stops answering is told to the team by the next act, not at the moment.');
+    lines.push({ group: 'Theseus', key: 'server', label: 'Server', summary: `Answering since ${at(server.started_ms, now)} · ${live}`, details, bad: feedLost(feed) });
   }
   for (const agent of answer.agents ?? []) lines.push({ group: 'Agents', key: `agent:${agent.actor_id}`, label: null, ...agentLines(agent, now, runner.live) });
   // The Mac's load and core count are each said, or said to be unreadable; never left out.
@@ -179,13 +182,27 @@ export class HealthPage {
   constructor({ host, read, feed = () => null, now = () => Date.now(), doc = host.ownerDocument }) {
     Object.assign(this, { host, read, feed, now, doc });
     this.answer = null; this.open = new Set(); this.failed = false;
+    // The commit the answer is true at, and the commit the live feed named when it last came back (health-light.mjs).
+    this.seq = -1; this.known = -1; this.floor = -1;
+  }
+
+  // A live feed event: the number it came back with, or a commit.
+  heard(event) {
+    if (Number.isSafeInteger(event?.seq)) {
+      this.known = Math.max(this.known, event.seq);
+      if (event.kind === 'state' && event.state === 'live') this.floor = event.seq;
+    }
+    if (event?.kind === 'state') this.paint();
   }
 
   async load() {
+    const started = this.known;
     try {
       const answer = await this.read();
       if (!readable(answer)) throw new Error('Health could not be read: the answer did not say what is red.');
       this.answer = answer;
+      // A server that does not name the commit: the commit known when the read began.
+      this.seq = Number.isSafeInteger(answer.commit_seq) ? answer.commit_seq : started;
       this.failed = false;
     } catch (error) {
       this.failed = error?.message || 'Health could not be read.';
@@ -210,7 +227,7 @@ export class HealthPage {
     if (this.failed) parts.push(this.el('p', this.answer ? `${this.failed} What is shown is from the last read.` : this.failed, 'notice'));
     if (!this.answer) { this.host.replaceChildren(...parts); return; }
     const now = this.now(), feed = this.feed();
-    const problems = healthProblems(this.answer, { now, feed });
+    const problems = healthProblems(this.answer, { now, feed, behind: this.seq < this.floor });
     const top = this.el('section', undefined, problems.length ? 'health-top health-bad' : 'health-top');
     top.setAttribute('aria-label', 'What needs attention');
     top.setAttribute('role', 'status');

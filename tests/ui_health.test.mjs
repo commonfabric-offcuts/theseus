@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { HealthPage, healthLines, healthProblems } from '../web/health.mjs';
-import { HealthLight, LIT_WORDS, UNREAD_WORDS } from '../web/health-light.mjs';
+import { CHECKING_WORDS, HealthLight, LIT_WORDS, UNREAD_WORDS, standing } from '../web/health-light.mjs';
 
 const NOW = new Date(2026, 10, 7, 9, 0).getTime();
 const MIN = 60 * 1000;
@@ -110,57 +110,133 @@ test('a link that cannot read what is red says it could not check, never quiet',
   assert.equal(node.classList.contains('red'), false);
 });
 
-test('what the link shows is its latest read: an answer read before a newer commit is never shown', async () => {
-  // Under load the server sheds the newer read while an older one, taken before
-  // the commit that made something red, is still answering "nothing is red".
-  const node = link(), painted = [];
-  const answers = [];
-  const read = () => new Promise((resolve, reject) => answers.push({ resolve, reject }));
-  const light = new HealthLight({ link: node, read });
-  const paint = light.paint.bind(light);
-  light.paint = () => { paint(); painted.push(node.textContent); };
-  const older = light.load();
-  const newer = light.load(); // the red commit comes while the first read runs
-  assert.equal(newer, older, 'one read at a time; the commit asks for one more');
-  assert.equal(answers.length, 1, 'the newer read waits for the older');
-  answers[0].resolve({ red: [] });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(answers.length, 2, 'then reads again, after the commit');
-  answers[1].reject(new Error('503 SERVER_BUSY'));
-  assert.equal(await newer, false);
-  assert.deepEqual(painted, [UNREAD_WORDS], 'the older quiet answer was never shown');
-  assert.equal(node.classList.contains('red'), true);
-  // With no commit while it reads, the answer is shown.
-  const quiet = light.load();
-  answers[2].resolve({ red: [] });
-  assert.equal(await quiet, true);
-  assert.equal(node.textContent, 'Health');
+const tick = () => new Promise(resolve => setImmediate(resolve));
+const shown = node => [node.textContent, node.classList.contains('red')];
+// A light whose reads the test answers one by one, and a feed the test moves.
+function harness() {
+  const answers = [], node = link();
+  let feed = 'live';
+  const light = new HealthLight({ link: node, feed: () => feed, read: () => new Promise((resolve, reject) => answers.push({ resolve, reject })) });
+  return { light, node, answers, setFeed: state => { feed = state; } };
+}
+
+test('on a current server the link follows what is red with each commit from the feed, and reads nothing for it', async () => {
+  const { light, node, answers } = harness();
+  light.heard({ kind: 'state', state: 'live', seq: 4, health: { red: [], seq: 4 } });
+  assert.deepEqual(shown(node), ['Health', false]);
+  light.heard({ kind: 'commit', seq: 5, health: { red: ['runner'], seq: 5 } });
+  assert.deepEqual(shown(node), [LIT_WORDS, true]);
+  light.heard({ kind: 'commit', seq: 6, health: { red: [], seq: 6 } });
+  assert.deepEqual(shown(node), ['Health', false]);
+  assert.equal(answers.length, 0, 'no read');
+  // What is red for another commit is not what is red for this one: it is read.
+  light.heard({ kind: 'commit', seq: 7, health: { red: [], seq: 6 } });
+  assert.equal(answers.length, 1);
+  answers[0].resolve({ red: ['failing:a'], commit_seq: 7 });
+  await tick();
+  assert.deepEqual(shown(node), [LIT_WORDS, true]);
 });
 
-test('the link says it could not check while the live feed is down, as the Health page says at its top', async () => {
-  let feed = 'live';
-  const node = link();
-  node.textContent = 'Health · checking';
-  const light = new HealthLight({ link: node, read: async () => ({ red: [] }), feed: () => feed });
-  feed = 'down';
-  light.paint();
-  assert.deepEqual([node.textContent, node.classList.contains('red')], ['Health · checking', false], 'before the first answer it says it is checking');
-  await light.load();
-  assert.deepEqual([node.textContent, node.classList.contains('red'), node.attributes['aria-label']],
-    [UNREAD_WORDS, true, 'Health: it could not be checked, so something may need attention'], 'a quiet answer does not stand while nothing would say a change');
-  assert.deepEqual(healthProblems(answer(), { now: NOW, feed }), ['This page has lost its live connection to the server, so what it shows may be out of date.'], 'and the page agrees');
-  feed = 'live';
-  light.paint();
-  assert.deepEqual([node.textContent, node.classList.contains('red')], ['Health', false], 'back, the answer stands again');
-  // A lit answer while the feed is down is not said as all clear either.
-  const lit = new HealthLight({ link: link(), read: async () => ({ red: ['runner'] }), feed: () => 'down' });
-  await lit.load();
-  assert.equal(lit.link.textContent, UNREAD_WORDS);
+test('reads that each answer red, each overlapped by a commit, light the link (the reviewer\'s starved reads)', async () => {
+  // A server whose feed does not say what is red: one read per commit, and
+  // under load a commit lands during every read.
+  const { light, node, answers } = harness();
+  light.heard({ kind: 'state', state: 'live', seq: 1 });
+  answers[0].resolve({ red: [], commit_seq: 1 });
+  await tick();
+  assert.deepEqual(shown(node), ['Health', false]);
+  for (let seq = 2; seq <= 21; seq++) {
+    light.heard({ kind: 'commit', seq });
+    await tick();
+    light.heard({ kind: 'commit', seq: seq + 100 });
+    answers[answers.length - 1].resolve({ red: ['runner'], commit_seq: seq });
+    await tick();
+    assert.deepEqual(shown(node), [LIT_WORDS, true], `read ${seq} answered red`);
+  }
+  // A server that does not name the commit: the commit known when the read began.
+  const old = harness();
+  old.light.heard({ kind: 'commit', seq: 3 });
+  old.light.heard({ kind: 'commit', seq: 4 });
+  old.answers[0].resolve({ red: ['runner'] });
+  await tick();
+  assert.deepEqual(shown(old.node), [LIT_WORDS, true], 'taken as of the commit known when it began, and shown');
+  assert.equal(old.answers.length, 2, 'then read again for the commit that came during it');
+  old.answers[1].resolve({ red: [] });
+  await tick();
+  assert.deepEqual(shown(old.node), ['Health', false]);
+});
+
+test('an answer older than the one shown is never shown', async () => {
+  const { light, node, answers } = harness();
+  light.load();
+  light.heard({ kind: 'commit', seq: 9, health: { red: ['runner'], seq: 9 } });
+  answers[0].resolve({ red: [], commit_seq: 8 }); // read before the commit that made the runner red
+  await tick();
+  assert.deepEqual(shown(node), [LIT_WORDS, true]);
+  assert.equal(light.best.seq, 9);
+  // A read at the same commit is taken: Core settled that commit before it was read.
+  light.load();
+  answers[1].resolve({ red: [], commit_seq: 9 });
+  await tick();
+  assert.deepEqual(shown(node), ['Health', false]);
+});
+
+test('when the feed comes back, an answer from before it dropped is never shown as all clear (the reviewer\'s reconnect)', async () => {
+  const { light, node, answers, setFeed } = harness();
+  light.heard({ kind: 'state', state: 'live', seq: 1, health: { red: [], seq: 1 } });
+  assert.deepEqual(shown(node), ['Health', false]);
+  setFeed('down');
+  light.heard({ kind: 'state', state: 'down' });
+  assert.deepEqual([...shown(node), node.attributes['aria-label']], [UNREAD_WORDS, true, 'Health: it could not be checked, so something may need attention']);
+  assert.deepEqual(healthProblems(answer(), { now: NOW, feed: 'down' }), ['This page has lost its live connection to the server, so what it shows may be out of date.'], 'and the page agrees');
+  // Back on a current server: the first number says what is red at once.
+  setFeed('live');
+  light.heard({ kind: 'state', state: 'live', seq: 5, health: { red: ['runner'], seq: 5 } });
+  light.heard({ kind: 'commit', seq: 5, health: { red: ['runner'], seq: 5 } });
+  assert.deepEqual(shown(node), [LIT_WORDS, true]);
+  assert.equal(answers.length, 0);
+  // Back on a server whose feed does not say: not the old answer, but "checking" until a read says.
+  setFeed('down'); light.heard({ kind: 'state', state: 'down' });
+  setFeed('live');
+  light.heard({ kind: 'state', state: 'live', seq: 8 });
+  assert.deepEqual(shown(node), [CHECKING_WORDS, false], 'nothing read since it came back');
+  light.heard({ kind: 'commit', seq: 8 });
+  answers[0].resolve({ red: [], commit_seq: 8 });
+  await tick();
+  assert.deepEqual(shown(node), ['Health', false]);
+  // Back with no commit missed: the answer it has is the answer at that commit.
+  setFeed('down'); light.heard({ kind: 'state', state: 'down' });
+  setFeed('live'); light.heard({ kind: 'state', state: 'live', seq: 8 });
+  assert.deepEqual(shown(node), ['Health', false]);
+  assert.equal(answers.length, 1);
   // No feed offered: reads are what the link has, as for the page, which calls that no problem.
   const none = new HealthLight({ link: link(), read: async () => ({ red: [] }) });
   await none.load();
   assert.equal(none.link.textContent, 'Health');
   assert.deepEqual(healthProblems(answer(), { now: NOW, feed: null }), []);
+});
+
+test('what the link says is one pure function of what it has', () => {
+  const quiet = { seq: 5, red: [] }, lit = { seq: 5, red: ['runner'] };
+  const cases = [
+    [{ best: null, known: -1, floor: -1, failed: false, feed: null }, 'checking'],
+    [{ best: null, known: -1, floor: -1, failed: true, feed: null }, 'unread'],
+    [{ best: quiet, known: 5, floor: 5, failed: false, feed: 'down' }, 'unread'],
+    [{ best: quiet, known: 5, floor: 6, failed: false, feed: 'live' }, 'checking'],
+    [{ best: quiet, known: 7, floor: 5, failed: false, feed: 'live' }, 'quiet'],
+    [{ best: quiet, known: 7, floor: 5, failed: true, feed: 'live' }, 'unread'],
+    [{ best: quiet, known: 5, floor: 5, failed: true, feed: 'live' }, 'quiet'],
+    [{ best: quiet, known: 5, floor: -1, failed: true, feed: null }, 'unread'],
+    [{ best: lit, known: 5, floor: 5, failed: false, feed: 'live' }, 'lit'],
+  ];
+  for (const [facts, said] of cases) assert.equal(standing(facts), said, JSON.stringify(facts));
+});
+
+test('a server with no live feed says on its line what that costs', () => {
+  const server = live_feed => healthLines(answer({ server: { started_ms: NOW - MIN, pid: 1, live_feed }, schema_version: '30' }), { now: NOW, feed: null }).find(item => item.key === 'server');
+  assert.match(server(false).summary, /no live updates$/);
+  assert.match(server(false).details[1], /^Without live updates, this page and the Health link read again only when opened or shown, and a runner that stops answering is told to the team by the next act/);
+  assert.deepEqual(server(true).details, ['It serves database version 30.']);
 });
 
 test('the Mac\'s load or core count that could not be read is said, never left out or called light', () => {
@@ -200,5 +276,26 @@ test('a health answer that does not say what is red is a failed read, never "eve
   const host = new Node('section');
   const page = new HealthPage({ host, read: async () => answer(), doc: { createElement: tag => new Node(tag) } });
   assert.equal(await page.load(), true);
+  assert.match(texts(host).join(' '), /Everything is working/);
+});
+
+test('the Health page says it is reading again, never "everything is working", from an answer older than the feed\'s return', async () => {
+  const host = new Node('section'), reads = [];
+  let feed = 'live';
+  const page = new HealthPage({ host, feed: () => feed, read: () => new Promise(resolve => reads.push(resolve)), doc: { createElement: tag => new Node(tag) } });
+  page.heard({ kind: 'state', state: 'live', seq: 3 });
+  const first = page.load();
+  reads[0](answer({ commit_seq: 3 }));
+  await first;
+  assert.match(texts(host).join(' '), /Everything is working/);
+  feed = 'down'; page.heard({ kind: 'state', state: 'down' });
+  assert.match(texts(host).join(' '), /lost its live connection/);
+  feed = 'live'; page.heard({ kind: 'state', state: 'live', seq: 6 });
+  const said = texts(host).join(' ');
+  assert.doesNotMatch(said, /Everything is working/);
+  assert.match(said, /reading Health again now that its live connection is back/);
+  const second = page.load();
+  reads[1](answer({ commit_seq: 6 }));
+  await second;
   assert.match(texts(host).join(' '), /Everything is working/);
 });

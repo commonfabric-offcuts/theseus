@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import sqlite3
@@ -23,8 +24,14 @@ class LiveFeed:
     mode, so every commit writes that file under the writer's exclusive lock;
     after each write the thread reads commit_seq, which it can read only once
     that lock is released, and wakes every stream when the number moved. A
-    stream carries only that number: what changed is read through the usual
-    views, so the feed adds no new way to see records.
+    stream carries only that number, and with it what is red at that commit
+    (docs/health.md): what changed is read through the usual views, so the
+    feed adds no new way to see records. Core keeps what is red with every
+    commit, in the same transaction (metadata health_light, {red, seq}); the
+    thread reads it in the same statement as the number, and the stream sends
+    it only when its seq is that number, so it is never an answer from an
+    older commit. Every page can read what is red (the health_light view), so
+    this shows nobody anything new either.
 
     The thread's first act is to read the current number, so a writer that
     holds its lock while the server starts delays the first message rather
@@ -71,6 +78,7 @@ class LiveFeed:
         self.slots = threading.BoundedSemaphore(max_streams)
         self.wakers = {}  # each stream's read end: its write end
         self.seq = None  # until the thread's first read
+        self.light = None  # what is red at self.seq, or None when Core kept none for it
         self.ended = None
         self.stopped = False
         self.reading = False  # the thread is in a read that may wait on a writer's lock
@@ -103,15 +111,16 @@ class LiveFeed:
         db, _ = _connect(self.db_path, LOCK_WAIT_MS)
         try:
             db.execute("PRAGMA query_only=ON")
-            row = db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()
+            # One statement, so the number and what is red with it are one snapshot.
+            values = dict(db.execute("SELECT key,value FROM metadata WHERE key IN ('commit_seq','health_due','health_light')"))
             runner = db.execute("SELECT runner_pid FROM runner_state WHERE id=1 AND state='running'").fetchone()
-            due = db.execute("SELECT value FROM metadata WHERE key='health_due'").fetchone()
         finally:
             db.close()
-        if row is None or not isinstance(row[0], str) or not row[0].isascii() or not row[0].isdigit():
+        row, due = values.get("commit_seq"), values.get("health_due")
+        if not isinstance(row, str) or not row.isascii() or not row.isdigit():
             raise ValueError("commit_seq is unreadable")
-        due = due[0] if due and isinstance(due[0], str) and due[0].isascii() and due[0].isdigit() else None
-        return int(row[0]), runner[0] if runner else None, None if due is None else int(due)
+        due = due if isinstance(due, str) and due.isascii() and due.isdigit() else None
+        return int(row), runner[0] if runner else None, None if due is None else int(due), _light(values.get("health_light"), int(row))
 
     def _settled_seq(self):
         """The commit number, the running runner's pid and Core's next health moment once no writer holds the lock, or None if the feed is stopping.
@@ -141,10 +150,10 @@ class LiveFeed:
                     read = self._settled_seq()
                     if read is None:
                         break
-                    seq, runner, due = read
+                    seq, runner, due, light = read
                     with self.lock:
                         if seq != self.seq:
-                            self.seq = seq
+                            self.seq, self.light = seq, light
                             self._wake_all()
                     if not self._watch_runner(runner):
                         break
@@ -265,6 +274,11 @@ class LiveFeed:
         with self.lock:
             return self.seq, self.ended
 
+    def snapshot(self):
+        """(latest commit number, what is red at it or None, why the feed ended or None), read together."""
+        with self.lock:
+            return self.seq, self.light, self.ended
+
     def subscribe(self):
         """A descriptor that becomes readable on each new commit and when the feed ends,
         or None when every stream slot is taken."""
@@ -314,3 +328,16 @@ class LiveFeed:
         os.write(self.stop_write, b"!")
         self.thread.join()
         self._close_pipe()
+
+
+def _light(text, seq):
+    """What is red at commit seq, as {"red": [...], "seq": seq}, from Core's kept value; None when
+    Core kept none for that commit (an older Core, or a commit that did not settle it)."""
+    try:
+        value = json.loads(text) if isinstance(text, str) else None
+    except ValueError:
+        return None
+    if (not isinstance(value, dict) or type(value.get("seq")) is not int or value["seq"] != seq
+            or not isinstance(value.get("red"), list) or not all(isinstance(key, str) for key in value["red"])):
+        return None
+    return {"red": value["red"], "seq": seq}

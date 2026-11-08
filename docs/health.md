@@ -13,24 +13,50 @@ each, and nobody noticed.
 `?health`, from one quiet "Health" link under the instance label, which heads
 the rail on every page (the logo block on pages without a rail). While
 anything is red the link says so: "Health · needs attention", in the alert
-colour, with no edge or box of its own. What it shows is the answer to its
-latest read, and only while the live feed can say that answer still stands:
-it is quiet only after a read that says nothing is red. Until its first read
-answers it says "Health · checking". After a read that fails (the server sheds
-background reads under load) or answers without a list of what is red, and
-for as long as the live feed is down, it says "Health · couldn't check", also
-in the alert colour, since something may be red that it cannot see; the page
-says the same at its top while the feed is down. Its reads run one at a time:
-a commit that comes while one runs asks for one more, and an answer read
-before the latest commit is never shown, so an older "nothing is red" never
-stands for a newer read that failed. On a server that offers no live feed the
-link, like the page, is read when the page opens and when it comes back into
-view. Agents read the same thing with `aim-next health` (docs/agent-cli.md).
+colour, with no edge or box of its own. Agents read the same thing with
+`aim-next health` (docs/agent-cli.md).
+
+### What the link shows
+
+Every answer the link has is tied to the commit it is true at, and what it
+shows is one pure function of what it has (`standing` in
+`web/health-light.mjs`):
+
+- Core keeps what is red with every commit, in the same transaction (metadata
+  `health_light`, `{red, seq}`), and the live feed sends it with that
+  commit's number: `{"seq": N, "health": {"red": [...], "seq": N}}`. On a
+  current server the link follows the feed alone and reads nothing.
+- A commit the feed sends without it (an older server, or a commit that did
+  not settle what is red, such as a migration) is read through the
+  `health_light` view, whose answer names the commit it was read at
+  (`commit_seq`). Its reads run one at a time, one more for any commit that
+  comes while one runs, and each answer is taken as it comes, by its commit:
+  a commit during a read never throws an answer away. A server whose reads do
+  not name their commit is taken as of the commit known when the read began.
+- The link shows the answer with the highest commit it has: a feed answer
+  only when it is newer than the one it has, a read when it is at least as
+  new (a read at a commit is taken after Core kept what was red at it). It
+  never shows an older one.
+- While the live feed is down it says "Health · couldn't check", in the alert
+  colour, since something may be red that it cannot see. When the feed comes
+  back, its first number is the floor: an answer from before it is not shown
+  as current, so until an answer at that commit or later arrives (on a
+  current server, that first message itself) the link says "Health ·
+  checking". If no commit was missed, the answer it has is at that commit and
+  stands.
+- Until its first answer it says "Health · checking". After a read that
+  fails, or answers without a list of what is red, it says "Health ·
+  couldn't check", unless the feed has since said what is red at the latest
+  commit.
+
+On a server that offers no live feed, the link, like the page, is read when
+the page opens and when it comes back into view.
 
 ## What is red
 
-One rule in Core (`_health_reds` in `health.py`) decides what is red; the page,
-the link and the notices all read it, so they cannot disagree:
+One rule in Core (`_health_reds` in `health.py`) decides what is red; the page
+and the link both read it, so they cannot disagree. What the team is told is
+drawn from the same facts by a rule of its own (below):
 
 | key | red while |
 | --- | --- |
@@ -41,6 +67,10 @@ the link and the notices all read it, so they cannot disagree:
 The Mac's load is read when the page reads it, not recorded by any act, so it
 is said at the top of the page when it is above the core count but never
 lights the link or posts.
+
+A runner that stops gracefully keeps as its end when wakes last went out: the
+stop itself, or, for a runner whose lease had already run out unrenewed (a
+hung runner then sent TERM), that lease's end.
 
 ## Why a wake did not get through
 
@@ -61,46 +91,71 @@ the code say so.
 
 ## Telling the team
 
-When what is red changes, Theseus posts one notice to the team, in the act
-that changed it, or at the moment Core kept for it when no act comes; never
-on a timer of its own, and never again while it stays red. A red is told once
-it lasts: a fault at once, and a runner that is simply absent once no runner
-has followed it within two minutes.
+What the team is told is a second pure function of Core's facts and the time
+(`_health_told` in `health.py`), never of what was told before: the
+*conditions* of the runner and of each agent, not the traffic around them.
+When it changes, Theseus posts one notice to the team with the difference, in
+the act that changed it, or at the moment Core kept for it when no act comes;
+never on a timer of its own, and never again while nothing changes.
 
-- **When.** Every act that changes what the reds are read from runs
-  `_health_settle` in its own transaction: each recorded command, each runner
-  act (a settlement, a claim that finds an expired one, a pause, an
-  acquisition, a renewal, a stop), and each recorded runner exit (the
-  supervisor's, or the server's when its live feed sees the runner process
-  end), and the server's settling at Core's kept moment (below). It compares
-  what is red now with what was last announced (metadata `health_announced`)
-  and posts only the difference: what went red, and what went green again.
-- **What, and when it lasts.** Whether a red is told is decided by whether it
-  lasts, not by which state the runner is in. A fault is told at once: a
-  pause, an exit, a runner that stopped renewing, wakes failing, a parked
-  agent. A runner that is absent with no fault (stopped, or never run here
-  while a woken agent has work on the record) is red on the page and the link
-  at once, and told once no runner has taken the role for `HANDOVER_MS` (two
-  minutes, the longest lease a runner may hold) since it stopped, or since the
-  oldest work that waits for it. A deploy hands the role to the next runner
-  within seconds, so its stop and start tell nothing; a stop that no runner
-  follows (a deploy refused after it stopped the runner, a runner sent TERM,
-  which the supervisor does not restart) is told ("The agent runner was
-  stopped and no runner has taken its place"), and a runner that takes the
-  role later is told once that wakes are going out.
-- **With no act at all.** Some reds come with no act and no commit: a runner
-  that stops renewing while its process lives (hung) has no exit to record,
-  and a stop that lasts makes no more commits. Every settling keeps the next
-  moment what is red would change by itself (metadata `health_due`: the
-  running runner's lease's end, or when an absence will have lasted). Whatever
-  act comes first settles it; with none, the server's live feed waits no
-  longer than that moment and asks Core to settle what is red on a commit of
-  its own (`settle_health_due`, docs/effects-runner.md), so the team is told
-  and every page's link reads it. A hung runner is told as "The agent runner
-  stopped answering (its lease ran out and it did not renew it)"; a recorded
-  exit that follows is the same red thing and posts nothing more. A server
-  that was down too (a refused deploy stops it) settles it when it starts, and
-  so does any agent's act through the command line meanwhile.
+| told | while |
+| --- | --- |
+| `runner` | it is paused or ended (killed, failed, lost its lease, or the server saw it go): at once. It was stopped, or stopped renewing, and no runner has taken the role for `HANDOVER_MS` (two minutes, the longest lease a runner may hold) since wakes last went out |
+| `failing:<agent>` | `failing:<agent>` is red: its last `failing_after` wakes did not get through |
+| `parked:<agent>` | it has left its last three wakes unanswered, whether or not work waits for it at the moment |
+
+- **Why not the red keys.** Two of the reds depend on whether work waits:
+  a runner that never ran is red only while a woken agent has work, and a
+  parked agent only while work waits for it. Work comes and goes with every
+  batch, so telling those reds would tell the team its own traffic back, a
+  false "running again" when agents answer with no runner at all, and the
+  same pair again with the next batch. What is told depends only on the
+  subject's own facts, so it changes only when they do.
+- **A runner that never ran is not told.** It is red on the page and the
+  link while a woken agent has work, since wakes that are needed are not
+  going out. But nothing about it changed: the instance was never given a
+  runner, so there is no stop to report, and the only thing that moves it is
+  the work. When a runner first takes the role, nothing told ends.
+- **When.** Every act that commits runs `_health_settle` in its own
+  transaction: each recorded command, each runner act (a settlement, a claim
+  that finds an expired one, a pause, an acquisition, a renewal, a stop),
+  each recorded runner exit (the supervisor's, or the server's when its live
+  feed sees the runner process end), each operator write, and the server's
+  settling at Core's kept moment (below). It keeps what is red with the
+  commit, and compares what is told now with what was last told (metadata
+  `health_announced`, always what the rule gave at the last settling), and
+  posts only the difference.
+- **What it says.** What is told now and was not, then what was told and is
+  not, in words drawn from the facts now: a runner back is "running again"
+  (it is told only once it had run and stopped); an agent whose wakes get
+  through "can be woken again"; one that acts "is answering again"; one
+  disabled "was disabled, so it is no longer woken". A deploy hands the role
+  to the next runner within seconds, so its stop and start tell nothing; a
+  stop that no runner follows (a deploy refused after it stopped the runner,
+  a runner sent TERM, which the supervisor does not restart) is told ("The
+  agent runner was stopped and no runner has taken its place"), and a runner
+  that takes the role later is told once that wakes are going out. A deploy
+  whose stop, backup, migration and start take longer than the two minutes
+  is told as a stop and then as running again: both are true.
+- **With no act at all.** Some changes come with no act and no commit: a
+  runner that stops renewing while its process lives (hung) has no exit to
+  record, and a stop that lasts makes no more commits. Every settling keeps
+  the next moment what is red or told would change by itself (metadata
+  `health_due`: the running runner's lease's end, or when an absence will
+  have lasted). Whatever act comes first settles it; with none, the server's
+  live feed waits no longer than that moment and asks Core to settle on a
+  commit of its own (`settle_health_due`, docs/effects-runner.md), so every
+  page's link reads it from the feed and the team is told. A hung runner
+  lights the link at its lease's end and is told two minutes later as "The
+  agent runner stopped answering (its lease ran out and it did not renew
+  it)"; a recorded exit or stop that follows is the same absence and posts
+  nothing more. A server that was down too (a refused deploy stops it)
+  settles it when it starts, and so does any agent's act through the command
+  line meanwhile. A server whose live feed could not start (no native watch)
+  has no one to settle a moment that passes with no act: the page and the
+  link read it live whenever they read, and the team is told by the next act
+  of anyone; the page's server line says it has no live updates and what
+  that means.
 - **Who.** Theseus itself, as the member `theseus` ("Theseus"), registered
   disabled with its first notice: never on a team, in a list of people, or
   woken, and never a person or agent who did not write the words. If someone
@@ -118,8 +173,10 @@ has followed it within two minutes.
 
 ## The views
 
-`health_light` (no arguments) returns `red`, the sorted keys of what is red.
-Every page reads it once and again on every commit, as attention is.
+`health_light` (no arguments) returns `red`, the sorted keys of what is red,
+and `commit_seq`, the commit the answer was read at. The link reads it when
+the page opens, when it comes back into view, and for a commit the live feed
+sent without what is red.
 
 `health` (no arguments) is one read. Every enabled member may read it. It
 returns:
@@ -132,7 +189,7 @@ returns:
 | `failing_after` | the number of wakes in a row that did not get through before an agent is said to be failing (3) |
 | `release` | the latest release record: `release`, `commit`, `deployed_ms`, `items`, `source`, and `check` (the release check's `finished_ms`, `commit`, `python`, `node` and `native` counts), or `null` |
 | `machine` | `{load: [1, 5, 15 minute averages], cpus}`, read by `os.getloadavg()` and `os.cpu_count()` when the view is read; never on a timer. Either that could not be read is `null`, never left out, and the page and the command line say it could not be read |
-| `schema_version`, `read_ms` | the database version and when the view was read |
+| `schema_version`, `read_ms`, `commit_seq` | the database version, when the view was read, and the commit it was read at |
 
 Over HTTP the server adds `server: {started_ms, pid, live_feed}`, the one line
 Core cannot know.
@@ -156,6 +213,17 @@ wrong it says so in one line.
 Below, one line each, opening in place: the agent runner, the server, every
 agent, the Mac, and the latest release. The page reads the view again on every
 commit the live feed announces (a wake's settlement is a commit), and repaints
-at once when the feed drops or comes back. A failed read keeps what was shown
-and says so; an answer without `red`, `runner` and `agents` is a failed read,
-never "Everything is working".
+at once when the feed drops or comes back. When the feed comes back with a
+newer commit than its answer, it says at the top that it is reading again,
+never "Everything is working", until the read after it answers. A failed read
+keeps what was shown and says so; an answer without `red`, `runner` and
+`agents` is a failed read, never "Everything is working".
+
+### Limits
+
+- A WebSocket that stays open but has stalled (a half-open connection after
+  the Mac sleeps or the network changes) still looks live to the page, so the
+  link and the page trust the last answer the feed gave. This is a property
+  of the transport and is shared with every view; the page reads the light
+  again when it comes back into view, and that answer, being newer, is the
+  one shown.

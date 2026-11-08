@@ -12,12 +12,21 @@ since 8:27 PM failed (1,092 times)" and why, with one primary-key read,
 however long the failures run. The runner keeps how the run before it ended,
 so the page can say what it came back from.
 
-What is red is one rule (`_health_reds`), read by the page, by the link that
-heads every page, and by the notices: when what is red changes, Theseus itself
-posts one notice to each outcome the change concerns, in the act that changed
-it (`_health_settle`). A red is told once it lasts: a fault at once, and a
-runner that is simply absent (stopped, or never run while work waits) once no
-runner has followed it within HANDOVER_MS. When what is red would next change
+What is red is one rule (`_health_reds`), read by the page and by the link
+that heads every page. Every act that commits settles it in its own
+transaction (`_health_settle`) and keeps the answer with the commit it is true
+at (metadata `health_light`, {red, seq}), so the server's live feed sends it
+with that commit's number and a page never has to guess which read is newer.
+
+What the team is told is a second pure function of the same facts
+(`_health_told`): the conditions of the runner and of each agent, never the
+traffic around them. The runner is told when it is paused or ended, or once it
+has been stopped, or has stopped renewing, for HANDOVER_MS with no runner
+taking the role; a runner that has never run here is red on the page while
+work waits for it but is never told, since nothing about it changed. An agent
+is told while its wakes fail, and while it leaves them unanswered. Each act
+posts the difference between what was last told and what is told now, in
+words drawn from the facts now. When what is red or told would next change
 with no act at all (a lease's end, an absence lasting), Core keeps that moment
 (metadata `health_due`), and the server's live feed asks Core to settle then
 (`settle_health_due`), never on a timer of its own.
@@ -47,11 +56,14 @@ HEALTH_ACTOR = "theseus"
 ANNOUNCED_KEY = "health_announced"
 # The next moment what is red changes with no act at all, kept by every settling.
 DUE_KEY = "health_due"
-# How long a runner may be absent with no fault before the team is told: as
-# long as the longest lease a runner may hold (runner.py bounds lease_ms to
-# 120 s). A deploy's stop is followed by the next runner within seconds, so it
-# is never told; a stop that no runner follows (a deploy refused after the
-# stop, a runner sent TERM) is told once it has lasted this long.
+# What is red, kept by every settling with the commit it is true at: {"red": [...], "seq": N}.
+LIGHT_KEY = "health_light"
+# How long a runner may be absent with no recorded fault before the team is
+# told: as long as the longest lease a runner may hold (runner.py bounds
+# lease_ms to 120 s). A deploy's stop is followed by the next runner within
+# seconds, so it is never told; a stop that no runner follows (a deploy refused
+# after the stop, a runner sent TERM) or a runner that stopped renewing is told
+# once it has lasted this long since wakes last went out.
 HANDOVER_MS = 120000
 REASON = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
@@ -77,7 +89,7 @@ HEALTH_BACKFILL = [
     "failed_outcome=(SELECT r.outcome %s%s ORDER BY r.finished_ms DESC,r.rowid DESC LIMIT 1)" % ((_THEIRS, _SINCE) * 3),
 ]
 HEALTH_DOWN = (
-    "DELETE FROM metadata WHERE key IN ('%s','%s')" % (ANNOUNCED_KEY, DUE_KEY),
+    "DELETE FROM metadata WHERE key IN ('%s','%s','%s')" % (ANNOUNCED_KEY, DUE_KEY, LIGHT_KEY),
     "DELETE FROM actors WHERE id='%s' AND enabled=0" % HEALTH_ACTOR,
     "DROP TABLE runner_prior",
     "DROP TABLE wake_facts",
@@ -121,7 +133,7 @@ ENDED = {"killed": "was killed", "lease_lost": "lost its lease", "failed": "fail
          "stopped_unrecorded": "stopped without saying why", "ended": "ended"}
 # A runner whose lease ran out with no renewal and no recorded end: hung, or its Mac asleep.
 UNRENEWED = "stopped answering (its lease ran out and it did not renew it)"
-# A runner absent with no fault, once that has lasted, as told: follows "The agent runner".
+# A runner absent with no recorded fault, once that has lasted, as told: follows "The agent runner".
 ABSENT = {"stopped": "was stopped and no runner has taken its place", "never_run": "has never run here"}
 PAUSED = {"operator_pause": "an operator paused it", "cleanup_failed": "it could not confirm a helper process it started was gone",
           "route_binding_changed": "a route changed", "storage_failure": "of a storage fault"}
@@ -198,9 +210,12 @@ def _count(number, one, many):
 
 
 def notice_lines(went_red, went_green, still_red):
-    """What one notice says, as sentences with no clock time in them: what went red, then what went green.
+    """What one notice says, as sentences with no clock time in them: what is told now that was
+    not, then what was told and is not any more.
 
-    Each argument maps a red key to its fact, as `_health_reds` gives it."""
+    went_red and still_red map a told key to its fact, as `_health_told` gives
+    it; went_green maps a key told before to the facts now (`_health_cleared`),
+    so a clear says what changed in fact."""
     lines = []
     runner = went_red.get("runner")
     if runner is not None:
@@ -230,15 +245,22 @@ def notice_lines(went_red, went_green, still_red):
         lines.append(line)
     for key, fact in sorted(went_red.items()):
         if key.startswith("parked:"):
-            lines.append("%s has not answered its last %s; %s." % (
-                fact["actor_id"], _count(fact["count"], "wake", "wakes"), _count(fact["waiting"], "message waits for it", "messages wait for it")))
-    if "runner" in went_green:
-        lines.append("The agent runner is running again, so wakes are going out.")
+            waits = "; %s" % _count(fact["waiting"], "message waits for it", "messages wait for it") if fact["waiting"] else ""
+            lines.append("%s has not answered its last %s%s." % (fact["actor_id"], _count(fact["count"], "wake", "wakes"), waits))
+    runner = went_green.get("runner")
+    if runner is not None:
+        # Told only once it had run and stopped, so a runner back is running again.
+        lines.append("The agent runner is running again, so wakes are going out." if runner["live"] else
+                     "The agent runner is still not sending wakes; the Health page says why.")
     for key, fact in sorted(went_green.items()):
-        if key.startswith("failing:"):
+        if key == "runner":
+            continue
+        if not fact["enabled"]:
+            lines.append("%s was disabled, so it is no longer woken." % fact["actor_id"])
+        elif key.startswith("failing:"):
             lines.append("%s can be woken again: a wake got through." % fact["actor_id"])
-        elif key.startswith("parked:"):
-            lines.append(("%s is answering again." if fact.get("answering") else "Nothing waits for %s any more.") % fact["actor_id"])
+        else:
+            lines.append("%s is answering again." % fact["actor_id"])
     return lines
 
 
@@ -296,7 +318,7 @@ class Health:
             (agent,)).fetchone())
 
     def _health_reds(self, db, now, routes=None):
-        """What is red, from Core's facts alone, as {key: fact}: one rule for the page, its link and the notices.
+        """What is red, from Core's facts alone, as {key: fact}: one rule for the page and its link.
 
         "runner" while no runner sends wakes: it paused or ended (a fault Core
         records), was stopped (a deploy's graceful stop, until a runner takes
@@ -304,28 +326,27 @@ class Health:
         while a woken agent has work on the record. "failing:<agent>" once
         FAILING_AFTER wakes in a row did not get through. "parked:<agent>"
         while it has left PARKED_AFTER wakes unanswered and work on the record
-        waits for it. A fact is `posted` to the team once it lasts, from
-        `tell_ms`: a fault at once (a pause, an exit, a runner that stopped
-        renewing, failing wakes, a parked agent); a runner absent with no
-        fault (stopped, or never run while work waits) once HANDOVER_MS has
-        passed with no runner taking the role, so a deploy's stop and start
-        tell nothing and a stop that lasts is told. The Mac's load is read by
-        the page, not recorded, so it is never here."""
+        waits for it. The runner's fact says from when it is told (`tell_ms`,
+        `posted`): a pause or an exit at once; a stop, or a lease that ran out
+        unrenewed, once HANDOVER_MS has passed since wakes last went out with
+        no runner taking the role, so a deploy's stop and start tell nothing;
+        a runner that never ran, never (`_health_told`). The Mac's load is read
+        by the page, not recorded, so it is never here."""
         from .wake_health import PARKED_AFTER
         routes = self._health_routes(db) if routes is None else routes
         reds = {}
         light = dict(self._runner_light(db, now))
         if not light["live"]:
-            tell = now  # a fault, or an absence whose start is not recorded, has lasted already
-            if light["state"] == "stopped" and light.get("since_ms") is not None:
-                tell = light["since_ms"] + HANDOVER_MS
+            red, tell = True, now  # a recorded fault is told at once
+            if light["state"] in ("stopped", "unrenewed"):
+                since = light.get("since_ms")
+                tell = now if since is None else since + HANDOVER_MS
             elif light["state"] == "never_run":
-                # Red only while a woken agent has work on the record, absent since the oldest of it.
-                waiting = [since for count, since in (self._on_record_waiting(db, agent) for agent in sorted(routes)) if count]
-                oldest = [since for since in waiting if since is not None]
-                tell = None if not waiting else min(oldest) + HANDOVER_MS if oldest else now
-            if tell is not None:
-                light.update(kind="runner", posted=tell <= now, tell_ms=tell, why=runner_why(light))
+                # Red only while a woken agent has work on the record; never told.
+                red = any(self._on_record_waiting(db, agent)[0] for agent in sorted(routes))
+                tell = None
+            if red:
+                light.update(kind="runner", posted=tell is not None and tell <= now, tell_ms=tell, why=runner_why(light))
                 reds["runner"] = light
         rows = db.execute("SELECT a.id AS recipient_id,COALESCE(f.failed_wakes,0) AS failed_wakes,f.failing_since_ms,f.failed_outcome,f.failed_reason,"
                           "COALESCE(s.unanswered_wakes,0) AS unanswered_wakes,s.unanswered_since_ms FROM actors a "
@@ -335,58 +356,99 @@ class Health:
         for row in rows:
             agent = row["recipient_id"]
             if row["failed_wakes"] >= FAILING_AFTER:
-                reds["failing:" + agent] = {"kind": "failing", "posted": True, "actor_id": agent, "count": row["failed_wakes"],
-                                            "since_ms": row["failing_since_ms"], "outcome": row["failed_outcome"], "reason": row["failed_reason"],
-                                            "why": why_words(row["failed_reason"], row["failed_outcome"]), "route": routes.get(agent)}
+                reds["failing:" + agent] = self._failing_fact(row, routes)
             if row["unanswered_wakes"] >= PARKED_AFTER:
-                waiting, oldest = self._on_record_waiting(db, agent)
-                if waiting:
-                    since = row["unanswered_since_ms"]
-                    reds["parked:" + agent] = {"kind": "parked", "posted": True, "actor_id": agent, "count": row["unanswered_wakes"],
-                                               "since_ms": max(since, oldest) if since is not None and oldest is not None else since,
-                                               "waiting": waiting}
+                fact = self._parked_fact(db, row)
+                if fact["waiting"]:
+                    reds["parked:" + agent] = fact
         return reds
 
+    @staticmethod
+    def _failing_fact(row, routes):
+        agent = row["recipient_id"]
+        return {"kind": "failing", "posted": True, "actor_id": agent, "count": row["failed_wakes"],
+                "since_ms": row["failing_since_ms"], "outcome": row["failed_outcome"], "reason": row["failed_reason"],
+                "why": why_words(row["failed_reason"], row["failed_outcome"]), "route": routes.get(agent)}
+
+    def _parked_fact(self, db, row):
+        waiting, oldest = self._on_record_waiting(db, row["recipient_id"])
+        since = row["unanswered_since_ms"]
+        return {"kind": "parked", "posted": True, "actor_id": row["recipient_id"], "count": row["unanswered_wakes"],
+                "since_ms": max(since, oldest) if since is not None and oldest is not None else since, "waiting": waiting}
+
+    def _health_told(self, db, now, reds):
+        """What the team is told now, as {key: fact}: a pure function of Core's facts and now, never of what was told before.
+
+        The conditions of the runner and of each agent, not the traffic
+        around them: the runner while its red is posted (a runner that never
+        ran is not: nothing about it changed, and only the work that comes and
+        goes would move it); an agent while its wakes fail; an agent while it
+        leaves its wakes unanswered, whether or not work waits for it at the
+        moment, so work answered for it or taken away and then given again
+        tells nothing new."""
+        from .wake_health import PARKED_AFTER
+        told = {key: fact for key, fact in reds.items() if fact["posted"] and not key.startswith("parked:")}
+        for row in db.execute("SELECT s.recipient_id,s.unanswered_wakes,s.unanswered_since_ms FROM recipient_schedule s "
+                              "JOIN actors a ON a.id=s.recipient_id WHERE a.kind='agent' AND a.enabled=1 AND s.unanswered_wakes>=? "
+                              "ORDER BY s.recipient_id LIMIT ?", (PARKED_AFTER, AGENT_LIMIT)).fetchall():
+            told["parked:" + row["recipient_id"]] = reds.get("parked:" + row["recipient_id"]) or self._parked_fact(db, row)
+        return told
+
+    def _health_cleared(self, db, key, now):
+        """The facts now about a key that was told and is not any more, for the words that say what changed."""
+        if key == "runner":
+            return dict(self._runner_light(db, now))
+        agent = key.split(":", 1)[1]
+        row = db.execute("SELECT enabled FROM actors WHERE id=? AND kind='agent'", (agent,)).fetchone()
+        return {"actor_id": agent, "enabled": bool(row is not None and row[0])}
+
     def _health_settle(self, db, now):
-        """After an act that may change what is red: when the recorded reds changed, post one notice per outcome concerned.
+        """After an act that may change what is red: keep what is red with the commit it is true at, and when
+        what is told changed, post one notice per outcome concerned.
 
-        Returns whether anything was written: what was announced, and any notice.
+        Returns whether anything was written that the commit must carry: what
+        is red, the moment kept for it, what was told, and any notice. Its
+        caller advances the commit number by one when it commits, as every
+        caller does, so the light's seq is that commit's.
 
-        Called by every act that changes what the reds are read from: each
-        command, each runner act and each recorded runner exit, in the act's
-        own transaction, so a notice says what that act changed and is posted
-        exactly when it is. What was last announced is kept in metadata, so a
-        thing that stays red is never posted again, and it is posted green
-        once when it clears."""
+        Called by every act that commits: each command, each runner act, each
+        recorded runner exit, each operator write and the server's settling at
+        Core's kept moment, in the act's own transaction, so a notice says what
+        that act changed and is posted exactly when it is. What was last told
+        is kept in metadata only to post the difference: it is always what
+        `_health_told` gave at the last settling."""
         routes = self._health_routes(db)
         every = self._health_reds(db, now, routes)
+        seq = int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0])
+        red = sorted(every)
+        kept = db.execute("SELECT value FROM metadata WHERE key=?", (LIGHT_KEY,)).fetchone()
+        try:
+            written = json.loads(kept[0])["red"] != red if kept is not None else True
+        except (ValueError, KeyError, TypeError):
+            written = True
+        db.execute("INSERT INTO metadata VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                   (LIGHT_KEY, json.dumps({"red": red, "seq": seq + 1}, separators=(",", ":"))))
         due = self._health_due(db, now, every)
         kept = db.execute("SELECT value FROM metadata WHERE key=?", (DUE_KEY,)).fetchone()
-        moved = (kept[0] if kept is not None else None) != (None if due is None else str(due))
-        if moved and due is None:
-            db.execute("DELETE FROM metadata WHERE key=?", (DUE_KEY,))
-        elif moved:
-            db.execute("INSERT INTO metadata VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (DUE_KEY, str(due)))
+        if (kept[0] if kept is not None else None) != (None if due is None else str(due)):
+            written = True
+            if due is None:
+                db.execute("DELETE FROM metadata WHERE key=?", (DUE_KEY,))
+            else:
+                db.execute("INSERT INTO metadata VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (DUE_KEY, str(due)))
+        told = self._health_told(db, now, every)
         row = db.execute("SELECT value FROM metadata WHERE key=?", (ANNOUNCED_KEY,)).fetchone()
-        announced = json.loads(row[0]) if row is not None else {}
-        # A posted red that is still red, though no longer one that is posted (a
-        # paused runner then stopped by a deploy), has not gone green.
-        reds = {key: fact for key, fact in every.items() if fact["posted"] or key in announced}
-        if set(reds) == set(announced):
-            return moved
-        went_red = {key: fact for key, fact in reds.items() if key not in announced}
-        from .wake_health import PARKED_AFTER
-        went_green = {}
-        for key, fact in announced.items():
-            if key not in reds:
-                fact = {"actor_id": fact.get("actor_id")}
-                if key.startswith("parked:"):
-                    # A parked agent clears by answering, or by having nothing left on the record.
-                    left = db.execute("SELECT unanswered_wakes FROM recipient_schedule WHERE recipient_id=?", (fact["actor_id"],)).fetchone()
-                    fact["answering"] = left is None or left[0] < PARKED_AFTER
-                went_green[key] = fact
+        try:
+            announced = json.loads(row[0]) if row is not None else {}
+            announced = announced if isinstance(announced, dict) else {}
+        except ValueError:
+            announced = {}
+        if set(told) == set(announced):
+            return written
+        went_red = {key: fact for key, fact in told.items() if key not in announced}
+        went_green = {key: self._health_cleared(db, key, now) for key in announced if key not in told}
         db.execute("INSERT INTO metadata VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                   (ANNOUNCED_KEY, json.dumps({key: {"actor_id": fact.get("actor_id"), "since_ms": now} for key, fact in reds.items()},
+                   (ANNOUNCED_KEY, json.dumps({key: {"actor_id": fact.get("actor_id")} for key, fact in told.items()},
                                               sort_keys=True, separators=(",", ":"))))
         # Who each change concerns: an agent's change, that agent; the runner's, every agent it wakes.
         concerned = {}
@@ -410,7 +472,7 @@ class Health:
             if conversation is None:
                 continue
             lines = notice_lines({key: went_red[key] for key in keys if key in went_red},
-                                 {key: went_green[key] for key in keys if key in went_green}, reds)
+                                 {key: went_green[key] for key in keys if key in went_green}, told)
             body = "Health: %s\n\nThe Health page, under the instance name, says more; agents can run aim-next health." % " ".join(lines)
             if not self._health_author(db):
                 return True
@@ -440,7 +502,7 @@ class Health:
         if state["state"] == "running" and state["lease_until_ms"] is not None and state["lease_until_ms"] > now:
             moments.append(state["lease_until_ms"])
         runner = reds.get("runner")
-        if runner is not None and not runner["posted"]:
+        if runner is not None and not runner["posted"] and runner["tell_ms"] is not None:
             moments.append(runner["tell_ms"])
         return min(moments) if moments else None
 
@@ -458,7 +520,12 @@ class Health:
     def _view_health_light(self, db, actor, args):
         """What is red, by key, for the link that heads every page: one read of the rule the page uses."""
         from .delivery import _now_ms
-        return {"instance_id": self.instance_id, "red": sorted(self._health_reds(db, _now_ms()))}
+        return {"instance_id": self.instance_id, "red": sorted(self._health_reds(db, _now_ms())), "commit_seq": self._commit_seq(db)}
+
+    @staticmethod
+    def _commit_seq(db):
+        """The commit this read's answer is true at: a view reads in one transaction."""
+        return int(db.execute("SELECT value FROM metadata WHERE key='commit_seq'").fetchone()[0])
 
     def _view_health(self, db, actor, args):
         """The runner, each agent's waiting work and wakes, the Mac's load and the latest release, read together."""
@@ -511,7 +578,7 @@ class Health:
                        "items": json.loads(latest["items"]), "source": latest["source"],
                        "check": _release_check(None if latest["measurements"] is None else json.loads(latest["measurements"]))}
         schema = db.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()[0]
-        return {"instance_id": self.instance_id, "read_ms": now, "red": sorted(reds), "runner": runner, "agents": agents,
+        return {"instance_id": self.instance_id, "read_ms": now, "commit_seq": self._commit_seq(db), "red": sorted(reds), "runner": runner, "agents": agents,
                 "failing_after": FAILING_AFTER, "release": release, "machine": machine_load(), "schema_version": schema}
 
 

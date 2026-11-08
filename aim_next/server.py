@@ -765,7 +765,10 @@ class Handler(BaseHTTPRequestHandler):
     def _live(self):
         """One WebSocket text message per new commit number, until the feed ends or the client leaves.
 
-        The first message is the current number. A last message {"end": reason}
+        The first message is the current number. Each carries what is red at
+        that commit, {"seq": N, "health": {"red": [...], "seq": N}}, when Core
+        kept it with that commit (docs/health.md); a page that does not know
+        the field ignores it. A last message {"end": reason}
         says the feed stopped, followed by a close; a client treats any close
         the same way, reads the views it shows, and reconnects. The stream is a
         WebSocket because a browser keeps those apart from its few HTTP
@@ -794,11 +797,12 @@ class Handler(BaseHTTPRequestHandler):
             self.connection.setblocking(False)
             sent, pending, ping, received = None, b"", None, b""
             while True:
-                seq, ended = feed.state()
+                seq, light, ended = feed.snapshot()
                 if not pending and ping is not None:
                     pending, ping = _ws_frame(ping, 10), None
                 elif not pending and seq != sent:
-                    pending, sent = _ws_frame(b'{"seq":%d}' % seq), seq
+                    message = {"seq": seq} if light is None else {"seq": seq, "health": light}
+                    pending, sent = _ws_frame(json.dumps(message, separators=(",", ":")).encode("ascii")), seq
                 if ended:
                     pending += _ws_frame(json.dumps({"end": ended}, separators=(",", ":")).encode("ascii")) + _ws_frame(b"\x03\xe8", 8)
                 if pending:

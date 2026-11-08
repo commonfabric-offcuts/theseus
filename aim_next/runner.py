@@ -554,14 +554,19 @@ class Runner:
         return self._effect(guard, action)
 
     def stop_runner(self, guard, runner_token):
-        """A graceful stop says so, and frees the lease at once for the next runner."""
+        """A graceful stop says so, and frees the lease at once for the next runner.
+
+        Its end is when wakes last went out: now, or, for a runner whose lease
+        had already run out unrenewed, that lease's end, so a hung runner that
+        is then stopped has been absent since it stopped answering (health.py)."""
         def action(db, now):
             state = self._runner_state(db)
             ownership = self._ownership(state, guard, runner_token, now, allow_expired=True)
             if ownership != "running":
                 return {"status": ownership}, False
-            db.execute("UPDATE runner_state SET state='stopped',version=version+1,reason_code=NULL,lease_until_ms=?,ended_ms=? WHERE id=1", (now, now))
-            return {"status": "stopped", "ended_ms": now}, True
+            ended = min(now, state["lease_until_ms"]) if state["lease_until_ms"] is not None else now
+            db.execute("UPDATE runner_state SET state='stopped',version=version+1,reason_code=NULL,lease_until_ms=?,ended_ms=? WHERE id=1", (now, ended))
+            return {"status": "stopped", "ended_ms": ended}, True
         return self._effect(guard, action)
 
     def record_runner_exit(self, pid, exit_status):

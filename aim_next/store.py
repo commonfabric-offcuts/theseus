@@ -29,7 +29,7 @@ from .colors import Colors, COLOR_SCHEMA
 from .responsibility import Responsibility, RESPONSIBILITY_SCHEMA
 from .sources import Sources, SOURCE_SCHEMA
 from .wake_health import WakeHealth, WAKE_HEALTH_SCHEMA
-from .health import Health, HEALTH_SCHEMA
+from .health import Health, HEALTH_SCHEMA, LIGHT_KEY
 from . import delivery as _delivery
 from .releases import Releases, RELEASE_SCHEMA, write_release
 from .outcome_light import OutcomeLight
@@ -118,6 +118,8 @@ def initialize(db_path, instance_id, initial_actors, *, authority_path):
             db.execute("INSERT INTO metadata VALUES ('schema_version',?)", (SCHEMA_VERSION,))
             db.execute("INSERT INTO metadata VALUES ('commit_seq','0')")
             db.execute("INSERT INTO metadata VALUES ('commit_id',?)", (uuid.uuid4().hex,))
+            # A new instance has nothing red: no runner has run, no work waits, no wake was tried (health.py).
+            db.execute("INSERT INTO metadata VALUES (?,?)", (LIGHT_KEY, json.dumps({"red": [], "seq": 0}, separators=(",", ":"))))
             db.executemany("INSERT INTO metadata VALUES (?,?)", list(binding.items()))
             db.executemany("INSERT INTO actors(id,kind,name) VALUES (?,?,?)", actors)
             db.commit()
@@ -235,6 +237,8 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                 self._check_instance(db)
                 changed = write(db)
                 if changed:
+                    # Every commit keeps what is red with it (health.py).
+                    self._health_settle(db, _delivery._now_ms())
                     self._advance_commit_seq(db)
                 db.commit()
                 return changed

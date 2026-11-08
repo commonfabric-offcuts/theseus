@@ -165,11 +165,36 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     }
   });
 
-  await check('health a link that cannot read what is red says it could not check, and is quiet only after a read that says nothing is', async () => {
-    // Every read of the light fails while window.failLight is set, as when the server sheds background reads.
-    const failing = `(()=>{const fetch=window.fetch.bind(window);window.failLight=true;
-      window.fetch=(input,init)=>window.failLight&&String(init?.body??'').includes('"health_light"')?Promise.reject(new TypeError('Failed to fetch')):fetch(input,init);})()`;
-    const p = await page('health-unread', null, true, { beforeNavigate: q => q.send('Page.addScriptToEvaluateOnNewDocument', { source: failing }) });
+  // Every read of the light fails while window.failLight is set, as when the server sheds background reads.
+  const failing = `(()=>{const fetch=window.fetch.bind(window);window.failLight=true;
+    window.fetch=(input,init)=>window.failLight&&String(init?.body??'').includes('"health_light"')?Promise.reject(new TypeError('Failed to fetch')):fetch(input,init);})()`;
+  // The live feed's messages lose what is red while window.stripHealth is set, as an older server's carry none.
+  const stripping = `(()=>{const Real=window.WebSocket;window.stripHealth=true;
+    const Socket=function(url,protocols){const socket=new Real(url,protocols);let handler=null;
+      Object.defineProperty(socket,'onmessage',{configurable:true,get(){return handler},set(f){handler=f}});
+      socket.addEventListener('message',e=>{if(!handler)return;let data=e.data;if(window.stripHealth){try{const m=JSON.parse(data);delete m.health;data=JSON.stringify(m)}catch{}}handler({data})});
+      return socket;};
+    Socket.prototype=Real.prototype;Object.assign(Socket,{CONNECTING:0,OPEN:1,CLOSING:2,CLOSED:3});window.WebSocket=Socket;})()`;
+
+  await check('health the link follows what is red from the live feed alone, with every read of it failing', async () => {
+    const p = await page('health-feed-only', null, true, { beforeNavigate: q => q.send('Page.addScriptToEvaluateOnNewDocument', { source: failing }) });
+    await ready(p);
+    const lit = await until(async () => { const l = await readLink(p); return l.text === 'Health · needs attention' && l; }, 'the feed\'s first number says what is red, though the read failed');
+    assert.equal(lit.red, true);
+    assert.deepEqual((await view('health_light', {})).red, [`failing:${agent}`]);
+    await control({ method: 'health', action: 'through' });
+    await until(async () => (await readLink(p)).text === 'Health', 'quiet on the commit that cleared it, from the feed');
+    await control({ method: 'health', action: 'fail', count: 3, reason: 'deadline' });
+    await until(async () => (await readLink(p)).text === 'Health · needs attention', 'lit again on the commit, from the feed');
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('health on a server whose feed does not say what is red, a link that cannot read it says it could not check, and is quiet only after a read that says nothing is', async () => {
+    const p = await page('health-unread', null, true, { beforeNavigate: async q => {
+      await q.send('Page.addScriptToEvaluateOnNewDocument', { source: failing });
+      await q.send('Page.addScriptToEvaluateOnNewDocument', { source: stripping });
+    } });
     await ready(p);
     const unread = await until(async () => { const l = await readLink(p); return l.text !== 'Health · checking' && l; }, 'the first read of the light settles');
     assert.deepEqual([unread.text, unread.red, unread.label], ["Health · couldn't check", true, 'Health: it could not be checked, so something may need attention']);
@@ -189,7 +214,7 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     await p.close();
   });
 
-  await check('health a runner that stops renewing lights the link with no other commit, and Core settles it to be told', async () => {
+  await check('health a runner that stops renewing lights the link with no other commit, and Core keeps when it is to be told', async () => {
     const p = await page('health-hung', null, true);
     await ready(p);
     await until(async () => (await readLink(p)).text === 'Health', 'the link is quiet');
@@ -202,9 +227,11 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     assert.equal(lit.color, lit.alert);
     const facts = await view('health', {});
     assert.deepEqual([facts.red, facts.runner.state], [['runner'], 'unrenewed']);
-    // The server, at the lease's end, Core's kept moment, had Core settle what is red: announced to the team on that commit.
+    // The server, at the lease's end, Core's kept moment, had Core settle what is red on a commit of its
+    // own; the team is told once no runner has followed it for the handover (two minutes), Core's next moment.
     const settled = await control({ method: 'health', action: 'settled' });
-    assert.deepEqual(settled.announced, ['runner']);
+    assert.deepEqual(settled.announced, []);
+    assert.equal(settled.due, hung.lease_until_ms + 120000);
     assert.deepEqual(settled.events.slice(before.events.length).map(event => [event.event, event.due_ms, event.record.status]),
       [['health_due', hung.lease_until_ms, 'settled']]);
     assert.equal((await control({ method: 'health', action: 'take' })).status, 'acquired');
@@ -214,7 +241,7 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     await p.close();
   });
 
-  await check('health while the live feed is down the link says it could not check, as the page says at its top, and is quiet again once it is back', async () => {
+  await check('health while the live feed is down the link says it could not check, as the page says at its top, and once it is back says what is red at once, never its answer from before', async () => {
     // The page's live socket can be closed, and new ones refused, as when the server cannot be reached.
     const sockets = `(()=>{const Real=window.WebSocket;window.liveSockets=[];window.liveBlocked=false;
       const Socket=function(url,protocols){if(window.liveBlocked)throw new Error('unreachable');const socket=new Real(url,protocols);window.liveSockets.push(socket);return socket;};
@@ -230,8 +257,17 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     assert.equal(shown.top[0], 'This page has lost its live connection to the server, so what it shows may be out of date.', 'the page says the same at its top');
     assert.equal(line(shown, 'server').bad, true);
     await shot(p, 'health-feed-down');
+    // While it is down, wakes fail: the link must never show its quiet answer from before the drop as current.
+    await control({ method: 'health', action: 'fail', count: 3, reason: 'deadline' });
+    await p.evaluate(`(()=>{const a=document.getElementById('health-link');window.linkSaid=[a.textContent];
+      new MutationObserver(()=>window.linkSaid.push(a.textContent)).observe(a,{childList:true,characterData:true,subtree:true});return true})()`);
     await p.evaluate('window.liveBlocked = false');
-    await until(async () => (await readLink(p)).text === 'Health', 'quiet again once the feed is back');
+    await until(async () => (await readLink(p)).text === 'Health · needs attention', 'lit once the feed is back, from its first number');
+    const said = await p.evaluate('window.linkSaid');
+    assert.ok(!said.includes('Health'), `never quiet between the drop and the read after it: ${JSON.stringify(said)}`);
+    await until(async () => { const s = await readPage(p); return s.bad && s.top.some(words => words.includes("can't be woken")) && s; }, 'the page says it');
+    await control({ method: 'health', action: 'through' });
+    await until(async () => (await readLink(p)).text === 'Health', 'quiet again once a wake gets through');
     const back = await until(async () => { const s = await readPage(p); return s.bad === false && s; }, 'and the page clears');
     assert.deepEqual(back.top, ['Everything is working: the agent runner is sending wakes and they are getting through.']);
     assert.deepEqual(p.errors, []);
