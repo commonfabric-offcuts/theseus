@@ -244,7 +244,7 @@ returns:
 Over HTTP the server adds `server: {started_ms, pid, live_feed}`, the one line
 Core cannot know.
 
-The database step (version 31) that adds `wake_facts`, `wake_turns` (each
+The database step (version 32) that adds `wake_facts`, `wake_turns` (each
 hosted turn still running, as one attempt) and `runner_prior` works the facts
 out once from the settlements already kept, by the same rule (`settled`) over
 the same attempts: every claim the runner settled itself and every hosted turn
