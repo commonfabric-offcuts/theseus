@@ -371,6 +371,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             # Any recorded act is a sign of life: the actor's wakes are answered.
             now = _delivery._now_ms()
             self._sign_of_life(db, actor, now)
+            self._health_acted(db, actor)
             # What is red may have changed with this act (health.py).
             self._health_settle(db, now)
             db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op_id, fingerprint, kind, _json(receipt)))

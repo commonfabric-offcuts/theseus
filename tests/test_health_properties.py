@@ -3,9 +3,10 @@ from __future__ import annotations
 """Randomized checks that what is red and what is told are derived state (docs/health.md).
 
 Random runs of runner acts (take the role, renew, stop, pause, resume, exit),
-wakes that get through or do not, work sent and answered, and time passing,
-with the server's settling at Core's kept moment as the live feed would do it.
-After every step:
+wakes that get through or do not, hosted turns that complete, fail or are
+lost, work sent and answered, the owner taking agent-a off its topic and
+putting it back, and time passing, with the server's settling at Core's kept
+moment as the live feed would do it. After every step:
 
 - what Core kept as red (metadata health_light) is what the rule gives now,
   for the commit it names;
@@ -14,7 +15,10 @@ After every step:
   told before it and after it, so replaying every notice from the first
   snapshot gives the last;
 - a key told and then cleared (or cleared and told again) means its subject's
-  own facts changed between the two: work coming and going never makes a pair.
+  own facts changed between the two: work coming and going never makes a pair;
+- an agent told as not answering is cleared only by its own act or by being
+  disabled: a turn that fails, or the owner taking its work away, is not the
+  agent answering.
 """
 
 import json
@@ -26,6 +30,7 @@ import sqlite3
 from aim_next.health import HANDOVER_MS
 from aim_next.runner import RunnerError
 from aim_next.store import _connect
+from test_hosted_schedule import THREAD
 from test_health import HealthCase
 from test_wake_contract import own_cases
 
@@ -61,7 +66,11 @@ class HealthPropertyCase(HealthCase):
         return json.loads(row[0][0]) if row else None
 
     def subject(self, key):
-        """The facts a told key is about: the runner's row, or the agent's own wake facts."""
+        """The facts a told key is about: the runner's row, or the agent's own wake facts.
+
+        An agent's own facts are whether it is enabled, the acts it recorded, and the
+        wakes that reached it (accepted notices, handed turns), never the scheduler's
+        count, which moves for reasons that are not the agent's."""
         if key == "runner":
             # Whether its lease still runs is a fact of the runner's: it ends as time passes.
             state, token, ended, reason, lease = self.sql("SELECT state,runner_token,ended_ms,reason_code,lease_until_ms FROM runner_state")[0]
@@ -70,7 +79,10 @@ class HealthPropertyCase(HealthCase):
         enabled = self.sql("SELECT enabled FROM actors WHERE id=?", (agent,))[0][0]
         if key.startswith("failing:"):
             return enabled, tuple(self.sql("SELECT failed_wakes FROM wake_facts WHERE recipient_id=?", (agent,)) or [(0,)])[0]
-        return enabled, tuple(self.sql("SELECT unanswered_wakes FROM recipient_schedule WHERE recipient_id=?", (agent,)) or [(0,)])[0]
+        acts = self.sql("SELECT count(*) FROM operations WHERE actor_id=?", (agent,))[0][0]
+        reached = self.sql("SELECT count(*) FROM wake_attempts a JOIN wake_results r ON r.attempt_id=a.id "
+                           "WHERE a.recipient_id=? AND r.outcome IN ('accepted','handed')", (agent,))[0][0]
+        return enabled, acts, reached
 
     def events(self, after_seq):
         found = []
@@ -105,8 +117,15 @@ class HealthPropertyCase(HealthCase):
         live = state[0] == "running" and state[2] > self.now
         # While a runner runs, mostly wakes and work, so agents fail and park; while none does,
         # mostly a runner taking the role again, so it comes and goes many times in a run.
-        choice = rng.choice(["wake"] * 8 + ["send"] * 2 + ["ack"] * self.acks + ["time"] * 4 + ["renew"] * 2 + ["stop", "pause", "exit"] if live
-                            else ["acquire", "acquire", "resume", "resume", "send", "send", "time", "time", "stop", "exit"] + ["ack"] * self.acks)
+        choice = rng.choice(["wake"] * 5 + ["turn"] * 3 + ["send"] * 2 + ["ack"] * self.acks + ["time"] * 4 + ["renew"] * 2
+                            + ["leave", "join", "stop", "pause", "exit"] if live
+                            else ["acquire", "acquire", "resume", "resume", "send", "send", "time", "time", "stop", "exit", "leave", "join"]
+                            + ["ack"] * self.acks)
+        if self.steady:
+            # A runner that stays up: wakes and turns keep reaching agent-a while its work
+            # comes and goes, so it parks and the scheduler moves its own count around it.
+            choice = rng.choice(["wake"] * 4 + ["turn"] * 4 + ["send"] * 3 + ["time"] * 3 + ["renew", "leave", "join"]
+                                + ["ack"] * self.acks) if live else "acquire"
         if self.unrun > 0:
             # An instance not yet given a runner: work comes and goes around it for a while.
             self.unrun -= 1
@@ -117,6 +136,11 @@ class HealthPropertyCase(HealthCase):
             elif choice == "ack":
                 for item in self.pending()["items"]:
                     self.ack(item["id"])
+            elif choice in ("leave", "join"):
+                # The owner takes agent-a off its topic (what waited for it is cancelled), or puts it back.
+                present = self.sql("SELECT count(*) FROM topic_participants WHERE topic_id='t1' AND actor_id='agent-a' AND active=1")[0][0]
+                if bool(present) != (choice == "join"):
+                    self.part(choice == "join")
             elif choice == "time":
                 self.now += rng.choice([1000, 9000, 30000, 60000, 60000, 60000, HANDOVER_MS - 1000, HANDOVER_MS + 1000, 3600 * 1000])
             elif choice == "acquire":
@@ -144,6 +168,23 @@ class HealthPropertyCase(HealthCase):
                     outcome = rng.choice(["accepted", "unavailable", "error", "error"])
                     self.store.finish_wake(self.g, self.runner, claim["claim_token"], outcome,
                                            reason=None if outcome == "accepted" else rng.choice(["broker_exit", "deadline"]))
+            elif choice == "turn" and self.runner and self.open_turn:
+                # The hosted turn ends, each way a turn can; agent-a acted in it only if an "ack" came between.
+                status = rng.choice(["completed", "failed", "failed", "lost"])
+                self.store.end_hosted_turn(self.g, self.runner, THREAD, self.open_turn, status,
+                                           **({} if status == "completed" else {"error_code": "serverOverloaded"}))
+                self.open_turn = None
+            elif choice == "turn" and self.runner:
+                # A hosted turn starts with agent-a's work, one act; it ends in an act of its own.
+                self.store.renew_runner(self.g, self.runner)
+                claims = self.store.claim_wakes(self.g, self.runner, ["agent-a"])
+                for claim in claims.get("claims") or ():
+                    self.turns += 1
+                    result = self.store.finish_wake(self.g, self.runner, claim["claim_token"], "handed", turn={
+                        "thread_id": THREAD, "turn_id": "turn-%d" % self.turns, "mode": "start",
+                        "client_id": "theseus:" + claim["attempt_id"], "announced_seq": claim["captured_seq"]})
+                    if result.get("status") == "settled":
+                        self.open_turn = "turn-%d" % self.turns
         except RunnerError:
             pass  # refused (lost, busy, too short): changes nothing, as for a real runner
         return choice
@@ -154,6 +195,8 @@ class HealthPropertyCase(HealthCase):
         # How often agent-a answers its work: in some runs never, so it parks.
         self.acks = rng.choice([0, 1, 2])
         self.unrun = 0
+        self.steady = rng.random() < 0.5
+        self.turns, self.open_turn = 0, None
         if rng.random() < 0.4:
             # An instance whose runner never ran.
             self.hosting.close()
@@ -185,6 +228,8 @@ class HealthPropertyCase(HealthCase):
                 previous = history.get(key)
                 if previous is not None:
                     self.assertNotEqual(previous, facts, "%s: %s flipped while its facts stayed %r" % (where, key, facts))
+                    if key.startswith("parked:") and sign == "-":
+                        self.assertNotEqual(previous[:2], facts[:2], "%s: %s cleared with no act of its own and not disabled" % (where, key))
                 history[key] = facts
             told = now_told
         self.assertEqual(sorted(replay), told, "seed %d: the notices replayed from the first snapshot give the last" % seed)

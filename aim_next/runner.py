@@ -340,6 +340,7 @@ class Runner:
             if outcome == "accepted" and row["pending_count"]:
                 # The notice reached the agent's chat; it stays unanswered until the agent acts.
                 self._wake_unanswered(db, row["recipient_id"], now, attempt["captured_seq"])
+                self._wake_reached(db, row["recipient_id"], now)
             elif outcome == "queued" and row["pending_count"]:
                 # The notice already waiting unread leads the agent to this work too.
                 self._wake_named(db, row["recipient_id"], attempt["captured_seq"])
@@ -401,6 +402,7 @@ class Runner:
         if handed is not None and turn["mode"] == "start":
             # A turn started with this work; a steer joins a turn already counted.
             self._wake_unanswered(db, attempt["recipient_id"], now, handed)
+            self._wake_reached(db, attempt["recipient_id"], now)
         elif handed is not None:
             self._wake_named(db, attempt["recipient_id"], handed)
         db.execute("UPDATE runner_state SET child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1 AND child_claim_token=?", (attempt["claim_token"],))
@@ -454,7 +456,9 @@ class Runner:
                 for row in rows:
                     work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
             else:
-                # A turn that did not complete never gave the agent its wake to answer.
+                # A turn that did not complete never gave the agent its wake to
+                # answer, so the scheduler wakes it again. Health's count of what
+                # the agent left unanswered keeps the wake: the agent did nothing.
                 for row in rows:
                     if row["mode"] == "start":
                         self._wake_withdrawn(db, row["recipient_id"])

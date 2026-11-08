@@ -62,11 +62,24 @@ drawn from the same facts by a rule of its own (below):
 | --- | --- |
 | `runner` | no runner sends wakes: it paused, ended (killed, failed, lost its lease, or the server saw it go), was stopped and no runner has taken the role since, stopped renewing without saying so, or never ran here while a woken agent has work on the record |
 | `failing:<agent>` | `failing_after` (3) wakes in a row to that agent did not get through |
-| `parked:<agent>` | it has left its last three wakes unanswered (`wake_health.py`) and work on the record waits for it |
+| `parked:<agent>` | it has left its last three wakes unanswered (below) and work on the record waits for it |
 
 The Mac's load is read when the page reads it, not recorded by any act, so it
 is said at the top of the page when it is above the core count but never
 lights the link or posts.
+
+A wake is left unanswered when it reached the agent (a notice accepted into
+its chat, or a hosted turn started with its work) and the agent has recorded
+no command since. Core keeps that count per agent in `wake_facts`
+(`unanswered_wakes`, `unanswered_since_ms`), and only two things move it: a
+wake reaching the agent adds one, and the agent's own recorded command clears
+it. The scheduler keeps a count of its own for when to stop waking a silent
+agent (docs/effects-runner.md, "Unanswered wakes"), and that one also moves
+for reasons that are not the agent's: it takes back a turn that failed or was
+lost so the agent is woken again, and clears when nothing waits, as when the
+owner takes the agent off a topic. Health never reads it, so a failed turn or
+work taken away never says the agent answered. A turn that fails is still a
+wake handed to the agent that it did not answer.
 
 A runner that stops gracefully keeps as its end when wakes last went out: the
 stop itself, or, for a runner whose lease had already run out unrenewed (a
@@ -110,7 +123,8 @@ never on a timer of its own, and never again while nothing changes.
   batch, so telling those reds would tell the team its own traffic back, a
   false "running again" when agents answer with no runner at all, and the
   same pair again with the next batch. What is told depends only on the
-  subject's own facts, so it changes only when they do.
+  subject's own facts, so it changes only when they do: for an agent, whether
+  it is enabled, the wakes that reached it, and its own acts.
 - **A runner that never ran is not told.** It is red on the page and the
   link while a woken agent has work, since wakes that are needed are not
   going out. But nothing about it changed: the instance was never given a

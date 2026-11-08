@@ -2457,6 +2457,10 @@ class HealthStepCase(MigrationCase):
     def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_works_out_the_wake_facts(self):
         self.settled(["accepted", "error", "accepted", "error", "busy", "unavailable"])
         self.settled(["handed"], recipient="agent-b")
+        with sqlite3.connect(str(self.path)) as db:
+            # The scheduler's count of wakes agent-b left unanswered is the only record of them.
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('agent-b',1) ON CONFLICT DO NOTHING")
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=1000 WHERE recipient_id='agent-b'")
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_HEALTH,
                                           "schema_version": HEALTH_VERSION, "migrated": True})
@@ -2464,7 +2468,8 @@ class HealthStepCase(MigrationCase):
         upgraded = everything(self.path)
         self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
         # The three wakes since the last that got through did not; why was never recorded.
-        self.assertEqual(sorted(upgraded["wake_facts"]), [("agent-a", 121000, 3, 181000, "unavailable", None), ("agent-b", 1000, 0, None, None, None)])
+        self.assertEqual(sorted(upgraded["wake_facts"]), [("agent-a", 121000, 3, 181000, "unavailable", None, 0, None),
+                                                            ("agent-b", 1000, 0, None, None, None, 1, 1000)])
         self.assertEqual(upgraded["runner_prior"], [])
         self.assertNotIn("theseus", [row[0] for row in upgraded["actors"]], "Theseus's member comes with its first notice")
 

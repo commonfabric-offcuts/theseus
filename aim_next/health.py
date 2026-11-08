@@ -73,17 +73,25 @@ _SINCE = " AND r.outcome NOT IN %s AND r.finished_ms>COALESCE(wake_facts.reached
 
 HEALTH_SCHEMA = [
     # Per recipient: when a wake last got through, the wakes since that did
-    # not, and the runner's fixed code for why the latest of them did not.
+    # not, and the runner's fixed code for why the latest of them did not;
+    # and the wakes that reached it since it last acted, and since when
+    # (`_wake_reached`, `_health_acted`), which only its wakes and its own
+    # acts move.
     "CREATE TABLE wake_facts (recipient_id TEXT PRIMARY KEY REFERENCES actors(id), reached_ms INTEGER, "
-    "failed_wakes INTEGER NOT NULL DEFAULT 0, failing_since_ms INTEGER, failed_outcome TEXT, failed_reason TEXT)",
+    "failed_wakes INTEGER NOT NULL DEFAULT 0, failing_since_ms INTEGER, failed_outcome TEXT, failed_reason TEXT, "
+    "unanswered_wakes INTEGER NOT NULL DEFAULT 0, unanswered_since_ms INTEGER)",
     # How the run before the current one ended: its state ('stopped', 'exited',
     # 'paused', 'unrenewed'), its reason and when, kept when a runner takes the role.
     "CREATE TABLE runner_prior (id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL, reason TEXT, ended_ms INTEGER)",
 ]
 # The counts are worked out once from the settlements already kept; why the
-# earlier ones failed was never recorded, so it stays unknown.
+# earlier ones failed was never recorded, so it stays unknown. The wakes left
+# unanswered start from the scheduler's own count, the only record of them.
 HEALTH_BACKFILL = [
     "INSERT INTO wake_facts(recipient_id) SELECT DISTINCT recipient_id FROM wake_attempts",
+    "UPDATE wake_facts SET (unanswered_wakes,unanswered_since_ms)=(SELECT s.unanswered_wakes,s.unanswered_since_ms "
+    "FROM recipient_schedule s WHERE s.recipient_id=wake_facts.recipient_id) "
+    "WHERE recipient_id IN (SELECT recipient_id FROM recipient_schedule WHERE unanswered_wakes>0)",
     "UPDATE wake_facts SET reached_ms=(SELECT max(r.finished_ms) %s AND r.outcome IN %s)" % (_THEIRS, _REACHED_SQL),
     "UPDATE wake_facts SET failed_wakes=(SELECT count(*) %s%s),failing_since_ms=(SELECT min(r.finished_ms) %s%s),"
     "failed_outcome=(SELECT r.outcome %s%s ORDER BY r.finished_ms DESC,r.rowid DESC LIMIT 1)" % ((_THEIRS, _SINCE) * 3),
@@ -275,6 +283,24 @@ class Health:
             db.execute("UPDATE wake_facts SET failed_wakes=failed_wakes+1,failing_since_ms=COALESCE(failing_since_ms,?),"
                        "failed_outcome=?,failed_reason=? WHERE recipient_id=?", (now, outcome, reason, recipient))
 
+    def _wake_reached(self, db, recipient, now):
+        """A wake reached recipient (a notice accepted into its chat, or a turn started with its
+        work): one more it has left unanswered, until it acts.
+
+        Only this and the recipient's own acts move the count. The scheduler's
+        count of the same wakes (`recipient_schedule.unanswered_wakes`) also
+        moves for its own reasons: it takes a failed turn's wake back so the
+        agent is woken again, and clears when nothing waits, as when the owner
+        takes the agent off a topic. Neither is something the agent did, so
+        what Health says of the agent never follows them."""
+        db.execute("INSERT OR IGNORE INTO wake_facts(recipient_id) VALUES (?)", (recipient,))
+        db.execute("UPDATE wake_facts SET unanswered_wakes=unanswered_wakes+1,unanswered_since_ms=COALESCE(unanswered_since_ms,?) "
+                   "WHERE recipient_id=?", (now, recipient))
+
+    def _health_acted(self, db, actor):
+        """The actor recorded a command: every wake that reached it is answered."""
+        db.execute("UPDATE wake_facts SET unanswered_wakes=0,unanswered_since_ms=NULL WHERE recipient_id=? AND unanswered_wakes>0", (actor,))
+
     def _runner_took_role(self, db, now):
         """A runner takes the role: keep how the run it replaces ended, before the state row says running."""
         prior = self._runner_prior(self._runner_state(db), now)
@@ -349,9 +375,8 @@ class Health:
                 light.update(kind="runner", posted=tell is not None and tell <= now, tell_ms=tell, why=runner_why(light))
                 reds["runner"] = light
         rows = db.execute("SELECT a.id AS recipient_id,COALESCE(f.failed_wakes,0) AS failed_wakes,f.failing_since_ms,f.failed_outcome,f.failed_reason,"
-                          "COALESCE(s.unanswered_wakes,0) AS unanswered_wakes,s.unanswered_since_ms FROM actors a "
-                          "LEFT JOIN wake_facts f ON f.recipient_id=a.id LEFT JOIN recipient_schedule s ON s.recipient_id=a.id "
-                          "WHERE a.kind='agent' AND a.enabled=1 AND (f.failed_wakes>=? OR s.unanswered_wakes>=?) ORDER BY a.id LIMIT ?",
+                          "f.unanswered_wakes,f.unanswered_since_ms FROM actors a JOIN wake_facts f ON f.recipient_id=a.id "
+                          "WHERE a.kind='agent' AND a.enabled=1 AND (f.failed_wakes>=? OR f.unanswered_wakes>=?) ORDER BY a.id LIMIT ?",
                           (FAILING_AFTER, PARKED_AFTER, AGENT_LIMIT)).fetchall()
         for row in rows:
             agent = row["recipient_id"]
@@ -385,12 +410,13 @@ class Health:
         goes would move it); an agent while its wakes fail; an agent while it
         leaves its wakes unanswered, whether or not work waits for it at the
         moment, so work answered for it or taken away and then given again
-        tells nothing new."""
+        tells nothing new. "Unanswered" is Health's own count (`_wake_reached`),
+        never the scheduler's, which moves for reasons that are not the agent's."""
         from .wake_health import PARKED_AFTER
         told = {key: fact for key, fact in reds.items() if fact["posted"] and not key.startswith("parked:")}
-        for row in db.execute("SELECT s.recipient_id,s.unanswered_wakes,s.unanswered_since_ms FROM recipient_schedule s "
-                              "JOIN actors a ON a.id=s.recipient_id WHERE a.kind='agent' AND a.enabled=1 AND s.unanswered_wakes>=? "
-                              "ORDER BY s.recipient_id LIMIT ?", (PARKED_AFTER, AGENT_LIMIT)).fetchall():
+        for row in db.execute("SELECT f.recipient_id,f.unanswered_wakes,f.unanswered_since_ms FROM wake_facts f "
+                              "JOIN actors a ON a.id=f.recipient_id WHERE a.kind='agent' AND a.enabled=1 AND f.unanswered_wakes>=? "
+                              "ORDER BY f.recipient_id LIMIT ?", (PARKED_AFTER, AGENT_LIMIT)).fetchall():
             told["parked:" + row["recipient_id"]] = reds.get("parked:" + row["recipient_id"]) or self._parked_fact(db, row)
         return told
 

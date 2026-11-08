@@ -64,6 +64,16 @@ class HealthCase(HostedFixture):
         for _ in range(times):
             self.miss(**args)
 
+    def part(self, present):
+        """The owner takes agent-a off the topic t1, or puts it back."""
+        self.serial += 1
+        topic = self.store.view("owner", "topic", {"topic_id": "t1"})["topic"]
+        result = self.store.command("owner", {
+            "v": 1, "instance_id": "test-instance", "operation_id": "op-part%d" % self.serial, "kind": "participation.set",
+            "target": {"topic_id": "t1"}, "expected": {"topic_revision": topic["version"], "authority": dict(self.pin)},
+            "args": {"actor_id": "agent-a", "present": present}})
+        self.assertEqual(result.get("status"), "committed", result)
+
     def deliveries_of(self, body_start):
         return self.sql("SELECT d.recipient_id,d.state FROM deliveries d JOIN messages m ON m.id=d.message_id "
                         "WHERE m.author_id='theseus' AND m.body LIKE ? ORDER BY d.recipient_id", (body_start + "%",))
@@ -174,30 +184,61 @@ class NoticeCase(HealthCase):
 
 @own_cases
 class ParkedNoticeCase(HealthCase):
+    """Every case moves agent-a only by real acts: wakes the runner settles, turns that end, and
+    the owner taking it off its topic, so the scheduler's own counting runs as it does live."""
+
+    def unanswered_wake(self, body):
+        """Work for agent-a and a wake that reaches it (an accepted notice), which it leaves unanswered."""
+        self.now += 61000
+        self.send_next(body)
+        claim = self.claim_now()  # first: it may take the role again, with a new token
+        result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], "accepted")
+        self.assertEqual(result["status"], "settled", result)
+
     def park(self):
-        with sqlite3.connect(str(self.path)) as db:
-            db.execute("UPDATE recipient_schedule SET unanswered_wakes=3,unanswered_since_ms=1000 WHERE recipient_id='agent-a'")
+        for number in range(3):
+            self.unanswered_wake("Work for an agent that does not answer %d" % number)
+
+    def acts_of_agent_a(self):
+        return self.sql("SELECT count(*) FROM operations WHERE actor_id='agent-a'")[0][0]
 
     def test_an_agent_that_leaves_its_wakes_unanswered_is_told_once_whatever_work_comes_and_goes_and_once_it_answers(self):
         self.park()
-        self.send_next("Work for an agent that does not answer")
         self.assertEqual(self.light(), ["parked:agent-a"])
-        # Told by the first act after it was parked (saving the draft), when the opening waited.
+        # Told by the act that settled its third unanswered wake.
         self.assertEqual([body for _, body in self.notices()],
-                         ["Health: agent-a has not answered its last 3 wakes; 1 message waits for it." + NOTICE_TAIL])
+                         ["Health: agent-a has not answered its last 3 wakes; 4 messages wait for it." + NOTICE_TAIL])
         for round_ in range(2):
-            # Its work is taken away without it acting (it leaves the topic), then given again.
-            with sqlite3.connect(str(self.path)) as db:
-                db.execute("UPDATE delivery_groups SET active=0 WHERE recipient_id='agent-a'")
-            self.send_next("Another act %d" % round_)
+            # The owner takes its work away (off the topic, so nothing waits and the
+            # scheduler's count clears), then gives it again; agent-a does nothing.
+            self.part(False)
             self.assertEqual(self.light(), [], "nothing waits for it, so the page and link are quiet")
-            with sqlite3.connect(str(self.path)) as db:
-                db.execute("UPDATE delivery_groups SET active=1 WHERE recipient_id='agent-a'")
+            self.assertEqual([body for _, body in self.notices()][1:], [], "it did not answer, so it is not 'answering again'")
+            self.part(True)
             self.send_next("Work again %d" % round_)
             self.assertEqual(self.light(), ["parked:agent-a"])
+        self.assertEqual(self.acts_of_agent_a(), 0)
         self.assertEqual(len(self.notices()), 1, "it never answered, so nothing changed to tell")
         self.ack(self.pending()["items"][0]["id"])
         self.assertEqual(self.light(), [])
+        self.assertEqual(self.notices()[-1][1], "Health: agent-a is answering again." + NOTICE_TAIL)
+        self.assertEqual(len(self.notices()), 2)
+
+    def test_a_hosted_agent_whose_turns_end_without_it_acting_is_told_once_however_the_turns_end(self):
+        # Two turns complete and three fail; agent-a records no act in any of them. The
+        # scheduler takes a failed turn's wake back so it is woken again, but nothing about
+        # the agent changed: it was handed five wakes and answered none.
+        for number, status in enumerate(["completed", "completed", "failed", "lost", "failed"]):
+            self.now += 61000
+            self.send_next("Work %d" % number)
+            self.hand(self.claim_now(), turn_id="turn-%d" % number)
+            self.end(status, turn_id="turn-%d" % number, **({} if status == "completed" else {"error_code": "serverOverloaded"}))
+            self.assertEqual(self.light(), [] if number < 2 else ["parked:agent-a"], "turn %d" % number)
+        self.assertEqual(self.acts_of_agent_a(), 0)
+        self.assertEqual([body for _, body in self.notices()],
+                         ["Health: agent-a has not answered its last 3 wakes; 4 messages wait for it." + NOTICE_TAIL])
+        self.assertEqual(self.agent()["not_answering"]["count"], 5)
+        self.ack(self.pending()["items"][0]["id"])
         self.assertEqual(self.notices()[-1][1], "Health: agent-a is answering again." + NOTICE_TAIL)
         self.assertEqual(len(self.notices()), 2)
 

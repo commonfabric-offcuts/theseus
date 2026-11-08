@@ -128,7 +128,10 @@ count clears, and a parked recipient with work waiting is due at once, unless
 a hosted turn that holds its work is the one acting. Reaching nothing pending
 clears the count too. Reads stay write-free, so a read is not a sign of life.
 The counts are derived from wakes, not anyone's records, so stepping back to
-version 21 drops them and is never refused for them.
+version 21 drops them and is never refused for them. This count is the
+scheduler's: it is taken back and cleared for the scheduler's own reasons, so
+the Health page keeps a count of its own that only wakes and the agent's acts
+move (docs/health.md).
 
 The `wakes` view lists the agents whose wakes are not getting through: while a
 runner holds a live lease, each parked agent with work, as `{actor_id,
