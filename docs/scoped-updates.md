@@ -127,8 +127,12 @@ check for the same commit runs beside them rather than after them.
   about reaching Theseus when the attempt got no answer of Theseus's own
   (nothing answered, or only something in front of it did, such as the 502
   with an empty body Tailscale Serve gives while the server restarts; Theseus
-  answers every request it reads with JSON) or the server refused the page's
-  session. The line works this out from the failures it shows (`web/api.mjs`
+  answers every request it reads with JSON, or the page stopped waiting for
+  an answer) or the server refused the page's session. Every wait the page
+  bounds (a Reader open, its next or previous message, **Retry access**, a
+  recovery read) is bounded by `web/api.mjs` `Deadline`, which aborts the
+  requests and ends the wait as one that got no answer; no other module makes
+  an attempt's failure or ends a wait on a timer of its own. The line works this out from the failures it shows (`web/api.mjs`
   `unreached`, `web/lines.mjs`), never from its writer: every writer hands it
   the error itself, and code that puts a failure into words of its own makes
   them an error whose cause is that failure, which is judged in its place.

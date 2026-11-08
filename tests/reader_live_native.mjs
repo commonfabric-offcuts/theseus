@@ -1205,9 +1205,11 @@ export async function liveChecks({ check, page, until, control, observations, or
   // page reaches the restarted server, nothing on it still says so. Nothing
   // answers while the server is down, or, as for a phone that reaches Theseus
   // through Tailscale Serve (docs/tailnet-access.md), the proxy answers every
-  // request 502 with an empty body.
-  for (const [where, answer] of [['card', 'nothing'], ['reader', 'nothing'], ['card', 'proxy'], ['reader', 'proxy'], ['mark', 'proxy']]) {
-    const through = answer === 'proxy' ? ', through a proxy that answers 502' : '';
+  // request 502 with an empty body. Or the open's read gets no answer at all
+  // before the restart, as when the server hangs or a phone's tunnel stalls,
+  // and the page stops waiting for it.
+  for (const [where, answer] of [['card', 'nothing'], ['reader', 'nothing'], ['card', 'proxy'], ['reader', 'proxy'], ['mark', 'proxy'], ['card', 'stall'], ['reader', 'stall']]) {
+    const through = answer === 'proxy' ? ', through a proxy that answers 502' : answer === 'stall' ? ', after its read got no answer' : '';
     await check(`live restart: a message that could not open while Theseus was down leaves no connection line once it is back (${where}${through})`, async () => {
       // Mark unread is offered on another person's message, in a topic of its own.
       const marking = where === 'mark' ? await markTopic(`Restart: mark (${answer})`) : null;
@@ -1230,16 +1232,26 @@ export async function liveChecks({ check, page, until, control, observations, or
         await p.send('Fetch.fulfillRequest', { requestId: event.requestId, responseCode: 502, responseHeaders: [{ name: 'Content-Length', value: '0' }], body: '' });
         return true;
       });
+      const open = async () => {
+        if (where === 'card') {
+          const card = await p.evaluate("(c => c && c.dataset.id)([...document.querySelectorAll('#messages .message-card')].find(c => { const b = c.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; }))");
+          assert.ok(card, 'a card is in view');
+          await p.point(`#messages [data-id="${card}"]`);
+        } else if (where === 'mark') await p.point('#mark-unread');
+        else await p.point(await p.evaluate("document.querySelector('#next-message').disabled ? '#previous-message' : '#next-message'"));
+        const failed = where === 'mark' ? /whether the mark was saved is unknown/ : answer === 'proxy' ? /unreadable response/ : answer === 'stall' ? /timed out/ : /Connection interrupted/;
+        await until(async () => failed.test(await says()), `what met no answer is said in ${line}`, 15000);
+      };
+      if (answer === 'stall') {
+        // The source's answer never reaches the page; once the page has stopped waiting, what was held goes on.
+        p.intercept(payload => payload?.name === 'source');
+        await open();
+        p.intercept(null);
+        for (const held of p.held.splice(0)) await p.release(held).catch(() => {});
+      }
       await control({ method: 'server_stop' });
       await until(() => p.evaluate('observedFreshness.live.connected === false'), 'the page sees the live feed end');
-      if (where === 'card') {
-        const card = await p.evaluate("(c => c && c.dataset.id)([...document.querySelectorAll('#messages .message-card')].find(c => { const b = c.getBoundingClientRect(); return b.top >= 0 && b.bottom <= innerHeight; }))");
-        assert.ok(card, 'a card is in view');
-        await p.point(`#messages [data-id="${card}"]`);
-      } else if (where === 'mark') await p.point('#mark-unread');
-      else await p.point(await p.evaluate("document.querySelector('#next-message').disabled ? '#previous-message' : '#next-message'"));
-      const failed = where === 'mark' ? /whether the mark was saved is unknown/ : answer === 'proxy' ? /unreadable response/ : /Connection interrupted/;
-      await until(async () => failed.test(await says()), `what met no server is said in ${line}`);
+      if (answer !== 'stall') await open();
       if (down) assert.ok(proxied > 0, 'the proxy answered for the stopped server');
       const restarted = await control({ method: 'server_start' });
       down = false;

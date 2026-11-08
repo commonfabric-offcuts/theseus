@@ -19,8 +19,8 @@ export class AttemptError extends Error {
 export const sessionRefused = error => error instanceof AttemptError && error.status === 401 &&
   error.details?.error?.code === 'SESSION_REQUIRED';
 // Theseus was not reached: the attempt got no answer of Theseus's own (nothing
-// answered, or only something in front of it did), or the server refused this
-// page's session. A failure a caller put into words of its own carries the
+// answered, only something in front of it did, or the page stopped waiting:
+// Deadline), or the server refused this page's session. A failure a caller put into words of its own carries the
 // attempt's error as its cause and is judged by it. The one place a failure is
 // known to be about reaching Theseus; reaching it again ends it (lines.mjs).
 export function unreached(error) {
@@ -31,6 +31,30 @@ export function unreached(error) {
 }
 // The connection itself failed: no answer came.
 const interrupted = (message, error) => new AttemptError(message, 0, null, { cause: error });
+// Reconnect found no server to give this page a session.
+export const notAnswering = () => new AttemptError('Theseus is not answering yet. Your writing is kept; this page reconnects when it is back.');
+
+// How long the page waits for Theseus to answer. A wait it gives up on got no
+// answer, so the deadline is kept here, beside the rule that says so: when it
+// passes it aborts the requests made with its signal and ends the wait with a
+// failure of no answer, whether or not what was awaited heard the abort.
+export class Deadline {
+  constructor(ms, words, code = undefined) {
+    this.at = Date.now() + ms; this.words = words; this.code = code; this.controller = new AbortController();
+  }
+  get signal() { return this.controller.signal; }
+  get passed() { return Date.now() >= this.at; }
+  failure() {
+    this.controller.abort();
+    return Object.assign(new AttemptError(this.words, 0, null), this.code ? { code: this.code } : {});
+  }
+  // What the wait settles with, or this deadline's failure once it passes.
+  async bound(wait) {
+    let timer;
+    const passed = new Promise((_, reject) => { timer = setTimeout(() => reject(this.failure()), this.at - Date.now()); });
+    try { return await Promise.race([wait, passed]); } finally { clearTimeout(timer); }
+  }
+}
 // Theseus's JSON answer to a response, or null when what answered was not Theseus.
 const answerOf = response => response.json().catch(() => null);
 

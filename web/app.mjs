@@ -1,4 +1,4 @@
-import { Api, AttemptError, unreached } from './api.mjs';
+import { Api, notAnswering, unreached } from './api.mjs';
 import { openJournal } from './journal.mjs';
 import { EditorRegistry } from './app-session.mjs';
 import { Reader } from './reader.mjs';
@@ -1496,7 +1496,7 @@ async function initialize() {
   $('updates-retry').onclick = () => run(async () => {
     if (updateState?.kind === 'reconnect') {
       reconnectRetried = null;
-      if (!await reconnect()) throw new AttemptError('Theseus is not answering yet. Your writing is kept; this page reconnects when it is back.');
+      if (!await reconnect()) throw notAnswering();
       return;
     }
     if (updateState?.kind === 'authority') { const p = registry.interactive; if (p) await showVersions(p.editors[p.mode], $('updates-retry'), p); return; }

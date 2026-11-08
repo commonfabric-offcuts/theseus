@@ -1,7 +1,7 @@
 // Private saves are serialized. Public send confirmation never holds that queue.
 import { meaningfulSnapshot, same as sameSnapshot } from './cleanup.mjs';
 import { holdsWriting } from './editor.mjs';
-import { sessionRefused } from './api.mjs';
+import { sessionRefused, Deadline } from './api.mjs';
 const copy = value => structuredClone(value);
 // What an attempt that got no recorded answer holds. A session's refusal says
 // retrying with that session cannot help; the page's next session can carry
@@ -36,21 +36,17 @@ export class RuntimeAuthority {
     this.readTimeoutMs = readTimeoutMs;
     this.probes = new Map(); this.inflight = null;
   }
-  async read(operation) {
-    let timer;
-    const expired = new Promise((resolve, reject) => {
-      timer = setTimeout(() => reject(Object.assign(new Error('Recovery read timed out.'), { code: 'RECOVERY_READ_TIMEOUT' })), this.readTimeoutMs);
-    });
-    // Only reads use this deadline. A late read can settle its own promise but
-    // cannot replace a later review or authorize a write.
-    try { return await Promise.race([Promise.resolve().then(operation), expired]); }
-    finally { clearTimeout(timer); }
+  // Only reads use this deadline. A late read can settle its own promise but
+  // cannot replace a later review or authorize a write.
+  read(operation) {
+    const deadline = new Deadline(this.readTimeoutMs, 'Recovery read timed out.', 'RECOVERY_READ_TIMEOUT');
+    return deadline.bound(Promise.resolve().then(() => operation({ signal: deadline.signal })));
   }
   probe(failedPair, { retry = false } = {}) {
     if (this.inflight) return this.inflight;
     const key = JSON.stringify(authorityPair(failedPair));
     if (!retry && this.probes.has(key)) return this.probes.get(key);
-    const request = this.read(() => this.api.bootstrap()).then(answer => {
+    const request = this.read(options => this.api.bootstrap(options)).then(answer => {
       if (answer.instance_id !== this.instanceId || !validAuthority(answer.authority)) throw new Error('The current runtime authority could not be confirmed.');
       this.current = copy(answer.authority); return copy(answer.authority);
     });
@@ -175,7 +171,7 @@ export class EditorSession {
     try {
       const authority = await this.runtime.probe(failedPair, { retry });
       if (this.recovery !== review) return null;
-      const state = await this.runtime.read(() => this.api.view('editor_state', { source_ref: this.editor.sourceRef, topic_id: this.editor.context.topicId }));
+      const state = await this.runtime.read(options => this.api.view('editor_state', { source_ref: this.editor.sourceRef, topic_id: this.editor.context.topicId }, options));
       if (this.recovery !== review) return null;
       review.authority = copy(authority);
       review.remote = copy((this.editor.context.kind === 'note' ? state.note : state.draft) ?? null);
@@ -493,7 +489,7 @@ export class EditorSession {
     const failure = () => new Error('The original publication could not be confirmed. Reconcile its original confirmation before preparing another reply.');
     let receipt;
     try {
-      receipt = await this.runtime.read(() => this.api.view('operation', { operation_id: item.sendOperationId }));
+      receipt = await this.runtime.read(options => this.api.view('operation', { operation_id: item.sendOperationId }, options));
     } catch { throw failure(); }
     // Only this exact scoped answer means absent. An error or malformed answer
     // must never become permission to publish another copy of the same writing.

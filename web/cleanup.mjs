@@ -1,6 +1,7 @@
 import { editorKey } from './editor.mjs';
 import { uploadProof } from './upload-cleanup.mjs';
 import { supportsAdmission } from './freshness.mjs';
+import { Deadline } from './api.mjs';
 
 const copy = value => structuredClone(value);
 export const same = (a, b) => {
@@ -151,26 +152,19 @@ export class RecoveryCleanup {
       ++this.readEpoch; this.readController?.abort();
       for (const listener of this.foregroundListeners) listener();
     }
-    const deadline = Date.now() + this.runtime.readTimeoutMs;
+    const deadline = new Deadline(this.runtime.readTimeoutMs, 'Reader request timed out. Your writing is kept.');
     let released = false, inFlight = 0, counted = true;
     const releaseCount = () => { if (released && !inFlight && counted) { counted = false; if (!--this.foregroundCount) { for (const entry of this.waiting.values()) entry.ready = true; this.resume(); } } };
-    const bounded = async (promise, controller = null) => {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) { controller?.abort(); throw Error('Reader request timed out. Your writing is kept.'); }
-      let timer;
-      try { return await Promise.race([promise, new Promise((_, reject) => {
-        timer = setTimeout(() => { controller?.abort(); reject(Error('Reader request timed out. Your writing is kept.')); }, remaining);
-      })]); } finally { clearTimeout(timer); }
-    };
     return {
       read: async operation => {
-        if (!this.partitioned && this.activeRead) await bounded(this.activeRead.catch(() => {}));
-        if (released || Date.now() >= deadline) throw Error('Reader request timed out. Your writing is kept.');
-        const controller = new AbortController(); ++inFlight;
-        const transport = Promise.resolve().then(() => operation({ signal: controller.signal }));
+        if (released) throw Error('This foreground read was released.');
+        if (!this.partitioned && this.activeRead) await deadline.bound(this.activeRead.catch(() => {}));
+        if (deadline.passed) throw deadline.failure();
+        ++inFlight;
+        const transport = Promise.resolve().then(() => operation({ signal: deadline.signal }));
         const done = () => { --inFlight; releaseCount(); };
         transport.then(done, done);
-        return bounded(transport, controller);
+        return deadline.bound(transport);
       },
       release: () => { released = true; releaseCount(); },
     };

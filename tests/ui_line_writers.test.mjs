@@ -194,3 +194,31 @@ test('in every module of the page, a catch that writes a line or makes a new err
   assert.ok(all.length >= 100, `the scan finds the catches (${all.length})`);
   assert.deepEqual(modules.flatMap(file => dropped(source(file)).map(entry => `${file}:${entry}`)), []);
 });
+
+// A wait on Theseus the page gives up on got no answer. Only web/api.mjs, where
+// the rule lives, says that: its Deadline ends such a wait. No other module
+// makes an attempt's failure, races a wait, or rejects from a timer of its own,
+// so a "no answer" cannot be made where the rule cannot see it.
+export function ownDeadlines(text) {
+  const found = [...text.matchAll(/(?<![\w$.])(?:new\s+)?AttemptError\(|\bPromise\.race\(/g)].map(match => ({ at: match.index, what: match[0] }));
+  for (const match of text.matchAll(/(?<![\w$])setTimeout\(/g)) {
+    const args = argumentsAt(text, match.index + match[0].length - 1);
+    if (/\b(?:reject|throw)\b|Error\(/.test(args)) found.push({ at: match.index, what: `setTimeout(${args})` });
+  }
+  return found.map(({ at, what }) => `${text.slice(0, at).split('\n').length}: ${what}`);
+}
+
+test('the scan finds a wait ended on a timer of its own, and passes a timer that only schedules', () => {
+  assert.deepEqual(ownDeadlines([
+    "try { return await Promise.race([p, new Promise((_, reject) => { timer = setTimeout(() => { controller?.abort(); reject(Error('Reader request timed out.')); }, ms); })]); } finally {}",
+    "throw new AttemptError('Theseus is not answering yet.');",
+    "setTimeout(() => { throw Error('late'); }, 5);",
+  ].join('\n')).map(entry => Number(entry.split(':')[0])), [1, 2, 1, 3]);
+  assert.deepEqual(ownDeadlines("const timer = setTimeout(() => controller.abort(), ms); this.timers.setTimeout(save, 10); setTimeout(resolve, 0); if (error instanceof AttemptError) {}"), []);
+});
+
+test('only web/api.mjs makes an attempt\'s failure or ends a wait on Theseus', () => {
+  const modules = readdirSync(new URL('../web/', import.meta.url)).filter(name => name.endsWith('.mjs')).map(name => 'web/' + name);
+  assert.ok(ownDeadlines(source('web/api.mjs')).length >= 3, 'the scan sees the deadline and the failures api.mjs makes');
+  assert.deepEqual(modules.filter(file => file !== 'web/api.mjs').flatMap(file => ownDeadlines(source(file)).map(entry => `${file}:${entry}`)), []);
+});
