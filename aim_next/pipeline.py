@@ -14,8 +14,6 @@ Seams until the rest of release 21 lands, each in one place:
 - a stage's gate may name checks, but checks are not records yet (item 14), so
   a gate's checks are kept and shown and not enforced (_gate_open);
 - `from_release` (D35) needs check runs, so it is refused RELEASE_NOT_HELD;
-- 82's take hook and 92's whisper rule are absent: the topic access check
-  alone decides who may see a source;
 - the deploy does not yet close a release piece (7.2): a release piece whose
   release has a record reads as shipped.
 """
@@ -29,6 +27,7 @@ from .contract import LIMITS, Refusal, _body, _identifier, _json, _page_size, _p
 from .delivery import _now_ms
 from . import outcome_rules
 from .work import work_by_topic
+from .standing_conversation import partial
 from .whispers import private_source_refused
 
 
@@ -282,6 +281,13 @@ class Pipeline:
                 raise Refusal("INVALID_ARGUMENT", "A source is {message_id}, {memory_item_id} or {note}")
         return rows
 
+    def _part(self, args, rows):
+        """Whether an item takes only part of the conversation items it comes from; part needs a message."""
+        part = partial(args)
+        if part and not any(row[0] for row in rows):
+            raise Refusal("INVALID_ARGUMENT", "part names a message the item takes from; give a message source")
+        return part
+
     def _add_sources(self, db, actor, workspace_id, number, rows, ms):
         start = db.execute("SELECT coalesce(max(position),0) FROM pipeline_item_sources WHERE workspace_id=? AND number=?",
                            (workspace_id, number)).fetchone()[0]
@@ -441,8 +447,7 @@ class Pipeline:
         workspace = self._workspace(db, actor, target["workspace_id"])
         pipeline = self._pipeline_on(db, workspace["id"])
         sources = self._source_rows(db, actor, workspace["id"], args.get("sources"))
-        if args.get("part") and not any(row[0] for row in sources):
-            raise Refusal("INVALID_ARGUMENT", "part names a message the item takes from; give a message source")
+        part = self._part(args, sources)
         size = args.get("size")
         # A size is optional: an item can be added by its title alone and sized later.
         if pipeline["sized"]:
@@ -470,6 +475,7 @@ class Pipeline:
                     _text(args.get("description", ""), "The words", required=False), size, raised_by, raised_note, section, group,
                     position, self._needs(args.get("needs", [])), self._gathering(db, actor, args.get("gathering"))))
         self._add_sources(db, actor, workspace["id"], number, sources, ms)
+        self._take_into_pipeline(db, actor, workspace["id"], [row[0] for row in sources if row[0]], number, part, added=False)
         self._event(db, workspace["id"], number, "added", actor, {"section": section, "group": group}, ms)
         version = self._bump(db, workspace["id"], number)
         return {"workspace_id": workspace["id"], "number": number, "pipeline_revision": version}, [
@@ -484,7 +490,9 @@ class Pipeline:
         item = self._item_row(db, workspace["id"], target["number"])
         self._check_revision(envelope, "item_revision", item["version"])
         rows = self._source_rows(db, actor, workspace["id"], args.get("sources"))
+        part = self._part(args, rows)
         self._add_sources(db, actor, workspace["id"], item["number"], rows, _now_ms())
+        self._take_into_pipeline(db, actor, workspace["id"], [row[0] for row in rows if row[0]], item["number"], part, added=True)
         self._touch_item(db, workspace["id"], item["number"])
         version = self._bump(db, workspace["id"], item["number"])
         return {"workspace_id": workspace["id"], "number": item["number"], "pipeline_revision": version}, []
@@ -1216,7 +1224,7 @@ def import_seed(store, db, seed, actor, now_ms):
     Refuses when the outcome already has a pipeline (the same seed again changes
     nothing), when the Notebook page has a revision newer than the seed's
     (SEED_STALE), when a source names a message that is not in the topic the
-    page said, and when the page and the release records disagree on what
+    page said or is a whisper, and when the page and the release records disagree on what
     shipped. Returns its report."""
     workspace_id = _identifier(seed.get("workspace_id"), "workspace_id")
     workspace = db.execute("SELECT * FROM workspaces WHERE id=?", (workspace_id,)).fetchone()
@@ -1269,6 +1277,8 @@ def import_seed(store, db, seed, actor, now_ms):
                 # The page names a topic in short ("Evaluation first baseline"): every word it uses is in the title.
                 if row is None or not _words(source["topic"]) <= _words(row[1]):
                     raise Refusal("SEED_SOURCE", "Item %d's source %s #%d is not a message in that topic" % (number, source["topic"], source["seq"]))
+                # A whisper is never where an item came from, here as in _source_rows.
+                private_source_refused(db, row[0])
                 values = (row[0], None, None)
             else:
                 values = (None, None, source["note"])

@@ -53,11 +53,12 @@ open ask to them. A take records what became of an item:
 | --- | --- | --- |
 | `answer` | an answerer replies to the item, unless the reply asks the item's author | the reply's id |
 | `topic` | `opening.publish` starts a topic whose `source_message_id` is the item | the new topic's id |
-| `pipeline` | the pipeline adds items from it (a seam: `_record_take(db, item, "pipeline", numbers, actor, part, added)`) | the item numbers |
+| `pipeline` | `pipeline.item_add` adds an item with the item as a source (`added: false`, "as 92"), or `pipeline.source_add` adds it to an item (`added: true`, "added to 92"); only for this outcome's own pipeline | the item numbers |
 
 A take settles the item unless it took only part of it: `part: true` on
-`message.post`, `draft.save` (`--part` on `post`) or `opening.save` (`--part`
-on `start --from`). `part` anywhere else is refused.
+`message.post`, `draft.save` (`--part` on `post`), `opening.save` (`--part`
+on `start --from`), `pipeline.item_add` or `pipeline.source_add` (each needs a
+message source). `part` anywhere else is refused.
 
 An ask there waits on each person it asks until that person replies to that
 ask (`reply_to` = the ask), or leaves the team and so can no longer read the
@@ -97,4 +98,7 @@ topic_title, author_id}`, or `{hidden: true}`) and, in a conversation, `item`
 by one actor are one line). `items: "open"` lists only items not settled.
 
 `workspace_topics` leaves the conversation out; the `topic` view carries
-`kind`. Stepping back from version 28 is refused once a conversation exists.
+`kind`. The `workspace` view carries `conversation_id` (null for an older
+outcome not yet started), so a page that read it keeps the conversation's row
+in its place while the conversation's own read is out, and draws nothing there
+for an outcome that has none: the row never appears or goes under a finger. Stepping back from version 28 is refused once a conversation exists.

@@ -111,7 +111,11 @@ Commands, each with the revision it checks:
 | `pipeline.piece_finish` | `{piece_id}` | `piece_revision` (optional) |
 
 A source is `{message_id}`, `{message_seq}` (a message by its number,
-as people say it), `{memory_item_id}` or `{note}`. `item_move` takes `section`,
+as people say it), `{memory_item_id}` or `{note}`; never a whisper
+(`WHISPER_STAYS_PRIVATE`), since the whole outcome reads the pipeline. When a
+message source is an item of the outcome's conversation, `item_add` and
+`source_add` write its pipeline take in the same act (docs/conversation.md),
+and `part: true` keeps that item new. `item_move` takes `section`,
 `above` or `below` (a number in the same section), `undo_of` (an event), and
 `underway_confirmed`.
 
@@ -132,6 +136,8 @@ Views:
   the reader, the newest work seen in a Now piece's topic), `you_own`, and
   `you_steer` (the owner or the coordinator, who may turn it on). The
   `pipeline` view says `you_steer` too, also while there is no pipeline yet.
+  The pipeline page's rail is a topic page's: the conversation, the Pipeline
+  row, the topics and the Notebook pages.
 
 ## The import
 
@@ -142,7 +148,7 @@ gathered sources, and writes one seed. `bin/aim-next-admin pipeline-import
 its stages, every item with its number, sources and progress, and the release
 notes. It refuses when the outcome already has a pipeline, when the page has
 moved on since the seed was built, when a source cannot be found, or when the
-seed disagrees with a release record. A question or a 🔨 on the page is not
+seed disagrees with a release record, or when a source is a whisper. A question or a 🔨 on the page is not
 carried: a question comes only from an open ask, a stage only from a tool.
 
 ## Not yet

@@ -563,7 +563,8 @@ VIEW_PATHS = {
 MESSAGE_READS = {
     "aim_next/delivery.py": ("migration backfill or settling, before any whisper exists or of the reader's own deliveries", 8),
     "aim_next/conversation.py": ("the topic page (VISIBLE, open items included), the reader's own deliveries, a reply checked by visible(), migrations", 20),
-    "aim_next/standing_conversation.py": ("a conversation's items, answers and asks, which a whisper never is, and the about links of a page already read through VISIBLE", 7),
+    "aim_next/standing_conversation.py": ("a conversation's items, answers and asks, which a whisper never is, the about links of a page already read through VISIBLE, "
+                                          "and a pipeline item's message sources, which _source_rows refused as whispers", 8),
     "aim_next/marks.py": ("the reader's own marks, or a row checked by visible()", 4),
     "aim_next/outcome_light.py": ("an ask's message; a whisper never asks", 1),
     "aim_next/store.py": ("the latest message on the record from topic_summaries", 1),
@@ -574,7 +575,7 @@ MESSAGE_READS = {
     "aim_next/work.py": ("summaries on the record, and turn_handed on the record only", 6),
     "aim_next/pipeline.py": ("an owner's gate needs an ask, and asks about items, which a whisper never is; a source found by its "
                              "number then read through _message_access; sources and gathering shown through _message_access; "
-                             "the operator's import of the hand-kept page", 6),
+                             "the operator's import of the hand-kept page, which refuses a whisper", 6),
 }
 
 

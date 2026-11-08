@@ -55,9 +55,16 @@ export function eligible(row, context) {
 
 // This read-only coordinator never joins the private-save or public-send queue.
 // Each captured row gets its own bounded confirmation cache and fresh bracket.
+// paused() is true while writing waits on a review of a runtime change: no
+// copy is checked against an authority in question then, so the cleanup's own
+// reads stop at once, a check already under way included, and a park brings
+// no bootstrap. Reads it carries for others (freshness) go on. A park starts
+// no check, of the own copy or of a listed row, and checks nothing again: what
+// it deferred waits for the first resume after it ends, since a check run
+// during the park would only be deferred again, for as long as the review lasts.
 export class RecoveryCleanup {
-  constructor({ api, bootstrap, journal, runtime, changed, stopped = () => false, yieldBatch = () => new Promise(resolve => setTimeout(resolve, 0)) }) {
-    Object.assign(this, { api, bootstrap, journal, runtime, changed, stopped, yieldBatch });
+  constructor({ api, bootstrap, journal, runtime, changed, stopped = () => false, paused = () => false, yieldBatch = () => new Promise(resolve => setTimeout(resolve, 0)) }) {
+    Object.assign(this, { api, bootstrap, journal, runtime, changed, stopped, paused, yieldBatch });
     this.queues = new Map(); this.requested = new Map();
     this.readTail = Promise.resolve(); this.activeRead = null; this.foregroundCount = 0;
     this.partitioned = supportsAdmission(bootstrap); this.readEpoch = 0; this.readController = null;
@@ -65,7 +72,8 @@ export class RecoveryCleanup {
     // The row IDs (and own copy) whose check a read deferred, per editor and
     // bound to the session that deferred them. They are checked again once no
     // foreground read remains and the editor's queue has drained; rows deferred
-    // only by a busy server wait for the next foreground release. A later check
+    // only by a busy server wait for the next foreground release, and nothing
+    // is checked again while a park lasts. A later check
     // of a row answers for it, and a session that is no longer registered
     // leaves nothing to check.
     this.waiting = new Map(); this.resumeListeners = new Set();
@@ -84,9 +92,9 @@ export class RecoveryCleanup {
     if (rowId === undefined) entry.own = false; else entry.ids.delete(rowId);
     if (!entry.own && !entry.ids.size) this.waiting.delete(key);
   }
-  // A recheck of a stopped cleanup does nothing, so only foreground reads hold this.
+  // A recheck of a stopped cleanup does nothing, so only foreground reads and a park hold this.
   resume() {
-    if (this.foregroundCount) return;
+    if (this.foregroundCount || this.paused()) return;
     for (const [key, entry] of [...this.waiting]) {
       if (entry.session.registered?.() === false) { this.waiting.delete(key); continue; }
       if (!entry.ready || this.queues.has(key)) continue;
@@ -108,11 +116,11 @@ export class RecoveryCleanup {
       try { listener(session, [...ids], page); } catch (error) { this.report(session, error); }
     }
   }
-  read(operation) {
+  read(operation, own = false) {
     if (this.foregroundCount) return Promise.reject(this.deferred());
     const epoch = this.readEpoch;
     const next = this.readTail.then(async () => {
-      if (this.foregroundCount || this.stopped() || epoch !== this.readEpoch) throw this.deferred();
+      if (this.foregroundCount || this.stopped() || own && this.paused() || epoch !== this.readEpoch) throw this.deferred();
       const controller = new AbortController();
       this.readController = controller;
       const timer = setTimeout(() => controller.abort(), this.runtime.readTimeoutMs);
@@ -212,13 +220,14 @@ export class RecoveryCleanup {
   }
   async retireOwn(session) {
     if (this.stopped()) return false;
+    if (this.paused()) { this.defer(session, this.deferred()); return false; }
     this.checking(session);
     try {
       let row = await this.journal.own(session.editor.key), projected;
       if (row?.snapshot.format === 2) {
         if (session.editor.imageBusy || session.editor.imageReservation || session.uploads?.running.size || session.registered?.() === false ||
             !same(meaningfulSnapshot(session.snapshot()), meaningfulSnapshot(row.snapshot))) return false;
-        const proof = await uploadProof(row, session.editor.context, { api: this.api, read: fn => this.read(fn), authority: this.runtime.current });
+        const proof = await uploadProof(row, session.editor.context, { api: this.api, read: fn => this.read(fn, true), authority: this.runtime.current });
         if (!proof) return false;
         if (proof.release.length) {
           const original = row, next = this.releasedRow(row, proof.release);
@@ -257,10 +266,11 @@ export class RecoveryCleanup {
     const retained = [];
     for (const row of page.items) {
       this.checking(session, row.id);
+      if (this.paused() && row.availability === 'available') { retained.push(row); this.defer(session, this.deferred(), row); continue; }
       if (row.availability === 'available' && row.snapshot?.format === 2 && this.journal.retireImageCandidate) {
         try {
           const result = await this.journal.retireImageCandidate(session.editor.key, row, async captured => {
-            const proof = await uploadProof(captured, session.editor.context, { api: this.api, read: fn => this.read(fn), authority: this.runtime.current });
+            const proof = await uploadProof(captured, session.editor.context, { api: this.api, read: fn => this.read(fn, true), authority: this.runtime.current });
             if (!proof) return null;
             const next = proof.release.length ? this.releasedRow(captured, proof.release) : captured;
             const retire = proof.projected && await this.confirm(proof.projected, session.editor.context);
@@ -282,7 +292,7 @@ export class RecoveryCleanup {
   async confirm(row, context) {
     if (this.stopped() || context.instanceId !== this.bootstrap.instance_id || context.actor !== this.bootstrap.actor || !eligible(row, context)) return false;
     const s = row.snapshot, authority = pair(s.activeAuthority), note = context.kind === 'note';
-    const read = fn => this.read(fn);
+    const read = fn => this.read(fn, true);
     const validBootstrap = b => !b?.error && b?.actor === context.actor && b.instance_id === context.instanceId &&
       same(pair(b.authority), authority) && same(pair(this.runtime.current), authority);
     const first = await read(options => this.api.bootstrap(options));

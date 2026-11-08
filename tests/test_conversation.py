@@ -76,6 +76,18 @@ class WhoIsInItCase(ConversationCase):
         light = self.store.view("owner", "outcome_light", {"workspace_id": "w2"})
         self.assertEqual((light["light"]["light"], light["lead"]), ("quiet", {"kind": "no_topics"}), "its conversation is not one of its topics")
 
+    def test_the_outcome_says_whether_it_has_a_conversation_so_a_page_knows_before_reading_it(self):
+        self.assertEqual(self.store.view("agent-b", "workspace", {"workspace_id": "w1"})["workspace"]["conversation_id"], self.conversation)
+        # An outcome made before version 28 has none until the operator starts it.
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO workspaces VALUES ('w-old','owner','Older','',NULL,1)")
+            db.execute("INSERT INTO workspace_members VALUES ('w-old','owner')")
+        self.assertIsNone(self.store.view("owner", "workspace", {"workspace_id": "w-old"})["workspace"]["conversation_id"])
+        self.assertIsNone(self.store.view("owner", "conversation", {"workspace_id": "w-old"})["conversation"])
+        self.store.start_conversation("w-old", None, [])
+        self.assertEqual(self.store.view("owner", "workspace", {"workspace_id": "w-old"})["workspace"]["conversation_id"],
+                         self.store.view("owner", "conversation", {"workspace_id": "w-old"})["conversation"]["topic_id"])
+
     def test_changing_the_coordinator_moves_who_is_in_it_once_and_the_old_one_still_owes_its_asks(self):
         ask = self.posted("Can you check the copy?", addressees=["agent-a"], intent="ask")
         self.assertEqual(self.waiting(), [("agent-a", ask)])
@@ -342,6 +354,50 @@ class ItemsCase(ConversationCase):
         writing = dict(writing, topic_id="t-none", part=True)
         del writing["source_message_id"]
         self.refusal(self.command("opening.save", writing, {"opening_id": "o-none"}, {"opening_revision": 0}), "INVALID_ARGUMENT")
+
+    def test_an_item_put_on_the_pipeline_says_so_under_it_and_part_keeps_it_new(self):
+        self.committed(self.command("pipeline.configure", {"enabled": True}, target={"workspace_id": "w1"}, expected={"pipeline_revision": 0}))
+
+        def add(source, actor="agent-a", **args):
+            receipt = self.command("pipeline.item_add", dict({"title": "From the conversation", "sources": [{"message_id": source}]}, **args),
+                                   target={"workspace_id": "w1"}, actor=actor)
+            return self.committed(receipt)["number"]
+
+        def pipeline_takes(message_id):
+            return [(take["numbers"], take["added"], take["actor_id"], take["part"]) for take in self.item(message_id)["takes"]]
+
+        whole = self.posted("Can the page load faster?")
+        part = self.posted("Two asks: dark mode, and the FAQ.")
+        version = self.versions()[1]
+        number = add(whole)
+        self.assertEqual(self.item(whole)["state"], "settled")
+        self.assertEqual(pipeline_takes(whole), [([number], False, "agent-a", False)])
+        self.assertEqual(self.item(whole)["takes"][0]["kind"], "pipeline")
+        self.assertEqual(self.versions()[1], version + 1, "the conversation's open pages see the new line")
+        # Taking part of an item keeps it new; adding the rest of it to an item as a source settles it.
+        partial = add(part, part=True)
+        self.assertEqual((self.item(part)["state"], pipeline_takes(part)), ("new", [([partial], False, "agent-a", True)]))
+        revision = self.store.view("owner", "pipeline_item", {"workspace_id": "w1", "number": number})["item"]["version"]
+        self.committed(self.command("pipeline.source_add", {"sources": [{"message_id": part}]}, target={"workspace_id": "w1", "number": number},
+                                    expected={"item_revision": revision}, actor="agent-a"))
+        self.assertEqual((self.item(part)["state"], pipeline_takes(part)),
+                         ("settled", [([partial], False, "agent-a", True), ([number], True, "agent-a", False)]))
+        # A message that is no item here, or another outcome's item, records no take; part must be true or false.
+        takes = self.sql("SELECT count(*) FROM conversation_takes")
+        opening = self.sql("SELECT id FROM messages WHERE topic_id='t1' ORDER BY seq LIMIT 1")[0][0]
+        add(opening)
+        coordinator = self.posted("Status: on track.", actor="agent-a")
+        add(coordinator)
+        self.committed(self.command("workspace.create", {"id": "w2", "title": "Elsewhere"}, op="w2"))
+        elsewhere = self.posted("An item of w2", topic=self.sql("SELECT id FROM topics WHERE workspace_id='w2'")[0][0])
+        add(elsewhere, actor="owner")
+        self.assertEqual(self.sql("SELECT count(*) FROM conversation_takes"), takes)
+        later = self.posted("And the footer?")
+        self.refusal(self.command("pipeline.item_add", {"title": "Footer", "sources": [{"message_id": later}], "part": "yes"},
+                                  target={"workspace_id": "w1"}, actor="agent-a"), "INVALID_ARGUMENT")
+        self.refusal(self.command("pipeline.source_add", {"sources": [{"note": "a note"}], "part": True},
+                                  target={"workspace_id": "w1", "number": number}, actor="agent-a"), "INVALID_ARGUMENT")
+        self.assertEqual(self.item(later), {"state": "new", "takes": []})
 
     def test_writing_about_another_topics_message_into_the_conversation_links_back_to_it(self):
         opening = self.opening
