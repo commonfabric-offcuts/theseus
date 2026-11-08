@@ -17,32 +17,42 @@ const busy = new WeakSet();
 // they change height. Whether a press was a press stays the browser's own
 // decision, and its click is the one thing that presses the button; moving the
 // button changes only where the browser sends that click, so only that is set
-// right here, by the button the press went down on.
+// right here, by what the press went down on.
 // - A mouse or pen press is captured: its mouseup and click come to the button
 //   wherever it now is. Moved off where the button is and where it was, the
 //   press goes back to the browser's own aim, so a press dragged away lets go,
 //   as any button's does.
 // - A finger's tap is sent once the finger lifts, and only if the browser took
-//   it for a tap, to whatever is then under the point it went down on. The
-//   tap's mousedown, mouseup and click that land elsewhere belong to the
-//   button the finger went down on: the mousedown focuses it, as a tap on it
-//   does, and the click presses it. A scroll, a long press, or the next press
-//   sends no tap, and the finger's press is forgotten. The button says it
-//   holds its press (data-holds-press), so a page's own touch guard
-//   (protectTouchBounds) leaves its taps to the browser too.
+//   it for a tap, to whatever is then under the point it went down on, so a
+//   button the page moved can be under it either way. The tap's mousedown,
+//   mouseup and click belong to what the finger went down on (the browser's
+//   own target, already aimed for a finger's size). Those of a finger that
+//   went down on one of these buttons that land elsewhere go to that button:
+//   the mousedown focuses it, as a tap on it does, and the click presses it.
+//   Those of a finger that went down on anything else (the reply field, to
+//   place the caret, or another button) that land on one of these buttons
+//   reach nothing, so the page never presses a button it slid under a finger.
+//   A scroll, a long press, or the next press sends no tap, and the finger's
+//   press is forgotten. The button says it holds its press
+//   (data-holds-press), so a page's own touch guard (protectTouchBounds)
+//   leaves its taps to the browser too.
+const elsewhere = {};
 let finger = null;
 function follow() {
-  addEventListener('pointerdown', () => { finger = null; }, true);
+  addEventListener('pointerdown', event => {
+    finger = event.pointerType === 'touch' && event.isPrimary ? event.target.closest('[data-holds-press]') ?? elsewhere : null;
+  }, true);
   addEventListener('pointercancel', () => { finger = null; }, true);
   for (const type of ['mousedown', 'mouseup', 'click']) addEventListener(type, event => {
-    const button = finger;
-    if (!button || event.detail === 0) return;
+    const down = finger;
+    if (!down || event.detail === 0) return;
     if (type === 'click') finger = null;
-    if (button.contains(event.target)) return;
+    const landed = event.target.closest('[data-holds-press]');
+    if (landed === down || (down === elsewhere && !landed)) return;
     event.preventDefault(); event.stopImmediatePropagation();
-    if (!button.isConnected) return;
-    if (type === 'mousedown') button.focus({ preventScroll: true });
-    if (type === 'click') button.click();
+    if (down === elsewhere || !down.isConnected) return;
+    if (type === 'mousedown') down.focus({ preventScroll: true });
+    if (type === 'click') down.click();
   }, true);
 }
 let following = false;
@@ -50,8 +60,7 @@ export function holdsItsPress(button) {
   if (!following) { following = true; follow(); }
   button.dataset.holdsPress = '';
   button.addEventListener('pointerdown', event => {
-    if (!event.isPrimary || event.button !== 0) return;
-    if (event.pointerType === 'touch') { finger = button; return; }
+    if (!event.isPrimary || event.button !== 0 || event.pointerType === 'touch') return;
     const was = button.getBoundingClientRect(), on = (r, e) => e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
     button.setPointerCapture(event.pointerId);
     const away = e => { if (!on(was, e) && !on(button.getBoundingClientRect(), e)) button.releasePointerCapture(e.pointerId); };

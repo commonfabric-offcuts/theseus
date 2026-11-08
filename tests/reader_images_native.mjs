@@ -733,6 +733,47 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     });
   }
 
+  // On a phone, with the keyboard open, a finger goes down in the reply field
+  // just above an uploading image's Remove, to place the caret, and the
+  // upload fails before it lifts. With the long name the row's change of
+  // height lets the reply field move up, and Remove with it, under the
+  // finger; the browser now aims the tap at Remove. Nothing is pressed: the
+  // image stays and focus stays in the reply field. With screen.png nothing
+  // moves and the tap reaches the reply field, as it always did.
+  for (const name of [LONG_NAME, 'screen.png']) {
+    await check(`images a finger that goes down in the reply field presses no Remove the page moves under it, with the name ${name}`, async () => {
+      const names = await namedImages(root);
+      try {
+        const p = await page(`field-tap-${name.length}`, null, true);
+        await p.open(1);
+        await narrow(p);
+        await replace(p, 'Typing a reply on the phone');
+        await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
+        await choose(p, name === 'screen.png' ? path.join(root, 'tests/fixtures/media/screen.png') : names.file(name));
+        const held = await until(() => uploading(p)[0], 'held upload');
+        await until(() => p.evaluate(`[...document.querySelectorAll('#writing-attachments button')].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'Remove');
+        await p.evaluate('[...document.querySelectorAll("#writing-attachments button")].find(b=>b.textContent==="Remove").dataset.slid=""');
+        const remove = await p.box('[data-slid]'), body = await p.box('#writing-body');
+        const x = remove.x + remove.width / 2, y = body.y + body.height - 14;
+        const under = () => p.evaluate(`(e=>e?.closest('[data-slid]')?'Remove':e?.id||e?.tagName)(document.elementFromPoint(${x},${y}))`);
+        assert.equal(await under(), 'writing-body', 'the finger goes down in the reply field');
+        assert.equal(await p.evaluate('(()=>{const f=document.querySelector("#writing-body");f.focus();return document.activeElement===f})()'), true, 'focus is in the reply field');
+        await recordTap(p);
+        await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+        p.intercept(null); await p.fail(held);
+        await until(() => p.evaluate(`JSON.parse(document.querySelector('#writing-attachments .image-choice')?.dataset.view||'[]')[4]===false`), 'the row repainted as its upload failed');
+        assert.equal(await under(), name === 'screen.png' ? 'writing-body' : 'Remove', name === 'screen.png' ? 'nothing moved' : 'the page moved Remove under the finger');
+        await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        const reached = (await tapReached(p, until)).map(([type, target]) => [type, target]);
+        assert.deepEqual(reached, name === 'screen.png' ? [['mousedown', 'writing-body'], ['mouseup', 'writing-body'], ['click', 'writing-body']] : [], name === 'screen.png' ? 'the tap reaches the reply field' : 'the tap reaches nothing: Remove, slid under the finger, is not pressed');
+        assert.deepEqual(await p.evaluate('({rows:document.querySelectorAll("#writing-attachments .image-choice").length,focus:document.activeElement?.id,remove:!document.querySelector("[data-slid]").disabled})'), { rows: 1, focus: 'writing-body', remove: true }, 'the image stays, Remove was never pressed, and focus stays in the reply field');
+        assert.equal(await field(p), 'Typing a reply on the phone');
+        assert.deepEqual(p.errors, []);
+      } finally { await names.done(); }
+    });
+  }
+
   // Two images: Remove is pressed on the second while the first's upload
   // finishes. The first row grows as Check confirmation squeezes its long
   // name onto more lines and pushes the second row's Remove from under the

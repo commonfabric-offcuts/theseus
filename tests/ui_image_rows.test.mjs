@@ -17,6 +17,12 @@ class Node {
   setPointerCapture(pointerId) { this.captured = pointerId; }
   releasePointerCapture(pointerId) { if (this.captured === pointerId) { this.captured = null; this.fire('lostpointercapture', { pointerId }); } }
   contains(node) { for (let n = node; n; n = n.parent) if (n === this) return true; return false; }
+  // The one selector the rows ask about: a button that holds its press.
+  closest(selector) {
+    assert.equal(selector, '[data-holds-press]');
+    for (let n = this; n; n = n.parent) if ('holdsPress' in n.dataset) return n;
+    return null;
+  }
   click() { if (!this.disabled) this.onclick?.(); }
   // A disabled button or one out of the page takes no focus.
   focus(options) { if (!this.disabled && this.isConnected) { document.activeElement = this; this.focusedWith = options; } }
@@ -213,6 +219,25 @@ test('a finger\'s tap whose Remove the page moved is taken from what slid under 
   assert.deepEqual(remove.focusedWith, { preventScroll: true }, 'focused without scrolling the page');
   presses[0].settle();
   assert.equal(mouse('click', field), 'writing-body', 'and only that tap: the next click reaches what it is on');
+});
+
+test('a finger\'s tap that went down on anything but an image button presses no image button the page moved under it, and reaches what it went down on when nothing moved', () => {
+  const { presses, remove, field } = pressedRemove();
+  assert.deepEqual(fingerPress(field, remove), ['stopped', 'stopped', 'stopped'], 'a tap that went down in the reply field, which the browser now aims at the Remove that slid under the finger, reaches nothing');
+  assert.equal(presses.length, 0, 'Remove is not pressed');
+  assert.equal(document.activeElement, field, 'and focus stays in the reply field, so the keyboard stays open');
+  const add = new Node('button'); add.page = true; add.id = 'add-image';
+  assert.deepEqual(fingerPress(add, remove), ['stopped', 'stopped', 'stopped'], 'nor one that went down on another button');
+  assert.equal(presses.length, 0);
+  assert.deepEqual(fingerPress(field, field), ['writing-body', 'writing-body', 'writing-body'], 'where nothing moved, the tap reaches the reply field');
+  assert.deepEqual(fingerPress(add, add), ['add-image', 'add-image', 'add-image'], 'and the button it went down on');
+  pointer('pointerdown', field, { pointerType: 'touch' }); pointer('pointercancel', field, { pointerType: 'touch' });
+  assert.equal(mouse('click', remove), 'Remove', 'a finger press the browser sent no tap for takes nothing from the next click');
+  assert.equal(presses.length, 1);
+  const key = pressedRemove();
+  pointer('pointerdown', key.field, { pointerType: 'touch' });
+  assert.equal(mouse('click', key.remove, 0), 'Remove', 'a key\'s click on Remove is never taken for the tap');
+  assert.equal(key.presses.length, 1);
 });
 
 test('a finger press the browser sends no tap for (a scroll took it, a long press) presses nothing and takes nothing from what comes next; a key\'s click is never taken', () => {

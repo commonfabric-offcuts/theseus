@@ -14,7 +14,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { namedImages, LONG_NAME, recordTap, tapReachedElsewhere } from './reader_images_native.mjs';
+import { namedImages, LONG_NAME, recordTap, tapReached, tapReachedElsewhere } from './reader_images_native.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const [chromePath, evidencePath, caseFilter] = process.argv.slice(2);
@@ -457,10 +457,15 @@ try {
   // Remove from under the press, which still removes the second image and
   // only that (item 116). A finger's tap sends its mouse events and click to
   // nothing under the finger, and focus leaves the opening message, where it
-  // was, for Add image.
-  for (const touch of [false, true]) await check(`openings images Remove held${touch ? ' by a finger' : ''} below a row whose upload fails removes its own image`, async own => {
-    const workspace = await outcome(touch ? 'openings-images-tap' : 'openings-images');
-    const p = await own(touch ? 'images-tap' : 'images');
+  // was, for Add image. The inverse (below): a finger goes down below the
+  // second row, on no image button, where the failure's notice and the
+  // growing first row move that row's Remove (137px down at this width, so
+  // the finger is aimed at the middle of where Remove lands); the browser now
+  // aims the tap at Remove, and nothing is pressed: both images stay and
+  // focus stays in the opening message.
+  for (const [touch, below] of [[false, false], [true, false], [true, true]]) await check(below ? 'openings images a finger that goes down below the image rows presses no Remove the row above moves under it' : `openings images Remove held${touch ? ' by a finger' : ''} below a row whose upload fails removes its own image`, async own => {
+    const workspace = await outcome(below ? 'openings-images-below' : touch ? 'openings-images-tap' : 'openings-images');
+    const p = await own(below ? 'images-below' : touch ? 'images-tap' : 'images');
     if (touch) await p.metrics(true);
     else await p.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
     await p.goto(facts.origin + '/?workspace=' + workspace); await outcomeReady(p, workspace);
@@ -480,9 +485,11 @@ try {
       const place = selector => p.evaluate(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height}})()`);
       // Where a row's Remove sits in its row: its offset from the row's top left, and its size.
       const inRow = selector => p.evaluate(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}),r=b.getBoundingClientRect(),w=b.parentElement.getBoundingClientRect();return {x:r.x-w.x,y:r.y-w.y,width:r.width,height:r.height,row:w.height}})()`);
-      const before = await place('[data-held]'), above = await inRow('[data-above]'), x = before.x + before.width - 3, y = before.y + 3;
+      const before = await place('[data-held]'), above = await inRow('[data-above]');
+      const x = below ? before.x + before.width / 2 : before.x + before.width - 3, y = below ? before.y + 137 + before.height / 2 : before.y + 3;
       const over = () => p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held]')`);
-      assert.equal(await over(), true, 'the press is aimed at the second image\'s Remove');
+      if (below) assert.equal(await p.evaluate(`Boolean(document.elementFromPoint(${x},${y})?.closest('[data-holds-press]'))`), false, 'the finger goes down on no image button');
+      else assert.equal(await over(), true, 'the press is aimed at the second image\'s Remove');
       // Focus is in the opening message, where a person who chose the images goes back to typing.
       assert.equal(await p.evaluate('(()=>{const f=document.querySelector("#opening-body");f.focus();return document.activeElement===f})()'), true, 'focus is in the opening message before the press');
       await recordTap(p);
@@ -498,6 +505,14 @@ try {
       assert.ok(aboveAfter.row > above.row, `the first row grew as Retry upload came in and its words wrapped (${above.row} to ${aboveAfter.row})`);
       assert.deepEqual({ ...aboveAfter, row: above.row }, above, 'the first row\'s own Remove stayed on its first line, where it was in its row');
       assert.ok(Math.abs(after.y - before.y) > 3, `the first row grew and moved the held Remove from under the press (${before.y} to ${after.y})`);
+      if (below) {
+        assert.equal(await over(), true, `the growing row moved the second image's Remove under the finger (${before.y} to ${after.y}, ${before.height} high, the finger at ${y}, on ${await p.evaluate(`(e=>e?.id||e?.tagName)(document.elementFromPoint(${x},${y}))`)})`);
+        await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        assert.deepEqual(await tapReached(p, until), [], 'the tap reaches nothing: the Remove slid under the finger is not pressed');
+        assert.deepEqual(await p.evaluate(`({second:${rowOf('screen.png')}?.firstElementChild.textContent??null,remove:!document.querySelector('[data-held]').disabled,focus:document.activeElement?.id})`), { second: 'screen.png · Ready', remove: true, focus: 'opening-body' }, 'the second image stays, its Remove was never pressed, and focus stays in the opening message');
+        assert.match(await words(LONG_NAME), /Not uploaded/, 'the first image\'s row stays');
+        return;
+      }
       assert.equal(await over(), false, 'the press comes up over something else, so the browser\'s own click cannot press Remove');
       if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
       else await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
