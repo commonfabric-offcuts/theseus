@@ -430,9 +430,9 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
   // On a phone, with a finger: Remove is held on the second image while the
   // first's upload fails, and the first row, growing as Retry upload comes in
   // and its long name wraps, pushes the second row's Remove from under the
-  // finger. Remove
-  // removes the second image only, the tap's mouse events and click reach
-  // nothing under the finger, and focus lands on Add image.
+  // finger, with focus in the message field. Remove removes the second image
+  // only, the tap's mouse events and click reach nothing under the finger,
+  // and focus leaves the message field for Add image.
   await check('inline Remove held by a finger below a row whose upload fails removes its own image and nothing under the finger is pressed', async () => {
     const names = await namedImages(root);
     try {
@@ -453,8 +453,8 @@ export async function inlineChecks({ check, page, until, root, facts, view, cont
       // The second image's upload waits its turn behind the first's.
       await until(() => p.evaluate('[...document.querySelectorAll("#inline-attachments .image-choice span")].some(s=>s.textContent==="screen.png · Ready to continue upload")'), 'the second image waiting to upload');
       await center('#inline-attachments');
-      const { focus } = await holdRemoveThroughUpload(p, '#inline-attachments', first, until, { name: 'screen.png', finishing: LONG_NAME, place: 'moved', touch: true, fail: true });
-      assert.equal(focus, 'inline-add-image', 'focus lands on Add image, not on what slid under the finger');
+      const { focus, ring } = await holdRemoveThroughUpload(p, '#inline-attachments', first, until, { name: 'screen.png', finishing: LONG_NAME, place: 'moved', touch: true, fail: true, from: '#inline-writing-body' });
+      assert.deepEqual({ focus, ring }, { focus: 'inline-add-image', ring: false }, 'focus leaves the message field for Add image, with no ring, not for what slid under the finger');
       assert.equal(await p.evaluate('[...document.querySelectorAll("#inline-attachments .image-choice")].map(r=>r.firstElementChild.textContent.split(" · ")[0]).join("|")'), LONG_NAME, 'the first image\'s row stays');
       await until(async () => (await view('editor_state', { source_ref: { kind: 'topic', id: facts.topic_id }, topic_id: facts.topic_id })).draft?.attachments.length === 0, 'the topic draft saved with no image, the first one\'s upload having failed');
       assert.equal(p.calls.filter(c => c.payload?.kind === 'message.send').length, 0);

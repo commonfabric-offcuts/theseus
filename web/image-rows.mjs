@@ -10,36 +10,38 @@
 // the button stays disabled until it settles, whatever repaints meanwhile.
 const busy = new WeakSet();
 
-// A press that goes down on a button and comes up where that button was when
-// it went down presses it, even when the page has meanwhile moved the button
-// from under it: a button coming in before it on a narrow screen, a row above
-// it growing as that row's own upload finishes, or the Reader's reply field,
-// which fills the height its image rows and the status under them leave,
-// giving up or taking back room as they change height. The browser clicks
-// only what is under both ends of a press, so such a press would otherwise
-// click nothing. What the browser then sends for the press belongs to it and
-// reaches nothing: a mouse's click is dropped, and a finger's lift (its
-// touchend, which the button gets wherever it now is, even taken out of the
-// page) is cancelled, so the browser sends the tap's mousedown, mouseup and
-// click to nothing. Otherwise they would go to whatever slid under the
-// finger, which would take focus (a reply field opening a phone's keyboard)
-// or be pressed. A press dragged away from where it went down lets go
-// without pressing, as any button's does.
-let held = null, claimed = false;
+// A pointer press on such a button is the button's own, from the moment it
+// goes down to the moment it comes up, whatever the page does meanwhile: a
+// button coming in before it on a narrow screen, a row above it growing as
+// that row's own upload finishes, or the Reader's reply field, which fills
+// the height its image rows and the status under them leave, giving up or
+// taking back room as they change height. Left to the browser, such a press
+// goes to whatever is under the pointer as it comes up, and on a phone the
+// whole of a tap (its mousedown, which moves focus, its mouseup and its click)
+// is sent only then; so the button never leaves its press to the browser,
+// moved or not. It keeps what the browser sends for every press of its own
+// from reaching anything: a finger's lift (its touchend, which the button
+// gets wherever it now is, even taken out of the page) is cancelled, so the
+// browser sends the tap nowhere, and a mouse's click is dropped. Then, as the
+// press comes up on the button or where the button was when it went down, it
+// presses the button as a key would: focus on it, then its click. One way
+// for every press, so a press the page moved does just what one it left in
+// place does. A press dragged away from where it went down lets go without
+// pressing, as any button's does.
+let held = null, ended = null;
 function follow() {
-  addEventListener('pointerdown', () => { held = null; claimed = false; }, true);
+  addEventListener('pointerdown', () => { held = null; ended = null; }, true);
   addEventListener('pointercancel', () => { held = null; }, true);
   addEventListener('pointerup', event => {
     if (!held || event.pointerId !== held.pointerId) return;
-    const press = held; held = null;
-    if (!press.button.isConnected) return;
-    const x = event.clientX, y = event.clientY, was = press.place;
-    if (press.button.contains(document.elementFromPoint(x, y))) return;
-    if (x < was.left || x > was.right || y < was.top || y > was.bottom) return;
-    claimed = true; press.button.click();
+    const { button, place: was } = held, x = event.clientX, y = event.clientY;
+    held = null; ended = button;
+    if (!button.isConnected) return;
+    if (!button.contains(document.elementFromPoint(x, y)) && (x < was.left || x > was.right || y < was.top || y > was.bottom)) return;
+    button.focus({ preventScroll: true }); button.click();
   }, true);
   addEventListener('click', event => {
-    if (claimed && event.detail > 0) { claimed = false; event.preventDefault(); event.stopPropagation(); }
+    if (ended && event.detail > 0) { ended = null; event.preventDefault(); event.stopPropagation(); }
   }, true);
 }
 let following = false;
@@ -48,7 +50,7 @@ export function holdsItsPress(button) {
   button.addEventListener('pointerdown', event => {
     if (event.isPrimary && event.button === 0) held = { button, pointerId: event.pointerId, place: button.getBoundingClientRect() };
   });
-  button.addEventListener('touchend', event => { if (claimed) { claimed = false; event.preventDefault(); } }, { passive: false });
+  button.addEventListener('touchend', event => { if (ended === button) event.preventDefault(); }, { passive: false });
 }
 
 export function paintImageRows(host, choices, enabled, press) {

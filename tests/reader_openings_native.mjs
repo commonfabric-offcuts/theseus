@@ -456,7 +456,8 @@ try {
   // the row and the failure's notice above the rows push the second row's
   // Remove from under the press, which still removes the second image and
   // only that (item 116). A finger's tap sends its mouse events and click to
-  // nothing under the finger, and focus lands on Add image.
+  // nothing under the finger, and focus leaves the opening message, where it
+  // was, for Add image.
   for (const touch of [false, true]) await check(`openings images Remove held${touch ? ' by a finger' : ''} below a row whose upload fails removes its own image`, async own => {
     const workspace = await outcome(touch ? 'openings-images-tap' : 'openings-images');
     const p = await own(touch ? 'images-tap' : 'images');
@@ -482,6 +483,8 @@ try {
       const before = await place('[data-held]'), above = await inRow('[data-above]'), x = before.x + before.width - 3, y = before.y + 3;
       const over = () => p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held]')`);
       assert.equal(await over(), true, 'the press is aimed at the second image\'s Remove');
+      // Focus is in the opening message, where a person who chose the images goes back to typing.
+      assert.equal(await p.evaluate('(()=>{const f=document.querySelector("#opening-body");f.focus();return document.activeElement===f})()'), true, 'focus is in the opening message before the press');
       await recordTap(p);
       if (touch) await p.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
       else {
@@ -500,10 +503,8 @@ try {
       else await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
       await until(async () => await words('screen.png') === null, 'the held Remove removed the second image');
       assert.match(await words(LONG_NAME), /Not uploaded/, 'the first image\'s row stays');
-      if (touch) {
-        assert.deepEqual(await tapReached(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger');
-        assert.equal(await p.evaluate('document.activeElement?.id'), 'opening-add-image', 'focus lands on Add image, not on what slid under the finger');
-      }
+      if (touch) assert.deepEqual(await tapReached(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger');
+      assert.deepEqual(await p.evaluate('({focus:document.activeElement?.id,ring:document.activeElement?.matches(":focus-visible")})'), { focus: 'opening-add-image', ring: false }, 'focus leaves the opening message for Add image, with no ring, as a press on a Remove left in place does, not for what slid under the pointer');
     } finally { await names.done(); }
   });
 } finally {

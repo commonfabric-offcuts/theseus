@@ -23,14 +23,17 @@ export const imageInstrumentation = `(()=>{
 // finger (the page has touch emulation on): the tap's mousedown, mouseup and
 // click, which the browser sends once the finger lifts to whatever is then
 // under it, reach nothing, so nothing that slid under the finger takes focus.
-// With fail, the held upload fails instead of finishing. Returns where
-// Remove was, and where focus is once the image is removed.
-export async function holdRemoveThroughUpload(p, host, held, until, { name = 'screen.png', finishing = name, place: expected = 'kept', touch = false, fail = false } = {}) {
+// With fail, the held upload fails instead of finishing. With from, focus is
+// in that field before the press, as when a person pasted the image there or
+// went back to typing. Returns where Remove was, and where focus is once the
+// image is removed and whether it shows a focus ring there.
+export async function holdRemoveThroughUpload(p, host, held, until, { name = 'screen.png', finishing = name, place: expected = 'kept', touch = false, fail = false, from = null } = {}) {
   const rowOf = n => `[...document.querySelectorAll(${JSON.stringify(host + ' .image-choice')})].find(r=>r.firstElementChild.textContent.startsWith(${JSON.stringify(n + ' · ')}))`;
   const running = `JSON.parse(${rowOf(finishing)}?.dataset.view||'[]')[4]`;
   await until(() => p.evaluate(`${running}===true&&[...(${rowOf(name)}?.querySelectorAll('button')??[])].some(b=>b.textContent==='Remove'&&!b.disabled)`), 'an uploading image and the Remove to press');
   await p.evaluate(`[...${rowOf(name)}.querySelectorAll('button')].find(b=>b.textContent==='Remove').dataset.heldRemove=''`);
   if (!touch) await p.point('[data-held-remove]', 'move');
+  if (from) assert.equal(await p.evaluate(`(()=>{const f=document.querySelector(${JSON.stringify(from)});f.focus();return document.activeElement===f})()`), true, `focus is in ${from} before the press`);
   const place = () => p.evaluate(`(()=>{const b=document.querySelector('[data-held-remove]');if(!b)return null;const r=b.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,words:b.parentElement.firstElementChild.textContent,removes:[...b.parentElement.querySelectorAll('button')].filter(x=>x.textContent==='Remove').length}})()`);
   const before = await place(), x = before.x + before.width - 3, y = before.y + 3;
   const over = () => p.evaluate(`document.elementFromPoint(${x},${y})===document.querySelector('[data-held-remove]')`);
@@ -55,7 +58,7 @@ export async function holdRemoveThroughUpload(p, host, held, until, { name = 'sc
   else await p.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
   await until(() => p.evaluate(`!${rowOf(name)}`), 'the held Remove removed the image');
   if (touch) assert.deepEqual(await tapReached(p, until), [], 'the tap\'s mousedown, mouseup and click reach nothing under the finger');
-  return { before, after, overAtRelease, focus: await p.evaluate('document.activeElement?.id||document.activeElement?.tagName') };
+  return { before, after, overAtRelease, ...await p.evaluate('({focus:document.activeElement?.id||document.activeElement?.tagName,ring:document.activeElement?.matches(":focus-visible")})') };
 }
 // What a tap's mousedown, mouseup and click reached from here on: each one the
 // browser sends (a trusted one), with what it went to.
@@ -670,25 +673,27 @@ export async function imageChecks({ check: harnessCheck, page: harnessPage, unti
     });
   }
 
-  // The same on a phone, pressed with a finger: the Reader's reply field
-  // takes up the difference and moves Remove from under it, and the finger
-  // lifts over the reply field. Remove removes the image, the tap's mouse
-  // events and click reach nothing under the finger, and focus lands on Add
-  // image, so the reply field never takes focus and a phone's keyboard stays
-  // shut.
-  for (const name of [LONG_NAME, SCREENSHOT_NAME]) {
-    await check(`images Remove held by a finger while its upload finishes removes the image and nothing under the finger is pressed, with the name ${name}`, async () => {
+  // The same on a phone, pressed with a finger, with focus in the reply field
+  // (the person pasted the image there, or went back to typing, so the
+  // keyboard is open): the Reader's reply field takes up the difference and
+  // moves Remove from under the finger, which lifts over the reply field.
+  // Remove removes the image, the tap's mouse events and click reach nothing
+  // under the finger, and focus lands on Add image with no ring, as a tap on
+  // a Remove the page left in place does (screen.png at the desktop width,
+  // last), so the keyboard closes either way.
+  for (const [name, width, place] of [[LONG_NAME, 390, 'moved'], [SCREENSHOT_NAME, 390, 'moved'], ['screen.png', 1440, 'kept']]) {
+    await check(`images Remove held by a finger while its upload finishes removes the image, nothing under the finger is pressed, and focus leaves the reply field for Add image, with the name ${name} at ${width} wide`, async () => {
       const names = await namedImages(root);
       try {
         const p = await page(`remove-tap-${name.length}`, null, true);
         await p.open(1);
-        await narrow(p);
+        if (width === 390) await narrow(p);
         await p.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
         p.intercept((_payload, event) => event.request.url.endsWith('/api/media/upload'));
-        await choose(p, names.file(name));
+        await choose(p, name === 'screen.png' ? path.join(root, 'tests/fixtures/media/screen.png') : names.file(name));
         const held = await until(() => uploading(p)[0], 'held upload');
-        const { focus } = await holdRemoveThroughUpload(p, '#writing-attachments', held, until, { name, place: 'moved', touch: true });
-        assert.equal(focus, 'add-image', 'focus lands on Add image, not on what slid under the finger');
+        const { focus, ring } = await holdRemoveThroughUpload(p, '#writing-attachments', held, until, { name, place, touch: true, from: '#writing-body' });
+        assert.deepEqual({ focus, ring }, { focus: 'add-image', ring: false }, 'focus leaves the reply field for Add image, with no ring, not for what slid under the finger');
         await until(async () => (await view('editor_state', { source_ref: facts.sources[1], topic_id: 't1' })).draft?.attachments.length === 0, 'the saved reply keeps no image');
         assert.deepEqual(p.errors, []);
       } finally { await names.done(); }
