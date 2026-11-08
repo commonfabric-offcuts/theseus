@@ -41,24 +41,33 @@ answers for it.
 
 ## Who uses it
 
-- The Review button under the topic's title, in the composer and in the Reader.
-- The Review list, which lists the replies in doubt (and keeps those it showed,
-  so a reply checked as sent says so in place).
-- The departure guard: while a send is under way it waits; otherwise, while a
-  reply is in doubt and the page shows its Review button, it names each such
-  button by its words and leaves on a second choice of the same topic with the
-  same replies in doubt.
+`EditorRegistry.inDoubt` is the one answer for a page: one entry for each
+registered writing with a reply in doubt, in the order the writings
+registered, with `doubt()`'s ids and the words of its button. It reads only
+what the registry holds now: its registered writings, their replies, the sends
+under way and the server's lists. An editor that is not registered (one a
+recovered version replaced, say) is in doubt about nothing, and the server's
+list cannot be read or changed through it.
 
-The guard asks the page which buttons it shows (`TopicNavigation`'s `shown`),
-so its words never point at a button that is not there. Each writing's button
-has one place: a message's under the topic's title, whether or not its Reader
-opened; the topic's own in the composer, whenever the composer shows, loaded
-or failed with Retry composer. While the composer is still loading nothing is
-drawn for it, and leaving names nothing for it.
+- The page draws one Review button for each entry, in its words, and nothing
+  else. A message's writing has its button under the topic's title. The
+  topic's own writing has its button in the composer while the composer shows
+  (loaded, or failed with Retry composer), and under the title until then. The
+  Reader also shows its own writing's button.
+- The page draws them all again whenever it is told of a change (each
+  registration, each change to a list, each change to a writing or its sends),
+  whichever writing the notice names, so a notice about a replaced writing
+  draws the registered one's button.
+- The Review list lists the replies in doubt of the writing registered under
+  the button's key, read again from the registry at every draw and every act
+  (and keeps those it showed, so a reply checked as sent says so in place).
+- The departure guard asks the page for the buttons it draws now and words its
+  question with them: while a send is under way it waits; otherwise, while any
+  entry is there, it names each button by its words and leaves on a second
+  choice of the same topic with the same replies in doubt. Its rule and its
+  words are that same answer, so they name a button exactly when the page
+  shows one.
 
-The page draws each button when the answer's inputs change:
-`EditorRegistry.setPending` is the only write of the server's list and tells
-the writing registered for it, and a writing is told as soon as it is
-registered. An open of a message's Reader dropped after its read (Escape, or
-another message chosen while the step keeps the writing in front) still keeps
-that fresher list, and the button shows its answer.
+An open of a message's Reader dropped after its read (Escape, or another
+message chosen while the step keeps the writing in front) still keeps that
+fresher list, and the button shows its answer.

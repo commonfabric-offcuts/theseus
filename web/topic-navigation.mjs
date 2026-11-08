@@ -150,11 +150,11 @@ export async function reread(pages, read, pageMax = PAGE) {
 }
 
 export class TopicNavigation {
-  // shown(editor): the words of the Review button the page shows for that
-  // writing, or null; the guard names a reply in doubt only by such a button.
-  constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget, beforeLeave, shown }) {
-    if (registry && typeof shown !== 'function') throw Error('A page with writing says which Review buttons it shows.');
-    Object.assign(this, { registry, topicId, current, navigate, navigateTarget, beforeLeave, shown }); this.serial = 0;
+  // review(): the Review buttons, as registry.inDoubt answers them now
+  // (docs/replies-in-doubt.md). A page that shows them passes the function
+  // that draws them, so what the guard names is what the page shows.
+  constructor({ registry, topicId, current = topicId ? {kind:'topic',id:topicId} : {kind:'root'}, navigate, navigateTarget, beforeLeave, review = () => registry.inDoubt }) {
+    Object.assign(this, { registry, topicId, current, navigate, navigateTarget, beforeLeave, review }); this.serial = 0;
   }
   open(topicId, title = topicId) { return this.openTarget({kind:'topic',id:topicId},title); }
   async openTarget(destination, title = destination.kind) {
@@ -180,9 +180,8 @@ export class TopicNavigation {
     const sendGuard = () => {
       if (registry.hasInFlightSend) throw Error('Wait for the send to finish before changing topics.');
     };
-    // The replies in doubt, by the registry's one answer, that the page shows
-    // a Review button for, named by the button's words.
-    const pendingSnapshot = () => registry.inDoubt.map(entry => ({ ...entry, label: this.shown(entry.editor) })).filter(entry => entry.label).map(({ session, editor, items, unread, label }) => ({
+    // The replies in doubt, each writing's named by its Review button's words.
+    const pendingSnapshot = () => this.review().map(({ session, editor, items, unread, label }) => ({
       session, editor, label, identity: JSON.stringify([unread, ...items.map(item => [item.id, item.status ?? item.send_status, item.detached,
         item.prepareOperationId ?? item.prepare_operation_id, item.sendOperationId ?? item.send_operation_id, item.authority])]),
     }));

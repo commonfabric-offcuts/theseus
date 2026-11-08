@@ -58,7 +58,7 @@ function fixture() {
     for (const p of [inline,current]) if (Object.values(p.editors).some(e=>editors.includes(e))) await registry.keepLocal(p);
   };
   for (const name of ['hasInFlightSend','inDoubt']) Object.defineProperty(registry,name,{get(){return Object.getOwnPropertyDescriptor(EditorRegistry.prototype,name)?.get.call(this);}});
-  return { registry, editors, saved, kept, keptEditors, visits, navigation: new TopicNavigation({ registry, shown: editor => registry.inDoubt.find(entry => entry.editor === editor)?.label, topicId: 'a', navigate: id => visits.push(id) }) };
+  return { registry, editors, saved, kept, keptEditors, visits, navigation: new TopicNavigation({ registry, topicId: 'a', navigate: id => visits.push(id) }) };
 }
 test('topic navigation waits for inline and Reader saves before leaving inside the debounce window', async () => {
   const f = fixture(), gate = deferred(), save = f.registry.flush;
@@ -212,11 +212,4 @@ test('departure choice is not armed before the warning can be shown', async () =
   for(let n=0;n<20&&calls<2;n++)await Promise.resolve();assert.equal(calls,2);
   const second=f.navigation.open('b');await assert.rejects(second,/Review 1 reply/);
   gate.resolve();await first;assert.deepEqual(f.visits,[]);
-});
-
-// The departure guard names replies in doubt by the page's own Review buttons,
-// so a page with writing must say which it shows; one without writing need not.
-test('a topic navigation with writing refuses to start without the page\'s Review buttons', () => {
-  assert.throws(() => new TopicNavigation({ registry: { sessions: new Map() }, topicId: 'a', navigate: () => {} }), /says which Review buttons it shows/);
-  assert.ok(new TopicNavigation({ topicId: 'a', navigate: () => {} }));
 });

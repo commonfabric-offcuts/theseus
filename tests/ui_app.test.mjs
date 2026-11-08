@@ -351,7 +351,7 @@ test('a topic chosen on the rail while a step waits leaves with the writing type
   const f = await fixture(t), x = await f.open(0), reply = x.editors.reply, body = 'Typed while the step waits, then a topic';
   const held = await holdSource(f); t.after(() => held.release.resolve());
   reply.edit({ body }); await f.registry.edited(reply);
-  const visits = [], navigation = new TopicNavigation({ registry: f.registry, shown: editor => f.registry.inDoubt.find(entry => entry.editor === editor)?.label, topicId: f.facts.topic_id, navigate: id => visits.push(id) });
+  const visits = [], navigation = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: id => visits.push(id) });
   assert.equal(await navigation.open('t-elsewhere'), true); assert.deepEqual(visits, ['t-elsewhere']);
   assert.equal((await f.state(0)).draft.body, body, 'saved to Theseus before leaving');
   assert.equal((await f.journal.own(reply.key)).snapshot.draft.body, body, 'kept on this device before leaving');
@@ -363,7 +363,7 @@ test('a topic chosen on the rail stays when the step replaces the Reader during 
   t.after(() => { held.release.resolve(); release.resolve(); f.transport.command = command; });
   reply.edit({ body: 'Typed while the step waits, then a topic' }); await f.registry.edited(reply);
   f.transport.command = async envelope => { if (envelope.kind === 'draft.save') { saving.resolve(); await release.promise; } return command(envelope); };
-  const visits = [], navigation = new TopicNavigation({ registry: f.registry, shown: editor => f.registry.inDoubt.find(entry => entry.editor === editor)?.label, topicId: f.facts.topic_id, navigate: id => visits.push(id) });
+  const visits = [], navigation = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: id => visits.push(id) });
   const leaving = navigation.open('t-elsewhere').then(value => ({ value }), error => ({ error }));
   await saving.promise; held.release.resolve(); const y = (await held.opening).value;
   assert.equal(f.registry.current, y); release.resolve();
@@ -1583,9 +1583,9 @@ for (const composer of ['topic', 'message']) test(`a reply in doubt behind repli
 // it and the departure guard agree: a reply whose send never landed elsewhere
 // gets its button, and one the read shows went loses it.
 for (const doubtCase of ['never landed', 'never landed, first open here', 'answer lost']) for (const drop of ['Escape', 'another message']) test(`an open dropped after its read leaves the Review button and the departure guard agreeing: ${doubtCase}, ${drop}`, async t => {
-  // The page draws a message's button from what it was last told.
+  // The page draws every button from the registry whenever it is told.
   const painted = new Map();
-  const f = await fixture(t, { changed(editor) { painted.set(editor.key, this.doubt(editor).label); } });
+  const f = await fixture(t, { changed() { painted.clear(); for (const entry of this.inDoubt) painted.set(entry.editor.key, entry.label); } });
   const m1 = () => [...f.registry.sessions.values()].map(session => session.editor)
     .find(editor => editor.context.kind === 'reply' && editor.context.sourceRef.id === f.facts.sources[0].id);
   if (doubtCase !== 'never landed, first open here') await f.open(0);
@@ -1605,7 +1605,7 @@ for (const doubtCase of ['never landed', 'never landed, first open here', 'answe
   second.editors.reply.edit({ body: 'Typing in m2' }); await f.registry.edited(second.editors.reply);
   if (doubtCase !== 'answer lost') {
     await serverReply(f, f.facts.sources[0], 'From the phone, never landed', { send: false });
-    assert.equal(m1() && painted.get(m1().key), m1() && null, 'nothing is in doubt for m1 here yet');
+    assert.equal(m1() && (painted.get(m1().key) ?? null), m1() && null, 'nothing is in doubt for m1 here yet');
   }
   const entered = deferred(), held = deferred(), keep = f.registry.keepEditorsLocal.bind(f.registry);
   let keeps = 0;
@@ -1619,7 +1619,7 @@ for (const doubtCase of ['never landed', 'never landed, first open here', 'answe
   const answer = f.registry.doubt(m1()).label;
   assert.equal(answer, doubtCase === 'answer lost' ? null : 'Review 1 reply', 'the fresh read answers');
   assert.equal(painted.get(m1().key) ?? null, answer, 'the button under the title shows that answer');
-  const nav = new TopicNavigation({ registry: f.registry, shown: editor => painted.get(editor.key), topicId: f.facts.topic_id, navigate: () => {} });
+  const nav = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: () => {} });
   const guard = await nav.open('other').then(() => null, error => error.message);
   if (answer) assert.match(guard, new RegExp(`“${answer}”`)); else assert.equal(guard, null, 'leaving goes at once');
 });
@@ -1628,7 +1628,7 @@ for (const doubtCase of ['never landed', 'never landed, first open here', 'answe
 // that writing in the departure guard's reach, so the button is told too.
 test('an open that fails after registering the message\'s writing leaves the Review button and the departure guard agreeing', async t => {
   const painted = new Map();
-  const f = await fixture(t, { changed(editor) { painted.set(editor.key, this.doubt(editor).label); } });
+  const f = await fixture(t, { changed() { painted.clear(); for (const entry of this.inDoubt) painted.set(entry.editor.key, entry.label); } });
   await serverReply(f, f.facts.sources[0], 'From the phone, never landed', { send: false });
   const candidates = f.journal.candidates.bind(f.journal);
   f.journal.candidates = async () => { f.journal.candidates = candidates; throw Error('This device could not read its saved versions'); };
@@ -1637,7 +1637,7 @@ test('an open that fails after registering the message\'s writing leaves the Rev
   assert.ok(m1, 'the writing stays registered');
   assert.equal(f.registry.doubt(m1).label, 'Review 1 reply');
   assert.equal(painted.get(m1.key), 'Review 1 reply', 'the button under the title shows it');
-  const nav = new TopicNavigation({ registry: f.registry, shown: editor => painted.get(editor.key), topicId: f.facts.topic_id, navigate: () => {} });
+  const nav = new TopicNavigation({ registry: f.registry, topicId: f.facts.topic_id, navigate: () => {} });
   assert.match(await nav.open('other').then(() => null, error => error.message), /“Review 1 reply”/);
 });
 

@@ -159,8 +159,8 @@ export class EditorRegistry {
       } });
     this.sessions.set(key, session);
     session.registered = () => this.sessions.get(key) === session && !this.disposed;
-    // From here this writing can be in doubt, so the view is told now, as
-    // setPending tells it of every later list, and can draw its Review button.
+    // From here this writing can be in doubt, so the page is told now, as
+    // setPending tells it of every later list.
     this.changed(editor);
     if (context.kind === 'reply') {
       editor.recoveryDiscovery = true;
@@ -577,6 +577,7 @@ export class EditorRegistry {
   }
 
   async checkPending(editor, id) {
+    this.sessionFor(editor);
     const local = editor.submissions.find(item => item.id === id);
     if (local) return this.checkConfirmation(editor);
     const item = this.pending(editor).items.find(item => item.id === id);
@@ -610,6 +611,7 @@ export class EditorRegistry {
 
   pending(editor) { return this.pages.get(editor.key) ?? { instance_id: this.bootstrap.instance_id, items: [], next_cursor: null }; }
   async morePending(editor) {
+    this.sessionFor(editor);
     const previous = this.pending(editor);
     if (previous.next_cursor === null) return previous;
     const page = this.validatePage(await this.api.view('submissions', { source_ref: editor.sourceRef,
@@ -621,9 +623,7 @@ export class EditorRegistry {
     this.setPending(editor.key, result); return result;
   }
   // The only write of the server's list of a writing's replies not sent. The
-  // Review button and the departure guard both read it through doubt(), so the
-  // writing registered under this key is told of every change, and writing
-  // registered later is told when it registers (createEditor).
+  // page is told of every change, as it is of every registration (createEditor).
   setPending(key, page) {
     this.pages.set(key, page);
     const session = this.sessions.get(key); if (session) this.changed(session.editor);
@@ -638,18 +638,23 @@ export class EditorRegistry {
   // replies not sent read to its end without it, when that read could see it
   // (docs/replies-in-doubt.md). A list not read to its end, or not read at
   // all, is unread: more may be in doubt, so it is never an answer of none.
+  // An editor not registered here has none: it answers for nothing.
   doubt(editor) {
-    if (editor.context.kind !== 'reply') return { ids: new Set(), items: [], unread: false, label: null };
-    const page = this.pages.get(editor.key), unread = page?.next_cursor !== null, session = this.sessions.get(editor.key);
+    const session = this.sessions.get(editor.key);
+    if (editor.context.kind !== 'reply' || session?.editor !== editor) return { ids: new Set(), items: [], unread: false, label: null };
+    const page = this.pages.get(editor.key), unread = page?.next_cursor !== null;
     const local = new Map(editor.submissions.map(item => [item.id, item])), listed = new Map((page?.items ?? []).map(item => [item.id, item]));
     const sent = id => local.get(id)?.status === 'confirmed' || listed.get(id)?.send_status === 'committed' ||
       !unread && !listed.has(id) && local.get(id)?.status === 'prepared' && local.get(id).prepareReceipt?.result?.seq <= page.through;
     const items = [...new Map([...listed, ...local]).values()].filter(({ id }) => !sent(id) &&
-      !local.has(local.get(id)?.correctedBy) && session?.underWay(id) !== true), ids = new Set(items.map(item => item.id));
+      !local.has(local.get(id)?.correctedBy) && session.underWay(id) !== true), ids = new Set(items.map(item => item.id));
     const count = unread ? (ids.size ? ids.size + '+' : 'more') : ids.size;
     return { ids, items, unread, label: ids.size || unread ? `Review ${count} ${count === 1 ? 'reply' : 'replies'}` : null };
   }
-  // Every registered writing with replies in doubt, with that answer.
+  // The Review buttons, and the replies the departure guard asks about: one
+  // for each registered writing with a reply in doubt, in the order the
+  // writings registered, with doubt()'s answer. It reads only what the
+  // registry holds now (docs/replies-in-doubt.md).
   get inDoubt() {
     return [...this.sessions.values()].map(session => ({ session, editor: session.editor, ...this.doubt(session.editor) })).filter(entry => entry.label);
   }
