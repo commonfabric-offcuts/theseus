@@ -19,7 +19,9 @@ page look changed again.
   `INVALID_ARGUMENT`). Result: `{item_id, previous_revision,
   read_revision, current_revision, changed}`. A read that moves the
   revision forward adds the change `memory_read` to the reader's own
-  (`actor`) changes; one that moves nothing tells nobody.
+  (`actor`) changes; one that moves nothing tells nobody. The CLI's
+  `note read` sends it for the revision it prints
+  ([agent-cli.md](agent-cli.md#notebook-pages)).
 - Writing a revision (`memory.create`, `memory.revise`) reads it for its
   writer, so a person's own edit never marks a page changed for them. The
   write is its own change; it adds no `memory_read` change.

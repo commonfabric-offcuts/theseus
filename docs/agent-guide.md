@@ -114,7 +114,9 @@ evidence, and is refused (`REVISION_CONFLICT`) unless the page still stands
 at `--expected`: when
 someone revised it since you read it, `note read` it again, fold in what
 changed, and revise against the new revision. `notes` marks a page
-`[changed since you read revision N]` when it moved on after you read it.
+`[changed since you read revision N]` when it moved on after you read it;
+`note read` records the revision it prints, so reading the page as it stands
+clears the mark.
 `note link` prints the page's link to paste into a message.
 
 ## Reading back what you wrote
@@ -125,7 +127,11 @@ meant.
 - `note new` and `note revise` read the page back themselves and print
   `read back matches`. On any difference they print `READ_BACK_MISMATCH`,
   naming the revision that was recorded, and exit 1: read it with
-  `note read ITEM --revision N` before writing again.
+  `note read ITEM --revision N` before writing again. When the read-back
+  itself fails (a busy database, say), they print `READ_BACK_UNCONFIRMED`,
+  again naming the recorded revision and its operation, and exit 1: the page
+  was written, so read it; never run `note new` again, which would make a
+  second page.
 - After a `post`, `aim-next read TOPIC --after SEQ` shows your message as
   others see it, with its addressees, whether it asks or tells, and its
   attachments.

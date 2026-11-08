@@ -8,6 +8,7 @@ import sqlite3
 from unittest import mock
 
 from aim_next import Store
+from aim_next.contract import StoreError
 import test_agent_verbs
 
 
@@ -78,6 +79,50 @@ class NoteCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual((code, out), (1, ""))
         self.assertIn("revision 2 of %s was recorded, but it reads back with a different title" % item, err)
 
+    def test_a_read_back_that_fails_names_the_recorded_revision_and_never_sends_the_page_again(self):
+        """A write Core recorded is never reported as a plain read failure: a busy
+        database (retryable), a refusal (final) or a store that does not answer
+        during the read-back ends as READ_BACK_UNCONFIRMED, exit 1, naming the
+        revision, the page and the operation, and `retry` of it writes nothing new."""
+        original = Store.view
+        answers = {
+            "busy": lambda: {"recorded": False, "error": {"code": "DATABASE_BUSY", "message": "The database is busy", "retryable": True}},
+            "refused": lambda: {"recorded": False, "error": {"code": "FORBIDDEN", "message": "No readable Notebook revision", "retryable": False}},
+            "unanswered": None,
+        }
+        reasons = {"busy": "DATABASE_BUSY: The database is busy", "refused": "FORBIDDEN: No readable Notebook revision",
+                   "unanswered": "the store did not answer"}
+        for case, answer in answers.items():
+            def view(store, actor, name, args):
+                if name != "source":
+                    return original(store, actor, name, args)
+                if answer is None:
+                    raise StoreError("unavailable")
+                return answer()
+            with self.subTest(case=case):
+                before = set(self.saved())
+                with mock.patch.object(Store, "view", view):
+                    code, out, err = self.run_cli("note", "new", "w1", "--title", "Findings " + case, str(self.file))
+                [item] = [row[0] for row in self.sql("SELECT item_id FROM memory_revisions WHERE title=?", ("Findings " + case,))]
+                [request] = [name for name in set(self.saved()) - before if name.endswith(".request.json")]
+                operation = request[:-len(".request.json")]
+                self.assertEqual((code, out), (1, ""))
+                self.assertEqual(err, "READ_BACK_UNCONFIRMED: revision 1 of %s was recorded (memory.create, operation %s), "
+                                      "but reading it back failed (%s); do not send it again: read it with "
+                                      "`note read %s --revision 1`.\n" % (item, operation, reasons[case], item))
+                # The receipt is kept, and following the exit code (retry) writes no second page.
+                self.assertIn(operation + ".receipt.json", self.saved())
+                code, out, err = self.run_cli("retry", operation)
+                self.assertEqual((code, out, err), (0, "recorded %s (memory.create)\n" % operation, ""))
+                self.assertEqual(self.sql("SELECT count(*) FROM memory_revisions WHERE title=?", ("Findings " + case,)), [(1,)])
+                # A revision is the same: named, recorded, not a plain view failure.
+                with mock.patch.object(Store, "view", view):
+                    code, out, err = self.run_cli("note", "revise", item, "--expected", "1", str(self.file))
+                self.assertEqual((code, out), (1, ""))
+                self.assertRegex(err, r"^READ_BACK_UNCONFIRMED: revision 2 of %s was recorded \(memory.revise, operation cli-[0-9a-f]{32}\), "
+                                      r"but reading it back failed \(" % item)
+                self.assertEqual(self.page(item)["version"], 2)
+
     def test_revise_keeps_the_title_and_evidence_unless_told(self):
         message = self.sql("SELECT id FROM messages WHERE topic_id='t1' ORDER BY seq LIMIT 1")[0][0]
         self.committed(self.memory(item="results", scope={"kind": "workspace", "id": "w1"}, title="Results",
@@ -111,9 +156,64 @@ class NoteCase(test_agent_verbs.AgentVerbCase):
         self.assertEqual((code, err), (0, ""))
         self.assertEqual(out, 'results  "Results"  revision 1 of 2 by agent-a  (outcome w1)\n\nFirst words\nsecond line\n')
         code, out, _ = self.run_cli("--json", "note", "read", "results", "--revision", "1")
-        self.assertEqual(json.loads(out), self.page("results", 1))
-        # Reading records nothing: no command is sent.
-        self.assertEqual(self.saved(), [])
+        source, receipt = [json.loads(line) for line in out.splitlines()]
+        self.assertEqual(source, self.page("results", 1))
+        # The read it records follows the page: revision 2 was read already, so it stays.
+        self.assertEqual(receipt["result"], {"item_id": "results", "previous_revision": 2, "current_revision": 2,
+                                             "read_revision": 2, "changed": False})
+
+    def test_note_read_records_the_revision_it_shows_so_notes_stops_marking_it(self):
+        self.committed(self.memory(item="results", scope={"kind": "workspace", "id": "w1"}, actor="agent-b", title="Results"))
+        self.committed(self.command("memory.read", {"revision": 1}, target={"item_id": "results"}, actor="agent-a"))
+        self.committed(self.memory(item="results", revision=1, actor="agent-b", title="Results"))
+        self.committed(self.memory(item="results", revision=2, actor="agent-b", title="Results"))
+        marked = 'results  "Results"  revision 3 by agent-b  [changed since you read revision 1]\n'
+        self.assertEqual(self.run_cli("notes", "w1"), (0, marked, ""))
+        # Reading an older revision moves nothing forward past it: still changed since 2.
+        self.assertEqual(self.run_cli("note", "read", "results", "--revision", "2")[0], 0)
+        self.assertEqual(self.run_cli("notes", "w1"), (0, marked.replace("revision 1]", "revision 2]"), ""))
+        # Reading it as it stands clears the marker; it is a memory.read the outbox keeps.
+        before = set(self.saved())
+        code, out, err = self.run_cli("note", "read", "results")
+        self.assertEqual((code, err), (0, ""))
+        self.assertTrue(out.startswith('results  "Results"  revision 3 of 3 by agent-b'), out)
+        [request] = [name for name in set(self.saved()) - before if name.endswith(".request.json")]
+        sent = json.loads((self.outbox() / request).read_text())["command"]
+        self.assertEqual((sent["kind"], sent["target"], sent["args"]), ("memory.read", {"item_id": "results"}, {"revision": 3}))
+        self.assertEqual(self.run_cli("notes", "w1"), (0, 'results  "Results"  revision 3 by agent-b\n', ""))
+        # A late read of an older revision never lights it again.
+        self.assertEqual(self.run_cli("note", "read", "results", "--revision", "1")[0], 0)
+        self.assertEqual(self.run_cli("notes", "w1"), (0, 'results  "Results"  revision 3 by agent-b\n', ""))
+        self.assertEqual(self.sql("SELECT revision FROM memory_reads WHERE actor_id='agent-a' AND item_id='results'"), [(3,)])
+        # Only the reader's own read moves: agent-b's is untouched.
+        self.assertEqual(self.sql("SELECT revision FROM memory_reads WHERE actor_id='agent-b' AND item_id='results'"), [(3,)])
+
+    def test_a_note_read_whose_read_is_not_recorded_says_so_after_the_page(self):
+        self.committed(self.memory(item="results", scope={"kind": "workspace", "id": "w1"}, title="Results", body="Words"))
+        original = Store.command
+
+        def command(store, actor, envelope):
+            if envelope["kind"] == "memory.read":
+                return {"recorded": False, "error": {"code": "DATABASE_BUSY", "message": "The database is busy", "retryable": True}}
+            return original(store, actor, envelope)
+        with mock.patch.object(Store, "command", command):
+            code, out, err = self.run_cli("note", "read", "results")
+        [request] = [name for name in self.saved() if name.endswith(".request.json")]
+        operation = request[:-len(".request.json")]
+        self.assertEqual((code, out), (75, 'results  "Results"  revision 1 of 1 by agent-a  (outcome w1)\n\nWords\n'))
+        self.assertEqual(err, "not recorded DATABASE_BUSY: The database is busy; the request is saved, so `retry %s` sends it unchanged\n"
+                              "READ_NOT_RECORDED: revision 1 of results is printed above, but that you read it was not confirmed, "
+                              "so `notes` may still mark the page changed; `retry %s` records it.\n" % (operation, operation))
+        # A final refusal is never offered for retry: reading the page again is the way.
+        def refused(store, actor, envelope):
+            if envelope["kind"] == "memory.read":
+                return {"recorded": False, "error": {"code": "FORBIDDEN", "message": "No readable Notebook revision", "retryable": False}}
+            return original(store, actor, envelope)
+        with mock.patch.object(Store, "command", refused):
+            code, out, err = self.run_cli("note", "read", "results")
+        self.assertEqual(code, 2)
+        self.assertTrue(err.endswith("READ_NOT_RECORDED: revision 1 of results is printed above, but that you read it was not confirmed, "
+                                     "so `notes` may still mark the page changed; `note read results --revision 1` records it.\n"), err)
 
     def test_a_page_the_reader_cannot_read_is_refused(self):
         self.committed(self.memory(item="results", scope={"kind": "workspace", "id": "w1"}))

@@ -497,6 +497,26 @@ class Agent(PipelineVerbs):
             self.fail(result["error"])
         return result
 
+    def read_back(self, name, args, recorded, check):
+        """A read that follows a write this verb has recorded. Its failure is not
+        the write's: an error answer (busy, refused) or a store that does not
+        answer ends the verb as READ_BACK_UNCONFIRMED, exit 1, naming what was
+        recorded, its operation and how to read it, so an agent following the
+        exit codes never sends the write again as a new command."""
+        try:
+            result = self.store.view(self.actor, name, args)
+        except (StoreError, OSError):
+            reason = "the store did not answer"
+        else:
+            error = result.get("error")
+            if not error:
+                self.out.raw(result)
+                return result
+            reason = "%s: %s" % (error.get("code"), error.get("message"))
+        _diagnostic(self.out.stderr, "READ_BACK_UNCONFIRMED: %s (%s, operation %s), but reading %s back failed (%s); do not send %s again: %s." % (
+            recorded["what"], recorded["kind"], self.operation, recorded["it"], _shown(reason), recorded["it"], check))
+        raise Failed(1, recorded=True)
+
     def pages(self, name, args):
         cursor, items = None, []
         while True:
@@ -976,7 +996,9 @@ class Agent(PipelineVerbs):
         """Writes one revision, then reads it back: a page that does not read back
         as written fails loudly, naming the revision that was recorded."""
         result = self.command(kind, target, args, {"item_revision": expected})
-        source = self.view("source", {"source_ref": result["source_ref"]})
+        check = "read it with `note read %s --revision %d`" % (result["item_id"], result["revision"])
+        source = self.read_back("source", {"source_ref": result["source_ref"]}, {
+            "what": "revision %d of %s was recorded" % (result["revision"], result["item_id"]), "kind": kind, "it": "it"}, check)
         differs = [name for name, same in (
             ("title", source["title"] == args["title"]), ("body", source["body"] == args["body"]),
             ("attachments", [item["id"] for item in source["attachments"]] == [item["id"] for item in args["attachments"]]),
@@ -984,8 +1006,7 @@ class Agent(PipelineVerbs):
             ("revision", source["source_ref"] == result["source_ref"]), ("author", source["author"] == self.actor)) if not same]
         if differs:
             _diagnostic(self.out.stderr, "READ_BACK_MISMATCH: revision %d of %s was recorded, but it reads back with a different %s; "
-                        "read it with `note read %s --revision %d` before writing again." % (
-                            result["revision"], result["item_id"], " and ".join(differs), result["item_id"], result["revision"]))
+                        "%s before writing again." % (result["revision"], result["item_id"], " and ".join(differs), check))
             raise Failed(1, recorded=True)
         return result
 
@@ -1016,7 +1037,10 @@ class Agent(PipelineVerbs):
         self.out.plain('revised %s "%s" to revision %d; read back matches' % (result["item_id"], _one_line(args["title"], 60), result["revision"]))
 
     def note_read(self):
-        """One revision of a page, the latest unless --revision names one. It records nothing."""
+        """One revision of a page, the latest unless --revision names one. Once it
+        is printed, it records that the actor read that revision (memory.read,
+        which only moves forward, so reading an older one moves nothing back), and
+        `notes` stops marking the page changed."""
         options = self.options
         source = (self.view("memory_current", {"item_id": options.item}) if options.revision is None else
                   self.view("source", {"source_ref": {"kind": "memory", "id": options.item, "revision": options.revision}}))
@@ -1031,6 +1055,17 @@ class Agent(PipelineVerbs):
         for ref in source["references"]:
             self.out.plain("  [evidence: %s]" % ("message " + ref["id"] if ref["kind"] == "message" else
                                                  "page %s revision %s" % (ref["id"], ref["revision"])))
+        item, revision = source["source_ref"]["id"], source["source_ref"]["revision"]
+        try:
+            self.command("memory.read", {"item_id": item}, {"revision": revision})
+        except BaseException as stopped:
+            # The page is shown either way; reading it again is harmless. A
+            # final refusal is not offered for retry, as dispatch never does.
+            sent = self.operation is not None and not (isinstance(stopped, Failed) and stopped.code == 2)
+            _diagnostic(self.out.stderr, "READ_NOT_RECORDED: revision %s of %s is printed above, but that you read it was not confirmed, "
+                        "so `notes` may still mark the page changed; %s records it." % (
+                            revision, item, "`retry %s`" % self.operation if sent else "`note read %s --revision %s`" % (item, revision)))
+            raise
 
     def note_link(self):
         """The address that opens a page (docs/links.md, "A Notebook page's link"):

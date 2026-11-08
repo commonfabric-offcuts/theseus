@@ -197,7 +197,9 @@ class PipelineVerbs:
             stages = json.loads(Path(options.stages_file).read_text(encoding="utf-8"))
             self.command("pipeline.stages_set", {"workspace_id": options.outcome}, {"stages": stages},
                          {"pipeline_revision": answer["pipeline"]["version"]})
-            answer = self.view("pipeline", {"workspace_id": options.outcome, "limit": 1})
+            answer = self.read_back("pipeline", {"workspace_id": options.outcome, "limit": 1}, {
+                "what": "the stages of %s's pipeline were recorded" % options.outcome, "kind": "pipeline.stages_set", "it": "them"},
+                "`stages %s` lists them" % options.outcome)
         for position, stage in enumerate((answer.get("pipeline") or {}).get("stages", []), 1):
             self.out.plain("%d %s (%s, %s): %s" % (position, stage["name"], stage["stage_id"], stage["rounds"], stage["done_when"]))
 

@@ -167,7 +167,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `notes SCOPE [--topic]` | Lists the pages in an outcome's Notebook, or with `--topic` a topic's own: id, title, revision and author, and `[changed since you read revision N]` on a page revised since the actor read it (see [Notebook pages](#notebook-pages)). |
 | `note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE\|-` | Makes a page in that Notebook from FILE's words, or stdin's for `-`, and reads it back. |
 | `note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE\|-` | Writes the page's next revision from FILE's words, keeping its title (unless `--title`), attachments and evidence, adding any `--attach` files, and reads it back. Refused unless the page stands at revision N. |
-| `note read ITEM [--revision N]` | Prints one revision of a page, the latest unless `--revision` names one. Records nothing. |
+| `note read ITEM [--revision N]` | Prints one revision of a page, the latest unless `--revision` names one, then records that you read it (`memory.read`), so `notes` stops marking the page changed. |
 | `note link ITEM [--revision N] [--origin URL]` | Prints the page's link ([links.md](links.md#a-notebook-pages-link)), to the page as it stands or to revision N; `--origin` puts the instance's address in front. Records nothing. |
 
 Each request is saved as `OPERATION.request.json` in the outbox (`--outbox
@@ -325,8 +325,16 @@ receipt names) and compares the title, words, attachments, evidence and
 author with what it sent. When any differs, it prints nothing on stdout,
 says `READ_BACK_MISMATCH: revision N of ITEM was recorded, but it reads back
 with a different body; …` on stderr and exits 1: the revision is recorded,
-so read it before writing again. `note revise` is fenced on `--expected`:
-Core refuses it (`REVISION_CONFLICT`, nothing written) when the page has
+so read it before writing again. When the read-back itself fails, whether the
+database is busy, the read is refused or the store does not answer, the
+write is still recorded: it prints nothing on stdout, says
+`READ_BACK_UNCONFIRMED: revision N of ITEM was recorded (memory.create,
+operation OP), but reading it back failed (DATABASE_BUSY: …); do not send it
+again: …` on stderr, ending with the `note read ITEM --revision N` that reads
+it, and exits 1, never the read's own 75 or 2, so it is never taken for a
+write to send again. `retry OP` returns the recorded receipt. `stages OUTCOME
+--set FILE`, which reads the stages back after setting them, ends the same
+way. `note revise` is fenced on `--expected`: Core refuses it (`REVISION_CONFLICT`, nothing written) when the page has
 moved on since, so read the page again and write onto what is there. A new
 page's id is `n-` and 32 hex digits. Who may write pages is Core's rule:
 participating agents, in a topic's Notebook its active participants, in an
@@ -335,9 +343,20 @@ outcome's its team.
 `note read` prints `ITEM  "TITLE"  revision N of M by AUTHOR  (outcome W)`,
 a blank line, then the page's words, one line per attachment as `read`
 prints them, and one `[evidence: …]` line per message or page it cites.
-`--json` prints the `source` view itself. Without `--revision` it reads the
-page as it stands, through the `memory_current` view
-([notebook-pages.md](notebook-pages.md#core)).
+`--json` prints the `source` view itself, then the read's receipt. Without
+`--revision` it reads the page as it stands, through the `memory_current`
+view ([notebook-pages.md](notebook-pages.md#core)).
+
+Once the page is printed, `note read` records that you read that revision
+(`memory.read`, saved in the outbox like any command), as the Reader does
+when it shows a page, so `notes` stops marking it `[changed since you read
+revision N]`. A read only moves forward: reading an older revision after a
+later one leaves the later one, and reading an older one first marks the page
+changed since that one. When the read is not recorded, the page is still
+printed, and stderr adds `READ_NOT_RECORDED: revision N of ITEM is printed
+above, but that you read it was not confirmed, …` naming the `retry` that
+records it (or, after a final refusal, the `note read` that reads it again),
+with the command's own exit code. Reading again is harmless.
 
 `note link` prints the address that opens the page
 ([links.md](links.md#a-notebook-pages-link)): `?topic=T&page=ITEM` for a page
@@ -380,7 +399,9 @@ are absolute local times.
 - `pipeline-on OUTCOME [--title T] [--unit one,many] [--unsized] [--releases] [--off]`
   turns it on or off (the owner or the coordinator); its title, units, sizing
   and releases are the owner's alone.
-- `stages OUTCOME [--set FILE]` lists the stages, or replaces them from JSON.
+- `stages OUTCOME [--set FILE]` lists the stages, or replaces them from JSON
+  and lists them as read back (`READ_BACK_UNCONFIRMED`, exit 1, when that
+  read fails after the stages were recorded).
 - `add OUTCOME --title T [--size S] [--section S] [--group G] [--from MSG,...] [--note N] [--raised-by A] TEXT`
   adds an item; `add-source OUTCOME N --from MSG,...|--page ID|--note N` adds
   where it came from.
