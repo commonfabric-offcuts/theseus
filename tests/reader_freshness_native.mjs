@@ -269,6 +269,12 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
     assert.ok(delayCounts.foreground > 0);
     if (!baseline) assert.ok(delayCounts.background > 0, 'candidate automatic updates remain active during comparison');
     assert.ok(delays.filter(e=>e.name==='source').length >= 20, 'every measured open reaches the real delayed callback');
+    // The candidate server's partitioned admission releases a read's permit
+    // after its Store closes and before it answers, so every measured source
+    // read, which the page has had answered, has released its permit. The
+    // baseline's old server holds no such permit (the fixture observes its
+    // read only as legacy-read-enter and -exit), so nothing is released there.
+    const partitioned = !baseline && !legacyAdmission;
     for (const start of delays) {
       const events = admission.events.filter(e=>e.request_id===start.request_id);
       const end = events.find(e=>e.event==='delay-exit');
@@ -280,7 +286,11 @@ export async function freshnessChecks({ check, page, until, root, facts, view, c
       const order = events.map(e=>e.event);
       inOrder(order, 'callback-enter', 'delay-enter', 'the delay runs inside the Store callback');
       inOrder(order, 'delay-exit', 'callback-exit', 'the delay ends inside the Store callback');
-      if (order.includes('released')) inOrder(order, 'close-exit', 'released', 'the Store closes before its permit is released');
+      if (partitioned && start.name === 'source') inOrder(order, 'close-exit', 'released', 'the Store closes before its permit is released');
+      // An automatic read can still be closing when the events are read: its
+      // permit's order is checked once it has been released.
+      else if (partitioned && order.includes('released')) inOrder(order, 'close-exit', 'released', 'an automatic read closes before its permit is released');
+      else assert.ok(partitioned || !order.includes('released'), 'the baseline server holds no partitioned permit');
     }
     observations.push({ name: 'paired latency', baseline, workload: 'two visible CFT windows; 10 native open/close rounds each;25ms actual Store callback delay inside admission; no Response-stage delay or hidden cleanup wait',
       opens, neighbors, openToPresentMs: stats(opens.map(r => r.present-r.start)), neighborMs: stats(neighbors.map(r => r.end-r.start)),

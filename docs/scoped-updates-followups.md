@@ -69,7 +69,13 @@ superseded in `tests/reader_freshness_native.mjs` (`--freshness`):
   not the paging reads of the pass that answer starts.
 - "C2 identical paired open and neighbor latency workload" orders admission
   events with `inOrder`, which requires both events to have happened. A
-  mutant that drops the callback-enter event fails it.
+  mutant that drops the callback-enter event fails it. Against the candidate
+  server, every measured source read must also show its Store closing before
+  its permit is released, since the server releases a permit before it
+  answers; a mutant that stops recording `released` fails it. An automatic
+  read can still be closing when the events are read, so its release order is
+  checked once it has been released. The baseline's old server holds no
+  partitioned permit, and C2 there requires that none is released.
 
 The existing API error discards the difference between a broken body stream
 and JSON parse failure after HTTP 200. The accepted narrow error correction

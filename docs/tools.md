@@ -22,12 +22,12 @@ Run it in a worktree that nobody else is editing, since restoring writes the fil
 
 ### What a reviewer gets
 
-A reviewer can check each kill against the exact revision it ran on, without trusting the author's description:
+A reviewer can check each kill against the exact revision it ran on, without trusting the author's description. That needs a commit: make the evidence a reviewer will verify on a clean checkout of the commit under review.
 
-- `verdict.json` records `revision`: the checkout's root, its `commit` and `dirty`, git's porcelain listing of uncommitted and untracked changes when the mutant ran (both `null` outside git). `replacements` lists each `OLD` and `NEW` in order, by path in that checkout, and `hashes` gives each file's sha256 as it was, as mutated, and as restored.
+- `verdict.json` records `revision`: the checkout's root, `git_dir` (the repository's own directory, a worktree's common one, which stays when the worktree is removed), its `commit` and `dirty`, git's porcelain listing of uncommitted and untracked changes when the mutant ran (all three `null` outside git). `replacements` lists each `OLD` and `NEW` in order, by path in that checkout, and `hashes` gives each file's sha256 as it was, as mutated, and as restored.
 - `mutant.patch` is the change as a unified diff.
 - `checkout/` is the tree the mutant ran in, kept until review: the recorded commit (by `git archive`), with the uncommitted changes and untracked files copied over, deleted files removed and the mutant applied. Ignored files are not in it. Running the same command there shows the kill again.
-- `tools/mutant.py --verify EVIDENCE` checks the evidence against its verdict, file by file: the copy of the original hashes as recorded, the recorded replacements turn it into the recorded mutant, and the kept checkout holds exactly that. Exit 0 when all hold, 1 when one does not. When the file was not committed as it was when mutated, the line says so and names the commit it differs from.
+- `tools/mutant.py --verify EVIDENCE` checks the kill against the recorded commit, which it reads from `git_dir`, so it works after the worktree is gone. It requires that the verdict shows a kill (killed, restored, control passed, and its failed line is in `mutant.log`), with a hash for every mutated file; that the tree was clean; that each copy of an original hashes as recorded and is the file at the commit; that each recorded replacement occurs once and turns it into the recorded mutant; and that the kept checkout is exactly the commit (as `git archive` gives it) with only the mutant applied. Exit 0 when all hold. Exit 1 names each one that does not, including a run on uncommitted changes or outside git (no commit holds what ran) and a repository that can no longer be read.
 - `tools/mutant.py --reviewed EVIDENCE` removes `checkout/` once the review is done and records `checkout_removed_at` in the verdict. The verdict, patch, logs and original copies stay.
 
 A run that reuses an evidence directory replaces its verdict and its checkout.

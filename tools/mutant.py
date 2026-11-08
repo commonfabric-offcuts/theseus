@@ -17,12 +17,14 @@ restored and the control passed; 1 means the mutant survived or the control
 failed; 2 means refused before anything changed. Run it in a worktree no one
 else is editing: restoring writes the files back as they were at the start.
 
-The verdict names the exact revision: the checkout's commit and its
-uncommitted changes, each file's sha256 before, mutated and restored, and
-each replacement. The mutant checkout (that commit, those changes and the
+The verdict names the exact revision: the repository, the checkout's commit
+and its uncommitted changes, each file's sha256 before, mutated and restored,
+and each replacement. The mutant checkout (that commit, those changes and the
 mutant applied) is kept in EVIDENCE/checkout until a reviewer is done with it:
---verify checks the kept evidence against the verdict, and --reviewed removes
-the checkout and records when.
+--verify checks the kill against the recorded commit, read from the
+repository, which outlives a removed worktree, and --reviewed removes the
+checkout and records when. A kill on uncommitted changes, or outside git, does
+not verify: no commit holds what ran.
 """
 
 import datetime
@@ -78,26 +80,31 @@ def git(root, *args):
 
 
 def revision(paths):
-    """{root, commit, dirty}: the one checkout every mutated file is in, or their common folder outside git.
+    """{root, git_dir, commit, dirty}: the one checkout every mutated file is in, or their common folder outside git.
 
-    dirty is git's porcelain listing of tracked and untracked changes, so a
-    verdict on an uncommitted tree says so; outside git, commit and dirty are None."""
+    git_dir is the repository's own directory (a worktree's common one), where
+    the commit can still be read once the worktree is removed. dirty is git's
+    porcelain listing of tracked and untracked changes, so a verdict on an
+    uncommitted tree says so; outside git, git_dir, commit and dirty are None."""
     top = git(paths[0].parent, "rev-parse", "--show-toplevel")
     if top.returncode == 0:
         root = Path(top.stdout.decode().strip()).resolve()
         head = git(root, "rev-parse", "--verify", "HEAD^{commit}")
         status = git(root, "status", "--porcelain=v1", "-z", "--untracked-files=all")
-        if head.returncode or status.returncode:
-            raise Refused("cannot read the git state of %s: %s%s" % (root, head.stderr.decode(), status.stderr.decode()))
+        common = git(root, "rev-parse", "--git-common-dir")
+        if head.returncode or status.returncode or common.returncode:
+            raise Refused("cannot read the git state of %s: %s%s%s" % (root, head.stderr.decode(), status.stderr.decode(),
+                                                                      common.stderr.decode()))
         commit, dirty = head.stdout.decode().strip(), porcelain(status.stdout.decode())
+        git_dir = str((root / common.stdout.decode().strip()).resolve())
     else:
-        root, commit, dirty = Path(os.path.commonpath([str(path.parent) for path in paths])), None, None
+        root, git_dir, commit, dirty = Path(os.path.commonpath([str(path.parent) for path in paths])), None, None, None
     for path in paths:
         try:
             path.relative_to(root)
         except ValueError:
             raise Refused("%s is not in %s; mutate one checkout at a time" % (path, root))
-    return {"root": str(root), "commit": commit, "dirty": dirty}
+    return {"root": str(root), "git_dir": git_dir, "commit": commit, "dirty": dirty}
 
 
 def porcelain(text):
@@ -205,17 +212,82 @@ def read_verdict(evidence):
         raise Refused("no readable verdict at %s: %s" % (path, error))
 
 
-def verify(evidence):
-    """(ok, lines): the kept evidence checked against its verdict, file by file.
+def repository(found):
+    """The git directory that holds the recorded commit; an older verdict names only its checkout."""
+    if found.get("git_dir"):
+        return found["git_dir"]
+    common = git(found["root"], "rev-parse", "--git-common-dir") if Path(found["root"]).is_dir() else None
+    return str(Path(found["root"], common.stdout.decode().strip()).resolve()) if common and not common.returncode else None
 
-    Each original copy must hash as recorded, and the recorded replacements
-    applied to it must give the recorded mutant, which the kept checkout must
-    hold. When the checkout was clean, the original must also be the file at
-    the recorded commit; otherwise the line says it differs from it."""
+
+def committed(git_dir, *args):
+    """git's output from the recorded repository, or None when it cannot be read there."""
+    if git_dir is None:
+        return None
+    result = subprocess.run(["git", "--git-dir=" + git_dir] + list(args), capture_output=True)
+    return None if result.returncode else result.stdout
+
+
+def tree_of_archive(data):
+    """{path: (kind, bytes)} for each file and symlink in a tar, as git archive gives it."""
+    files = {}
+    with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+        for member in tar:
+            if member.issym():
+                files[member.name] = ("link", member.linkname.encode())
+            elif member.isfile():
+                files[member.name] = ("file", tar.extractfile(member).read())
+    return files
+
+
+def tree_of_folder(top):
+    """{path: (kind, bytes)} for each file and symlink under a folder."""
+    files = {}
+    for folder, folders, names in os.walk(str(top)):
+        for name in names + [name for name in folders if os.path.islink(os.path.join(folder, name))]:
+            path = os.path.join(folder, name)
+            key = Path(path).relative_to(top).as_posix()
+            files[key] = ("link", os.readlink(path).encode()) if os.path.islink(path) else ("file", Path(path).read_bytes())
+    return files
+
+
+def verify(evidence):
+    """(ok, lines): the kept evidence checked against the recorded commit, read from the recorded repository.
+
+    The verdict must show a kill: killed, restored and its control passed,
+    with its failed line in the mutant log, and a hash for each file it
+    mutated. The tree must have been clean, since no commit holds uncommitted
+    changes. Each original copy must hash as recorded and be the file at that
+    commit; each recorded replacement must occur once in it and give the
+    recorded mutant; and the kept checkout, until a reviewer removes it, must
+    be that commit with only those mutants applied."""
     evidence = Path(evidence)
     verdict = read_verdict(evidence)
-    found, lines, ok = verdict.get("revision") or {}, [], True
-    for index, entry in enumerate(verdict.get("hashes") or []):
+    found, failures, lines = verdict.get("revision") or {}, [], []
+    commit, git_dir = found.get("commit"), repository(found)
+    where = git_dir or "no repository: the verdict names none and %s is not a git checkout" % found.get("root")
+    try:
+        log = (evidence / "mutant.log").read_text(errors="replace").splitlines()
+    except OSError:
+        log = []
+    if not (verdict.get("killed") and verdict.get("restored") and verdict.get("control_passed")
+            and verdict.get("failed_line") in log):
+        failures.append("FAILED not killed: killed=%s restored=%s control_passed=%s, failed line %s"
+                        % (verdict.get("killed"), verdict.get("restored"), verdict.get("control_passed"),
+                           "in the mutant log" if verdict.get("failed_line") in log else "not in the mutant log"))
+    hashes = verdict.get("hashes") or []
+    replaced = sorted({replacement["file"] for replacement in verdict.get("replacements") or []})
+    if not hashes or sorted(entry["file"] for entry in hashes) != replaced:
+        failures.append("FAILED hashes: %s recorded for the mutated files %s" % ([e["file"] for e in hashes], replaced))
+    if commit is None:
+        failures.append("FAILED no commit: the mutated files were not in a git checkout, so no revision holds what ran")
+    elif found.get("dirty"):
+        failures.append("FAILED uncommitted: no commit holds the tree the mutant ran in: %s" % found["dirty"])
+    expected = None
+    if commit is not None and not verdict.get("checkout_removed_at"):
+        archive = committed(git_dir, "archive", "--format=tar", commit)
+        expected = tree_of_archive(archive) if archive is not None else None
+    for index, entry in enumerate(hashes):
         name = entry["file"]
         copies = list(evidence.glob("original-%d-*" % index))
         original = copies[0].read_bytes() if len(copies) == 1 else None
@@ -224,27 +296,43 @@ def verify(evidence):
             problems.append("original copy")
         else:
             text = original.decode()
-            for replacement in verdict["replacements"]:
+            for replacement in verdict.get("replacements") or []:
                 if replacement["file"] == name:
+                    if text.count(replacement["old"]) != 1:
+                        problems.append("replacements")
+                        break
                     text = text.replace(replacement["old"], replacement["new"])
-            if digest(text.encode()) != entry["mutated_sha256"]:
+            if "replacements" not in problems and digest(text.encode()) != entry["mutated_sha256"]:
                 problems.append("replacements")
-        kept = evidence / "checkout" / name
+            if expected is not None:
+                expected[name] = ("file", text.encode())
+        if problems:
+            failures.append("FAILED %s %s" % (" ".join(problems), name))
+            continue
+        if commit is not None:
+            shown = committed(git_dir, "show", "%s:%s" % (commit, name))
+            if shown is None:
+                failures.append("FAILED commit %s: cannot read %s:%s from %s" % (name, commit, name, where))
+                continue
+            if digest(shown) != entry["original_sha256"]:
+                failures.append("FAILED commit %s: the original is not the file at %s" % (name, commit))
+                continue
         if verdict.get("checkout_removed_at"):
             lines.append("reviewed %s: checkout removed at %s" % (name, verdict["checkout_removed_at"]))
-        elif not kept.is_file() or digest(kept.read_bytes()) != entry["mutated_sha256"]:
-            problems.append("checkout")
-        if problems:
-            ok = False
-            lines.append("FAILED %s %s" % (" ".join(problems), name))
-            continue
-        lines.append("ok %s: killed=%s at %s" % (name, verdict.get("killed"), found.get("commit")))
-        if found.get("commit"):
-            shown = git(found["root"], "show", "%s:%s" % (found["commit"], name))
-            if shown.returncode or digest(shown.stdout) != entry["original_sha256"]:
-                lines.append("  note: %s differs from %s (uncommitted when mutated: %s)"
-                             % (name, found["commit"], [line for line in found.get("dirty") or [] if line[3:] == name]))
-    return ok, lines
+        lines.append("ok %s: killed=%s at %s" % (name, verdict.get("killed"), commit))
+    if commit is not None and not verdict.get("checkout_removed_at"):
+        if expected is None:
+            failures.append("FAILED checkout: cannot read %s from %s to compare it" % (commit, where))
+        else:
+            kept = tree_of_folder(evidence / "checkout") if (evidence / "checkout").is_dir() else {}
+            differ = sorted(path for path in set(expected) | set(kept) if expected.get(path) != kept.get(path))
+            if differ:
+                failures.append("FAILED checkout: %s%s is not %s with only the mutant applied"
+                                % (", ".join(differ[:10]), " and %d more" % (len(differ) - 10) if len(differ) > 10 else "",
+                                   commit))
+    if failures:
+        lines = [line for line in lines if not line.startswith("ok ")] + failures
+    return not failures, lines
 
 
 def reviewed(evidence):

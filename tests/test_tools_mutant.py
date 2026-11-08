@@ -178,7 +178,8 @@ class KeptEvidence(unittest.TestCase):
     def test_a_clean_checkout_records_its_commit_hashes_and_the_exact_replacement(self):
         verdict = self.mutate()
         self.assertTrue(verdict["ok"])
-        self.assertEqual(verdict["revision"], {"root": str(self.repo.resolve()), "commit": self.head, "dirty": []})
+        self.assertEqual(verdict["revision"], {"root": str(self.repo.resolve()), "git_dir": str((self.repo / ".git").resolve()),
+                                              "commit": self.head, "dirty": []})
         mutated = self.original.replace(b"beta", b"gamma")
         self.assertEqual(verdict["replacements"], [{"file": "pkg/target.py", "old": "beta", "new": "gamma"}])
         self.assertEqual(verdict["hashes"], [{"file": "pkg/target.py", "original_sha256": sha(self.original),
@@ -228,21 +229,138 @@ class KeptEvidence(unittest.TestCase):
         out = io.StringIO()
         with redirect_stdout(out):
             self.assertEqual(mutant.main(["--verify", str(self.evidence)]), 1)
-        self.assertIn("checkout pkg/target.py", out.getvalue())
+        self.assertIn("FAILED checkout: pkg/target.py", out.getvalue())
 
-    def test_verify_refuses_an_original_that_is_not_the_recorded_commit(self):
+    def verify(self, evidence=None):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = mutant.main(["--verify", str(evidence or self.evidence)])
+        return code, out.getvalue()
+
+    def forge(self, original, evidence=None):
+        """Evidence that agrees with itself, original, hashes and checkout, about a different original."""
+        evidence = Path(evidence or self.evidence)
+        verdict = json.loads((evidence / "verdict.json").read_text())
+        mutated = original.replace(b"beta", b"gamma")
+        next(evidence.glob("original-0-*")).write_bytes(original)
+        (evidence / "checkout" / "pkg" / "target.py").write_bytes(mutated)
+        verdict["hashes"][0].update(original_sha256=sha(original), mutated_sha256=sha(mutated),
+                                    restored_sha256=sha(original))
+        (evidence / "verdict.json").write_text(json.dumps(verdict))
+
+    def test_verify_refuses_evidence_whose_original_is_not_the_file_at_its_clean_commit(self):
+        self.mutate()
+        self.forge(b"alpha = 'beta'\nomega = 3\n")
+        code, out = self.verify()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED commit pkg/target.py", out)
+        self.assertNotIn("ok pkg/target.py", out)
+
+    def test_verify_refuses_a_kill_on_an_uncommitted_tree_since_no_commit_holds_what_ran(self):
         # The file was edited but not committed before the run: the commit alone cannot reproduce it.
         self.target.write_bytes(b"alpha = 'beta'\nomega = 3\n")
         self.mutate()
-        out = io.StringIO()
-        with redirect_stdout(out):
-            self.assertEqual(mutant.main(["--verify", str(self.evidence)]), 0)
-        self.assertIn("pkg/target.py differs from %s" % self.head, out.getvalue())
+        code, out = self.verify()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED uncommitted", out)
+        self.assertIn(" M pkg/target.py", out)
+        # Another file's uncommitted change ran too, and no commit holds it either.
+        self.target.write_bytes(self.original)
+        (self.repo / "new.txt").write_bytes(b"untracked\n")
+        self.mutate(evidence=self.base / "e-other")
+        code, out = self.verify(self.base / "e-other")
+        self.assertEqual(code, 1, out)
+        self.assertIn("?? new.txt", out)
         # A copy of the original that does not hash as recorded fails.
-        copy = next(self.evidence.glob("original-0-*"))
-        copy.write_bytes(b"alpha = 'beta'\nomega = 4\n")
-        with redirect_stdout(io.StringIO()):
-            self.assertEqual(mutant.main(["--verify", str(self.evidence)]), 1)
+        (self.repo / "new.txt").unlink()
+        self.mutate(evidence=self.base / "e-copy")
+        next((self.base / "e-copy").glob("original-0-*")).write_bytes(b"alpha = 'beta'\nomega = 4\n")
+        code, out = self.verify(self.base / "e-copy")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED original copy pkg/target.py", out)
+
+    def test_verify_reads_the_commit_from_the_repository_after_the_worktree_is_removed(self):
+        tree = self.base / "tree"
+        subprocess.run(["git", "-C", str(self.repo), "worktree", "add", "-q", "--detach", str(tree)],
+                       check=True, capture_output=True)
+        target = tree / "pkg" / "target.py"
+        verdict = mutant.mutate([(str(target), "beta", "gamma")], [sys.executable, "-c", CHECK, str(target)],
+                                self.evidence)
+        self.assertEqual(self.verify()[0], 0)
+        subprocess.run(["git", "-C", str(self.repo), "worktree", "remove", str(tree)], check=True, capture_output=True)
+        code, out = self.verify()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out.splitlines(), ["ok pkg/target.py: killed=True at %s" % self.head])
+        # With the repository itself gone, the commit cannot be read: that is not a pass.
+        (self.repo / ".git").rename(self.base / "moved.git")
+        code, out = self.verify()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED commit pkg/target.py: cannot read %s" % self.head, out)
+        # The verdict names the repository, which outlives the worktree.
+        self.assertEqual(verdict["revision"]["git_dir"], str((self.repo / ".git").resolve()))
+
+    def test_verify_requires_the_kept_checkout_to_be_the_commit_with_only_the_mutant_applied(self):
+        self.mutate()
+        self.assertEqual(self.verify()[0], 0)
+        other = self.evidence / "checkout" / "other.txt"
+        other.write_bytes(b"changed after the run\n")
+        code, out = self.verify()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED checkout: other.txt", out)
+        other.write_bytes(b"committed\n")
+        (self.evidence / "checkout" / "extra.txt").write_bytes(b"not in the commit\n")
+        code, out = self.verify()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED checkout: extra.txt", out)
+        (self.evidence / "checkout" / "extra.txt").unlink()
+        (self.evidence / "checkout" / "gone.txt").unlink()
+        code, out = self.verify()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED checkout: gone.txt", out)
+
+    def test_verify_refuses_evidence_that_does_not_show_a_kill(self):
+        # A survivor's evidence agrees with itself, but it is not a kill.
+        mutant.mutate([(str(self.target), "omega = 1", "omega = 2")],
+                      [sys.executable, "-c", CHECK, str(self.target)], self.evidence)
+        code, out = self.verify()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED not killed", out)
+        # A command that prints a failed line but exits 0 did not kill the mutant, though its line is in the log.
+        quiet = "import sys; print('FAIL: test_alpha (t.T)' if 'gamma' in open(sys.argv[1]).read() else 'OK')"
+        verdict = mutant.mutate([(str(self.target), "beta", "gamma")], [sys.executable, "-c", quiet, str(self.target)],
+                                self.base / "e-exit0")
+        self.assertEqual((verdict["killed"], verdict["failed_line"]), (False, "FAIL: test_alpha (t.T)"))
+        code, out = self.verify(self.base / "e-exit0")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED not killed: killed=False", out)
+        # A verdict that claims a kill its mutant log does not show.
+        self.mutate(evidence=self.base / "e-log")
+        (self.base / "e-log" / "mutant.log").write_text("OK\n")
+        code, out = self.verify(self.base / "e-log")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED not killed", out)
+        # A verdict whose hashes no longer name the file it mutated checks nothing.
+        self.mutate(evidence=self.base / "e-empty")
+        verdict = json.loads((self.base / "e-empty" / "verdict.json").read_text())
+        verdict["hashes"] = []
+        (self.base / "e-empty" / "verdict.json").write_text(json.dumps(verdict))
+        code, out = self.verify(self.base / "e-empty")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED hashes", out)
+
+    def test_verify_refuses_a_replacement_that_does_not_occur_exactly_once(self):
+        self.mutate()
+        # 'e' occurs twice in the original, so the mutant could not have been made this way; the
+        # hashes and checkout are made to agree with replacing both.
+        verdict = json.loads((self.evidence / "verdict.json").read_text())
+        mutated = self.original.replace(b"e", b"E")
+        verdict["replacements"][0].update(old="e", new="E")
+        verdict["hashes"][0]["mutated_sha256"] = sha(mutated)
+        (self.evidence / "checkout" / "pkg" / "target.py").write_bytes(mutated)
+        (self.evidence / "verdict.json").write_text(json.dumps(verdict))
+        code, out = self.verify()
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED replacements pkg/target.py", out)
 
     def test_reviewed_removes_the_kept_checkout_and_says_when(self):
         self.mutate()
@@ -262,9 +380,13 @@ class KeptEvidence(unittest.TestCase):
         target.write_bytes(self.original)
         verdict = mutant.mutate([(str(target), "beta", "gamma")], [sys.executable, "-c", CHECK, str(target)],
                                 self.base / "e-loose")
-        self.assertEqual(verdict["revision"], {"root": str(loose.resolve()), "commit": None, "dirty": None})
+        self.assertEqual(verdict["revision"], {"root": str(loose.resolve()), "git_dir": None, "commit": None, "dirty": None})
         self.assertEqual((Path(verdict["checkout"]) / "target.py").read_bytes(), self.original.replace(b"beta", b"gamma"))
         self.assertEqual(target.read_bytes(), self.original)
+        # No commit holds these files, so the kill cannot be verified against one.
+        code, out = self.verify(self.base / "e-loose")
+        self.assertEqual(code, 1, out)
+        self.assertIn("FAILED no commit", out)
 
     def test_files_in_two_checkouts_are_refused_before_anything_changes(self):
         elsewhere = self.base / "elsewhere.py"
