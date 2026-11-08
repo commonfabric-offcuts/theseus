@@ -397,7 +397,7 @@ class Runner:
         if ended:
             # Whether a handed wake got through is known when its turn ends (health.py); this one already had.
             self._turn_ended(db, attempt["recipient_id"], "unseen" if ended["final_status"] == "completed" and late else ended["final_status"],
-                             now, ended["error_code"], now if turn["mode"] == "start" else None)
+                             now, ended["error_code"], now, turn["mode"] == "start")
         # retry_count is otherwise kept: a turn that fails again backs off further, and only a clean turn end resets it.
         db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,handed_seq=?,retry_count=? WHERE recipient_id=?",
                    (due, handed, retry, attempt["recipient_id"]))
@@ -467,7 +467,7 @@ class Runner:
                 # never read, or a turn Codex did not complete, did not get through.
                 seen = row["mode"] not in UNSEEN_REARM_MODES or row["seen_ms"] is not None
                 self._turn_ended(db, row["recipient_id"], status if status != "completed" or seen else "unseen", now, error_code,
-                                 row["handed_ms"] if row["mode"] == "start" else None)
+                                 row["handed_ms"], row["mode"] == "start")
             rearmed = False
             for recipient in sorted({row["recipient_id"] for row in rows}):
                 schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()

@@ -308,6 +308,13 @@ class ParkedNoticeCase(HealthCase):
         self.assertEqual(WHY.get("unseen"), None)
         self.assertEqual(why_words(None, "unseen"), "its work was added to a Codex turn that ended before it read it")
 
+    def test_a_turn_codex_failed_after_the_agent_acted_in_it_got_through(self):
+        """Only an agent the turn reached can act in it, so its wake got through, however the turn ended."""
+        for number in range(3):
+            self.hosted_turn(number, "failed", act=True)
+        self.assertEqual((self.light(), self.notices()), ([], []))
+        self.assertEqual(self.wake_facts(), (0, None, 0))
+
     def test_a_turn_the_agent_acted_in_was_answered(self):
         for number in range(4):
             self.hosted_turn(number, "completed", act=True)

@@ -95,29 +95,31 @@ hung runner then sent TERM), that lease's end.
 ## Why a wake did not get through
 
 A wake gets through when it settles `accepted` or `queued`, or, for a wake
-handed to a hosted turn, when that turn ends `completed` having read it. A
-handed wake settles when its turn ends, from the end Core records
-(`end_hosted_turn`), never when it is handed: while the turn runs nobody knows
-whether it got through, and the page goes on saying what the settled wakes
-say. Any other settlement did not get through: `error`, `unavailable`, `busy`,
-`expired` with its claim, a turn Codex ended `failed`, `lost` or
-`interrupted`, or a steer the turn ended without reading (`unseen`). A turn
-that did not complete is a wake that did not get through, not an agent that
-chose not to answer: Codex did not run it. The runner settles each wake with
-its own fixed code for how it went (`finish_wake(..., reason=)`:
-`broker_exit`, `deadline`, `route_unavailable`, `child_exited`, `start_failed`
-and the others in `wake_adapter.py` and `codex_host.py`; never local text), a
-claim that expired with its runner is `expired`, and a turn that did not
-complete keeps Codex's own code for why (`codexErrorInfo`, as
-`serverOverloaded`), said in words after how the turn ended ("its Codex turn
-failed (server overloaded)", `TURN_WHY`). Core keeps, per recipient, in
-`wake_facts`: `reached_ms`, `failed_wakes`, `failing_since_ms`,
-`failed_outcome` and `failed_reason` (the latest failure's code), updated by
-every settlement, so the page reads one row per agent however long a failure
-runs. `WHY` in `health.py` says each code in words ("the helper that puts a
-wake in the Codex app's queue failed (it exited with an error)"); the view
-sends those words as `failing.why`, and the page, the command line and the
-notices all say them. Failures from before Core kept the code say so.
+handed to a hosted turn, when that turn ends `completed` having read it, or
+the agent recorded a command after it was handed, which only an agent the turn
+reached can do. A handed wake settles when its turn ends, from the end Core
+records (`end_hosted_turn`), never when it is handed: while the turn runs
+nobody knows whether it got through, and the page goes on saying what the
+settled wakes say. Any other settlement did not get through: `error`,
+`unavailable`, `busy`, `expired` with its claim, a turn Codex ended `failed`,
+`lost` or `interrupted`, or a steer the turn ended without reading (`unseen`),
+with no command from the agent since. A turn that did not complete is a wake
+that did not get through, not an agent that chose not to answer: Codex did not
+run it. The runner settles each wake with its own fixed code for how it went
+(`finish_wake(..., reason=)`: `broker_exit`, `deadline`, `route_unavailable`,
+`child_exited`, `start_failed` and the others in `wake_adapter.py` and
+`codex_host.py`; never local text), a claim that expired with its runner is
+`expired`, and a turn that did not complete keeps Codex's own code for why
+(`codexErrorInfo`, as `serverOverloaded`), said in words after how the turn
+ended ("its Codex turn failed (server overloaded)", `TURN_WHY`). Core keeps,
+per recipient, in `wake_facts`: `reached_ms`, `failed_wakes`,
+`failing_since_ms`, `failed_outcome` and `failed_reason` (the latest failure's
+code), updated by every settlement, so the page reads one row per agent
+however long a failure runs. `WHY` in `health.py` says each code in words
+("the helper that puts a wake in the Codex app's queue failed (it exited with
+an error)"); the view sends those words as `failing.why`, and the page, the
+command line and the notices all say them. Failures from before Core kept the
+code say so.
 
 ## Telling the team
 

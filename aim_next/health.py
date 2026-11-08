@@ -4,9 +4,10 @@ from __future__ import annotations
 
 A wake gets through when its notice reached the agent's chat (accepted), an
 earlier notice still waiting leads there (queued), or the hosted turn it
-started or joined completed with its work seen (completed). Every other
-settlement (error, unavailable, busy, a claim that expired with its runner, or
-a turn Codex ended failed, lost or interrupted) did not get through. A hosted
+started or joined completed with its work seen, or the agent acted while it
+ran (completed). Every other settlement (error, unavailable, busy, a claim
+that expired with its runner, or a turn Codex ended failed, lost or
+interrupted with no act from the agent) did not get through. A hosted
 wake is settled when its turn ends, from the end Core records, never when the
 turn is handed its work: until then nobody knows whether it got through, and a
 guess made then would have to be taken back. Core keeps, per recipient,
@@ -331,20 +332,22 @@ class Health:
         db.execute("UPDATE wake_facts SET unanswered_wakes=unanswered_wakes+1,unanswered_since_ms=COALESCE(unanswered_since_ms,?) "
                    "WHERE recipient_id=?", (since, recipient))
 
-    def _turn_ended(self, db, recipient, outcome, now, error_code, started_ms):
-        """A hosted turn ended, and with it one wake to recipient that it was handed: outcome is the
-        turn's end ("completed", "failed", "lost", "interrupted"), or "unseen" for a steer it never
-        read; error_code is Codex's; started_ms is when the turn was handed this wake's work, for a
-        turn the wake started (None for a steer, which joins a turn already counted).
+    def _turn_ended(self, db, recipient, outcome, now, error_code, handed_ms, started):
+        """A hosted turn ended, and with it one wake to recipient that it was handed at handed_ms:
+        outcome is the turn's end ("completed", "failed", "lost", "interrupted"), or "unseen" for a
+        steer it never read; error_code is Codex's; started says the wake started the turn (a steer
+        joins a turn already counted).
 
-        A completed turn the wake started reached the agent, and is unanswered
-        if the agent recorded nothing since it began; any other end did not
-        get through, with Codex's code as why."""
-        self._wake_settled(db, recipient, outcome, now, error_code)
-        if outcome == "completed" and started_ms is not None:
-            acted = db.execute("SELECT acted_ms FROM wake_facts WHERE recipient_id=?", (recipient,)).fetchone()[0]
-            if acted is None or acted < started_ms:
-                self._wake_reached(db, recipient, started_ms)
+        The wake got through if the turn completed, or if the agent recorded a
+        command since it was handed, which only an agent the turn reached can
+        do; any other end did not, with Codex's code as why. A completed turn
+        the wake started that the agent did not act in is one it left
+        unanswered."""
+        row = db.execute("SELECT acted_ms FROM wake_facts WHERE recipient_id=?", (recipient,)).fetchone()
+        acted = row is not None and row[0] is not None and row[0] >= handed_ms
+        self._wake_settled(db, recipient, "completed" if acted else outcome, now, error_code)
+        if outcome == "completed" and started and not acted:
+            self._wake_reached(db, recipient, handed_ms)
 
     def _health_acted(self, db, actor, now):
         """The actor recorded a command: every wake that reached it is answered, and a turn running now was acted in."""
