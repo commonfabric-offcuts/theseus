@@ -3,7 +3,7 @@ from __future__ import annotations
 
 """Run every check a release needs, for one commit, and write a summary the deploy reads.
 
-Usage: tools/release_check.py --out ABSOLUTE_DIR [--chrome PATH] [--python PATH] [--node PATH]
+Usage: tools/release_check.py --out ABSOLUTE_DIR [--chrome PATH] [--playwright DIR] [--python PATH] [--node PATH]
 
 The checkout this file lives in is the one checked. It must be clean, so the
 summary speaks for exactly its HEAD commit. Python units, node units and every
@@ -32,10 +32,16 @@ CHROME_SUFFIX = "/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for
 # --chrome nor AIM_CHROME_FOR_TESTING names one and exactly one version is there.
 CHROME_CACHE = Path("Library/Caches/aim-chrome-for-testing/chrome")
 CHROME_IN_VERSION = "chrome-mac-arm64" + CHROME_SUFFIX
+# Where playwright-core is cached, for the WebKit modes (Safari's engine); used
+# when neither --playwright nor AIM_PLAYWRIGHT_CORE names one and exactly one
+# version is there. Playwright finds its own WebKit build.
+PLAYWRIGHT_CACHE = Path("Library/Caches/deno/npm/registry.npmjs.org/playwright-core")
 
 NativeStep = collections.namedtuple("NativeStep", "name harness flags results")
 PERSISTENCE = "tests/reader_persistence_native.mjs"
 READER = "tests/reader_native.mjs"
+WEBKIT = "tests/webkit_native.mjs"
+WEBKIT_MODES = ("colors", "whispers", "notebook", "rail", "pipeline", "device")
 # Every mode of every native entry point. tests/test_tools_release_check.py
 # reads the harnesses and fails when a mode or an entry point is missing here.
 NATIVE_STEPS = tuple(
@@ -45,7 +51,9 @@ NATIVE_STEPS = tuple(
     + [NativeStep("openings", "tests/reader_openings_native.mjs", (), "native.json"),
        NativeStep("reader", READER, (), "results.json")]
     + [NativeStep("reader-" + mode, READER, ("--" + mode,), "results.json")
-       for mode in ("keyboard", "review-gaps", "anchor-control", "mutations", "finished")])
+       for mode in ("keyboard", "review-gaps", "anchor-control", "mutations", "finished")]
+    # The same checks in Safari's engine, and the phone check page (docs/device-evidence.md).
+    + [NativeStep("webkit-" + mode, WEBKIT, ("--" + mode,), "native.json") for mode in WEBKIT_MODES])
 UNIT_STEPS = ("python-units", "node-units")
 REQUIRED = UNIT_STEPS + tuple("native-" + step.name for step in NATIVE_STEPS)
 TOOL = "theseus-release-check"
@@ -98,6 +106,28 @@ def chrome_path(explicit=None, environ=None, home=None):
         raise Refused("not an absolute Chrome for Testing executable: %s" % chosen)
     if not os.access(chosen, os.X_OK):
         raise Refused("Chrome for Testing is not executable: %s" % chosen)
+    return chosen
+
+
+def playwright_path(explicit=None, environ=None, home=None):
+    """The playwright-core package directory the WebKit modes load, or Refused."""
+    environ = os.environ if environ is None else environ
+    chosen = explicit or environ.get("AIM_PLAYWRIGHT_CORE")
+    if not chosen:
+        cache = Path.home() / PLAYWRIGHT_CACHE if home is None else Path(home) / PLAYWRIGHT_CACHE
+        found = sorted(str(version) for version in cache.glob("*") if (version / "package.json").is_file())
+        if len(found) != 1:
+            raise Refused("name playwright-core with --playwright or AIM_PLAYWRIGHT_CORE; %s holds %d: %s"
+                          % (cache, len(found), found))
+        chosen = found[0]
+    if not os.path.isabs(chosen):
+        raise Refused("not an absolute playwright-core directory: %s" % chosen)
+    try:
+        name = json.loads((Path(chosen) / "package.json").read_text()).get("name")
+    except (OSError, ValueError, AttributeError):
+        name = None
+    if name != "playwright-core":
+        raise Refused("not a playwright-core package: %s" % chosen)
     return chosen
 
 
@@ -183,9 +213,11 @@ def native_counts(step, evidence):
     return counts, bool(results) and not failed and closed
 
 
-def run_step(name, argv, root, out, judge):
+def run_step(name, argv, root, out, judge, playwright=None):
     log = out / (name + ".log")
     env = dict(os.environ, PYTHONPYCACHEPREFIX=str(out / "pyc" / name))
+    if playwright is not None:
+        env["AIM_PLAYWRIGHT_CORE"] = playwright
     started = now()
     with open(log, "wb") as handle:
         code = subprocess.run(argv, cwd=str(root), stdin=subprocess.DEVNULL, stdout=handle,
@@ -205,8 +237,11 @@ def write_summary(out, summary):
     return out / "summary.json"
 
 
-def check(root, out, chrome, python, node):
-    """Run every step serially and write summary.json; returns the summary."""
+def check(root, out, chrome, python, node, playwright=None):
+    """Run every step serially and write summary.json; returns the summary.
+
+    playwright is the playwright-core directory the WebKit modes load; without
+    it they find none and fail."""
     started = now()
     commit = preflight(root, out, chrome, python, node)
     out.mkdir(parents=True, exist_ok=True)
@@ -219,10 +254,11 @@ def check(root, out, chrome, python, node):
         evidence = out / "native" / step.name
         evidence.mkdir(parents=True)
         steps.append(run_step("native-" + step.name, [node, step.harness, chrome, str(evidence)] + list(step.flags),
-                              root, out, lambda text, step=step, evidence=evidence: native_counts(step, evidence)))
+                              root, out, lambda text, step=step, evidence=evidence: native_counts(step, evidence),
+                              playwright if step.harness == WEBKIT else None))
     after, changes = tree(root)
     unchanged = after == commit and not changes
-    summary = {"tool": TOOL, "commit": commit, "checkout": str(root), "chrome": chrome,
+    summary = {"tool": TOOL, "commit": commit, "checkout": str(root), "chrome": chrome, "playwright": playwright,
                "started_at": started, "finished_at": now(), "required": list(REQUIRED), "steps": steps,
                "tree_unchanged": unchanged, "tree_after": {"head": after, "changes": changes},
                "passed": unchanged and [s["name"] for s in steps] == list(REQUIRED) and all(s["passed"] for s in steps)}
@@ -259,12 +295,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Run every release check for this checkout's commit.")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--chrome")
+    parser.add_argument("--playwright")
     parser.add_argument("--python", default=PYTHON)
     parser.add_argument("--node", default=shutil.which("node"))
     args = parser.parse_args(argv)
     try:
         chrome = chrome_path(args.chrome)
-        summary = check(REPO, args.out, chrome, args.python, args.node)
+        summary = check(REPO, args.out, chrome, args.python, args.node, playwright_path(args.playwright))
     except Refused as refusal:
         print("refused: %s" % refusal, file=sys.stderr)
         # Recorded only where the run itself could have written, so a refusal never changes the checkout.

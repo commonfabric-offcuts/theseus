@@ -45,6 +45,7 @@ import { openMessageMenu, sayOn, copyText } from './message-menu.mjs';
 import { closeOnOutsideClick } from './dismiss.mjs';
 import { PipelinePage, PipelineRow, paintPipelineLine, pipelineHref, titleLine } from './pipeline.mjs';
 import { firstLine } from './pipeline-words.mjs';
+import { phoneCheck } from './phone-check.mjs';
 
 const $ = id => document.getElementById(id);
 const node = (tag, text, className) => {
@@ -1189,6 +1190,9 @@ async function initialize() {
   if (!token || token === '__AIM_SESSION_TOKEN__') throw Error('This page needs a session from the Theseus server.');
   api = new Api(token); bootstrap = await api.bootstrap();
   if (!bootstrap?.instance_id || !bootstrap.actor || bootstrap.error) throw Error('The instance and reader identity could not be established.');
+  // The phone check is a page of its own: no topic, no live updates (docs/device-evidence.md).
+  const asked = parseRoute(new URL(location.href));
+  if (asked.kind === 'phone-check') { await phoneCheck({ api, bootstrap, topicId: asked.id }); document.body.dataset.ready = 'true'; return; }
   shareLinksFrom(bootstrap.links?.origin);
   if (liveOffered(bootstrap) && !live) {
     live = new Live({ token });

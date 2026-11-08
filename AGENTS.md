@@ -2,6 +2,8 @@
 
 Read [docs/VISION.md](docs/VISION.md) first, and reread it at the start of every
 session. It is why we build Theseus the way we do; everything below serves it.
+What a person must experience, and the check that holds each part, is in
+[docs/experience-guidelines.md](docs/experience-guidelines.md).
 
 Theseus is a separate rewrite of AIM that the team builds while working inside it.
 

@@ -71,18 +71,24 @@ export class PipelinePage {
     return { ...first, items, groups };
   }
 
-  async load() {
-    const serial = ++this.serial;
+  // A load overtaken by a newer one (a live change arriving mid-read) settles when the newer one
+  // has painted, so whoever awaits it (an act, then its focus) sees the page as it now stands.
+  load() {
+    this.latest = this.loadOnce(++this.serial);
+    return this.latest;
+  }
+
+  async loadOnce(serial) {
     if (this.itemNumber !== null) {
       const answer = await this.read('pipeline_item', { workspace_id: this.workspace, number: this.itemNumber });
       if (answer?.error) throw Error(answer.error.message);
-      if (serial !== this.serial) return true;
+      if (serial !== this.serial) return this.latest;
       this.record = answer; this.paint(); return true;
     }
     const head = await this.readAll('now');
-    if (head.pipeline === null) { if (serial === this.serial) { this.answer = head; this.paint(); } return true; }
+    if (head.pipeline === null) { if (serial !== this.serial) return this.latest; this.answer = head; this.paint(); return true; }
     const [next, later, candidates, dropped, shipped] = await Promise.all(['next', 'later', 'candidates', 'dropped', 'shipped'].map(section => this.readAll(section)));
-    if (serial !== this.serial) return true;
+    if (serial !== this.serial) return this.latest;
     this.answer = { ...head, sections: { now: head.items, next: next.items, later: later.items, candidates: candidates.items, dropped: dropped.items }, groups: shipped.groups };
     this.paint();
     return true;

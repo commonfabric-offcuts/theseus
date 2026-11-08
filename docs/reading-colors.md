@@ -91,6 +91,9 @@ Run the focused check with `node tests/reader_persistence_native.mjs` followed
 by the Chrome for Testing executable, an absolute evidence directory, and
 `--colors`. All retained final checks pass; review and release remain Fable's.
 Mobile evidence uses emulated native touch in CFT, not a physical phone or Safari.
+The same check also runs in Safari's engine (`native-webkit-colors`), and the
+phone check records a real phone's reading colours; [device-evidence.md](device-evidence.md)
+says what each shows and where WebKit paints differently.
 
 ## Release review corrections
 

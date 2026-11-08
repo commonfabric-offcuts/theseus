@@ -16,8 +16,21 @@ tools/mutant.py --name drop-guard \
 - The command runs with the mutant in place and its own `PYTHONPYCACHEPREFIX`. It kills the mutant only by exiting non-zero and printing a line matching `--killed-by`. The default is a failed assertion: unittest's `FAIL: test_name` line, or `ERR_ASSERTION` from `node:assert`, which both node reporters print. A crash, an exit without such a line, or a test module that cannot load is not a kill: a mutant that breaks the syntax makes `unittest discover` print `FAILED (errors=1)` and `node --test` print `not ok`, with no assertion run.
 - The files are written back byte for byte, even when the run is interrupted, and the command runs again as a control with a fresh `PYTHONPYCACHEPREFIX`. It must pass.
 - Exit 0: killed, restored, control passed. Exit 1: the mutant survived or the control failed. `verdict.json`, `mutant.log` and `control.log` are in `--evidence` (default: a new temporary directory), with a copy of each original file.
+- Every mutated file must be in one git checkout (or, outside git, one folder); otherwise nothing changes (exit 2).
 
 Run it in a worktree that nobody else is editing, since restoring writes the files back as they were when it started.
+
+### What a reviewer gets
+
+A reviewer can check each kill against the exact revision it ran on, without trusting the author's description:
+
+- `verdict.json` records `revision`: the checkout's root, its `commit` and `dirty`, git's porcelain listing of uncommitted and untracked changes when the mutant ran (both `null` outside git). `replacements` lists each `OLD` and `NEW` in order, by path in that checkout, and `hashes` gives each file's sha256 as it was, as mutated, and as restored.
+- `mutant.patch` is the change as a unified diff.
+- `checkout/` is the tree the mutant ran in, kept until review: the recorded commit (by `git archive`), with the uncommitted changes and untracked files copied over, deleted files removed and the mutant applied. Ignored files are not in it. Running the same command there shows the kill again.
+- `tools/mutant.py --verify EVIDENCE` checks the evidence against its verdict, file by file: the copy of the original hashes as recorded, the recorded replacements turn it into the recorded mutant, and the kept checkout holds exactly that. Exit 0 when all hold, 1 when one does not. When the file was not committed as it was when mutated, the line says so and names the commit it differs from.
+- `tools/mutant.py --reviewed EVIDENCE` removes `checkout/` once the review is done and records `checkout_removed_at` in the verdict. The verdict, patch, logs and original copies stay.
+
+A run that reuses an evidence directory replaces its verdict and its checkout.
 
 ## Release check: `tools/release_check.py`
 
@@ -38,15 +51,15 @@ Then it runs, one at a time:
 
 1. Python units: `/usr/bin/python3 -m unittest discover -s tests -p 'test_*.py' -v` (`--python` to change).
 2. Node units: `node --test --test-reporter=tap tests/*.test.mjs` (`--node` to change).
-3. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties`, `sources`, `wakes` and `header` among them), `tests/reader_openings_native.mjs`, and the default and five modes of `tests/reader_native.mjs`. A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
+3. Every native mode, each in its own evidence directory: every mode of `tests/reader_persistence_native.mjs` (`notebook`, `duties`, `sources`, `wakes` and `header` among them), `tests/reader_openings_native.mjs`, the default and five modes of `tests/reader_native.mjs`, and the six modes of `tests/webkit_native.mjs` that run checks again in Safari's engine, the phone check page among them ([device-evidence.md](device-evidence.md)). A unit check reads the harnesses and fails when a mode or entry point is added without a step here.
 
 Every step runs with its own `PYTHONPYCACHEPREFIX` and log. A step passes only when it exits 0 and its own report agrees: unittest's `OK` with at least one test, TAP's `# fail 0` and `# cancelled 0` with at least one test, or a harness results file with at least one case, every case passed and the browser closed. One failing step does not stop the others, so one run shows everything; it does fail the run (exit 1).
 
-Chrome for Testing comes from `--chrome`, else `AIM_CHROME_FOR_TESTING`, else the one version under `~/Library/Caches/aim-chrome-for-testing/chrome/`. It refuses when there are none or several.
+Chrome for Testing comes from `--chrome`, else `AIM_CHROME_FOR_TESTING`, else the one version under `~/Library/Caches/aim-chrome-for-testing/chrome/`. It refuses when there are none or several. The WebKit modes load playwright-core from `--playwright`, else `AIM_PLAYWRIGHT_CORE`, else the one version under `~/Library/Caches/deno/npm/registry.npmjs.org/playwright-core/`; it refuses when there are none or several, or the directory is not playwright-core.
 
 `--out/summary.json` records the commit, every step's command, exit, counts and log, and whether the checkout was still at that commit and unchanged afterwards. `passed` is true only when every step passed and the checkout did not change. A refused run writes a summary with `refused` and `passed: false`, unless `--out` is the reason, so a refusal never changes the checkout.
 
-For development, `tools/native.py --out DIR STEP [CASE_FILTER]` runs one native step (`journal`, `live`, `colors`, `openings`, `reader-keyboard`, ...) and lists each failed case with its most common failure kinds.
+For development, `tools/native.py --out DIR STEP [CASE_FILTER]` runs one native step (`journal`, `live`, `colors`, `openings`, `reader-keyboard`, `webkit-device`, ...) and lists each failed case with its most common failure kinds. It takes `--playwright` as the release check does.
 
 ## Deploy: `tools/deploy.py`
 

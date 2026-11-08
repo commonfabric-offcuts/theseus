@@ -45,7 +45,10 @@ clear or migrate the Mac's unsent local writing.
 Verify TLS, identical public assets, matching instance/actor bootstrap and a
 scoped read through HTTPS. Never print the embedded session token or make a
 live test send. A successful Mac-side HTTPS check does not prove phone
-rendering or its current Tailscale connection.
+rendering or its current Tailscale connection. The phone check
+(`/?phone-check=<topic id>` on the phone, [device-evidence.md](device-evidence.md))
+does: it records the address, https, the tailnet name and the signed-in actor
+the phone saw, and posts them to the topic.
 
 To remove this forwarding endpoint only:
 

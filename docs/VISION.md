@@ -43,6 +43,44 @@ the work; a legible target and measurement against it are what make it land.
 - Skills and tools are owned like Notebook items: improved and evaluated
   where they live, and usable by any outcome.
 
+## Outcomes, topics and skills
+
+- **An endless outcome grows in increments.** Building Theseus never
+  finishes. Each increment is a check that goes green and then has to stay
+  green, and new increments are appended. Some increments are trends rather
+  than pass or fail, such as a topic opening faster as the data grows. An
+  endless outcome is healthy when every standing check is green and every
+  trend is heading the right way. There is one kind of outcome: whether it is
+  being built or being kept comes from its check results, not from a label.
+- **The outcome is the target; topics are the arrows.** The checks are the
+  rings painted on the target, and they show where each arrow landed. Each
+  topic is a shot at a particular ring, where the thinking, deciding and
+  making happen. The bow is the agents with their skills and tools, and
+  improving the bow is work with a target of its own. What should still be
+  true next month belongs to the outcome: its target, its checks, its Notebook
+  and its team. A conversation that ends once something is decided or made is
+  a topic.
+- **Arrows land.** Agents keep topics tidy: every topic ends, Done or parked,
+  with its reason on it, so the next one can be fired. Talk that never ends,
+  such as status and intake, goes in the outcome's own conversation, not in a
+  topic.
+- **A skill is a procedure, not an identity.** An agent doing a task loads a
+  skill and follows it the way a professional follows a manual for one job.
+  It does not become someone else: who is accountable, and who receives
+  messages, stays with the agent. A skill's text and code live in the code
+  repository, where they are versioned, reviewed and checked; the outcome
+  records which skills and tools it relies on and the checks that show they
+  work. A skill changes like code: when it changes, the checks of every
+  outcome that uses it run, so improving one cannot quietly break another
+  outcome's work.
+- **An agent may close an outcome whose checks all pass.** Closing means no
+  more active work, not removal. Its checks keep running, and the skills and
+  tools it owns stay in place for others to use.
+- **Checks run before a change merges, and again on every deploy.** A
+  regression caught before merging costs minutes; one caught after deploying
+  costs the people using Theseus. Speed measures also run at deploy, against
+  a copy of the real data, because that is where size shows.
+
 ## Turn friction into traction
 
 Friction is the backlog. When something in Theseus is awkward, slow,

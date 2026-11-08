@@ -30,6 +30,9 @@ if args[0] == "--test":
     sys.exit(bad)
 harness, chrome, evidence, flags = args[0], args[1], args[2], args[3:]
 name = os.path.basename(harness).replace("_native.mjs", "") + "".join(flags)
+# A WebKit mode loads playwright-core from AIM_PLAYWRIGHT_CORE; without it there are no results.
+if harness.endswith("webkit_native.mjs") and not os.environ.get("AIM_PLAYWRIGHT_CORE"):
+    fail = "no-results-" + name
 bad = fail == name
 if harness.endswith("reader_native.mjs"):
     results = [{"name": "case", "passed": not bad}]
@@ -95,10 +98,11 @@ class FakeCheckout(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def check(self, fail=""):
+    def check(self, fail="", playwright="/stub/playwright-core"):
         with mock.patch.dict(os.environ, {"STUB_FAIL": fail}), redirect_stdout(io.StringIO()):
+            os.environ.pop("AIM_PLAYWRIGHT_CORE", None)
             return release_check.check(self.root, self.out, "/x" + release_check.CHROME_SUFFIX,
-                                       self.python, self.node)
+                                       self.python, self.node, playwright)
 
 
 class ReleaseCheckRuns(FakeCheckout):
@@ -113,6 +117,16 @@ class ReleaseCheckRuns(FakeCheckout):
         self.assertEqual((python["counts"]["tests"], python["counts"]["skipped"]), (3, 1))
         # Each step gets its own bytecode cache, never the checkout's.
         self.assertTrue((self.out / "pyc").is_dir())
+
+    def test_the_webkit_modes_get_playwright_core_and_fail_without_it(self):
+        summary = self.check()
+        self.assertTrue(summary["passed"])
+        self.assertEqual(summary["playwright"], "/stub/playwright-core")
+        self.out = Path(self.tmp.name) / "out-no-playwright"
+        summary = self.check(playwright=None)
+        self.assertFalse(summary["passed"])
+        self.assertEqual([step["name"] for step in summary["steps"] if not step["passed"]],
+                         ["native-webkit-" + mode for mode in release_check.WEBKIT_MODES])
 
     def test_one_failing_native_mode_fails_the_run_and_the_summary_names_it(self):
         summary = self.check(fail="reader_persistence--colors")
@@ -219,14 +233,14 @@ class ReleaseCheckRefuses(FakeCheckout):
     def test_main_exits_two_on_refusal_and_records_why(self):
         (self.root / "untracked.py").write_text("")
         with mock.patch.object(release_check, "REPO", self.root), redirect_stderr(io.StringIO()), \
-                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX):
+                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), mock.patch.object(release_check, "playwright_path", return_value="/stub/playwright-core"):
             code = release_check.main(["--out", str(self.out), "--python", self.python, "--node", self.node])
         self.assertEqual(code, 2)
         self.assertIn("has changes", json.loads((self.out / "summary.json").read_text())["refused"])
 
     def main(self, out):
         with mock.patch.object(release_check, "REPO", self.root), redirect_stderr(io.StringIO()) as err, \
-                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX):
+                mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), mock.patch.object(release_check, "playwright_path", return_value="/stub/playwright-core"):
             try:
                 code = release_check.main(["--out", str(out), "--python", self.python, "--node", self.node])
             except Exception as error:  # a refusal is an answer, not a traceback
@@ -249,7 +263,7 @@ class ReleaseCheckRefuses(FakeCheckout):
         for fail, expected in (("reader--mutations", 1), ("", 0)):
             out = Path(self.tmp.name) / ("main-" + (fail or "pass"))
             with mock.patch.object(release_check, "REPO", self.root), mock.patch.dict(os.environ, {"STUB_FAIL": fail}), \
-                    mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), \
+                    mock.patch.object(release_check, "chrome_path", return_value="/x" + release_check.CHROME_SUFFIX), mock.patch.object(release_check, "playwright_path", return_value="/stub/playwright-core"), \
                     redirect_stdout(io.StringIO()):
                 code = release_check.main(["--out", str(out), "--python", self.python, "--node", self.node])
             self.assertEqual(code, expected, fail)
@@ -362,6 +376,44 @@ class Environment(unittest.TestCase):
                 release_check.chrome_path(str(chrome), environ={})
 
 
+class PlaywrightPath(unittest.TestCase):
+    """The WebKit modes load one playwright-core, named or found in its cache, and nothing else."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.home = Path(self.tmp.name)
+        self.cache = self.home / release_check.PLAYWRIGHT_CACHE
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def package(self, path, name="playwright-core"):
+        path.mkdir(parents=True)
+        (path / "package.json").write_text(json.dumps({"name": name}))
+        return str(path)
+
+    def test_named_then_environment_then_the_one_cached_version(self):
+        named = self.package(self.home / "named")
+        env = self.package(self.home / "env")
+        cached = self.package(self.cache / "1.63.0")
+        self.assertEqual(release_check.playwright_path(named, environ={"AIM_PLAYWRIGHT_CORE": env}, home=self.home), named)
+        self.assertEqual(release_check.playwright_path(None, environ={"AIM_PLAYWRIGHT_CORE": env}, home=self.home), env)
+        self.assertEqual(release_check.playwright_path(None, environ={}, home=self.home), cached)
+
+    def test_none_several_relative_or_another_package_is_refused(self):
+        with self.assertRaises(release_check.Refused):
+            release_check.playwright_path(None, environ={}, home=self.home)
+        self.package(self.cache / "1.62.0")
+        self.package(self.cache / "1.63.0")
+        with self.assertRaises(release_check.Refused):
+            release_check.playwright_path(None, environ={}, home=self.home)
+        with self.assertRaises(release_check.Refused):
+            release_check.playwright_path("relative/playwright-core", environ={}, home=self.home)
+        other = self.package(self.home / "other", name="playwright")
+        with self.assertRaises(release_check.Refused):
+            release_check.playwright_path(other, environ={}, home=self.home)
+
+
 class NativeCoverage(unittest.TestCase):
     """The release check runs every mode of every native entry point in the repository."""
 
@@ -406,6 +458,15 @@ class NativeCoverage(unittest.TestCase):
         steps = {step.name: step for step in release_check.NATIVE_STEPS}
         self.assertEqual((steps["reader-finished"].harness, steps["reader-finished"].flags), (release_check.READER, ("--finished",)))
         self.assertIn("native-reader-finished", release_check.REQUIRED)
+
+    def test_the_webkit_modes_are_steps(self):
+        # Safari's engine runs the reading colours, whispers, Notebook pages, the rail, the pipeline
+        # page (each with its phone layouts) and the phone check page.
+        steps = {step.name: step for step in release_check.NATIVE_STEPS}
+        self.assertEqual(release_check.WEBKIT_MODES, ("colors", "whispers", "notebook", "rail", "pipeline", "device"))
+        for mode in release_check.WEBKIT_MODES:
+            self.assertEqual((steps["webkit-" + mode].harness, steps["webkit-" + mode].flags), (release_check.WEBKIT, ("--" + mode,)))
+            self.assertIn("native-webkit-" + mode, release_check.REQUIRED)
 
     def test_every_harness_mode_is_a_step(self):
         steps = [(step.harness, tuple(step.flags)) for step in release_check.NATIVE_STEPS]

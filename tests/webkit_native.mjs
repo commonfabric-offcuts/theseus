@@ -1,0 +1,280 @@
+// Checks written for Chrome for Testing, run again in Safari's engine
+// (Playwright's WebKit), against the same isolated fixture. The page object is
+// the persistence harness's, with Playwright's WebKit input in place of CDP:
+// mouse, touch tap, keyboard, text input, screenshots, colour scheme and
+// viewport. A check that reaches for anything else (request interception,
+// touch drags, CDP domains) fails by name here; each mode runs every check of
+// its module except those skipped below with their reason. docs/device-evidence.md
+// says what each mode covers and what only a real phone can show.
+//
+// Usage: node tests/webkit_native.mjs <ignored chrome path> <evidence dir> --colors|--whispers|--notebook|--rail|--pipeline|--device [case filter]
+// playwright-core comes from AIM_PLAYWRIGHT_CORE (tools/release_check.py sets it).
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
+import { createRequire } from 'node:module';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readingColorsCheck } from './reader_colors_native.mjs';
+import { whispersChecks } from './whisper_native.mjs';
+import { notebookChecks } from './notebook_pages_native.mjs';
+import { pipelineChecks } from './pipeline_native.mjs';
+import { railChecks } from './outcome_rail_native.mjs';
+import { deviceChecks } from './device_native.mjs';
+
+const root = fileURLToPath(new URL('..', import.meta.url));
+const [chromePath, evidencePath, mode, caseFilter] = process.argv.slice(2);
+assert.ok(['--colors', '--whispers', '--notebook', '--rail', '--pipeline', '--device'].includes(mode), `a WebKit mode, not ${mode}`);
+assert.ok(evidencePath && path.isAbsolute(evidencePath), 'an absolute evidence directory');
+const playwrightPath = process.env.AIM_PLAYWRIGHT_CORE;
+assert.ok(playwrightPath && path.isAbsolute(playwrightPath), 'AIM_PLAYWRIGHT_CORE names an absolute playwright-core directory');
+const { webkit } = createRequire(import.meta.url)(playwrightPath);
+
+// Each mode runs every check its module offers, as the Chrome mode of the same
+// name does, against a fixture of its own, except the checks named here with
+// the reason they cannot run in this harness. A name here that its module no
+// longer offers fails the run, so a renamed check cannot silently leave WebKit.
+const HELD = 'holds a read open with the Chrome harness\'s request interception (intercept), which this harness does not offer';
+const SKIPPED = {
+  '--rail': {
+    'rail the outcome\'s conversation row stands in its place while its read is out, so on a phone the topics and the page below do not move when it lands': HELD,
+    'rail an outcome with no conversation never draws its row: on a phone nothing stands there while the conversation\'s read is out, nor after it lands, and nothing moves': HELD,
+    'rail a write elsewhere shows with no reload, and an unconfirmed state change says where the topic stands': HELD,
+    'rail waited on only in this outcome, a topic page never lights ← Outcomes as it loads; with a wait elsewhere too it counts one other': 'reads Chrome\'s network event stream (Network.requestWillBeSent) to know when a read was sent',
+    'rail the opening page follows a save made elsewhere while it holds no unsaved writing, and keeps unsaved writing': 'records response bodies with the Chrome harness\'s recordResponses',
+  },
+}[mode] ?? {};
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function until(probe, description, timeout = 8000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) { const value = await probe(); if (value) return value; await sleep(25); }
+  throw Error(`Timed out: ${description}`);
+}
+
+const fixture = spawn('/usr/bin/python3', ['tests/fixtures/ui_http.py', '--live', ...(mode === '--colors' ? ['--agent-colors'] : []), '--freshness', '--images', '--media'], { cwd: root });
+let fixtureSerial = 0, fixtureErrors = '';
+const requests = new Map();
+fixture.stderr.on('data', data => { fixtureErrors += data; });
+createInterface({ input: fixture.stdout }).on('line', line => {
+  const result = JSON.parse(line), request = requests.get(result.id); requests.delete(result.id);
+  if (result.failure) request.reject(Error(result.failure)); else request.resolve(result.answer);
+});
+const fixtureExit = new Promise(resolve => fixture.once('exit', code => {
+  for (const request of requests.values()) request.reject(Error(`Fixture exited ${code}: ${fixtureErrors}`));
+  resolve(code);
+}));
+const control = data => new Promise((resolve, reject) => {
+  const id = ++fixtureSerial; requests.set(id, { resolve, reject });
+  fixture.stdin.write(JSON.stringify({ ...data, id }) + '\n');
+});
+
+const results = [], observations = [], hashes = {};
+for (const filename of ['tests/webkit_native.mjs', 'tests/reader_colors_native.mjs', 'tests/whisper_native.mjs', 'tests/notebook_pages_native.mjs',
+  'tests/pipeline_native.mjs', 'tests/outcome_rail_native.mjs', 'tests/device_native.mjs', 'tests/png-bands.mjs', 'tests/fixtures/ui_http.py',
+  'web/index.html', 'web/aim.css', 'web/app.mjs', 'web/reader.mjs', 'web/phone-check.mjs']) {
+  const source = await readFile(path.join(root, filename));
+  hashes[filename] = createHash('sha256').update(source).digest('hex');
+  await mkdir(path.dirname(path.join(evidencePath, 'source', filename)), { recursive: true });
+  await writeFile(path.join(evidencePath, 'source', filename), source);
+}
+
+let browser, browserClosed = false, facts, fixtureExitCode, version = null;
+const offered = new Set();
+const qualifications = new Set();
+try {
+  facts = await control({ method: 'ready' });
+  browser = await webkit.launch({ headless: true });
+  version = browser.version();
+  // A WebKit context has touch, and with it no hover and a coarse pointer, from its start. The device
+  // mode runs as a phone does; the others run as a desktop until a check turns touch on, and then
+  // the page moves to a touch context at the same address, size and colour scheme.
+  const contexts = {};
+  const contextWith = async hasTouch => contexts[hasTouch] ??= await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, hasTouch });
+  const page = async (suffix, hint, connected = false, setup = {}) => {
+    assert.equal(connected, true, 'WebKit runs connected pages only');
+    let touch = mode === '--device', scheme = null;
+    const initScripts = [];
+    const errors = [], calls = [], events = [];
+    const attach = opened => {
+      opened.on('pageerror', error => errors.push({ message: error.message, stack: error.stack }));
+      opened.on('request', request => {
+        if (!request.url().startsWith(facts.origin + '/api/')) return;
+        let payload; try { payload = JSON.parse(request.postData() ?? 'null'); } catch { payload = null; }
+        calls.push({ url: request.url(), payload, headers: request.headers(), at: Date.now() });
+      });
+      return opened;
+    };
+    let pw = attach(await (await contextWith(touch)).newPage());
+    const evaluate = expression => pw.evaluate(`(async()=>(${expression}))()`);
+    let touchAt = null;
+    // The CDP calls the listed checks make, each done with WebKit's own input.
+    const send = async (method, params = {}) => {
+      if (method === 'Input.dispatchMouseEvent') {
+        const { type, x, y, button = 'left', clickCount = 1 } = params;
+        if (type === 'mouseWheel') { await pw.mouse.move(x, y); await pw.mouse.wheel(params.deltaX ?? 0, params.deltaY ?? 0); return {}; }
+        await pw.mouse.move(x, y);
+        if (type === 'mousePressed') await pw.mouse.down({ button, clickCount });
+        else if (type === 'mouseReleased') await pw.mouse.up({ button, clickCount });
+        else assert.equal(type, 'mouseMoved', `mouse event ${type}`);
+        return {};
+      }
+      if (method === 'Input.dispatchTouchEvent') {
+        // A tap: WebKit's touchscreen taps where the touch began. A drag has no counterpart.
+        if (params.type === 'touchStart') { assert.equal(params.touchPoints.length, 1, 'one finger'); touchAt = params.touchPoints[0]; return {}; }
+        if (params.type === 'touchEnd') { assert.ok(touchAt, 'a touch began'); await pw.touchscreen.tap(touchAt.x, touchAt.y); touchAt = null; return {}; }
+        throw Error(`Input.dispatchTouchEvent ${params.type} has no WebKit counterpart in this harness`);
+      }
+      if (method === 'Input.insertText') { await pw.keyboard.insertText(params.text); return {}; }
+      if (method === 'Page.captureScreenshot') {
+        assert.equal(params.format ?? 'png', 'png');
+        // WebKit paints a new selection on a later frame than the event that made it; Chrome's capture
+        // waits for that frame itself. Two animation frames is the frame after the one in flight.
+        await pw.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
+        return { data: (await pw.screenshot({ type: 'png' })).toString('base64') };
+      }
+      if (method === 'Emulation.setEmulatedMedia') {
+        for (const feature of params.features ?? []) {
+          assert.equal(feature.name, 'prefers-color-scheme', `media feature ${feature.name}`);
+          scheme = feature.value || null;
+          await pw.emulateMedia({ colorScheme: scheme });
+        }
+        return {};
+      }
+      if (method === 'Emulation.setDeviceMetricsOverride') {
+        await pw.setViewportSize({ width: params.width, height: params.height });
+        if ((params.deviceScaleFactor ?? 1) !== 1) qualifications.add(`device scale ${params.deviceScaleFactor} asked; WebKit keeps the context's 1 (layout is in CSS pixels)`);
+        if (params.mobile) qualifications.add('mobile asked; WebKit runs a desktop window at the phone width with touch, not iOS Safari');
+        return {};
+      }
+      if (method === 'Emulation.setTouchEmulationEnabled') {
+        assert.equal(params.enabled, true, 'touch is turned on, never off');
+        if (touch) return {};
+        const at = pw.url(), size = pw.viewportSize();
+        const moved = attach(await (await contextWith(true)).newPage());
+        await moved.setViewportSize(size); await moved.emulateMedia({ colorScheme: scheme });
+        for (const script of initScripts) await moved.addInitScript(script);
+        // Before its first navigation the page is blank and simply opens in the touch context.
+        if (at !== 'about:blank') {
+          await moved.goto(at);
+          await until(() => moved.evaluate('document.body?.dataset.ready === "true"'), 'the page started again with touch');
+        }
+        await pw.close(); pw = moved; p.pw = moved; touch = true;
+        qualifications.add('turning touch on loads the page again in a touch context (WebKit cannot turn touch on for a page already open)');
+        return {};
+      }
+      if (method === 'Page.addScriptToEvaluateOnNewDocument') { initScripts.push(params.source); await pw.addInitScript(params.source); return { identifier: String(initScripts.length) }; }
+      if (method === 'Page.reload') { await pw.reload(); return {}; }
+      if (method === 'Page.navigate') { await pw.goto(params.url); return {}; }
+      if (method === 'Page.bringToFront') { await pw.bringToFront(); return {}; }
+      throw Error(`${method} has no WebKit counterpart in this harness`);
+    };
+    const box = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)return null;const b=e.getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height,viewportWidth:innerWidth,viewportHeight:innerHeight}})()`);
+    const still = selector => { let last; return until(async () => {
+      const now = await box(selector), same = Boolean(last) && ['x', 'y', 'width', 'height'].every(key => now?.[key] === last[key]);
+      last = now; return !now || same;
+    }, `${selector} holds its place`); };
+    // As in the Chrome harness: a pointer action lands on its target or fails by naming what covers it.
+    const point = async (selector, kind = 'click', { covered = false } = {}) => {
+      await still(selector);
+      const bounds = await box(selector); assert.ok(bounds && bounds.width > 0 && bounds.height > 0, `visible target ${selector}`);
+      const x = bounds.x + Math.min(12, bounds.width / 2), y = bounds.y + Math.min(12, bounds.height / 2);
+      assert.ok(x >= 0 && y >= 0 && x < bounds.viewportWidth && y < bounds.viewportHeight, `target ${selector} is inside the viewport before a native pointer action`);
+      const hit = await evaluate(`(target => { const hit = document.elementFromPoint(${x}, ${y}); return target?.contains(hit) ? '' : hit ? hit.tagName.toLowerCase() + (hit.id ? '#' + hit.id : '') : 'nothing'; })(document.querySelector(${JSON.stringify(selector)}))`);
+      if (covered) assert.notEqual(hit, '', `${selector} was meant to be covered at the point pressed`);
+      else assert.equal(hit, '', `${selector} is covered by ${hit} where it would be pressed`);
+      await pw.mouse.move(x, y);
+      if (kind === 'click') { await pw.mouse.down(); await pw.mouse.up(); }
+    };
+    const key = async (name, modifiers = 0) => {
+      const held = [[1, 'Alt'], [2, 'Control'], [4, 'Meta'], [8, 'Shift']].filter(([bit]) => modifiers & bit).map(([, word]) => word);
+      // Safari's plain Tab reaches only fields unless "Press Tab to highlight each item" is on;
+      // Option-Tab is its key for every item, so a check's Tab is pressed as that.
+      if (name === 'Tab' && !held.includes('Alt')) { held.unshift('Alt'); qualifications.add('Tab is pressed as Option-Tab, Safari\'s key for every item; plain Tab skips buttons and cards in Safari by default'); }
+      await pw.keyboard.press([...held, name].join('+'));
+    };
+    const close = () => pw.close();
+    // WebKit paints a page's ::selection colour translucently over what is beneath, so the band is
+    // looked for in the colour it painted: the commonest colour down the selected line, which must be
+    // neither the computed colour's absence (the hover or page beneath) nor anything but a darker or
+    // lighter mix of it. The vertical extent the check compares is then measured as in Chrome.
+    const selectionPaint = (pixels, x, rect, computed, beneath) => {
+      const counts = new Map();
+      for (let y = Math.ceil(rect.y); y < Math.floor(rect.y + rect.height); y++) { const c = pixels.pixel(Math.floor(x), y).slice(0, 3).join(','); counts.set(c, (counts.get(c) ?? 0) + 1); }
+      const [painted] = [...counts].sort((a, b) => b[1] - a[1])[0] ?? [''];
+      const color = painted.split(',').map(Number);
+      assert.ok(color.length === 3 && color.join() !== beneath.slice(0, 3).join(), `WebKit painted a selection over ${beneath} (found ${painted})`);
+      // Same hue order as the computed colour: a mix of it, not some other colour.
+      const order = c => [0, 1, 2].sort((i, j) => c[j] - c[i]).join();
+      assert.equal(order(color), order(computed), `WebKit's selection paint ${painted} is a mix of the computed ${computed}`);
+      qualifications.add(`WebKit paints ::selection translucently: computed ${computed.join(',')}, painted ${painted}; the band is found in the painted colour`);
+      qualifications.add('WebKit paints a selection over the glyph box on its first line and from the line top to the glyph bottom after; the hover is held to cover it, not to match it');
+      return color;
+    };
+    const p = { send, evaluate, close, box, point, key, calls, errors, events, held: [], network: [], responses: [], pw, selectionPaint, selectionWithinHover: true,
+      open: async index => {
+        for (let more = 0; more < 20 && !await evaluate(`Boolean(document.querySelector('#messages [data-id="${facts.sources[index].id}"]'))`); ++more) {
+          const count = await evaluate('document.querySelectorAll("#messages [data-id]").length');
+          const target = await evaluate(`document.querySelector('#more-messages').hidden && document.querySelector('#messages .new-line-older') ? '#messages .new-line-older' : '#more-messages'`);
+          assert.equal(await evaluate(`document.querySelector(${JSON.stringify(target)}).hidden`), false, 'source exists in remaining older history');
+          await evaluate(`document.querySelector(${JSON.stringify(target)}).scrollIntoView({block:"center"})`);
+          await point(target);
+          await until(() => evaluate(`document.querySelectorAll('#messages [data-id]').length > ${count}` +
+            (target === '#more-messages' ? '' : ` && !document.querySelector('#messages .new-line-older')`)), 'older history loaded');
+        }
+        await evaluate(`document.querySelector('#messages [data-id="${facts.sources[index].id}"]').scrollIntoView({block:'center'})`);
+        await point(`#messages [data-id="${facts.sources[index].id}"]`);
+        await until(() => evaluate(`document.querySelector('#reader').open && document.querySelector('#source-body').textContent.startsWith('Source ${index} ')`), 'selected full source');
+        await until(() => evaluate("document.getAnimations().every(animation=>animation.playState!=='running')"), 'settled reader');
+      },
+    };
+    await setup.beforeNavigate?.(p);
+    await pw.goto(setup.url ?? facts.origin + '/?topic=t1');
+    await until(() => evaluate('document.body?.dataset.ready === "true" || Boolean(document.querySelector("#app-status") && !document.querySelector("#app-status").hidden)'), 'application bootstrap');
+    if (!setup.allowStartupError && await evaluate('document.body.dataset.ready') !== 'true') assert.fail(await evaluate('document.querySelector("#app-status")?.textContent ?? "the page did not start"'));
+    return p;
+  };
+  const check = async (name, action) => {
+    offered.add(name);
+    if (name in SKIPPED) return;
+    if (caseFilter && !new RegExp(caseFilter).test(name)) return;
+    const started = Date.now();
+    try { await action(); results.push({ name, passed: true, engine: 'webkit', ms: Date.now() - started }); }
+    catch (error) { results.push({ name, passed: false, engine: 'webkit', error: error.stack, ms: Date.now() - started }); }
+    finally { for (const key of Object.keys(contexts)) { await contexts[key].close(); delete contexts[key]; } }
+    process.stdout.write(JSON.stringify(results.at(-1)) + '\n');
+  };
+  const view = async (name, args) => (await fetch(facts.origin + '/api/view', { method: 'POST', headers: {
+    Authorization: `Bearer ${facts.token}`, Origin: facts.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ name, args }) })).json();
+  const field = p => p.evaluate('document.querySelector("#writing-body").value');
+  const replace = async (p, text) => {
+    await p.point('#writing-body'); await p.key('a', 4);
+    assert.equal(await p.evaluate("document.querySelector('#writing-body').selectionEnd-document.querySelector('#writing-body').selectionStart"), (await field(p)).length, 'native select-all instrument');
+    await p.send('Input.insertText', { text }); assert.equal(await field(p), text);
+  };
+  const shot = async (p, name) => writeFile(path.join(evidencePath, 'webkit-' + name + '.png'), await p.pw.screenshot({ type: 'png' }));
+  if (mode === '--colors') {
+    await readingColorsCheck({ check, page, until, facts, view, control, field, shot, observations });
+  } else if (mode === '--whispers') {
+    await whispersChecks({ check, page, until, facts, view, control, replace, shot });
+  } else if (mode === '--notebook') {
+    await notebookChecks({ check, page, until, control, view, facts, shot });
+  } else if (mode === '--pipeline') {
+    await pipelineChecks({ check, page, until, control, view, facts, shot });
+  } else if (mode === '--rail') {
+    await railChecks({ check, page, until, control, view, facts, shot });
+  } else {
+    await deviceChecks({ check, page, until, control, view, facts, shot, observations });
+  }
+  for (const name of Object.keys(SKIPPED)) if (!offered.has(name)) results.push({ name, passed: false, engine: 'webkit', error: 'skipped for WebKit but no module offers this check any more' });
+} finally {
+  if (browser) { await browser.close(); browserClosed = true; }
+  fixture.stdin.end();
+  fixtureExitCode = await fixtureExit;
+  await writeFile(path.join(evidencePath, 'native.json'), JSON.stringify({ mode, engine: 'webkit', webkitVersion: version, chromeArgumentIgnored: chromePath ?? null,
+    qualifications: [...qualifications], skipped: SKIPPED, hashes, results, observations, fixtureExitCode, fixtureErrors, browserClosed }, null, 2));
+  assert.equal(fixtureExitCode, 0, fixtureErrors);
+}
+assert.ok(results.length && results.every(result => result.passed), 'see native.json for exact failing assertions');
