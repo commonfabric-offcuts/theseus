@@ -25,6 +25,7 @@ from unittest import mock
 
 from aim_next import Store, initialize
 from aim_next import broker_routes, codex_host
+from aim_next.health import FAILING_AFTER, WHY
 from aim_next.profile import write_profile
 
 
@@ -1029,6 +1030,39 @@ class ResumeStatusCase(HostCase):
         runner = self.runner()
         self.assertEqual(runner.event("host_resume", thread=self.thread)["status"], "active")
         self.stopped_cleanly(runner)
+
+
+class ClosedThreadCase(HostCase):
+    """Codex closes the thread mid-turn (thread/closed) with no turn/completed, and will not resume it
+    again. The runner forgets the thread without ending the turn, so Core still lists the turn as
+    open; every later claim of the same run fails before it reaches the thread. None came from the
+    turn, so each is an attempt of its own, and the agent is red and told once."""
+    turns = [{"hold": "close"}]
+    reason = "resume_failed"
+
+    def test_claims_that_cannot_reach_a_thread_codex_closed_mid_turn_are_red_while_the_turn_stays_open(self):
+        runner = self.runner()
+        self.open_topic("First request")
+        runner.event("host_dispatch", outcome="handed", mode="start")
+        for number in range(FAILING_AFTER + 2):
+            self.post("Follow-up %d" % number)
+            self.assertEqual(runner.event("host_dispatch", outcome="unavailable")["reason"], self.reason)
+        self.assertEqual(self.sql("SELECT count(DISTINCT runner_token) FROM wake_attempts"), [(1,)], "one run of the runner")
+        self.assertEqual([row["final_status"] for row in self.turns_rows()], [None], "Core still lists the turn as open")
+        self.assertEqual(self.store.view("lead", "health_light", {})["red"], ["failing:" + AGENT])
+        self.assertEqual(self.sql("SELECT failed_wakes,failed_outcome,failed_reason FROM wake_facts WHERE recipient_id=?", (AGENT,)),
+                         [(FAILING_AFTER + 2, "unavailable", self.reason)])
+        notices = [row[0] for row in self.sql("SELECT body FROM messages WHERE author_id='theseus'")]
+        self.assertEqual(len(notices), 1, notices)
+        self.assertIn("Why: %s." % WHY[self.reason], notices[0])
+        self.stopped_cleanly(runner)
+
+
+class UnloadedThreadCase(ClosedThreadCase):
+    """The same, with the thread's status changed to notLoaded, and Codex resuming it with a sandbox
+    wider than asked, which the host never uses."""
+    turns = [{"hold": "unload", "resume": "widened"}]
+    reason = "settings_not_applied"
 
 
 class ProvisionCase(HostCase):

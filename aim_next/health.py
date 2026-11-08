@@ -4,8 +4,8 @@ from __future__ import annotations
 
 The unit is an attempt to reach an agent: one claim the runner settles
 itself, or one hosted turn with every hand it took (the start and each steer
-added to it) and every claim the same run settled without a hand while it ran
-(`_running_turn`), settled once, when Core records the turn's end. Each attempt
+added to it) and every claim of the same run that came from it while it ran
+(FROM_TURN, `_running_turn`), settled once, when Core records the turn's end. Each attempt
 comes to one fact (`claim_attempt`, `turn_attempt`): it got through, or it
 did not, with why; and one that got through with work the agent then did not
 act on was left unanswered. A claim gets through when its notice reached the
@@ -60,6 +60,21 @@ from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 # Attempts that got through: a notice in the agent's chat, an earlier one
 # leading there, or a hosted turn that completed or the agent acted in.
 THROUGH = ("accepted", "queued", "completed")
+# A claim settled without a hand, as (outcome, the runner's code), that came from a hosted turn
+# still running, or from the end of the Codex process running it, so it joins that turn
+# (`_running_turn`): Codex said the turn cannot take more work (a compact or review turn) or
+# refused the steer; the process exited, or answered in a way Theseus does not understand and was
+# ended, and either way its turns end lost; or the claim expired, a steer Codex never answered.
+# Every other claim never reached the turn (Codex would not resume or load the thread, or start
+# a turn, or could not be started, or a notice went to the agent's chat), so it is an attempt of
+# its own, though Core may still list a turn the runner no longer reaches as running.
+FROM_TURN = frozenset({("busy", "not_steerable"), ("error", "steer_failed"), ("unavailable", "child_exited"),
+                       ("error", "protocol_error"), ("expired", "expired")})
+# What the step can tell of FROM_TURN from the outcomes it kept, which never kept the runner's
+# code: only a running turn's refusal settles a hosted claim busy, and an expired claim is a steer
+# Codex never answered. The rest (error, unavailable) it cannot tell from a claim that never
+# reached the thread, so each is an attempt of its own.
+KEPT_FROM_TURN = ("busy", "expired")
 # Attempts in a row that did not get through before the page says the agent cannot be woken.
 FAILING_AFTER = 3
 AGENT_LIMIT = 100
@@ -105,8 +120,9 @@ def _health_backfill(db):
     """Work the facts out once from the settlements already kept, by the same rule (`settled`).
 
     The attempts are every claim the runner settled itself and every hosted
-    turn that ended, in the order they settled, less each claim that joined a
-    turn running when it settled (`_running_turn`). A turn got through if it
+    turn that ended, in the order they settled, less each claim that came from
+    a turn running when it settled (`_running_turn`), as far as its outcome
+    tells (KEPT_FROM_TURN). A turn got through if it
     completed or the agent acted after its wake began; the only acts whose
     time Core kept before this step are the messages the agent wrote, so those
     are the acts that count here. Why a claim failed was never recorded, so it
@@ -122,14 +138,15 @@ def _health_backfill(db):
                "FROM hosted_turns h JOIN wake_attempts a ON a.id=h.attempt_id WHERE h.final_status IS NULL "
                "GROUP BY h.thread_id,h.turn_id,h.recipient_id")
     attempts = {}
-    # A claim that settled while a turn ran that the same run of the runner had handed work to
-    # joined that turn (`_running_turn`): the turn's end settles it. A row a steer added after its
-    # turn ended finished when it was handed, so it was never a turn running.
+    # A claim that came from a turn running when it settled, one the same run of the runner had
+    # handed work to, joined that turn (`_running_turn`): the turn's end settles it. Only its
+    # outcome was kept, so that is what tells (KEPT_FROM_TURN). A row a steer added after its turn
+    # ended finished when it was handed, so it was never a turn running.
     for recipient, began, ended, outcome in db.execute(
             "SELECT a.recipient_id,a.started_ms,r.finished_ms,r.outcome FROM wake_attempts a JOIN wake_results r ON r.attempt_id=a.id "
-            "WHERE r.outcome<>'handed' AND NOT EXISTS (SELECT 1 FROM hosted_turns h JOIN wake_attempts b ON b.id=h.attempt_id "
+            "WHERE r.outcome<>'handed' AND NOT (r.outcome IN (%s) AND EXISTS (SELECT 1 FROM hosted_turns h JOIN wake_attempts b ON b.id=h.attempt_id "
             "WHERE h.recipient_id=a.recipient_id AND b.runner_token=a.runner_token AND h.handed_ms<=r.finished_ms "
-            "AND (h.final_status IS NULL OR h.finished_ms>r.finished_ms))").fetchall():
+            "AND (h.final_status IS NULL OR h.finished_ms>r.finished_ms)))" % ",".join("'%s'" % kept for kept in KEPT_FROM_TURN)).fetchall():
         # A claim found expired is its own why; the runner's code for any other was never kept.
         attempts.setdefault(recipient, []).append(claim_attempt(outcome, "expired" if outcome == "expired" else None, began, ended, False))
     for recipient, began, handed, ended, status, code in db.execute(
@@ -197,6 +214,16 @@ WHY = {
     "steer_failed": "Codex refused to add the work to its running turn",
     "start_failed": "Codex refused to start a turn",
     "protocol_error": "Codex answered in a way Theseus does not understand",
+    "resume_failed": "Codex would not open its thread again",
+    "settings_not_applied": "Codex opened its thread with settings other than the ones Theseus sent, so it was not used",
+    "spawn_failed": "the Codex process that hosts its turns could not be started",
+    "stopping": "the agent runner was stopping",
+    "stalled": "the Codex process that hosts its turns stopped answering, so it was ended",
+    "broken": "Codex answered in a way Theseus does not understand, so its process was ended",
+    "auth_missing": "Codex is not signed in",
+    "incompatible": "the Codex app-server is not one Theseus can use",
+    "output_closed": "the Codex process that hosts its turns stopped sending output, so it was ended",
+    "unowned": "the agent runner lost its role while it started Codex",
 }
 UNRECORDED_WHY = "Theseus did not record why: these failures began before it did"
 # Why a hosted wake did not get through, from how its turn ended; Codex's own
@@ -409,29 +436,24 @@ class Health:
 
     def _claim_settled(self, db, attempt_id, outcome, now, reason=None, work=False):
         """A claim the runner settled itself, or one found expired: one attempt (`claim_attempt`),
-        unless it joins a hosted turn still running (`_running_turn`). Then it was traffic to a turn
-        already reaching the agent, so the turn's end decides it: a claim that failed adds nothing,
-        and a notice accepted with work waiting gave the turn work to answer."""
+        unless it came from a hosted turn still running (`_running_turn`). Then it was traffic to a
+        turn already reaching the agent, so it adds nothing, and the turn's end decides it."""
         recipient, began, runner = db.execute("SELECT recipient_id,started_ms,runner_token FROM wake_attempts WHERE id=?",
                                               (attempt_id,)).fetchone()
-        turn = self._running_turn(db, recipient, runner)
-        if turn is None:
+        if (outcome, reason) not in FROM_TURN or not self._running_turn(db, recipient, runner):
             self._attempt_settled(db, recipient, claim_attempt(outcome, reason, began, now, work))
-        elif outcome == "accepted" and work:
-            db.execute("UPDATE wake_turns SET carried=1 WHERE thread_id=? AND turn_id=?", tuple(turn))
 
     @staticmethod
     def _running_turn(db, recipient, runner):
-        """The hosted turn a claim of runner's for recipient joins: one still running that the same run
-        of the runner handed work to. Its claims while the turn runs are messages steered into it, or
-        refused by it, or lost with its Codex process, all one attempt with it. A claim of another
-        run joins nothing: a runner's Codex processes end with it, so the next one reaches the agent
-        only through a process of its own, and its first claim ends the turns the last one left;
-        one that cannot is an attempt that did not get through, however long the old turn stays open."""
+        """Whether a hosted turn of recipient's still runs that the same run of the runner handed work
+        to: the turn a claim of runner's that came from a running turn (FROM_TURN) came from. A
+        claim of another run joins nothing: a runner's Codex processes end with it, so the next one
+        reaches the agent only through a process of its own, and its first claim to reach the
+        thread ends the turns the last one left."""
         return db.execute(
-            "SELECT t.thread_id,t.turn_id FROM wake_turns t WHERE t.recipient_id=? AND EXISTS (SELECT 1 FROM hosted_turns h "
+            "SELECT EXISTS (SELECT 1 FROM wake_turns t WHERE t.recipient_id=? AND EXISTS (SELECT 1 FROM hosted_turns h "
             "INDEXED BY hosted_turns_turn JOIN wake_attempts a ON a.id=h.attempt_id WHERE h.thread_id=t.thread_id AND h.turn_id=t.turn_id "
-            "AND a.runner_token=?) ORDER BY t.began_ms DESC,t.turn_id DESC LIMIT 1", (recipient, runner)).fetchone()
+            "AND a.runner_token=?))", (recipient, runner)).fetchone()[0]
 
     def _turn_handed(self, db, attempt, turn, now, carried):
         """A hand Core recorded while its turn runs: the turn's attempt began with its first claim,

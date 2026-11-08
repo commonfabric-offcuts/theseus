@@ -105,25 +105,33 @@ was steered into it. However many messages were steered into a turn, it is one
 attempt, settled once, when Core records its end (`end_hosted_turn`); a hand
 to a turn that had already ended joins an attempt already settled.
 
-A claim that settles without a hand while a turn of its agent runs, one that
-the same run of the runner handed work to, joins that turn too
-(`_running_turn`): the running turn could not take its message (Codex said it
-cannot take more work during a compact or review turn, or refused the steer),
-its Codex process exited with the steer in flight, or the claim expired. It is
-traffic to a turn already reaching the agent, so the turn's end decides it,
-and one Codex fault is one attempt: a process that exits with a steer in
-flight ends its turn `lost`, and that is the one failure. A notice accepted
-with work waiting gives the turn work to answer. A claim of another run joins
-nothing: a runner's Codex processes end with it, so the next runner reaches
-the agent only through a process of its own, and its first claim to reach the
-thread ends the turns the last one left (`lost`); a claim of the new runner
-that cannot reach it is an attempt that did not get through, however long the
-old turn stays open. Each attempt comes to one fact (`claim_attempt` and
+A claim that settles without a hand joins a turn of its agent that is still
+running, one that the same run of the runner handed work to, when it came
+from that turn (`FROM_TURN`, `_running_turn`): Codex said the turn cannot take
+more work during a compact or review turn, or refused the steer; the Codex
+process running it exited with the steer in flight, or answered in a way
+Theseus does not understand and was ended, and either way the process's turns
+end `lost`; or the claim expired, a steer Codex never answered. It is traffic
+to a turn already reaching the agent, so the turn's end decides it, and one
+Codex fault is one attempt: the turn ending `lost` is the one failure.
+
+Every other claim never reached the turn, so it is an attempt of its own,
+whatever Core lists as running: Codex would not resume the thread, resumed it
+with other settings, says it is not loaded, would not start a turn, or could
+not be started, or a notice went to the agent's chat. That matters because
+Codex can close a thread mid-turn (`thread/closed`, or a status of `notLoaded`
+or `systemError`) with no end to its turn, and the runner then forgets the
+thread without ending the turn in Core: every later claim of that run fails
+before it reaches the thread, for as long as the runner keeps its role, and
+each counts. A claim of another run joins nothing: a runner's Codex processes
+end with it, so the next runner reaches the agent only through a process of
+its own, and its first claim to reach the thread ends the turns the last one
+left (`lost`). Each attempt comes to one fact (`claim_attempt` and
 `turn_attempt` in `health.py`):
 
 | attempt | got through | did not, with why |
 | --- | --- | --- |
-| a claim, with no turn running that the same run handed work to | it settled `accepted` (its notice is in the agent's chat) or `queued` (an earlier one still waiting leads there) | it settled `error`, `unavailable` or `busy`, with the runner's own fixed code for how it went, or `expired` with its claim |
+| a claim that did not come from a turn the same run handed work to | it settled `accepted` (its notice is in the agent's chat) or `queued` (an earlier one still waiting leads there) | it settled `error`, `unavailable` or `busy`, with the runner's own fixed code for how it went, or `expired` with its claim |
 | a hosted turn | it ended `completed`, or the agent recorded a command after its first claim began, however it ended: only an agent the turn reached can act in it | it ended `failed`, `lost` or `interrupted` with no command from the agent, with Codex's own code for why |
 
 An act recorded once Codex has started the turn but before the runner records
@@ -263,9 +271,13 @@ Core cannot know.
 The database step (version 32) that adds `wake_facts`, `wake_turns` (each
 hosted turn still running, as one attempt) and `runner_prior` works the facts
 out once from the settlements already kept, by the same rule (`settled`) over
-the same attempts: every claim the runner settled itself, less each that
-settled while a turn the same run handed work to ran, and every hosted turn
-that ended, in the order they settled. Before it, the only acts whose time
+the same attempts: every claim the runner settled itself, less each that came
+from a turn the same run handed work to while it ran, and every hosted turn
+that ended, in the order they settled. The runner's code for a claim was never
+kept before it, so only the outcome tells where a claim came from: a hosted
+claim settles `busy` only when a running turn refuses it, and one `expired` is a
+steer Codex never answered; an `error` or `unavailable` may never have reached
+the thread, so each counts. Before it, the only acts whose time
 Core kept are the messages an agent wrote, so a turn the agent wrote in after
 its first claim got through, and one it only acknowledged in counts as it
 ended. The unanswered count starts from the scheduler's own, the only record
@@ -305,7 +317,10 @@ keeps what was shown and says so; an answer without `red`, `runner` and
   the runner, and its turns end `lost`; a steer Codex never answers expires
   with its claim and joins the turn, which that end then settles; and a
   runner that stops or loses its role is red at once, and the next one ends
-  the turns it left as `lost`.
+  the turns it left as `lost`. A turn Codex closed with no end stays open in
+  Core until its process exits or the next runner ends it, but the claims
+  that cannot reach it meanwhile count, so the agent goes red as its wakes
+  fail.
 
 - A WebSocket that stays open but has stalled (a half-open connection after
   the Mac sleeps or the network changes) still looks live to the page, so the
