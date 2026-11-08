@@ -93,9 +93,15 @@ try {
       ...(name === 'Enter' && !modifiers ? { text: '\r', unmodifiedText: '\r' } : {}) });
     await send('Input.dispatchKeyEvent', { type: 'keyUp', ...data });
   };
+  // The Reader's ⋯ menu is placed against the window; while the dialog's
+  // opening animation still moves the dialog it would sit outside it, and a
+  // press on its item would be a press outside the Reader. Native input on it
+  // waits for the dialog to settle, as reset() does.
+  const settled = () => until(() => evaluate('document.getAnimations().every(animation => animation.playState !== "running")'), 'settled reader');
   // Wide or Stacked is an item in the Reader's ⋯ (docs/links.md): a native
   // press on the ⋯, then on the item it lists.
   const switchLayout = async () => {
+    await settled();
     await point('#reader-menu');
     const label = await until(() => evaluate(`document.querySelector('.message-menu-list [role=menuitem]')?.textContent`), "the Reader's menu");
     assert.match(label, /^(Wide|Stacked) layout$/);
@@ -455,7 +461,7 @@ try {
             await point('#open-fixture'); await until(() => evaluate('document.querySelector("#reader").open'), 'open reader');
             if (view.startsWith('wide')) {
               // Wide is a choice in the Reader's ⋯ only where the window can choose; a phone is always stacked.
-              await point('#reader-menu');
+              await settled(); await point('#reader-menu');
               const choice = await evaluate(`document.querySelector('.message-menu-list [role=menuitem]')?.textContent ?? null`);
               if (choice === null) continue;
               assert.equal(choice, 'Wide layout', `${width}px: the Reader's ⋯ offers Wide`);
