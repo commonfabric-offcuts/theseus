@@ -1213,10 +1213,14 @@ async function initialize() {
   }
   if (!healthLight) {
     // The Health link lights on every page while Core says something is red,
-    // read again on every commit, as attention is (health-light.mjs).
-    healthLight = new HealthLight({ link: $('health-link'),
+    // read again on every commit, as attention is, and says it could not
+    // check while the live feed is down (health-light.mjs).
+    healthLight = new HealthLight({ link: $('health-link'), feed: () => live?.state ?? null,
       read: async () => checkedView(await api.view('health_light', {}, { readClass: 'background' }), bootstrap.instance_id) });
-    live?.listen(event => { if ((event.kind === 'commit' || event.state === 'live') && document.visibilityState === 'visible') run(() => healthLight.load()); });
+    live?.listen(event => {
+      if (event.kind === 'state') healthLight.paint();
+      if ((event.kind === 'commit' || event.state === 'live') && document.visibilityState === 'visible') run(() => healthLight.load());
+    });
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(() => healthLight.load()); });
     run(() => healthLight.load());
   }

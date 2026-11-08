@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from aim_next import cli
-from aim_next.health import FAILING_AFTER, WHY, machine_load as _real_machine_load, report_lines
+from aim_next.health import FAILING_AFTER, HANDOVER_MS, WHY, machine_load as _real_machine_load, report_lines
 from aim_next.profile import write_profile
 from test_hosted_schedule import OTHER_THREAD
 from test_wake_contract import HostedFixture, own_cases
@@ -195,14 +195,58 @@ class RunnerNoticeCase(HealthCase):
         self.assertEqual(self.light(), ["runner"])
         self.assertEqual(self.notices(), [(self.conversation(), "Health: The agent runner was killed, so no wakes are going out." + NOTICE_TAIL)])
 
-    def test_a_graceful_stop_is_red_until_a_runner_takes_the_role_but_is_never_told(self):
-        self.assertEqual(self.store.stop_runner(self.hosting, self.runner)["status"], "stopped")
+    def due(self):
+        """The moment Core keeps for what is red to change with no act at all, or None."""
+        row = self.sql("SELECT value FROM metadata WHERE key='health_due'")
+        return int(row[0][0]) if row else None
+
+    def test_a_stop_a_runner_follows_is_red_until_then_but_never_told(self):
+        stopped = self.store.stop_runner(self.hosting, self.runner)
+        self.assertEqual(stopped["status"], "stopped")
         self.assertEqual(self.light(), ["runner"])
+        self.assertEqual(self.due(), stopped["ended_ms"] + HANDOVER_MS, "Core keeps when the stop will have lasted")
+        self.now += HANDOVER_MS - 1
         self.send_next("Work while it is stopped")
         self.hosting.close()
         self.token(self.guard("successor"))
         self.assertEqual(self.light(), [])
         self.assertEqual(self.notices(), [], "a deploy's stop and start post nothing")
+
+    def test_a_stop_no_runner_follows_is_told_once_it_has_lasted_and_the_runner_back_is_told_once(self):
+        # A deploy refused after it stopped the runner, or the runner sent TERM:
+        # the supervisor does not start it again.
+        stopped = self.store.stop_runner(self.hosting, self.runner)
+        self.hosting.close()
+        self.now = stopped["ended_ms"] + HANDOVER_MS - 1
+        self.send_next("Work just before the stop has lasted")
+        self.assertEqual(self.notices(), [])
+        self.now += 1
+        self.send_next("Work once it has")
+        self.assertEqual(self.notices(), [(self.conversation(), "Health: The agent runner was stopped and no runner has taken its place, "
+                                           "so no wakes are going out." + NOTICE_TAIL)])
+        for hour in range(1, 25):
+            self.now += 3600 * 1000
+            self.send_next("Work %d hours after the stop" % hour)
+        self.assertEqual(len(self.notices()), 1, "told once while it stays red")
+        self.assertIsNone(self.due(), "nothing more is due")
+        self.token(self.guard("successor"))
+        self.assertEqual(self.notices()[-1][1], "Health: The agent runner is running again, so wakes are going out." + NOTICE_TAIL)
+
+    def test_a_runner_that_never_ran_while_work_waits_is_told_once_that_has_lasted(self):
+        self.hosting.close()
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("UPDATE runner_state SET state='idle',reason_code=NULL,lease_until_ms=NULL")
+        oldest = self.sql("SELECT min(m.sent_ms) FROM deliveries d JOIN messages m ON m.id=d.message_id "
+                          "WHERE d.recipient_id='agent-a' AND d.state='pending'")[0][0]
+        self.send_next("More work")
+        self.assertEqual((self.light(), self.health()["runner"]["state"]), (["runner"], "never_run"))
+        self.assertEqual((self.notices(), self.due()), ([], oldest + HANDOVER_MS), "absent since the oldest work that waits")
+        # Messages here are stamped by the wall clock (conversation.py imports
+        # _now_ms by name) and Core's other reads by the fixture's, so Core's
+        # clock moves to the oldest work's stamp plus the window.
+        self.now = oldest + HANDOVER_MS
+        self.send_next("Work once it has lasted")
+        self.assertEqual([body for _, body in self.notices()], ["Health: The agent runner has never run here, so no wakes are going out." + NOTICE_TAIL])
 
     def test_a_runner_that_stopped_renewing_is_told_once_by_the_act_that_sees_it_and_again_when_a_runner_takes_the_role(self):
         # Hung: its process lives, so neither the supervisor nor the server records an exit.
@@ -221,21 +265,33 @@ class RunnerNoticeCase(HealthCase):
         self.assertEqual(self.light(), [])
         self.assertEqual(self.notices()[-1][1], "Health: The agent runner is running again, so wakes are going out." + NOTICE_TAIL)
 
-    def test_the_server_settles_a_lapsed_lease_on_a_commit_of_its_own_once(self):
-        """What the live feed calls when the lease ends with no act at all to see it (docs/health.md)."""
+    def test_the_server_settles_what_is_due_on_a_commit_of_its_own_once(self):
+        """What the live feed calls when Core's moment comes with no act at all to see it (docs/health.md)."""
+        self.fresh_lease()
         lease = self.sql("SELECT lease_until_ms FROM runner_state")[0][0]
+        self.assertEqual(self.due(), lease, "while a runner runs, its lease's end is due")
         seq = lambda: int(self.sql("SELECT value FROM metadata WHERE key='commit_seq'")[0][0])
         before = seq()
-        self.assertEqual(self.store.settle_lapsed_lease(lease)["status"], "early", "a lease that has not ended")
+        self.assertEqual(self.store.settle_health_due(lease)["status"], "early", "a moment that has not come")
         self.assertEqual((seq(), self.notices()), (before, []))
         self.now = lease
-        self.assertEqual(self.store.settle_lapsed_lease(lease)["status"], "settled")
+        self.assertEqual(self.store.settle_health_due(lease)["status"], "settled")
         self.assertEqual(seq(), before + 1, "on a commit of its own, so every open page reads it")
         self.assertEqual([body.split(",")[0] for _, body in self.notices()], ["Health: The agent runner stopped answering (its lease ran out and it did not renew it)"])
-        self.assertEqual(self.store.settle_lapsed_lease(lease)["status"], "unchanged")
+        self.assertEqual(self.store.settle_health_due(lease)["status"], "unchanged")
         self.assertEqual((seq(), len(self.notices())), (before + 1, 1), "said once")
-        self.assertEqual(self.store.settle_lapsed_lease(lease - 1)["status"], "renewed", "a lease the runner no longer holds")
         self.assertEqual(self.sql("SELECT state,lease_until_ms FROM runner_state")[0], ("running", lease), "nothing of the runner's is recorded")
+
+    def test_a_stop_that_lasts_with_no_act_at_all_is_settled_at_its_moment(self):
+        stopped = self.store.stop_runner(self.hosting, self.runner)
+        due = self.due()
+        self.assertEqual(due, stopped["ended_ms"] + HANDOVER_MS)
+        self.now = due - 1
+        self.assertEqual(self.store.settle_health_due(due)["status"], "early")
+        self.now = due
+        self.assertEqual(self.store.settle_health_due(due)["status"], "settled")
+        self.assertEqual([body.split(",")[0] for _, body in self.notices()], ["Health: The agent runner was stopped and no runner has taken its place"])
+        self.assertIsNone(self.due())
 
     def test_a_paused_runner_then_stopped_has_not_come_back(self):
         self.store.pause_runner(self.hosting, self.runner, "storage_failure")

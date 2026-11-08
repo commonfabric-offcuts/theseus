@@ -1,4 +1,5 @@
 import { shownTime, datedTime } from './times.mjs';
+import { feedLost } from './health-light.mjs';
 
 // The Health page (docs/health.md): what is wrong, in plain words at the top,
 // then one line each for the agent runner, the server, every agent, the Mac
@@ -60,7 +61,8 @@ export function healthProblems(answer, { now, feed } = {}) {
   const problems = [];
   const agents = answer.agents ?? [];
   const routedWaiting = agents.filter(agent => agent.route && agent.waiting > 0);
-  if (feed === 'down') problems.push('This page has lost its live connection to the server, so what it shows may be out of date.');
+  // The Health link says it could not check by the same rule (health-light.mjs).
+  if (feedLost(feed)) problems.push('This page has lost its live connection to the server, so what it shows may be out of date.');
   // Red is Core's one rule (answer.red), which the Health link reads too.
   const red = new Set(answer.red ?? []);
   if (red.has('runner')) {
@@ -137,9 +139,9 @@ export function healthLines(answer, { now, feed } = {}) {
   lines.push({ group: 'Theseus', key: 'runner', label: 'Agent runner', summary: runnerPhrase(runner, now).replace(/^./, c => c.toUpperCase()), details: runnerDetails, bad: (answer.red ?? []).includes('runner') });
   const server = answer.server;
   if (server) {
-    const live = feed === 'down' ? 'live updates lost' : server.live_feed ? 'live updates on' : 'no live updates';
+    const live = feedLost(feed) ? 'live updates lost' : server.live_feed ? 'live updates on' : 'no live updates';
     lines.push({ group: 'Theseus', key: 'server', label: 'Server', summary: `Answering since ${at(server.started_ms, now)} · ${live}`,
-      details: [`It serves database version ${answer.schema_version}.`], bad: feed === 'down' });
+      details: [`It serves database version ${answer.schema_version}.`], bad: feedLost(feed) });
   }
   for (const agent of answer.agents ?? []) lines.push({ group: 'Agents', key: `agent:${agent.actor_id}`, label: null, ...agentLines(agent, now, runner.live) });
   // The Mac's load and core count are each said, or said to be unreadable; never left out.

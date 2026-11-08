@@ -76,7 +76,7 @@ def step_back_by_hand(path, version):
         # previous end, what Theseus last announced and its own member.
         db.execute("DROP TABLE runner_prior")
         db.execute("DROP TABLE wake_facts")
-        db.execute("DELETE FROM metadata WHERE key='health_announced'")
+        db.execute("DELETE FROM metadata WHERE key IN ('health_announced','health_due')")
         db.execute("DELETE FROM actors WHERE id='theseus'")
         if version == BEFORE_HEALTH:
             db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (version,))
@@ -2474,11 +2474,12 @@ class HealthStepCase(MigrationCase):
         self.upgrade()
         with sqlite3.connect(str(self.path)) as db:
             db.execute("INSERT INTO metadata VALUES ('health_announced','{}')")
+            db.execute("INSERT INTO metadata VALUES ('health_due','5')")
             db.execute("INSERT INTO runner_prior VALUES (1,'stopped',NULL,5)")
         self.assertTrue(self.step_back()["migrated"])
         self.assertEqual(schema(self.path), frozen(SCHEMA_BEFORE_HEALTH))
         self.assertEqual(everything(self.path), stored)
-        self.assertEqual(self.sql("SELECT count(*) FROM metadata WHERE key='health_announced'"), [(0,)])
+        self.assertEqual(self.sql("SELECT count(*) FROM metadata WHERE key IN ('health_announced','health_due')"), [(0,)])
         self.assertTrue(self.upgrade()["migrated"], "and it moves up again")
 
     def test_step_back_refuses_once_theseus_has_posted_a_notice_and_changes_nothing(self):

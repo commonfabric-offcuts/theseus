@@ -202,14 +202,38 @@ export async function healthChecks({ check, page, until, control, view, facts, s
     assert.equal(lit.color, lit.alert);
     const facts = await view('health', {});
     assert.deepEqual([facts.red, facts.runner.state], [['runner'], 'unrenewed']);
-    // The server, at the lease's end, had Core settle what is red: announced to the team on that commit.
+    // The server, at the lease's end, Core's kept moment, had Core settle what is red: announced to the team on that commit.
     const settled = await control({ method: 'health', action: 'settled' });
     assert.deepEqual(settled.announced, ['runner']);
-    assert.deepEqual(settled.events.slice(before.events.length).map(event => [event.event, event.lease_until_ms, event.record.status]),
-      [['lease_lapsed', hung.lease_until_ms, 'settled']]);
+    assert.deepEqual(settled.events.slice(before.events.length).map(event => [event.event, event.due_ms, event.record.status]),
+      [['health_due', hung.lease_until_ms, 'settled']]);
     assert.equal((await control({ method: 'health', action: 'take' })).status, 'acquired');
     await until(async () => (await readLink(p)).text === 'Health', 'a runner taking the role clears it');
     assert.deepEqual((await control({ method: 'health', action: 'settled' })).announced, []);
+    assert.deepEqual(p.errors, []);
+    await p.close();
+  });
+
+  await check('health while the live feed is down the link says it could not check, as the page says at its top, and is quiet again once it is back', async () => {
+    // The page's live socket can be closed, and new ones refused, as when the server cannot be reached.
+    const sockets = `(()=>{const Real=window.WebSocket;window.liveSockets=[];window.liveBlocked=false;
+      const Socket=function(url,protocols){if(window.liveBlocked)throw new Error('unreachable');const socket=new Real(url,protocols);window.liveSockets.push(socket);return socket;};
+      Socket.prototype=Real.prototype;Object.assign(Socket,{CONNECTING:0,OPEN:1,CLOSING:2,CLOSED:3});window.WebSocket=Socket;})()`;
+    const p = await healthPage('health-feed-down', { beforeNavigate: q => q.send('Page.addScriptToEvaluateOnNewDocument', { source: sockets }) });
+    assert.deepEqual((await view('health_light', {})).red, []);
+    await until(async () => (await readLink(p)).text === 'Health', 'the link is quiet while the feed is up');
+    await p.evaluate('(()=>{window.liveBlocked=true;for(const socket of window.liveSockets)socket.close();return true})()');
+    const down = await until(async () => { const l = await readLink(p); return l.text !== 'Health' && l; }, 'the link says it when the feed drops');
+    assert.deepEqual([down.text, down.red, down.label], ["Health · couldn't check", true, 'Health: it could not be checked, so something may need attention']);
+    assert.equal(down.color, down.alert, 'in the alert colour');
+    const shown = await readPage(p);
+    assert.equal(shown.top[0], 'This page has lost its live connection to the server, so what it shows may be out of date.', 'the page says the same at its top');
+    assert.equal(line(shown, 'server').bad, true);
+    await shot(p, 'health-feed-down');
+    await p.evaluate('window.liveBlocked = false');
+    await until(async () => (await readLink(p)).text === 'Health', 'quiet again once the feed is back');
+    const back = await until(async () => { const s = await readPage(p); return s.bad === false && s; }, 'and the page clears');
+    assert.deepEqual(back.top, ['Everything is working: the agent runner is sending wakes and they are getting through.']);
     assert.deepEqual(p.errors, []);
     await p.close();
   });

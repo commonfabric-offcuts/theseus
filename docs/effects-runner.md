@@ -172,17 +172,19 @@ answer. When Core could not take the account (`unrecorded`, for instance
 next commit's read finds the pid still recorded as running and gone, and the
 server tells Core again; there is no timer. A
 runner that is alive but stops renewing (hung) has no process event and makes
-no more commits; its lease ending is the one sign. The same read learns when
-the running runner's lease ends, and the feed's wait lasts no longer than that,
-as the runner's own wait lasts no longer than its lease. When it ends
-unrenewed the server calls `settle_lapsed_lease(lease_until_ms)`: Core settles
-what is red (docs/health.md) on a commit of its own, so the team is told and
-every open page reads it, and records nothing of the runner's (a runner that
-comes back finds its role lost, as before). Its answer is `settled`,
-`unchanged` (already announced), `renewed` (that lease is no longer the
-running runner's) or `early`; the server writes one `lease_lapsed` line with
-it. A renewal is a commit, so the read after it moves the wait with the lease;
-when Core could not be told, the next commit's read asks again. Proof:
+no more commits; its lease ending is the one sign. A stop that no runner
+follows makes no more commits either, and is told once it has lasted
+(docs/health.md). Core keeps the next moment what is red would change with no
+act (metadata `health_due`: the running runner's lease's end, or when an
+absence will have lasted), the same read learns it, and the feed's wait lasts
+no longer than that. When it comes with no commit first the server calls
+`settle_health_due(due_ms)`: Core settles what is red on a commit of its own,
+so the team is told and every open page reads it, and records nothing of the
+runner's (a runner that comes back finds its role lost, as before). Its
+answer is `settled`, `unchanged` (nothing was due to change) or `early`; the
+server writes one `health_due` line with it. Any act that moves the moment
+is a commit, so the read after it moves the wait with it; when Core could
+not be told, the next commit's read asks again. Proof:
 `tests/test_http_live.py`, `tests/test_runner_exit.py`, `tests/test_health.py`.
 
 The `wakes` view carries `runner`: `{live: true}`, or `{live: false, state}`

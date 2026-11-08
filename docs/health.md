@@ -13,13 +13,19 @@ each, and nobody noticed.
 `?health`, from one quiet "Health" link under the instance label, which heads
 the rail on every page (the logo block on pages without a rail). While
 anything is red the link says so: "Health · needs attention", in the alert
-colour, with no edge or box of its own. It is quiet only after a read that
-says nothing is red: until its first read answers it says "Health ·
-checking", and after a read that fails (the server sheds background reads
-under load) or answers without a list of what is red it says "Health ·
-couldn't check", also in the alert colour, since something may be red that it
-cannot see. Agents read the same thing with `aim-next health`
-(docs/agent-cli.md).
+colour, with no edge or box of its own. What it shows is the answer to its
+latest read, and only while the live feed can say that answer still stands:
+it is quiet only after a read that says nothing is red. Until its first read
+answers it says "Health · checking". After a read that fails (the server sheds
+background reads under load) or answers without a list of what is red, and
+for as long as the live feed is down, it says "Health · couldn't check", also
+in the alert colour, since something may be red that it cannot see; the page
+says the same at its top while the feed is down. Its reads run one at a time:
+a commit that comes while one runs asks for one more, and an answer read
+before the latest commit is never shown, so an older "nothing is red" never
+stands for a newer read that failed. On a server that offers no live feed the
+link, like the page, is read when the page opens and when it comes back into
+view. Agents read the same thing with `aim-next health` (docs/agent-cli.md).
 
 ## What is red
 
@@ -56,31 +62,45 @@ the code say so.
 ## Telling the team
 
 When what is red changes, Theseus posts one notice to the team, in the act
-that changed it (or, for a hung runner, at its lease's own end); never on a
-timer of its own, and never again while it stays red.
+that changed it, or at the moment Core kept for it when no act comes; never
+on a timer of its own, and never again while it stays red. A red is told once
+it lasts: a fault at once, and a runner that is simply absent once no runner
+has followed it within two minutes.
 
 - **When.** Every act that changes what the reds are read from runs
   `_health_settle` in its own transaction: each recorded command, each runner
   act (a settlement, a claim that finds an expired one, a pause, an
-  acquisition), and each recorded runner exit (the supervisor's, or the
-  server's when its live feed sees the runner process end), and the server's
-  settling of a lease that ended unrenewed (below). It compares what
-  is red now with what was last announced (metadata `health_announced`) and
-  posts only the difference: what went red, and what went green again.
-- **What.** Faults: a pause, an exit, a runner that stopped renewing, wakes
-  failing, a parked agent. A graceful stop (a deploy's) is red on the page and
-  the link until a runner takes the role again, but is never posted, so a
-  deploy does not post twice.
-- **A hung runner.** A runner that stops renewing while its process lives has
-  no exit to record and makes no more commits. Whatever act first sees its
-  lease ended posts it ("The agent runner stopped answering (its lease ran out
-  and it did not renew it)"), and with no act at all the server's live feed
-  does: its wait lasts no longer than the running runner's lease, and when the
-  lease ends unrenewed it asks Core to settle what is red on a commit of its
-  own (`settle_lapsed_lease`, docs/effects-runner.md), so the team is told and
-  every page's link reads it. A recorded exit that follows is the same red
-  thing and posts nothing more. A Mac that sleeps past the lease posts as it
-  did through the `lease_lost` exit: once red, once green.
+  acquisition, a renewal, a stop), and each recorded runner exit (the
+  supervisor's, or the server's when its live feed sees the runner process
+  end), and the server's settling at Core's kept moment (below). It compares
+  what is red now with what was last announced (metadata `health_announced`)
+  and posts only the difference: what went red, and what went green again.
+- **What, and when it lasts.** Whether a red is told is decided by whether it
+  lasts, not by which state the runner is in. A fault is told at once: a
+  pause, an exit, a runner that stopped renewing, wakes failing, a parked
+  agent. A runner that is absent with no fault (stopped, or never run here
+  while a woken agent has work on the record) is red on the page and the link
+  at once, and told once no runner has taken the role for `HANDOVER_MS` (two
+  minutes, the longest lease a runner may hold) since it stopped, or since the
+  oldest work that waits for it. A deploy hands the role to the next runner
+  within seconds, so its stop and start tell nothing; a stop that no runner
+  follows (a deploy refused after it stopped the runner, a runner sent TERM,
+  which the supervisor does not restart) is told ("The agent runner was
+  stopped and no runner has taken its place"), and a runner that takes the
+  role later is told once that wakes are going out.
+- **With no act at all.** Some reds come with no act and no commit: a runner
+  that stops renewing while its process lives (hung) has no exit to record,
+  and a stop that lasts makes no more commits. Every settling keeps the next
+  moment what is red would change by itself (metadata `health_due`: the
+  running runner's lease's end, or when an absence will have lasted). Whatever
+  act comes first settles it; with none, the server's live feed waits no
+  longer than that moment and asks Core to settle what is red on a commit of
+  its own (`settle_health_due`, docs/effects-runner.md), so the team is told
+  and every page's link reads it. A hung runner is told as "The agent runner
+  stopped answering (its lease ran out and it did not renew it)"; a recorded
+  exit that follows is the same red thing and posts nothing more. A server
+  that was down too (a refused deploy stops it) settles it when it starts, and
+  so does any agent's act through the command line meanwhile.
 - **Who.** Theseus itself, as the member `theseus` ("Theseus"), registered
   disabled with its first notice: never on a team, in a list of people, or
   woken, and never a person or agent who did not write the words. If someone
@@ -119,8 +139,8 @@ Core cannot know.
 
 The database step that adds `wake_facts` and `runner_prior` works the counts
 out once from the settlements already kept. They are derived, nobody's
-records, so stepping back drops them, with what was announced; it is refused
-once Theseus has posted a notice, which is on the record.
+records, so stepping back drops them, with what was announced and the moment
+kept; it is refused once Theseus has posted a notice, which is on the record.
 
 ## The page
 

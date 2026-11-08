@@ -291,13 +291,15 @@ class LiveStreamTests(unittest.TestCase):
         self.settled(client)
         lease = int(time.time() * 1000) + 700
         with sqlite3.connect(str(self.db)) as db:
+            # A short lease, and its end as the moment Core keeps for it, as a renewal's settling keeps it.
             db.execute("UPDATE runner_state SET lease_until_ms=? WHERE id=1", (lease,))
-        # The write wakes the feed, which reads the new lease; then nothing else is committed.
+            db.execute("UPDATE metadata SET value=? WHERE key='health_due'", (str(lease),))
+        # The write wakes the feed, which reads the new moment; then nothing else is committed.
         line = self.announced(client)
         self.assertEqual(line, {"seq": self.seq()})
         self.assertGreaterEqual(int(time.time() * 1000), lease, "announced once the lease ended, not before")
-        self.assertEqual([(event["event"], event["lease_until_ms"], event["record"]["status"]) for event in told],
-                         [("lease_lapsed", lease, "settled")])
+        self.assertEqual([(event["event"], event["due_ms"], event["record"]["status"]) for event in told],
+                         [("health_due", lease, "settled")])
         self.assertEqual(self.store.view("test-human", "health_light", {})["red"], ["runner"])
         with sqlite3.connect(str(self.db)) as db:
             announced = json.loads(db.execute("SELECT value FROM metadata WHERE key='health_announced'").fetchone()[0])
@@ -306,6 +308,27 @@ class LiveStreamTests(unittest.TestCase):
         # Said once: the feed goes on announcing commits and does not settle that lease again.
         self.settled(client)
         self.assertEqual(len(told), 1)
+
+    def test_a_stop_no_runner_follows_is_settled_and_announced_once_it_has_lasted_with_no_other_commit(self):
+        """A deploy refused after its stop, or a runner sent TERM: nothing more is committed, and the team is told."""
+        told = self.telling()
+        client = self.open()
+        self.line(client)
+        with mock.patch("aim_next.health.HANDOVER_MS", 1500):
+            with self.store.runner_guard("live-runner") as guard:
+                acquired = self.store.acquire_runner(guard)
+                stopped = self.store.stop_runner(guard, acquired["runner_token"])
+            self.assertEqual(stopped["status"], "stopped")
+            self.settled(client)
+            self.assertEqual(told, [], "not before it has lasted")
+            line = self.announced(client)
+        self.assertEqual(line, {"seq": self.seq()})
+        self.assertGreaterEqual(int(time.time() * 1000), stopped["ended_ms"] + 1500, "announced once the stop lasted, not before")
+        self.assertEqual([(event["event"], event["due_ms"], event["record"]["status"]) for event in told],
+                         [("health_due", stopped["ended_ms"] + 1500, "settled")])
+        with sqlite3.connect(str(self.db)) as db:
+            announced = json.loads(db.execute("SELECT value FROM metadata WHERE key='health_announced'").fetchone()[0])
+        self.assertEqual(list(announced), ["runner"], "what is red was settled and told on that commit")
 
     def test_a_runner_process_already_gone_when_the_server_starts_is_recorded_at_once(self):
         self.stop()

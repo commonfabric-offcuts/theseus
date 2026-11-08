@@ -110,6 +110,59 @@ test('a link that cannot read what is red says it could not check, never quiet',
   assert.equal(node.classList.contains('red'), false);
 });
 
+test('what the link shows is its latest read: an answer read before a newer commit is never shown', async () => {
+  // Under load the server sheds the newer read while an older one, taken before
+  // the commit that made something red, is still answering "nothing is red".
+  const node = link(), painted = [];
+  const answers = [];
+  const read = () => new Promise((resolve, reject) => answers.push({ resolve, reject }));
+  const light = new HealthLight({ link: node, read });
+  const paint = light.paint.bind(light);
+  light.paint = () => { paint(); painted.push(node.textContent); };
+  const older = light.load();
+  const newer = light.load(); // the red commit comes while the first read runs
+  assert.equal(newer, older, 'one read at a time; the commit asks for one more');
+  assert.equal(answers.length, 1, 'the newer read waits for the older');
+  answers[0].resolve({ red: [] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(answers.length, 2, 'then reads again, after the commit');
+  answers[1].reject(new Error('503 SERVER_BUSY'));
+  assert.equal(await newer, false);
+  assert.deepEqual(painted, [UNREAD_WORDS], 'the older quiet answer was never shown');
+  assert.equal(node.classList.contains('red'), true);
+  // With no commit while it reads, the answer is shown.
+  const quiet = light.load();
+  answers[2].resolve({ red: [] });
+  assert.equal(await quiet, true);
+  assert.equal(node.textContent, 'Health');
+});
+
+test('the link says it could not check while the live feed is down, as the Health page says at its top', async () => {
+  let feed = 'live';
+  const node = link();
+  node.textContent = 'Health · checking';
+  const light = new HealthLight({ link: node, read: async () => ({ red: [] }), feed: () => feed });
+  feed = 'down';
+  light.paint();
+  assert.deepEqual([node.textContent, node.classList.contains('red')], ['Health · checking', false], 'before the first answer it says it is checking');
+  await light.load();
+  assert.deepEqual([node.textContent, node.classList.contains('red'), node.attributes['aria-label']],
+    [UNREAD_WORDS, true, 'Health: it could not be checked, so something may need attention'], 'a quiet answer does not stand while nothing would say a change');
+  assert.deepEqual(healthProblems(answer(), { now: NOW, feed }), ['This page has lost its live connection to the server, so what it shows may be out of date.'], 'and the page agrees');
+  feed = 'live';
+  light.paint();
+  assert.deepEqual([node.textContent, node.classList.contains('red')], ['Health', false], 'back, the answer stands again');
+  // A lit answer while the feed is down is not said as all clear either.
+  const lit = new HealthLight({ link: link(), read: async () => ({ red: ['runner'] }), feed: () => 'down' });
+  await lit.load();
+  assert.equal(lit.link.textContent, UNREAD_WORDS);
+  // No feed offered: reads are what the link has, as for the page, which calls that no problem.
+  const none = new HealthLight({ link: link(), read: async () => ({ red: [] }) });
+  await none.load();
+  assert.equal(none.link.textContent, 'Health');
+  assert.deepEqual(healthProblems(answer(), { now: NOW, feed: null }), []);
+});
+
 test('the Mac\'s load or core count that could not be read is said, never left out or called light', () => {
   const noLoad = healthLines(answer({ machine: { load: null, cpus: 8 } }), { now: NOW }).find(item => item.key === 'machine');
   assert.ok(noLoad, 'the Mac has a line');
