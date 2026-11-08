@@ -185,9 +185,9 @@ export async function departureChecks({check,page,until,facts,view,control,obser
     const published=async()=>(await view('topic_messages',{topic_id:'t1',limit:100,direction:'before'})).items.filter(item=>item.body===body).length;
     await until(async()=>await published()>0,'the recovered reply is published',15000);
     await until(async()=>(await rows(p)).filter(r=>!r.superseded_by).flatMap(r=>r.snapshot.submissions).filter(i=>i.id===original.id).every(i=>i.status==='confirmed'),'the page confirmed the reply');
-    await point(p,'#inline-pending button');
-    const card=`#review-content [data-id="${original.id}"]`;
-    assert.deepEqual(await p.evaluate(`[document.querySelector('${card} h3').textContent,document.querySelector('${card} pre').textContent]`),['Sent to Theseus',body]);
+    // Sent and confirmed, the reply is no longer in doubt, so no Review button
+    // stays for it (docs/replies-in-doubt.md).
+    await until(()=>p.evaluate(`!document.querySelector('#inline-pending button')&&!document.querySelector('#topic-pending button')`),'a confirmed reply leaves no Review button');
     assert.equal(await published(),1,'published once');
     assert.deepEqual([p.calls.filter(c=>c.payload?.kind==='submission.prepare').map(c=>c.payload.operation_id),p.calls.filter(c=>c.payload?.kind==='message.send').map(c=>c.payload.operation_id)],
       [[original.prepareOperationId],[original.sendOperationId]],'under its own operations, each once');
