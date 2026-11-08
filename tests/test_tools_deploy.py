@@ -1747,6 +1747,66 @@ class TheDeployAgainstAStore(test_agent_cli.AgentCLIBase):
         self.committed(self.command("pipeline.piece_start", {"numbers": theirs[:1], "topic_id": self.topic_of_w1("t-w2b", workspace="w2"),
                                                              "stage_id": "build"}, {"workspace_id": "w2"}, actor="agent-a"))
 
+    def topics(self, *ids):
+        return self.sql("SELECT id,state,state_note FROM topics WHERE id IN (%s) ORDER BY id" % ",".join("?" * len(ids)), ids)
+
+    def release_24_from_its_own_topic(self):
+        """Release 23 ships; then piece Q (items 3 and 4, in topic t-q) is approved and combined as release 24, in topic t-24."""
+        self.assertTrue(self.record(23, SHA, [1, 2])["recorded"])
+        numbers = [self.add("Item %d" % n, section="now", size="small") for n in (3, 4)]
+        self.assertEqual(numbers, [3, 4])
+        release = self.committed(self.combine([self.approved(numbers, self.topic_of_w1("t-q"))], release_number=24,
+                                              topic_id=self.topic_of_w1("t-24")))["piece_id"]
+        return release
+
+    def test_a_piece_whose_combined_item_its_release_left_out_has_not_finished(self):
+        # 7.2 step 11 (D1): items 3 and 4 left piece Q when it was combined, and release 24's record names only item 3, so
+        # item 4 went back to building: Q has not shipped, and its topic stays open while item 4 is built there again.
+        release = self.release_24_from_its_own_topic()
+        self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])
+        self.assertEqual((self.entries(release)[-1], self.members(release)), (("combine", "shipped", "Shipped in release 24"), [(3, None), (4, "returned")]))
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "done", "Shipped in release 24"), ("t-q", "active", "")])
+        again = self.committed(self.command("pipeline.piece_start", {"numbers": [4], "topic_id": "t-q", "stage_id": "build"}, {"workspace_id": "w1"},
+                                            actor="agent-a"))["piece_id"]
+        self.assertEqual(self.topics("t-q"), [("t-q", "active", "")])
+        # Once item 4 ships too, Q and the piece building item 4 are finished, and so is their topic.
+        self.assertTrue(self.record(25, "e" * 40, [4])["recorded"])
+        self.assertEqual((self.entries(again)[-1], self.topics("t-q")), (("build", "shipped", "Shipped in release 25"), [("t-q", "done", "Shipped in release 25")]))
+
+    def test_a_piece_whose_combined_item_was_dropped_from_its_release_finishes_with_the_rest(self):
+        # Item 4 was combined from Q into release 24 and dropped there, so it never ships: Q finishes when item 3 does.
+        release = self.release_24_from_its_own_topic()
+        version = self.sql("SELECT version FROM pipeline_items WHERE workspace_id='w1' AND number=4")[0][0]
+        self.committed(self.command("pipeline.item_move", {"section": "dropped", "underway_confirmed": True}, {"workspace_id": "w1", "number": 4},
+                                    {"item_revision": version}, actor="owner"))
+        self.assertEqual(self.members(release), [(3, None), (4, "dropped")])
+        self.assertTrue(self.record(24, "a" * 40, [3])["recorded"])
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "done", "Shipped in release 24"), ("t-q", "done", "Shipped in release 24")])
+
+    def test_older_records_that_take_every_item_out_of_the_release_end_it_unshipped(self):
+        # An older record ends no release (3.4): one naming item 3 leaves release 24 open with item 4, and Q, whose item 4 is
+        # still in release 24, has not shipped. One naming item 4 then empties release 24, which ends as an emptied release
+        # ends: not shipped, its topic open, and the work combined next is still release 24.
+        release = self.release_24_from_its_own_topic()
+        self.assertTrue(self.record(5, "a" * 40, [3], source="backfill", at="2026-10-01T09:00:00-07:00")["recorded"])
+        self.assertEqual((self.open_entry(release), self.members(release)), ([("combine",)], [(3, "returned"), (4, None)]))
+        self.assertEqual(self.live_view()["release_piece"], {"id": release, "release": 24, "stage": "combine", "round": 1})
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "active", ""), ("t-q", "active", "")])
+        self.assertTrue(self.record(6, "e" * 40, [4], source="backfill", at="2026-10-02T09:00:00-07:00")["recorded"])
+        self.assertEqual((self.entries(release)[-1], self.members(release)), (("combine", "held", "Its last items shipped in release 6"),
+                                                                              [(3, "returned"), (4, "returned")]))
+        self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 24))
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "active", ""), ("t-q", "done", "Shipped in release 6")])
+        new = self.approved([self.add("Item 5", section="now", size="small")], self.topic_of_w1("t-five"))
+        self.assertEqual(self.committed(self.combine([new], topic_id="t-24"))["release_number"], 24)
+
+    def test_an_older_record_naming_every_item_of_the_release_ends_it_unshipped(self):
+        release = self.release_24_from_its_own_topic()
+        self.assertTrue(self.record(5, "a" * 40, [3, 4], source="backfill", at="2026-10-01T09:00:00-07:00")["recorded"])
+        self.assertEqual(self.entries(release)[-1], ("combine", "held", "Its last items shipped in release 5"))
+        self.assertEqual((self.live_view()["release_piece"], self.live_view()["candidate_release"]), (None, 24))
+        self.assertEqual(self.topics("t-24", "t-q"), [("t-24", "active", ""), ("t-q", "done", "Shipped in release 5")])
+
     def test_release_pieces_release_23_numbered_ship_by_the_next_release_one_at_a_time(self):
         # Release 23's combine stored a number, and could combine release 24 while 23 was open. Upgraded, the earlier is the
         # release; the record of 23 ships it and release 24's piece becomes the release, which the record of 24 ships.
