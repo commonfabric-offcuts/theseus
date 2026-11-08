@@ -180,7 +180,7 @@ USAGE = ("usage: aim-next --profile /absolute/profile.json [--json] [--outbox DI
          "| start OUTCOME --title TITLE [--with A,B] [--from MESSAGE [--seen T1,T2]] [--attach FILE]... TEXT|- "
          "| state TOPIC active|waiting|review|done [--note TEXT] [--waiting-on A,B] | responsible TOPIC TEXT|- | rename TOPIC TITLE "
          "| archive TOPIC | unarchive TOPIC "
-         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch | retry OPERATION | releases [--limit N] "
+         "| publish OPENING [--seen T1,T2] | ack DELIVERY... | read-through TOPIC SEQ | watch [--once] | retry OPERATION | releases [--limit N] "
          "| attachment ATTACHMENT --message MESSAGE --out FILE "
          "| notes SCOPE [--topic] | note new SCOPE [--topic] --title TITLE [--attach FILE]... FILE|- "
          "| note revise ITEM --expected N [--title TITLE] [--attach FILE]... FILE|- "
@@ -306,7 +306,7 @@ def _parser():
     through = verb("read-through")
     through.add_argument("topic")
     through.add_argument("seq", type=int)
-    verb("watch")
+    verb("watch").add_argument("--once", action="store_true")
     verb("retry").add_argument("operation")
     verb("releases").add_argument("--limit", type=int)
     attachment = verb("attachment")
@@ -1230,7 +1230,7 @@ class Agent(PipelineVerbs):
         except WatchError as error:
             self.refuse("WATCH_UNAVAILABLE", "The native database watch is unavailable (%s)" % error)
         try:
-            self.watch_changes(watch)
+            self.watch_changes(watch, once=self.options.once)
         except WatchStopped:
             # Stopped mid-notice: what the reader did not take is dropped, so
             # the exit cannot block on flushing it again.
@@ -1285,7 +1285,10 @@ class Agent(PipelineVerbs):
             if cursor is None:
                 return sorted(items, key=lambda item: item["seq"])
 
-    def watch_changes(self, watch):
+    def watch_changes(self, watch, once=False):
+        """Each delivery and change as a line, until a stop. With once, the
+        oldest delivery waiting, or else the next pending one to arrive, then
+        it returns; acknowledgments and other changes pass unprinted."""
         # The watch is armed before the baseline, so a write after the
         # checkpoint always produces another event.
         page = self.changes(watch, None)
@@ -1299,11 +1302,16 @@ class Agent(PipelineVerbs):
         pending = self.pending(watch)
         if pending is None:
             return
+        if once and pending:
+            pending = pending[:1]
         for item in pending:
             self.notice(watch, {"event": "delivery", "item": item}, self.delivery_line(item))
             self.shown.add(item["id"])
-        self.notice(watch, {"event": "watching", "actor_id": self.actor, "checkpoint": cursor},
-                    "watching %s from change %s" % (self.actor, cursor["after_seq"]))
+        if once and pending:
+            return
+        if not once:
+            self.notice(watch, {"event": "watching", "actor_id": self.actor, "checkpoint": cursor},
+                        "watching %s from change %s" % (self.actor, cursor["after_seq"]))
         while True:
             event = watch.wait(None)
             if event["stop"]:
@@ -1325,6 +1333,10 @@ class Agent(PipelineVerbs):
                 if watch.companion_moved:
                     raise WatchError("authority_anchor_replaced")
                 for change in page["items"]:
+                    if once:
+                        if self.arrived(watch, change):
+                            return
+                        continue
                     self.report(watch, change)
                 if not page["has_more"]:
                     cursor = page["checkpoint"]
@@ -1334,6 +1346,22 @@ class Agent(PipelineVerbs):
                 raise WatchError("authority_anchor_replaced")
             if watch.stopped:
                 return
+
+    def arrived(self, watch, change):
+        """For watch --once: print this change if it is a delivery still
+        pending, and say whether it was."""
+        if change["resource_kind"] != "delivery":
+            return False
+        result = self.read(watch, "delivery", {"delivery_id": change["resource_id"]})
+        error = result.get("error")
+        if error:
+            self.notice(watch, {"event": "delivery", "change": change, "error": error},
+                        "delivery unavailable (%s)  [%s]" % (error.get("code"), change["resource_id"]))
+            return True
+        if result["item"]["state"] != "pending":
+            return False
+        self.notice(watch, {"event": "delivery", "change": change, "item": result["item"]}, self.delivery_line(result["item"]))
+        return True
 
     def report(self, watch, change):
         kind, identity, version = change["resource_kind"], change["resource_id"], change["version"]

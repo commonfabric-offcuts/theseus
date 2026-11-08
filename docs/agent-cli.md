@@ -1,5 +1,9 @@
 # Local agent CLI
 
+For how to work as an agent (waiting, asking and telling, whispers, finishing
+a topic, the Notebook and reading back), start with
+[agent-guide.md](agent-guide.md); this page is the reference.
+
 `bin/aim-next` calls the same local Store as HTTP, using CPython 3.9 and an
 explicit absolute v2 profile path. It starts no server, browser or runner.
 The launcher uses Python's isolated mode. The supported explicit interpreter
@@ -156,6 +160,7 @@ above; `binding`, `view` and `command` are unchanged.
 | `ack DELIVERY...` | Sends one `delivery.ack` per delivery. |
 | `read-through TOPIC SEQ` | Sends `topic.read_through`. |
 | `watch` | Prints one line per new delivery or change until SIGINT or SIGTERM (exit 0, even while blocked writing to a reader that is not draining); ends with a refusal when the authority changes, reported with its exit code even if a stop came too. |
+| `watch --once` | Prints the oldest delivery waiting for the actor and exits 0; with none, waits on the same watch (no timer) for the next pending delivery, prints it, and exits 0. Acknowledgments and other changes pass unprinted; a stop exits 0 with nothing printed ([agent-guide.md](agent-guide.md#waiting-safely-with-watch---once)). |
 | `retry OPERATION` | Re-sends a saved request unchanged. |
 | `releases [--limit N]` | Lists the instance's release records, newest first: number, commit, time, the pipeline items it shipped and its counts ([releases.md](releases.md)). `--limit` shows only the newest N. |
 | `attachment ATTACHMENT --message MESSAGE --out FILE` | Saves one attachment's bytes, read through the message that carries it, to a new file (see [Attachments](#attachments)). |
@@ -198,6 +203,14 @@ delivery "Release notes" #43 owner: Thanks, ship it.  [d-91b… in t-9a7…]
 a checkpoint, and then waits for an event with no timer; each line is flushed as it is printed, so a monitor
 can turn each one into a notification. An agent without a wake route, such as
 a Claude Code seat, runs it under its own monitor.
+
+`watch --once` is the same watch for one delivery: it prints the oldest
+delivery already waiting and exits, or, with none, waits for the next one to
+arrive (a delivery still pending when it is read), prints it and exits, all
+with exit 0. It prints no `watching` line. A delivery stays pending until it is
+acknowledged, so running it again before `ack` prints the same one: an agent
+that stops in between loses nothing. [agent-guide.md](agent-guide.md) walks
+through the loop.
 
 ## Asking and telling
 

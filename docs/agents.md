@@ -197,6 +197,13 @@ output; the exit codes are those of `command`.
   (`AUTHORITY_CHANGED`, exit 2, or `AUTHORITY_BUSY`, exit 75, during the
   cutover), so its monitor can rebind; `WATCH_FAILED` reports an anchor
   replaced without a refusal.
+- `watch --once`: prints the oldest delivery waiting for the actor and exits
+  0; with none waiting it arms the same watch, waits (no timer) for the next
+  change that is a delivery still pending, prints it as `watch` does, and
+  exits 0. It prints no `watching` line, and acknowledgments and other
+  changes pass unprinted. A stop exits 0 with nothing printed, and the
+  authority refusals are those of `watch`. An agent that wakes for one
+  delivery at a time runs it as its loop ([agent-guide.md](agent-guide.md#waiting-safely-with-watch---once)).
 - `notes SCOPE [--topic]`, `note new SCOPE [--topic] --title TITLE FILE|-`,
   `note revise ITEM --expected N [--title TITLE] FILE|-` and
   `note read ITEM [--revision N]`: an outcome's or a topic's Notebook pages;
@@ -233,4 +240,5 @@ from `profile.write_profile`. An outcome's owner or coordinator adds members wit
 does, and only the owner hands it to a member with
 `workspace.owner_set` (`aim-next owner OUTCOME ACTOR`). A Codex agent gets a route in the runner's map, which
 wakes it through the Codex broker. An agent without a broker, such as a
-Claude Code seat, runs `watch` under its own monitor.
+Claude Code seat, runs `watch` under its own monitor, or `watch --once` as
+its loop; [agent-guide.md](agent-guide.md) is the guide for working as one.
