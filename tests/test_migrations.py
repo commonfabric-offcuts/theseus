@@ -2456,20 +2456,34 @@ class HealthStepCase(MigrationCase):
 
     def test_upgrade_keeps_every_row_matches_a_fresh_instance_and_works_out_the_wake_facts(self):
         self.settled(["accepted", "error", "accepted", "error", "busy", "unavailable"])
-        self.settled(["handed"], recipient="agent-b")
+        self.settled(["handed", "handed", "handed"], recipient="agent-b")
+        self.settled(["handed"], recipient="owner")
         with sqlite3.connect(str(self.path)) as db:
-            # The scheduler's count of wakes agent-b left unanswered is the only record of them.
+            # A handed wake settles with its turn's end: agent-b's first turn completed, its second
+            # Codex failed, and its third still runs; the owner's turn runs too.
+            db.executemany("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,error_code,finished_ms) "
+                           "VALUES (?,?,'thread-1',?,'start',?,1,?,?,?,?)",
+                           [("a-agent-b-0", "agent-b", "turn-0", "theseus:a-agent-b-0", 1000, "completed", None, 30000),
+                            ("a-agent-b-1", "agent-b", "turn-1", "theseus:a-agent-b-1", 61000, "failed", "serverOverloaded", 90000),
+                            ("a-agent-b-2", "agent-b", "turn-2", "theseus:a-agent-b-2", 121000, None, None, None),
+                            ("a-owner-0", "owner", "turn-3", "theseus:a-owner-0", 1000, None, None, None)])
+            # The scheduler's count of wakes left unanswered is the only record of them. It counted
+            # agent-b's first and third turns (the failed one it took back); the owner acted after its turn began.
             db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('agent-b',1) ON CONFLICT DO NOTHING")
-            db.execute("UPDATE recipient_schedule SET unanswered_wakes=1,unanswered_since_ms=1000 WHERE recipient_id='agent-b'")
+            db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('owner',1) ON CONFLICT DO NOTHING")
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=2,unanswered_since_ms=1000 WHERE recipient_id='agent-b'")
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=0,unanswered_since_ms=NULL WHERE recipient_id='owner'")
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_HEALTH,
                                           "schema_version": HEALTH_VERSION, "migrated": True})
         self.assertEqual(schema(self.path), fresh_schema(self.temp.name))
         upgraded = everything(self.path)
         self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
-        # The three wakes since the last that got through did not; why was never recorded.
-        self.assertEqual(sorted(upgraded["wake_facts"]), [("agent-a", 121000, 3, 181000, "unavailable", None, 0, None),
-                                                            ("agent-b", 1000, 0, None, None, None, 1, 1000)])
+        # The three wakes since the last that got through did not; why was never recorded. A turn's
+        # end keeps Codex's code, and a turn still running is counted by the rule when it completes.
+        self.assertEqual(sorted(upgraded["wake_facts"]), [("agent-a", 121000, 3, 181000, "unavailable", None, 0, None, None),
+                                                            ("agent-b", 30000, 1, 90000, "failed", "serverOverloaded", 1, 1000, None),
+                                                            ("owner", None, 0, None, None, None, 0, None, 1000)])
         self.assertEqual(upgraded["runner_prior"], [])
         self.assertNotIn("theseus", [row[0] for row in upgraded["actors"]], "Theseus's member comes with its first notice")
 

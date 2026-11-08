@@ -14,7 +14,7 @@ from pathlib import Path
 from unittest import mock
 
 from aim_next import cli
-from aim_next.health import FAILING_AFTER, HANDOVER_MS, WHY, machine_load as _real_machine_load, report_lines
+from aim_next.health import FAILING_AFTER, HANDOVER_MS, WHY, machine_load as _real_machine_load, report_lines, why_words
 from aim_next.profile import write_profile
 from test_hosted_schedule import OTHER_THREAD
 from test_wake_contract import HostedFixture, own_cases
@@ -95,6 +95,8 @@ class FailingWakesCase(HealthCase):
         self.assertEqual(self.agent()["failing"]["why"], WHY["broker_exit"], "the latest failure says why")
         self.assertEqual(self.agent()["failing"]["count"], 4)
         self.hand(self.claim_now(), turn_id="turn-through")
+        self.assertEqual(self.light(), ["failing:agent-a"], "a handed wake gets through when its turn completes")
+        self.end("completed", turn_id="turn-through")
         self.assertEqual(self.light(), [])
         self.assertNotIn("failing", self.agent())
         self.assertEqual(self.agent()["reached_ms"], self.now)
@@ -127,6 +129,7 @@ class NoticeCase(HealthCase):
         self.send_next("More work, while it is red")
         self.assertEqual(len(self.notices()), 1, "no repeat while it stays red")
         self.hand(self.claim_now(), turn_id="turn-through")
+        self.end("completed", turn_id="turn-through")
         self.assertEqual(self.notices()[1], (conversation, "Health: agent-a can be woken again: a wake got through." + NOTICE_TAIL))
         self.assertEqual(len(self.notices()), 2)
 
@@ -224,23 +227,92 @@ class ParkedNoticeCase(HealthCase):
         self.assertEqual(self.notices()[-1][1], "Health: agent-a is answering again." + NOTICE_TAIL)
         self.assertEqual(len(self.notices()), 2)
 
-    def test_a_hosted_agent_whose_turns_end_without_it_acting_is_told_once_however_the_turns_end(self):
-        # Two turns complete and three fail; agent-a records no act in any of them. The
-        # scheduler takes a failed turn's wake back so it is woken again, but nothing about
-        # the agent changed: it was handed five wakes and answered none.
+    def hosted_turn(self, number, status, act=False):
+        """Work for agent-a and a hosted turn started with it that ends as status; agent-a acts in it only if act."""
+        self.now += 61000
+        self.send_next("Work %d" % number)
+        self.hand(self.claim_now(), turn_id="turn-%d" % number)
+        if act:
+            self.ack(self.pending()["items"][0]["id"])
+        self.end(status, turn_id="turn-%d" % number, **({} if status == "completed" else {"error_code": "serverOverloaded"}))
+
+    def test_a_hosted_turn_codex_ended_as_failed_or_lost_is_a_wake_that_did_not_get_through(self):
+        """The reviewer's hosted sequence: two turns complete and three fail or are lost, with no act
+        by agent-a. Codex did not run them, so agent-a can't be woken, and Codex's code says why;
+        it never said it has not answered them."""
         for number, status in enumerate(["completed", "completed", "failed", "lost", "failed"]):
-            self.now += 61000
-            self.send_next("Work %d" % number)
-            self.hand(self.claim_now(), turn_id="turn-%d" % number)
-            self.end(status, turn_id="turn-%d" % number, **({} if status == "completed" else {"error_code": "serverOverloaded"}))
-            self.assertEqual(self.light(), [] if number < 2 else ["parked:agent-a"], "turn %d" % number)
+            self.hosted_turn(number, status)
+            self.assertEqual(self.light(), [] if number < 4 else ["failing:agent-a"], "turn %d" % number)
         self.assertEqual(self.acts_of_agent_a(), 0)
+        why = "its Codex turn failed (server overloaded)"
         self.assertEqual([body for _, body in self.notices()],
-                         ["Health: agent-a has not answered its last 3 wakes; 4 messages wait for it." + NOTICE_TAIL])
-        self.assertEqual(self.agent()["not_answering"]["count"], 5)
+                         ["Health: agent-a can't be woken: its last 3 wakes did not get through. Why: %s." % why + NOTICE_TAIL])
+        agent = self.agent()
+        self.assertNotIn("not_answering", agent)
+        self.assertEqual({key: agent["failing"][key] for key in ("count", "outcome", "reason", "why")},
+                         {"count": 3, "outcome": "failed", "reason": "serverOverloaded", "why": why})
+        self.hosted_turn(5, "completed", act=True)
+        self.assertEqual(self.notices()[-1][1], "Health: agent-a can be woken again: a wake got through." + NOTICE_TAIL)
+        self.assertEqual(self.light(), [])
+
+    def test_a_turn_still_running_settles_nothing_until_it_ends(self):
+        for number in range(3):
+            self.hosted_turn(number, "failed")
+        self.assertEqual(self.light(), ["failing:agent-a"])
+        self.now += 61000
+        self.send_next("Work while a turn runs")
+        self.hand(self.claim_now(), turn_id="turn-open")
+        self.assertEqual(self.light(), ["failing:agent-a"], "whether the turn gets through is known when it ends")
+        self.assertEqual(len(self.notices()), 1)
+        self.end("completed", turn_id="turn-open")
+        self.assertEqual(self.light(), [])
+
+    def test_completed_turns_it_did_not_act_in_are_unanswered_and_a_failed_turn_never_says_it_answered(self):
+        for number in range(3):
+            self.hosted_turn(number, "completed")
+        self.assertEqual(self.light(), ["parked:agent-a"])
+        self.assertEqual(len(self.notices()), 1)
+        self.assertEqual(self.agent()["not_answering"]["count"], 3)
+        self.hosted_turn(3, "failed")
+        self.assertEqual((self.light(), len(self.notices())), (["parked:agent-a"], 1), "a turn Codex failed is not the agent answering")
+        self.assertEqual(self.agent()["not_answering"]["count"], 3)
         self.ack(self.pending()["items"][0]["id"])
         self.assertEqual(self.notices()[-1][1], "Health: agent-a is answering again." + NOTICE_TAIL)
         self.assertEqual(len(self.notices()), 2)
+
+    def wake_facts(self):
+        return self.sql("SELECT failed_wakes,failed_outcome,unanswered_wakes FROM wake_facts WHERE recipient_id='agent-a'")[0]
+
+    def test_a_steer_its_turn_never_read_did_not_get_through_and_a_seen_one_did(self):
+        self.hand(self.claim_now(), turn_id="turn-0")
+        self.now += 1000
+        self.send_next("Work while the turn runs")
+        self.hand(self.claim_now(), turn_id="turn-0", mode="steer")  # never seen in the thread
+        self.end("completed", turn_id="turn-0")
+        self.assertEqual(self.wake_facts(), (1, "unseen", 1), "the turn got through; the steer it never read did not")
+        self.assertEqual(self.agent()["reached_ms"], self.now)
+        # A steer into a turn that had already ended is settled as it is handed.
+        self.now += 61000
+        self.send_next("Work after it ended")
+        self.hand(self.claim_now(), turn_id="turn-0", mode="steer")
+        self.assertEqual(self.wake_facts(), (2, "unseen", 1))
+        # One the turn read gets through with it.
+        self.now += 61000
+        self.hand(self.claim_now(), turn_id="turn-1")
+        self.send_next("Work for a running turn")
+        steer = self.claim_now()
+        self.hand(steer, turn_id="turn-1", mode="steer")
+        self.assertEqual(self.store.hosted_turn_seen(self.hosting, self.runner, "theseus:" + steer["attempt_id"])["status"], "recorded")
+        self.end("completed", turn_id="turn-1")
+        self.assertEqual(self.wake_facts(), (0, None, 2))
+        self.assertEqual(WHY.get("unseen"), None)
+        self.assertEqual(why_words(None, "unseen"), "its work was added to a Codex turn that ended before it read it")
+
+    def test_a_turn_the_agent_acted_in_was_answered(self):
+        for number in range(4):
+            self.hosted_turn(number, "completed", act=True)
+        self.assertEqual((self.light(), self.notices()), ([], []))
+        self.assertEqual(self.sql("SELECT unanswered_wakes FROM wake_facts WHERE recipient_id='agent-a'"), [(0,)])
 
     def test_an_agent_disabled_while_told_is_said_to_be_no_longer_woken(self):
         self.failing()
@@ -449,6 +521,49 @@ class LightCase(HealthCase):
         self.assertEqual(light, {"red": ["failing:agent-a", "runner"], "seq": seq}, "a recorded exit")
         self.assertEqual(self.light(), light["red"], "the view answers what was kept")
         self.assertEqual(self.store.view("owner", "health_light", {})["commit_seq"], seq, "and names its commit")
+
+
+@own_cases
+class LightAfterNoticesCase(HealthCase):
+    """The reviewer's cases: a notice about agent-b is work for agent-a, the coordinator, and work
+    waiting for an agent that left its last three wakes unanswered is red. agent-a is parked by three
+    accepted wakes and then taken off t1, so nothing waits for it; agent-b's failure is set in SQL."""
+
+    kept, park, unanswered_wake = LightCase.kept, ParkedNoticeCase.park, ParkedNoticeCase.unanswered_wake
+
+    def b_failing(self, failed_wakes):
+        with sqlite3.connect(str(self.path)) as db:
+            db.execute("INSERT INTO wake_facts(recipient_id,failed_wakes,failing_since_ms,failed_outcome,failed_reason) "
+                       "VALUES ('agent-b',?,1000,'error','deadline') ON CONFLICT(recipient_id) DO UPDATE SET failed_wakes=excluded.failed_wakes",
+                       (failed_wakes,))
+
+    def parked_with_nothing_waiting(self):
+        self.park()
+        self.part(False)
+        self.assertNotIn("parked:agent-a", self.light(), "nothing waits for it")
+
+    def test_a_notice_that_is_work_for_a_parked_coordinator_is_red_at_the_commit_that_posts_it(self):
+        self.parked_with_nothing_waiting()
+        self.b_failing(3)
+        self.fresh_lease()  # one runner renewal posts the notice, work for agent-a
+        self.assertEqual(self.deliveries_of("Health: agent-b"), [("agent-a", "pending"), ("owner", "acknowledged")])
+        light, seq = self.kept()
+        self.assertEqual(light, {"red": ["failing:agent-b", "parked:agent-a"], "seq": seq})
+        self.assertEqual(self.light(), light["red"], "the view at that commit says the same")
+
+    def test_a_clear_that_is_work_for_a_parked_coordinator_is_red_at_the_commit_that_posts_it(self):
+        # agent-b goes red first, and agent-a reads that notice (an act of its own) before it parks.
+        self.b_failing(3)
+        self.send_next("Any act settles what is red")
+        self.ack(next(item["id"] for item in self.pending()["items"] if item["message"]["author_id"] == "theseus"))
+        self.parked_with_nothing_waiting()
+        self.assertEqual(self.light(), ["failing:agent-b"])
+        self.b_failing(0)
+        self.fresh_lease()  # one runner renewal posts the clear, work for agent-a
+        self.assertEqual(self.notices()[-1][1], "Health: agent-b can be woken again: a wake got through." + NOTICE_TAIL)
+        light, seq = self.kept()
+        self.assertEqual(light, {"red": ["parked:agent-a"], "seq": seq}, "never quiet while the newest fact is red")
+        self.assertEqual(self.light(), light["red"])
 
 
 @own_cases

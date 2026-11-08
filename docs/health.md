@@ -22,10 +22,13 @@ Every answer the link has is tied to the commit it is true at, and what it
 shows is one pure function of what it has (`standing` in
 `web/health-light.mjs`):
 
-- Core keeps what is red with every commit, in the same transaction (metadata
-  `health_light`, `{red, seq}`), and the live feed sends it with that
-  commit's number: `{"seq": N, "health": {"red": [...], "seq": N}}`. On a
-  current server the link follows the feed alone and reads nothing.
+- Core keeps what is red with every commit, in the same transaction, as its
+  last write (metadata `health_light`, `{red, seq}`): it is read after every
+  other write the act made, the notices it posts included, and kept with the
+  number of the commit it is true at, so it is what the views answer at that
+  commit. The live feed sends it with that number:
+  `{"seq": N, "health": {"red": [...], "seq": N}}`. On a current server the
+  link follows the feed alone and reads nothing.
 - A commit the feed sends without it (an older server, or a commit that did
   not settle what is red, such as a migration) is read through the
   `health_light` view, whose answer names the commit it was read at
@@ -68,18 +71,22 @@ The Mac's load is read when the page reads it, not recorded by any act, so it
 is said at the top of the page when it is above the core count but never
 lights the link or posts.
 
-A wake is left unanswered when it reached the agent (a notice accepted into
-its chat, or a hosted turn started with its work) and the agent has recorded
-no command since. Core keeps that count per agent in `wake_facts`
-(`unanswered_wakes`, `unanswered_since_ms`), and only two things move it: a
-wake reaching the agent adds one, and the agent's own recorded command clears
-it. The scheduler keeps a count of its own for when to stop waking a silent
-agent (docs/effects-runner.md, "Unanswered wakes"), and that one also moves
-for reasons that are not the agent's: it takes back a turn that failed or was
-lost so the agent is woken again, and clears when nothing waits, as when the
-owner takes the agent off a topic. Health never reads it, so a failed turn or
-work taken away never says the agent answered. A turn that fails is still a
-wake handed to the agent that it did not answer.
+A wake is left unanswered when it got through to the agent (below) and the
+agent has recorded no command since: a notice accepted into its chat, or a
+hosted turn the wake started that completed with no command from the agent
+since the turn began. Core keeps that count per agent in `wake_facts`
+(`unanswered_wakes`, `unanswered_since_ms`, and `acted_ms`, when the agent
+last recorded a command), and only two things move it: a wake getting through
+adds one, and the agent's own recorded command clears it. Each is final when
+it is recorded, so the count is never taken back: a hosted turn is counted
+when it ends, not when it is handed its work, and a turn Codex ended failed,
+lost or interrupted did not get through (below), so it is never filed as the
+agent not answering, and never as the agent answering either. The scheduler
+keeps a count of its own for when to stop waking a silent agent
+(docs/effects-runner.md, "Unanswered wakes"), which also moves for its own
+reasons (it clears when nothing waits, as when the owner takes the agent off a
+topic). Health never reads it, and the page never says what the scheduler will
+do: it says how many wakes reached the agent and since when.
 
 A runner that stops gracefully keeps as its end when wakes last went out: the
 stop itself, or, for a runner whose lease had already run out unrenewed (a
@@ -87,20 +94,30 @@ hung runner then sent TERM), that lease's end.
 
 ## Why a wake did not get through
 
-A wake gets through when it settles `accepted`, `queued` or `handed`. Any
-other settlement (`error`, `unavailable`, `busy`, or `expired` with its claim)
-did not. The runner settles each wake with its own fixed code for how it went
-(`finish_wake(..., reason=)`: `broker_exit`, `deadline`, `route_unavailable`,
-`child_exited`, `start_failed` and the others in `wake_adapter.py` and
-`codex_host.py`; never local text), and a claim that expired with its runner
-is `expired`. Core keeps, per recipient, in `wake_facts`: `reached_ms`,
-`failed_wakes`, `failing_since_ms`, `failed_outcome` and `failed_reason` (the
-latest failure's code), updated by every settlement, so the page reads one row
-per agent however long a failure runs. `WHY` in `health.py` says each code in
-words ("the helper that puts a wake in the Codex app's queue failed (it exited
-with an error)"); the view sends those words as `failing.why`, and the page,
-the command line and the notices all say them. Failures from before Core kept
-the code say so.
+A wake gets through when it settles `accepted` or `queued`, or, for a wake
+handed to a hosted turn, when that turn ends `completed` having read it. A
+handed wake settles when its turn ends, from the end Core records
+(`end_hosted_turn`), never when it is handed: while the turn runs nobody knows
+whether it got through, and the page goes on saying what the settled wakes
+say. Any other settlement did not get through: `error`, `unavailable`, `busy`,
+`expired` with its claim, a turn Codex ended `failed`, `lost` or
+`interrupted`, or a steer the turn ended without reading (`unseen`). A turn
+that did not complete is a wake that did not get through, not an agent that
+chose not to answer: Codex did not run it. The runner settles each wake with
+its own fixed code for how it went (`finish_wake(..., reason=)`:
+`broker_exit`, `deadline`, `route_unavailable`, `child_exited`, `start_failed`
+and the others in `wake_adapter.py` and `codex_host.py`; never local text), a
+claim that expired with its runner is `expired`, and a turn that did not
+complete keeps Codex's own code for why (`codexErrorInfo`, as
+`serverOverloaded`), said in words after how the turn ended ("its Codex turn
+failed (server overloaded)", `TURN_WHY`). Core keeps, per recipient, in
+`wake_facts`: `reached_ms`, `failed_wakes`, `failing_since_ms`,
+`failed_outcome` and `failed_reason` (the latest failure's code), updated by
+every settlement, so the page reads one row per agent however long a failure
+runs. `WHY` in `health.py` says each code in words ("the helper that puts a
+wake in the Codex app's queue failed (it exited with an error)"); the view
+sends those words as `failing.why`, and the page, the command line and the
+notices all say them. Failures from before Core kept the code say so.
 
 ## Telling the team
 
@@ -130,15 +147,16 @@ never on a timer of its own, and never again while nothing changes.
   going out. But nothing about it changed: the instance was never given a
   runner, so there is no stop to report, and the only thing that moves it is
   the work. When a runner first takes the role, nothing told ends.
-- **When.** Every act that commits runs `_health_settle` in its own
-  transaction: each recorded command, each runner act (a settlement, a claim
-  that finds an expired one, a pause, an acquisition, a renewal, a stop),
-  each recorded runner exit (the supervisor's, or the server's when its live
-  feed sees the runner process end), each operator write, and the server's
-  settling at Core's kept moment (below). It keeps what is red with the
-  commit, and compares what is told now with what was last told (metadata
-  `health_announced`, always what the rule gave at the last settling), and
-  posts only the difference.
+- **When.** Every act that commits ends its own transaction with
+  `_health_commit`: each recorded command, each runner act (a settlement, a
+  claim that finds an expired one, a pause, an acquisition, a renewal, a
+  stop), each recorded runner exit (the supervisor's, or the server's when its
+  live feed sees the runner process end), each operator write, and the
+  server's settling at Core's kept moment (below). It compares what is told
+  now with what was last told (metadata `health_announced`, always what the
+  rule gave at the last settling) and posts only the difference; then it
+  advances the commit and keeps what is red, read after those notices, since
+  a notice can be work that lights a red (below, "Who is told").
 - **What it says.** What is told now and was not, then what was told and is
   not, in words drawn from the facts now: a runner back is "running again"
   (it is told only once it had run and stopped); an agent whose wakes get

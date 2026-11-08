@@ -6,10 +6,13 @@ Random runs of runner acts (take the role, renew, stop, pause, resume, exit),
 wakes that get through or do not, hosted turns that complete, fail or are
 lost, work sent and answered, the owner taking agent-a off its topic and
 putting it back, and time passing, with the server's settling at Core's kept
-moment as the live feed would do it. After every step:
+moment as the live feed would do it. agent-b, on agent-a's team, is woken
+through the Codex app's queue and its wakes get through or fail too, so the
+notices about it are work for agent-a, the coordinator, and can light agent-a's
+parked red in the act that posts them. After every step:
 
 - what Core kept as red (metadata health_light) is what the rule gives now,
-  for the commit it names;
+  for the commit it names, including what the step's own notices lit;
 - what Core kept as told is what `_health_told` gives now;
 - the notices that step posted are exactly the difference between what was
   told before it and after it, so replaying every notice from the first
@@ -30,7 +33,7 @@ import sqlite3
 from aim_next.health import HANDOVER_MS
 from aim_next.runner import RunnerError
 from aim_next.store import _connect
-from test_hosted_schedule import THREAD
+from test_hosted_schedule import OTHER_THREAD, THREAD
 from test_health import HealthCase
 from test_wake_contract import own_cases
 
@@ -69,8 +72,9 @@ class HealthPropertyCase(HealthCase):
         """The facts a told key is about: the runner's row, or the agent's own wake facts.
 
         An agent's own facts are whether it is enabled, the acts it recorded, and the
-        wakes that reached it (accepted notices, handed turns), never the scheduler's
-        count, which moves for reasons that are not the agent's."""
+        wakes that reached it (accepted notices, turns it was started for that
+        completed), never the scheduler's count, which moves for reasons that are not
+        the agent's, nor turns Codex did not complete."""
         if key == "runner":
             # Whether its lease still runs is a fact of the runner's: it ends as time passes.
             state, token, ended, reason, lease = self.sql("SELECT state,runner_token,ended_ms,reason_code,lease_until_ms FROM runner_state")[0]
@@ -81,7 +85,8 @@ class HealthPropertyCase(HealthCase):
             return enabled, tuple(self.sql("SELECT failed_wakes FROM wake_facts WHERE recipient_id=?", (agent,)) or [(0,)])[0]
         acts = self.sql("SELECT count(*) FROM operations WHERE actor_id=?", (agent,))[0][0]
         reached = self.sql("SELECT count(*) FROM wake_attempts a JOIN wake_results r ON r.attempt_id=a.id "
-                           "WHERE a.recipient_id=? AND r.outcome IN ('accepted','handed')", (agent,))[0][0]
+                           "WHERE a.recipient_id=? AND r.outcome='accepted'", (agent,))[0][0] + self.sql(
+            "SELECT count(*) FROM hosted_turns WHERE recipient_id=? AND mode='start' AND final_status='completed'", (agent,))[0][0]
         return enabled, acts, reached
 
     def events(self, after_seq):
@@ -112,20 +117,33 @@ class HealthPropertyCase(HealthCase):
             self.g.close()
         self.g = self.guard("prop-%d" % self.serial_guard)
 
+    def minute_later(self):
+        """In a coordinator run, past the minute an accepted wake waits, within the runner's longer
+        lease, so the agent is woken again for what it left."""
+        if self.coordinator:
+            self.store.renew_runner(self.g, self.runner, lease_ms=120000)
+            self.now += 61000
+
     def act(self, rng):
         state = self.sql("SELECT state,version,lease_until_ms FROM runner_state")[0]
         live = state[0] == "running" and state[2] > self.now
         # While a runner runs, mostly wakes and work, so agents fail and park; while none does,
         # mostly a runner taking the role again, so it comes and goes many times in a run.
         choice = rng.choice(["wake"] * 5 + ["turn"] * 3 + ["send"] * 2 + ["ack"] * self.acks + ["time"] * 4 + ["renew"] * 2
-                            + ["leave", "join", "stop", "pause", "exit"] if live
+                            + ["leave", "join", "stop", "pause", "exit"] + ["b-send", "b-wake", "b-wake"] + ["b-ack"] * self.acks if live
                             else ["acquire", "acquire", "resume", "resume", "send", "send", "time", "time", "stop", "exit", "leave", "join"]
                             + ["ack"] * self.acks)
-        if self.steady:
+        if self.coordinator:
+            # A runner that stays up while agent-a, the coordinator, seldom acts and is often off its
+            # topic, and agent-b's wakes get through, fail and are answered: agent-a parks with nothing
+            # waiting, and a notice about agent-b is the work that makes it red.
+            choice = rng.choice(["wake"] * 4 + ["send"] * 2 + ["leave"] * 3 + ["join", "ack"] + ["b-send"] * 3 + ["b-wake"] * 5
+                                + ["b-ack"] * 2 + ["time"] * 2) if live else "acquire"
+        elif self.steady:
             # A runner that stays up: wakes and turns keep reaching agent-a while its work
             # comes and goes, so it parks and the scheduler moves its own count around it.
             choice = rng.choice(["wake"] * 4 + ["turn"] * 4 + ["send"] * 3 + ["time"] * 3 + ["renew", "leave", "join"]
-                                + ["ack"] * self.acks) if live else "acquire"
+                                + ["b-send", "b-wake", "b-wake"] + ["ack"] * self.acks) if live else "acquire"
         if self.unrun > 0:
             # An instance not yet given a runner: work comes and goes around it for a while.
             self.unrun -= 1
@@ -136,6 +154,19 @@ class HealthPropertyCase(HealthCase):
             elif choice == "ack":
                 for item in self.pending()["items"]:
                     self.ack(item["id"])
+            elif choice == "b-send":
+                self.send_next("Work for agent-b %d" % rng.randrange(10 ** 6), addressees=["agent-b"])
+            elif choice == "b-ack":
+                for item in self.store.view("agent-b", "deliveries", {})["items"]:
+                    self.ack(item["id"], actor="agent-b")
+            elif choice == "b-wake" and self.runner:
+                # agent-b's wakes go through the Codex app's queue; Health's notices about it are agent-a's work.
+                self.minute_later()
+                self.store.renew_runner(self.g, self.runner)
+                for claim in self.store.claim_wakes(self.g, self.runner, ["agent-b"]).get("claims") or ():
+                    outcome = rng.choice(["accepted", "error", "error", "unavailable"])
+                    self.store.finish_wake(self.g, self.runner, claim["claim_token"], outcome,
+                                           reason=None if outcome == "accepted" else rng.choice(["broker_exit", "deadline"]))
             elif choice in ("leave", "join"):
                 # The owner takes agent-a off its topic (what waited for it is cancelled), or puts it back.
                 present = self.sql("SELECT count(*) FROM topic_participants WHERE topic_id='t1' AND actor_id='agent-a' AND active=1")[0][0]
@@ -161,11 +192,12 @@ class HealthPropertyCase(HealthCase):
             elif choice == "exit" and state[0] == "running":
                 self.store.record_runner_exit(os.getpid(), rng.choice([None, 0, 1, 75, -9, -15]))
             elif choice == "wake" and self.runner:
+                self.minute_later()
                 # A runner renews before it claims, as its loop does.
                 self.store.renew_runner(self.g, self.runner)
                 claims = self.store.claim_wakes(self.g, self.runner, ["agent-a"])
                 for claim in claims.get("claims") or ():
-                    outcome = rng.choice(["accepted", "unavailable", "error", "error"])
+                    outcome = rng.choice(["accepted", "accepted", "accepted", "error"] if self.coordinator else ["accepted", "unavailable", "error", "error"])
                     self.store.finish_wake(self.g, self.runner, claim["claim_token"], outcome,
                                            reason=None if outcome == "accepted" else rng.choice(["broker_exit", "deadline"]))
             elif choice == "turn" and self.runner and self.open_turn:
@@ -196,7 +228,9 @@ class HealthPropertyCase(HealthCase):
         self.acks = rng.choice([0, 1, 2])
         self.unrun = 0
         self.steady = rng.random() < 0.5
+        self.coordinator = not self.steady and rng.random() < 0.5
         self.turns, self.open_turn = 0, None
+        self.pin_route(self.hosting, "codex-queue-stdio", OTHER_THREAD, actor="agent-b")
         if rng.random() < 0.4:
             # An instance whose runner never ran.
             self.hosting.close()

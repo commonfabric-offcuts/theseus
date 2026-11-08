@@ -115,7 +115,8 @@ function agentLines(agent, now, sending) {
     : !agent.route ? 'not woken here' : agent.waiting > 0 ? 'wakes going out' : 'all caught up';
   const details = [];
   if (agent.failing) details.push(`${failedPhrase(agent.failing, now).replace(/^./, c => c.toUpperCase())} (${plural(agent.failing.count, 'time')}). ${why(agent.failing)}`);
-  if (agent.not_answering) details.push(`Its last ${count(agent.not_answering.count)} wakes reached it and it has not answered since ${at(agent.not_answering.since_ms, now)}, so it is woken only for new work.`);
+  // Health's own facts only: what the scheduler then does is its own (docs/effects-runner.md).
+  if (agent.not_answering) details.push(`Its last ${count(agent.not_answering.count)} wakes reached it and it has not answered since ${at(agent.not_answering.since_ms, now)}.`);
   if (agent.route) {
     details.push(`Woken through ${ROUTE[agent.route]}.`);
     details.push(Number.isInteger(agent.reached_ms) ? `A wake last got through at ${at(agent.reached_ms, now)}.` : 'No wake has got through yet.');

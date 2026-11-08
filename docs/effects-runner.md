@@ -129,9 +129,11 @@ a hosted turn that holds its work is the one acting. Reaching nothing pending
 clears the count too. Reads stay write-free, so a read is not a sign of life.
 The counts are derived from wakes, not anyone's records, so stepping back to
 version 21 drops them and is never refused for them. This count is the
-scheduler's: it is taken back and cleared for the scheduler's own reasons, so
-the Health page keeps a count of its own that only wakes and the agent's acts
-move (docs/health.md).
+scheduler's: it counts a turn when it is handed and takes it back if it fails,
+and clears when nothing waits, for the scheduler's own reasons. The Health
+page keeps a count of its own, of wakes that got through (a hosted turn when
+it completes), which only those wakes and the agent's acts move, and it never
+says what the scheduler will do (docs/health.md).
 
 The `wakes` view lists the agents whose wakes are not getting through: while a
 runner holds a live lease, each parked agent with work, as `{actor_id,

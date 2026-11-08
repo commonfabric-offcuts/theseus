@@ -35,6 +35,17 @@ test('an agent that cannot be woken says why, in Core\'s words, at the top and o
   assert.doesNotMatch(healthProblems(answer({ agents: [agent('codex-a')] }), { now: NOW }).join(' '), /Why:/, 'an agent that is not failing says no why');
 });
 
+test('an agent not answering is said from Health\'s own facts, never what the scheduler will do', () => {
+  const page = answer({ red: ['parked:hosted-a'], agents: [agent('hosted-a', { route: 'codex_hosted', waiting: 2, not_answering: { count: 3, since_ms: NOW - 30 * MIN } })] });
+  const line = healthLines(page, { now: NOW }).find(item => item.key === 'agent:hosted-a');
+  assert.equal(line.bad, true);
+  assert.match(line.details[0], /^Its last 3 wakes reached it and it has not answered since .+\.$/);
+  assert.doesNotMatch(line.details.join(' '), /woken only|new work/, 'the scheduler keeps its own count, so the page does not say when it wakes');
+  // A turn Codex failed is a wake that did not get through, with Codex's code as why (health.py).
+  const failed = answer({ red: ['failing:hosted-a'], agents: [agent('hosted-a', { route: 'codex_hosted', failing: failing('serverOverloaded', 'its Codex turn failed (server overloaded)', { outcome: 'failed', count: 3 }) })] });
+  assert.match(healthProblems(failed, { now: NOW })[0], /^hosted-a can't be woken: no wake since .+ has got through \(3 times\)\. Why: its Codex turn failed \(server overloaded\)\.$/);
+});
+
 test('agents whose failures began together for one reason are said together; another reason is said apart', () => {
   const deadline = failing('deadline', 'the Codex app did not answer in time');
   const same = answer({ agents: [agent('a', { failing: deadline }), agent('b', { failing: { ...deadline, since_ms: deadline.since_ms + MIN } })] });

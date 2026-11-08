@@ -166,8 +166,7 @@ class Runner:
             result, changed = action(db, now)
             if changed:
                 # What is red may have changed with this act (health.py).
-                self._health_settle(db, now)
-                self._advance_commit_seq(db)
+                self._health_commit(db, now)
                 guard.verify()
                 db.commit()
             return dict(result, instance_id=self.instance_id)
@@ -390,19 +389,21 @@ class Runner:
         if pending and row["last_seq"] > attempt["captured_seq"] and self._pending_above(db, attempt["recipient_id"], attempt["captured_seq"]):
             due = now
         db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], "handed", now))
-        self._wake_settled(db, attempt["recipient_id"], "handed", now)
         db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,final_status,error_code,finished_ms) "
                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                    (attempt["id"], attempt["recipient_id"], turn["thread_id"], turn["turn_id"], turn["mode"], turn["client_id"],
                     turn["announced_seq"], now, ended["final_status"] if ended else None, ended["error_code"] if ended else None,
                     now if ended else None))
+        if ended:
+            # Whether a handed wake got through is known when its turn ends (health.py); this one already had.
+            self._turn_ended(db, attempt["recipient_id"], "unseen" if ended["final_status"] == "completed" and late else ended["final_status"],
+                             now, ended["error_code"], now if turn["mode"] == "start" else None)
         # retry_count is otherwise kept: a turn that fails again backs off further, and only a clean turn end resets it.
         db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,handed_seq=?,retry_count=? WHERE recipient_id=?",
                    (due, handed, retry, attempt["recipient_id"]))
         if handed is not None and turn["mode"] == "start":
             # A turn started with this work; a steer joins a turn already counted.
             self._wake_unanswered(db, attempt["recipient_id"], now, handed)
-            self._wake_reached(db, attempt["recipient_id"], now)
         elif handed is not None:
             self._wake_named(db, attempt["recipient_id"], handed)
         db.execute("UPDATE runner_state SET child_pid=NULL,child_started_at=NULL,child_claim_token=NULL WHERE id=1 AND child_claim_token=?", (attempt["claim_token"],))
@@ -457,11 +458,16 @@ class Runner:
                     work.turn_completed(db, row["attempt_id"], row["recipient_id"], now)
             else:
                 # A turn that did not complete never gave the agent its wake to
-                # answer, so the scheduler wakes it again. Health's count of what
-                # the agent left unanswered keeps the wake: the agent did nothing.
+                # answer, so the scheduler wakes it again.
                 for row in rows:
                     if row["mode"] == "start":
                         self._wake_withdrawn(db, row["recipient_id"])
+            for row in rows:
+                # Each wake the turn was handed settles with its end (health.py): one it
+                # never read, or a turn Codex did not complete, did not get through.
+                seen = row["mode"] not in UNSEEN_REARM_MODES or row["seen_ms"] is not None
+                self._turn_ended(db, row["recipient_id"], status if status != "completed" or seen else "unseen", now, error_code,
+                                 row["handed_ms"] if row["mode"] == "start" else None)
             rearmed = False
             for recipient in sorted({row["recipient_id"] for row in rows}):
                 schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()
@@ -602,8 +608,7 @@ class Runner:
                         return {"status": "not_holder", "instance_id": self.instance_id}
                     db.execute("UPDATE runner_state SET state='exited',version=version+1,reason_code=?,lease_until_ms=MIN(lease_until_ms,?),ended_ms=COALESCE(ended_ms,?) WHERE id=1",
                                (reason, now, now))
-                    self._health_settle(db, now)
-                    self._advance_commit_seq(db)
+                    self._health_commit(db, now)
                     db.commit()
                     return {"status": "recorded", "reason": reason, "ended_ms": now, "instance_id": self.instance_id}
                 finally:
@@ -642,8 +647,7 @@ class Runner:
                     now = delivery._now_ms()
                     if due_ms > now:
                         status = "early"
-                    elif self._health_settle(db, now):
-                        self._advance_commit_seq(db)
+                    elif self._health_commit(db, now, always=False):
                         db.commit()
                         status = "settled"
                     else:

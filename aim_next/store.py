@@ -238,8 +238,7 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
                 changed = write(db)
                 if changed:
                     # Every commit keeps what is red with it (health.py).
-                    self._health_settle(db, _delivery._now_ms())
-                    self._advance_commit_seq(db)
+                    self._health_commit(db, _delivery._now_ms())
                 db.commit()
                 return changed
             except sqlite3.Error as error:
@@ -371,11 +370,10 @@ class Store(Drafts, Openings, Delivery, Conversation, Runner, Memory, Media, Rou
             # Any recorded act is a sign of life: the actor's wakes are answered.
             now = _delivery._now_ms()
             self._sign_of_life(db, actor, now)
-            self._health_acted(db, actor)
-            # What is red may have changed with this act (health.py).
-            self._health_settle(db, now)
+            self._health_acted(db, actor, now)
             db.execute("INSERT INTO operations VALUES (?,?,?,?,?)", (actor, op_id, fingerprint, kind, _json(receipt)))
-            self._advance_commit_seq(db)
+            # What is red may have changed with this act (health.py); the last step before the commit.
+            self._health_commit(db, now)
             db.commit()
             return receipt
         except Refusal as exc:
