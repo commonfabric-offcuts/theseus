@@ -93,8 +93,9 @@ HEALTH_SCHEMA = [
     # Per recipient: when a wake last got through, the wakes since that did
     # not, and the runner's (or Codex's) fixed code for why the latest of them
     # did not; the wakes that got through to it since it last acted, and since
-    # when (`_wake_reached`); and when it last recorded a command
-    # (`_health_acted`), so a turn that completes knows whether it acted in it.
+    # when (`_wake_reached`); and when it last recorded a command while a
+    # hosted turn of its ran (`_health_acted`), so a turn that ends knows
+    # whether it acted in it.
     "CREATE TABLE wake_facts (recipient_id TEXT PRIMARY KEY REFERENCES actors(id), reached_ms INTEGER, "
     "failed_wakes INTEGER NOT NULL DEFAULT 0, failing_since_ms INTEGER, failed_outcome TEXT, failed_reason TEXT, "
     "unanswered_wakes INTEGER NOT NULL DEFAULT 0, unanswered_since_ms INTEGER, acted_ms INTEGER)",
@@ -350,9 +351,13 @@ class Health:
             self._wake_reached(db, recipient, handed_ms)
 
     def _health_acted(self, db, actor, now):
-        """The actor recorded a command: every wake that reached it is answered, and a turn running now was acted in."""
-        db.execute("INSERT INTO wake_facts(recipient_id,acted_ms) VALUES (?,?) ON CONFLICT(recipient_id) DO UPDATE "
-                   "SET unanswered_wakes=0,unanswered_since_ms=NULL,acted_ms=excluded.acted_ms", (actor, now))
+        """The actor recorded a command: every wake that reached it is answered, and a hosted turn of
+        its running now was acted in. Each is written only when there is one, so a command by
+        anyone else (or a refusal) changes nothing here."""
+        db.execute("UPDATE wake_facts SET unanswered_wakes=0,unanswered_since_ms=NULL WHERE recipient_id=? AND unanswered_wakes>0", (actor,))
+        db.execute("INSERT INTO wake_facts(recipient_id,acted_ms) SELECT ?,? WHERE EXISTS (SELECT 1 FROM hosted_turns INDEXED BY hosted_turns_open "
+                   "WHERE final_status IS NULL AND recipient_id=?) ON CONFLICT(recipient_id) DO UPDATE SET acted_ms=excluded.acted_ms",
+                   (actor, now, actor))
 
     def _runner_took_role(self, db, now):
         """A runner takes the role: keep how the run it replaces ended, before the state row says running."""

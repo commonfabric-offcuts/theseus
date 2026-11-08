@@ -310,10 +310,11 @@ class ParkedNoticeCase(HealthCase):
 
     def test_a_turn_codex_failed_after_the_agent_acted_in_it_got_through(self):
         """Only an agent the turn reached can act in it, so its wake got through, however the turn ended."""
+        self.assertEqual(self.sql("SELECT count(*) FROM wake_facts WHERE recipient_id='agent-a'"), [(0,)], "its first turn is its first fact")
         for number in range(3):
             self.hosted_turn(number, "failed", act=True)
+            self.assertEqual(self.wake_facts(), (0, None, 0), "turn %d" % number)
         self.assertEqual((self.light(), self.notices()), ([], []))
-        self.assertEqual(self.wake_facts(), (0, None, 0))
 
     def test_a_turn_the_agent_acted_in_was_answered(self):
         for number in range(4):

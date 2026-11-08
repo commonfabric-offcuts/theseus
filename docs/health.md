@@ -76,17 +76,18 @@ agent has recorded no command since: a notice accepted into its chat, or a
 hosted turn the wake started that completed with no command from the agent
 since the turn began. Core keeps that count per agent in `wake_facts`
 (`unanswered_wakes`, `unanswered_since_ms`, and `acted_ms`, when the agent
-last recorded a command), and only two things move it: a wake getting through
-adds one, and the agent's own recorded command clears it. Each is final when
-it is recorded, so the count is never taken back: a hosted turn is counted
-when it ends, not when it is handed its work, and a turn Codex ended failed,
-lost or interrupted did not get through (below), so it is never filed as the
-agent not answering, and never as the agent answering either. The scheduler
-keeps a count of its own for when to stop waking a silent agent
-(docs/effects-runner.md, "Unanswered wakes"), which also moves for its own
-reasons (it clears when nothing waits, as when the owner takes the agent off a
-topic). Health never reads it, and the page never says what the scheduler will
-do: it says how many wakes reached the agent and since when.
+last recorded a command while a hosted turn of its ran), and only two things
+move it: a wake getting through adds one, and the agent's own recorded command
+clears it. Each is final when it is recorded, so the count is never taken
+back: a hosted turn is counted when it ends, not when it is handed its work,
+and a turn Codex ended failed, lost or interrupted did not get through
+(below), so it is never filed as the agent not answering, and never as the
+agent answering either. The scheduler keeps a count of its own for when to
+stop waking a silent agent (docs/effects-runner.md, "Unanswered wakes"), which
+also moves for its own reasons (it clears when nothing waits, as when the
+owner takes the agent off a topic). Health never reads it, and the page never
+says what the scheduler will do: it says how many wakes reached the agent and
+since when.
 
 A runner that stops gracefully keeps as its end when wakes last went out: the
 stop itself, or, for a runner whose lease had already run out unrenewed (a
