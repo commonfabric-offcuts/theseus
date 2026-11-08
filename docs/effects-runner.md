@@ -131,9 +131,10 @@ The counts are derived from wakes, not anyone's records, so stepping back to
 version 21 drops them and is never refused for them. This count is the
 scheduler's: it counts a turn when it is handed and takes it back if it fails,
 and clears when nothing waits, for the scheduler's own reasons. The Health
-page keeps a count of its own, of wakes that got through (a hosted turn when
-it completes), which only those wakes and the agent's acts move, and it never
-says what the scheduler will do (docs/health.md).
+page keeps a count of its own, of attempts that got through (a hosted turn,
+with every steer it took, once, when it completes), which only those attempts
+and the agent's acts move, and it never says what the scheduler will do
+(docs/health.md).
 
 The `wakes` view lists the agents whose wakes are not getting through: while a
 runner holds a live lease, each parked agent with work, as `{actor_id,

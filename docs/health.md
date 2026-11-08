@@ -64,63 +64,77 @@ drawn from the same facts by a rule of its own (below):
 | key | red while |
 | --- | --- |
 | `runner` | no runner sends wakes: it paused, ended (killed, failed, lost its lease, or the server saw it go), was stopped and no runner has taken the role since, stopped renewing without saying so, or never ran here while a woken agent has work on the record |
-| `failing:<agent>` | `failing_after` (3) wakes in a row to that agent did not get through |
-| `parked:<agent>` | it has left its last three wakes unanswered (below) and work on the record waits for it |
+| `failing:<agent>` | `failing_after` (3) attempts in a row to reach that agent did not get through (below) |
+| `parked:<agent>` | it has left its last three attempts unanswered (below) and work on the record waits for it |
 
 The Mac's load is read when the page reads it, not recorded by any act, so it
 is said at the top of the page when it is above the core count but never
 lights the link or posts.
 
-A wake is left unanswered when it got through to the agent (below) and the
-agent has recorded no command since: a notice accepted into its chat, or a
-hosted turn the wake started that completed with no command from the agent
-since the turn began. Core keeps that count per agent in `wake_facts`
+An attempt is left unanswered when it got through to the agent with work
+waiting (below) and the agent recorded no command after its wake began: a
+notice accepted into its chat with work waiting, or a hosted turn that was
+given work still pending and completed with no command from the agent after
+its first claim. Core keeps that count per agent in `wake_facts`
 (`unanswered_wakes`, `unanswered_since_ms`, and `acted_ms`, when the agent
-last recorded a command while a hosted turn of its ran), and only two things
-move it: a wake getting through adds one, and the agent's own recorded command
-clears it. Each is final when it is recorded, so the count is never taken
-back: a hosted turn is counted when it ends, not when it is handed its work,
-and a turn Codex ended failed, lost or interrupted did not get through
-(below), so it is never filed as the agent not answering, and never as the
-agent answering either. The scheduler keeps a count of its own for when to
-stop waking a silent agent (docs/effects-runner.md, "Unanswered wakes"), which
-also moves for its own reasons (it clears when nothing waits, as when the
-owner takes the agent off a topic). Health never reads it, and the page never
-says what the scheduler will do: it says how many wakes reached the agent and
-since when.
+last recorded a command while a claim or a hosted turn of its was out), and
+only two things move it: an attempt left unanswered adds one when it settles,
+and the agent's own recorded command clears it. Each is final when it is
+recorded, so the count is never taken back: a hosted turn is counted when it
+ends, not when it is handed its work; a turn Codex ended failed, lost or
+interrupted did not get through (below), so it is never filed as the agent
+not answering, and never as the agent answering either; and a turn handed
+nothing still pending (the owner took the work away between the claim and
+the hand) left the agent nothing to answer. The scheduler keeps a count of
+its own for when to stop waking a silent agent (docs/effects-runner.md,
+"Unanswered wakes"), which also moves for its own reasons (it clears when
+nothing waits, as when the owner takes the agent off a topic). Health never
+reads it, and the page never says what the scheduler will do: it says how
+many wakes reached the agent and since when.
 
 A runner that stops gracefully keeps as its end when wakes last went out: the
 stop itself, or, for a runner whose lease had already run out unrenewed (a
 hung runner then sent TERM), that lease's end.
 
-## Why a wake did not get through
+## Attempts, and why one did not get through
 
-A wake gets through when it settles `accepted` or `queued`, or, for a wake
-handed to a hosted turn, when that turn ends `completed` having read it, or
-the agent recorded a command after it was handed, which only an agent the turn
-reached can do. A handed wake settles when its turn ends, from the end Core
-records (`end_hosted_turn`), never when it is handed: while the turn runs
-nobody knows whether it got through, and the page goes on saying what the
-settled wakes say. Any other settlement did not get through: `error`,
-`unavailable`, `busy`, `expired` with its claim, a turn Codex ended `failed`,
-`lost` or `interrupted`, or a steer the turn ended without reading (`unseen`),
-with no command from the agent since. A turn that did not complete is a wake
-that did not get through, not an agent that chose not to answer: Codex did not
-run it. The runner settles each wake with its own fixed code for how it went
-(`finish_wake(..., reason=)`: `broker_exit`, `deadline`, `route_unavailable`,
-`child_exited`, `start_failed` and the others in `wake_adapter.py` and
-`codex_host.py`; never local text), a claim that expired with its runner is
-`expired`, and a turn that did not complete keeps Codex's own code for why
-(`codexErrorInfo`, as `serverOverloaded`), said in words after how the turn
-ended ("its Codex turn failed (server overloaded)", `TURN_WHY`). Core keeps,
-per recipient, in `wake_facts`: `reached_ms`, `failed_wakes`,
+What Health counts is attempts to reach an agent, never the messages around
+them. An attempt is one claim the runner settles itself, or one hosted turn
+with every hand it took: the claim that started it and each claim whose work
+was steered into it. However many messages were steered into a turn, it is one
+attempt, settled once, when Core records its end (`end_hosted_turn`); a hand
+to a turn that had already ended joins an attempt already settled. Each
+attempt comes to one fact (`claim_attempt` and `turn_attempt` in `health.py`):
+
+| attempt | got through | did not, with why |
+| --- | --- | --- |
+| a claim | it settled `accepted` (its notice is in the agent's chat) or `queued` (an earlier one still waiting leads there) | it settled `error`, `unavailable` or `busy`, with the runner's own fixed code for how it went, or `expired` with its claim |
+| a hosted turn | it ended `completed`, or the agent recorded a command after its first claim began, however it ended: only an agent the turn reached can act in it | it ended `failed`, `lost` or `interrupted` with no command from the agent, with Codex's own code for why |
+
+An act recorded once Codex has started the turn but before the runner records
+the hand counts for that turn: the claim was out, so it came after the wake
+began. A steer a completed turn never read is work the scheduler hands again
+(docs/effects-runner.md), not an attempt that failed. A turn that did not
+complete is an attempt that did not get through, not an agent that chose not
+to answer: Codex did not run it. While a turn runs nobody knows whether it gets
+through, and the page goes on saying what the settled attempts say.
+
+What Core keeps per recipient in `wake_facts` is a pure function of its
+attempts in the order they settled (`settled` in `health.py`): `reached_ms`
+(when one last got through), `failed_wakes` (the attempts since that did not),
 `failing_since_ms`, `failed_outcome` and `failed_reason` (the latest failure's
-code), updated by every settlement, so the page reads one row per agent
-however long a failure runs. `WHY` in `health.py` says each code in words
-("the helper that puts a wake in the Codex app's queue failed (it exited with
-an error)"); the view sends those words as `failing.why`, and the page, the
-command line and the notices all say them. Failures from before Core kept the
-code say so.
+code), and the unanswered count above. It is kept as each attempt settles, so
+the page reads one row per agent however long a failure runs. The runner
+settles each claim with its own fixed code (`finish_wake(..., reason=)`:
+`broker_exit`, `deadline`, `route_unavailable`, `child_exited`, `start_failed`
+and the others in `wake_adapter.py` and `codex_host.py`; never local text), and
+a turn that did not complete keeps Codex's code (`codexErrorInfo`, as
+`serverOverloaded`), said in words after how the turn ended ("its Codex turn
+failed (server overloaded)", `TURN_WHY`). `WHY` in `health.py` says each
+runner code in words ("the helper that puts a wake in the Codex app's queue
+failed (it exited with an error)"); the view sends those words as
+`failing.why`, and the page, the command line and the notices all say them.
+Failures from before Core kept the code say so.
 
 ## Telling the team
 
@@ -134,8 +148,8 @@ never on a timer of its own, and never again while nothing changes.
 | told | while |
 | --- | --- |
 | `runner` | it is paused or ended (killed, failed, lost its lease, or the server saw it go): at once. It was stopped, or stopped renewing, and no runner has taken the role for `HANDOVER_MS` (two minutes, the longest lease a runner may hold) since wakes last went out |
-| `failing:<agent>` | `failing:<agent>` is red: its last `failing_after` wakes did not get through |
-| `parked:<agent>` | it has left its last three wakes unanswered, whether or not work waits for it at the moment |
+| `failing:<agent>` | `failing:<agent>` is red: its last `failing_after` attempts did not get through |
+| `parked:<agent>` | it has left its last three attempts unanswered, whether or not work waits for it at the moment |
 
 - **Why not the red keys.** Two of the reds depend on whether work waits:
   a runner that never ran is red only while a woken agent has work, and a
@@ -144,7 +158,8 @@ never on a timer of its own, and never again while nothing changes.
   false "running again" when agents answer with no runner at all, and the
   same pair again with the next batch. What is told depends only on the
   subject's own facts, so it changes only when they do: for an agent, whether
-  it is enabled, the wakes that reached it, and its own acts.
+  it is enabled, its attempts as each came out, and its own acts. How many
+  messages were steered into a turn is traffic too: a turn is one attempt.
 - **A runner that never ran is not told.** It is red on the page and the
   link while a woken agent has work, since wakes that are needed are not
   going out. But nothing about it changed: the instance was never given a
@@ -221,7 +236,7 @@ returns:
 | `red` | the keys of what is red, as `health_light` gives them |
 | `runner` | the `wakes` view's runner light (`live`, `state`, `reason`, `since_ms`), plus `why` (an ended runner's verb, "was killed", or a pause's cause, "an operator paused it"), `started_ms` (when the current or last run took the role), `resumed_because` (`cleanup_confirmed` when the supervisor resumed a cleanup pause), and `prior`: `{state, reason, ended_ms, why}`, how the run before it ended (`stopped`, `exited`, `paused` or `unrenewed`), from `runner_prior`. A pause records `ended_ms`, so `since_ms` says since when it has been paused |
 | `agents` | every enabled agent (at most 100): `route` (`codex_queue`, `codex_hosted`, `other`, from its route pin, this binding's first; `null` with none), `waiting` and `waiting_since_ms` (pending deliveries in live groups and the oldest one's send time; another agent's whispers are not counted for the reader), and for a scheduled agent `next_due_ms`, `reached_ms` (when a wake last got through), `failing: {count, since_ms, outcome, reason, why}` while `failing:<agent>` is red, `not_answering: {count, since_ms}` while `parked:<agent>` is, and `waking` while a claim is out |
-| `failing_after` | the number of wakes in a row that did not get through before an agent is said to be failing (3) |
+| `failing_after` | the number of attempts in a row that did not get through before an agent is said to be failing (3) |
 | `release` | the latest release record: `release`, `commit`, `deployed_ms`, `items`, `source`, and `check` (the release check's `finished_ms`, `commit`, `python`, `node` and `native` counts), or `null` |
 | `machine` | `{load: [1, 5, 15 minute averages], cpus}`, read by `os.getloadavg()` and `os.cpu_count()` when the view is read; never on a timer. Either that could not be read is `null`, never left out, and the page and the command line say it could not be read |
 | `schema_version`, `read_ms`, `commit_seq` | the database version, when the view was read, and the commit it was read at |
@@ -229,10 +244,18 @@ returns:
 Over HTTP the server adds `server: {started_ms, pid, live_feed}`, the one line
 Core cannot know.
 
-The database step that adds `wake_facts` and `runner_prior` works the counts
-out once from the settlements already kept. They are derived, nobody's
-records, so stepping back drops them, with what was announced and the moment
-kept; it is refused once Theseus has posted a notice, which is on the record.
+The database step (version 31) that adds `wake_facts`, `wake_turns` (each
+hosted turn still running, as one attempt) and `runner_prior` works the facts
+out once from the settlements already kept, by the same rule (`settled`) over
+the same attempts: every claim the runner settled itself and every hosted turn
+that ended, in the order they settled. Before it, the only acts whose time
+Core kept are the messages an agent wrote, so a turn the agent wrote in after
+its first claim got through, and one it only acknowledged in counts as it
+ended. The unanswered count starts from the scheduler's own, the only record
+of it, less each running turn the scheduler counted when it was handed work
+(the rule counts it when it ends). They are derived, nobody's records, so
+stepping back drops them, with what was announced and the moment kept; it is
+refused once Theseus has posted a notice, which is on the record.
 
 ## The page
 
@@ -255,6 +278,16 @@ keeps what was shown and says so; an answer without `red`, `runner` and
 `agents` is a failed read, never "Everything is working".
 
 ### Limits
+
+- A hosted turn that Codex keeps running while its process goes on
+  answering settles nothing until it ends, however many steers it takes.
+  Core keeps no deadline for a turn (a turn may rightly run for many
+  minutes), and a claim's deadline ends when its work is handed, so there is
+  no fact that ends it sooner, and Health adds no timer of its own. A Codex
+  process that stops answering is ended by the runner, and its turns end
+  `lost`; a steer Codex never answers expires with its claim, which is an
+  attempt that did not get through; and a runner that stops or loses its
+  role is red at once, and the next one ends the turns it left as `lost`.
 
 - A WebSocket that stays open but has stalled (a half-open connection after
   the Mac sleeps or the network changes) still looks live to the page, so the

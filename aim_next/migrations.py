@@ -225,7 +225,11 @@ def migrate(db_path, instance_id, binding, target=None):
             if occupied is not None and db.execute(occupied).fetchone()[0]:
                 raise MigrationError("RECORDS_WOULD_BE_LOST", "The older version cannot hold records that exist; nothing was changed")
             for statement in statements:
-                db.execute(statement)
+                if callable(statement):
+                    # A step that works facts out by a rule in Python (health.py's backfill) passes the rule itself.
+                    statement(db)
+                else:
+                    db.execute(statement)
         if db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (target,)).rowcount != 1:
             raise MigrationError("SCHEMA_UNSUPPORTED", "The stored schema version could not be replaced")
         Store._advance_commit_seq(db)

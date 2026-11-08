@@ -79,9 +79,10 @@ def step_back_by_hand(path, version):
 
     "12-early" is the layout the first form of the 11->12 step left, stamped 12."""
     with sqlite3.connect(str(path)) as db:
-        # The Health page's version keeps each recipient's wake facts, the runner's
-        # previous end, what Theseus last announced and its own member.
+        # The Health page's version keeps each recipient's wake facts and its hosted turns
+        # still running, the runner's previous end, what Theseus last announced and its own member.
         db.execute("DROP TABLE runner_prior")
+        db.execute("DROP TABLE wake_turns")
         db.execute("DROP TABLE wake_facts")
         db.execute("DELETE FROM metadata WHERE key IN ('health_announced','health_due')")
         db.execute("DELETE FROM actors WHERE id='theseus'")
@@ -2532,8 +2533,9 @@ class HealthStepCase(MigrationCase):
             # agent-b's first and third turns (the failed one it took back); the owner acted after its turn began.
             db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('agent-b',1) ON CONFLICT DO NOTHING")
             db.execute("INSERT INTO recipient_schedule(recipient_id,enabled) VALUES ('owner',1) ON CONFLICT DO NOTHING")
-            db.execute("UPDATE recipient_schedule SET unanswered_wakes=2,unanswered_since_ms=1000 WHERE recipient_id='agent-b'")
-            db.execute("UPDATE recipient_schedule SET unanswered_wakes=0,unanswered_since_ms=NULL WHERE recipient_id='owner'")
+            # Each turn still running holds the work it was handed (handed_seq).
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=2,unanswered_since_ms=1000,handed_seq=1 WHERE recipient_id='agent-b'")
+            db.execute("UPDATE recipient_schedule SET unanswered_wakes=0,unanswered_since_ms=NULL,handed_seq=1 WHERE recipient_id='owner'")
         stored = everything(self.path)
         self.assertEqual(self.upgrade(), {"instance_id": "test-instance", "from_version": BEFORE_HEALTH,
                                           "schema_version": HEALTH_VERSION, "migrated": True})
@@ -2542,11 +2544,57 @@ class HealthStepCase(MigrationCase):
         self.assertEqual({k: v for k, v in upgraded.items() if k in stored}, stored, "every row the older version had is kept")
         # The three wakes since the last that got through did not; why was never recorded. A turn's
         # end keeps Codex's code, and a turn still running is counted by the rule when it completes.
+        # The owner acted after its running turn's wake began (its claim, at 0): the scheduler's count says
+        # so, and so does the latest message it wrote.
+        wrote = self.sql("SELECT max(sent_ms) FROM messages WHERE author_id='owner'")[0][0]
         self.assertEqual(sorted(upgraded["wake_facts"]), [("agent-a", 121000, 3, 181000, "unavailable", None, 0, None, None),
                                                             ("agent-b", 30000, 1, 90000, "failed", "serverOverloaded", 1, 1000, None),
-                                                            ("owner", None, 0, None, None, None, 0, None, 1000)])
+                                                            ("owner", None, 0, None, None, None, 0, None, max(wrote or 0, 0))])
+        # Each turn still running is kept as one attempt, from its claim.
+        self.assertEqual(sorted(upgraded["wake_turns"]), [("thread-1", "turn-2", "agent-b", 120000, 121000, 1),
+                                                           ("thread-1", "turn-3", "owner", 0, 1000, 1)])
         self.assertEqual(upgraded["runner_prior"], [])
         self.assertNotIn("theseus", [row[0] for row in upgraded["actors"]], "Theseus's member comes with its first notice")
+
+    def turns(self, recipient, turns):
+        """Hosted turns the older version kept, each a list of hands (mode, handed_ms, seen_ms) and how it
+        ended (status, error_code, finished_ms, or Nones while it runs); each hand's claim began 500 ms before it."""
+        with sqlite3.connect(str(self.path)) as db:
+            for number, (hands, (status, code, finished)) in enumerate(turns):
+                for index, (mode, handed, seen) in enumerate(hands):
+                    attempt = "a-%s-t%d-%d" % (recipient, number, index)
+                    db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms) "
+                               "VALUES (?,?,?,?,1,1,?,?)", (attempt, "c-" + attempt, "r-1", recipient, handed - 500, handed + 20000))
+                    db.execute("INSERT INTO wake_results VALUES (?,'handed',?)", (attempt, handed))
+                    db.execute("INSERT INTO hosted_turns(attempt_id,recipient_id,thread_id,turn_id,mode,client_id,announced_seq,handed_ms,seen_ms,final_status,error_code,finished_ms) "
+                               "VALUES (?,?,'thread-1',?,?,?,1,?,?,?,?,?)", (attempt, recipient, "turn-%d" % number, mode, "theseus:" + attempt,
+                                                                         handed, seen, status, code, finished))
+
+    def posted(self, author, sent_ms):
+        """A message the older version kept, by author at sent_ms: one of the agent's acts with its time."""
+        with sqlite3.connect(str(self.path)) as db:
+            topic = db.execute("SELECT topic_id FROM messages LIMIT 1").fetchone()[0]
+            db.execute("INSERT INTO messages(id,topic_id,author_id,body,attachments,quotes,addressees,operation_id,sent_ms) "
+                       "VALUES (?,?,?,'Done','[]','[]','[]',?,?)", ("m-%s-%d" % (author, sent_ms), topic, author, "op-%d" % sent_ms, sent_ms))
+
+    def test_upgrade_counts_one_wake_per_turn_whatever_was_steered_into_it_and_a_turn_the_agent_acted_in_got_through(self):
+        # agent-b: a turn that completed with two steers it never read; one Codex failed with a steer it read;
+        # one Codex failed in which agent-b posted (an act Core kept the time of); one lost, with a steer it read.
+        self.turns("agent-b", [([("start", 1000, None), ("steer", 2000, None), ("steer", 3000, None)], ("completed", None, 30000)),
+                               ([("start", 61000, None), ("steer", 62000, 62500)], ("failed", "serverOverloaded", 90000)),
+                               ([("start", 121000, None)], ("failed", "serverOverloaded", 150000)),
+                               ([("start", 181000, None), ("steer", 182000, 182500)], ("lost", None, 210000))])
+        self.posted("agent-b", 130000)
+        # owner: three turns Codex failed, each with two steers, and nothing posted: three wakes, not nine.
+        self.turns("owner", [([("start", 1000 + 60000 * n, None), ("steer", 2000 + 60000 * n, 2500 + 60000 * n),
+                               ("steer", 3000 + 60000 * n, None)], ("failed", "serverOverloaded", 30000 + 60000 * n)) for n in range(3)])
+        self.posted("owner", 100)  # before any of its wakes began
+        # agent-a: a claim that got through, then one found expired, which is its own why.
+        self.settled(["accepted", "expired"], recipient="agent-a")
+        self.assertTrue(self.upgrade()["migrated"])
+        self.assertEqual(sorted(self.sql("SELECT recipient_id,reached_ms,failed_wakes,failing_since_ms,failed_outcome,failed_reason FROM wake_facts")),
+                         [("agent-a", 1000, 1, 61000, "expired", "expired"), ("agent-b", 150000, 1, 210000, "lost", None),
+                          ("owner", None, 3, 30000, "failed", "serverOverloaded")])
 
     def test_step_back_restores_the_frozen_layout_and_every_row_while_no_notice_is_posted(self):
         self.settled(["error", "error", "error"])

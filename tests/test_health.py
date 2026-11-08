@@ -283,20 +283,20 @@ class ParkedNoticeCase(HealthCase):
     def wake_facts(self):
         return self.sql("SELECT failed_wakes,failed_outcome,unanswered_wakes FROM wake_facts WHERE recipient_id='agent-a'")[0]
 
-    def test_a_steer_its_turn_never_read_did_not_get_through_and_a_seen_one_did(self):
+    def test_a_turn_with_a_steer_it_never_read_or_one_it_read_is_one_wake_that_got_through(self):
         self.hand(self.claim_now(), turn_id="turn-0")
         self.now += 1000
         self.send_next("Work while the turn runs")
         self.hand(self.claim_now(), turn_id="turn-0", mode="steer")  # never seen in the thread
         self.end("completed", turn_id="turn-0")
-        self.assertEqual(self.wake_facts(), (1, "unseen", 1), "the turn got through; the steer it never read did not")
+        self.assertEqual(self.wake_facts(), (0, None, 1), "the turn got through; the steer it never read is work handed again")
         self.assertEqual(self.agent()["reached_ms"], self.now)
-        # A steer into a turn that had already ended is settled as it is handed.
+        # A steer into a turn that had already ended joins an attempt already settled.
         self.now += 61000
         self.send_next("Work after it ended")
         self.hand(self.claim_now(), turn_id="turn-0", mode="steer")
-        self.assertEqual(self.wake_facts(), (2, "unseen", 1))
-        # One the turn read gets through with it.
+        self.assertEqual(self.wake_facts(), (0, None, 1))
+        # One the turn read gets through with it, as one wake.
         self.now += 61000
         self.hand(self.claim_now(), turn_id="turn-1")
         self.send_next("Work for a running turn")
@@ -305,8 +305,7 @@ class ParkedNoticeCase(HealthCase):
         self.assertEqual(self.store.hosted_turn_seen(self.hosting, self.runner, "theseus:" + steer["attempt_id"])["status"], "recorded")
         self.end("completed", turn_id="turn-1")
         self.assertEqual(self.wake_facts(), (0, None, 2))
-        self.assertEqual(WHY.get("unseen"), None)
-        self.assertEqual(why_words(None, "unseen"), "its work was added to a Codex turn that ended before it read it")
+        self.assertEqual(self.sql("SELECT count(*) FROM wake_turns"), [(0,)], "a turn's attempt is kept only while it runs")
 
     def test_a_turn_codex_failed_after_the_agent_acted_in_it_got_through(self):
         """Only an agent the turn reached can act in it, so its wake got through, however the turn ended."""
@@ -337,6 +336,97 @@ class ParkedNoticeCase(HealthCase):
             db.execute("UPDATE actors SET enabled=0 WHERE id='agent-b'")
         self.send_next("agent-b is disabled")
         self.assertEqual(self.notices()[-1][1], "Health: agent-b was disabled, so it is no longer woken." + NOTICE_TAIL)
+
+
+@own_cases
+class AttemptCase(HealthCase):
+    """One attempt to reach agent-a is one claim the runner settles, or one hosted turn with every
+    hand it took (its start and each steer), settled once, when its turn ends. How many messages
+    were steered into a turn never changes what it says about whether agent-a can be woken."""
+
+    def facts(self):
+        return self.sql("SELECT failed_wakes,failed_outcome,unanswered_wakes FROM wake_facts WHERE recipient_id='agent-a'")[0]
+
+    def steered_turn(self, turn_id, steers, see=False):
+        """A turn started with agent-a's work, then `steers` more messages, each steered into it."""
+        self.now += 61000
+        self.send_next("Work %s" % turn_id)
+        self.hand(self.claim_now(), turn_id=turn_id)
+        for number in range(steers):
+            self.now += 1000
+            self.send_next("More for %s %d" % (turn_id, number))
+            claim = self.claim_now()
+            self.hand(claim, turn_id=turn_id, mode="steer")
+            if see:
+                self.assertEqual(self.store.hosted_turn_seen(self.hosting, self.runner, "theseus:" + claim["attempt_id"])["status"], "recorded")
+
+    def test_one_failed_turn_with_steers_is_one_wake_that_did_not_get_through_and_tells_nothing(self):
+        """The reviewer's P2: a busy agent's turn takes two steers and Codex fails it once; then a
+        turn completes. Twice. One temporary fault each time, so nothing is told."""
+        for round_ in range(2):
+            self.steered_turn("turn-f%d" % round_, 2, see=True)
+            self.end("failed", turn_id="turn-f%d" % round_, error_code="serverOverloaded")
+            self.assertEqual(self.facts(), (1, "failed", 0), "round %d" % round_)
+            self.assertEqual(self.light(), [])
+            self.now += 61000
+            self.hand(self.claim_now(), turn_id="turn-ok%d" % round_)
+            self.ack(self.pending()["items"][0]["id"])
+            self.end("completed", turn_id="turn-ok%d" % round_)
+            self.assertEqual(self.facts(), (0, None, 0))
+        self.assertEqual(self.notices(), [])
+
+    def test_three_failed_turns_with_steers_are_three_wakes_that_did_not_get_through(self):
+        for number, steers in enumerate([0, 3, 1]):
+            self.steered_turn("turn-%d" % number, steers, see=number % 2 == 0)
+            self.end("failed", turn_id="turn-%d" % number, error_code="serverOverloaded")
+        self.assertEqual(self.facts(), (3, "failed", 0))
+        self.assertEqual([body for _, body in self.notices()],
+                         ["Health: agent-a can't be woken: its last 3 wakes did not get through. Why: its Codex turn failed "
+                          "(server overloaded)." + NOTICE_TAIL])
+
+    def test_a_turn_that_completed_with_steers_it_never_read_got_through(self):
+        """The reviewer's P1b: the turn ran to its end, so agent-a was woken; the steers it never read
+        are work the scheduler hands again, not wakes that failed."""
+        self.steered_turn("turn-1", 3)
+        self.end("completed", turn_id="turn-1")
+        self.assertEqual(self.facts(), (0, None, 1), "one wake got through, and agent-a did not answer it")
+        self.assertEqual(self.agent()["reached_ms"], self.now)
+        self.assertEqual((self.light(), self.notices()), ([], []))
+        # A steer handed after its turn ended joins a turn already settled: it settles nothing.
+        self.now += 61000
+        self.hand(self.claim_now(), turn_id="turn-1", mode="steer")
+        self.assertEqual(self.facts(), (0, None, 1))
+        self.assertEqual(self.notices(), [])
+
+    def test_an_act_after_the_claim_and_before_the_hand_is_recorded_counts_for_the_turn(self):
+        """agent-a acts once Codex started its turn but before the runner recorded the hand: the claim
+        was out, so the act is after the wake began and the turn was answered, however it ends."""
+        for number, status in enumerate(["completed", "completed", "completed", "failed", "failed", "failed"]):
+            self.now += 61000
+            self.send_next("Work %d" % number)
+            claim = self.claim_now()
+            self.now += 10
+            self.ack(self.pending()["items"][0]["id"])
+            self.now += 10
+            self.hand(claim, turn_id="turn-%d" % number)
+            self.end(status, turn_id="turn-%d" % number, **({} if status == "completed" else {"error_code": "serverOverloaded"}))
+            self.assertEqual(self.facts(), (0, None, 0), "turn %d" % number)
+        self.assertEqual((self.light(), self.notices()), ([], []))
+
+    def test_a_hand_with_nothing_pending_is_not_a_wake_left_unanswered(self):
+        """The owner takes agent-a off its topic between the claim and the hand, so nothing waits when
+        the turn starts: the turn got through, and there was nothing for agent-a to answer."""
+        for number in range(3):
+            self.part(True)
+            self.now += 61000
+            self.send_next("Work %d" % number)
+            claim = self.claim_now()
+            self.part(False)
+            self.assertEqual(self.hand(claim, turn_id="turn-%d" % number)["handed_seq"], None)
+            self.end("completed", turn_id="turn-%d" % number)
+            self.assertEqual(self.facts(), (0, None, 0), "turn %d" % number)
+            self.assertEqual(self.agent()["reached_ms"], self.now)
+        self.assertEqual(self.notices(), [])
 
 
 @own_cases

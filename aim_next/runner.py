@@ -286,8 +286,9 @@ class Runner:
                     # child or scan indefinitely for another due recipient.
                     raise RunnerError("RUNNER_STATE_INVALID", "A live claim appeared in the due index")
                 if row["claim_token"] is not None:
-                    db.execute("INSERT INTO wake_results SELECT id,'expired',? FROM wake_attempts WHERE claim_token=?", (now, row["claim_token"]))
-                    self._wake_settled(db, row["recipient_id"], "expired", now, "expired")
+                    expired = db.execute("SELECT id FROM wake_attempts WHERE claim_token=?", (row["claim_token"],)).fetchone()[0]
+                    db.execute("INSERT INTO wake_results VALUES (?,'expired',?)", (expired, now))
+                    self._claim_settled(db, expired, "expired", now, "expired")
                 attempt, claim = "a-" + uuid.uuid4().hex, "c-" + uuid.uuid4().hex
                 db.execute("INSERT INTO wake_attempts(id,claim_token,runner_token,recipient_id,wake_generation,captured_seq,started_ms,lease_until_ms,handed_seq) "
                            "VALUES (?,?,?,?,?,?,?,?,?)", (attempt, claim, runner_token, row["recipient_id"], row["wake_generation"], row["last_seq"], now, until, row["handed_seq"]))
@@ -334,12 +335,12 @@ class Runner:
             else:
                 due = now + delay
             db.execute("INSERT INTO wake_results VALUES (?,?,?)", (attempt["id"], outcome, now))
-            self._wake_settled(db, row["recipient_id"], outcome, now, reason)
+            # One attempt to reach the agent (health.py): an accepted notice with work waiting stays unanswered until it acts.
+            self._claim_settled(db, attempt["id"], outcome, now, reason, work=row["pending_count"])
             db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,retry_count=? WHERE recipient_id=?", (due, retry, row["recipient_id"]))
             if outcome == "accepted" and row["pending_count"]:
                 # The notice reached the agent's chat; it stays unanswered until the agent acts.
                 self._wake_unanswered(db, row["recipient_id"], now, attempt["captured_seq"])
-                self._wake_reached(db, row["recipient_id"], now)
             elif outcome == "queued" and row["pending_count"]:
                 # The notice already waiting unread leads the agent to this work too.
                 self._wake_named(db, row["recipient_id"], attempt["captured_seq"])
@@ -394,10 +395,10 @@ class Runner:
                    (attempt["id"], attempt["recipient_id"], turn["thread_id"], turn["turn_id"], turn["mode"], turn["client_id"],
                     turn["announced_seq"], now, ended["final_status"] if ended else None, ended["error_code"] if ended else None,
                     now if ended else None))
-        if ended:
-            # Whether a handed wake got through is known when its turn ends (health.py); this one already had.
-            self._turn_ended(db, attempt["recipient_id"], "unseen" if ended["final_status"] == "completed" and late else ended["final_status"],
-                             now, ended["error_code"], now, turn["mode"] == "start")
+        if not ended:
+            # The turn and every hand it takes are one attempt to reach the agent, settled when it ends
+            # (health.py); a hand to a turn that had already ended joins an attempt already settled.
+            self._turn_handed(db, attempt, turn, now, handed is not None)
         # retry_count is otherwise kept: a turn that fails again backs off further, and only a clean turn end resets it.
         db.execute("UPDATE recipient_schedule SET claim_token=NULL,claim_until_ms=NULL,next_due_ms=?,handed_seq=?,retry_count=? WHERE recipient_id=?",
                    (due, handed, retry, attempt["recipient_id"]))
@@ -462,12 +463,8 @@ class Runner:
                 for row in rows:
                     if row["mode"] == "start":
                         self._wake_withdrawn(db, row["recipient_id"])
-            for row in rows:
-                # Each wake the turn was handed settles with its end (health.py): one it
-                # never read, or a turn Codex did not complete, did not get through.
-                seen = row["mode"] not in UNSEEN_REARM_MODES or row["seen_ms"] is not None
-                self._turn_ended(db, row["recipient_id"], status if status != "completed" or seen else "unseen", now, error_code,
-                                 row["handed_ms"], row["mode"] == "start")
+            # The turn, with every hand it took, was one attempt to reach the agent: it settles once (health.py).
+            self._turn_settled(db, thread_id, turn_id, status, error_code, now)
             rearmed = False
             for recipient in sorted({row["recipient_id"] for row in rows}):
                 schedule = db.execute("SELECT * FROM recipient_schedule WHERE recipient_id=?", (recipient,)).fetchone()

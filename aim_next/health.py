@@ -2,20 +2,22 @@ from __future__ import annotations
 
 """The Health page's facts (docs/health.md), from what Core records, in one view.
 
-A wake gets through when its notice reached the agent's chat (accepted), an
-earlier notice still waiting leads there (queued), or the hosted turn it
-started or joined completed with its work seen, or the agent acted while it
-ran (completed). Every other settlement (error, unavailable, busy, a claim
-that expired with its runner, or a turn Codex ended failed, lost or
-interrupted with no act from the agent) did not get through. A hosted
-wake is settled when its turn ends, from the end Core records, never when the
-turn is handed its work: until then nobody knows whether it got through, and a
-guess made then would have to be taken back. Core keeps, per recipient,
-when a wake last got through, how many have not since, and the runner's own
-fixed code for why the latest one did not, so the page can say "every wake
-since 8:27 PM failed (1,092 times)" and why, with one primary-key read,
-however long the failures run. The runner keeps how the run before it ended,
-so the page can say what it came back from.
+The unit is an attempt to reach an agent: one claim the runner settles
+itself, or one hosted turn with every hand it took (the start and each steer
+added to it), settled once, when Core records the turn's end. Each attempt
+comes to one fact (`claim_attempt`, `turn_attempt`): it got through, or it
+did not, with why; and one that got through with work the agent then did not
+act on was left unanswered. A claim gets through when its notice reached the
+agent's chat (accepted) or an earlier notice still waiting leads there
+(queued); a turn, when it completed or the agent acted after its wake began,
+which only an agent the turn reached can do. What Core keeps per recipient
+is a pure function of its attempts in order (`settled`): when a wake last got
+through, how many have not since and why the latest did not, and how many got
+through to it since it last acted. So the page can say "every wake since 8:27
+PM failed (1,092 times)" and why, with one primary-key read, however long the
+failures run; and how many messages were steered into a turn never changes
+what it says. The runner keeps how the run before it ended, so the page can
+say what it came back from.
 
 What is red is one rule (`_health_reds`), read by the page and by the link
 that heads every page. Every act that commits ends its transaction with
@@ -43,6 +45,7 @@ exits, nobody's records, kept in tables of their own: stepping back drops them
 and is refused only once Theseus has posted a notice.
 """
 
+import collections
 import datetime
 import json
 import os
@@ -53,10 +56,10 @@ from .contract import Refusal
 from .route_pins import KEY_PREFIX as _PIN_PREFIX, _key as _pin_key
 
 
-# Settlements that got through: a notice in the agent's chat, an earlier one
-# leading there, or the hosted turn the wake started or joined completing.
+# Attempts that got through: a notice in the agent's chat, an earlier one
+# leading there, or a hosted turn that completed or the agent acted in.
 THROUGH = ("accepted", "queued", "completed")
-# Wakes in a row that did not get through before the page says the agent cannot be woken.
+# Attempts in a row that did not get through before the page says the agent cannot be woken.
 FAILING_AFTER = 3
 AGENT_LIMIT = 100
 # The member who posts health notices: Theseus itself, never a person or agent
@@ -76,55 +79,84 @@ LIGHT_KEY = "health_light"
 HANDOVER_MS = 120000
 REASON = re.compile(r"[A-Za-z0-9_-]{1,64}")
 
-_THROUGH_SQL = "('accepted','queued','completed')"
-# Every settlement Core kept, as the rule settles them: a wake's result, except
-# a handed one, which settles when its turn ends (`_turn_ended`), as that turn's
-# end; a steer the turn never saw did not get through ('unseen').
-_SETTLED = ("(SELECT a.recipient_id,r.outcome,r.finished_ms,NULL AS reason,0 AS late FROM wake_attempts a "
-            "JOIN wake_results r ON r.attempt_id=a.id WHERE r.outcome<>'handed' UNION ALL "
-            "SELECT recipient_id,CASE WHEN final_status='completed' AND mode='steer' AND seen_ms IS NULL THEN 'unseen' "
-            "ELSE final_status END,finished_ms,error_code,1 FROM hosted_turns WHERE final_status IS NOT NULL)")
-_THEIRS = "FROM %s s WHERE s.recipient_id=wake_facts.recipient_id" % _SETTLED
-_SINCE = " AND s.outcome NOT IN %s AND s.finished_ms>COALESCE(wake_facts.reached_ms,-1)" % _THROUGH_SQL
-# A start turn not yet ended, which the scheduler counted when it was handed.
-_OPEN_STARTS = "(SELECT count(*) FROM hosted_turns t WHERE t.recipient_id=s.recipient_id AND t.final_status IS NULL AND t.mode='start')"
-
 HEALTH_SCHEMA = [
-    # Per recipient: when a wake last got through, the wakes since that did
+    # Per recipient: when a wake last got through, the attempts since that did
     # not, and the runner's (or Codex's) fixed code for why the latest of them
-    # did not; the wakes that got through to it since it last acted, and since
-    # when (`_wake_reached`); and when it last recorded a command while a
-    # hosted turn of its ran (`_health_acted`), so a turn that ends knows
-    # whether it acted in it.
+    # did not; the attempts that got through to it since it last acted, and
+    # since when (`settled`); and when it last recorded a command while a claim
+    # or a hosted turn of its was out (`_health_acted`), so a turn that ends
+    # knows whether it acted after its wake began.
     "CREATE TABLE wake_facts (recipient_id TEXT PRIMARY KEY REFERENCES actors(id), reached_ms INTEGER, "
     "failed_wakes INTEGER NOT NULL DEFAULT 0, failing_since_ms INTEGER, failed_outcome TEXT, failed_reason TEXT, "
     "unanswered_wakes INTEGER NOT NULL DEFAULT 0, unanswered_since_ms INTEGER, acted_ms INTEGER)",
+    # Each hosted turn still running, as one attempt: when its first claim
+    # began, when it was first handed work, and whether any hand gave it work
+    # still pending. Written by every hand, removed when the turn's end settles it.
+    "CREATE TABLE wake_turns (thread_id TEXT NOT NULL, turn_id TEXT NOT NULL, recipient_id TEXT NOT NULL REFERENCES actors(id), "
+    "began_ms INTEGER NOT NULL, handed_ms INTEGER NOT NULL, carried INTEGER NOT NULL, PRIMARY KEY(thread_id,turn_id))",
     # How the run before the current one ended: its state ('stopped', 'exited',
     # 'paused', 'unrenewed'), its reason and when, kept when a runner takes the role.
     "CREATE TABLE runner_prior (id INTEGER PRIMARY KEY CHECK(id=1), state TEXT NOT NULL, reason TEXT, ended_ms INTEGER)",
 ]
-# The counts are worked out once from the settlements already kept, by the
-# rule's own settling (_SETTLED); why the earlier wakes failed was never
-# recorded, so it stays unknown, while a turn's end keeps Codex's code. The
-# wakes left unanswered start from the scheduler's own count, the only record
-# of them, less a start turn still running, which the rule counts when it
-# completes; a count such a turn already lost to the agent's act says it acted
-# since that turn began.
-HEALTH_BACKFILL = [
-    "INSERT INTO wake_facts(recipient_id) SELECT DISTINCT recipient_id FROM wake_attempts",
-    "UPDATE wake_facts SET (unanswered_wakes,unanswered_since_ms,acted_ms)=(SELECT max(s.unanswered_wakes-%s,0),"
-    "CASE WHEN s.unanswered_wakes>%s THEN s.unanswered_since_ms END,CASE WHEN s.unanswered_wakes<%s THEN "
-    "(SELECT max(t.handed_ms) FROM hosted_turns t WHERE t.recipient_id=s.recipient_id AND t.final_status IS NULL AND t.mode='start') END "
-    "FROM recipient_schedule s WHERE s.recipient_id=wake_facts.recipient_id) "
-    "WHERE recipient_id IN (SELECT recipient_id FROM recipient_schedule)" % ((_OPEN_STARTS,) * 3),
-    "UPDATE wake_facts SET reached_ms=(SELECT max(s.finished_ms) %s AND s.outcome IN %s)" % (_THEIRS, _THROUGH_SQL),
-    "UPDATE wake_facts SET failed_wakes=(SELECT count(*) %s%s),failing_since_ms=(SELECT min(s.finished_ms) %s%s),"
-    "(failed_outcome,failed_reason)=(SELECT s.outcome,s.reason %s%s ORDER BY s.finished_ms DESC,s.late DESC LIMIT 1)" % ((_THEIRS, _SINCE) * 3),
-]
+
+
+def _health_backfill(db):
+    """Work the facts out once from the settlements already kept, by the same rule (`settled`).
+
+    The attempts are every claim the runner settled itself and every hosted
+    turn that ended, in the order they settled. A turn got through if it
+    completed or the agent acted after its wake began; the only acts whose
+    time Core kept before this step are the messages the agent wrote, so those
+    are the acts that count here. Why a claim failed was never recorded, so it
+    stays unknown, unless it expired; a turn's end keeps Codex's code. The wakes left unanswered
+    start from the scheduler's own count, the only record of them, less each
+    turn still running that it counted when it was handed work, which the rule
+    counts when the turn ends; a count such a turn already lost to the agent's
+    act says the agent acted after that turn began."""
+    db.execute("INSERT INTO wake_facts(recipient_id) SELECT DISTINCT recipient_id FROM wake_attempts")
+    # Each turn still running, as Health keeps it from now on: whether it holds work is the scheduler's handed_seq.
+    db.execute("INSERT INTO wake_turns SELECT h.thread_id,h.turn_id,h.recipient_id,min(a.started_ms),min(h.handed_ms),"
+               "COALESCE((SELECT s.handed_seq IS NOT NULL FROM recipient_schedule s WHERE s.recipient_id=h.recipient_id),0) "
+               "FROM hosted_turns h JOIN wake_attempts a ON a.id=h.attempt_id WHERE h.final_status IS NULL "
+               "GROUP BY h.thread_id,h.turn_id,h.recipient_id")
+    attempts = {}
+    for recipient, began, ended, outcome in db.execute(
+            "SELECT a.recipient_id,a.started_ms,r.finished_ms,r.outcome FROM wake_attempts a JOIN wake_results r ON r.attempt_id=a.id "
+            "WHERE r.outcome<>'handed'").fetchall():
+        # A claim found expired is its own why; the runner's code for any other was never kept.
+        attempts.setdefault(recipient, []).append(claim_attempt(outcome, "expired" if outcome == "expired" else None, began, ended, False))
+    for recipient, began, handed, ended, status, code in db.execute(
+            "SELECT h.recipient_id,min(a.started_ms),min(h.handed_ms),min(h.finished_ms),h.final_status,h.error_code "
+            "FROM hosted_turns h JOIN wake_attempts a ON a.id=h.attempt_id WHERE h.final_status IS NOT NULL "
+            "GROUP BY h.recipient_id,h.thread_id,h.turn_id").fetchall():
+        acted = db.execute("SELECT EXISTS (SELECT 1 FROM messages WHERE author_id=? AND sent_ms>=? AND sent_ms<=?)",
+                           (recipient, began, ended)).fetchone()[0]
+        attempts.setdefault(recipient, []).append(turn_attempt(status, code, began, handed, ended, bool(acted), False))
+    for recipient, theirs in sorted(attempts.items()):
+        facts = NO_FACTS
+        for attempt in sorted(theirs, key=lambda attempt: (attempt.ended_ms, attempt.began_ms)):
+            facts = settled(facts, attempt)
+        db.execute("UPDATE wake_facts SET reached_ms=?,failed_wakes=?,failing_since_ms=?,failed_outcome=?,failed_reason=? WHERE recipient_id=?",
+                   (facts["reached_ms"], facts["failed_wakes"], facts["failing_since_ms"], facts["failed_outcome"], facts["failed_reason"], recipient))
+    for recipient, count, since, counted, latest_open, wrote in db.execute(
+            "SELECT s.recipient_id,s.unanswered_wakes,s.unanswered_since_ms,"
+            "(SELECT count(*) FROM wake_turns t WHERE t.recipient_id=s.recipient_id AND t.carried=1),"
+            "(SELECT max(t.began_ms) FROM wake_turns t WHERE t.recipient_id=s.recipient_id),"
+            "(SELECT max(m.sent_ms) FROM messages m WHERE m.author_id=s.recipient_id) "
+            "FROM recipient_schedule s JOIN wake_facts f ON f.recipient_id=s.recipient_id").fetchall():
+        # acted_ms is read only while a turn runs, so it is kept only for an agent with one.
+        acts = [ms for ms in (latest_open if count < counted else None, wrote) if ms is not None]
+        db.execute("UPDATE wake_facts SET unanswered_wakes=?,unanswered_since_ms=?,acted_ms=? WHERE recipient_id=?",
+                   (max(count - counted, 0), since if count > counted else None,
+                    max(acts) if acts and latest_open is not None else None, recipient))
+
+
+HEALTH_BACKFILL = [_health_backfill]
 HEALTH_DOWN = (
     "DELETE FROM metadata WHERE key IN ('%s','%s','%s')" % (ANNOUNCED_KEY, DUE_KEY, LIGHT_KEY),
     "DELETE FROM actors WHERE id='%s' AND enabled=0" % HEALTH_ACTOR,
     "DROP TABLE runner_prior",
+    "DROP TABLE wake_turns",
     "DROP TABLE wake_facts",
 )
 # A notice Theseus posted is on the record, so stepping back is refused once there is one.
@@ -163,8 +195,7 @@ UNRECORDED_WHY = "Theseus did not record why: these failures began before it did
 # Why a hosted wake did not get through, from how its turn ended; Codex's own
 # code for it (codexErrorInfo, "serverOverloaded"), when it gave one, follows
 # in words: "its Codex turn failed (server overloaded)".
-TURN_WHY = {"failed": "its Codex turn failed", "lost": "its Codex turn was lost", "interrupted": "its Codex turn was interrupted",
-            "unseen": "its work was added to a Codex turn that ended before it read it"}
+TURN_WHY = {"failed": "its Codex turn failed", "lost": "its Codex turn was lost", "interrupted": "its Codex turn was interrupted"}
 # How the agent runner ended or why it paused, in words: an ended runner's
 # phrase follows "The agent runner", a pause's follows "because".
 ENDED = {"killed": "was killed", "lease_lost": "lost its lease", "failed": "failed",
@@ -176,6 +207,58 @@ ABSENT = {"stopped": "was stopped and no runner has taken its place", "never_run
 PAUSED = {"operator_pause": "an operator paused it", "cleanup_failed": "it could not confirm a helper process it started was gone",
           "route_binding_changed": "a route changed", "storage_failure": "of a storage fault"}
 ROUTE_KINDS = {"codex-queue-stdio": "codex_queue", "codex-hosted-stdio": "codex_hosted"}
+
+
+# One attempt to reach an agent, as it came out: when its wake began (its
+# first claim), when it reached the agent, when it was settled, its outcome
+# (one of THROUGH, or how it failed) and the fixed code for why, and whether
+# it is one the agent left unanswered.
+Attempt = collections.namedtuple("Attempt", "began_ms reached_ms ended_ms outcome reason unanswered")
+# What Core keeps for a recipient before any attempt.
+NO_FACTS = {"reached_ms": None, "failed_wakes": 0, "failing_since_ms": None, "failed_outcome": None, "failed_reason": None,
+            "unanswered_wakes": 0, "unanswered_since_ms": None}
+
+
+def claim_attempt(outcome, reason, began_ms, ended_ms, work):
+    """A claim the runner settled itself, as one attempt: its own outcome, with the runner's code
+    for why one did not get through. An accepted notice reached the agent's chat and, when work
+    waited (work), is one it leaves unanswered until it acts; a queued one leads to a notice
+    already waiting, so it is not counted again."""
+    return Attempt(began_ms, ended_ms, ended_ms, outcome, None if outcome in THROUGH else reason, outcome == "accepted" and bool(work))
+
+
+def turn_attempt(status, error_code, began_ms, handed_ms, ended_ms, acted, carried):
+    """A hosted turn with every hand it took, as one attempt, settled by its end.
+
+    It got through if it completed, or if the agent acted after its wake
+    began (acted), which only an agent the turn reached can do; otherwise it
+    did not, with how it ended and Codex's code as why. A steer it never read
+    is work the scheduler hands again, not a failed attempt. A completed turn
+    that was given work (carried) and that the agent did not act after is one
+    it left unanswered, from when it was handed that work."""
+    through = status == "completed" or acted
+    return Attempt(began_ms, handed_ms, ended_ms, "completed" if through else status, None if through else error_code,
+                   status == "completed" and carried and not acted)
+
+
+def settled(facts, attempt):
+    """A recipient's facts after one more attempt, from its facts before it: a pure function, so
+    what Core keeps is the fold of its attempts in the order they settled.
+
+    One that got through ends the run that did not and is when a wake last got
+    through; one that did not adds to that run, with its outcome and why. One
+    left unanswered adds to those, from when it reached the agent, until the
+    agent acts (`_health_acted`)."""
+    facts = dict(facts)
+    if attempt.outcome in THROUGH:
+        facts.update(reached_ms=attempt.ended_ms, failed_wakes=0, failing_since_ms=None, failed_outcome=None, failed_reason=None)
+    else:
+        facts.update(failed_wakes=facts["failed_wakes"] + 1, failed_outcome=attempt.outcome, failed_reason=attempt.reason,
+                     failing_since_ms=attempt.ended_ms if facts["failing_since_ms"] is None else facts["failing_since_ms"])
+    if attempt.unanswered:
+        facts.update(unanswered_wakes=facts["unanswered_wakes"] + 1,
+                     unanswered_since_ms=attempt.reached_ms if facts["unanswered_since_ms"] is None else facts["unanswered_since_ms"])
+    return facts
 
 
 def why_words(reason, outcome=None):
@@ -309,55 +392,51 @@ def notice_lines(went_red, went_green, still_red):
 
 
 class Health:
-    def _wake_settled(self, db, recipient, outcome, now, reason=None):
-        """One wake to recipient settled: either it got through, or it adds to the run that has not, with why."""
+    def _attempt_settled(self, db, recipient, attempt):
+        """One attempt to reach recipient settled: its facts become `settled` of what they were."""
         db.execute("INSERT OR IGNORE INTO wake_facts(recipient_id) VALUES (?)", (recipient,))
-        if outcome in THROUGH:
-            db.execute("UPDATE wake_facts SET reached_ms=?,failed_wakes=0,failing_since_ms=NULL,failed_outcome=NULL,failed_reason=NULL "
-                       "WHERE recipient_id=?", (now, recipient))
-        else:
-            db.execute("UPDATE wake_facts SET failed_wakes=failed_wakes+1,failing_since_ms=COALESCE(failing_since_ms,?),"
-                       "failed_outcome=?,failed_reason=? WHERE recipient_id=?", (now, outcome, reason, recipient))
+        row = db.execute("SELECT %s FROM wake_facts WHERE recipient_id=?" % ",".join(NO_FACTS), (recipient,)).fetchone()
+        facts = settled(dict(zip(NO_FACTS, row)), attempt)
+        db.execute("UPDATE wake_facts SET %s WHERE recipient_id=?" % ",".join(key + "=?" for key in NO_FACTS),
+                   [facts[key] for key in NO_FACTS] + [recipient])
 
-    def _wake_reached(self, db, recipient, since):
-        """A wake got through to recipient at since and it has not acted since: one more it has left
-        unanswered, until it acts. Only this and the recipient's own acts move the count.
+    def _claim_settled(self, db, attempt_id, outcome, now, reason=None, work=False):
+        """A claim the runner settled itself, or one found expired: one attempt (`claim_attempt`)."""
+        recipient, began = db.execute("SELECT recipient_id,started_ms FROM wake_attempts WHERE id=?", (attempt_id,)).fetchone()
+        self._attempt_settled(db, recipient, claim_attempt(outcome, reason, began, now, work))
 
-        Called with a fact that is final when it is recorded: a notice accepted
-        into its chat, or a turn the wake started that completed without the
-        agent acting in it (`_turn_ended`). The scheduler keeps a count of its
-        own (`recipient_schedule.unanswered_wakes`) for when to stop waking the
-        agent, which it moves for its own reasons; the page never says what the
-        scheduler will do from this one."""
-        db.execute("INSERT OR IGNORE INTO wake_facts(recipient_id) VALUES (?)", (recipient,))
-        db.execute("UPDATE wake_facts SET unanswered_wakes=unanswered_wakes+1,unanswered_since_ms=COALESCE(unanswered_since_ms,?) "
-                   "WHERE recipient_id=?", (since, recipient))
+    def _turn_handed(self, db, attempt, turn, now, carried):
+        """A hand Core recorded while its turn runs: the turn's attempt began with its first claim,
+        and was given work if any hand gave it work still pending. A hand to a turn that had
+        already ended joins an attempt already settled, so it is never recorded here."""
+        db.execute("INSERT INTO wake_turns VALUES (?,?,?,?,?,?) ON CONFLICT(thread_id,turn_id) DO UPDATE SET "
+                   "began_ms=MIN(began_ms,excluded.began_ms),handed_ms=MIN(handed_ms,excluded.handed_ms),carried=MAX(carried,excluded.carried)",
+                   (turn["thread_id"], turn["turn_id"], attempt["recipient_id"], attempt["started_ms"], now, int(carried)))
 
-    def _turn_ended(self, db, recipient, outcome, now, error_code, handed_ms, started):
-        """A hosted turn ended, and with it one wake to recipient that it was handed at handed_ms:
-        outcome is the turn's end ("completed", "failed", "lost", "interrupted"), or "unseen" for a
-        steer it never read; error_code is Codex's; started says the wake started the turn (a steer
-        joins a turn already counted).
+    def _turn_settled(self, db, thread_id, turn_id, status, error_code, now):
+        """A hosted turn ended: its attempt settles once (`turn_attempt`), however many hands it took.
 
-        The wake got through if the turn completed, or if the agent recorded a
-        command since it was handed, which only an agent the turn reached can
-        do; any other end did not, with Codex's code as why. A completed turn
-        the wake started that the agent did not act in is one it left
-        unanswered."""
-        row = db.execute("SELECT acted_ms FROM wake_facts WHERE recipient_id=?", (recipient,)).fetchone()
-        acted = row is not None and row[0] is not None and row[0] >= handed_ms
-        self._wake_settled(db, recipient, "completed" if acted else outcome, now, error_code)
-        if outcome == "completed" and started and not acted:
-            self._wake_reached(db, recipient, handed_ms)
+        The attempt Health kept for the turn says when its wake began, and
+        acted_ms whether the agent acted since."""
+        kept = db.execute("SELECT recipient_id,began_ms,handed_ms,carried FROM wake_turns WHERE thread_id=? AND turn_id=?",
+                          (thread_id, turn_id)).fetchone()
+        if kept is None:
+            # Every hand to a running turn keeps it, and the step kept every turn running before it.
+            raise LookupError("Health kept no attempt for the running turn %s of %s" % (turn_id, thread_id))
+        db.execute("DELETE FROM wake_turns WHERE thread_id=? AND turn_id=?", (thread_id, turn_id))
+        recipient, began, handed, carried = kept
+        acted = db.execute("SELECT acted_ms FROM wake_facts WHERE recipient_id=?", (recipient,)).fetchone()
+        acted = acted is not None and acted[0] is not None and acted[0] >= began
+        self._attempt_settled(db, recipient, turn_attempt(status, error_code, began, handed, now, acted, bool(carried)))
 
     def _health_acted(self, db, actor, now):
-        """The actor recorded a command: every wake that reached it is answered, and a hosted turn of
-        its running now was acted in. Each is written only when there is one, so a command by
-        anyone else (or a refusal) changes nothing here."""
+        """The actor recorded a command: every wake that reached it is answered, and an attempt of
+        its still out (a claim, or a hosted turn) was acted in. Each is written only when there is
+        one, so a command by anyone else (or a refusal) changes nothing here."""
         db.execute("UPDATE wake_facts SET unanswered_wakes=0,unanswered_since_ms=NULL WHERE recipient_id=? AND unanswered_wakes>0", (actor,))
-        db.execute("INSERT INTO wake_facts(recipient_id,acted_ms) SELECT ?,? WHERE EXISTS (SELECT 1 FROM hosted_turns INDEXED BY hosted_turns_open "
-                   "WHERE final_status IS NULL AND recipient_id=?) ON CONFLICT(recipient_id) DO UPDATE SET acted_ms=excluded.acted_ms",
-                   (actor, now, actor))
+        db.execute("INSERT INTO wake_facts(recipient_id,acted_ms) SELECT ?,? WHERE EXISTS (SELECT 1 FROM wake_turns WHERE recipient_id=?) "
+                   "OR EXISTS (SELECT 1 FROM recipient_schedule WHERE recipient_id=? AND claim_token IS NOT NULL) "
+                   "ON CONFLICT(recipient_id) DO UPDATE SET acted_ms=excluded.acted_ms", (actor, now, actor, actor))
 
     def _runner_took_role(self, db, now):
         """A runner takes the role: keep how the run it replaces ended, before the state row says running."""
@@ -408,8 +487,8 @@ class Health:
         records), was stopped (a deploy's graceful stop, until a runner takes
         the role again), stopped renewing without saying so, or never ran here
         while a woken agent has work on the record. "failing:<agent>" once
-        FAILING_AFTER wakes in a row did not get through. "parked:<agent>"
-        while it has left PARKED_AFTER wakes unanswered and work on the record
+        FAILING_AFTER attempts in a row did not get through. "parked:<agent>"
+        while it has left PARKED_AFTER attempts unanswered and work on the record
         waits for it. The runner's fact says from when it is told (`tell_ms`,
         `posted`): a pause or an exit at once; a stop, or a lease that ran out
         unrenewed, once HANDOVER_MS has passed since wakes last went out with
@@ -468,7 +547,7 @@ class Health:
         goes would move it); an agent while its wakes fail; an agent while it
         leaves its wakes unanswered, whether or not work waits for it at the
         moment, so work answered for it or taken away and then given again
-        tells nothing new. "Unanswered" is Health's own count (`_wake_reached`),
+        tells nothing new. "Unanswered" is Health's own count (`settled`),
         never the scheduler's, which moves for reasons that are not the agent's."""
         from .wake_health import PARKED_AFTER
         told = {key: fact for key, fact in reds.items() if fact["posted"] and not key.startswith("parked:")}
@@ -515,6 +594,11 @@ class Health:
         except (KeyError, ValueError, TypeError):
             light_changed = True
         due_changed = kept.get(DUE_KEY) != (None if due is None else str(due))
+        # While every commit ends here, light_changed never decides alone (a mutant dropping it
+        # survives, equivalently): with no act, what is red changes only when a running runner's
+        # lease ends, and that same moment moves what is kept as due (to when the absence will be
+        # told) or, if the settling comes later than that, changes what is told. It is kept for a
+        # kept light that is missing or unreadable, which only a commit outside this step leaves.
         if not (always or posted or light_changed or due_changed):
             return False
         self._advance_commit_seq(db)

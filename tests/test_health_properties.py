@@ -279,3 +279,206 @@ def _seeded(seed):
 
 for _seed in SEEDS:
     setattr(HealthPropertyCase, "test_what_is_red_and_told_is_derived_state_seed_%d" % _seed, _seeded(_seed))
+
+
+@own_cases
+class AttemptPropertyCase(HealthCase):
+    """Random hosted turns with 0 to 5 steers (read or not, some handed after their turn ended),
+    claims the runner settles every way, claims left to expire, work withdrawn between a claim
+    and its hand, and agent-a acting at every point, with Core's clock moving between every act.
+
+    The test keeps its own list of attempts to reach agent-a, each as it came out, and agent-a's
+    acts, and after every step:
+    - what Core keeps (failed_wakes, failed_outcome, unanswered_wakes) is the pure function of
+      that list and the acts: the failures since the last attempt that got through, and the
+      attempts left unanswered since agent-a last acted;
+    - what is told about agent-a is what that function says, so a told key about agent-a
+      changes only in a step that settled an attempt (or, for not answering, one where agent-a
+      acted): no notice pair repeats while attempt outcomes do not change."""
+
+    STEPS = 160
+
+    def tick(self, ms=1):
+        self.now += ms
+
+    def claim_one(self):
+        """One claim for agent-a, with work sent first if none waits and Core's clock moved on to when it
+        is due, as the runner waits; first noting a claim this one found expired."""
+        if not self.pending()["items"]:
+            self.send_next("Work %d" % self.serial)
+            self.tick()
+        due = self.store.runner_schedule(["agent-a"])["next_due_ms"]
+        if due is not None and due > self.now:
+            self.now = due
+        self.fresh_lease()
+        claims = self.store.claim_wakes(self.hosting, self.runner, ["agent-a"])["claims"]
+        if self.outstanding is not None:
+            expired = self.sql("SELECT outcome,finished_ms FROM wake_results WHERE attempt_id=?", (self.outstanding["attempt_id"],))
+            if expired:
+                self.assertEqual(expired[0][0], "expired")
+                self.attempt(through=False, outcome="expired", unanswered=False, ended=expired[0][1])
+                self.outstanding = None
+        self.tick()
+        return claims[0] if claims else None
+
+    def attempt(self, through, outcome, unanswered, ended=None):
+        self.attempts.append({"through": through, "outcome": outcome, "unanswered": unanswered, "ended": self.now if ended is None else ended})
+
+    def acted(self):
+        """Whether agent-a recorded a command since the step began, noting when."""
+        count = self.sql("SELECT count(*) FROM operations WHERE actor_id='agent-a'")[0][0]
+        if count > self.operations:
+            self.operations = count
+            self.acts.append(self.now)
+        self.tick()
+
+    def act_now(self, rng):
+        items = self.pending()["items"]
+        if items:
+            for item in items:
+                self.ack(item["id"])
+        else:
+            # Nothing waits: acknowledging something already handled is still a recorded act.
+            self.ack(self.sql("SELECT id FROM deliveries WHERE recipient_id='agent-a' ORDER BY seq LIMIT 1")[0][0])
+        self.acted()
+
+    def hand(self, claim, turn_id, mode):
+        result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], "handed", turn={
+            "thread_id": THREAD, "turn_id": turn_id, "mode": mode, "client_id": "theseus:" + claim["attempt_id"],
+            "announced_seq": claim["captured_seq"]})
+        self.assertEqual(result["status"], "settled", result)
+        self.tick()
+        return result
+
+    def expected(self):
+        """(failed_wakes, failed_outcome, unanswered_wakes) as a pure function of the attempts and acts."""
+        failed = 0
+        for attempt in reversed(self.attempts):
+            if attempt["through"]:
+                break
+            failed += 1
+        last_act = self.acts[-1] if self.acts else -1
+        unanswered = sum(1 for attempt in self.attempts if attempt["unanswered"] and attempt["ended"] > last_act)
+        return failed, self.attempts[-1]["outcome"] if failed else None, unanswered
+
+    def step(self, rng):
+        if self.turn is not None:
+            choice = rng.choice(["steer"] * 4 + ["see"] * 2 + ["end"] * 3 + ["send", "time"] + ["act"] * self.acts_weight)
+        else:
+            choice = rng.choice(["start"] * 4 + ["claim"] * 3 + ["withdrawn", "expire", "late", "send", "time"] + ["act"] * self.acts_weight)
+        if choice == "send":
+            self.send_next("Work %d" % rng.randrange(10 ** 6))
+        elif choice == "act":
+            self.act_now(rng)
+        elif choice == "time":
+            self.tick(rng.choice([1000, 25000, 61000]))
+        elif choice == "claim" and self.turn is None:
+            claim = self.claim_one()
+            if claim is not None:
+                outcome = rng.choice(["accepted", "queued", "busy", "error", "unavailable"])
+                result = self.store.finish_wake(self.hosting, self.runner, claim["claim_token"], outcome,
+                                                reason=None if outcome in ("accepted", "queued") else rng.choice(["broker_exit", "deadline"]))
+                self.assertEqual(result["status"], "settled", result)
+                self.attempt(through=outcome in ("accepted", "queued"), outcome=outcome,
+                             unanswered=outcome == "accepted" and bool(result["pending_count"]))
+                self.tick()
+        elif choice in ("start", "withdrawn") and self.turn is None:
+            claim = self.claim_one()
+            if claim is not None:
+                if choice == "withdrawn":
+                    # The owner takes agent-a off its topic between the claim and the hand, then puts it back.
+                    self.part(False)
+                    self.tick()
+                if rng.random() < 0.3:
+                    self.act_now(rng)  # agent-a acts once Codex started the turn, before the hand is recorded
+                self.turns += 1
+                result = self.hand(claim, "turn-%d" % self.turns, "start")
+                self.turn = {"id": "turn-%d" % self.turns, "began": claim["lease_until_ms"] - 20000,
+                             "carried": result["handed_seq"] is not None, "steers": [], "unseen": []}
+                if choice == "withdrawn":
+                    self.part(True)
+                    self.tick()
+        elif choice == "steer" and self.turn is not None and len(self.turn["steers"]) < 5:
+            self.send_next("More %d" % rng.randrange(10 ** 6))
+            self.tick()
+            claim = self.claim_one()
+            if claim is not None:
+                result = self.hand(claim, self.turn["id"], "steer")
+                self.turn["carried"] = self.turn["carried"] or result["handed_seq"] is not None
+                self.turn["steers"].append(claim["attempt_id"])
+                self.turn["unseen"].append(claim["attempt_id"])
+        elif choice == "see" and self.turn is not None and self.turn["unseen"]:
+            attempt_id = self.turn["unseen"].pop(rng.randrange(len(self.turn["unseen"])))
+            self.fresh_lease()
+            self.assertEqual(self.store.hosted_turn_seen(self.hosting, self.runner, "theseus:" + attempt_id)["status"], "recorded")
+            self.tick()
+        elif choice == "end" and self.turn is not None:
+            status = rng.choice(["completed", "completed", "failed", "lost", "interrupted"])
+            self.fresh_lease()
+            result = self.end(status, turn_id=self.turn["id"], **({} if status == "completed" else {"error_code": "serverOverloaded"}))
+            self.assertEqual(result["status"], "ended", result)
+            acted = any(self.turn["began"] <= at <= self.now for at in self.acts)
+            self.attempt(through=status == "completed" or acted, outcome="completed" if status == "completed" or acted else status,
+                         unanswered=status == "completed" and self.turn["carried"] and not acted)
+            self.ended, self.turn = self.turn["id"], None
+            self.tick()
+        elif choice == "late" and self.turn is None and self.ended is not None:
+            # A steer Codex answered after its turn ended: it joins an attempt already settled.
+            self.send_next("Late %d" % rng.randrange(10 ** 6))
+            self.tick()
+            claim = self.claim_one()
+            if claim is not None:
+                self.hand(claim, self.ended, "steer")
+        elif choice == "expire" and self.turn is None and self.outstanding is None:
+            claim = self.claim_one()
+            if claim is not None:
+                # The runner never settles it: the next claim finds it expired.
+                self.outstanding = claim
+                self.tick(21000)
+        if rng.random() < self.acts_weight / 10:
+            self.act_now(rng)  # an act at any point
+        return choice
+
+    def run_seed(self, seed):
+        rng = random.Random(seed)
+        self.attempts, self.acts, self.turn, self.ended, self.outstanding, self.turns = [], [], None, None, None, 0
+        # How often agent-a acts: in some runs seldom, so it is left wakes unanswered.
+        self.acts_weight = rng.choice([0, 1, 3])
+        self.operations = self.sql("SELECT count(*) FROM operations WHERE actor_id='agent-a'")[0][0]
+        changed = {}
+        told = set()
+        for number in range(self.STEPS):
+            settled_before, acts_before = len(self.attempts), len(self.acts)
+            choice = self.step(rng)
+            where = "seed %d step %d (%s)" % (seed, number, choice)
+            row = self.sql("SELECT failed_wakes,failed_outcome,unanswered_wakes FROM wake_facts WHERE recipient_id='agent-a'")
+            expected = self.expected()
+            self.assertEqual(row[0] if row else (0, None, 0), expected, "%s: Core keeps the fold of the attempts" % where)
+            now_told = {key for key in json.loads(self.kept("health_announced") or "{}") if key.endswith(":agent-a")}
+            self.assertEqual(now_told, {key for key, on in (("failing:agent-a", expected[0] >= 3), ("parked:agent-a", expected[2] >= 3)) if on},
+                             "%s: what is told about agent-a is what its attempts say" % where)
+            for key in now_told ^ told:
+                self.assertTrue(len(self.attempts) > settled_before or (key.startswith("parked:") and len(self.acts) > acts_before),
+                                "%s: %s changed with no attempt settled" % (where, key))
+                previous = changed.get(key)
+                signature = (len(self.attempts), len(self.acts))
+                self.assertNotEqual(previous, signature, "%s: %s flipped twice on the same attempts" % (where, key))
+                changed[key] = signature
+            told = now_told
+        return self.attempts
+
+    def kept(self, key):
+        row = self.sql("SELECT value FROM metadata WHERE key=?", (key,))
+        return row[0][0] if row else None
+
+
+def _attempt_seeded(seed):
+    def test(self):
+        attempts = self.run_seed(seed)
+        self.assertTrue(attempts, "seed %d settled no attempt" % seed)
+    test.__doc__ = "Random hosted turns with steers, faults and acts, seed %d." % seed
+    return test
+
+
+for _seed in range(16):
+    setattr(AttemptPropertyCase, "test_the_counts_are_a_function_of_the_attempts_seed_%d" % _seed, _attempt_seeded(_seed))
